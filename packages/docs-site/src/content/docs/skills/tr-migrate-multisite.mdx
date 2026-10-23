@@ -13,6 +13,9 @@ assistant in the portal has no migration tools.
 
 For a single site, use [tr-migrate-wp](../tr-migrate-wp/) or [tr-import-url](../tr-import-url/) instead.
 
+Record [preserve or renew](../../guides/migration-approach/) per Site before
+building. Both use editable blocks and preserve or redirect old public URLs.
+
 ## One site or several?
 
 The first thing this skill settles, because it's the expensive decision to reverse. **A Typeroll site owns one domain** (plus its www/apex sibling):
@@ -32,7 +35,7 @@ The first thing this skill settles, because it's the expensive decision to rever
 | **Reference build** | One site built and approved properly, so design mistakes aren't multiplied by ten                                                            |
 | **Replicate**       | The design travels as a block-type package; settings, partials and templates follow per site                                                 |
 | **Content**         | Pages migrated with their paths preserved; internal links rewritten to the new site                                                          |
-| **Redirects**       | Every URL that didn't keep its path gets a redirect, or an explicit sign-off that it may 404                                                 |
+| **Redirects**       | Every old public URL keeps working or redirects to relevant replacement content                                                              |
 | **hreflang**        | Each page declares its equivalents on the sister domains, on all sides                                                                       |
 | **Verify**          | Every old URL is requested against the new site and the gaps fixed — before DNS is touched                                                   |
 

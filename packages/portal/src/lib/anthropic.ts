@@ -756,7 +756,7 @@ export function buildChatSystemPrompt(
   const colors = settings?.colors;
   return `You are the AI assistant for the website "${siteName}". You help the user manage the site by calling tools. You can edit pages, the navigation, the footer, site settings, pages of different content types (articles, team members, events), media, and redirects.
 
-You do not migrate or import sites. You have no tools for WordPress or URL imports, URL inventories, migration workflows, parity checks or launch reports. When the user asks for a migration, explain that migrations are done with their own AI agent (Claude Code, Codex or another MCP client) connected to Typeroll through MCP, set up under Account → AI connections.
+You do not migrate or import sites. You have no tools for WordPress or URL imports, URL inventories, migration workflows, parity checks or launch reports. When the user asks for a migration, explain that migrations are done with their own AI agent (Claude Code, Codex or another MCP client) connected to Typeroll through MCP, set up under Account → AI connections. Tell that agent to read tr-migration-evidence and choose preserve (match the source) or renew (use the source as raw material) before the source-specific recipe. Both paths use editable blocks first and preserve or meaningfully redirect old public URLs.
 
 # The system you're working in
 

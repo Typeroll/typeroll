@@ -1,0 +1,100 @@
+---
+title: Choose your migration approach
+description: Renew a website or preserve it while changing platform, with editable blocks and continuity for old URLs in both paths.
+---
+
+A migration can have two different goals. Agree which one applies before an
+agent imports or rebuilds content. Use your own AI agent through
+[MCP](../../getting-started/mcp-server/); the built-in portal assistant does not
+run migrations.
+
+| Approach                        | What the old site supplies                                                               | What you review against                                                                                                |
+| ------------------------------- | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| **Preserve — change platform**  | Text, images, structure, visual identity and behavior to retain as closely as practical. | The original website. Small deliberate deviations should have an agreed reason.                                        |
+| **Renew — improve the website** | Raw material: facts, copy, images, structure and graphic design.                         | Your agreed new design and content plan, with approved prototypes. Looking different from the old site is intentional. |
+
+Renewal can include better copy, a new structure and merged pages. It does not
+permit invented facts or silently lost content. Record what changes and why.
+For a family of Sites, record the approach and reference separately per Site.
+
+## Editable blocks in both approaches
+
+Start with standard blocks, their settings, named styles and Page templates.
+If they do not fit, have your agent create an
+[editable custom block type](../../skills/tr-custom-blocks/). Prefer a composition
+of standard blocks, then a template type with meaningful fields for text, images
+and links. These are supported building tools, not failures of the migration.
+
+Use raw HTML only as a documented exception. One good example is a unique,
+art-directed hero with animation, layered imagery and text positioned precisely
+over a background at several screen sizes. Keep frequently edited copy and
+images in custom-block fields where practical; a one-off hero can remain an
+isolated HTML block while the surrounding page uses standard blocks. Test its
+breakpoints, keyboard access, contrast and reduced-motion behavior. Keep
+important content usable without animation. Custom scripts need explicit scope;
+do not copy scripts that depend on the old site's plugins or runtime.
+
+A broken standard feature still needs a fix. A custom block should express a
+useful design, not conceal ignored settings or bypass publication checks.
+
+## Import and reconstruction are different steps
+
+The managed WordPress importer preserves cleaned HTML, media references and
+shared categories. It does not rewrite copy or automatically turn HTML into
+editable blocks. The agent then rebuilds the imported material into blocks and
+shared templates, according to the selected approach. Changing a Page's mode
+alone does not convert its content.
+
+Verify one prototype per distinct template before rebuilding many Pages. In
+preserve mode compare it with the source. In renew mode compare it with the
+approved design and content plan. Check long pages and unusual content as well
+as a simple sample; import completion is not launch approval.
+
+## Every old public URL needs a destination
+
+Both approaches keep old URLs working, either at the same path or through a
+redirect to relevant replacement content. A new design may merge Pages, but
+their old URLs still need meaningful destinations. Do not redirect everything
+to the homepage or exclude public archives merely to clear a report.
+
+Inventory sitemaps, internal links, CMS records and available traffic/backlink
+exports. Include archives, pagination, downloads and important anchors. Private
+admin/session noise can be excluded with reasons; retiring a public URL requires
+a separately agreed exception. Query URLs and old hostnames need an explicit
+routing plan: DNS alone does not serve HTTP redirects.
+
+Check the actual candidate deployment before changing traffic: missing pages,
+redirect loops, broken assets and redirects to unrelated content are failures.
+Visual, content and interaction review remains necessary even when every URL
+returns a successful response.
+
+## Working with an agent
+
+Ask the agent to read `tr-migration-evidence` with `read_skill`, then the relevant
+source recipe: `tr-migrate-wp`, `tr-import-url`, `tr-migrate-astro` or
+`tr-migrate-multisite`. These work through hosted and local MCP. Authentication
+can use personal OAuth or a scoped API key; the agent must confirm the Site and
+Version before writing.
+
+The [workspace starter](../../getting-started/agent-workspace/) includes a
+`brief/migration.md` decision record. Skills load on demand rather than filling
+every conversation with the entire manual. Existing edited workspace files are
+preserved on update; reconcile them deliberately.
+
+Before importing content or media, connect and verify your Organization's own
+storage. With customer publishing, you can import and preview before connecting
+GitHub, builds or a website domain. Publishing and domain cutover have separate
+readiness checks and authorization.
+
+Composition preflight can record reviewed custom types and HTML exceptions with
+specific reasons. These are review records, not automatic visual approval. See
+[migration readiness tools](../../tools/migration-urls/) for the API shape.
+
+### Example requests
+
+> Move this website to Typeroll while preserving its appearance, text and images.
+> Use editable blocks and keep every old public URL working or redirected.
+
+> Use this website as raw material for a fresher design and better content.
+> Propose a design and content plan first, build a representative prototype,
+> and preserve or redirect every old public URL.

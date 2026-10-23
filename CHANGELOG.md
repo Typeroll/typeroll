@@ -1,5 +1,11 @@
 # Changelog
 
+## Core 0.2.89 / MCP 0.45.69
+
+- Define preserve and renew migration approaches, with a shared editable-block hierarchy and continuity for every old public URL. Include art-directed hero HTML exceptions and explicit content/design acceptance references.
+- Allow reasoned, exact custom-type and HTML-block reviews in composition preflight without bypassing missing dependencies or infrastructure checks. Return those decisions as `reviewed_exceptions`; hosted verification remains required.
+- Align MCP recipes, generated workspace briefs, portal chat guidance and public migration docs. Remove stale HTML-first, media-host and breadcrumb guidance from the chat playbook.
+
 ## Core 0.2.88 / MCP 0.45.68
 
 - Update Astro to the corrected 7.3 patch line and ip-address to 10.7.4 for the release security gate.

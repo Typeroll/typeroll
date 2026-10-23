@@ -36,9 +36,10 @@ read_site_settings
 ```
 
 For each page, check:
-- Is `seo_title` set? (if not, Google uses `title` + suffix — often fine;
-  aim for 50–60 characters, longer gets truncated)
-- Is `seo_description` set? (150–160 chars, unique per page, includes keywords)
+- Does the rendered title accurately identify the page, including any suffix?
+- Is the description useful, specific and supported by the page's content?
+  Search snippets may be rewritten or truncated; fixed character counts are
+  not acceptance rules and must not cause padding or lost meaning.
 - Is `og_image` set for the homepage and key landing pages?
 - Does the page have exactly one `<h1>`?
 
@@ -53,7 +54,7 @@ batch_update_pages updates=[
 ```
 
 Guidelines:
-- 150–160 characters
+- Use the length needed for a clear, accurate summary; avoid padding
 - Include the most important keyword naturally
 - Make it a compelling reason to click, not a summary of the page's nav
 

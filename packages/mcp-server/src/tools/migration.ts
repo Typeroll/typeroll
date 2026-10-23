@@ -50,11 +50,17 @@ export const migrationTools: ToolDef[] = [
           fields: z.array(z.object({ name: z.string().min(1), type: z.string().optional() })).optional(),
           blocks: z.array(z.any()),
           business_specific_block_types: z.array(z.string()).optional(),
+          reviewed_custom_block_types: z.array(z.object({
+            type: z.string().trim().min(1), reason: z.string().trim().min(1).max(2000),
+          })).max(100).optional(),
+          reviewed_html_blocks: z.array(z.object({
+            block_id: z.string().trim().min(1), reason: z.string().trim().min(1).max(2000),
+          })).max(100).optional(),
         }))
         .min(1)
         .max(50)
         .optional()
-        .describe('Proposed block compositions to review before build. Include fields when you want missing schema bindings detected. Explicitly list only genuinely business-specific custom block types.'),
+        .describe('Proposed block compositions before build. Standard blocks first, reviewed reusable custom types next, raw HTML only as a documented last resort. reviewed_custom_block_types and reviewed_html_blocks record exact choices and reasons, not proof of visual quality. Missing types/fields still block readiness.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = args.compositions
@@ -226,7 +232,7 @@ export const migrationTools: ToolDef[] = [
   {
     name: 'record_migration_seo_acceptance',
     description:
-      'Record the reviewed SEO/content parity evidence used by the launch report. This does not run the audit. Supply the exact source/target origins, checked timestamp, dataset description, page count and difference counts. Also supply fidelity: desktop/mobile visual comparisons, shared-data checks, integration checks and evidence notes. HTTP 200 is not visual acceptance. status=accepted requires unresolved=0. Re-run and record new evidence after every deploy.',
+      'Record the reviewed SEO/content parity evidence used by the launch report. This does not run the audit. Supply the exact source/target origins, checked timestamp, dataset description, page count and difference counts. Also supply fidelity: desktop/mobile review against the source (preserve) or approved design (renew), shared-data checks, integration checks and evidence notes identifying the intent and approved differences. HTTP 200 is not visual acceptance. status=accepted requires unresolved=0. Re-run and record new evidence after every deploy.',
     inputSchema: {
       status: z.enum(['accepted', 'rejected']),
       checked_at: z.string().datetime(),

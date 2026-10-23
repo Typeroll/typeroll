@@ -48,7 +48,11 @@ The target Typeroll site should already have:
 - Header and footer partials built (at least a basic version)
 - Source and target examples for desktop/mobile comparison
 
-The migration imports **content**, not the old design. Presentation comes from shared templates and must be compared with the source before launch.
+Choose [preserve or renew](../../guides/migration-approach/) first. The managed
+import preserves cleaned HTML; the agent separately rebuilds editable blocks and
+templates. Review against the source in preserve mode or the agreed design and
+content plan in renew mode. Custom block types are appropriate when standard
+blocks do not fit; raw HTML is an exceptional fallback.
 
 ## The helper plugin
 
@@ -90,7 +94,7 @@ After migration, the portal's **Migration** tab shows every URL from the source 
 
 - ✅ **Migrated** — content imported as a page
 - ↪ **Redirected** — old URL redirects to a new slug
-- ⬜ **Excluded** — pagination, admin, CDN URLs (expected)
+- ⬜ **Excluded** — documented out-of-scope noise, such as private admin/session URLs. Public pagination and archives still need working routes or relevant redirects
 - ⚠️ **Unhandled** — needs attention before go-live
 
 You can add redirects directly from the Migration tab for any unhandled URL.

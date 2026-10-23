@@ -33,6 +33,16 @@ can go straight to main.) Creating and merging branches needs site admin
 permission, as in the portal; on a write share, ask a site administrator to
 create the branch, then work on it with `version=<id>`.
 
+## Migration intent and acceptance
+
+Read `tr-migration-evidence` before a source-specific migration skill. Choose
+preserve (match the old site) or renew (use it as raw material for an agreed new
+design/content plan). Record that decision before writes. In both cases prefer
+standard blocks, then editable custom types, and only rare documented HTML
+exceptions. Keep every old public URL working or meaningfully redirected.
+Managed HTML import is only an intermediate step, not completed reconstruction.
+Use personal OAuth or a scoped API key with the required Site/Organization access.
+
 ## What this is
 
 Typeroll is a static-site CMS: content lives in a database, the user

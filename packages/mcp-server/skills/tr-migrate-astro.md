@@ -9,10 +9,12 @@ description: Migrate an existing Astro site, including Astro Content Collections
 another MCP client) working through MCP and the public API. The portal's built-in
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
-**Before bulk conversion:** read `tr-migration-evidence` with `read_skill`.
-Complete its source baseline and one verified prototype per active template.
-Read target content to protect edits, not to justify accidental target defaults.
-Its shared evidence record is required for visual acceptance.
+**Before import or reconstruction:** read `tr-migration-evidence` with
+`read_skill`. Choose preserve (platform change) or renew (new design/content),
+record the brief and verify one prototype per active template before bulk writes.
+Use standard blocks first, reviewed custom types next, rare documented HTML last.
+Both paths must preserve or meaningfully redirect every old public URL. That
+shared contract defines acceptance; this recipe only adds source-specific steps.
 
 
 Astro Content Collections are source data. In Typeroll, each source record

@@ -1,6 +1,6 @@
 ---
 name: tr-migration-evidence
-description: Source-first design baseline, native capability mapping and evidence gates required before bulk website migration or visual acceptance.
+description: Choose preserve or renew intent, map standard and custom blocks, preserve old URLs, and verify content, design and behavior before migration acceptance.
 ---
 
 # Migration evidence contract
@@ -10,15 +10,88 @@ another MCP client) working through MCP and the public API. The portal's built-i
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
 Use this shared contract with WordPress, Astro, URL and multisite recipes.
-Default to preserving the source appearance and behavior. A redesign requires
-explicit scope. A partly migrated target is not the design reference.
+## Choose the migration intent before writes
+
+Record `preserve` or `renew` in the workspace's `brief/migration.md` (or the
+project's equivalent brief), with scope, source URLs and the user's decision.
+These are planning labels, not fields accepted by the migration API. Ask when
+the intent is unclear; do not infer redesign permission from “migrate”.
+
+| Intent | Source material | Acceptance reference |
+| --- | --- | --- |
+| Preserve: change publishing platform | Keep text, images, structure, visual identity and behavior as closely as practical. | The original site. Record deliberate deviations and their agreed benefit. |
+| Renew: improve design and content | Use source text, images, structure and graphic design as raw material. Agree what to retain, rewrite, combine or replace. | The agreed brief, content plan and approved prototypes, not visual similarity to the old site. |
+
+Both paths preserve facts, ownership, required business behavior and historical
+URL continuity. Renewal does not authorize invented claims, removal of useful
+content or an unapproved domain switch. Do not use a partly migrated target as
+an accidental design reference. Protect existing target edits in either path.
+
+## Use editable blocks in both paths
+
+1. Inspect standard block schemas, composition starters, named styles and Page
+   templates. Prefer these when they fit.
+2. When they do not fit, read `tr-custom-blocks` and create a reusable Site block
+   type with meaningful editable fields. Prefer a composition of standard blocks;
+   a field-driven template type is appropriate when composition cannot express it.
+   Validate the type, preview it, save/read it back and test a representative use
+   in static output. Do not store a whole page as an opaque HTML field.
+3. Raw HTML is a last resort for a small, exceptional fragment. Record the exact
+   block/Page, why neither standard nor custom types fit, editing limitations and
+   verification. Keep the surrounding page block-based whenever possible.
+
+A justified HTML exception is a unique art-directed hero: layered imagery,
+animation and text placed precisely over a background at different breakpoints.
+Prefer a field-driven custom type when editors need to change its text, images
+or links repeatedly; a one-off hero may remain an isolated HTML block. Verify
+actual breakpoints, cropping, keyboard access, contrast and reduced motion. Keep
+essential copy and links usable without animation. Do not copy source-platform
+scripts; any custom script needs explicit scope and the supported runtime.
+
+On Core 0.2.89 / MCP 0.45.69+, composition preflight accepts reviewed custom types in
+`reviewed_custom_block_types: [{type, reason}]` and rare HTML blocks in
+`reviewed_html_blocks: [{block_id, reason}]`. Inspect the deployed schema first on older installations. These are reviewer
+attestations, not proof of quality. They only acknowledge those specific choices; missing
+block types/fields and unreviewed workarounds still block readiness. Do not call
+something business-specific just to bypass a check. A confirmed renderer bug
+still needs a platform fix, not a disguised HTML/CSS workaround.
+
+## Import is not block reconstruction
+
+The managed WordPress importer deterministically stores cleaned HTML and shared
+references, without AI rewriting. That is a source-preserving intermediate step.
+The external agent rebuilds it into reviewed blocks/templates for either intent;
+`set_page_mode` does not perform conversion. Keep the complete source, map every
+in-scope content element, and do not silently truncate long pages. In preserve
+mode retain wording; in renew mode track approved rewrites and source facts.
+An import finishing does not mean design, block reconstruction or launch is done.
+
+## Old URLs must continue to work
+
+Inventory public URLs from sitemaps, CMS records, internal links, pagination and
+available traffic/backlink exports, including important assets and anchors.
+Record each old URL as preserved or redirected to a relevant working destination.
+Renewal may merge pages, but every old address still needs a meaningful mapping.
+Never blanket-redirect to the homepage or mark public content `excluded` merely
+to make coverage green. Private/admin/session noise can be excluded with a reason;
+retiring a public URL requires a separately agreed exception to this contract.
+
+Use `add_migration_urls` with `source_origin`, keep a per-URL mapping, and run
+`verify_migration_urls` against the authorized deployed candidate, then
+`get_migration_launch_report`. Check both slash forms, redirect chains/loops,
+query routes and fragments with their actual routing mechanism. DNS is not an
+HTTP redirect: changed hostnames need a host that continues serving redirects.
+A missing route or a 200 at unrelated content fails continuity in either path.
+Do not switch traffic until these checks pass and cutover is authorized.
 
 ## Gate 1: source baseline, before conversion
 
-Record the authoritative source URL/date, scope, relevant Core version, active
+Record the chosen intent, authoritative source URL/date, scope, relevant Core version, active
 Page templates and overrides. Inventory home, category/archive, long/short
 articles, downloads, empty related lists and each distinct business surface.
-Capture screenshots and computed geometry at matching actual `innerWidth`
+For preserve, capture source and target geometry; for renew, compare the target
+with the approved design while retaining source coverage evidence. Capture
+screenshots and computed geometry at matching actual `innerWidth`
 values (320/390/768/1024/1280/1536 where relevant, plus both sides of actual
 breakpoints). Record loaded font families/weights, color panels, logo/header,
 hero, gutters, article/sidebar widths, card anatomy/grid and footer. Inspect
@@ -42,9 +115,10 @@ back each prototype, then inspect its preview and an authorized static build.
 Example: a 48px heading uses `core/heading.font_size_px: 48` on Core 0.2.25+;
 read the saved block back and measure computed `fontSize` at 1280px. Writing
 `font_size_px` to `core/prose`, which does not declare it, is an unsupported
-mapping even if an API preserves that unknown key. Stop with
-`waiting_for_native_support` when required capability is absent or ignored;
-do not hide the gap with tenant CSS or generic custom blocks.
+mapping even if an API preserves that unknown key. A new presentation may use
+a reviewed custom type as described above. Missing or ignored declared behavior
+is a platform defect: stop that recipe with `waiting_for_native_support` and do
+not disguise the failure with tenant CSS.
 
 Validate shared Page references, item order, missing images and empty/unpublished
 references. Keep semantics separate from presentation: category emoji belongs
@@ -66,13 +140,12 @@ behavior or other semantics unsupported by the chosen block: record the gap
 and use a supported composition or stop for native support.
 Do not apply a template to hundreds of Pages until its prototype passes.
 
-## Report platform gaps, do not patch them
+## Distinguish custom presentation from platform defects
 
-Matching the source sometimes needs something the platform does not offer.
-Never close that with site or page `custom_css`, raw HTML or a generic custom
-block: the next site hits the same gap and the workaround breaks on the next
-Core change. Record it and report it instead. Check these five causes first,
-because each has looked like a site problem:
+A new layout or reusable visual component is a legitimate custom block, not
+necessarily a Core defect. Use the block hierarchy above. When a declared Core
+feature fails, do not cover it with site/page CSS, raw HTML or a replacement
+block. Record and report it. Check these five causes first:
 
 1. **A platform default no setting reaches.** Compare computed text rendering
    and base styles on `body`, links and headings (`-webkit-font-smoothing`,
@@ -99,7 +172,7 @@ block ID and type or the setting; source and target computed values; what is
 missing, ignored or wrong; the proposed setting or fix; and acceptance
 criteria a reviewer can measure. State that no workaround CSS is in place.
 Mark the affected recipe `waiting_for_native_support`, continue independent
-work, and verify against the source again after the release.
+work, and verify against the chosen acceptance reference after the release.
 
 ## Separate files, addresses and business behavior
 
@@ -176,13 +249,14 @@ pre-cutover scope honestly when DNS or integrations remain out of scope.
 
 The initial route census must combine source sitemaps, internal links, archive
 pagination, CMS inventory and known utility routes. Include homepage, archives,
-404/search behavior and routes outside the sitemap where present. Do not invent
-features absent from the source. Assign every route a recipe, template override,
+404/search behavior and routes outside the sitemap where present. In preserve mode, do not invent
+features absent from the source. In renew mode, include additions in the agreed brief. Assign every route a recipe, template override,
 composition or documented exception. Inventory the whole shell: content outside
 `main`, header, footer, service navigation and archive heroes are not optional.
 
-Derive required evidence from that census. Pair every in-scope source/target route
-at mobile and desktop; add each unique component, breakpoint and interaction
+Derive required evidence from that census. For preserve, pair every in-scope source/target route
+at mobile and desktop; for renew, compare every target route to its approved
+prototype and account for the source content/URL mapping; add each unique component, breakpoint and interaction
 state. Inspect page-specific media, lists, tables, embeds, CTAs, anchors and related
 content. One representative article cannot attest every article's content.
 
@@ -207,12 +281,13 @@ partial or template changes invalidate every dependent row; content changes
 invalidate that route and dependent listings. An old revision cannot approve a new
 one. Source availability failures remain `UNVERIFIED`, not silently excluded.
 
-Visual signoff requires zero uncovered required surfaces and zero unexplained
-regressions. `FAIL` or `UNVERIFIED` blocks that signoff, even when a separately scoped
+Visual signoff is against the chosen intent: source fidelity for preserve,
+approved design/content for renew. It requires zero uncovered required surfaces
+and zero unexplained regressions against that reference. `FAIL` or `UNVERIFIED` blocks that signoff, even when a separately scoped
 technical publication has approval. An intentional deviation needs exact before/
 after evidence, specific user benefit and accepted scope; “cleaner” is not a reason.
 
-Examples from a moving-services migration:
+Preserve-mode examples from a moving-services migration:
 
 | Surface | Passing evidence | Separate visual result |
 | --- | --- | --- |

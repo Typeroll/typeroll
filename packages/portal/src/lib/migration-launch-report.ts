@@ -132,7 +132,7 @@ export async function buildMigrationLaunchReport(args: {
 
   const fidelity = seoEvidence?.fidelity;
   if (!fidelity?.desktop || !fidelity.mobile || !fidelity.shared_data || !fidelity.integrations || !fidelity.evidence?.trim()) {
-    issues.push({ id: 'fidelity_review_missing', detail: 'Record a desktop/mobile comparison with the source, shared-category checks and integration checks. HTTP and SEO checks alone do not verify migration fidelity.' });
+    issues.push({ id: 'fidelity_review_missing', detail: 'Record desktop/mobile review against the source for preserve or the approved design for renew, plus shared-data and integration checks. Include the intent and approved differences in the evidence. HTTP and SEO checks alone do not verify migration fidelity.' });
   }
 
   let seoStatus: MigrationLaunchReport['seo_parity']['status'] = 'missing';

@@ -49,8 +49,9 @@ drafts and unpublished pages. Mint one link and reuse it while iterating.
 a local file with `create_upload_url` (see `tr-images`); `list_media` finds
 existing ones. Use the returned CDN URL exactly. With a named target, place it
 there (`add_block` with `core/image` on a block page; an `<img>` with `alt` in
-`html_content` on an HTML page). Without one, ask what the image is for. Ask
-for alt text when none was given. Afterwards say in one sentence where it
+`html_content` on an HTML page). Without one, ask what the image is for. Preserve meaningful alt text or describe the image’s function; decorative images
+may have empty alt, while linked images need an accessible name. Ask when the
+intended purpose is unclear. Afterwards say in one sentence where it
 landed; to answer "has it been added?", read the page again rather than
 trusting the conversation.
 

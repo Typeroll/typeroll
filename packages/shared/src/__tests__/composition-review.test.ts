@@ -87,4 +87,46 @@ describe('reviewBlockComposition', () => {
     expect(review.status).toBe('waiting_for_native_support');
     expect(review.workarounds.map((item) => item.kind)).toEqual(['raw_html', 'custom_css']);
   });
+
+  it('accepts reviewed reusable presentation without calling it business-specific', () => {
+    const registry = buildCoreBlockRegistry();
+    registry.set('layered_hero', {
+      id: 'layered_hero', name: 'layered_hero', label: 'Layered hero', category: 'custom',
+      container: false, schema: [{ name: 'title', type: 'text', label: 'Title' }],
+      template: '<h2>{{title}}</h2>', origin: 'user', created_at: '2026-10-23T00:00:00Z',
+    });
+    const review = reviewBlockComposition({
+      name: 'Renewed landing page',
+      blocks: [{ id: 'hero', type: 'layered_hero', data: { title: 'Hello' } }],
+      reviewed_custom_block_types: [{ type: 'layered_hero', reason: 'Editable layered presentation; standard alternatives reviewed.' }],
+    }, registry);
+    expect(review.status).toBe('ready');
+    expect(review.business_specific_block_types).toEqual([]);
+    expect(review.reviewed_exceptions).toEqual([expect.objectContaining({ block_id: 'hero', kind: 'generic_custom_block', reason: expect.any(String) })]);
+    expect(review.requires_hosted_verification).toBe(true);
+  });
+
+  it('limits HTML acceptance to the exact reviewed block and preserves other blockers', () => {
+    const proposal = {
+      name: 'Art-directed hero', fields: [],
+      blocks: [{ id: 'hero', type: 'core/html', data: { html: '<div>Unique artwork</div>' } }],
+      reviewed_html_blocks: [{ block_id: 'hero', reason: 'One-off responsive artwork; alternatives and reduced motion reviewed.' }],
+    };
+    expect(reviewBlockComposition(proposal, buildCoreBlockRegistry()).status).toBe('ready');
+    const review = reviewBlockComposition({
+      ...proposal,
+      reviewed_custom_block_types: [{ type: 'missing', reason: 'Review cannot create a missing type.' }],
+      blocks: [...proposal.blocks,
+        { id: 'other', type: 'core/html', data: {} },
+        { id: 'missing', type: 'missing', data: { title: '{{page.unknown}}' } },
+        { id: 'css', type: 'core/heading', data: {}, style_overrides: { custom_css: 'color:red' } },
+      ],
+    }, buildCoreBlockRegistry());
+    expect(review.status).toBe('waiting_for_native_support');
+    expect(review.missing_block_types).toEqual(['missing']);
+    expect(review.missing_fields).toEqual(['unknown']);
+    expect(review.workarounds.map(row => row.kind)).toEqual(['raw_html', 'custom_css']);
+    expect(review.reviewed_exceptions).toHaveLength(1);
+    expect(reviewBlockComposition({ ...proposal, reviewed_html_blocks: [{ block_id: 'hero', reason: ' ' }] }, buildCoreBlockRegistry()).status).toBe('waiting_for_native_support');
+  });
 });
