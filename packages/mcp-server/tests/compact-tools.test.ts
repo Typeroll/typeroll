@@ -90,3 +90,18 @@ for (const mode of ['compact', 'full'] as const) it(`preserves presentation fiel
   await call('update_site_settings', { responsive_breakpoints: null });
   expect(JSON.parse(calls[2].body!)).toEqual({ responsive_breakpoints: null });
 });
+
+it('keeps full and compact schemas aligned after the validator upgrade', async () => {
+  const full = await connect('full'), compact = await connect('compact');
+  const tools = (await full.client.listTools()).tools;
+  for (const name of ['set_publishing_domains', 'approve_publishing_domain_cutover', 'update_form', 'update_page']) {
+    const listed = tools.find(tool => tool.name === name)!.inputSchema;
+    const described = payload(await compact.client.callTool({ name: 'describe_tool', arguments: { name } })).inputSchema;
+    expect(described.properties).toEqual(listed.properties);
+    expect(described.required ?? []).toEqual(listed.required ?? []);
+  }
+  const domains = tools.find(tool => tool.name === 'set_publishing_domains')!.inputSchema;
+  expect(domains.properties?.redirect_hosts).toMatchObject({ type: 'array', maxItems: 4 });
+  const cutover = tools.find(tool => tool.name === 'approve_publishing_domain_cutover')!.inputSchema;
+  expect(cutover.properties?.accept_validation_window).toMatchObject({ type: 'boolean' });
+});

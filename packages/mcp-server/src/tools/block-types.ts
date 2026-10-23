@@ -57,7 +57,7 @@ const definitionShape = {
   item_compatible: z.boolean().optional().describe('Mark true if this block is designed to render as a repeater item (no outer padding).'),
   expand_to: z.object({
     target: z.string(),
-    defaults: z.record(z.unknown()),
+    defaults: z.record(z.string(), z.unknown()),
   }).optional().describe('Alias mechanism — render as another block type with these defaults merged under authored data.'),
   schema: z.array(z.unknown()).optional().describe('FieldDefinition[]: { name, type, label, help?, required?, default?, options? (select), fields? (array/object), item_label?, min_items?, max_items? }. Replaces the whole schema on update.'),
   composition: z.array(z.unknown()).optional().describe('Block[] a composed type is built from. Bind data to props with "{{props.name}}" and, inside a core/repeater over an array prop, to items with "{{item.name}}" — always as the whole value.'),
@@ -190,7 +190,7 @@ export const blockTypeTools: ToolDef[] = [
     description:
       `Check a block type definition without saving it, with the exact validator create_block_type and update_block_type use. Pass the whole definition, or with type_id a patch to that stored type (renames are checked too). Returns { ok, problems, merged }: every error and warning with a JSON-pointer path (e.g. /schema/0/fields/2/name, /composition/0/children/1/data/text) and a line for markup and CSS, and the definition as it would be stored. Writes nothing. ${AUTHORING_GUIDE}`,
     inputSchema: {
-      definition: z.record(z.unknown()).describe('The block type definition (as for create_block_type), or a patch when type_id is set.'),
+      definition: z.record(z.string(), z.unknown()).describe('The block type definition (as for create_block_type), or a patch when type_id is set.'),
       type_id: z.string().optional().describe('Validate `definition` as a patch to this stored block type.'),
       version: versionParam,
     },
@@ -207,9 +207,9 @@ export const blockTypeTools: ToolDef[] = [
     description:
       'Render a block type definition that need not be saved, through the same preview renderer as the portal (the Site\'s render version, theme CSS, named styles, custom CSS, the other site block types, and the sanitizer). Without `data` the block shows sample values derived from its fields. Returns { ok, html, css, document, data, problems }: `html` is the block\'s markup as a page carries it, `css` the scoped block CSS that ships, `document` a standalone HTML page. A definition with errors is not rendered (ok:false, problems listed). Block scripts never run in a preview. Writes nothing.',
     inputSchema: {
-      definition: z.record(z.unknown()).optional().describe('The block type definition, or a patch when type_id is set. Omit with type_id to preview the stored type.'),
+      definition: z.record(z.string(), z.unknown()).optional().describe('The block type definition, or a patch when type_id is set. Omit with type_id to preview the stored type.'),
       type_id: z.string().optional().describe('Preview `definition` as a patch to this stored block type.'),
-      data: z.record(z.unknown()).optional().describe('Field values for the previewed block. Omit for sample data.'),
+      data: z.record(z.string(), z.unknown()).optional().describe('Field values for the previewed block. Omit for sample data.'),
       render_version: z.number().int().optional().describe('Render with this platform render version instead of the Site\'s own.'),
       version: versionParam,
     },
@@ -253,7 +253,7 @@ export const blockTypeTools: ToolDef[] = [
     inputSchema: {
       type_id: z.string().describe('Block type id (a site type). Cannot be a core/* block.'),
       ...definitionShape,
-      renames: z.record(z.string()).optional().describe('Old field path → new field name, e.g. { "title": "heading", "items.label": "text" }. Send together with the new schema.'),
+      renames: z.record(z.string(), z.string()).optional().describe('Old field path → new field name, e.g. { "title": "heading", "items.label": "text" }. Send together with the new schema.'),
       confirm_data_loss: z.boolean().optional().describe('Drop the data of removed or retyped fields that hold data. Only after the user agreed; the 409 lists what would be lost.'),
       version: versionParam,
     },

@@ -21,7 +21,7 @@ export const emailTools: ToolDef[] = [
       type: z.string().min(1).describe('Provider type from get_email_settings providers, e.g. "postmark" or "smtp".'),
       from: z.string().min(1).describe('Sender, e.g. "Acme <hello@acme.com>". Must be a sender the provider accepts.'),
       reply_to: z.string().optional().describe('Optional default Reply-To address.'),
-      config: z.record(z.unknown()).optional().describe('Provider fields keyed by the field schema.'),
+      config: z.record(z.string(), z.unknown()).optional().describe('Provider fields keyed by the field schema.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.put(siteId, 'integrations/email', {
       type: args.type,

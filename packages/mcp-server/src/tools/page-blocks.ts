@@ -10,7 +10,7 @@ import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js'
 const blockSchema = z.object({
   id: z.string().optional().describe('Stable id. Omit to let the server generate one.'),
   type: z.string().describe('Block type id, e.g. "core/heading", "core/section", or a custom "user/banner".'),
-  data: z.record(z.unknown()).optional().describe('Field values matching the block-type schema.'),
+  data: z.record(z.string(), z.unknown()).optional().describe('Field values matching the block-type schema.'),
   children: z.array(z.any()).optional().describe('Nested blocks for container types.'),
   slots: z.array(z.array(z.any())).optional().describe('Slot contents for slot-container types.'),
   style_overrides: z.object({
@@ -123,7 +123,7 @@ export const pageBlockTools: ToolDef[] = [
       target: targetSchema.optional(),
       page_id: z.string().optional(),
       block_id: z.string(),
-      data: z.record(z.unknown()).optional().describe('Field values to merge into block.data. null removes the key.'),
+      data: z.record(z.string(), z.unknown()).optional().describe('Field values to merge into block.data. null removes the key.'),
       style_overrides: z.object({
         spacing_before: z.string().optional(),
         spacing_after: z.string().optional(),

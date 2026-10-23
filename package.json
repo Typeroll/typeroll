@@ -48,7 +48,8 @@
   "overrides": {
     "sharp": "0.35.5",
     "@grpc/grpc-js": "^1.14.5",
-    "astro": "7.3.3"
+    "astro": "7.3.3",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "miniflare": "5.20260930.0-alpha"

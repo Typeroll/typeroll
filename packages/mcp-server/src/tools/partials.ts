@@ -120,7 +120,7 @@ export const partialTools: ToolDef[] = [
     inputSchema: {
       id: z.string().regex(/^[a-z0-9][a-z0-9-]{0,63}$/),
       name: z.string().optional(),
-      blocks: z.array(z.record(z.unknown())).optional().describe('Block tree for a block global block.'),
+      blocks: z.array(z.record(z.string(), z.unknown())).optional().describe('Block tree for a block global block.'),
       html_content: z.string().optional().describe('HTML for <x-include> in HTML pages. Send blocks or html_content.'),
       status: z.enum(['draft', 'published']).optional(),
       version: versionParam,
