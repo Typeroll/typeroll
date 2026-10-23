@@ -1,9 +1,11 @@
+import { createHash } from 'node:crypto';
+import { largeRedirectInventory } from './fixtures/large-redirects.mjs';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt } from '../packages/portal/src/lib/builds/direct-upload.mjs';
+import { MAX_REDIRECTS_BYTES, MAX_HEADERS_BYTES, describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt } from '../packages/portal/src/lib/builds/direct-upload.mjs';
 
 test('a thousand static files produce only a bounded receipt and preserve control files', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'direct-static-'));
@@ -106,4 +108,34 @@ test('refreshes reused asset hashes and bounds retries of optional indexing fail
   assert.equal(calls, 2); calls = 0;
   assert.equal(await retainPagesAssets(receipt, { jwt: 'synthetic' }, async () => { calls++; throw Error('offline'); }), false);
   assert.equal(calls, 2);
+});
+
+
+test('large migration redirects survive description, binary transport and receipt verification', async t => {
+  const { encodeArtifact, decodeArtifact, BUILD_PROTOCOL, BUILD_RUNTIME } = await import('../packages/portal/src/lib/builds/contract.mjs');
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'large-redirects-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  const text = largeRedirectInventory().map(r => `${r.from_path} ${r.to_path} ${r.status_code}`).join('\n') + '\n';
+  assert.ok(Buffer.byteLength(text) > 128 * 1024);
+  await fs.writeFile(path.join(root, '_redirects'), text);
+  const description = await describeStaticOutput(root);
+  const receipt = validateDirectReceipt({ format: 1, ...description, manifest: {} });
+  assert.equal(Buffer.from(receipt.controls._redirects, 'base64').toString(), text);
+  const identity = { protocol: BUILD_PROTOCOL, node_version: BUILD_RUNTIME, org_id: 'org', site_id: 'site', version_id: 'main', job_id: 'job', commit: 'c'.repeat(40), branch: 'main', publication_id: 'a'.repeat(64), source_sha256: 'b'.repeat(64) };
+  // Control bytes are carried inside the artifact, not the small completion callback.
+  const artifact = encodeArtifact(identity, { '.typeroll-direct-upload.json': Buffer.from(JSON.stringify(receipt)), '.well-known/typeroll/publication.json': Buffer.from(JSON.stringify({ id: identity.publication_id })) });
+  const decoded = decodeArtifact(artifact, identity, createHash('sha256').update(artifact).digest('hex'));
+  assert.equal(JSON.stringify(validateDirectReceipt(JSON.parse(decoded['.typeroll-direct-upload.json']))), JSON.stringify(receipt));
+});
+
+test('control byte limits remain bounded on both disk and receipt ingress', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'control-limit-'));
+  t.after(() => fs.rm(root, { recursive: true, force: true }));
+  for (const [name, limit] of [['_redirects', MAX_REDIRECTS_BYTES], ['_headers', MAX_HEADERS_BYTES]]) {
+    const bytes = Buffer.alloc(limit + 1, 'x');
+    await fs.writeFile(path.join(root, name), bytes);
+    await assert.rejects(describeStaticOutput(root), /static_control_file_limit/);
+    await fs.rm(path.join(root, name));
+    assert.throws(() => validateDirectReceipt({ format: 1, files: { [name]: { size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') } }, manifest: {}, controls: { [name]: bytes.toString('base64') } }), /invalid_direct_controls/);
+  }
 });

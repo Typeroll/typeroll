@@ -1,3 +1,4 @@
+import { largeRedirectInventory } from '../../../../../scripts/fixtures/large-redirects.mjs';
 import { resolvePublicationReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
@@ -662,4 +663,28 @@ it('stops a redirect change with a conflicting zone rule before asking for appro
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'redirect_rule_conflict' } });
   expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/rulesets') && options?.method)).toBe(false);
   expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/dns_records') && options?.method)).toBe(false);
+});
+
+
+it('accepts a large migration inventory in dry-run without pushing Git or starting a build', async () => {
+  for (const rule of largeRedirectInventory()) await getStore().setDoc(`${paths.redirects('org', 'site')}/${rule.id}`, rule);
+  await executeCustomerPublication({ ...args, dryRun: true });
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', dry_run: true });
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+});
+
+it.each([true, false])('rejects an overlong redirect before provider work (dry-run=%s)', async dryRun => {
+  await getStore().setDoc(`${paths.redirects('org', 'site')}/too-long`, { from_path: '/old', to_path: '/' + 'x'.repeat(1000), status_code: 301 });
+  await executeCustomerPublication({ ...args, dryRun });
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'publication_redirect_limit' }, error: expect.stringContaining('_redirects:') });
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+});
+
+it('rejects generated dynamic slash aliases over the Pages limit in dry-run', async () => {
+  for (let i = 0; i < 51; i++) await getStore().setDoc(`${paths.redirects('org', 'site')}/pattern-${i}`, { from_path: `/old-${i}/:slug`, to_path: '/new/:slug', status_code: 301 });
+  await executeCustomerPublication({ ...args, dryRun: true });
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('102 dynamic') });
+  expect(mocks.push).not.toHaveBeenCalled();
 });

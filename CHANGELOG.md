@@ -1,5 +1,11 @@
 # Changelog
 
+## Core 0.2.90 / MCP 0.45.70
+
+- Accept redirect control files up to 9 MiB in the customer build supervisor and authenticated upload receipts, retaining independent header, integrity and total-artifact bounds. Update the organization's build engine to adopt the new limit.
+- Preflight generated Cloudflare Pages redirect counts and line lengths during dry-run and before dispatch; check again in the frozen static renderer. Count generated slash/hostname aliases and preserve migration URLs.
+- Document redirect capacity, separate manual Bulk Redirects setup and required post-publication URL verification in publishing docs and the migration evidence recipe.
+
 ## Core 0.2.89 / MCP 0.45.69
 
 - Define preserve and renew migration approaches, with a shared editable-block hierarchy and continuity for every old public URL. Include art-directed hero HTML exceptions and explicit content/design acceptance references.
