@@ -1,3 +1,4 @@
+import { organizationUploadTtl } from '../../../../../lib/organization-access';
 // Signed R2 upload URL.
 //
 // Returns a presigned PUT URL the client can use to upload an image directly
@@ -94,7 +95,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const uploadUrl = await getSignedUrl(
     r2,
     new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType }),
-    { expiresIn: 300 }
+    { expiresIn: await organizationUploadTtl(owner_org_id) }
   );
 
   const cdnUrl = `${publicBase.replace(/\/$/, '')}/${key}`;

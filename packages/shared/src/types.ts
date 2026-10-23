@@ -11,12 +11,20 @@ import type { HreflangAlternate } from './hreflang.js';
 export type Plan = 'free' | 'starter' | 'pro' | 'agency' | 'enterprise';
 export type MemberRole = 'owner' | 'admin' | 'editor';
 
+/** Optional service-host access window; no billing or payment-provider data. */
+export interface OrganizationServiceAccess {
+  schema_version: 1;
+  initial_period?: { starts_at: string; ends_at: string; read_until: string };
+  override?: { state: 'active' | 'paused' | 'cancelled'; ends_at: string | null; read_until: string | null };
+}
+
 export interface Organization {
   id: string;
   name: string;
   slug: string;
   logo?: string;
   plan: Plan;
+  service_access?: OrganizationServiceAccess;
   /**
    * Opt in to enforcing `Member.role`. OFF by default, and deliberately so:
    * roles have been written to member docs since orgs shipped (owner on

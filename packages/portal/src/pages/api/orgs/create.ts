@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { initialOrganizationAccess, organizationAccessPolicy } from '../../../lib/organization-access';
 import { limitAuthRequest } from '../../../lib/auth-request';
 import { getHostingGroup } from '../../../lib/publishing/hosting-groups';
 import type { APIRoute } from 'astro';
@@ -29,6 +31,15 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (name.length > 80) return json({ error: 'Organization name must be 80 characters or fewer' }, 400);
 
   const store = getStore();
+  const nonce = request.headers.get('Idempotency-Key') ?? name;
+  if (!nonce || nonce.length > 128 || /[\x00-\x1f]/.test(nonce)) return json({ error: 'Invalid Idempotency-Key' }, 400);
+  const receiptPath = `organization_creation_requests/${createHash('sha256').update(JSON.stringify([userId, nonce])).digest('hex')}`;
+  const prior = await store.getDoc<{ org_id: string; name: string }>(receiptPath);
+  if (prior) {
+    if (prior.name !== name || !await store.getDoc(`${paths.members(prior.org_id)}/${userId}`)) return json({ error: 'This creation key belongs to another request.' }, 409);
+    selectOrganization(cookies, userId, prior.org_id);
+    return json({ ok: true, orgId: prior.org_id, requiresReauth: false, reused: true });
+  }
 
   // Build a unique slug. List existing orgs to collect taken slugs.
   // In practice the list will be short (per org there's one doc) but we
@@ -53,17 +64,20 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const orgId = resolveUniqueSlug(baseSlug, takenSlugs);
   const now = new Date().toISOString();
 
+  const serviceAccess = initialOrganizationAccess(organizationAccessPolicy(), new Date(now));
+
   // Reserve the slug atomically so concurrent creators cannot overwrite an organization.
   const created = await store.compareAndReplaceDoc(paths.org(orgId), null, {
     name,
     slug: orgId,
     plan: 'free',
     roles_enforced: true,
+    ...(serviceAccess ? { service_access: serviceAccess } : {}),
     created_at: now,
   } satisfies Omit<Organization, 'id'>, [{
     path: `${paths.members(orgId)}/${userId}`, expected: null, replace: true,
     data: { email, role: 'owner', firebase_uid: userId, ...(displayName ? { display_name: displayName } : {}), joined_at: now } satisfies Omit<Member, 'id'>,
-  }]);
+  }, { path: receiptPath, expected: null, replace: true, data: { org_id: orgId, name, created_at: now } }]);
   if (!created) return json({ error: 'Organization name was just taken. Please try again.' }, 409);
 
   await getHostingGroup(orgId);

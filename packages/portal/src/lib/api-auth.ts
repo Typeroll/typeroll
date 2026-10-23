@@ -1,3 +1,4 @@
+import { organizationRequestRefusal } from './organization-access';
 // Auth guard for the public REST API at /api/v1/*. Mirrors the shape of
 // requireSiteAccess() in lib/access.ts but auths with a bearer token instead
 // of a session cookie, and binds the request to the site declared in the
@@ -260,7 +261,7 @@ export function organizationMismatch(request: Request, resolvedOrgId: string): R
   );
 }
 
-export async function requireAnyApiKey(request: Request): Promise<GuardResult<ApiContext>> {
+async function resolveAnyApiKey(request: Request): Promise<GuardResult<ApiContext>> {
   const token = getBearer(request);
   if (!token) {
     return {
@@ -280,12 +281,13 @@ export async function requireAnyApiKey(request: Request): Promise<GuardResult<Ap
   }
   if (verified.personalUserId) {
     const pathname = new URL(request.url).pathname.replace(/\/$/, '');
+    const accessRead = request.method === 'GET' && pathname === '/api/v1/access';
     const discovery = request.method === 'GET' && ['/api/v1/sites', '/api/v1/organizations'].includes(pathname);
     const orgId = request.headers.get(ORGANIZATION_HEADER)?.trim() || '';
     const membership = orgId ? await organizationMembership(verified.personalUserId, orgId) : null;
     // Root routes historically trust org API keys as administrators. Keep that
     // invariant; personal discovery is the only exception and never mutates.
-    if (!discovery && (!membership || !['owner', 'admin'].includes(membership.role))) {
+    if (!discovery && (!membership || (!accessRead && !['owner', 'admin'].includes(membership.role)))) {
       return { ok: false, response: json({ error: 'Select an organization where you are an owner or administrator using Typeroll-Organization.' }, 403) };
     }
     const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
@@ -294,7 +296,7 @@ export async function requireAnyApiKey(request: Request): Promise<GuardResult<Ap
     return { ok: true, value: {
       personalUserId: verified.personalUserId, orgId, tokenOrgId: orgId, tokenSiteId: null,
       siteId: '', site: { id: '' } as Site & { id: string }, versionId: MAIN_VERSION_ID,
-      keyPrefix: verified.prefix, permission: discovery ? 'read' : 'admin', request, path: pathname,
+      keyPrefix: verified.prefix, permission: discovery || accessRead ? 'read' : 'admin', request, path: pathname,
     } };
   }
   // Checked against the token's own organization here: with no site in the
@@ -373,7 +375,7 @@ export interface RequireApiKeyOptions {
   sideEffectFree?: boolean;
 }
 
-export async function requireApiKey(
+async function resolveApiKey(
   request: Request,
   urlSiteId: string | undefined,
   options: RequireApiKeyOptions = {},
@@ -630,4 +632,17 @@ export async function listAllowedSites(
       site,
     })),
   ];
+}
+
+export async function requireAnyApiKey(request: Request): Promise<GuardResult<ApiContext>> {
+  const result = await resolveAnyApiKey(request);
+  if (!result.ok) return result;
+  const refusal = await organizationRequestRefusal(result.value.orgId, request);
+  return refusal ? { ok: false, response: refusal } : result;
+}
+export async function requireApiKey(request: Request, siteId: string | undefined, options: RequireApiKeyOptions = {}): Promise<GuardResult<ApiContext>> {
+  const result = await resolveApiKey(request, siteId, options);
+  if (!result.ok) return result;
+  const refusal = await organizationRequestRefusal(result.value.orgId, request, options.sideEffectFree);
+  return refusal ? { ok: false, response: refusal } : result;
 }

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 export const WORK_COLLECTION = 'scheduled_work';
-export type WorkKind = 'page_schedule' | 'site_publish' | 'publication' | 'build_result' | 'build_continue' | 'form_partial_abandoned';
+export type WorkKind = 'page_schedule' | 'site_publish' | 'publication' | 'build_result' | 'build_continue' | 'form_partial_abandoned' | 'organization_access_notice';
 export interface ScheduledWork {
   kind: WorkKind;
   source: string;
@@ -12,13 +12,30 @@ export interface ScheduledWork {
   lease_owner?: string | null;
   blocked_by?: string | null;
 }
-export const isScheduledSource = (p: string) => /^organizations\/[^/]+\/build_tasks\/[^/]+$/.test(p) || /^organizations\/[^/]+\/sites\/[^/]+(?:\/versions\/main\/pages\/[^/]+|\/deploys\/[^/]+)?$/.test(p);
+export const isScheduledSource = (p: string) => /^organizations\/[^/]+$/.test(p) || /^organizations\/[^/]+\/build_tasks\/[^/]+$/.test(p) || /^organizations\/[^/]+\/sites\/[^/]+(?:\/versions\/main\/pages\/[^/]+|\/deploys\/[^/]+)?$/.test(p);
 export type IndexWrite = { path: string; data: ScheduledWork | null };
 export const workPath = (source: string, kind: WorkKind) => `${WORK_COLLECTION}/${createHash('sha256').update(`${kind}:${source}`).digest('hex')}`;
 const time = (value: unknown): number => typeof value === 'string' ? Date.parse(value) : typeof value === 'number' ? value : NaN;
 
 /** A transactional secondary index, not a scanner over customer content. */
 export function scheduledIndexWrites(source: string, before: any, after: any, now = Date.now()): IndexWrite[] {
+  if (/^organizations\/[^/]+$/.test(source)) {
+    return [7, 1, 0].flatMap(days => {
+      const period = after?.service_access?.initial_period;
+      const end = time(period?.ends_at);
+      const path = workPath(`${source}/access-notices/${days}`, 'organization_access_notice');
+      const data = Number.isFinite(end) && !after?.service_access?.override ? {
+        kind: 'organization_access_notice' as const, source, due_at: end - days * 86400000,
+        generation: createHash('sha256').update(`${source}:${end}:${days}`).digest('hex'),
+        payload: { ends_at: period.ends_at, days_before: days }, lease_until: 0, lease_owner: null,
+      } : null;
+      if (before !== undefined) {
+        const previous = scheduledIndexWrites(source, undefined, before, now).find(w => w.path === path)?.data;
+        if (previous?.generation === data?.generation) return [];
+      }
+      return [{ path, data }];
+    });
+  }
   let kind: WorkKind, due = NaN, payload: Record<string, any> = {};
   if (/^organizations\/[^/]+\/build_tasks\/[^/]+$/.test(source)) {
     kind = after?.status === 'queued' && after?.attempt > 0 ? 'build_continue' : 'build_result';

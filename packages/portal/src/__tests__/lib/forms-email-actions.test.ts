@@ -2,7 +2,7 @@
 // stored, using the site's configured connector. A missing connector or a
 // failed send must never break the submission.
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { paths } from '@typeroll/shared';
 import type { Site, SiteIntegrations } from '@typeroll/shared';
@@ -58,10 +58,11 @@ async function callSubmit(request: Request): Promise<Response> {
   const mod = await import('../../pages/api/forms/submit');
   return mod.POST({ request } as any) as Promise<Response>;
 }
+let requestNumber = 0;
 function submitReq(token: string, data: Record<string, string>): Request {
   return new Request('http://localhost/api/forms/submit', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-real-ip': `192.0.2.${++requestNumber}` },
     body: JSON.stringify({ token, data }),
   });
 }
@@ -134,4 +135,39 @@ describe('form email actions', () => {
     expect(sendMock).toHaveBeenCalledTimes(1);
     expect((sendMock.mock.calls[0]![1] as { to: string }).to).toBe('admin@site.com');
   });
+});
+
+afterEach(() => vi.unstubAllEnvs());
+async function trialOrg(ended = false) {
+  vi.stubEnv('TYPEROLL_ORGANIZATION_ACCESS_POLICY', JSON.stringify({ initial_days: 30, read_days: 90, own_smtp: true, contact_url: 'https://example.invalid' }));
+  const { getStore } = await import('../../lib/datastore');
+  const end = Date.now() + (ended ? -1000 : 86400000);
+  await getStore().setDoc(paths.org(ORG), { service_access: { schema_version: 1, initial_period: {
+    starts_at: new Date(end - 30 * 86400000).toISOString(), ends_at: new Date(end).toISOString(), read_until: new Date(end + 90 * 86400000).toISOString(),
+  } } });
+}
+it('trial receives submissions without email and only sends through customer SMTP', async () => {
+  await setup(); await seedFormWithEmailAction(); await trialOrg();
+  sendMock.mockReset(); sendMock.mockResolvedValue({ ok: true });
+  expect((await callSubmit(submitReq(await signedToken(), { email: 'a@example.invalid' }))).status).toBe(200);
+  expect(sendMock).not.toHaveBeenCalled();
+  await seedConnector();
+  expect((await callSubmit(submitReq(await signedToken(), { email: 'b@example.invalid' }))).status).toBe(200);
+  expect(sendMock).toHaveBeenCalledTimes(2);
+});
+it('trial does not send through a non-SMTP connector even if one was already stored', async () => {
+  await setup(); await seedFormWithEmailAction(); await trialOrg();
+  const { getStore } = await import('../../lib/datastore');
+  await getStore().setDoc(paths.integrations(ORG, SITE), { email: { type: 'ses', from: 'test@example.invalid', config: {} } });
+  sendMock.mockReset();
+  expect((await callSubmit(submitReq(await signedToken(), { email: 'c@example.invalid' }))).status).toBe(200);
+  expect(sendMock).not.toHaveBeenCalled();
+});
+it('expired trial refuses rather than silently accepting or storing a form submission', async () => {
+  await setup(); await seedFormWithEmailAction(); await trialOrg(true);
+  const response = await callSubmit(submitReq(await signedToken(), { email: 'd@example.invalid' }));
+  expect(response.status).toBe(503);
+  expect(await response.json()).toMatchObject({ code: 'form_service_unavailable' });
+  const { getStore } = await import('../../lib/datastore');
+  expect(await getStore().listDocs(paths.submissions(ORG, SITE))).toHaveLength(0);
 });
