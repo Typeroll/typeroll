@@ -10,4 +10,4 @@ export function verifyResponseBody(response: Response, check: VerificationCheck,
 export function verifyCandidateCheck(origin: string, check: VerificationCheck, options?: { fetchImpl?: typeof fetch; signal?: AbortSignal; observe?: (bytes: number) => void }): Promise<boolean>;
 export function verifyCandidateBatch(plan: { origin: string; checks: VerificationCheck[] }, cursor: number, options?: { fetchImpl?: typeof fetch; signal?: AbortSignal; observe?: (bytes: number) => void }): Promise<{ cursor: number; total: number }>;
 
-export function needsMediaRetentionEvidence(checks: VerificationCheck[]): boolean;
+export function needsArtifactRetentionEvidence(checks: VerificationCheck[]): boolean;

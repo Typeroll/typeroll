@@ -646,6 +646,15 @@ URL still responds. Its absence is still checked on the exact new deployment.
 All current files remain verified. Removed Pages, media, and unversioned files
 must still disappear; a fresh publication header alone is not proof.
 
+The next Core release extends this distinction to public, content-hashed derived
+data at `/_typeroll/derived/<sha256>.json`. An older dataset may remain cached
+while the new artifact contains a verified replacement. The replacement bytes
+and their hash still have to match, and the old file must be absent from the
+exact new deployment. Removing the dataset entirely retains the removal check.
+This is not a secure-erasure guarantee: only public data belongs in these files,
+and cached copies from earlier publications may remain accessible. Private or
+revocable data belongs behind an authenticated runtime.
+
 This also applies when the updated server resumes a pending publication. No
 account reconnection, manual status override, or site content change is needed.
 See [Cloudflare's asset retention behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/#asset-retention).
