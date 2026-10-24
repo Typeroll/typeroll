@@ -59,11 +59,107 @@ it('reports status, content and network failures with bounded non-secret evidenc
   const fetchImpl = vi.fn(async () => new Response('private response body', { headers: { 'cf-ray': 'a38654d0f853c124-ARN', 'set-cookie': 'never-export' } }));
   const options = { fetchImpl, validate: async () => undefined, observe };
   expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, options)).toBe(false);
-  expect(observe).toHaveBeenLastCalledWith({ route: '/gone/', expected_status: 404, actual_status: 200, reason: 'status_mismatch', cf_ray: 'a38654d0f853c124-ARN' });
+  expect(observe).toHaveBeenLastCalledWith(expect.objectContaining({ route: '/gone/', expected_status: 404, actual_status: 200, reason: 'status_mismatch', cf_ray: 'a38654d0f853c124-ARN' }));
   expect(await verifyStaticResponse('https://site.example.invalid', { route: '/', status: 200, sha256: sha256('new') }, options)).toBe(false);
   expect(observe.mock.lastCall?.[0].reason).toBe('content_mismatch');
   fetchImpl.mockRejectedValue(Error('secret provider payload'));
   expect(await verifyStaticResponse('https://site.example.invalid', { route: '/', status: 200 }, options)).toBe(false);
   expect(observe.mock.lastCall?.[0]).toMatchObject({ actual_status: null, reason: 'request_failed' });
   expect(JSON.stringify(observe.mock.calls)).not.toMatch(/private response|never-export|secret provider/);
+});
+
+it('records safe headers and a body fingerprint for a removed route returning an old page', async () => {
+  const observe = vi.fn();
+  const body = 'private page content that must not enter diagnostics';
+  const fetchImpl = vi.fn(async () => new Response(body, { headers: {
+    'content-type': 'text/html; private=never-export', 'cache-control': 'public, max-age=0, custom=never-export',
+    'cf-cache-status': 'DYNAMIC', age: '12', 'x-typeroll-publication': 'a'.repeat(64),
+    'set-cookie': 'secret-cookie', 'x-debug-token': 'secret-token',
+  } }));
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, { fetchImpl, validate: async () => {}, observe })).toBe(false);
+  expect(observe.mock.lastCall?.[0]).toMatchObject({
+    final_path: '/gone/', redirect_chain: [],
+    response_headers: { content_type: 'text/html', cache_control: 'public, max-age=0', cf_cache_status: 'DYNAMIC', age: 12, publication_id: 'a'.repeat(64) },
+    body_sample: { sha256: sha256(body), bytes: Buffer.byteLength(body), scope: 'complete' },
+  });
+  expect(JSON.stringify(observe.mock.calls)).not.toMatch(/private page|never-export|secret-cookie|secret-token/);
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
+});
+
+it('records same-origin redirect paths without query values or fragments', async () => {
+  const observe = vi.fn();
+  const fetchImpl = vi.fn().mockResolvedValueOnce(new Response(null, { status: 301, headers: { Location: '/fallback/?token=secret#private' } }))
+    .mockResolvedValueOnce(new Response('fallback'));
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/?key=hidden', status: 404 }, { fetchImpl, validate: async () => {}, observe })).toBe(false);
+  expect(observe.mock.lastCall?.[0]).toMatchObject({ route: '/gone/', final_path: '/fallback/',
+    redirect_chain: [{ status: 301, from_path: '/gone/', to_path: '/fallback/', same_origin: true }] });
+  expect(JSON.stringify(observe.mock.calls)).not.toMatch(/secret|private|hidden|token|key=/);
+});
+
+it('does not fetch or disclose cross-origin redirect destinations', async () => {
+  const observe = vi.fn();
+  const fetchImpl = vi.fn(async () => new Response(null, { status: 302, headers: { Location: 'https://other.example.invalid/private-path?secret=yes' } }));
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, { fetchImpl, validate: async () => {}, observe })).toBe(false);
+  expect(observe.mock.lastCall?.[0]).toMatchObject({ reason: 'request_failed', final_path: '/gone/',
+    redirect_chain: [{ status: 302, from_path: '/gone/', to_path: null, same_origin: false }] });
+  expect(fetchImpl).toHaveBeenCalledTimes(1);
+  expect(JSON.stringify(observe.mock.calls)).not.toMatch(/other.example|private-path|secret/);
+});
+
+it('hashes at most 4096 body bytes and cancels a larger status-mismatch stream', async () => {
+  const observe = vi.fn(), cancel = vi.fn(), observeBytes = vi.fn();
+  let read = 0;
+  const stream = new ReadableStream({ pull(controller) { read++; controller.enqueue(new Uint8Array(1024).fill(65)); }, cancel }, { highWaterMark: 0 });
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, {
+    fetchImpl: async () => new Response(stream), validate: async () => {}, observe, observeBytes,
+  })).toBe(false);
+  expect(read).toBe(4); expect(cancel).toHaveBeenCalledOnce();
+  expect(observeBytes.mock.calls.reduce((sum, [n]) => sum + n, 0)).toBe(4096);
+  expect(observe.mock.lastCall?.[0].body_sample).toEqual({ sha256: sha256(Buffer.alloc(4096, 65)), bytes: 4096, scope: 'prefix' });
+});
+
+it('collects content-mismatch fingerprints in the existing stream without a second request', async () => {
+  const observe = vi.fn(), fetchImpl = vi.fn(async () => new Response('old content'));
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/', status: 200, sha256: sha256('new content') }, { fetchImpl, validate: async () => {}, observe })).toBe(false);
+  expect(observe.mock.lastCall?.[0]).toMatchObject({ reason: 'content_mismatch', body_sample: { sha256: sha256('old content'), bytes: 11, scope: 'complete' } });
+  expect(fetchImpl).toHaveBeenCalledOnce();
+});
+
+it('respects smaller sampling budgets and excludes unrecognized provider header values', async () => {
+  const observe = vi.fn(), observeBytes = vi.fn();
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, {
+    fetchImpl: async () => new Response('123456789', { headers: {
+      'cf-cache-status': 'private-secret', 'x-typeroll-publication': 'private-secret',
+      'age': 'private-secret', 'content-length': 'private-secret', 'cf-ray': 'private-secret',
+      'cache-control': 'private="secret-cookie", custom=private-secret', 'cf-mitigated': 'private-secret',
+    } }), validate: async () => {}, observe, observeBytes, maxBytes: 3,
+  })).toBe(false);
+  expect(observe.mock.lastCall?.[0]).toMatchObject({ response_headers: {}, cf_ray: null,
+    body_sample: { sha256: sha256('123'), bytes: 3, scope: 'prefix' } });
+  expect(observeBytes).toHaveBeenCalledWith(9);
+  expect(JSON.stringify(observe.mock.calls)).not.toMatch(/private-secret|secret-cookie/);
+});
+
+it('does not retain a previous hop status if the final request fails', async () => {
+  const observe = vi.fn();
+  const fetchImpl = vi.fn().mockResolvedValueOnce(new Response(null, { status: 301, headers: { Location: '/final/' } }))
+    .mockRejectedValue(Error('secret transport details'));
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, { fetchImpl, validate: async () => {}, observe })).toBe(false);
+  expect(observe.mock.lastCall?.[0]).toMatchObject({ final_path: '/final/', actual_status: null, response_headers: {}, reason: 'request_failed' });
+  expect(JSON.stringify(observe.mock.calls)).not.toContain('secret transport');
+});
+
+it('does not read bodies for correct 404 responses or weaken failures when sampling breaks', async () => {
+  const cancel = vi.fn(), pull = vi.fn(), observe = vi.fn();
+  const stream = new ReadableStream({ pull, cancel }, { highWaterMark: 0 });
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, {
+    fetchImpl: async () => new Response(stream, { status: 404 }), validate: async () => {}, observe,
+  })).toBe(true);
+  expect(pull).not.toHaveBeenCalled(); expect(cancel).toHaveBeenCalledOnce(); expect(observe).not.toHaveBeenCalled();
+  const broken = new ReadableStream({ pull(c) { c.error(Error('private stream failure')); } });
+  expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, {
+    fetchImpl: async () => new Response(broken), validate: async () => {}, observe,
+  })).toBe(false);
+  expect(observe.mock.lastCall?.[0].reason).toBe('status_mismatch');
+  expect(JSON.stringify(observe.mock.calls)).not.toContain('private stream failure');
 });
