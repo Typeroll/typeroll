@@ -7,6 +7,11 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const siteTools: ToolDef[] = [
   {
+    name: 'read_organization_access',
+    description: "Read the selected site's owning organization service access, trial and read/export deadlines, and recovery URL. Self-hosted installations are unrestricted by default. A trial expiry does not remove customer-hosted static sites. Use this on an organization_access error; do not retry a locked write.",
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'access'))),
+  },
+  {
     name: 'list_organizations', noSite: true,
     description: 'List organizations you belong to and your current role. Site work begins with list_sites and select_site; organization administration requires its explicit ID.',
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('organizations'))),

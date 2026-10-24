@@ -1,3 +1,4 @@
+import { assertOrganizationAccess, OrganizationAccessError } from '../../../lib/organization-access';
 // Public form submission endpoint.
 //
 // This is the only unauthenticated write endpoint in the API. Static customer
@@ -166,6 +167,11 @@ export const POST: APIRoute = async ({ request }) => {
     return respond(wantsHtml, { error: formMessage('invalid_token', lang) }, 403, backUrl, lang);
   }
   const { orgId, siteId, formId } = parts;
+  try { await assertOrganizationAccess(orgId, 'forms'); }
+  catch (error) {
+    if (!(error instanceof OrganizationAccessError)) throw error;
+    return respond(wantsHtml, { error: error.message, code: 'form_service_unavailable' }, 503, backUrl, lang);
+  }
   const store = getStore();
   lang = await siteLanguage(store, orgId, siteId);
 
@@ -252,6 +258,7 @@ function jsonCors(data: unknown, status = 200, extra: Record<string, string> = {
 }
 
 interface SubmitOutcome {
+  code?: string;
   success?: boolean;
   message?: string;
   error?: string;

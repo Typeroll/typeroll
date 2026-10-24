@@ -1,3 +1,4 @@
+import { readOrganizationAccess } from './organization-access';
 // HMAC-signed preview tokens. Mints short-lived bearers an agent can paste
 // into a browser-MCP / screenshot tool so the agent can SEE what its
 // changes look like end-to-end without exposing a long-lived API key.
@@ -122,7 +123,7 @@ export function verifyPreviewToken(token: string | undefined | null): PreviewTic
 /** Revocation is checked on every page/media request; signed URLs already issued live for at most 60 seconds. */
 export async function verifyActivePreviewToken(token: string | undefined | null): Promise<PreviewTicket | null> {
   const ticket = verifyPreviewToken(token);
-  if (!ticket) return null;
+  if (!ticket || !(await readOrganizationAccess(ticket.org_id)).can_write) return null;
   const { getStore } = await import('./datastore');
   const key = crypto.createHash('sha256').update(token!).digest('hex');
   const revoked = await getStore().getDoc(`preview_revocations/${key}`);

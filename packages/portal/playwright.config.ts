@@ -41,6 +41,7 @@ const webServer = target.isRemote ? undefined : {
   stderr: 'pipe' as const,
   env: {
     NODE_ENV: 'test',
+    TYPEROLL_ORGANIZATION_ACCESS_POLICY: JSON.stringify({ initial_days: 30, read_days: 90, own_smtp: true, contact_url: 'https://example.invalid/trial' }),
     HOST: '127.0.0.1',
     PORT: '4322',
     PORTAL_PUBLIC_URL: target.portalUrl,

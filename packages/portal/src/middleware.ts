@@ -1,3 +1,4 @@
+import { withAccessRequest, OrganizationAccessError } from './lib/organization-access';
 // load-env runs at module init, so .env values are in process.env before
 // any route handler tries to read them. Mounted here because middleware is
 // loaded once at SSR boot — earlier than any per-route module import.
@@ -144,8 +145,9 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  try { return await next(); }
+  try { return await withAccessRequest(context.request, next); }
   catch (error) {
+    if (error instanceof OrganizationAccessError) return error.response();
     if (context.url.pathname.startsWith('/api/') && error instanceof StorageDocumentError) {
       return new Response(JSON.stringify({ error: error.message, code: error.code, ...(error.field ? { field: error.field } : {}) }), {
         status: error.status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },

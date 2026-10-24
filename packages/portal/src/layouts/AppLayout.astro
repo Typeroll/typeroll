@@ -1,5 +1,7 @@
 ---
 import '../styles/global.css';
+import { readOrganizationAccess } from '../lib/organization-access';
+import OrganizationAccessNotice from '../components/OrganizationAccessNotice.astro';
 import { getSession } from '../lib/auth';
 import { resolveVersionId } from '../lib/access';
 import type { FullSession } from '../lib/access';
@@ -22,12 +24,13 @@ import { resolveOwnerOrgAccess } from '../lib/member-role';
 interface Props {
   title?: string;
   siteId?: string;
+  accessSiteId?: string;
   /** Full-bleed mode: hide the sidebar/nav and let the slot fill the whole
    *  viewport. Used by the page/template editors so the editing surface owns
    *  the screen (they provide their own "Exit editor" control). */
   bare?: boolean;
 }
-const { title = 'Typeroll', siteId, bare = false } = Astro.props;
+const { title = 'Typeroll', siteId, accessSiteId, bare = false } = Astro.props;
 
 const session = await getSession(Astro.cookies);
 // Middleware redirects pending sessions to /onboarding before this layout
@@ -51,13 +54,16 @@ const pathname = Astro.url.pathname;
 // permission badge point at the right place.
 let activeOwnerOrgId = fullSession.orgId;
 let activePermission: SharePermission = 'admin';
-if (siteId) {
-  const sharedMatch = sharedSites.find((s) => s.site.id === siteId);
+if (siteId || accessSiteId) {
+  const sharedMatch = sharedSites.find((s) => s.site.id === (siteId ?? accessSiteId));
   if (sharedMatch) {
     activeOwnerOrgId = sharedMatch.share.owner_org_id;
     activePermission = sharedMatch.share.permission;
   }
 }
+
+const serviceAccess = await readOrganizationAccess(activeOwnerOrgId);
+if (!serviceAccess.can_read && siteId) return Astro.redirect(`/app/settings/access?site=${encodeURIComponent(siteId)}`);
 
 // Load version list for the active site (if any) so the picker can render.
 let siteVersions: SiteVersion[] = [];
@@ -129,7 +135,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
   </head>
   <body>
     {bare ? (
-      <main class="app-main app-main--bare"><slot /></main>
+      <main class="app-main app-main--bare"><OrganizationAccessNotice access={serviceAccess} siteId={siteId ?? accessSiteId} /><slot /></main>
     ) : (
     <div class="app-shell" data-shell>
       <button
@@ -261,6 +267,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="User" /></span>
               <span>Account</span>
             </a>
+            {serviceAccess.state !== 'unrestricted' && <a href="/app/settings/access" class="app-sidebar__link">Organization access</a>}
             {canManagePublishing && <a href="/app/settings/publishing" class:list={["app-sidebar__link", isActive('/app/settings/publishing', true) && "app-sidebar__link--active"]}>
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="PlugZap" /></span>
               <span>Publishing</span>
@@ -310,6 +317,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
         </a>
       </aside>
       <main class="app-main">
+        <OrganizationAccessNotice access={serviceAccess} siteId={siteId ?? accessSiteId} />
         <slot />
       </main>
     </div>

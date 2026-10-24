@@ -1,3 +1,4 @@
+import { assertOrganizationAccess } from './organization-access';
 import { createHash, randomBytes } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { paths, pageAuthorityFields, pageContentValues, PAGE_BUILTIN_FIELDS, type Page, type FieldDefinition, type ContentType } from '@typeroll/shared';
@@ -174,6 +175,7 @@ export async function readOwnerProposal(scope: ProposalScope, id: string, token?
   if (!proposal || proposal.version_id !== scope.versionId) throw new ProposalError('Review link unavailable', 404);
   if (token !== undefined && (!/^[A-Za-z0-9_-]{43}$/.test(token) || tokenHash(token) !== proposal.review.hash ||
       proposal.review.revoked_at || proposal.review.expires_at <= Date.now())) throw new ProposalError('This review link has expired or was revoked. Open the review queue in Typeroll.', 401);
+  if (token !== undefined) await assertOrganizationAccess(scope.orgId, 'read');
   return proposal;
 }
 export async function decideOwnerProposal(scope: ProposalScope, id: string, auth: { token: string } | { adminId: string }, input: {
@@ -189,6 +191,7 @@ export async function decideOwnerProposal(scope: ProposalScope, id: string, auth
       return { proposal_id: id, status: proposal.status };
     throw new ProposalError('This proposal has already been decided or revoked', 409);
   }
+  await assertOrganizationAccess(scope.orgId, 'write');
   const snapshot = await pageWriteSnapshot(scope.orgId, scope.siteId, scope.versionId, proposal.page_id);
   const page = snapshot.page;
   const { type, fields } = await ownerFieldDescriptor(scope, proposal.page_id);

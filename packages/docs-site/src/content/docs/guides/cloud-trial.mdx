@@ -1,0 +1,109 @@
+---
+title: Cloud trial and access
+summary: Try Typeroll Cloud without a payment card, understand expiry, and keep control of your static websites.
+---
+
+:::note[Availability]
+This documents the upcoming Cloud trial. The rollout is not enabled yet.
+Existing organizations retain their current access. Self-hosted Typeroll CMS
+has no trial deadline by default and needs no Cloud or Autopilot Pulse account.
+:::
+
+## Thirty days, no payment card
+
+A new Cloud organization receives 30 days for editing, previews and publishing.
+The deadline starts when the organization is created. Creating another Site,
+inviting a colleague or reconnecting GitHub does not restart it. Nothing is
+charged automatically when it ends.
+
+The portal shows the exact deadline under **Account → Organization access**.
+Use the subscription contact there to arrange continued Cloud access. Prices
+and a self-service checkout are not announced by this feature.
+
+You can build content before connecting publishing accounts. To publish, connect
+your own GitHub, Cloudflare and verified media storage in **Publishing**. These
+providers bill their own usage separately. Their free allowances and limits are
+independent of the Typeroll trial.
+
+The built-in AI assistant uses your organization's own provider API key. There
+is no trial-specific AI credit allowance. Normal permissions and rate limits
+still apply. Your own AI agent can use OAuth or an API key through the same
+site-specific authorization as the editor.
+
+## Forms during the trial
+
+Forms can receive submissions and deliver configured webhooks. Email is optional:
+open the Site's **Settings → Email & notifications**, select **SMTP**, and enter
+your own mail provider's settings to send notification or confirmation emails.
+Test the connection before relying on it. Without SMTP, submissions and webhooks
+still work, but email actions are skipped. Typeroll does not silently supply a
+paid mail service. Authentication and trial reminder emails are separate
+platform messages.
+
+## When the trial ends
+
+Without an active subscription:
+
+- New editing, imports, uploads, previews and publications stop.
+- Existing signed preview links stop working. They are not permanent hosting.
+- Forms refuse new submissions with an unavailable response. They do not claim
+  success and discard a visitor's data.
+- Previously accepted publications and deliveries can finish. A future scheduled
+  publication is paused if access has ended when it is due.
+- You retain read and export access for **90 days after expiry**. Activating a
+  subscription restores editing without changing the original trial dates.
+
+Your published static pages remain on your own hosting account. Typeroll does
+not delete your deployed sites, Git repositories, R2 objects or domains when
+Cloud access ends. Dynamic Forms are separate from those static files: make
+alternative contact details visible before the trial ends if you will not renew.
+
+Organization owners and administrators receive reminders seven days and one day
+before expiry, and an expiry notice. A delivery outage does not cause a backlog
+of outdated reminders to be sent to newly invited administrators.
+
+After the read/export deadline, contact support about restoring content access.
+That deadline is not an automatic deletion of all your customer records.
+
+## Continue after the trial
+
+Contact [Typeroll support](mailto:thomas@autopilot.se?subject=Typeroll%20Cloud%20subscription)
+with your Organization name to arrange a subscription. The team confirms the
+terms before activating continued access. The trial does not create a payment
+agreement, and no payment card or automatic charge is involved.
+
+## Export before leaving
+
+A Site administrator can open **Site settings → Export your content → Download
+content export**. The authenticated API equivalent is
+`GET /api/v1/sites/{siteId}/export`; add `?version={id}` for a site version.
+The content ZIP includes CMS content, Content types, templates, configuration
+and media references for the open-source renderer. Media binaries remain in
+customer storage and need a separate copy. Credentials and private app-owned
+records require separate handling; configure authentication and provider access
+again when self-hosting.
+
+A generated publication repository contains the output needed for that published
+site. It is **not a complete CMS backup**. See [self-hosting](../self-hosting/)
+for the separate full installation backup and restoration procedure.
+
+## For AI agents and API clients
+
+Select the Site first. `read_organization_access` reports its owning
+organization's access, deadlines and subscription contact. A shared Site uses
+its owner's access status, not the collaborating user's own organization's trial.
+The REST equivalent is `GET /api/v1/sites/{siteId}/access`; organization members
+can also use `GET /api/v1/access` with `Typeroll-Organization`.
+
+Locked operations return HTTP 403 with a stable code such as
+`organization_trial_ended`, `organization_access_ended` or
+`organization_access_paused`, plus permitted recovery actions. Explain the
+condition and offer read/export or subscription contact. Do not repeatedly retry
+a locked write, create another organization as a workaround, or change customer
+hosting. Public Forms returns `form_service_unavailable` without exposing private
+subscription details.
+
+Scheduled page changes that fall due after access expires are paused. Restoring
+access does not publish that backlog automatically: review the affected Pages
+and set new publication dates. Already accepted publication jobs and webhook
+deliveries may finish.

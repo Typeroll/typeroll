@@ -1,3 +1,4 @@
+import { organizationUploadTtl } from '../organization-access';
 import { remoteTransfersEnabled, verifyWithTransferService, type TransferReceipt } from '../media/remote-transfer';
 import { createHash, randomUUID } from 'node:crypto';
 import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
@@ -54,15 +55,16 @@ export async function createMediaUpload(orgId: string, siteId: string, input: { 
   if (typeof input.filename !== 'string' || !input.filename || input.filename.length > 255 || typeof input.contentType !== 'string' ||
       !/^(image\/[a-zA-Z0-9.+-]+|application\/pdf)$/.test(input.contentType)) throw new ConnectionError('Choose an image or PDF with a valid filename.', 415);
   if (input.size !== undefined && (!Number.isSafeInteger(input.size) || input.size < 1 || input.size > MAX_BYTES)) throw new ConnectionError('The file must be between 1 byte and 25 MB.', 413);
+  const uploadTtl = await organizationUploadTtl(orgId);
   const destination = await uploadDestination(orgId);
   const prefix = await siteMediaPrefix(orgId, siteId);
   const id = randomUUID();
   const key = `private/${prefix}/uploads/${id}/${input.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-  const storage: Location = { ...destination, key, state: 'uploading', grant_expires_at: new Date(Date.now() + 300_000).toISOString() };
+  const storage: Location = { ...destination, key, state: 'uploading', grant_expires_at: new Date(Date.now() + uploadTtl * 1000).toISOString() };
   const r2 = await storageClient(orgId, storage);
   try {
     const uploadUrl = await getSignedUrl(r2, new PutObjectCommand({ Bucket: storage.bucket, Key: key,
-      ContentType: input.contentType, ...(input.size ? { ContentLength: input.size } : {}) }), { expiresIn: 300 });
+      ContentType: input.contentType, ...(input.size ? { ContentLength: input.size } : {}) }), { expiresIn: uploadTtl });
     const base = process.env.PORTAL_PUBLIC_URL?.replace(/\/$/, '');
     if (!base) throw new ConnectionError('The administrator must configure the public portal address.', 503);
     if (destination.provider === 'organization_r2' && await adoptCustomerPublishingForMedia(orgId, siteId)) {
@@ -74,7 +76,7 @@ export async function createMediaUpload(orgId: string, siteId: string, input: { 
       filename: input.filename, mime_type: input.contentType, size_bytes: input.size, alt_text: input.altText,
       uploaded_by: input.actor, created_at: new Date().toISOString(), cdn_url: cdnUrl, r2_key: key, storage,
     });
-    return { uploadUrl, cdnUrl, key, mediaId: id, storage: destination.provider };
+    return { uploadUrl, cdnUrl, key, mediaId: id, storage: destination.provider, expiresIn: uploadTtl };
   } finally { r2.destroy(); }
 }
 
@@ -149,10 +151,11 @@ export async function privateMediaReadUrl(orgId: string, siteId: string, mediaId
 }
 
 export async function mediaUploadAvailability(orgId: string) {
+  const uploadTtl = await organizationUploadTtl(orgId);
   const destination = await uploadDestination(orgId);
   const r2 = await storageClient(orgId, destination);
   r2.destroy();
-  return { enabled: true, storage: destination.provider };
+  return { enabled: true, storage: destination.provider, expiresIn: uploadTtl };
 }
 
 /** Opaque editor frames cannot use session cookies for images. Resolve only the private media actually referenced in this render. */

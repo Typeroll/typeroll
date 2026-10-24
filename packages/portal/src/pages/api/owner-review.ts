@@ -1,3 +1,4 @@
+import { OrganizationAccessError } from '../../lib/organization-access';
 import type { APIRoute } from 'astro';
 import { decideOwnerProposal, ProposalError } from '../../lib/owner-proposals';
 import { proposalView, REVIEW_HEADERS } from '../../lib/owner-review-http';
@@ -13,6 +14,7 @@ const handle: APIRoute = async ({ request }) => {
       : await decideOwnerProposal(scope, id, { token }, await request.json());
     return Response.json(result, { headers: REVIEW_HEADERS });
   } catch (error) {
+    if (error instanceof OrganizationAccessError) return error.response();
     return Response.json({ error: error instanceof ProposalError ? error.message : 'Review is temporarily unavailable' },
       { status: error instanceof ProposalError ? error.status : 503, headers: REVIEW_HEADERS });
   }

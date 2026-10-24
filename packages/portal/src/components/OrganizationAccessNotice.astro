@@ -1,0 +1,19 @@
+---
+import type { OrganizationAccessView } from '../lib/organization-access';
+const { access, siteId } = Astro.props as { access: OrganizationAccessView; siteId?: string };
+const accessUrl = siteId ? `/app/settings/access?site=${encodeURIComponent(siteId)}` : '/app/settings/access';
+const date = (value: string | null) => value ? new Date(value).toLocaleString('en-GB', { timeZone: 'UTC', dateStyle: 'medium', timeStyle: 'short' }) + ' UTC' : '';
+---
+{access.state !== 'unrestricted' && access.state !== 'active' && <aside class="access-notice" data-access-state={access.state} aria-label="Organization access">
+  <div><strong>{access.state === 'trial' ? 'Your free trial' : access.can_read ? 'Cloud access is read-only' : 'Cloud content access has ended'}</strong>
+    <p>{access.state === 'trial' ? `Editing and publishing are included until ${date(access.ends_at)}. No card and no automatic charge.` :
+      access.can_read ? `Editing, previews, publishing and new form submissions are paused. Read and export your content until ${date(access.read_until)}.` :
+      'The content-access period has ended. Contact us to restore access.'}</p>
+    <p>Your published static websites stay online on your hosting account.</p>
+  </div>
+  <a class="btn" href={accessUrl}>View access</a>
+</aside>}
+<style>
+.access-notice { display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; padding:1rem 1.25rem; margin-bottom:1.25rem; border:1px solid var(--border,#d4d4d8); border-left:4px solid var(--accent,#c60078); border-radius:.75rem; background:var(--surface,#fff); color:var(--text,#18181b); }
+.access-notice div { flex:1 1 20rem; min-width:0; }.access-notice p{margin:.35rem 0 0;font-size:.9rem;overflow-wrap:anywhere}.access-notice .btn{flex-shrink:0}
+</style>

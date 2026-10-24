@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -11,6 +11,8 @@ beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore();
   await getStore().setDoc(paths.integrations(scope.orgId, scope.siteId), { email: { type: 'ses', from: 'Approved <mail@example.com>', config: {} } });
 });
+
+afterEach(() => vi.unstubAllEnvs());
 
 describe('application mail delivery', () => {
   it('reserves once under concurrency, separates acceptance from delivery and never stores the body', async () => {
@@ -72,4 +74,22 @@ describe('application mail delivery', () => {
     } });
     expect(receipt.status).toBe('delivered');
   });
+});
+
+it('requires own SMTP for private intake and app email without consuming a delivery receipt', async () => {
+  vi.stubEnv('TYPEROLL_ORGANIZATION_ACCESS_POLICY', JSON.stringify({ initial_days: 30, read_days: 90, own_smtp: true, contact_url: 'https://example.invalid' }));
+  const now = Date.now();
+  await getStore().setDoc(paths.org(scope.orgId), { service_access: { schema_version: 1, initial_period: {
+    starts_at: new Date(now - 86400000).toISOString(), ends_at: new Date(now + 86400000).toISOString(), read_until: new Date(now + 91 * 86400000).toISOString(),
+  } } });
+  const send = vi.fn().mockResolvedValue({ ok: true, id: 'smtp-1' });
+  await expect(sendApplicationEmail(scope, input, { send })).rejects.toMatchObject({ status: 409 });
+  expect(send).not.toHaveBeenCalled();
+  expect(await getStore().listDocs(`${paths.site(scope.orgId, scope.siteId)}/mail_deliveries`)).toEqual([]);
+  await getStore().setDoc(paths.integrations(scope.orgId, scope.siteId), { email: { type: 'smtp', from: 'Own <mail@example.com>', config: {} } });
+  expect((await sendApplicationEmail(scope, input, { send })).status).toBe('accepted');
+  // A previously accepted delivery remains idempotent even if the connector changes.
+  await getStore().setDoc(paths.integrations(scope.orgId, scope.siteId), { email: { type: 'ses', from: 'Other <mail@example.com>', config: {} } });
+  expect((await sendApplicationEmail(scope, input, { send })).status).toBe('accepted');
+  expect(send).toHaveBeenCalledOnce();
 });

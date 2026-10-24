@@ -399,3 +399,7 @@ For migrated legacy pages or a hand-crafted one-off, `content_mode:
 - **Minimal JS.** Inline `<script>` in page content is stripped by the
   sanitizer. One-off interactivity uses `core/embed`; reusable interactivity
   uses a block-type `script`; site-wide code belongs in `scripts_body_end`.
+
+## Organization access
+
+When a Cloud write reports `organization_trial_ended` or `organization_access_ended`, use `read_organization_access` on the selected Site. Explain the deadline and recovery URL; keep reads and export available when permitted. Do not repeatedly retry or create another organization to bypass the lock. Self-hosted installations are unrestricted by default. A trial does not limit AI credits: the organization supplies its own provider key.

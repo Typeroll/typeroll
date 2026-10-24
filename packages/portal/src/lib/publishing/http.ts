@@ -1,3 +1,4 @@
+import { OrganizationAccessError } from '../organization-access';
 import type { APIContext } from 'astro';
 import { json, requireOrganizationOwnerOrAdmin } from '../access';
 import { R2VerificationError } from './r2-verification-error';
@@ -17,6 +18,7 @@ export function privateJson(data: unknown, status = 200): Response {
 }
 
 export function connectionFailure(error: unknown): Response {
+  if (error instanceof OrganizationAccessError) return error.response();
   if (error instanceof R2VerificationError) return privateJson({ error: error.message, code: error.code, details: error.diagnostic }, error.status);
   if (error instanceof ConnectionError) return privateJson({ error: error.message, ...(error.code ? { code: error.code } : {}), ...(error.details ? { details: error.details } : {}), ...(error.code === 'import_storage_required' ? { settings_url: '/app/settings/publishing#media-title' } : {}) }, error.status);
   if (error instanceof ProviderError) {

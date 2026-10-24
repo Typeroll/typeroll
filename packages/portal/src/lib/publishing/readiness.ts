@@ -1,3 +1,4 @@
+import { readOrganizationAccess } from '../organization-access';
 import { resolvePublicationVersion } from './publication-version';
 import { selectedBuildProvider } from '../builds/selection';
 import { readBuildEngine } from '../builds/cloudflare';
@@ -23,6 +24,10 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   const site = await store.getDoc<Site>(paths.site(orgId, siteId));
   if (!site) throw new ConnectionError('Site not found.', 404);
   const required: PublishingRequirement[] = [];
+  if (options.checkBuild !== false && !(await readOrganizationAccess(orgId)).can_write) {
+    return { ready: false, mode: site.publishing_mode === 'customer_git' ? 'customer_git' as const : 'managed' as const,
+      required: [{ code: 'organization_access_ended', message: 'Activate a subscription to continue publishing. Existing static sites remain online.', settings_url: '/app/settings/access' }] };
+  }
   // Accepted jobs validate their frozen source; new admissions validate saved content.
   if (options.checkBuild !== false) {
     try { await resolvePublicationVersion(orgId, siteId, versionId); }

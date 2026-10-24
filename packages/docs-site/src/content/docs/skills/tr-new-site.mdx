@@ -68,3 +68,7 @@ Swedish. The contact page should have a form.
 - [tr-brand](../tr-brand/) — refine the colour palette and typography after initial setup
 - [tr-blog](../tr-blog/) — add a blog section
 - [tr-forms](../tr-forms/) — add a contact or booking form
+
+## Organization access
+
+When a Cloud write reports `organization_trial_ended` or `organization_access_ended`, use `read_organization_access` on the selected Site. Explain the deadline and recovery URL; keep reads and export available when permitted. Do not repeatedly retry or create another organization to bypass the lock. Self-hosted installations are unrestricted by default. A trial does not limit AI credits: the organization supplies its own provider key.
