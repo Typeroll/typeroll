@@ -1,5 +1,4 @@
 import { z, type ZodRawShape } from 'zod';
-import { zodToJsonSchema } from 'zod-to-json-schema';
 import { fail, ok, type ToolResult } from './tools/helpers.js';
 
 export type ToolEffect = 'read' | 'write' | 'admin';
@@ -28,12 +27,12 @@ export function compactTools(catalog: CallableTool[]): CallableTool[] {
     }),
     local('describe_tool', 'Read one tool’s complete description, effect and JSON input schema before calling it.', { name: z.string().max(100) }, async args => {
       const tool = byName.get(String(args.name));
-      return tool ? ok({ name: tool.name, effect: tool.effect, description: tool.description, inputSchema: (zodToJsonSchema as (schema: unknown, options: { $refStrategy: 'none' }) => unknown)(z.object(tool.schema), { $refStrategy: 'none' }) }) : fail(new Error('Unknown tool. Use search_tools.'));
+      return tool ? ok({ name: tool.name, effect: tool.effect, description: tool.description, inputSchema: z.toJSONSchema(z.object(tool.schema).meta({ additionalProperties: false }), { target: 'draft-7', io: 'input' }) }) : fail(new Error('Unknown tool. Use search_tools.'));
     }),
     ...(['read', 'write', 'admin'] as const).map(effect => ({
       name: `call_${effect}_tool`, effect,
       description: effect === 'read' ? 'Call a discovered read-only tool with its exact arguments. Does not accept write/admin tools.' : `Call a discovered ${effect} tool. May ${effect === 'admin' ? 'change app or email configuration, send a test email or activate releases' : 'save, delete, publish or otherwise change state'}. Inspect describe_tool first and follow the user’s authorization.`,
-      schema: { name: z.string().max(100), arguments: z.record(z.unknown()).default({}) },
+      schema: { name: z.string().max(100), arguments: z.record(z.string(), z.unknown()).default({}) },
       invoke: async (args: Record<string, unknown>) => {
         const tool = byName.get(String(args.name));
         if (!tool || tool.effect !== effect) return fail(new Error(`This endpoint accepts only ${effect} tools. Use describe_tool to check the required effect.`));

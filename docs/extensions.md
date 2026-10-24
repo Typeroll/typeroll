@@ -368,3 +368,12 @@ Bundled components receive optional `context.analytics` with endpoint, public
 site token and `requires_consent`. Core accepts only configured Analytics event
 rules; the component remains responsible for respecting visitor consent. Core
 does not implement the provider's campaign storage or outbound-link behavior.
+
+### Prepared private Form intake
+
+The next-release `POST /forms/{formId}/intake` contract uses `forms:execute`, requires
+an exact target installation, pins the form and trusted context, and stores private
+submissions with idempotent completion. It does not execute form actions. See the
+public Extension backend guide for the request and constraints. Native Form targets
+may opt into `session_exchange: "confirm_post"` to redeem links only after an
+explicit click and POST; API and MCP accept the same target field.

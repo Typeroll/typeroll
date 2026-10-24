@@ -200,7 +200,7 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
   // a session", and any app that wants either gets them by declaring them.
   const hydrate = form.target?.hydrate ? ' data-tr-hydrate="1"' : '';
   const sessionParam = form.target?.session_param
-    ? ` data-tr-session-param="${escapeHtml(form.target.session_param)}"`
+    ? ` data-tr-session-param="${escapeHtml(form.target.session_param)}"${form.target.session_exchange === 'confirm_post' ? ' data-tr-session-exchange="confirm_post"' : ''}`
     : '';
   // Remote-backed forms show a few runtime messages of their own, in the
   // site's language; ordinary forms don't carry them.

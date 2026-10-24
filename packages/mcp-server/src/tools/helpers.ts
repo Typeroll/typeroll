@@ -61,7 +61,7 @@ export function fail(err: unknown): ToolResult {
 }
 
 /** Tool definition shape consumed by index.ts when registering. */
-export interface ToolDef<Input extends z.ZodRawShape | undefined = z.ZodRawShape | undefined> {
+export interface ToolDef<Input extends z.ZodRawShape | undefined = Record<string, z.ZodType<any>> | undefined> {
   name: string;
   description: string;
   inputSchema?: Input;
@@ -71,7 +71,7 @@ export interface ToolDef<Input extends z.ZodRawShape | undefined = z.ZodRawShape
    *  that don't touch the REST API or any particular site. */
   noSite?: boolean;
   handler: (
-    args: Input extends z.ZodRawShape ? z.objectOutputType<Input, z.ZodTypeAny> : Record<string, never>,
+    args: Input extends z.ZodRawShape ? (string extends keyof Input ? Record<string, any> : z.output<z.ZodObject<Input>>) : Record<string, never>,
     deps: ToolDeps,
   ) => Promise<ToolResult>;
 }

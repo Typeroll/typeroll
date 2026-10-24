@@ -44,7 +44,7 @@ const showProgressSchema = z.union([z.boolean(), z.enum(['text', 'bar'])]).optio
 
 const targetSchema = z.object({
   context_params: z.array(z.string()).max(8).optional().describe('Explicit URL query keys forwarded to the app hydration endpoint; reserved security keys are rejected.'),
-  installation_id: z.string(), path: z.string(), hydrate: z.boolean().optional(), session_param: z.string().optional(),
+  installation_id: z.string(), path: z.string(), hydrate: z.boolean().optional(), session_param: z.string().optional(), session_exchange: z.literal('confirm_post').optional().describe('Wait for a click and POST the one-time token; prevents GET link scanning from consuming it.'),
 }).optional().describe('Admin-only: bind to a declared POST route of an enabled app installation. Read its authenticated guide first.');
 
 // Actions run after a successful submission: email notifications, signed
@@ -158,6 +158,20 @@ export const formTools: ToolDef[] = [
       );
       return ok(res);
     }),
+  },
+  {
+    name: 'list_form_intake_responses',
+    description: 'Administrator-only private questionnaire responses linked to one Page. Includes partial answers and notification status; never use for public profile content. Installation access requires forms:intake:read and is restricted to its own form.',
+    inputSchema: { form_id: z.string(), page_id: z.string(), after_id: z.string().optional() },
+    handler: withErrorBoundary(async ({ form_id, page_id, after_id }, { client, siteId }) =>
+      ok(await client.get(siteId, `forms/${encodeURIComponent(form_id)}/intake-responses`, { page_id, after_id }))),
+  },
+  {
+    name: 'retry_form_intake_notification',
+    description: 'Explicitly retry one private questionnaire notification after a confirmed failure, or dispatch its pending outbox event. Never resends accepted, in-flight or uncertain delivery. Requires site administrator access; installation callers need forms:intake:read and email:send.',
+    inputSchema: { form_id: z.string(), page_id: z.string(), submission_id: z.string().regex(/^[a-f0-9]{64}$/), event: z.enum(['first_answer', 'complete']) },
+    handler: withErrorBoundary(async ({ form_id, page_id, submission_id, event }, { client, siteId }) =>
+      ok(await client.post(siteId, `forms/${encodeURIComponent(form_id)}/intake-responses`, { submission_id, event }, { page_id }))),
   },
   {
     name: 'list_form_submissions',

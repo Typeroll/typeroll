@@ -111,6 +111,7 @@ function effectFor(name: string): ToolEffect {
     || name === 'set_email_settings'
     || name === 'delete_email_settings'
     || name === 'send_test_email'
+    || name === 'retry_form_intake_notification'
     || name === 'set_incoming_email_forwarding'
   ) return 'admin';
   // Compute an answer and write nothing, like the preview_* tools.
@@ -376,7 +377,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
   }
   for (const tool of options.toolMode === 'compact' ? compactTools(catalog) : catalog) {
     register(tool.name, {
-      description: tool.description, inputSchema: tool.schema,
+      description: tool.description, inputSchema: z.object(tool.schema).meta({ additionalProperties: false }),
       annotations: { readOnlyHint: tool.effect === 'read', destructiveHint: tool.effect !== 'read', openWorldHint: true },
     } as any, tool.invoke);
   }

@@ -303,6 +303,15 @@ weaker checklists for individual import mechanisms.
 
 ## Navigation and empty-media variants
 
+Structured research imports must use explicit import authority, not ordinary
+editor API writes. Core 0.2.95/MCP 0.45.74 support `create_page(write_mode:
+"import")`, `read_page_authority` and atomic `import_page_fields`. Preserve
+approved answers and owner-cleared nulls. Add historical anchors to existing
+keyed items as individual leaves; never send replacement arrays to add one
+field. Use the same selected Site/version and the current authority revision.
+Stop on 409 rather than overriding or resetting provenance. See the Pages tools
+guide for schema opt-in, version availability and path escaping.
+
 Inventory first-step input banners independently of final submission providers.
 Preserve their fields, required/minimum validation, service tabs and direct links,
 mobile collapsed/open states and navigation even when the final integration is

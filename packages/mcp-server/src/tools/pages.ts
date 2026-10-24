@@ -3,7 +3,7 @@
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, writeAuthority, type ToolDef } from './helpers.js';
 
-const answerSources = z.record(z.object({ source_url: z.string().url().optional(), import_run_id: z.string().max(200).optional() }).strict()).optional().describe('Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed.');
+const answerSources = z.record(z.string(), z.object({ source_url: z.string().url().optional(), import_run_id: z.string().max(200).optional() }).strict()).optional().describe('Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed.');
 
 function authorityBody(args: { override_reason?: string }): Record<string, string> {
   return args.override_reason ? { override_reason: args.override_reason } : {};
@@ -14,6 +14,26 @@ function v(version?: string): Record<string, string | undefined> | undefined {
 }
 
 export const pageTools: ToolDef[] = [
+  {
+    name: 'read_page_authority',
+    description: 'Inspect saved custom-field authority before an import. Returns a revision and source for explicit schema leaf paths, without values or actor identities. Keyed items use programs/@stable-id/name; escape ~ as ~0 and / as ~1. Requires editor access. An absent source is explicitly unattributed, never inferred from ordinary read_page.',
+    inputSchema: { page_id: z.string(), paths: z.array(z.string().min(1).max(1000)).min(1).max(100), version: versionParam },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId,
+      `pages/${encodeURIComponent(args.page_id)}/authority`, { paths: JSON.stringify(args.paths), ...v(args.version) }))),
+  },
+  {
+    name: 'import_page_fields',
+    description: 'Save low-priority research/import changes to individual custom-field leaves. Requires the current revision from read_page_authority and explicit import in each field’s writable_by. Preserves unspecified fields and keyed-list items; never downgrades protected answers. Atomic 409 on conflicts, including an existing unsaved draft. No arbitrary provenance, item insertion/removal, or URL changes. This saves immediately; it does not publish the website.',
+    inputSchema: {
+      page_id: z.string(), base_revision: z.string().regex(/^[a-f0-9]{64}$/),
+      changes: z.array(z.object({ path: z.string().min(1).max(1000), value: z.json() }).strict()).min(1).max(100),
+      source_url: z.string().url().max(2000).optional(), import_run_id: z.string().min(1).max(200).optional(), version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const { page_id, version, ...body } = args;
+      return ok(await client.post(siteId, `pages/${encodeURIComponent(page_id)}/import`, body, v(version)));
+    }),
+  },
   {
     name: 'list_pages',
     description:
@@ -100,9 +120,10 @@ export const pageTools: ToolDef[] = [
       'Returns the created page (blocks for blocks-mode, html_content for html-mode) including ' +
       '`url` (the resolved live URL).',
     inputSchema: {
+      write_mode: z.enum(['editor', 'import']).optional().describe('Default editor. Use import for research/migration seeding so later owner answers outrank it. Fields must explicitly allow import; server assigns provenance. Does not reclassify existing pages.'),
       title: z.string().min(1),
       content_type: z.string().optional().describe('Content type ID; defaults to page.'),
-      fields: z.record(z.unknown()).optional().describe('Custom field values defined by the content type.'),
+      fields: z.record(z.string(), z.unknown()).optional().describe('Custom field values defined by the content type.'),
       slug: z.string().optional().describe('URL slug — single path segment, no slashes (e.g. "about", "kontakt"). Empty string "" = homepage. For nested URLs set the `path` field explicitly — `slug` stays a leaf id. Already in use → 409 slug_in_use naming the existing page; omit it to derive one from the title (numbered with a slug_adjusted warning on conflict).'),
       path: z.string().optional().describe('Optional explicit URL path for nested pages (e.g. "/erbjudanden/sommar-2026"). When set, takes precedence over slug for routing. Must start with "/", lowercase a-z/0-9/-/_/ only, no "..", no "//", no trailing slash. Slug is still required as the leaf id but two pages CAN share a slug under different paths.'),
       content_mode: z.enum(['blocks', 'html']).optional().describe('Default "blocks". "blocks" stores a Block[] tree (the modern default — supports the full ~40-block library, page templates, and the responsive system). "html" stores raw markup in html_content (legacy path, still fully supported for imported content or hand-written HTML). Passing html_content without content_mode also opts into "html".'),
@@ -144,7 +165,7 @@ export const pageTools: ToolDef[] = [
       patch: z
         .object({
           title: z.string().optional(),
-      fields: z.record(z.unknown()).optional(),
+      fields: z.record(z.string(), z.unknown()).optional(),
           slug: z.string().optional(),
           html_content: z.string().optional(),
           blocks: z.array(z.any()).optional().describe('Block tree, only used when content_mode="blocks".'),
@@ -241,7 +262,7 @@ export const pageTools: ToolDef[] = [
         .array(
           z.object({
             page_id: z.string(),
-            patch: z.record(z.unknown()),
+            patch: z.record(z.string(), z.unknown()),
             save: z.boolean().optional(),
             answer_sources: answerSources,
             ...writeAuthority,

@@ -9,6 +9,16 @@ Confirm the organization, site and version first. Personal OAuth calls require
 the `site_context` returned by `select_site`. Read `read_site_instructions`
 and the selected site's enabled App guidance before changing content.
 
+Research and migration seeding are not editor confirmations. On Core 0.2.95 /
+MCP 0.45.74+, create structured research Pages with `write_mode: "import"` and
+explicit schema `writable_by: ["import", ...]`. For existing answers, discover
+`read_page_authority` and `import_page_fields`: read the revision, then change
+only named leaves using stable keyed-item paths. This import saves immediately;
+the ordinary draft-writing recipe below still applies to editorial writes.
+Never interpret absent provenance in `read_page` as an unprotected value, reset
+an owner's source, or retry a 409 using editor authority. Existing API-attributed
+data requires separate review; it is not automatically downgraded.
+
 
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc

@@ -89,7 +89,7 @@ export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteA
   const fields = { ...Object.fromEntries(type.fields.filter(field => field.default !== undefined).map(field => [field.name, field.default])), ...input.fields };
   const fieldError = validatePageFields(type, fields);
   if (fieldError) throw new WorkingCopyError(fieldError, 400);
-  const authority = applyFieldAuthority({ fields: pageAuthorityFields(type), incoming: { ...input, ...input.fields }, existing: undefined, actor, actorId });
+  const authority = applyFieldAuthority({ fields: pageAuthorityFields(type), incoming: { ...input, ...fields }, existing: undefined, actor, actorId });
   if (authority.rejected.length) throw new WorkingCopyError(conflictResponse(authority.rejected).error, 409);
   const treeError = blockTreeInputError(input.blocks);
   if (treeError) throw new WorkingCopyError(treeError, 400);

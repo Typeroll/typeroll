@@ -92,6 +92,7 @@
               "content:owner",
               "email:send",
               "forms:execute",
+              "forms:intake:read",
               "page_handoff:read"
             ]
           },

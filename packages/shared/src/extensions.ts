@@ -37,6 +37,7 @@ export type ExtensionScope =
   | 'forms:write'
   | 'forms:execute'
   | 'submissions:read'
+  | 'forms:intake:read'
   | 'media:read'
   | 'media:write'
   | 'deploy:request'
@@ -60,6 +61,7 @@ export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, Extension
   'forms:submit': { scope: 'forms:submit', minimum_permission: 'read', sensitive: false, description: 'Submit to explicitly bound forms.' },
   'forms:execute': { scope: 'forms:execute', minimum_permission: 'admin', sensitive: true, description: 'Run configured actions on forms bound to this installation.' },
   'forms:write': { scope: 'forms:write', minimum_permission: 'admin', sensitive: true, description: 'Create and change forms.' },
+  'forms:intake:read': { scope: 'forms:intake:read', minimum_permission: 'admin', sensitive: true, description: 'Read private questionnaire responses bound to this installation.' },
   'submissions:read': { scope: 'submissions:read', minimum_permission: 'admin', sensitive: true, description: 'Read submitted form data.' },
   'media:read': { scope: 'media:read', minimum_permission: 'read', sensitive: false, description: 'Read media metadata.' },
   'media:write': { scope: 'media:write', minimum_permission: 'write', sensitive: true, description: 'Upload and change media.' },

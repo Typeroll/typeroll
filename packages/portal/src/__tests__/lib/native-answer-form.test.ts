@@ -53,3 +53,25 @@ describe('native answer form wire contract', () => {
     for (const key of ['issuer', 'site_id', 'installation_id', 'session', 't']) expect(validInstallationFormTarget({ installation_id: 'app', path: '/request-link', session_param: 't', context_params: [key] })).toBe(false);
   });
 });
+
+it('waits for a user gesture before exchanging a sensitive link by POST', async () => {
+  const window = new Window({ url: 'https://site.example.test/edit?t=single-use#section' });
+  const target = { installation_id: 'app', path: '/edit', hydrate: true, session_param: 't', session_exchange: 'confirm_post' as const };
+  expect(validInstallationFormTarget(target)).toBe(true);
+  expect(validInstallationFormTarget({ ...target, session_param: undefined })).toBe(false);
+  const form: Form = { id: 'edit', name: 'Edit', created_at: 'T', actions: [], target, steps: [{ id: 'one', blocks: [] }] };
+  const requests: Array<{ url: string; options: any }> = [];
+  window.fetch = (async (url: unknown, options?: unknown) => { requests.push({ url: String(url), options }); return new Response(JSON.stringify({ session_token: 'session', fields: [] })); }) as any;
+  try {
+    window.document.body.innerHTML = renderFormHtml(form, { submit_url: 'https://app.example.test/edit', submit_token: null }, { registry: buildCoreBlockRegistry() });
+    window.eval(FORMS_RUNTIME_JS); window.document.dispatchEvent(new window.Event('DOMContentLoaded'));
+    await new Promise(resolve => setTimeout(resolve, 5));
+    expect(requests).toHaveLength(0);
+    expect(window.location.href).toBe('https://site.example.test/edit#section');
+    const start = [...window.document.querySelectorAll('button')].find(button => button.textContent === 'Start editing')!;
+    start.click(); await new Promise(resolve => setTimeout(resolve, 5));
+    expect(requests).toHaveLength(1);
+    expect(requests[0].url).not.toContain('single-use');
+    expect(requests[0].options).toMatchObject({ method: 'POST', body: JSON.stringify({ action: 'redeem', token: 'single-use' }) });
+  } finally { await window.happyDOM.close(); }
+});

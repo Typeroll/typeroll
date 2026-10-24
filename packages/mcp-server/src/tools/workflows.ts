@@ -28,7 +28,7 @@ export const workflowTools: ToolDef[] = [
     description: 'Start a server-side workflow on this Site; it runs in the background and returns workflow_id. Poll get_workflow. Config per type (same fields as the portal form): migration { wp_url, helper_api_key? } (needs verified organization import storage); site_planning { business_description }; content_generation { topic, tone?, audience? }; content_improvement { limit? }; url_parity { target_origin?, source_origin?, check_source?, statuses? }; rebuild_deploy { environment: staging | production }; seo_audit, link_check, performance_audit and schema_markup take none. Needs write permission; rebuild_deploy publishes and needs admin. Workflows that change content write to the given version (default main) — get the user\'s agreement first. ' + AI_WORKFLOWS,
     inputSchema: {
       type: z.enum(WORKFLOW_TYPES),
-      config: z.record(z.unknown()).optional(),
+      config: z.record(z.string(), z.unknown()).optional(),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) =>

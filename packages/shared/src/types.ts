@@ -1472,6 +1472,8 @@ export interface Form {
      * the URL, and sends it as `Authorization: Bearer` afterwards.
      */
     session_param?: string;
+    /** Wait for an explicit click, then exchange { action: 'redeem', token } by POST. */
+    session_exchange?: 'confirm_post';
   };
   /** Reserved: the app package this form belongs to. */
   package?: string;
