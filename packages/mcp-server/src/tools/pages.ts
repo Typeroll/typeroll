@@ -15,6 +15,26 @@ function v(version?: string): Record<string, string | undefined> | undefined {
 
 export const pageTools: ToolDef[] = [
   {
+    name: 'read_page_authority',
+    description: 'Inspect saved custom-field authority before an import. Returns a revision and source for explicit schema leaf paths, without values or actor identities. Keyed items use programs/@stable-id/name; escape ~ as ~0 and / as ~1. Requires editor access. An absent source is explicitly unattributed, never inferred from ordinary read_page.',
+    inputSchema: { page_id: z.string(), paths: z.array(z.string().min(1).max(1000)).min(1).max(100), version: versionParam },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId,
+      `pages/${encodeURIComponent(args.page_id)}/authority`, { paths: JSON.stringify(args.paths), ...v(args.version) }))),
+  },
+  {
+    name: 'import_page_fields',
+    description: 'Save low-priority research/import changes to individual custom-field leaves. Requires the current revision from read_page_authority and explicit import in each field’s writable_by. Preserves unspecified fields and keyed-list items; never downgrades protected answers. Atomic 409 on conflicts, including an existing unsaved draft. No arbitrary provenance, item insertion/removal, or URL changes. This saves immediately; it does not publish the website.',
+    inputSchema: {
+      page_id: z.string(), base_revision: z.string().regex(/^[a-f0-9]{64}$/),
+      changes: z.array(z.object({ path: z.string().min(1).max(1000), value: z.json() }).strict()).min(1).max(100),
+      source_url: z.string().url().max(2000).optional(), import_run_id: z.string().min(1).max(200).optional(), version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const { page_id, version, ...body } = args;
+      return ok(await client.post(siteId, `pages/${encodeURIComponent(page_id)}/import`, body, v(version)));
+    }),
+  },
+  {
     name: 'list_pages',
     description:
       'List pages on the active site. Returns id, title, slug, status, and SEO summary (no html_content by default — use read_page or batch_read_pages for body content). Supports filtering by status and forward-cursor pagination. Pass full=true to include html_content + blocks in the response.',
@@ -100,6 +120,7 @@ export const pageTools: ToolDef[] = [
       'Returns the created page (blocks for blocks-mode, html_content for html-mode) including ' +
       '`url` (the resolved live URL).',
     inputSchema: {
+      write_mode: z.enum(['editor', 'import']).optional().describe('Default editor. Use import for research/migration seeding so later owner answers outrank it. Fields must explicitly allow import; server assigns provenance. Does not reclassify existing pages.'),
       title: z.string().min(1),
       content_type: z.string().optional().describe('Content type ID; defaults to page.'),
       fields: z.record(z.string(), z.unknown()).optional().describe('Custom field values defined by the content type.'),
