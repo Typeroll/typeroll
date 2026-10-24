@@ -82,3 +82,11 @@ describe('registration', () => {
     }
   });
 });
+
+it('uses private intake query and explicit notification retry contracts', async () => {
+  const c = client(), deps = { client: c as never, siteId: 'site-a' };
+  await tool(formTools, 'list_form_intake_responses').handler({ form_id: 'survey', page_id: 'company', after_id: 'a'.repeat(64) }, deps);
+  expect(c.get).toHaveBeenLastCalledWith('site-a', 'forms/survey/intake-responses', { page_id: 'company', after_id: 'a'.repeat(64) });
+  await tool(formTools, 'retry_form_intake_notification').handler({ form_id: 'survey', page_id: 'company', submission_id: 'b'.repeat(64), event: 'first_answer' }, deps);
+  expect(c.post).toHaveBeenLastCalledWith('site-a', 'forms/survey/intake-responses', { submission_id: 'b'.repeat(64), event: 'first_answer' }, { page_id: 'company' });
+});

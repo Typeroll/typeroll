@@ -64,7 +64,7 @@ export async function listFormSubmissions(
   const limit = submissionsLimit(options.limit);
   const after = decodeCursor(options.cursor);
   let submissions = (await getStore().listDocs<FormSubmission>(paths.submissions(orgId, siteId)))
-    .filter((submission) => submission.form_id === formId)
+    .filter((submission) => submission.form_id === formId && (options.isAdmin || !('intake' in submission)))
     .sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? '') || a.id.localeCompare(b.id));
   if (after) {
     const index = submissions.findIndex((submission) => submission.id === after);
@@ -88,7 +88,7 @@ export async function readFormSubmission(
   isAdmin: boolean,
 ): Promise<SubmissionView | null> {
   const submission = await getStore().getDoc<FormSubmission>(`${paths.submissions(orgId, siteId)}/${submissionId}`);
-  if (!submission || submission.form_id !== formId) return null;
+  if (!submission || submission.form_id !== formId || !isAdmin && 'intake' in submission) return null;
   return isAdmin ? (await withDeliveries(orgId, siteId, [submission]))[0]! : submission;
 }
 

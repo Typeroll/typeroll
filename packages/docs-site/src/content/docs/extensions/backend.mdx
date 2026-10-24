@@ -395,58 +395,112 @@ and presentation. Approval and publication remain separate actions. Freeform
 editorial copy is not automatically rewritten when a structured answer changes;
 review claims based on those answers before publishing.
 
-## Private questionnaire intake (next release)
+## Private questionnaire intake
 
 An enabled installation with `forms:execute` can collect private responses for a
 site-owned Form through `POST /api/v1/sites/{siteId}/forms/{formId}/intake`.
 The Form's `target.installation_id` must match the caller. This does not grant
 access to unrelated Forms or permission to publish content.
 
-The provider first verifies its respondent and completes its own primary workflow.
-It then sends `action: "describe"`, a stable SHA-256 `subject_id` for this interview,
-`answers: {}`, optional trusted `context`, optional string-valued `reference`, and
-optional step `conditions`. These are server-to-server calls; the browser must
-never choose its own trusted context, identity or references.
+The provider verifies its respondent and completes its own primary workflow.
+It sends `action: "describe"`, a stable SHA-256 `subject_id` for this interview,
+trusted `context`, string-valued `reference` and optional step `conditions`.
+The browser must never choose identity, trusted context, branching rules or
+references. Use a trusted `page_id` and `review_id` to associate private answers
+with one Page and review. Answers remain in Forms, never copied into Page fields.
 
 ```json
 {
   "action": "describe",
   "subject_id": "<64 lowercase hexadecimal characters>",
   "context": { "uses_online_orders": true },
-  "reference": { "record_id": "record-123" },
+  "reference": { "page_id": "company-example", "review_id": "review-123" },
   "conditions": {
-    "online": {
-      "source": "context",
-      "field": "uses_online_orders",
-      "equals": true
-    },
-    "details": { "source": "answers", "field": "interested", "equals": true }
-  },
-  "answers": {}
+    "pilot": { "source": "answers", "field": "interested", "equals": true }
+  }
 }
 ```
 
-The response contains visible steps, typed fields and a revision. Call `describe`
-again with accumulated answers when moving forward. Conditions support exact
-`equals` or array `includes`; an answer condition can use only an earlier step's
-field. Hidden steps cannot supply answers to later conditions, and their answers
-are removed server-side. Finish with `action: "complete"`, the returned `revision`
-and the same identity, context, references and conditions.
+**Partial saves, private admin reads and notifications below are candidate
+functionality for Core 0.2.97 / MCP 0.45.75, not available in Core 0.2.95.** `describe` without `answers` resumes
+saved responses from this interview. A partial response returns `ok`, `done:false`,
+`submission_id`, `revision`, `saved_at`, visible `steps` and `answers`. Save with
+`action:"save"`, that revision, a fresh `request_id` (16–100 letters, digits,
+underscores or hyphens) and `answers` containing the complete current answer
+snapshot. Retry an uncertain response with the exact same payload and request ID.
+A stale revision or changed payload reusing an ID returns 409. The latest exact
+request is idempotent; an older retry after a newer save conflicts instead of
+rewinding answers. Never overwrite a conflict without reloading.
 
-Questions and context are frozen on the first call. Later edits to the Form apply
-to new interviews. Completion is idempotent for the same answers and refuses a
-conflicting second response. Unknown fields, invalid choices and missing required
-answers are rejected. Responses are ordinary private Form submissions, accessible
-through the existing authorized submissions API and MCP tools. They are not Page
-content. Partial records expire after 30 days; this endpoint does not save partial
-answers between requests. The provider must recheck its respondent's authority.
+Conditions support exact `equals` or array `includes`; answer conditions refer
+only to earlier fields. Hidden answers are removed on the server on every save,
+including when a prior Yes becomes No or is cleared. `false`, `null` and omission
+are distinct. Answers are committed before notifications; a mail failure does
+not undo a saved response. A deliberate save has no partial-expiry deadline.
+Only descriptors that have never saved an answer expire after 30 days.
 
-This first contract supports up to 30 ordered static steps and 100 fields: text,
-textarea, email, phone, URL, date, number, boolean, select, radio and checkbox lists.
-It returns field descriptors rather than arbitrary block HTML. Dynamic steps,
-explicit `next` branches, step actions and Form actions are rejected; the contract
-collects responses without sending mail or triggering content mutations. Configuration
-errors are explicit rather than silently ignoring unsupported behavior.
+Finish with `action:"complete"`, the current revision, a stable request ID and
+the answer snapshot. Required fields and formats are validated. Completed owner
+responses, including subsequent `describe` and completion retries, return only
+`ok`, `done:true`, `submission_id` and `saved_at`: no answers, steps or history.
+Only the active interview may be resumed; a new interview has a new subject.
+
+Questions, trusted context, references and notification configuration are frozen
+at the first describe. Form edits affect new interviews. The endpoint supports
+up to 30 ordered static steps and 100 fields: text, textarea, email, phone, URL,
+date, number, boolean, select, radio and checkbox lists. Arbitrary block HTML,
+dynamic steps, explicit `next` branches and Form/step action hooks are rejected.
+Existing describe/complete clients remain supported; new clients must use save
+for persistence and omit answers when resuming.
+
+### Milestone notifications
+
+An installation additionally approved for `email:send` may supply this private
+server-side configuration alongside the same intake identity on every request:
+
+```json
+{
+  "notifications": {
+    "recipient": "research@example.com",
+    "first_answer_field": "interested"
+  }
+}
+```
+
+The first nonempty answer (including No/false) creates a durable first-answer
+notification in the same transaction as the response. Completion creates a
+second summary only if answers differ from that first snapshot. Completely
+unanswered completion (including null/blank values) sends nothing. Text autosaves
+do not create more messages. Recipient settings never enter the owner descriptor
+or public configuration. Messages use the site's existing Typeroll email
+connector; configure that connector before enabling notifications.
+
+Delivery is reserved once and uses the existing idempotent transactional mail
+service. Definite provider rejections receive its bounded retries. Administrators
+may explicitly retry pending or definitely failed notifications, up to three
+dispatch attempts. Accepted, in-flight and uncertain deliveries are not resent;
+uncertain delivery requires checking the provider. There is no periodic timeout
+that silently reissues a message. Pending outbox events survive request failure
+and remain visible for administrator recovery.
+
+### Private administrative access
+
+`GET /api/v1/sites/{siteId}/forms/{formId}/intake-responses?page_id=<id>` lists
+profile-linked responses, labels, saved timestamps and notification status.
+Use `after_id`/`next_after_id` to paginate (50 records). Ordinary callers must be
+site administrators. An installation needs `forms:intake:read` and can read only
+its own target Form and installation-bound responses. This permission does not
+grant the broader `submissions:read` scope. Owner session tokens cannot use this
+administrative API. Ordinary Forms inbox list/read endpoints also hide intake
+records from non-administrators, including installations with broad
+`submissions:read` permission.
+
+Explicit retry uses POST on that URL with `{submission_id,event}` where event
+is `first_answer` or `complete`. Installation callers also need `email:send`.
+MCP exposes `list_form_intake_responses` and `retry_form_intake_notification`;
+the latter has an admin effect and may send mail. Private app interfaces should
+put these responses in an administrator panel, never a public profile or an
+owner response-history screen.
 
 ### Explicit link exchange
 
