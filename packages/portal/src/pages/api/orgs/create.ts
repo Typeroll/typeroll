@@ -37,6 +37,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const prior = await store.getDoc<{ org_id: string; name: string }>(receiptPath);
   if (prior) {
     if (prior.name !== name || !await store.getDoc(`${paths.members(prior.org_id)}/${userId}`)) return json({ error: 'This creation key belongs to another request.' }, 409);
+    // Finish setup after a failed response without creating another trial.
+    await getHostingGroup(prior.org_id);
+    await rememberOrganization(userId, prior.org_id);
     selectOrganization(cookies, userId, prior.org_id);
     return json({ ok: true, orgId: prior.org_id, requiresReauth: false, reused: true });
   }

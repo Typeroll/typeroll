@@ -61,8 +61,13 @@ it('starts one immutable trial per creation key and ignores client dates', async
   expect(first.status).toBe(200);
   const before = await getStore().getDoc<any>(paths.org('trial-customer'));
   expect(Date.parse(before.service_access.initial_period.ends_at) - Date.parse(before.created_at)).toBe(30 * 86400000);
+  // Simulate a lost response before the post-transaction bootstrap completed.
+  await getStore().deleteDoc(`${paths.org('trial-customer')}/hosting_groups/default`);
+  await getStore().deleteDoc('user_organizations/existing-member/organizations/trial-customer');
   const again = await createOrg(request({ name: 'Trial customer' })) as Response;
   expect(await again.json()).toMatchObject({ reused: true, orgId: 'trial-customer' });
   expect((await getStore().getDoc<any>(paths.org('trial-customer'))).service_access).toEqual(before.service_access);
   expect(await getStore().getDoc(paths.org('trial-customer-2'))).toBeNull();
+  expect(await getStore().getDoc(`${paths.org('trial-customer')}/hosting_groups/default`)).toMatchObject({ name: 'Default' });
+  expect(await getStore().getDoc('user_organizations/existing-member/organizations/trial-customer')).not.toBeNull();
 });

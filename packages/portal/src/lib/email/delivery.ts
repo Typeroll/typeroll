@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readOrganizationAccess } from '../organization-access';
 import { paths, type EmailConnector, type SiteIntegrations } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { sendViaConnector } from './index';
@@ -58,6 +59,11 @@ export async function sendApplicationEmail(scope: MailScope,
     if (existing) {
       if (existing.fingerprint !== fingerprint) throw new DeliveryError('idempotency_key was already used for a different message', 409);
       return existing;
+    }
+    // Enforce at the shared sender too: app intake/review mail must not bypass
+    // the trial's own-SMTP requirement. Existing receipts remain readable.
+    if ((await readOrganizationAccess(scope.orgId)).own_smtp && connector.type !== 'smtp') {
+      throw new DeliveryError('Configure your own SMTP account to send email during the trial. Saved form answers and webhooks are unaffected.', 409);
     }
     const suppression = await store.getDoc(suppressionPath(scope, recipient));
     if (suppression) throw new DeliveryError('This destination is suppressed after a bounce or complaint', 409);
