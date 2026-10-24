@@ -15,6 +15,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     let body: Record<string, unknown>;
     try { body = JSON.parse(text); } catch { return apiError('Invalid JSON'); }
     if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid intake');
+    if (body.notifications && !ctx.extensionIdentity.scopes.includes('email:send')) return apiError('Email permission is required for intake notifications', 403);
     const response = apiResponse(ctx, await extensionIntake(getStore(), ctx.orgId, ctx.siteId, ctx.extensionIdentity.installationId, params.formId, body));
     response.headers.set('Cache-Control', 'private, no-store');
     return response;

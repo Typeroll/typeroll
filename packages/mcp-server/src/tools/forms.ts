@@ -160,6 +160,20 @@ export const formTools: ToolDef[] = [
     }),
   },
   {
+    name: 'list_form_intake_responses',
+    description: 'Administrator-only private questionnaire responses linked to one Page. Includes partial answers and notification status; never use for public profile content. Installation access requires forms:intake:read and is restricted to its own form.',
+    inputSchema: { form_id: z.string(), page_id: z.string(), after_id: z.string().optional() },
+    handler: withErrorBoundary(async ({ form_id, page_id, after_id }, { client, siteId }) =>
+      ok(await client.get(siteId, `forms/${encodeURIComponent(form_id)}/intake-responses`, { page_id, after_id }))),
+  },
+  {
+    name: 'retry_form_intake_notification',
+    description: 'Explicitly retry one private questionnaire notification after a confirmed failure, or dispatch its pending outbox event. Never resends accepted, in-flight or uncertain delivery. Requires site administrator access; installation callers need forms:intake:read and email:send.',
+    inputSchema: { form_id: z.string(), page_id: z.string(), submission_id: z.string().regex(/^[a-f0-9]{64}$/), event: z.enum(['first_answer', 'complete']) },
+    handler: withErrorBoundary(async ({ form_id, page_id, submission_id, event }, { client, siteId }) =>
+      ok(await client.post(siteId, `forms/${encodeURIComponent(form_id)}/intake-responses`, { submission_id, event }, { page_id }))),
+  },
+  {
     name: 'list_form_submissions',
     description:
       'List submissions received for a form, newest first, cursor-paginated (cap 200 per page). Admins also see each submission\'s webhook delivery status. Use this to help a customer triage inbound contact / lead submissions; read_form_submission reads one.',

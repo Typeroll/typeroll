@@ -139,6 +139,7 @@ export function extensionScopeForApiRequest(pathname: string, method: string): E
   if (/\/delivery\/email\/[a-f0-9]{64}\/?$/.test(pathname) && method === 'GET') return 'email:send';
   if (!write && /\/apps\/documentation\/?$/.test(pathname)) return 'content:read';
   if (/\/deploys?(?:\/|$)/.test(pathname)) return 'deploy:request';
+  if (/\/forms\/[^/]+\/intake-responses\/?$/.test(pathname)) return write ? 'email:send' : 'forms:intake:read';
   if (/\/submissions(?:\/|$)/.test(pathname)) return write ? null : 'submissions:read';
   if (/\/forms\/[^/]+\/(?:actions|intake)\/?$/.test(pathname) && method === 'POST') return 'forms:execute';
   if (/\/forms(?:\/|$)/.test(pathname)) return write ? 'forms:write' : 'forms:read';

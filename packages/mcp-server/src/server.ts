@@ -111,6 +111,7 @@ function effectFor(name: string): ToolEffect {
     || name === 'set_email_settings'
     || name === 'delete_email_settings'
     || name === 'send_test_email'
+    || name === 'retry_form_intake_notification'
     || name === 'set_incoming_email_forwarding'
   ) return 'admin';
   // Compute an answer and write nothing, like the preview_* tools.
