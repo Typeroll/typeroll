@@ -125,11 +125,13 @@ export const POST: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid JSON body', 400);
+  if (body.write_mode !== undefined && !['editor', 'import'].includes(body.write_mode)) return apiError('write_mode must be editor or import', 400);
+  if (body.write_mode === 'import' && body.override_reason !== undefined) return apiError('Import cannot override answer authority', 400);
   const authority = apiWriteAuthority(body);
   if ('error' in authority) return apiError(authority.error, 400);
-  const { override_reason: _reason, ...input } = body as Record<string, unknown>;
+  const { override_reason: _reason, write_mode: _mode, ...input } = body as Record<string, unknown>;
   try {
-    const result = await createPage(ctx, input, authority.actor, `api-key:${ctx.keyPrefix}`);
+    const result = await createPage(ctx, input, body.write_mode === 'import' ? 'import' : authority.actor, `api-key:${ctx.keyPrefix}`);
     return apiResponse(ctx, { ...result, page: { ...projectPage(result.page, true), url: await pageAddress(ctx, result.page) } }, 201, body);
   } catch (error) {
     if (error instanceof WorkingCopyError) return apiError(error.message, error.status, ctx, error);

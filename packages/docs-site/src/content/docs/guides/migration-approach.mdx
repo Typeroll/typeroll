@@ -70,6 +70,12 @@ returns a successful response.
 
 ## Working with an agent
 
+For structured research answers that people will later correct, use explicit
+import authority. Core 0.2.95/MCP 0.45.74 add import-mode Page creation and
+individual-field imports that preserve approved answers and untouched list items.
+Ordinary API editing has higher authority and is not an import substitute.
+See [Importing structured answers](../../tools/pages/#importing-structured-answers).
+
 Ask the agent to read `tr-migration-evidence` with `read_skill`, then the relevant
 source recipe: `tr-migrate-wp`, `tr-import-url`, `tr-migrate-astro` or
 `tr-migrate-multisite`. These work through hosted and local MCP. Authentication

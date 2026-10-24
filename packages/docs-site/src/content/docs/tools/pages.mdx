@@ -56,6 +56,73 @@ The homepage has `slug: ""` and is stored with `id: "home"`. The AI agent uses t
 
 Creates a new page. Required: `title`. Pass `content_type` and `fields` for articles or any other type. Defaults: `status: "draft"`, `content_mode: "blocks"`. The AI agent picks the block library to compose the body unless you ask for HTML mode explicitly.
 
+### Importing structured answers
+
+Core **0.2.95** / MCP **0.45.74** add low-priority imports in Cloud and self-hosted
+installations running that release. Earlier versions lack this contract;
+ordinary API writes have editor authority.
+
+Use `create_page` with `write_mode: "import"` for research or migration data that
+a person will later confirm or correct. Affected fields must explicitly include
+`import` in `writable_by`, directly or through their enclosing field. Defaults
+also receive provenance. Normal creation defaults to `write_mode: "editor"`.
+The server assigns provenance; callers cannot impersonate an owner or downgrade
+existing editor decisions.
+
+For existing Pages, first call `read_page_authority`:
+
+```json
+{
+  "page_id": "example",
+  "paths": ["programs/@summer/legacy_anchor", "support/training"]
+}
+```
+
+The response includes a revision, whether a working copy exists, and each
+requested leaf's source. `attribution` is `explicit`, `inherited` or
+`unattributed`; `effective_path` identifies the source's provenance path. No
+values, actor identities or evidence URLs are returned. Ordinary Page reads omit
+provenance: that does **not** mean the answers are unprotected.
+
+Then pass the returned revision to `import_page_fields`:
+
+```json
+{
+  "page_id": "example",
+  "base_revision": "<revision from read_page_authority>",
+  "import_run_id": "migration-2026-10",
+  "changes": [
+    { "path": "programs/@summer/legacy_anchor", "value": "original-program" }
+  ]
+}
+```
+
+Paths name custom-field leaves, without a `fields/` prefix. Keyed arrays use `@`
+followed by an existing stable item ID; escape `~` as `~0` and `/` as `~1` inside
+segments. Omitted fields and other items are preserved. This operation cannot
+insert/delete items, change their IDs or replace compound objects/arrays. Scalar
+lists such as multiselects are indivisible leaf values. Both tools accept up to
+100 paths/changes and the same selected Site/version, and require editor access.
+Installation credentials cannot use this import/readback surface.
+
+Import saves immediately. It does not invoke publication, but the Site's existing
+automatic publishing policy still applies. A protected answer, including an
+owner's deliberate `null`, returns **409** with rejected paths; the whole import
+is rejected without partial writes. An existing draft or changed Page/schema also
+returns 409. Resolve the conflict and read again; never blindly retry using an
+override. Unchanged values are not re-confirmed. Changes that alter the Page URL
+are rejected: use the normal route-editing flow and redirects instead.
+
+Earlier imports stamped as editor/API decisions are not reset by this feature.
+Review those records separately; do not erase provenance or reimport a production
+library just to make owner edits pass.
+
+Only addressed leaves are validated against the current schema. Removing a field
+definition does not physically delete its stored values: imports preserve such
+retired values and their provenance, but cannot address or change them. Stop
+consuming obsolete mirrors when changing a schema; do not maintain them as a
+second source of truth.
+
 ```
 Create a page titled "Tjänster" at slug "tjanster" with three service sections.
 ```

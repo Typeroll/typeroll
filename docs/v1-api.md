@@ -31,6 +31,42 @@ existing data and update clients together.
 
 ## Writable payload conventions
 
+### Research/import authority (Core 0.2.95)
+
+`POST /sites/{siteId}/pages` accepts `write_mode: "import"` for fresh Pages;
+the default remains `editor`. Import requires explicit `import` in the schema's
+effective `writable_by`, including defaulted fields. Do not submit provenance.
+
+- `GET /sites/{siteId}/pages/{pageId}/authority?paths=<URL-encoded JSON array>`
+  accepts 1–100 paths and returns `{page_id, revision, has_unsaved_changes,
+  fields:[{path, source, attribution, effective_path}]}`. Sources may be null
+  for genuinely unattributed values. No values or writer identities are returned.
+- `POST /sites/{siteId}/pages/{pageId}/import` accepts `{base_revision,
+  changes:[{path,value}], import_run_id?, source_url?}`. Up to 100 leaf changes
+  save atomically with server-assigned import provenance. Returns
+  `{page_id,changed,revision}`. No working copy is created and an existing one
+  prevents the operation. Normal automatic-publication settings still apply.
+
+Both honor `?version=` and organization/site authorization and rate limits;
+editor access is required and installation credentials are rejected. Authority
+reads are `private, no-store`. Paths have no `fields/` prefix. Use
+`programs/@stable-id/name` for existing keyed entries, escaping tilde/slash as
+`~0`/`~1`. No compound replacement, keyed-item insertion/deletion, identity or
+Page URL changes. Import mode does not apply to ordinary PATCH/PUT/batch writes.
+
+The revision binds Site, version, saved Page/provenance, schema and working-copy
+state. Conflicts return 409; authority conflicts include `rejected_fields`.
+Rejected imports change neither saved content nor working copies. Owner nulls
+remain protected. Unchanged values retain their sources. Existing API/editor
+provenance is not reclassified. MCP exposes `read_page_authority` and
+`import_page_fields` from 0.45.74.
+
+Only addressed schema leaves are validated. Unchanged stored fields without a
+current definition are preserved with their provenance, but cannot be addressed
+by this endpoint. Schema retirement does not perform physical data deletion.
+
+### Ordinary editor writes
+
 - Page and partial PATCH routes accept writable fields at the top level.
 - Page and partial PATCH/PUT routes reject `content_mode`; use the dedicated
   `/mode` operation so the switch receives a revision snapshot. Stage the
