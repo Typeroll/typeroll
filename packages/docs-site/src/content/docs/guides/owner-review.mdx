@@ -123,6 +123,36 @@ MCP provides `list_owner_proposals`, `read_owner_proposal`,
 `revoke_owner_proposal`. A notification retry sends transactional email and
 requires the appropriate authorization.
 
+## Independently saved review groups
+
+From Core 0.2.99, an owner Extension can submit a multi-step editor without a final
+submission gate. Each saved step immediately enters normal moderation. Publishing
+still reads only accepted Page values; no pending answers become public.
+
+An optional `group_id` (1–80 letters, numbers, `_` or `-`, excluding reserved object
+keys) identifies one set of answers for this owner, installation, Page and version.
+Send `group_revision: null` for its first save, or its latest revision from the
+owner descriptor. Keep `request_id` stable when retrying an uncertain save.
+`changes` contains only deliberate edits; it is not a complete profile snapshot.
+
+Authenticated `GET /pages/:page/owner-fields` with the server-derived
+`X-Typeroll-Owner-Subject` returns `review_groups`: each group has `revision`,
+`status` and `changes`. Only current pending answers are included in `changes`.
+Accepted, rejected, revoked or conflicting groups do not replace current Page data.
+Other owners' groups are never returned.
+
+Updating a pending group atomically replaces its previous proposal and revokes
+its old review link. Returning every answer to its accepted value cancels the
+pending change. Separate groups can be approved independently: approval checks the
+schema and the original values of the affected fields, plus atomic storage guards.
+A concurrent change to the same field blocks approval. A reviewer editing unrelated
+fields in an old proposal must refresh the full profile first.
+
+Apps should restore saved answers on return, preserve exact uncertain requests,
+and explain when a same-field conflict needs an editor. An abandoned form must not
+prevent review of earlier saved groups. No invitation, site publication or data
+migration is triggered by enabling this contract.
+
 ## Delivery failure and recovery
 
 A proposal is saved before notification delivery. A failed email leaves it in the
