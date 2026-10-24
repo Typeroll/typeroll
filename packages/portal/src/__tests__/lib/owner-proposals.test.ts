@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { paths } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
-import { answerRevision, submitOwnerProposal, readOwnerProposal, decideOwnerProposal, proposalPath, reviewSettingsPath } from '../../lib/owner-proposals';
+import { answerRevision, submitOwnerProposal, readOwnerProposal, decideOwnerProposal, proposalPath, reviewSettingsPath, ownerReviewGroups } from '../../lib/owner-proposals';
 import { decryptSecret } from '../../lib/secret-crypto';
 import { vstore } from '../../lib/version-store';
 const scope = { orgId: 'review-test', siteId: 'synthetic', versionId: 'main' };
@@ -68,10 +68,10 @@ describe('pending owner proposals', () => {
     expect((await ctx.store.getDoc<any>(pagePath))?.fields.online).toBe(winner === 0 ? false : null);
   });
   it('rejects stale accepted revisions and preserves newer edits', async () => {
-    const ctx = await setup(); await ctx.store.updateDoc(pagePath, { title: 'Changed meanwhile' });
+    const ctx = await setup(); await ctx.store.updateDoc(pagePath, { fields: { online: true, phone: 'Old' } });
     await expect(decideOwnerProposal(scope, ctx.id, { token: ctx.token }, { action: 'approve', request_id: rid('stale') })).rejects.toThrow('changed');
     expect((await readOwnerProposal(scope, ctx.id)).status).toBe('pending');
-    expect((await ctx.store.getDoc<any>(pagePath))?.fields.online).toBeNull();
+    expect((await ctx.store.getDoc<any>(pagePath))?.fields.online).toBe(true);
   });
   it('rejects expired, revoked, wrong-token and wrong-version links', async () => {
     const ctx = await setup();
@@ -133,4 +133,82 @@ describe('what a rejected proposal tells the caller', () => {
     expect(noSubject.message).toMatch(/not sent by the caller/);
     expect(noSubject.message).not.toMatch(/request_id must contain/);
   });
+});
+
+
+describe('incremental owner review groups', () => {
+  it('approves separate saved steps without completing the form and preserves accepted imports protection', async () => {
+    const ctx = await setup();
+    const second = await ctx.submit({ phone: 'New' }, rid('second-step'));
+    await decideOwnerProposal(scope, ctx.id, { adminId: 'reviewer' }, { action: 'approve', request_id: rid('approve-first') });
+    await decideOwnerProposal(scope, second.proposal_id, { adminId: 'reviewer' }, { action: 'approve', request_id: rid('approve-second') });
+    expect((await ctx.store.getDoc<any>(pagePath)).fields).toEqual({ online: false, phone: 'New' });
+    await expect(vstore.writePage(scope.orgId, scope.siteId, 'main', 'company', { fields: { phone: 'Import overwrite' } }, { actor: 'import', actorId: 'importer' })).rejects.toThrow();
+  });
+  it('replaces only the same subject and group, keeps retries idempotent and cancels undone answers', async () => {
+    const ctx = await setup();
+    const send = (changes: Record<string, unknown>, request_id: string, group_revision: string | null) => submitOwnerProposal(scope, 'company', identity, { changes, request_id, group_id: 'contact', group_revision, base_revision: answerRevision(ctx.page) });
+    const first = await send({ phone: 'First' }, rid('group-first'), null);
+    const next = await send({ phone: 'Second' }, rid('group-next'), first.proposal_id);
+    expect((await readOwnerProposal(scope, first.proposal_id)).status).toBe('revoked');
+    expect(await send({ phone: 'Second' }, rid('group-next'), first.proposal_id)).toEqual(next);
+    const groups = await ownerReviewGroups(scope, 'company', identity);
+    expect(groups.contact).toMatchObject({ status: 'pending', changes: { phone: 'Second' } });
+    expect(await ownerReviewGroups(scope, 'company', { ...identity, subjectId: 'b'.repeat(64) })).toEqual({});
+    expect(await ownerReviewGroups(scope, 'company', { ...identity, installationId: 'other' })).toEqual({});
+    await expect(send({ phone: 'Stale' }, rid('group-stale'), first.proposal_id)).rejects.toThrow('saved elsewhere');
+    const undo = await send({ phone: 'Old' }, rid('group-undo'), next.proposal_id);
+    expect(undo.status).toBe('revoked');
+    expect((await ownerReviewGroups(scope, 'company', identity)).contact.changes).toEqual({});
+    expect((await ctx.store.getDoc<any>(pagePath)).fields.phone).toBe('Old');
+  });
+  it('resumes from accepted values instead of replaying pending snapshots', async () => {
+    const ctx = await setup();
+    const first = await submitOwnerProposal(scope, 'company', identity, { changes: { phone: 'Accepted' }, base_revision: answerRevision(ctx.page), request_id: rid('resume'), group_id: 'contact', group_revision: null });
+    await decideOwnerProposal(scope, first.proposal_id, { adminId: 'reviewer' }, { action: 'approve', request_id: rid('accept-resume') });
+    expect((await ownerReviewGroups(scope, 'company', identity)).contact).toMatchObject({ status: 'approved', changes: {} });
+    const page = await ctx.store.getDoc<any>(pagePath);
+    await submitOwnerProposal(scope, 'company', identity, { changes: { phone: 'Updated again' }, base_revision: answerRevision(page), request_id: rid('resume-again'), group_id: 'contact', group_revision: first.proposal_id });
+    expect((await ctx.store.getDoc<any>(pagePath)).fields.phone).toBe('Accepted');
+  });
+  it('does not apply a pending snapshot over an independently edited answer', async () => {
+    const ctx = await setup();
+    const first = await submitOwnerProposal(scope, 'company', identity, { changes: { phone: 'Pending' }, base_revision: answerRevision(ctx.page), request_id: rid('conflict'), group_id: 'contact', group_revision: null });
+    await ctx.store.updateDoc(pagePath, { fields: { online: null, phone: 'Editor correction' } });
+    expect((await ownerReviewGroups(scope, 'company', identity)).contact).toMatchObject({ status: 'conflict', changes: {} });
+    await expect(decideOwnerProposal(scope, first.proposal_id, { adminId: 'reviewer' }, { action: 'approve', request_id: rid('conflicted-approve') })).rejects.toThrow('changed');
+  });
+  it('serializes competing saves to the same group', async () => {
+    const ctx = await setup();
+    const results = await Promise.allSettled(['one','two'].map(name => submitOwnerProposal(scope, 'company', identity, { changes: { phone: name }, base_revision: answerRevision(ctx.page), request_id: rid(name), group_id: 'contact', group_revision: null })));
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+  });
+});
+
+
+it('reviews saved support, cleared contact and renamed program coverage independently', async () => {
+  const ctx = await setup();
+  const typePath = paths.contentType(scope.orgId, scope.siteId, 'company');
+  const type = await ctx.store.getDoc<any>(typePath);
+  await ctx.store.updateDoc(typePath, { fields: [...type.fields, { name: 'programs', type: 'array', item_key: 'id', writable_by: ['owner', 'portal', 'agent', 'import'], fields: [
+    { name: 'id', type: 'text', writable_by: ['portal', 'agent'] }, { name: 'name', type: 'text' }, { name: 'coverage', type: 'text' },
+  ] }] });
+  await ctx.store.updateDoc(pagePath, { fields: { online: true, phone: 'Old', programs: [{ id: 'stable-id', name: 'Original', coverage: 'National' }] } });
+  const original = await ctx.store.getDoc<any>(pagePath);
+  const changes = [{ online: false }, { phone: null }, { programs: [{ id: 'stable-id', name: 'Renamed', coverage: 'Regional' }] }];
+  const proposals = [];
+  for (const [index, patch] of changes.entries()) proposals.push(await submitOwnerProposal(scope, 'company', identity, { changes: patch,
+    request_id: rid('scenario-' + index), group_id: 'step-' + index, group_revision: null, base_revision: answerRevision(original) }));
+  expect((await vstore.pages(scope.orgId, scope.siteId, 'main'))[0].fields).toEqual(original.fields);
+  // No finalization, questionnaire or fourth step exists in this acceptance path.
+  for (const [index, proposal] of proposals.entries()) await decideOwnerProposal(scope, proposal.proposal_id, { adminId: 'reviewer' }, { action: 'approve', request_id: rid('accept-' + index) });
+  const page = (await vstore.pages(scope.orgId, scope.siteId, 'main'))[0];
+  expect(page.fields).toEqual({ online: false, phone: null, programs: [{ id: 'stable-id', name: 'Renamed', coverage: 'Regional' }] });
+  for (const group of Object.values(await ownerReviewGroups(scope, 'company', identity))) expect(group.changes).toEqual({});
+  await expect(vstore.writePage(scope.orgId, scope.siteId, 'main', 'company', { fields: original.fields }, { actor: 'import', actorId: 'later-import' })).rejects.toThrow();
+});
+
+it.each(['__proto__', 'prototype', 'constructor'])('rejects reserved group %s', async group_id => {
+  const ctx = await setup();
+  await expect(submitOwnerProposal(scope, 'company', identity, { changes: { phone: 'New' }, base_revision: answerRevision(ctx.page), request_id: rid('reserved'), group_id, group_revision: null })).rejects.toThrow('Invalid review group');
 });

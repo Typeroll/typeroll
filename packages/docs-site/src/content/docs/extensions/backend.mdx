@@ -114,7 +114,7 @@ Relative to `/api/v1/sites/{siteId}`:
 
 - `GET /extensions/self` returns the own enabled installation's resolved
   version, validated non-secret config and verified site origins.
-- `GET/PUT /pages/{pageId}/owner-fields` reads typed owner-writable fields and a revision. PUT creates an isolated pending proposal using `{changes,base_revision,request_id}` and a server-derived `X-Typeroll-Owner-Subject` digest. It never writes accepted Page content directly. Authenticate the visitor and bind its record in the provider. See [Owner answers and review](../../guides/owner-review/). This replaces the direct-write contract in Core 0.2.24 and earlier.
+- `GET/PUT /pages/{pageId}/owner-fields` reads typed owner-writable fields and a revision. PUT creates an isolated pending proposal using `{changes,base_revision,request_id}` and a server-derived `X-Typeroll-Owner-Subject` digest. Core 0.2.99 also supports independent review groups with `group_id` and `group_revision`; the subject-authenticated descriptor returns their current review state. It never writes accepted Page content directly. Authenticate the visitor and bind its record in the provider. See [Owner answers and review](../../guides/owner-review/). This replaces the direct-write contract in Core 0.2.24 and earlier.
 - `POST /delivery/email` sends `{ idempotency_key, to, subject, text }` through the site's
   configured connector. It supports one recipient and returns delivery errors
   without exposing connector credentials.
