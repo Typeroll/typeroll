@@ -1537,9 +1537,9 @@ below the image in pixels (0–480), per breakpoint like Container padding:
 ```
 
 In normal page flow the distance to the next block is the larger of this value
-and that block's own space before it, as with CSS margins. In a Container or
-Grid with a gap, the gap is added. Unset leaves the surrounding spacing unchanged, so existing pages render
-as before. The px fields take precedence over `style_overrides.spacing_before`
+and that block's own space before it, as with CSS margins. In a Container, Grid
+or Columns slot with a gap, the gap is added. Unset leaves the surrounding
+spacing unchanged. The px fields take precedence over `style_overrides.spacing_before`
 and `spacing_after`, which accept one value for every breakpoint.
 
 ### Image framing and shared article scales (Core 0.2.35+)
@@ -1975,7 +1975,9 @@ writing fields; responsive values use `mobile`, `tablet`, `laptop`, `desktop`
 and `wide` keys.
 
 - `core/columns.content_gap_px` controls spacing between blocks **inside** each
-  slot; `gap_px` controls spacing **between** columns.
+  slot; `gap_px` controls spacing **between** columns. The slot gap defaults to
+  the theme block gap (24px, or 32px from 1280px) and adds to individual block
+  margins. Set `content_gap_px: 0` to remove it; responsive overrides are supported.
 - `core/section.padding_y` accepts responsive presets. Use vertical padding for
   vertical changes; CSS `padding` shorthand always affects horizontal sides too.
 - `template/site_logo.mode: "text"` renders a styled text wordmark. `text`
