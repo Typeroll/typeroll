@@ -36,6 +36,21 @@ structure below; hosted MCP editing does not depend on the local scaffold.
 `@latest` selects the published starter version. The generated lock records it;
 client adapters pin their generated MCP version. Review upgrades explicitly.
 
+## Ask your agent to start a migration
+
+In a new conversation, replace `[website URL]` and send:
+
+```text
+Help me migrate [website URL] to Typeroll CMS using https://github.com/Typeroll/site-starter. Read its AGENTS.md and guide me through the migration interview before starting work.
+```
+
+This points the agent to the starter instead of duplicating its instructions.
+The interview records your choices for text and design/images independently.
+The agent can help with the workspace setup below; if it cannot read GitHub,
+provide the starter files through your client's supported file access.
+See the [WordPress migration guide](../../guides/wordpress-migration/) for import
+requirements and review steps.
+
 ## Create your repository from the GitHub template
 
 1. Open [Typeroll/site-starter](https://github.com/Typeroll/site-starter).
@@ -229,7 +244,7 @@ cannot remove secrets that were already committed; inspect existing repositories
 
 ## Guided start
 
-The kickoff prompts live in the generated starter, not in this documentation:
+The detailed kickoff prompts and interview routines live in the generated starter:
 
 - `workflows/interview.md` — the agent's structured interview when you need guidance.
 - `workflows/new-site.md` — the kickoff for a new website with a clear brief.

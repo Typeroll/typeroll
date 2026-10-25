@@ -19,6 +19,22 @@ for text and design/images independently. Every combination uses standard blocks
 first, custom block types when needed and rare documented HTML exceptions.
 Every old public URL must keep working or redirect to relevant content.
 
+## Start in a new agent conversation
+
+Copy this prompt and replace `[website URL]` with your current website:
+
+```text
+Help me migrate [website URL] to Typeroll CMS using https://github.com/Typeroll/site-starter. Read its AGENTS.md and guide me through the migration interview before starting work.
+```
+
+The agent helps you set up your own workspace and follows the starter's interview.
+You choose separately whether to preserve or renew the text and the design/images.
+The detailed prompts, decisions and routines stay in your workspace, ready for
+future sessions. If your agent cannot read GitHub, use the
+[workspace setup guide](../../getting-started/agent-workspace/) to provide the files.
+Connect Typeroll MCP and confirm the target Site and Version before making changes;
+verified Organization storage is required before importing.
+
 ## Overview
 
 The shared-taxonomy and fidelity-review changes described below require Core 0.2.5 and Helper 0.3.2. Cloud availability follows its Core
@@ -89,7 +105,7 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 ### Start from your workspace
 
 The [workspace starter](../../getting-started/agent-workspace/#guided-start) owns
-all kickoff prompts. Open `workflows/migration.md` there; if you want guidance,
+the detailed migration prompts and routines. Open `workflows/migration.md` there; if you want guidance,
 the agent starts or resumes `workflows/interview.md` and saves progress in
 `brief/interview.md`. The interview asks about text and design/images separately.
 For example, retaining all text while refreshing the design is a supported choice.
@@ -97,7 +113,7 @@ For example, retaining all text while refreshing the design is a supported choic
 Record both choices, source URLs, target Site/Version and exceptions in
 `brief/migration.md`, with owner rules and SEO strategy in their own brief files.
 Configure any WordPress Helper key through the agent's secure credential mechanism,
-never in the prompt or repository. Documentation describes the workflow; prompts
+never in the prompt or repository. Documentation provides the short starting pointer; detailed prompts
 remain in the starter so you can adapt them in your own repository.
 
 The AI agent will:
