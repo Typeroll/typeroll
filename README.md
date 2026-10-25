@@ -45,6 +45,12 @@ examples/                Extension examples
 
 ## Quick start
 
+To build or migrate **your own website** with an AI agent, start from the public
+[site-starter template](https://github.com/Typeroll/site-starter) and follow the
+[workspace setup guide](https://typeroll.com/docs/getting-started/agent-workspace/).
+It includes a guided interview, project briefs, owner rules and SEO planning.
+The commands below instead run the CMS itself for development.
+
 Use Node.js 22 or later.
 
 ```sh
