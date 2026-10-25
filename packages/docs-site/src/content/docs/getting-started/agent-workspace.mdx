@@ -16,10 +16,12 @@ that every Cloud or self-hosted portal has already upgraded.
 
 ## A starter you can keep in your own repository
 
-Use `typeroll init` below to generate the starter rather than copying an old
-website or maintaining a second template repository. It creates a normal folder
-that you can keep in your own private Git repository. No repository or remote
-Site is created automatically. This planning workspace is separate from the
+Start with the public [Typeroll/site-starter](https://github.com/Typeroll/site-starter)
+GitHub template, or use `typeroll init` below to generate a local folder.
+Both contain the same released starter instructions and prompts. The template
+adds a GitHub introduction and maintenance files; it is generated from the
+published MCP package rather than maintained as a second set of instructions.
+This planning workspace is separate from the
 Typeroll-managed publication repository; never edit generated publishing source
 to change the website.
 
@@ -33,6 +35,53 @@ release is not installed yet, create those Markdown files yourself using the
 structure below; hosted MCP editing does not depend on the local scaffold.
 `@latest` selects the published starter version. The generated lock records it;
 client adapters pin their generated MCP version. Review upgrades explicitly.
+
+## Create your repository from the GitHub template
+
+1. Open [Typeroll/site-starter](https://github.com/Typeroll/site-starter).
+2. Choose **Use this template → Create a new repository**.
+3. Select the GitHub account or organization that should own the project and
+   give it a name, such as `my-site-workspace`. Choose **Private** for customer
+   projects, business plans or unpublished research. Copy only the default branch.
+4. Choose **Create repository from template**. Your new repository is independent, with fresh
+   history. A fork is not needed.
+5. Open **your new repository**, choose **Code**, and copy its clone URL.
+   Clone it in the environment where your agent works. Replace the placeholders:
+
+   ```sh
+   git clone https://github.com/YOUR-OWNER/YOUR-SITE.git
+   cd YOUR-SITE
+   ```
+
+   Or open your repository in a GitHub Codespace or connect it to an agent's
+   cloud environment. Keep the workspace in your own repository so it is not
+   tied to one computer. If the client only accepts uploaded project files,
+   attach the relevant starter files; MCP cannot read a GitHub repository or
+   local folder automatically.
+
+6. Have the agent read `AGENTS.md` and use the [guided start](#guided-start).
+   The files are ready to read without installing Node.js. Node.js 20 or later
+   is only needed for the optional CLI setup, update and doctor commands.
+7. Connect MCP, select the correct Site and Version and fill `typeroll.json`
+   as described below. Creating the GitHub repository does not create a
+   Typeroll account, Site, hosting connection or deployment.
+
+With an authenticated GitHub CLI, steps 1–5 can also be done with:
+
+```sh
+gh repo create YOUR-OWNER/YOUR-SITE --template Typeroll/site-starter --private --clone
+cd YOUR-SITE
+```
+
+Use the template for **new** projects. For an existing workspace, use
+[`init --update`](#update-without-losing-project-work); do not copy the template
+over your project or merge its history into your own.
+
+The original template checks for stable MCP releases daily. Its maintenance
+workflows only run in `Typeroll/site-starter`, never in your copy. You may remove
+`.github/` from your own repository. Updating the original does not update your
+project automatically. Keep `typeroll.lock.json`: it lets the CLI update unchanged
+starter files while preserving your own edits.
 
 ## Start without a repository
 
@@ -50,7 +99,7 @@ GitHub, Cloudflare and a domain are not required to start authoring or previewin
 Imports require verified Organization storage **before importing any content**;
 check `get_import_readiness`. This is distinct from ordinary new draft uploads.
 
-## Create the local workspace
+## Generate a local workspace instead
 
 Use Node.js 20 or later for the standalone MCP package:
 
@@ -62,6 +111,20 @@ This is a local filesystem operation: it creates no remote Site, repository,
 account, deployment or login, and needs no API key. Open the folder in your agent
 client and point it at `AGENTS.md`. Automatic instruction loading depends on the
 client; creating the folder does not guarantee that it reads the file.
+
+If you later want to store this generated folder on GitHub, inspect its files
+for secrets or private exports, then initialize your own repository:
+
+```sh
+cd my-site
+git init -b main
+git add .
+git commit -m "Start website workspace"
+gh repo create YOUR-OWNER/YOUR-SITE --private --source=. --remote=origin --push
+```
+
+This alternative needs Git and an authenticated GitHub CLI. It creates and
+pushes your private workspace; it does not publish a website.
 
 ```text
 my-site/
@@ -306,6 +369,8 @@ npx @typeroll/mcp-server@latest init ./my-site --update
 An unchanged generated file can be upgraded. A user-edited file is reported as
 `modified` and preserved. `typeroll.json` remains user-owned. Review those files
 against current guidance manually; do not assume an update overwrote them.
+The GitHub template's additional README introduction counts as an edit, so the
+updater preserves that README too. No fork, upstream merge or re-clone is needed.
 The updater does not merge client configurations or delete removed recipes.
 There is no destructive `--force` option for the workspace scaffold.
 
