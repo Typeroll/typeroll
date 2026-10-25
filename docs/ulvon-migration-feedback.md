@@ -160,3 +160,7 @@ Organization/Site/Version binding throughout. No change auto-publishes ulvon.
   request before keyboard video activation. Desktop/mobile images inspected.
 - The exact committed candidate still needs PR CI and authorized publication;
   local artifact files are not a production release receipt.
+
+The renderer capability contract advances to **0.53.0** so clients refresh cached
+block schemas for the added native controls. Core/MCP release versions remain
+0.2.103 / 0.45.79; frozen output dependencies retain the exact Core revision.
