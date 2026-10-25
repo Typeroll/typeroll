@@ -53,7 +53,7 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   if (options.checkBuild !== false && versionId === 'main' && domains.desired.website_host && changing) {
     let checks: Awaited<ReturnType<typeof siteHostChecks>> = null;
     try { checks = await siteHostChecks(orgId, siteId, domains); } catch { /* Provider outages are reported by the publication itself. */ }
-    for (const blocker of checks?.blockers ?? []) require(false, blocker.code, blocker.message, `/app/sites/${encodeURIComponent(siteId)}/settings`);
+    for (const blocker of checks?.blockers ?? []) require(false, blocker.code, blocker.message, `/app/sites/${encodeURIComponent(siteId)}/settings?section=publishing`);
   }
   // Accepted publications validate their frozen engine in the runner. Only new
   // admissions depend on the currently selected engine and its latest capabilities.

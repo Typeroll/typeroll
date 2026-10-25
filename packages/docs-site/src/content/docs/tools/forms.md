@@ -204,7 +204,7 @@ permission (`GET /api/v1/sites/{siteId}/form-capabilities`).
 ### Email provider
 
 Emails go through the site's email provider (Postmark, SMTP or SES), connected
-under **Settings → Email & notifications** or with the [email tools](../email/):
+under **Settings → Integrations → Email & notifications** or with the [email tools](../email/):
 `get_email_settings` shows whether one is connected, `set_email_settings`
 connects it and `send_test_email` checks it. Without a provider, form email
 actions are skipped.

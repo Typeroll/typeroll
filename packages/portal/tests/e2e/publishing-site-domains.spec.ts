@@ -45,7 +45,7 @@ test('shows pending-zone blockers before preparation and saves redirect hosts', 
     await route.fulfill({ json: { ...base, host_checks: { blockers, warnings: [] } } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto(`/app/sites/${site}/settings`);
+  await page.goto(`/app/sites/${site}/settings?section=publishing`);
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Website and media addresses', exact: true }) });
   await expect(section.getByRole('alert')).toContainText('Resolve before preparing the domain change');
   await expect(section.getByRole('alert')).toContainText('status is pending');
@@ -78,7 +78,7 @@ test('requires explicit acceptance of the validation window and shows the redire
     await route.fulfill({ json: { ...prepared, state: 'distributing' } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto(`/app/sites/${site}/settings`);
+  await page.goto(`/app/sites/${site}/settings?section=publishing`);
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Website and media addresses', exact: true }) });
   await expect(section.getByRole('alert')).toContainText('The switch has a short validation window');
   await expect(section).toContainText('Redirect from www.example.com to example.com is ready to switch with the website');

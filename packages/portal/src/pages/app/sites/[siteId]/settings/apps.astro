@@ -28,6 +28,6 @@ if (permission !== 'admin') return Astro.redirect(`/app/sites/${siteId}/settings
   </div>
 
   <p class="text-sm muted" style="margin-top: 1.5rem;">
-    <a href={`/app/sites/${siteId}/settings`}>← Back to site settings</a>
+    <a href={`/app/sites/${siteId}/settings?section=integrations`}>← Back to site settings</a>
   </p>
 </AppLayout>

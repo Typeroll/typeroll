@@ -25,7 +25,7 @@ for (const width of [375, 1280]) test(`publication diagnostics remain actionable
   await report.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath(`publication-report-${width}.png`) });
   expect(errors).toEqual([]);
-  await gotoReady(page, '/app/sites/e2e-core-site/settings');
+  await gotoReady(page, '/app/sites/e2e-core-site/settings?section=seo');
   await page.getByText('Editorial publication checks', { exact: true }).click();
   await expect(page.getByLabel('Internal phrases to flag (one per line)')).toBeVisible();
   await page.getByLabel('Internal phrases to flag (one per line)').fill('internal research note');

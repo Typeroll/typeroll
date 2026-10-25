@@ -9,6 +9,6 @@ const admin = requirePermission(ctx, 'admin');
 if (!admin.ok) return Astro.redirect(`/app/sites/${ctx.site.id}`);
 ---
 <AppLayout title={`Extensions — ${ctx.site.name}`} siteId={ctx.site.id}>
-  <div class="app-header"><div><a href={`/app/sites/${ctx.site.id}/settings`} class="muted text-sm">← Site settings</a><h1>Extensions</h1><p class="muted">Typeroll Apps, third-party SaaS products, and bespoke applications installed for this site. Each backend remains in its owner's account.</p></div></div>
+  <div class="app-header"><div><a href={`/app/sites/${ctx.site.id}/settings?section=integrations`} class="muted text-sm">← Site settings</a><h1>Extensions</h1><p class="muted">Typeroll Apps, third-party SaaS products, and bespoke applications installed for this site. Each backend remains in its owner's account.</p></div></div>
   <ExtensionSettings client:load siteId={ctx.site.id} />
 </AppLayout>

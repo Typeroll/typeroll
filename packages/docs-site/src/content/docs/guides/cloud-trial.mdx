@@ -33,7 +33,7 @@ site-specific authorization as the editor.
 ## Forms during the trial
 
 Forms can receive submissions and deliver configured webhooks. Email is optional:
-open the Site's **Settings → Email & notifications**, select **SMTP**, and enter
+open the Site's **Settings → Integrations → Email & notifications**, select **SMTP**, and enter
 your own mail provider's settings to send notification or confirmation emails.
 Test the connection before relying on it. Without SMTP, submissions and webhooks
 still work, but email actions are skipped. Typeroll does not silently supply a
@@ -74,7 +74,7 @@ agreement, and no payment card or automatic charge is involved.
 
 ## Export before leaving
 
-A Site administrator can open **Site settings → Export your content → Download
+A Site administrator can open **Site settings → Advanced → Export your content → Download
 content export**. The authenticated API equivalent is
 `GET /api/v1/sites/{siteId}/export`; add `?version={id}` for a site version.
 The content ZIP includes CMS content, Content types, templates, configuration

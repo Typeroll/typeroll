@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { isSiteSettingsSection, scopedSettings } from '../../../../lib/site-settings-sections';
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
@@ -14,6 +15,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   const { session, site, versionId, owner_org_id } = guard.value;
 
   const form = await request.formData();
+  const section = form.get('settings_section');
+  if (section !== null && !isSiteSettingsSection(section)) return new Response('Unknown settings section.', { status: 400 });
+  const includesSection = (id: string) => section === null || section === id;
   const store = getStore();
   const existing =
     (await vstore.settings(owner_org_id, site.id, versionId)) ?? defaultSiteSettings;
@@ -49,7 +53,7 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   const iframeHostCheck = normalizeIframeAllowedHosts(
     String(form.get('iframe_allowed_hosts') ?? '').split(/\r?\n/).map((host) => host.trim()).filter(Boolean),
   );
-  if (iframeHostCheck.invalid.length) {
+  if (includesSection('advanced') && iframeHostCheck.invalid.length) {
     return new Response(`Invalid iframe hostnames: ${iframeHostCheck.invalid.join(', ')}`, { status: 400 });
   }
 
@@ -59,21 +63,21 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     return { path: (divider < 0 ? line : line.slice(0, divider)).trim(), owner: divider < 0 ? '' : line.slice(divider + 1).trim() };
   }) : existing.external_routes;
   const routesError = externalRoutesError(external_routes);
-  if (routesError) return new Response(routesError, { status: 400 });
+  if (includesSection('seo') && routesError) return new Response(routesError, { status: 400 });
   const seo_review = {
     forbidden_markers: lines('seo_review.forbidden_markers'),
     notes: lines('seo_review.notes'),
     claims: lines('seo_review.claims').map(line => { const divider = line.indexOf('|'); return { phrase: divider < 0 ? line : line.slice(0, divider).trim(), guidance: divider < 0 ? '' : line.slice(divider + 1).trim() }; }),
   };
   const reviewError = seoReviewError(seo_review);
-  if (reviewError) return new Response(reviewError, { status: 400 });
+  if (includesSection('seo') && reviewError) return new Response(reviewError, { status: 400 });
   const responsive_breakpoints = form.has('responsive_breakpoints.tablet')
     ? Object.fromEntries(['tablet', 'laptop', 'desktop', 'wide'].map(name => [name, Number(form.get(`responsive_breakpoints.${name}`))])) as NonNullable<SiteSettings['responsive_breakpoints']>
     : existing.responsive_breakpoints;
   const breakpointError = responsiveBreakpointsError(responsive_breakpoints);
-  if (breakpointError) return new Response(breakpointError, { status: 400 });
+  if (includesSection('design') && breakpointError) return new Response(breakpointError, { status: 400 });
   const agentInstructions = form.has('agent_instructions') ? String(form.get('agent_instructions') || '') : existing.agent_instructions;
-  if (agentInstructions && agentInstructions.length > 12000) return new Response('Agent instructions must be at most 12000 characters.', { status: 400 });
+  if (includesSection('access') && agentInstructions && agentInstructions.length > 12000) return new Response('Agent instructions must be at most 12000 characters.', { status: 400 });
   const next: SiteSettings = {
     ...existing,
     responsive_breakpoints,
@@ -116,7 +120,7 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     const mode = form.get(`colors.${key}.mode`);
     const value = form.get(`colors.${key}`);
     if (mode === 'auto') delete colors[key];
-    else if (mode === 'custom') {
+    else if (mode === 'custom' && includesSection('design')) {
       if (!isOnColorValue(value)) return new Response(`colors.${key} must be a hex colour such as #ffffff`, { status: 400 });
       colors[key] = value.trim();
     }
@@ -131,7 +135,19 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   if (smoothing === 'auto' || smoothing === 'antialiased') fonts.smoothing = smoothing;
   else if (smoothing === '') delete fonts.smoothing;
 
-  await store.setDoc(paths.settings(owner_org_id, site.id, versionId), next as unknown as Record<string, unknown>);
+  const settingsPath = paths.settings(owner_org_id, site.id, versionId);
+  if (section === null) await store.setDoc(settingsPath, next as unknown as Record<string, unknown>);
+  else if (section !== 'publishing') {
+    // A second editor or agent may save another section while this request runs.
+    // Replace atomically so cleared optional fields disappear without losing those edits.
+    const patch = scopedSettings(next, section);
+    let saved = false;
+    for (let attempt = 0; attempt < 3 && !saved; attempt++) {
+      const current = await store.getDoc<SiteSettings>(settingsPath);
+      saved = await store.compareAndReplaceDoc(settingsPath, current, { ...existing, ...current, ...patch });
+    }
+    if (!saved) return new Response('Settings changed while saving. Your edits are still here; try saving again.', { status: 409 });
+  }
 
   // Staging URL lives on the Site doc, not in versioned settings (so a
   // branch can't reroute it). The `domain` field is owned by the
@@ -140,10 +156,11 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   // endpoint is silently ignored. See docs/domain-lifecycle-plan.md.
   const siteUpdate: Record<string, unknown> = {};
   const stagingRaw = form.get('staging_url');
-  if (typeof stagingRaw === 'string') siteUpdate.staging_url = normalizeStagingUrl(stagingRaw);
+  if (includesSection('publishing') && typeof stagingRaw === 'string') siteUpdate.staging_url = normalizeStagingUrl(stagingRaw);
   if (Object.keys(siteUpdate).length > 0) {
     await store.updateDoc(paths.site(owner_org_id, site.id), siteUpdate);
   }
 
-  return redirect(`/app/sites/${site.id}/settings`);
+  if (request.headers.get('accept') === 'application/json') return Response.json({ saved: true, section });
+  return redirect(`/app/sites/${site.id}/settings${section ? `?section=${section}&saved=1` : ''}`);
 };

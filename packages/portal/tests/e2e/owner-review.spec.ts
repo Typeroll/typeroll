@@ -71,7 +71,7 @@ for (const width of [375, 1280]) test(`private review and admin queue at ${width
   await expect(page.getByRole('status')).toContainText('expired or was revoked');
   await page.screenshot({ path: info.outputPath(`expired-review-${width}.png`), fullPage: true });
   await authenticatePersona(page, 'owner');
-  await page.goto(`/app/sites/${site}/settings`);
+  await page.goto(`/app/sites/${site}/settings?section=integrations`);
   await page.getByRole('link', { name: 'Review owner changes →' }).click();
   await expect(page.getByRole('heading', { name: 'Owner change review', exact: true })).toBeVisible();
   await expect(page.getByLabel('Reviewer email')).toHaveValue('reviewer@example.test');
