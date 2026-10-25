@@ -1,0 +1,85 @@
+# Repeatable site QA
+
+These optional tools supplement MCP and the platform's publication validator.
+They do not publish, change DNS, approve a launch or replace visual review.
+Python tools use the standard library except contact_sheet.py (Pillow). Browser
+tools require Node.js 22+, Playwright and its Chromium browser. From scripts/typeroll:
+
+```sh
+npm install --no-save --package-lock=false playwright
+npx playwright install chromium
+```
+
+Run the commands below from the **workspace root**. Inject TYPEROLL_API_KEY through
+your private credential manager. Never put it in a file or command argument.
+trlib.py reads portal, organization_id, site_id and version from typeroll.json,
+checks the connected Site/Organization, discovers the live tool schema, and
+passes the Version where supported. It refuses unversioned operations on a
+non-main binding; use the explicit interactive API workflow for organization or
+shared media operations instead. It is a small hosted MCP helper for API keys,
+not a replacement OAuth client or a new general CRUD CLI. REST is also supported
+by Typeroll if your integration already uses it.
+
+## Before publication
+
+```sh
+python3 scripts/typeroll/check_unsaved.py
+```
+
+Exit 1 lists unsaved Pages **and partials**. Review those changes; save only the
+work authorized for this publication, then run again. Templates save immediately.
+A working-copy preview is not proof of saved output. Never auto-save other work.
+
+## After an authorized publication
+
+```sh
+python3 scripts/typeroll/check_url_parity.py https://YOUR-TEST-HOST
+python3 scripts/typeroll/check_assets.py https://YOUR-TEST-HOST
+node scripts/typeroll/shoot_hosted.cjs https://YOUR-TEST-HOST qa/reports/hosted /,/about/ 390 768 1023 1024 1280
+node scripts/typeroll/card-stacking-check.cjs https://YOUR-TEST-HOST/listing/ 390
+```
+
+URL parity reads every migration inventory page and observed spelling, skips
+explicit exclusions unless --show-excluded, keeps origins/query parameters,
+detects loops and flags chains beyond a single redirect (one initial slash
+normalization is allowed). This does **not** prove the final destination is the
+editorially correct page: compare with the approved URL map too. No inventory
+is a failure, not a passing zero-row check. Asset QA uses resolved routes,
+checks published/unlisted Pages, relative URLs, srcset and downloads, uses four
+concurrent HEAD requests and falls back to GET when HEAD is unsupported. CSS
+backgrounds, authenticated assets and dynamically loaded resources need browser QA.
+Neither tool spoofs a search crawler. A 403/DNS/network failure is unverified;
+inspect access policy rather than treating it as a broken migration or a pass.
+
+## Other helpers
+
+- `call.py TOOL '{"argument":"value"}'`: raw MCP result; use `-` to read JSON
+  from stdin. Mutating tools require the same owner authorization as interactive
+  calls. Network failures are not automatically retried for mutations.
+- `trlib.upload(path, content_type, alt)`: direct signed upload and mandatory
+  finalize SHA-256 verification. No image bytes pass through the model or Git.
+- `sweep_blocks.example.py`: dry-run grid normalization across Pages, templates
+  and partials. Review before --apply; refuses to commit existing unsaved work.
+  It is not transactional: a failure can leave a partial draft; inspect before retry.
+- `shootframe.cjs OUT-PREFIX SIGNED-PREVIEW-URL [widths...]`: selects only the
+  Typeroll preview iframe, reports fonts/hosts/overflow. Signed URLs are secrets;
+  pass privately, never paste into committed reports or shell history. Direct-frame
+  capture checks rendering only; test Extension storage/navigation/handoffs in
+  the original wrapper because those features depend on its parent bridge.
+- `layout_trace.cjs URL [width] [selector]`: computed spacing of ancestors and
+  next section. Works with a direct page or Typeroll preview.
+- `contact_sheet.py OUT-PREFIX COLS TILE-WIDTH PNG...`: Pillow contact sheets.
+  It crops tall screenshots; inspect full screenshots too.
+- `capture_text.cjs URL qa/reports/text.json 'main .article-content'` followed by
+  `compare_text.py sources/private/page.html qa/reports/text.json --source-title 'Title'`:
+  word/punctuation diff. A saved single WP REST record (.json) is another source
+  adapter. Select exactly the preserved region, including its template-owned
+  title once. Deliberate shared additions need separate acceptance. Comments,
+  scripts and styles are excluded from source text. It never edits content.
+
+Browser reports exit nonzero for missing images, overflow, unexpected H1 count,
+failed requests or incomplete scrolling. They keep third-party failures visible.
+Network checks retry only a bounded read. All reports, screenshots and source
+exports stay under ignored qa/reports/ or sources/private/. Do not commit signed
+URLs, personal data or customer assets. Adapt scripts deliberately and run tests
+before applying broad changes. The workspace updater preserves your edits.

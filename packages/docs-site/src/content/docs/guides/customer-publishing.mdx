@@ -880,3 +880,21 @@ Core 0.2.22 checks the actual frozen build output before activation. See
 [Publication checks](../publication-validation/) for blocking defects, editorial
 warnings, engine updates and schema-mapping migration. Both Cloudflare and GitHub
 builds use the same gate; a failed check keeps the current live site intact.
+
+### Unsaved work and build progress
+
+From Core 0.2.103, a publication request with unsaved Pages or shared blocks
+returns `409 unsaved_content` before a job is queued. Save or discard the listed
+working copies first. Alternatively, explicitly confirm **publish saved content
+only** in the portal, or pass `allow_unsaved: true` to `trigger_deploy` / the deploy
+API. This never saves drafts or another editor's work. It applies to the selected
+version and also to dry runs, which validate saved content.
+
+Deployment status can include `build_progress`: the exact task's status, attempt,
+step and completed/total files. These counters are not an ETA or a whole-job
+percentage. Existing status polling reads progress; no additional scheduled job
+is started. A new attempt does not mean that completed media must be recopied.
+
+`get_preview_link` also returns `frame_url` for rendering QA without the portal
+wrapper. It uses the same signed expiry and sandbox. Keep the normal `url` for
+extension-host integration tests, which need the wrapper's message bridge.

@@ -1,5 +1,23 @@
 # Changelog
 
+## Core 0.2.103 / MCP 0.45.79 (prepared)
+
+- Complete reusable migration feedback: native responsive slot/section/hero
+  controls, heading-role spacing, text wordmarks, intrinsic image sizing and
+  accessible click-to-load videos; refresh renderer references for the fixes.
+- Check known parent backgrounds for global part styles and same-origin current
+  navigation. Expose post-card image alt without losing decorative semantics.
+- Discover bounded public WordPress URLs; distinguish draft targets, report
+  redirect chains and exact Search Console access requirements.
+- Require explicit acknowledgement of unsaved content before queueing a deploy;
+  expose exact-task file/attempt progress and a signed rendering-only frame URL.
+
+
+- Add version-bound migration QA helpers to the generated site workspace: unsaved-content checks, deployed URL/media checks, screenshots, card hit tests and preserved-text comparisons. Preserve edited scripts on update.
+- Correct header/footer, grid and WordPress recipes; explain when public REST is sufficient and when a helper/export is needed. Record all Ulvon migration findings with priorities and follow-up scope.
+- Preserve page append_seo_suffix through the working-copy/save path, including false. Existing saved preferences and customer copy are not changed.
+- Fix post-card whole-link hit areas and faded body/meta contrast for all supported render versions. The render references change only for that corrective CSS; no new render version or automatic customer publication is introduced. Conflicting secondary actions now produce a write warning.
+
 ## Core 0.2.100 / MCP 0.45.77
 
 - Expand the website workspace with owner rules, SEO strategy, canonical starter prompts and a resumable guided interview. Choose text and design/image preservation independently, with explicit asset/metadata exceptions. Keep edited project files and interview answers on update.

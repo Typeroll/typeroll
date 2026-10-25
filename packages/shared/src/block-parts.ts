@@ -438,6 +438,9 @@ export interface PartStyleIssue {
 export interface PartStyleCheckOptions {
   /** Path prefix of the block data, e.g. `data` or `blocks[2].data`. */
   path?: string;
+  background?: string;
+  /** Include global bindings when a full tree supplies surface context. */
+  includeGlobal?: boolean;
   /** Contrast: the site palette and render version. Without it, contrast is not checked. */
   contrast?: { colors: SiteColors; renderVersion?: number };
 }
@@ -464,7 +467,12 @@ export function partStyleIssues(
   const base = options.path ?? 'data';
   const byId = new Map(styles.map(style => [style.id, style]));
   // Every part a choice can name, including parts newer render versions add.
-  for (const [part, id] of instancePartStyles(type, data, LATEST_RENDER_VERSION)) {
+  const choices = new Map<string, [BlockPart,string]>();
+  for (const style of options.includeGlobal ? styles : []) for (const part of type.parts ?? []) {
+    if (style.parts?.includes(blockPartRef(type.id, part.name)) && styleFitsPart(style, part)) choices.set(part.name, [part,style.id]);
+  }
+  for (const choice of instancePartStyles(type, data, LATEST_RENDER_VERSION)) choices.set(choice[0].name, choice);
+  for (const [part, id] of choices.values()) {
     const path = `${base}.${PART_STYLES_FIELD}.${part.name}`;
     const issue = { ...(blockId ? { block_id: blockId } : {}), block_type: type.id, path, part: part.name, style_id: id };
     const fitting = styles.filter(style => styleFitsPart(style, part)).map(style => style.id);
@@ -480,6 +488,7 @@ export function partStyleIssues(
     }
     const surface = options.contrast && partContrastSurface(type, part, data);
     if (surface && options.contrast) {
+      if (!surface.background && options.background) surface.background = options.background;
       const report = styleContrastReport(style, options.contrast.colors, { renderVersion: options.contrast.renderVersion, surfaces: [surface], surfacesOnly: true });
       for (const message of report.errors) errors.push({ ...issue, code: 'part_style_contrast', message: `${path}: ${message}` });
       for (const message of report.warnings) warnings.push({ ...issue, code: 'part_style_contrast', message: `${path}: ${message}` });
@@ -491,18 +500,22 @@ export function partStyleIssues(
 /** Part style issues anywhere in a block tree (warnings for tree writes). */
 export function treePartStyleIssues(value: unknown, registry: Registry, styles: readonly SiteStyle[], options: Omit<PartStyleCheckOptions, 'path'> = {}, root = 'blocks'): PartStyleIssue[] {
   const out: PartStyleIssue[] = [];
-  const visit = (node: unknown, path: string, depth: number) => {
+  const visit = (node: unknown, path: string, depth: number, inherited?: string) => {
     if (!Array.isArray(node) || depth > 50) return;
     node.forEach((block, index) => {
       if (!isRecord(block) || typeof block.type !== 'string') return;
       const at = `${path}[${index}]`;
+      const data = isRecord(block.data) ? block.data : {};
+      const named = styles.find(style => style.id === data.style_id)?.base.background;
+      const raw = named ?? data.background ?? inherited;
+      const background = typeof raw === 'string' ? raw.replace(/^var\(--color-([a-z-]+)\)$/, (_, token: string) => token.replaceAll('-', '_')) : inherited;
       const type = partsTypeOf(lookup(registry, block.type), registry);
       if (type?.parts?.length) {
-        const issues = partStyleIssues(block as { type: string }, type, styles, { ...options, path: `${at}.data` });
+        const issues = partStyleIssues(block as { type: string }, type, styles, { ...options, includeGlobal: true, background, path: `${at}.data` });
         out.push(...issues.errors, ...issues.warnings);
       }
-      visit(block.children, `${at}.children`, depth + 1);
-      if (Array.isArray(block.slots)) block.slots.forEach((slot, s) => visit(slot, `${at}.slots[${s}]`, depth + 1));
+      visit(block.children, `${at}.children`, depth + 1, background);
+      if (Array.isArray(block.slots)) block.slots.forEach((slot, s) => visit(slot, `${at}.slots[${s}]`, depth + 1, background));
     });
   };
   visit(value, root, 0);

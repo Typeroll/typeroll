@@ -11,6 +11,7 @@
 import {
   PART_STYLES_FIELD,
   blockDataTypeWarnings,
+  blockBehaviorWarnings,
   blockTreeWarnings,
   buildCoreBlockRegistry,
   defaultSiteSettings,
@@ -70,6 +71,7 @@ export async function singleBlockWriteWarnings(
   if (data && found) {
     warnings.push(...blockDataTypeWarnings({ id: blockId, type: found.block.type, data }, registry ?? await siteBlockRegistry(ctx), blockId));
   }
+  if (found) warnings.push(...blockBehaviorWarnings({ ...found.block, data: { ...found.block.data, ...write.data } }, blockId));
   return warnings;
 }
 
@@ -125,7 +127,7 @@ export async function treeWriteWarnings(
   if (blocks === undefined) return [];
   const types = registry ?? await siteBlockRegistry(ctx);
   const warnings = blockTreeWarnings(blocks, 'blocks', types);
-  if (JSON.stringify(blocks).includes(`"${PART_STYLES_FIELD}"`)) {
+  { // Global part styles also need the actual containing surface checked.
     const site = await partStyleSite(ctx);
     warnings.push(...treePartStyleIssues(blocks, types, site.styles, { contrast: site }).map(partStyleWarning));
   }

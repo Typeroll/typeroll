@@ -75,6 +75,16 @@ describe('renderPreview — <title> suffix (SEOHead parity)', () => {
     expect(await previewTitle()).toBe('Home');
   });
 
+  it('renders the saved suffix preference after an agent content write', async () => {
+    await seedSite({ default_seo_suffix: ' — Acme Inc' }, { seo_title: 'Campaign' });
+    const { applyContentWrite } = await import('../../lib/content-write');
+    const ctx = { orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID };
+    await applyContentWrite(ctx, { kind: 'page', id: 'home' }, { append_seo_suffix: false }, { save: true, updatedBy: 'test' });
+    expect(await previewTitle()).toBe('Campaign');
+    await applyContentWrite(ctx, { kind: 'page', id: 'home' }, { append_seo_suffix: true }, { save: true, updatedBy: 'test' });
+    expect(await previewTitle()).toBe('Campaign — Acme Inc');
+  });
+
   it('honours a page-level suffix opt-out', async () => {
     await seedSite({ default_seo_suffix: ' — Acme Inc' }, { seo_title: 'Campaign', append_seo_suffix: false });
     expect(await previewTitle()).toBe('Campaign');

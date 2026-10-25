@@ -27,6 +27,10 @@ describe('agent-neutral workspace', () => {
     expect(await read('AGENTS.md')).toContain('workflows/interview.md');
     expect(await read('brief/interview.md')).toContain('Status: not started');
     expect(await read('workflows/new-site.md')).toContain('Create [website]');
+    expect(await read('scripts/typeroll/trlib.py')).toContain('organization_id');
+    expect(await read('scripts/README.md')).toContain('check_unsaved.py');
+    expect(await read('qa/checklist.md')).toContain('check_url_parity.py');
+    expect(await read('workflows/design.md')).toContain('last_row: start');
   });
   it('preserves edited files and configuration while updating unchanged managed templates', async () => {
     await writeWorkspaceFiles(dir, { 'AGENTS.md': 'old', 'brief/site.md': 'original' }, false);

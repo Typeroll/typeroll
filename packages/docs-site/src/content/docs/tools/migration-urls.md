@@ -38,7 +38,7 @@ They sound the same and they are not:
 | "Does this exact deployment answer every variant?" | `verify_migration_urls`           |
 | "Was content and SEO parity reviewed?"             | `record_migration_seo_acceptance` |
 
-The first classifies each inventory entry against the site's current pages and redirects. The second **requests every URL** against the deployed site and reports what came back. They disagree exactly when it matters — a redirect pointing at a page that was never published, a typo in a path, a redirect loop. All of those look handled in the data and return a 404 to a visitor.
+The first classifies each inventory entry against the site's current pages and redirects. The third **requests every URL** against the deployed site and reports what came back. They disagree exactly when it matters — a redirect pointing at a page that was never published, a typo in a path, a redirect loop. All of those look handled in the data and return a 404 to a visitor.
 
 ## `list_migration_urls`
 
@@ -47,6 +47,7 @@ Returns the inventory with a live coverage status per entry:
 - `migrated` — a Page answers at that path
 - `redirected` — a redirect rule covers it
 - `excluded` — you decided it should 404
+- `matched_draft` — a matching Page exists but is not published; this is not live coverage
 - `unhandled` — nothing covers it yet; this is the work list
 
 Status is recomputed on every read, so it's never stale: create a redirect and the entry flips on the next call.
@@ -195,3 +196,37 @@ Validate custom types separately and inspect preview and static output.
 Cloud availability follows its Core rollout. Older installations do not accept
 them; inspect the deployed tool
 schema before calling. Standard block and URL verification tools are unchanged.
+
+## Discover public WordPress URLs
+
+Available with Core 0.2.103 / MCP 0.45.79. In **Migration URLs → Discover public
+WordPress URLs**, enter the old site's HTTPS origin. Typeroll reads public REST
+pages, posts and exposed custom types, then crawls at most ten pages for links.
+This adds evidence to the inventory; it does not import or rewrite page content.
+
+With MCP, call `import_sitemap` with the sitemap `url`, `include_wordpress: true`
+and optionally `crawl_pages: 10`. REST uses the same input on `/import-sitemap`.
+The response includes discovery warnings and a `truncated` flag. Do not call an
+inventory complete when a limit, permission or access restriction prevented a
+full read. Public REST cannot discover private types, all old slugs or orphan
+URLs; combine it with historical redirects, GSC and an authoritative export.
+
+`check_internal_links` reports `unpublished_targets` separately from `broken`.
+It also checks draft page sources (listed in `draft_sources`), so links can be
+corrected before publishing. Problems confined to unpublished source pages do
+not block launch of the live pages.
+Matched drafts still block migration launch; they do not count as migrated.
+Redirect writes return structured chain/loop warnings. The Redirects page and
+migration launch report also show these. Prefer direct final destinations, and
+remove loops; Typeroll never rewrites intentional redirects automatically.
+
+If Search Console denies access, the error names the exact property and service
+account. Grant that account read access to that property. Domain properties and
+URL-prefix properties have separate permissions. Platform administrators must
+enable the Search Console API; self-host GCP provisioning/doctor includes it.
+Choose another property explicitly or import a CSV export; Typeroll does not
+silently substitute a different source.
+
+A verifier denied with 401, 403 or 429 has an access problem, not evidence of a
+missing page. Resolve that separately. A successful probe also does not prove
+access for Google or any other verified crawler.

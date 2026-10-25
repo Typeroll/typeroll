@@ -15,7 +15,7 @@ import { runSiteParityCheck } from '../../../../../../lib/wp/url-parity';
 import type { ParityVerdict } from '../../../../../../lib/wp/url-parity';
 import type { UrlStatus } from '../../../../../../lib/wp/url-inventory';
 
-const STATUSES: UrlStatus[] = ['migrated', 'redirected', 'excluded', 'unhandled'];
+const STATUSES: UrlStatus[] = ['migrated', 'redirected', 'excluded', 'unhandled', 'matched_draft'];
 const DEFAULT_LIMIT = 150;
 const MAX_LIMIT = 500;
 const MAX_CONCURRENCY = 12;

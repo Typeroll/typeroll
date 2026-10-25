@@ -1,4 +1,5 @@
 ---
+import { redirectChainWarnings } from '../../../../lib/redirect-write';
 import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
@@ -14,6 +15,7 @@ const siteId = site.id;
 const store = getStore();
 
 const redirects = await vstore.redirects(orgId, siteId, versionId);
+const chainWarnings = redirectChainWarnings(redirects);
 redirects.sort((a, b) => a.from_path.localeCompare(b.from_path));
 ---
 <AppLayout title={`Redirects — ${site.name}`} siteId={siteId}>
@@ -24,6 +26,11 @@ redirects.sort((a, b) => a.from_path.localeCompare(b.from_path));
     </div>
   </div>
 
+  {chainWarnings.length > 0 && <aside class="card stack" role="status" style="margin-bottom: 1.5rem;">
+    <h2>Review redirect chains</h2>
+    <p>Point each old address directly to its final destination where possible. Loops must be removed before publishing.</p>
+    <ul>{chainWarnings.map(warning => <li><code>{warning.from_path}</code>: {warning.code === 'redirect_loop' ? 'Loop' : 'Chain'} — {warning.via.join(' → ')} → {warning.final_target}</li>)}</ul>
+  </aside>}
   <form method="POST" action={`/api/sites/${siteId}/redirects`} class="card stack" style="max-width: 720px; margin-bottom: 1.5rem;">
     <h2 style="font-size: 1rem;">Add a redirect</h2>
     <div class="row" style="gap: 0.5rem; align-items: stretch;">

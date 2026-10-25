@@ -1,3 +1,4 @@
+import { discoverPublicWordPress } from '../../../../../../lib/wp/public-inventory';
 import { requireImportStorage } from '../../../../../../lib/media/import-policy';
 import { connectionFailure } from '../../../../../../lib/publishing/http';
 // POST /api/v1/sites/{siteId}/migration-urls/import-sitemap
@@ -21,10 +22,13 @@ export const POST: APIRoute = async ({ request, params }) => {
     url?: string;
     sitemap_url?: string;
     source_origin?: string;
+    include_wordpress?: boolean;
+    crawl_pages?: number;
   } | null;
   const sitemapUrl = body?.url ?? body?.sitemap_url;
   if (!body || typeof sitemapUrl !== 'string') return apiError('url required');
 
+  if (body.crawl_pages !== undefined && (!Number.isInteger(body.crawl_pages) || body.crawl_pages < 0 || body.crawl_pages > 50)) return apiError('crawl_pages must be an integer from 0 to 50');
   let sourceOrigin: string;
   try {
     const sitemap = parsePublicHttpsUrl(sitemapUrl, 'url');
@@ -42,15 +46,13 @@ export const POST: APIRoute = async ({ request, params }) => {
         await assertPublicDestination(publicUrl);
       },
     });
+    const wordpress = body.include_wordpress === true ? await discoverPublicWordPress(sourceOrigin, { crawlPages: body.crawl_pages }) : null;
+    const inventory = [...sitemap.urls.map(entry => ({ url:entry.loc, source:'sitemap', ...(entry.lastmod ? {notes:`sitemap lastmod: ${entry.lastmod}`} : {}) })), ...(wordpress?.urls ?? []).map(url => ({url,source:'public_wordpress'}))];
     const imported = await addInventoryUrls(
       getStore(),
       ctx.orgId,
       ctx.siteId,
-      sitemap.urls.map((entry) => ({
-        url: entry.loc,
-        source: 'sitemap',
-        ...(entry.lastmod ? { notes: `sitemap lastmod: ${entry.lastmod}` } : {}),
-      })),
+      inventory,
       { defaultSource: 'sitemap', sourceOrigin },
     );
     const coverage = await analyzeCoverage(getStore(), ctx.orgId, ctx.siteId, ctx.versionId);
@@ -61,6 +63,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       sitemaps_read: sitemap.sitemaps_read,
       truncated: sitemap.truncated,
       sitemap_errors: sitemap.errors,
+      wordpress_discovery: wordpress ? { ...wordpress, urls: undefined } : null,
       ...imported,
       coverage: coverage.summary,
     }, 200, {

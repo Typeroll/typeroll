@@ -505,3 +505,22 @@ describe('clone_page route and presentation preservation', () => {
     expect(calls.every(call => call.url.endsWith('?version=design'))).toBe(true);
   });
 });
+
+describe('migration feedback inputs', () => {
+  it('accepts and forwards bounded WordPress discovery options', async () => {
+    const ctx = setup(() => jsonResponse({ added: 2 }));
+    const tool = find(migrationTools, 'import_sitemap');
+    const input = { url:'https://source.example/sitemap.xml',include_wordpress:true,crawl_pages:10 };
+    const parsed = z.object(tool.inputSchema!).parse(input);
+    await tool.handler(parsed,ctx);
+    expect(JSON.parse(ctx.calls[0].body!)).toEqual(input);
+    expect(z.object(tool.inputSchema!).safeParse({...input,crawl_pages:51}).success).toBe(false);
+  });
+  it('forwards explicit saved-only publication confirmation', async () => {
+    const ctx = setup(() => jsonResponse({ job_id:'job' }));
+    const tool = find(deployTools,'trigger_deploy');
+    const parsed = z.object(tool.inputSchema!).parse({allow_unsaved:true});
+    await tool.handler(parsed,ctx);
+    expect(JSON.parse(ctx.calls[0].body!)).toEqual({allow_unsaved:true});
+  });
+});

@@ -1,3 +1,4 @@
+import { publicationResponse } from '../deploy/public-response';
 // Pre-cutover URL parity check.
 //
 // `analyzeCoverage` answers "does the DATA say this URL is handled?" — it
@@ -98,6 +99,8 @@ export interface CheckParityOptions {
   onProgress?: (done: number, total: number) => void;
 }
 
+const publicationFetch: typeof fetch = (...args) => fetch(...args);
+
 const DEFAULTS = {
   concurrency: 6,
   timeoutMs: 15_000,
@@ -112,7 +115,7 @@ export async function checkUrlParity(
   urls: Array<Pick<AnalyzedUrl, 'path' | 'excluded' | 'gsc_clicks'> & Partial<Pick<AnalyzedUrl, 'full_url' | 'observed_paths'>>>,
   opts: CheckParityOptions,
 ): Promise<{ results: ParityResult[]; summary: ParitySummary }> {
-  const doFetch = opts.fetchImpl ?? fetch;
+  const doFetch = opts.fetchImpl ?? publicationFetch;
   const concurrency = Math.max(1, opts.concurrency ?? DEFAULTS.concurrency);
   const timeoutMs = opts.timeoutMs ?? DEFAULTS.timeoutMs;
   const maxHops = opts.maxHops ?? DEFAULTS.maxHops;
@@ -228,7 +231,7 @@ async function checkOne(
       verdict,
       status: firstStatus,
       ...(hops > 0 ? { hops, final_status: res.status, final_url: current } : {}),
-      ...(verdict === 'error' ? { error: `unexpected status ${res.status}` } : {}),
+      ...(verdict === 'error' ? { error: [401,403,429].includes(res.status) ? `Verifier access blocked (HTTP ${res.status}). Allow the Typeroll-URL-Parity verifier in the host's access/bot policy and retry this check; this does not prove a missing page or actual crawler access.` : `unexpected status ${res.status}` } : {}),
     };
   }
 }
@@ -419,6 +422,14 @@ async function safeFetch(
     // less consistent about HEAD, and a 405 on HEAD would read as a broken
     // URL. We never read the body, so the cost is the response headers plus
     // an aborted stream.
+    const init: RequestInit = {
+      method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeoutMs),
+      headers: { 'user-agent': 'Typeroll-URL-Parity/1.0' },
+    };
+    if (doFetch === publicationFetch && url.startsWith('https://')) {
+      const checked = await publicationResponse(new URL(url), init);
+      try { return { ok: true, response: checked.response }; } finally { await checked.close(); }
+    }
     const res = await doFetch(url, {
       method: 'GET',
       redirect,

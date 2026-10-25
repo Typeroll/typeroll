@@ -33,3 +33,52 @@ Track import, block reconstruction, separate text/design review, candidate
 publication and domain cutover as separate milestones. Import completion is not
 launch approval. All four text/design combinations use the same block hierarchy
 and URL continuity contract. Planning choices are not migration API fields.
+
+## Repeatable reconstruction and acceptance
+
+Read workflows/design.md and scripts/README.md. First check whether public
+WordPress REST + HTML covers the source; use tr-migrate-wp's access decision
+table before asking for a helper plugin. Inventory both Pages and posts plus
+internal links and known old slugs. A sitemap alone is not complete.
+
+Discard HTML comments before extracting text, resolve relative links against
+the source, and keep an explicit old URL map. Do not redirect deleted content
+to the home page merely to get a 200. Preserve/renew text and design separately.
+Use capture_text.cjs + compare_text.py for preserved text with explicit selectors.
+
+Before every authorized test deployment run check_unsaved.py (Pages and partials).
+Deploy saved content to the agreed protected test host, then run check_url_parity.py,
+check_assets.py and shoot_hosted.cjs. Check whole-card targets with
+card-stacking-check.cjs and inspect actual desktop/mobile screenshots. Record a
+QA round and platform findings. Review on the owner's phone when possible.
+Domain preparation/cutover and production indexing follow their own explicit
+approval scope and the platform's current guided flow; do not bypass readiness.
+Do not request a second approval for a step the owner has already authorized.
+
+
+## Native controls and publication checks
+
+On Core 0.2.103 / MCP 0.45.79 or later, discover the actual block schemas first.
+Use column `content_gap_px`, responsive section `padding_y`, heading-role
+`space_before`/`space_after`, hero focal/fit/text-position fields and image
+`never_upscale` instead of one-off CSS. Responsive block keys start at `mobile`,
+not `base`. For vertical-only spacing, do not reset horizontal padding with CSS
+shorthand. Optional `click_to_load` videos need an explicit poster if desired;
+choose a first-party poster to avoid early provider requests.
+
+`import_sitemap` can include public WordPress REST (`include_wordpress: true`)
+and a bounded crawl (`crawl_pages: 10`). Record truncation and access warnings.
+A `matched_draft` URL is accounted for in the CMS but not ready for launch.
+Resolve `unpublished_targets`, redirect loops/chains and actual deployed parity.
+
+A deploy with working copies returns `unsaved_content`; review the targets.
+Save explicitly or obtain approval to publish saved content only using
+`allow_unsaved: true`. Never silently save somebody else's work.
+
+Keep the bound Organization/Site/Version explicit. A site API key cannot switch
+to another Organization: use an authorized OAuth connection or a separate key.
+Read the schema for target envelopes and pagination; do not guess aliases.
+Page/partial block writes update working copies; check `saved` and use
+`commit_working_copy` with `target: {kind: "page"|"partial", id: "..."}`.
+Page templates save immediately and do not have working copies. REST read envelopes and
+MCP tool text are different layers; `call.py` returns the decoded tool result.
