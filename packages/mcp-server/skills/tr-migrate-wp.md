@@ -148,12 +148,28 @@ place. Do not preserve them as classed raw HTML in text blocks.
 
 For each source URL:
 
-a. Fetch from WP. Prefer the helper plugin's authenticated endpoint
-   (`/wp-json/typeroll/v1/...`) if available — it bypasses
-   `show_in_rest=false` and returns ACF + builder fields. Otherwise
-   fall back to `/wp-json/wp/v2/<post-type>?slug=<slug>`.
+a. Choose access based on missing evidence, not a mandatory plugin install:
 
-b. Clean the HTML. Strip Elementor / Gutenberg / Breakdance class
+   | Source requirement | Access path |
+   | --- | --- |
+   | Public Pages, posts, media and rendered builder content exposed in REST | Public paginated `/wp-json/wp/v2/pages`, `/posts`, `/media` and rendered HTML can suffice |
+   | SEO exposed in `yoast_head_json`, visible menus/backgrounds | Public REST + rendered HTML/CSS; verify actual coverage |
+   | Private/draft content, REST-hidden types, ACF/custom fields, exact menus | Authenticated helper/export when available and authorized |
+   | REST blocked by security policy | Owner-approved helper/export; do not bypass access controls |
+   | Authoritative old slugs or plugin redirects | Owner export/helper **if supported**; a public crawl only approximates them |
+
+   Do not ask the owner to install the helper when public sources cover the scope.
+   Inventory both Pages and posts (including sitemap-excluded public records),
+   crawl internal links and inspect redirects, menus and CSS background images.
+   Do not claim the helper exports a field without reading its current contract.
+   The helper is distributed through Typeroll's documented package; do not claim
+   WordPress.org availability. Listing it there is separate publication work.
+
+b. Clean the HTML. Parse HTML and discard comments before extracting text or
+   constructing blocks (comments may contain old phone-plugin metadata). Do not
+   use regex tag removal as a text parser. Resolve relative `../` links against
+   the source URL; preserve query strings and fragments. Report missing targets
+   instead of pointing everything at the home page. Strip Elementor / Gutenberg / Breakdance class
    soup. Drop empty `<div>` and `<span>` wrappers. Keep semantic tags,
    tables, iframes from known hosts (YouTube / Vimeo / Calendly).
    Remove every `<script>`: plugin and theme JavaScript is never copied.

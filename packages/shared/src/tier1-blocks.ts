@@ -1005,9 +1005,9 @@ const postCard: BlockType = {
 [data-block="post_card"] .block-postcard-placeholder svg { width:1em;height:1em; }
 [data-block="post_card"] .block-postcard-body { display:flex;flex:1;flex-direction:column;gap:var(--body_gap_px,0.65rem);min-width:0;padding:var(--body_padding_y_px,var(--body_padding_px,0)) var(--body_padding_x_px,var(--body_padding_px,0)); }
 [data-block="post_card"] .block-postcard-title { margin: 0; font-size:var(--title_size_px,1.25rem);font-weight:var(--title_weight,600);line-height:var(--title_line_height,1.3); }
-[data-block="post_card"] .block-postcard-excerpt { margin: 0; opacity: 0.8; line-height: 1.5; }
+[data-block="post_card"] .block-postcard-excerpt { margin: 0; line-height: 1.5; }
 [data-block="post_card"][data-exc="false"]     .block-postcard-excerpt { display: none; }
-[data-block="post_card"] .block-postcard-meta  { font-size: 0.875rem; opacity: 0.6; display: flex; gap: 0.75rem; }
+[data-block="post_card"] .block-postcard-meta  { font-size: 0.875rem; display: flex; gap: 0.75rem; }
 [data-block="post_card"][data-date="false"]    .block-postcard-date    { display: none; }
 [data-block="post_card"][data-author="false"]  .block-postcard-author  { display: none; }
 [data-block="post_card"] .block-postcard-download { align-self:var(--download-align,auto);flex:var(--download-flex,0 1 auto);width:var(--download-width,auto);text-align:center;overflow-wrap:anywhere;color:var(--download-color,inherit); }
@@ -1015,7 +1015,8 @@ const postCard: BlockType = {
 [data-block="post_card"] .block-postcard-media > a { display:block; }
 [data-block="post_card"] :is(.block-postcard-excerpt,.block-postcard-date,.block-postcard-author):empty { display:none; }
 [data-block="post_card"] .block-postcard-meta:not(:has(:is(time,span):not(:empty))) { display:none; }
-[data-block="post_card"][data-whole="true"] .block-postcard-title > a::after { content:'';position:absolute;inset:0; }
+[data-block="post_card"][data-whole="true"] { isolation:isolate; }
+[data-block="post_card"][data-whole="true"] .block-postcard-title > a::after { content:'';position:absolute;inset:0;z-index:1; }
 [data-block="post_card"][data-whole="true"]:has(a:focus-visible) { outline:2px solid currentColor;outline-offset:3px; }
 [data-block="post_card"][data-shadow="none"] { box-shadow:none; }
 [data-block="post_card"][data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }

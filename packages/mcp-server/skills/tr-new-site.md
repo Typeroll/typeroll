@@ -165,7 +165,7 @@ it there.
 ### 3. Header + footer partials
 
 **Start from the native preset — don't hand-roll navigation.** Read
-`tr-header-footer` and use its `template/site_logo` + `core/navigation`
+`tr-header-footer` and use its `template/site_logo` + `core/navigation_menu` with `core/navigation_links` slots
 composition. The server-rendered landmark, current-page state, no-JS links,
 mobile disclosure, focus treatment, and responsive behavior are Core
 contracts rather than tenant CSS/JavaScript.
@@ -269,12 +269,10 @@ passing the whole tree inline (`block={ type: 'core/columns', slots:
 slot_index=0|1`. Requires template_capabilities_version ≥ 0.15.2 — on
 older sites use `core/grid` (children flow into columns) instead.
 
-Partial last rows (template_capabilities_version ≥ 0.16.5): when N equal
-cards don't divide by the grid's column count (5 cards, 3 cols), set
-`last_row: 'center'` on the `core/grid` — the orphan row auto-centers.
-NEVER invent a "wide" variant of one peer card to fill the hole, and
-don't hand-roll 6-column CSS tricks; both distort content to patch
-layout. On older sites, pick a column count that divides N.
+Partial last rows: keep `last_row: 'start'` on `core/grid`. Incomplete rows
+stay left-aligned, preserving the reading edge. Center only after an explicit
+owner design request, never as an automatic fix. Do not widen one peer card
+or invent six-column CSS to fill a gap.
 
 Icons (template_capabilities_version ≥ 0.16.0): `type: 'icon'` fields on
 `core/icon`, `core/icon_box`, and `core/step_card` render inline SVG when

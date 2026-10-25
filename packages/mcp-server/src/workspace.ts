@@ -20,7 +20,7 @@ export type Workspace = z.infer<typeof workspaceSchema>;
 export const defaultWorkspace: Workspace = { schema_version: 1, portal: 'https://app.typeroll.com', organization_id: null, site_id: null, version: 'main', tool_mode: 'compact' };
 const lockSchema = z.object({ schema_version: z.literal(1), generator_version: z.string(), files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)) }).strict();
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-export const ignores = ['.typeroll/', '.env', '.env.*', '!.env.example', '.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', 'qa/reports/', 'sources/private/'];
+export const ignores = ['.typeroll/', '.env', '.env.*', '!.env.example', '.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', 'qa/reports/', 'sources/private/', '**/__pycache__/', 'scripts/typeroll/node_modules/'];
 
 export const agentInstructions = `# Working on this website
 
@@ -82,7 +82,8 @@ or launch acceptance. Compare text and design/images separately: preserved dimen
 renewed dimensions to their approved brief. New design never permits rewriting preserved text. Start with workflows/migration.md for the kickoff
 prompt. The agent rebuilds imported HTML using ordinary block tools; the owner
 does not need to manually convert each Page. No automatic converter is available.
-Discover tools and recipes on demand.
+Discover tools and recipes on demand. Read scripts/README.md for version-bound
+pre-deploy and hosted QA tools. Follow workflows/design.md for layout defaults.
 
 ## Project rules and search strategy
 
@@ -118,8 +119,6 @@ export const workspaceTemplates: Record<string, string> = {
   'workflows/README.md': "# Project routines\n\nRead only the relevant routine and discover current tool schemas through MCP.\nProject files record intent; the CMS owns current content and configuration.\n\n| Task | Project context | On-demand recipe |\n| --- | --- | --- |\n| Guided start | workflows/interview.md, brief/interview.md | Ask one question at a time; resume confirmed answers |\n| New website | workflows/new-site.md, brief/site.md, brief/brand.md, brief/content-model.md | tr-new-site, tr-starter-design |\n| Migration | workflows/migration.md, brief/migration.md | tr-migration-evidence, then tr-migrate-wp or the matching source recipe |\n| Everyday editing | brief/rules.md and the relevant Page | tr-edit-site |\n| SEO | brief/seo.md and current site settings | tr-seo |\n| New reusable block | brief/brand.md and recorded editing needs | tr-custom-blocks |\n| Verification and publication | qa/checklist.md, decisions.md | Current preview/deploy tools and publishing readiness |\n\nAdd project-specific routines here with inputs, steps, acceptance evidence and approval boundaries. Do not copy the complete Typeroll manual or private app guides. Discover enabled app guidance with read_app_documentation. Load a recipe when needed so instructions stay current and context stays small.\n",
   'decisions.md': '# Decisions\n\nRecord date, decision, reason, approved scope and alternatives when useful.\n',
   'sources/README.md': '# Sources\n\nStore research references and copy proposals. Record source URLs and dates.\nPrivate extracts belong in ignored private/ or an approved external store.\nDo not treat local drafts as current CMS content or commit media libraries.\n',
-  'scripts/README.md': '# Project automation\n\nKeep repeatable imports and QA scripts here. Use the authenticated REST API\nfor scripted work; keep credentials outside files and inject them at runtime.\nMCP remains the interactive interface. Typeroll currently has no general site CRUD CLI.\n',
-  'qa/checklist.md': '# Verification\n\n- Confirm Site, Version and deployed/source identity.\n- Read back saved content and inspect desktop/mobile previews.\n- Exercise menus, keyboard focus, links and enabled app states.\n- Verify routes, metadata, media and publishing readiness before launch.\n- Check that structured data (FAQ, recipe, event) matches what each page shows.\n- Record tested pages, viewports, results and unresolved issues.\n- Store screenshots and private runtime reports in ignored reports/.\n- Publishing validation does not prove visual or editorial completeness.\n',
 };
 
 export async function readWorkspace(dir: string): Promise<Workspace> {

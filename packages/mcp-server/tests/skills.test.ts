@@ -180,7 +180,7 @@ describe('embedded content is in sync with source files', () => {
 
   it('ships the exact canonical starter files, including resumable interview and independent choices', async () => {
     const dir = path.join(PKG_ROOT, 'workspace-templates');
-    const names = (await fs.readdir(dir, { recursive: true })).filter(name => name.endsWith('.md')).sort();
+    const names = (await fs.readdir(dir, { recursive: true })).filter(name => /\.(md|py|cjs|json)$/.test(name)).sort();
     expect(Object.keys(BUNDLED_WORKSPACE_TEMPLATES).sort()).toEqual(names);
     for (const name of names) expect(BUNDLED_WORKSPACE_TEMPLATES[name]).toBe(await fs.readFile(path.join(dir, name), 'utf8'));
     const interview = BUNDLED_WORKSPACE_TEMPLATES['workflows/interview.md'];

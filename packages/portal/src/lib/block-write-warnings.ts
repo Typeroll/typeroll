@@ -11,6 +11,7 @@
 import {
   PART_STYLES_FIELD,
   blockDataTypeWarnings,
+  blockBehaviorWarnings,
   blockTreeWarnings,
   buildCoreBlockRegistry,
   defaultSiteSettings,
@@ -70,6 +71,7 @@ export async function singleBlockWriteWarnings(
   if (data && found) {
     warnings.push(...blockDataTypeWarnings({ id: blockId, type: found.block.type, data }, registry ?? await siteBlockRegistry(ctx), blockId));
   }
+  if (found) warnings.push(...blockBehaviorWarnings({ ...found.block, data: { ...found.block.data, ...write.data } }, blockId));
   return warnings;
 }
 

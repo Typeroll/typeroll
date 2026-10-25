@@ -21,7 +21,7 @@ The migration workflow runs in stages:
 | Stage               | What happens                                                                                                                                 |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Discover**        | Verifies the WP REST API is reachable, probes for the helper plugin                                                                          |
-| **Inventory**       | Walks the sitemap + REST API to build a complete URL list                                                                                    |
+| **Inventory**       | Combines sitemap, REST inventory and discovered internal links; checks coverage                                                              |
 | **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll content type whose records are Pages                                                       |
 | **Extract content** | Cleaned HTML is kept in HTML mode. Automatic HTML-to-blocks conversion is not applied. Shared terms are referenced and media is copied to R2 |
 | **Redirects**       | Old WordPress URLs mapped to new Typeroll slugs                                                                                              |
@@ -61,6 +61,17 @@ The optional open-source Typeroll Helper Plugin exposes:
 - Taxonomy terms, their archive URLs, custom fields and hierarchy
 
 Without the plugin, the migration falls back to the standard `/wp-json/wp/v2/` API, which may miss CPTs and ACF data.
+
+Public REST and rendered HTML can be sufficient when all required Pages, posts,
+media, SEO metadata and menus are visible. A helper/export is useful for hidden
+post types, custom fields, drafts or precise menus. Known old slugs and redirect
+plugin rules need authoritative export where available; public crawling only
+approximates them. Check the current helper contract before promising a field.
+Do not require a plugin install when the public sources cover the agreed scope.
+
+During reconstruction, discard HTML comments before extracting text, resolve
+relative links against the source URL and verify preserved text separately from
+design. Never point every missing destination at the home page.
 
 ### Installing the helper plugin
 

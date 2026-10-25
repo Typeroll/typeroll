@@ -33,3 +33,24 @@ Track import, block reconstruction, separate text/design review, candidate
 publication and domain cutover as separate milestones. Import completion is not
 launch approval. All four text/design combinations use the same block hierarchy
 and URL continuity contract. Planning choices are not migration API fields.
+
+## Repeatable reconstruction and acceptance
+
+Read workflows/design.md and scripts/README.md. First check whether public
+WordPress REST + HTML covers the source; use tr-migrate-wp's access decision
+table before asking for a helper plugin. Inventory both Pages and posts plus
+internal links and known old slugs. A sitemap alone is not complete.
+
+Discard HTML comments before extracting text, resolve relative links against
+the source, and keep an explicit old URL map. Do not redirect deleted content
+to the home page merely to get a 200. Preserve/renew text and design separately.
+Use capture_text.cjs + compare_text.py for preserved text with explicit selectors.
+
+Before every authorized test deployment run check_unsaved.py (Pages and partials).
+Deploy saved content to the agreed protected test host, then run check_url_parity.py,
+check_assets.py and shoot_hosted.cjs. Check whole-card targets with
+card-stacking-check.cjs and inspect actual desktop/mobile screenshots. Record a
+QA round and platform findings. Review on the owner's phone when possible.
+Domain preparation/cutover and production indexing follow their own explicit
+approval scope and the platform's current guided flow; do not bypass readiness.
+Do not request a second approval for a step the owner has already authorized.
