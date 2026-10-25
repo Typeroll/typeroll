@@ -50,8 +50,9 @@ if (process.env.TYPEROLL_FULL_BUILD !== '1') {
 }
 const cacheWork = path.join(work, 'render-cache');
 await fs.mkdir(cacheWork, { recursive: true });
+const renderPlan = createRenderPlan(publication, manifest);
 await fs.writeFile(path.join(cacheWork, 'input.json'), JSON.stringify({
-  plan: createRenderPlan(publication, manifest), cache: previousCache,
+  plan: renderPlan, cache: previousCache,
 }));
 const fixtures = path.join(work, 'fixtures');
 const base = 'organizations/default/sites/default';
@@ -155,7 +156,7 @@ await fs.writeFile(path.join(work, 'seo-report.json'), JSON.stringify(validation
 console.log('TYPEROLL_SEO_RESULT ' + JSON.stringify({ passed: validation.passed, errors: validation.error_count, warnings: validation.warning_count }));
 if (!validation.passed) { console.error(JSON.stringify(validation.errors.slice(0, 10))); throw new Error('publication_validation_failed'); }
 // Commit cache only after the complete output succeeds; it never enters dist or Git.
-const nextCache = JSON.stringify({ format: RENDER_CACHE_FORMAT, routes: cacheRoutes });
+const nextCache = JSON.stringify({ format: RENDER_CACHE_FORMAT, origins: renderPlan.origins, domainKey: renderPlan.domainKey, routes: cacheRoutes });
 try {
   if (!cacheOverflow && Buffer.byteLength(nextCache) <= MAX_RENDER_CACHE_BYTES) {
     await fs.writeFile(cacheFile + '.tmp', nextCache);

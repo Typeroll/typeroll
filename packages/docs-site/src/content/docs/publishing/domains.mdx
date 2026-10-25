@@ -19,6 +19,81 @@ A site address base is a parent for generated site and version addresses. It doe
 not itself serve a website. Default's base is configured in organization setup;
 additional groups have their own settings.
 
+## Guided domain move (Core 0.2.102 / MCP 0.45.78)
+
+The following guided flow is prepared for the next Core release. Until your
+installation is upgraded, use the existing prepare-and-approve controls below.
+
+Open **Site settings → Publishing → Website and media addresses**. The **Move
+site to …** card keeps the hosting account, zone, nameservers, edge certificate,
+permissions, publishing prerequisites, redirect capacity and candidate together.
+Saving an address is **not** a traffic switch. The card shows the current phase
+and only reports **Live and verified** after public checks succeed.
+
+1. Save the future website/media addresses. Changing a prepared output's origins
+   requires confirmation before the candidate is replaced. The estimate uses
+   recent completed preparations when available; otherwise the duration is unknown.
+   Adding/removing redirect hosts retains the content candidate and revokes the
+   old traffic approval. Refresh preparation to reconcile redirect requirements.
+2. If necessary, expand **Add this domain to the hosting account**. An organization
+   owner/admin can create the zone, scan existing DNS, compare discovered records
+   with current public answers and copy the reviewed inventory as **DNS only**.
+   Existing conflicting records are never overwritten. Scanning is incomplete:
+   check the old provider's full inventory, including MX, SPF, every DKIM selector,
+   DMARC and verification records. Do not confirm completeness if anything is missing;
+   have your DNS administrator or agent supply missing records first.
+   This import works only while the zone is pending. Typeroll then gives the exact
+   nameservers to enter at your registrar; it never changes the registrar for you.
+3. Prepare the last published snapshot. Later saved CMS edits stay unpublished.
+   Compatible cached HTML may be reused for a pure origin change. Changes to the
+   renderer, content, indexing policy, derived data or incompatible caches require
+   fresh rendering. A cache-format upgrade needs one successful baseline build.
+   New preparations freeze the installed renderer while retaining the published
+   content. Resuming an existing job keeps its original renderer. Media checkpoints
+   and content-addressed files remain reusable independently.
+4. Select **Review traffic switch**, review the destination and interruption,
+   then approve. For automatic DNS, Typeroll journals the prior records before
+   writes and restores them if public verification fails or the agreed window
+   expires (15 minutes in the UI; API/MCP allow 5–45 minutes). If another
+   administrator changed the records afterward, restoration stops with an explicit
+   conflict instead of overwriting their changes. DNS propagation can outlast rollback.
+   **Restore previous traffic** uses the same journal. External DNS must be changed
+   and restored by its administrator or agent.
+
+The verified build artifact is reused when promoting a candidate to the main
+branch; the promotion does not dispatch a second shared build. Temporary media
+transfer timeouts use bounded automatic retries of the same frozen job and retain
+completed checkpoints. Invalid inputs, denied permissions and integrity failures
+are not blindly retried.
+
+Agents use `guide_publishing_domain_change` (`check`, `preview`, `save`, `prepare`,
+`approve`, `rollback`) at `POST /api/v1/sites/{siteId}/publishing/domain-guide`.
+`onboard_publishing_domain_zone` uses the organization-scoped
+`POST /api/v1/publishing/domain-onboarding` endpoint for zone creation and reviewed
+DNS scans. Site-only credentials cannot administer organization zones. The
+existing domain tools remain available; replacing a prepared candidate requires
+`confirm_rebuild: true` after reviewing the impact. Traffic approval always needs
+an explicit human decision about the returned summary.
+
+### Redirect capacity
+
+Cloudflare Pages accepts up to **2,000 static rules**, **100 dynamic rules** and
+**1,000 characters per rule**. Wildcards and named placeholders count as dynamic.
+Generated trailing-slash variants and hostname aliases count too; the number of
+CMS redirect records is not necessarily the emitted rule count. The early source
+check conservatively counts every configured rule; final output removes rules
+that would shadow actual pages before checking the emitted file. Near the limit,
+remove obsolete shadowed rules from the CMS instead of relying on that filter.
+
+Core 0.2.102 replaces Typeroll's old 128 KiB `_redirects` transport limit with
+a bounded 10 MiB envelope and checks provider limits in dry-run and upload. Headers
+retain their separate 128 KiB bound. There is one `_redirects` file, not several.
+A representative 936-rule migration (837 static and 99 dynamic input rules) fits
+when its expanded static rules remain below 2,000. A dry-run checks source/export
+capacity; only a successful real build verifies the final static artifact.
+Do not remove an existing Bulk Redirect list until the replacement publication and
+its migration URL checks have passed and its removal is explicitly approved.
+
 ## Set organization domains
 
 Open **Account → Publishing → Organization domains**. With Cloudflare DNS access,
@@ -109,12 +184,12 @@ them. Referenced media is included in static output, not committed as images to 
 
 1. Save the future hosts. This records the intended addresses while the current
    public website remains active.
-2. Select **Prepare domain change from published content**. The candidate uses
+2. Select **Prepare verified candidate**. The candidate uses
    the last successful publication, not newer saved CMS edits. The build updates
    internal absolute links, canonicals, sitemap URLs and media references.
 3. Follow **Domain verification**, applying the returned validation records if
    DNS is managed externally. Wait for the required artifact and certificate checks.
-4. When allowed, select **Switch website traffic**, or apply the reviewed DNS
+4. When allowed, select **Review traffic switch**, then **Approve and switch traffic**, or apply the reviewed DNS
    change through your provider or AI agent.
 5. Wait for Typeroll to verify the actual public address.
 

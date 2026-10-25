@@ -107,3 +107,16 @@ test('refreshes reused asset hashes and bounds retries of optional indexing fail
   assert.equal(await retainPagesAssets(receipt, { jwt: 'synthetic' }, async () => { calls++; throw Error('offline'); }), false);
   assert.equal(calls, 2);
 });
+
+test('large valid redirects survive description and receipt validation above 128 KiB', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'large-redirects-'));
+  try {
+    const redirects = Array.from({ length: 936 }, (_, i) => `/old/${'a'.repeat(150)}${i}.jpg /new/${i}.jpg 301\n`).join('');
+    await fs.writeFile(path.join(root, '_redirects'), redirects);
+    const description = await describeStaticOutput(root);
+    const receipt = validateDirectReceipt({ format: 1, ...description, manifest: {} });
+    assert.equal(Buffer.from(receipt.controls._redirects, 'base64').toString(), redirects);
+    await fs.writeFile(path.join(root, '_headers'), 'x'.repeat(128 * 1024 + 1));
+    await assert.rejects(() => describeStaticOutput(root), /static_control_file_limit/);
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
+});

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { buildDiagnostic, diagnosticCause, normalizeDiagnostic, secretValues, DIAGNOSTIC_LINES } from '../../lib/builds/diagnostics.mjs';
+import { buildDiagnostic, diagnosticCause, normalizeDiagnostic, secretValues, DIAGNOSTIC_LINES, mediaFailureCode } from '../../lib/builds/diagnostics.mjs';
 import { failureDiagnostic, reportBuildFailure } from '../../lib/builds/executor.mjs';
 
 // What Node prints when the media step of Core 0.2.73 met a receipt from an earlier sharp release.
@@ -79,4 +79,15 @@ it('says a step was stopped at its time limit', async () => {
   const error = await runStep(process.execPath, ['-e', "console.error('still working'); setTimeout(() => {}, 60000)"], { cwd: process.cwd(), env: { PATH: process.env.PATH }, timeout: 500, signal: new AbortController().signal }).catch(failure => failure);
   expect(error.message).toBe('build_process_timeout');
   expect(error.output).toMatch(/still working\n+The step was stopped after its time limit\.$/);
+});
+
+
+it('classifies real timeout exceptions without retrying cancellation or integrity failures', () => {
+  const error = new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+  const diagnostic = failureDiagnostic(error, 'build_failed');
+  expect(mediaFailureCode('media', 'build_failed', diagnostic)).toBe('media_transfer_interrupted');
+  expect(mediaFailureCode('rendering', 'build_failed', diagnostic)).toBe('build_failed');
+  expect(mediaFailureCode('media', 'media_preparation_scope_mismatch', diagnostic)).toBe('media_preparation_scope_mismatch');
+  expect(mediaFailureCode('media', 'build_failed', { cause: 'AbortError: This operation was aborted', lines: [] })).toBe('build_failed');
+  expect(mediaFailureCode('media', 'build_failed', { cause: 'Error: Invalid media completion receipt', lines: ['TimeoutError: The operation was aborted due to timeout'] })).toBe('build_failed');
 });

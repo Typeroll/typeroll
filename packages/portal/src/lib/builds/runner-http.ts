@@ -13,7 +13,7 @@ import { rateLimit } from '../rate-limit';
 import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, type BuildTask } from './queue';
 import { authorizeEngine, assertEngineConnections, readEngineConfiguration, buildInputPath, engineConfigurationPath, renderCachePath, assetCachePath, type AssetCachePointer, type RenderCachePointer, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
-import { normalizeDiagnostic } from './diagnostics.mjs';
+import { normalizeDiagnostic, mediaFailureCode } from './diagnostics.mjs';
 import { decodeSource, decodeArtifact, MAX_SOURCE_BYTES, MAX_RUNNER_RESULT_BYTES, sha256, renderReport, seoReport, outputDigest } from './contract.mjs';
 import { publicationStillRunning } from './jobs';
 import { qualificationFiles } from './qualification';
@@ -142,10 +142,11 @@ export async function runnerRequest(request: Request, org: string, action: strin
       return privateJson({ artifact_url: await storage.grant(`builds/${org}/tasks/${key}/${lease}/artifact.json`, true, contentType), content_type: contentType });
     });
     if (action === 'fail') {
-      const code = typeof input.code === 'string' && /^[a-z0-9_]{1,80}$/.test(input.code) ? input.code : 'shared_build_failed';
+      const reportedCode = typeof input.code === 'string' && /^[a-z0-9_]{1,80}$/.test(input.code) ? input.code : 'shared_build_failed';
       const stage = typeof input.stage === 'string' && /^[a-z_]{1,30}$/.test(input.stage) ? input.stage : 'build';
       const validation = input.seo_report ? seoReport(input.seo_report, task.identity.publication_id) : undefined;
       const diagnostic = normalizeDiagnostic(input.diagnostic) ?? null;
+      const code = mediaFailureCode(stage, reportedCode, diagnostic);
       const retryMedia = ((metadata.kind !== 'qualification' && stage === 'media' && ['build_process_timeout', 'media_transfer_interrupted'].includes(code)) ||
         (metadata.kind === 'static_verification' && stage === 'verification' && code === 'static_verification_pending')) && task.attempt < buildAttemptLimit(task);
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),

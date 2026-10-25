@@ -1,3 +1,4 @@
+import { MAX_PAGES_REDIRECT_BYTES, checkPagesRedirects } from '../../../../shared/src/pages-redirect-limits.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -22,8 +23,10 @@ export async function describeStaticOutput(root) {
       for await (const chunk of createReadStream(target)) digest.update(chunk);
       files[name] = { sha256: digest.digest('hex'), size: stat.size };
       if (['_headers', '_redirects'].includes(name)) {
-        if (stat.size > 128 * 1024) throw Error('static_control_file_limit');
-        controls[name] = (await fs.readFile(target)).toString('base64');
+        if (stat.size > (name === '_redirects' ? MAX_PAGES_REDIRECT_BYTES : 128 * 1024)) throw Error('static_control_file_limit');
+        const bytes = await fs.readFile(target);
+        if (name === '_redirects') checkPagesRedirects(bytes.toString('utf8'));
+        controls[name] = bytes.toString('base64');
       }
     }
   }
@@ -46,8 +49,9 @@ export function validateDirectReceipt(value) {
     if (!route.startsWith('/') || !value.files[route.slice(1)] || ['/_headers', '/_redirects'].includes(route) || !/^[a-f0-9]{32}$/.test(hash)) throw Error('invalid_direct_manifest');
   }
   for (const [name, encoded] of Object.entries(value.controls)) {
-    if (!['_headers', '_redirects'].includes(name) || typeof encoded !== 'string' || encoded.length > 180000) throw Error('invalid_direct_controls');
+    if (!['_headers', '_redirects'].includes(name) || typeof encoded !== 'string' || encoded.length > Math.ceil((name === '_redirects' ? MAX_PAGES_REDIRECT_BYTES : 128 * 1024) / 3) * 4) throw Error('invalid_direct_controls');
     const bytes = Buffer.from(encoded, 'base64');
+    if (name === '_redirects') checkPagesRedirects(bytes.toString('utf8'));
     if (bytes.toString('base64') !== encoded || bytes.length !== value.files[name]?.size || createHash('sha256').update(bytes).digest('hex') !== value.files[name]?.sha256) throw Error('invalid_direct_controls');
   }
   for (const name of ['_headers', '_redirects']) if (value.files[name] && !(name in value.controls)) throw Error('missing_direct_controls');

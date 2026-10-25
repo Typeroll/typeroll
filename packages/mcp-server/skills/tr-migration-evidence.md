@@ -337,3 +337,27 @@ placeholder settings for theme decoration, preserving real featured images and
 explicit `show_image: false`. Compare actual footer link height plus gap, wrapping,
 focus and column breakpoints; compact navigation density is an intentional option.
 Verify native preview and static output on the agreed viewport boundaries.
+
+## Domain migration and redirect capacity
+
+Use `guide_publishing_domain_change` when advertised by this installation. Read
+its checklist, preview settings impact before replacing a candidate, preserve
+verified content when only redirect hosts change, and obtain explicit approval
+for the traffic summary and any interruption. A saved future hostname is not live.
+Organization-admin `onboard_publishing_domain_zone` can create a pending zone and
+review a DNS scan; copy records DNS only and verify the full inventory (especially
+mail and DKIM) before the human registrar step. Never infer completeness from a scan.
+
+Core 0.2.102 checks Pages capacity during dry-run and final upload:
+2,000 static, 100 dynamic, 1,000 characters per line, with generated slash variants
+and hostname aliases included. `_redirects` has a bounded 10 MiB transport envelope;
+`_headers` keeps 128 KiB. Source preflight counts configured rules conservatively;
+final output excludes redirects shadowing built pages. Remove obsolete shadowed
+rules at source when close to capacity. Never split `_redirects` into multiple files.
+After publication, run `verify_migration_urls` against the agreed full inventory.
+Do not delete old provider redirect lists without separate explicit approval.
+
+Record render/media reuse and actual preparation duration separately. A cache
+format, renderer, indexing or content change may require one full baseline build;
+a synthetic cache test does not prove a customer site's timing target. Media
+transfer timeouts retry the same frozen job with checkpoints, not a new publication.

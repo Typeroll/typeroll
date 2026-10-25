@@ -71,3 +71,6 @@ export * from './block-type-starters.js';
 export * from './block-parts.js';
 
 export * from './derived-source.js';
+
+export * from './pages-redirects.js';
+export * from './pages-redirect-limits.mjs';

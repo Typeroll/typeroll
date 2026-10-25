@@ -49,3 +49,8 @@ it('rejects an altered stored renderer before producing a source tree', async ()
   await getStore().setDoc(`${root}/chunks/0`, { data: template('altered renderer') });
   await expect(publicationSourceTree({ core_commit: commit })).rejects.toThrow('integrity verification');
 });
+
+it('rejects redirect limits during dry-run source preparation before a provider build', async () => {
+  const redirects = Array.from({ length: 2001 }, (_, i) => ({ from_path: `/old-${i}.html`, to_path: '/new/', status_code: 301 }));
+  await expect(publicationSourceTree({ core_commit: commit, redirects })).rejects.toThrow('2001 static');
+});

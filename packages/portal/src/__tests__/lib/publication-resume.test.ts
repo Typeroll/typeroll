@@ -37,7 +37,7 @@ it('reports failed queue submission and allows retry without discarding the appr
 });
 
 it('supersedes a parked publication when its desired domains change', async () => {
-  await saveSiteDomains('org', 'site', { revision, website_host: 'new.example.com', media_host: 'media.example.com', dns_mode: 'automatic' });
+  await saveSiteDomains('org', 'site', { revision, confirm_rebuild: true, website_host: 'new.example.com', media_host: 'media.example.com', dns_mode: 'automatic' });
   expect(await getStore().getDoc<any>(paths.deploy('org', 'site', 'job'))).toMatchObject({ status: 'failed', phase: 'superseded' });
   expect(enqueue).not.toHaveBeenCalled();
 });

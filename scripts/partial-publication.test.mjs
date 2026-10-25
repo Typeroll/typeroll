@@ -438,3 +438,29 @@ test('frozen derived output updates only its consumers and emits a content-addre
   await harness.run(true);
   assert.deepEqual(await harness.output(), output);
 });
+
+test('a domain-only preparation reuses raw HTML and matches a full build at the new origin', { timeout: 120000 }, async t => {
+  const value = publication();
+  value.site.domain = 'example.invalid';
+  value.pages.push({ ...page('home'), slug: '', path: '/' });
+  value.pages[0].html_content += '<a href="https://example.invalid/two/?source=one#detail">Second page</a>';
+  value.pages[1].canonical_url = 'https://external.invalid/original/';
+  value.settings.canonical_hosts = ['external.invalid'];
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await harness.run();
+  value.site_url = 'https://new.invalid'; value.site.domain = 'new.invalid';
+  value.pages[0].html_content = value.pages[0].html_content.replaceAll('https://example.invalid/', 'https://new.invalid/');
+  value.publication_id = 'b'.repeat(64);
+  const reused = await harness.run();
+  assert.equal(reused.report.reused, 3, JSON.stringify(reused.report));
+  assert.equal(reused.report.rendered, 0);
+  const receipts = await harness.receipts();
+  assert.equal(receipts['/one/'].reason, 'origins_rebased');
+  assert.ok(receipts['/one/'].html.includes('https://new.invalid/two/?source=one#detail'));
+  assert.ok(receipts['/two/'].html.includes('https://external.invalid/original/'));
+  const incremental = await harness.output();
+  await harness.run(true); assert.deepEqual(await harness.output(), incremental);
+  value.site_url = 'https://third.invalid'; value.site.domain = 'third.invalid';
+  value.settings.sitewide_noindex = true;
+  const policyChange = await harness.run(); assert.equal(policyChange.report.reused, 0);
+});

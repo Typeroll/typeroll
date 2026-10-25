@@ -32,7 +32,7 @@ import {
   contentPagePath,
   DEFAULT_CONTENT_TYPE,
   publicContentPage,
-  expandRedirectsForTrailingSlashPolicy,
+  pagesRedirectsFile,
   paths,
   MAIN_VERSION_ID,
 } from '@typeroll/shared';
@@ -787,19 +787,5 @@ export function buildRedirectsFile(
   redirects: Array<Pick<Redirect, 'from_path' | 'to_path' | 'status_code'>>,
   trailingSlashPolicy: TrailingSlashPolicy = 'ignore',
 ): string | null {
-  const lines: string[] = [];
-  if (site?.domain && site.domain_alias) {
-    lines.push(`https://${site.domain_alias}/* https://${site.domain}/:splat 301!`);
-  }
-  // Order is behaviour, not cosmetics: Cloudflare stops at the first
-  // matching line, so a literal rule must precede a pattern that also
-  // matches it, and `/blogg/recept/*` must precede `/blogg/*`. Sorting here
-  // (rather than trusting the collection's iteration order, which differs
-  // between the Firestore and fixtures backends) is what makes the emitted
-  // file deterministic and matches what analyzeCoverage predicts.
-  for (const r of expandRedirectsForTrailingSlashPolicy(redirects, trailingSlashPolicy)) {
-    lines.push(`${r.from_path} ${r.to_path} ${r.status_code}`);
-  }
-  if (lines.length === 0) return null;
-  return lines.join('\n') + '\n';
+  return pagesRedirectsFile(redirects, { trailing_slash: trailingSlashPolicy }, site ?? {}) || null;
 }
