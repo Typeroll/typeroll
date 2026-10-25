@@ -3,8 +3,7 @@
 //
 // Switch a page's content_mode. Always snapshots a revision before the
 // flip so the previous state survives. `convert: true` is refused:
-// HTML-to-blocks is a preview a person accepts, and this route never
-// rewrites the body.
+// no automatic converter is available, and this route never rewrites the body.
 
 import type { APIRoute } from 'astro';
 import { json, requireSiteAccess, requirePermission } from '../../../../../../lib/access';

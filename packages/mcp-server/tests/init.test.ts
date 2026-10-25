@@ -34,6 +34,19 @@ describe('agent-neutral workspace', () => {
     expect((await readWorkspace(dir)).site_id).toBe('selected');
     expect(result.find(row => row.path === 'brief/site.md')?.action).toBe('modified');
   });
+  it('adds routines to an older workspace without replacing owner rules or SEO strategy', async () => {
+    await writeWorkspaceFiles(dir, { 'AGENTS.md': 'Previous starter' }, false);
+    await fs.mkdir(path.join(dir, 'brief'), { recursive: true });
+    await fs.writeFile(path.join(dir, 'brief/rules.md'), 'Keep approved legal copy unchanged.');
+    await fs.writeFile(path.join(dir, 'brief/seo.md'), 'Preserve our existing article URLs.');
+    await runInit({ dir, update: true });
+    expect(await read('brief/rules.md')).toBe('Keep approved legal copy unchanged.');
+    expect(await read('brief/seo.md')).toBe('Preserve our existing article URLs.');
+    expect(await read('workflows/migration.md')).toContain('Migrate [source URL]');
+    expect(await read('workflows/migration.md')).toContain('no manual editor conversion');
+    expect(await read('workflows/README.md')).toContain('tr-seo');
+    expect(await read('AGENTS.md')).toContain('brief/rules.md');
+  });
   it('reruns without duplicating ignore rules and keeps existing untracked agent instructions', async () => {
     await fs.writeFile(path.join(dir, 'AGENTS.md'), 'My project rules');
     await runInit({ dir }); const ignore = await read('.gitignore');

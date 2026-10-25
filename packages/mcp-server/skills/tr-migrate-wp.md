@@ -165,7 +165,7 @@ c. Migrate referenced images with `upload_media_from_url`. The customer's
    media reference only after verification. Stop and report a failed required
    transfer; do not silently hotlink the WordPress source.
 
-The managed importer stores cleaned HTML. Typeroll does not convert HTML into blocks, and `set_page_mode` never rewrites HTML. Pages move to blocks only when someone rebuilds them with blocks.
+The managed importer stores cleaned HTML. Typeroll does not convert HTML into blocks, and `set_page_mode` never rewrites HTML. You, the external agent, rebuild the imported content with ordinary block tools. The owner does not need to convert every Page manually. There is no editor conversion preview; it was removed in Core 0.2.58. Preserve the complete source before switching modes and never publish the empty intermediate Page.
 
 d. Rebuild into editable blocks according to the selected intent. Preserve exact
    wording in preserve mode; track approved changes in renew mode. Map headings,

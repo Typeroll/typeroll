@@ -14,6 +14,26 @@ Hosted compact discovery and the Site Organization ID check require Core
 [hosted connection](../mcp-server/). These are version requirements, not a promise
 that every Cloud or self-hosted portal has already upgraded.
 
+## A starter you can keep in your own repository
+
+Use `typeroll init` below to generate the starter rather than copying an old
+website or maintaining a second template repository. It creates a normal folder
+that you can keep in your own private Git repository. No repository or remote
+Site is created automatically. This planning workspace is separate from the
+Typeroll-managed publication repository; never edit generated publishing source
+to change the website.
+
+The starter has places for the owner's wishes and rules, brand direction,
+content model, SEO strategy, migration plan, decisions, task routines and QA.
+The owner and agent can maintain these together. Current Pages, schema and
+settings remain in the CMS, not in duplicated local exports.
+
+The expanded rules/SEO/routines scaffold requires MCP 0.45.77 or later. If that
+release is not installed yet, create those Markdown files yourself using the
+structure below; hosted MCP editing does not depend on the local scaffold.
+`@latest` selects the published starter version. The generated lock records it;
+client adapters pin their generated MCP version. Review upgrades explicitly.
+
 ## Start without a repository
 
 1. Connect your agent to `https://app.typeroll.com/api/mcp?tools=compact`.
@@ -35,7 +55,7 @@ check `get_import_readiness`. This is distinct from ordinary new draft uploads.
 Use Node.js 20 or later for the standalone MCP package:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site
+npx @typeroll/mcp-server@latest init ./my-site
 ```
 
 This is a local filesystem operation: it creates no remote Site, repository,
@@ -53,7 +73,13 @@ my-site/
 ├── brief/
 │   ├── site.md
 │   ├── brand.md
-│   └── content-model.md
+│   ├── content-model.md
+│   ├── migration.md
+│   ├── rules.md
+│   └── seo.md
+├── workflows/
+│   ├── README.md
+│   └── migration.md
 ├── decisions.md
 ├── sources/README.md
 ├── scripts/README.md
@@ -62,6 +88,15 @@ my-site/
 
 - **Brief:** purpose, audience, languages, brand, editorial constraints, content
   authority, types/routes and desktop/mobile navigation intent.
+- **Owner rules:** `brief/rules.md` records confirmed preferences, writing and
+  design constraints, approval boundaries and exceptions, with dates and owners.
+  Distinguish proposals from approved decisions. Local notes do not bypass permissions.
+- **SEO strategy:** `brief/seo.md` records audiences, search intent, research
+  evidence, topic coverage, page roles, URL/indexing policy, editorial standards
+  and measurement. Actual metadata, canonicals and robots settings live in the CMS.
+- **Routines:** `workflows/README.md` maps tasks to the relevant project files and
+  on-demand MCP skills. `workflows/migration.md` includes a copyable kickoff prompt.
+  Add your own routines with inputs, steps, acceptance checks and approval boundaries.
 - **Decisions:** approved scope, design choices and deliberate deviations.
 - **Sources:** research and proposals. Keep private extracts in ignored
   `sources/private/`. Do not store media libraries or current CMS content as a
@@ -126,15 +161,40 @@ Use private client settings or environment injection. `.gitignore` excludes
 `.env`, local client configurations and temporary/private output. Ignore rules
 cannot remove secrets that were already committed; inspect existing repositories.
 
+## Give the agent a clear starting instruction
+
+For a new website, fill in this prompt:
+
+```text
+Create [website] for [audience and purpose] in Typeroll Organization [ID/name].
+Read AGENTS.md, confirm the Site and Version, and help me complete brief/site.md,
+brand.md, content-model.md, rules.md and seo.md. Separate proposals from decisions.
+Read tr-new-site and relevant tool schemas on demand. Build representative desktop
+and mobile layouts with editable blocks and shared templates, then share previews.
+Record my preferences and agreed exceptions so another session can continue.
+Do not publish, change DNS or send messages without explicit approval.
+```
+
+For an existing WordPress website, use the
+[copyable migration prompt](../../guides/wordpress-migration/#copyable-agent-kickoff)
+and choose preserve or renew first. The agent does the block reconstruction;
+the owner reviews the outcome rather than manually converting every imported Page.
+
+Read `AGENTS.md` and the task's relevant files at the start of each session.
+Keep durable rules separate from temporary research and load only the relevant
+SEO, migration or other recipe. On a client without local filesystem access,
+place the brief and rules in its project context and connect hosted MCP directly.
+The hosted server cannot read a local folder automatically.
+
 ## Optional local client configuration
 
 Hosted MCP is sufficient. If your client launches local stdio processes, you can
 also generate a client configuration explicitly:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client claude
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client cursor
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client vscode
+npx @typeroll/mcp-server@latest init ./my-site --client claude
+npx @typeroll/mcp-server@latest init ./my-site --client cursor
+npx @typeroll/mcp-server@latest init ./my-site --client vscode
 ```
 
 Choose one command for your client. These generate `.mcp.json`, `.cursor/mcp.json`
@@ -154,14 +214,14 @@ After creation, fill the IDs in `typeroll.json` and reconnect before editing.
 For clients without an adapter, launch:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 workspace-mcp ./my-site
+npx @typeroll/mcp-server@latest workspace-mcp ./my-site
 ```
 
 ## Check the setup
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 doctor ./my-site --offline
-npx @typeroll/mcp-server@0.45.23 doctor ./my-site --json
+npx @typeroll/mcp-server@latest doctor ./my-site --offline
+npx @typeroll/mcp-server@latest doctor ./my-site --json
 ```
 
 The online command uses the injected API key. It reads accessible sites, the
@@ -230,7 +290,7 @@ restore the named-tool catalog if a client handles it better.
 ## Update without losing project work
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --update
+npx @typeroll/mcp-server@latest init ./my-site --update
 ```
 
 An unchanged generated file can be upgraded. A user-edited file is reported as
@@ -246,8 +306,8 @@ Without `--client`, the updater leaves local client configurations alone.
 Recipes are served by MCP by default. For offline reference, opt in:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes
-npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes --update
+npx @typeroll/mcp-server@latest init ./my-site --recipes
+npx @typeroll/mcp-server@latest init ./my-site --recipes --update
 ```
 
 They live in neutral `typeroll-skills/` and follow the same hash-based update

@@ -41,6 +41,10 @@ design/content plan). Record that decision before writes. In both cases prefer
 standard blocks, then editable custom types, and only rare documented HTML
 exceptions. Keep every old public URL working or meaningfully redirected.
 Managed HTML import is only an intermediate step, not completed reconstruction.
+The external agent rebuilds it with ordinary block tools; the owner need not
+manually convert each Page. No automatic converter or editor conversion preview
+is available. The workspace stores owner rules in brief/rules.md, search strategy
+in brief/seo.md and task entry points in workflows/.
 Use personal OAuth or a scoped API key with the required Site/Organization access.
 
 ## What this is

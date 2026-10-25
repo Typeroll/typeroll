@@ -1,6 +1,6 @@
 ---
 title: WordPress Migration
-description: A complete guide to migrating a WordPress site to Typeroll with shared categories, preserved HTML and a reviewed presentation.
+description: Import WordPress content, rebuild editable blocks with your AI agent, preserve URLs and verify the website before launch.
 ---
 
 import { Steps, Aside } from "@astrojs/starlight/components";
@@ -86,6 +86,33 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 
 ## Running the migration
 
+### Copyable agent kickoff
+
+For a substantial migration, create an [agent workspace](../../getting-started/agent-workspace/)
+and keep the brief, owner rules and SEO strategy there. Fill in this prompt:
+
+```text
+Migrate [source URL] to Typeroll, Organization [ID/name], Site [ID/name], Version [ID].
+Our goal is [preserve the existing appearance and content / renew it against an agreed brief].
+Read tr-migration-evidence, then tr-migrate-wp (or the appropriate source recipe).
+Confirm the target and check import readiness before writes. Inventory source URLs,
+content, media, shared templates and integrations. Record the brief and SEO strategy.
+Build and verify one prototype per distinct layout before bulk reconstruction.
+Use standard blocks first, editable custom block types when needed, and isolated HTML
+only for documented exceptions. Rebuild imported HTML with the block tools; a mode
+switch does not convert it. Preserve wording unless rewriting is explicitly agreed.
+Preserve every old public URL or redirect it to a relevant working destination.
+Protect existing CMS edits. Review mobile/desktop appearance, content, downloads,
+forms and URL coverage, and report unverified items separately.
+Do not publish, switch DNS or send messages without explicit approval.
+```
+
+The workspace's `workflows/migration.md` carries the same kickoff routine in the
+updated starter. With hosted MCP alone, keep these decisions in your agent's
+project instructions; a local repository is optional.
+
+### Short requests after setup
+
 Start your AI agent and describe the migration:
 
 ```
@@ -104,9 +131,9 @@ The AI agent will:
 1. Call `get_import_readiness` and resolve any storage requirements, then verify the WP REST API connection
 2. Build an inventory of all URLs on the site
 3. Import shared categories and tags, including archive URLs, hierarchy and available custom fields
-4. Import pages and posts with taxonomy references and native blocks, transferring referenced images along the way; custom post types become Content types
-5. Generate redirects
-6. Show you a coverage report
+4. Import pages and posts with taxonomy references and cleaned HTML, transferring referenced images along the way; custom post types become Content types
+5. Rebuild the imported material as editable blocks and shared templates, after verifying representative prototypes
+6. Generate redirects and show coverage, reconstruction and review results separately
 
 ### Server-side migration workflow
 
@@ -181,7 +208,21 @@ table of contents as a generated block in a Page template, never a copied field
 on each article. Test forms and Extensions separately; a rendered shell does not
 prove that the integration works.
 
-Imported pages stay in HTML mode. Automatic HTML-to-blocks conversion is not applied. A person can preview a conversion in the page editor; the preview lists text, classes and markup it could not represent and writes nothing until that person accepts it.
+### From imported HTML to editable blocks
+
+HTML is the managed importer's intermediate format, not the intended final result
+of a block-based migration. Your external AI agent reads that content and rebuilds
+it with the ordinary MCP/API block and template tools. You do not need to convert
+every Page manually in the editor. An agent can also create block Pages directly
+from the WordPress source, without staging an HTML Page first.
+
+Typeroll has no automatic HTML-to-blocks converter. The old editor conversion
+preview was removed in Core 0.2.58. Switching a Page to block mode does not convert
+its HTML; on a newly imported Page there are no blocks to display yet. The agent
+must preserve the complete source, build the block tree, save and read it back,
+and review the result before publication. Work on the selected Version and keep
+incomplete Pages out of publication. A reviewed prototype establishes the reusable
+mapping before the agent applies it to the remaining Pages.
 
 Conversion notes are included in the workflow review. Use an HTML block
 only for an uncommon source-specific exception; recurring requirements belong
@@ -351,20 +392,22 @@ surfaces or unexplained regressions before visual signoff.
 
 ### Preserve media positions when converting HTML
 
-Import does not turn that HTML into blocks. The preview converter is separate, and a person has to accept it before a page changes.
+Import does not turn that HTML into blocks. The agent must preserve media order while reconstructing the content with block tools; changing the Page mode is not a conversion.
 
-Core 0.2.35+ applies browser-compatible HTML tree construction to the **raw source**
-before restoring lazy media or sanitizing markup. Do not parse and serialize a
-malformed WordPress body with a different parser first: that can move images across
-heading boundaries before Typeroll receives it. Keep the original response for QA.
-Image-only heading wrappers become native image blocks in their original body
-position, rather than empty semantic headings or image entries in the generated TOC.
-Meaningful heading IDs remain intact; duplicate noscript media fallbacks are removed.
+Work from the **raw source** and keep the original response for QA. Parsing and
+serializing malformed WordPress markup before reconstruction can move images
+across heading boundaries. Inspect the browser's actual source layout as well as
+the markup. Restore lazy images before deciding that media is missing.
+
+Rebuild image-only heading wrappers as native image blocks in their original body
+position, rather than empty headings or image entries in the generated table of
+contents. Preserve meaningful heading IDs and avoid duplicating noscript image
+fallbacks. These are checks the agent must perform, not automatic conversion
+features.
 
 Compare the ordered sequence of headings, text, media and CTAs, not just counts or
 image presence. Include malformed heading wrappers, lazy images, related-content
-boundaries and images after several sections. This update does not rewrite existing
-Pages. For an already migrated site, repair affected block positions against the
+boundaries and images after several sections. For an already migrated site, repair affected block positions against the
 raw source and review the generated page; do not reimport over subsequent edits.
 
 ### Preserve banners and missing-image states
