@@ -223,7 +223,7 @@ export async function renderPreview(
       ...pageContentValues(publicContentPage(page, contentType)),
       breadcrumbs,
     },
-    site: siteContext(settings as unknown as Record<string, unknown>),
+    site: { ...siteContext(settings as unknown as Record<string, unknown>), url: seoBase },
     // Paginating listings render their first slice in the preview; the
     // pager appears but its /page/N/ links only exist on the deployed
     // site (route generation is the SSG's job).

@@ -127,7 +127,7 @@ export async function treeWriteWarnings(
   if (blocks === undefined) return [];
   const types = registry ?? await siteBlockRegistry(ctx);
   const warnings = blockTreeWarnings(blocks, 'blocks', types);
-  if (JSON.stringify(blocks).includes(`"${PART_STYLES_FIELD}"`)) {
+  { // Global part styles also need the actual containing surface checked.
     const site = await partStyleSite(ctx);
     warnings.push(...treePartStyleIssues(blocks, types, site.styles, { contrast: site }).map(partStyleWarning));
   }

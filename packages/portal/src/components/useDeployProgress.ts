@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { DeployJob } from '@typeroll/shared';
 
 export interface DeployProgress {
+  build_progress?: { status: string; attempt: number; step: string; completed: number; total: number } | null;
   render_report?: DeployJob['render_report'];
   seo_report?: DeployJob['seo_report'];
   id?: string;

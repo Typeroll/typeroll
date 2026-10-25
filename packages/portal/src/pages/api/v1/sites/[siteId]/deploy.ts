@@ -1,3 +1,4 @@
+import { unsavedPublicationTargets } from '../../../../../lib/deploy/unsaved';
 import { retryPublicationVerification } from '../../../../../lib/publishing/verification-retry';
 import { ConnectionError } from '../../../../../lib/publishing/connections';
 // POST /api/v1/sites/{siteId}/deploy
@@ -28,7 +29,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const body = (await request.json().catch(() => ({}))) as {
     environment?: DeployEnvironment;
     dry_run?: boolean;
-    retry_verification_job_id?: string;
+    allow_unsaved?: boolean; retry_verification_job_id?: string;
   };
   if (body.retry_verification_job_id !== undefined) {
     try {
@@ -46,6 +47,12 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
 
   const store = getStore();
+  const unsaved = await unsavedPublicationTargets(ctx.orgId, ctx.siteId, ctx.versionId);
+  if (unsaved.length && body.allow_unsaved !== true) return privateJson({
+    code: 'unsaved_content', error: 'Pages or shared blocks have unsaved edits. Save or discard them, or explicitly publish the saved content only.',
+    unsaved, requires_confirmation: true,
+  }, 409);
+
   const jobId = await store.addDoc(paths.deploys(ctx.orgId, ctx.siteId), {
     version_id: ctx.versionId,
     environment,

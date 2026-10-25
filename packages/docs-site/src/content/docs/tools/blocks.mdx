@@ -692,6 +692,8 @@ chosen for that kind apply.
 |                                                   | `help`              | Help text                                    | text       | `part_styles`         |
 |                                                   | `error`             | Error message                                | text       | `part_styles`         |
 | Video (`core/video`)                              | `player`            | Player                                       | image      | `part_styles`         |
+|                                                   | `facade`            | Video placeholder (click-to-load)            | button     | `part_styles`         |
+|                                                   | `facade_label`      | Load video label                             | button     | `part_styles`         |
 | Yes / No answer (`form/boolean`)                  | `label`             | Label                                        | text       | `part_styles`         |
 |                                                   | `choice`            | Answer row                                   | container  | `part_styles`         |
 |                                                   | `choice_mark`       | Answer mark                                  | container  | `part_styles`         |
@@ -1965,3 +1967,30 @@ per item. `add_block` and `update_block` (`POST`/`PATCH .../blocks`, for pages
 and other containers) return these warnings for the fields they write; page,
 partial and batch writes return them for the whole tree. Both check the site's
 own block types as well as core.
+
+## Migration design controls
+
+Available with Core 0.2.103. Read the current schema with `read_block_type` before
+writing fields; responsive values use `mobile`, `tablet`, `laptop`, `desktop`
+and `wide` keys.
+
+- `core/columns.content_gap_px` controls spacing between blocks **inside** each
+  slot; `gap_px` controls spacing **between** columns.
+- `core/section.padding_y` accepts responsive presets. Use vertical padding for
+  vertical changes; CSS `padding` shorthand always affects horizontal sides too.
+- `template/site_logo.mode: "text"` renders a styled text wordmark. `text`
+  overrides the site name; `image` can override the image for one header/footer.
+- `core/image.never_upscale: true` keeps small images within their intrinsic width.
+  Contain/crop and responsive framing remain separate choices.
+- `core/hero` supports `focal_x`, `focal_y`, `image_fit`, `aspect_ratio`,
+  `text_vertical` and `text_align`. Full-image headings inherit the surface color.
+  Background containers also support focal points and `background_fit`.
+- `core/post_card.image_alt` supplies the image description. Listing cards can
+  map `image_alt_field`; an empty decorative image retains the link-title fallback.
+- `core/video.click_to_load: true` shows an accessible button instead of loading
+  a YouTube/Vimeo iframe immediately. An optional `poster` is loaded normally;
+  choose a locally hosted poster to avoid contacting a provider before activation.
+  No remote thumbnail is fetched automatically. This is not a consent manager.
+
+Check actual mobile and desktop rendering, especially text on photographs. A
+solid-color contrast warning cannot certify a photograph, gradient or custom CSS.

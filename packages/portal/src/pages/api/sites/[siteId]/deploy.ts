@@ -1,3 +1,4 @@
+import { unsavedPublicationTargets } from '../../../../lib/deploy/unsaved';
 import { retryPublicationVerification } from '../../../../lib/publishing/verification-retry';
 import { ConnectionError } from '../../../../lib/publishing/connections';
 // Deploy entry point.
@@ -33,7 +34,7 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   if (!adminCheck.ok) return adminCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
 
-  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; retry_verification_job_id?: string };
+  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; allow_unsaved?: boolean; retry_verification_job_id?: string };
   if (body.retry_verification_job_id !== undefined) {
     try {
       if (typeof body.retry_verification_job_id !== 'string') return json({ error: 'Provide a deployment ID.' }, 400);
@@ -65,6 +66,12 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   } catch {
     // A site with no deploys yet has no collection. Not a reason to refuse.
   }
+
+  const unsaved = await unsavedPublicationTargets(owner_org_id, site.id, versionId);
+  if (unsaved.length && body.allow_unsaved !== true) return json({
+    code: 'unsaved_content', error: 'Pages or shared blocks have unsaved edits. Save or discard them, or explicitly publish the saved content only.',
+    unsaved, requires_confirmation: true,
+  }, 409);
 
   const jobId = await store.addDoc(paths.deploys(owner_org_id, site.id), {
     version_id: versionId,

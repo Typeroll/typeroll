@@ -198,6 +198,9 @@ const siteLogo: BlockType = {
   schema: [
     // The root is the home link; without a logo image it shows the site name.
     { name: 'style_id', type: 'style', label: 'Logo link style', style_target: 'link', editor_group: 'content' },
+    { name: 'mode', type: 'select', label: 'Logo mode', options: ['image','text'], default: 'image' },
+    { name: 'text', type: 'text', label: 'Wordmark (defaults to site name)' },
+    { name: 'image', type: 'image', label: 'Image override for this background' },
     pixels('height_px', 'Height (px)', 16, 240),
     { name: 'height', type: 'select', label: 'Height', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'link_to_home', type: 'boolean', label: 'Link to home', default: true },

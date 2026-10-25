@@ -365,9 +365,10 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   if (effectiveBlock.type === 'template/page_author' && !String((options.context?.page?.author as { name?: string } | undefined)?.name ?? '').trim()) return '';
   if (effectiveBlock.type === 'template/site_logo') {
     const site = options.context?.site;
-    compiled.flatData.site_logo_html = site?.logo
-      ? `<img src="${escapeHtml(site.logo)}" alt="${escapeHtml(site.name ?? '')}" />`
-      : escapeHtml(site?.name || 'Home');
+    const logo = compiled.flatData.image || site?.logo;
+    const name = compiled.flatData.text || site?.name || 'Home';
+    compiled.flatData.site_logo_html = compiled.flatData.mode !== 'text' && logo
+      ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(name)}" />` : escapeHtml(name);
   }
   if (effectiveBlock.type === 'template/page_breadcrumbs') {
     compiled.flatData.breadcrumbs_html = renderBreadcrumbs(
@@ -402,6 +403,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       effectiveBlock.data?.links,
       options.context?.page,
       effectiveBlock.type === 'core/navigation_links',
+      String(options.context?.site?.url ?? ''),
     );
   }
   if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots);
@@ -1403,6 +1405,7 @@ function renderNavigationLinks(
   raw: unknown,
   page: Record<string, unknown> | undefined,
   withIcons = false,
+  siteUrl = '',
 ): string {
   if (!Array.isArray(raw)) return '';
   const currentRaw = String(page?.path ?? page?.url ?? page?.slug ?? '/');
@@ -1414,14 +1417,18 @@ function renderNavigationLinks(
       return value === '/' ? '/' : value.replace(/[?#].*$/, '').replace(/\/+$/, '');
     }
   };
-  const current = normalize(currentRaw.startsWith('/') ? currentRaw : `/${currentRaw}`);
+  const base = /^https?:\/\//i.test(siteUrl) ? siteUrl : /^https?:\/\//i.test(currentRaw) ? currentRaw : 'https://typeroll.invalid';
+  const currentUrl = new URL(currentRaw.startsWith('/') || /^https?:/i.test(currentRaw) ? currentRaw : `/${currentRaw}`, base);
+  const current = normalize(currentUrl.href);
   return raw
     .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
     .map((entry) => {
       const label = String(entry.label ?? '').trim();
       const href = String(entry.href ?? '').trim();
       if (!label || !href) return '';
-      const ariaCurrent = normalize(href) === current ? ' aria-current="page"' : '';
+      let sameOrigin = false, targetPath = '';
+      try { const target = new URL(href, currentUrl); sameOrigin = target.origin === currentUrl.origin; targetPath = normalize(target.href); } catch { /* Not a navigable URL. */ }
+      const ariaCurrent = sameOrigin && !href.startsWith('#') && targetPath === current ? ' aria-current="page"' : '';
       const icon = withIcons ? String(entry.icon ?? '').trim() : '';
       return `<li><a href="${escapeHtml(href)}"${ariaCurrent}>${icon ? `<span class="block-nav-icon" aria-hidden="true">${renderIconHtml(icon)}</span><span>${escapeHtml(label)}</span>` : escapeHtml(label)}</a></li>`;
     })

@@ -18,13 +18,14 @@
 // The deploy runner keeps its belt-and-braces drop for anything that slips
 // through (a page published after the rule was created).
 
-import { paths, validateRedirectPattern, pagesShadowedByRedirect, isRedirectPattern } from '@typeroll/shared';
-import type { Page } from '@typeroll/shared';
+import { paths, validateRedirectPattern, pagesShadowedByRedirect, isRedirectPattern, matchRedirect, sortRedirectsForEmit } from '@typeroll/shared';
+import type { Page, Redirect } from '@typeroll/shared';
 import { vstore } from './version-store';
 import { pageUrlFromDoc } from './page-paths';
 import { isLivePageStatus } from './redirect-hygiene';
 
-export type RedirectWriteCheck = { ok: true } | { ok: false; error: string };
+export type RedirectWarning = { code: 'redirect_chain' | 'redirect_loop'; from_path: string; via: string[]; final_target: string };
+export type RedirectWriteCheck = { ok: true; warnings?: RedirectWarning[] } | { ok: false; error: string };
 
 /**
  * Doc id for a redirect. Patterns need distinct ids from the literal paths
@@ -80,5 +81,25 @@ export async function checkRedirectWrite(args: {
           : 'Delete or unpublish the page first if the redirect is what you want.'),
     };
   }
-  return { ok: true };
+  const existing = await vstore.redirects(args.orgId, args.siteId, args.versionId);
+  const warnings = redirectChainWarnings([...existing.filter(rule => rule.from_path !== args.from_path), { id:'candidate', from_path:args.from_path, to_path:args.to_path, status_code:301 }]);
+  return { ok: true, ...(warnings.length ? { warnings } : {}) };
+}
+
+/** Check literal entry paths through the same ordered rules used at publication. */
+export function redirectChainWarnings(rules: Redirect[]): RedirectWarning[] {
+  const ordered = sortRedirectsForEmit(rules);
+  return rules.filter(rule => !isRedirectPattern(rule.from_path)).flatMap<RedirectWarning>(rule => {
+    let path = rule.from_path;
+    const via: string[] = [], seen = new Set<string>();
+    for (let hop = 0; hop < 16; hop++) {
+      if (seen.has(path)) return [{ code:'redirect_loop' as const, from_path:rule.from_path, via, final_target:path }];
+      seen.add(path);
+      const target = ordered.map(candidate => matchRedirect(candidate.from_path, candidate.to_path, path)).find(value => value !== null);
+      if (target == null) break;
+      via.push(path); path = target;
+      if (!path.startsWith('/') || path.startsWith('//') || path.includes('?') || path.includes('#')) break;
+    }
+    return via.length > 1 ? [{ code:'redirect_chain' as const, from_path:rule.from_path, via, final_target:path }] : [];
+  });
 }

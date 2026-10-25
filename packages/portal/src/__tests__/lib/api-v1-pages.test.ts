@@ -610,6 +610,17 @@ describe('POST /api/v1/sites/{siteId}/pages/batch-read', () => {
 describe('POST /api/v1/sites/{siteId}/pages/batch-write', () => {
   beforeEach(async () => { await resetDatastore(); });
 
+  it('reports status-only patches as saved without committing existing content drafts', async () => {
+    const { token } = await setup();
+    await seedPage('home', {title:'Saved',status:'draft'});
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.workingCopy(ORG,SITE,'page:home',MAIN_VERSION_ID), {kind:'page',target_id:'home',fields:{title:'Unsaved'}});
+    const response = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/batch-write'),'POST',`http://localhost/api/v1/sites/${SITE}/pages/batch-write`,{siteId:SITE},{headers:bearer(token),body:[{page_id:'home',patch:{status:'published'}}]});
+    expect(response.status).toBe(200);
+    expect((await response.json()).results[0]).toMatchObject({saved:true,staged:[],applied_immediately:['status']});
+    expect(await getStore().getDoc(paths.workingCopy(ORG,SITE,'page:home',MAIN_VERSION_ID))).toMatchObject({fields:{title:'Unsaved'}});
+  });
+
   it('applies patches per-row, reports per-row outcomes', async () => {
     const { token } = await setup();
     await seedPage('home', { title: 'Home', html_content: '<p>a</p>' });

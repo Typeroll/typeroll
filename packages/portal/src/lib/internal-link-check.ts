@@ -34,6 +34,8 @@ export interface InternalLinkReport {
   redirected_links: number;
   broken_links: number;
   broken: BrokenInternalLink[];
+  draft_sources: string[];
+  unpublished_targets: Array<{ from: string; href: string; resolved_path: string; page_id: string }>;
   routes: number;
   resources_scanned: number;
 }
@@ -63,11 +65,13 @@ export async function checkInternalLinks(args: {
   const types = new Map(contentTypes.map(type => [type.id, type]));
   if (!types.has('page')) types.set('page', DEFAULT_CONTENT_TYPE);
   const routes = new Set<string>(['/404.html', '/robots.txt', '/sitemap.xml']);
-  const livePages = pages.filter(page => page.status === 'published' || page.status === 'unlisted').flatMap(page => {
+  const allPages = pages.flatMap(page => {
     const type = types.get(page.content_type ?? 'page');
     const resolved = type ? resolveContentPage(page, type) : null;
     return resolved ? [resolved] : [];
   });
+  const livePages = allPages.filter(page => page.status === 'published' || page.status === 'unlisted');
+  const drafts = new Map(allPages.filter(page => page.status !== 'published' && page.status !== 'unlisted').map(page => [normalizeRoute(page.path!), page.id]));
   for (const page of livePages) routes.add(normalizeRoute(page.path!));
   for (const type of types.values()) {
     const published = pages.filter(page => page.status === 'published' && (page.content_type ?? 'page') === type.id)
@@ -89,7 +93,7 @@ export async function checkInternalLinks(args: {
   }
 
   const sources: LinkSource[] = [];
-  for (const page of livePages) {
+  for (const page of allPages) {
     sources.push({
       label: `page:${page.id}`,
       value: { body: contentOf(page), fields: page.fields },
@@ -104,6 +108,7 @@ export async function checkInternalLinks(args: {
   }
   const sortedRedirects = sortRedirectsForEmit(redirects);
   const broken: BrokenInternalLink[] = [];
+  const unpublished: InternalLinkReport['unpublished_targets'] = [];
   let checkedLinks = 0;
   let validLinks = 0;
   let redirectedLinks = 0;
@@ -122,6 +127,8 @@ export async function checkInternalLinks(args: {
       if (resolved.ok) {
         validLinks++;
         if (resolved.redirected) redirectedLinks++;
+      } else if (drafts.has(resolved.path) && ['missing_route','broken_redirect'].includes(resolved.reason)) {
+        unpublished.push({ from: source.label, href, resolved_path: resolved.path, page_id: drafts.get(resolved.path)! });
       } else {
         broken.push({ from: source.label, href, resolved_path: resolved.path, reason: resolved.reason });
       }
@@ -135,6 +142,8 @@ export async function checkInternalLinks(args: {
     redirected_links: redirectedLinks,
     broken_links: broken.length,
     broken,
+    unpublished_targets: unpublished,
+    draft_sources: allPages.filter(page => page.status !== 'published' && page.status !== 'unlisted').map(page => `page:${page.id}`),
     routes: routes.size,
     resources_scanned: sources.length,
   };
@@ -147,6 +156,7 @@ function contentOf(doc: Pick<Page | PartialDoc, 'content_mode' | 'html_content' 
 function extractHrefs(value: unknown): string[] {
   const out: string[] = [];
   const visit = (entry: unknown, key?: string): void => {
+    if (key && ['part_styles','style_overrides','style_id','responsive_breakpoints','css','inline_style'].includes(key)) return;
     if (typeof entry === 'string') {
       for (const match of entry.matchAll(/\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/giu)) {
         out.push(match[1] ?? match[2] ?? match[3] ?? '');

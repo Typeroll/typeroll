@@ -233,7 +233,7 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
   },
   // A file plays in <video>; PART_SAMPLE_MARKUP adds the embed player.
-  'core/video': { source: 'url', video_url: '/media/sample.mp4' },
+  'core/video': { source: 'youtube', video_url: 'https://youtu.be/dQw4w9WgXcQ', click_to_load: true },
   // Without a page, the link to / is the current page's.
   'core/navigation': { links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/' }] },
   'core/accordion': {
@@ -276,7 +276,7 @@ export const PART_SAMPLE_MARKUP: Record<string, (root: Element) => void> = {
     + '<p class="pagefind-ui__result-title"><a class="pagefind-ui__result-link" href="/guide/">Guide</a></p><p class="pagefind-ui__result-excerpt">The <mark>guide</mark></p></div></li></ol>'
     + '<button type="button" class="pagefind-ui__button">Load more results</button></div></div></form></div>'),
   // The sample plays a file (<video>); YouTube and Vimeo play in an iframe.
-  'core/video': root => { if (!root.querySelector('iframe')) root.insertAdjacentHTML('beforeend', '<iframe src="https://www.youtube-nocookie.com/embed/sample" title="Video"></iframe>'); },
+  'core/video': root => { if (!root.querySelector('video')) root.insertAdjacentHTML('beforeend', '<video src="/media/sample.mp4"></video>'); if (!root.querySelector('iframe')) root.insertAdjacentHTML('beforeend', '<iframe src="https://www.youtube-nocookie.com/embed/sample" title="Video"></iframe>'); },
 };
 
 

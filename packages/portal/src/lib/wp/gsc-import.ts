@@ -82,6 +82,11 @@ export async function fetchGscMetrics(args: {
         rowLimit,
         startRow,
       },
+    }).catch(async (error: unknown) => {
+      let email = 'the configured Search Console service account';
+      try { email = (await auth.getCredentials()).client_email || email; } catch { /* Account discovery may be unavailable. */ }
+      const status = (error as {response?:{status?:number}})?.response?.status;
+      throw new Error(`Search Console query failed${status ? ` (HTTP ${status})` : ''} for property "${args.property}". Grant read access to ${email} on this exact property. If the API is disabled, the platform administrator must enable searchconsole.googleapis.com. Domain and URL-prefix properties have separate permissions; choose another property explicitly or import a CSV export.`);
     });
     const batch = response.data.rows ?? [];
     for (const row of batch) {

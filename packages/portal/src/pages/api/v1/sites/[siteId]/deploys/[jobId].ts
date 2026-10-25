@@ -1,3 +1,4 @@
+import { publicationBuildProgress } from '../../../../../../lib/builds/public-progress';
 import { refreshBuildFailure } from '../../../../../../lib/builds/failure-status';
 import { attachBuildFailureLog } from '../../../../../../lib/builds/failure-log';
 // GET /api/v1/sites/{siteId}/deploys/{jobId}
@@ -61,6 +62,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const siteUrls = publicUrlsFor(ctx.site);
   return apiResponse(ctx, {
     job: doc,
+    build_progress: await publicationBuildProgress(ctx.orgId, ctx.siteId, { ...doc, id: jobId }),
     queued_for_seconds: queuedFor,
     // Hint for agents polling: stop after this many seconds in queued
     // — at that point we'll auto-flip to failed anyway, so a poll

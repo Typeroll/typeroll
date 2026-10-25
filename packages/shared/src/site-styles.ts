@@ -598,6 +598,10 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
   for (const style of styles) {
     const role = style.role as StyleElementRole | undefined;
     if (role && (STYLE_ELEMENT_ROLES as readonly string[]).includes(role)) {
+      const spacing = (props: StyleProps) => /^h[1-6]$/.test(role) ? [props.space_before ? `margin-block-start:${props.space_before}` : '', props.space_after ? `margin-block-end:${props.space_after}` : ''].filter(Boolean).join(';') : '';
+      const selector = `${role}:not(#\\#)`;
+      if (spacing(style.base)) rules.push(`${selector}{${spacing(style.base)}}`);
+      for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp] && spacing(style.at[bp]!)) rules.push(`${media(bp)}{${selector}{${spacing(style.at[bp]!)}}}`);
       pushRoot('base', roleVariables(role, style.base));
       for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp]) pushRoot(bp, roleVariables(role, style.at[bp]!));
       continue;

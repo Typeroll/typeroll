@@ -50,7 +50,7 @@ describe('core/video from render version 7', () => {
   });
 
   it('renders nothing for an address that is not http(s) or a path', () => {
-    expect(render(video({ source: 'url', video_url: 'javascript:alert(1)' }))).toContain('<div data-block="video" data-source="url" style="--aspect_ratio:16:9"></div>');
+    expect(render(video({ source: 'url', video_url: 'javascript:alert(1)' }))).toContain('<div data-block="video" data-source="url" style="--aspect_ratio:16:9" data-block-type="core/video"></div>');
   });
 
   it('keeps the bare iframe before version 7', () => {

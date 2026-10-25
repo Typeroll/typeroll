@@ -63,38 +63,38 @@ is recorded, not that the current production defect was reproduced here.
 
 | ID | Priority | Decision / current evidence |
 | --- | --- | --- |
-| F1 | P1 | Reported slot rhythm gap. Document flow/article wrapper now; add native slot rhythm with nested-layout regression coverage next. |
-| F2 | P1 | Reported stored-but-ignored role spacing. Trace role emitter and add write/render parity; reject unsupported values if not renderable. |
-| F3 | P1 | Actual-background contrast belongs in rendered QA, including current links. Do not validate a global part against white alone. |
-| F4 | P2 | CSS shorthand intentionally sets all sides. Teach vertical-only changes; consider UI intent warning rather than silently changing CSS semantics. |
+| F1 | Implemented / documented | Implemented: column slots use a consistent flow gap, with responsive content_gap_px. Nested grid/card layouts remain independent. |
+| F2 | Implemented / documented | Implemented: heading role space_before/space_after emit base and breakpoint margins instead of silently disappearing. |
+| F3 | Implemented / documented | Implemented bounded checks: tree writes check global and instance part styles against known ancestor background colors. Photographs, gradients and arbitrary CSS still require rendered review; this is not a photo-contrast guarantee. |
+| F4 | Implemented / documented | Instruction change: CSS padding shorthand remains standard CSS. Use padding-block or padding_y_px for vertical-only changes; never silently reinterpret a shorthand. |
 | F5 | Included | Recommend navigation_menu plus navigation_links slots; explicit drawer breakpoint and keyboard/boundary checks. |
-| F6 | P2 | Text wordmark and light/dark logo variants need a block contract. SVG remains a valid documented asset, not a launch blocker. |
-| F7 | P1 ops | Source reports API enabled manually. Reconcile Cloud infrastructure/health check separately; no production service changes here. |
-| F8 | P1 | Return the exact property and authorized account instructions. Do not silently import a different GSC property on denied access. |
-| F9 | P1 | Add public REST types/posts + crawl to inventory coverage. Starter now warns sitemap alone misses URLs; helper/export remains authoritative where available. |
-| F10 | P1 | Organization/Site identity is critical. Helper checks binding now; investigate OAuth connection selection separately without broadening existing grants. |
-| F11 | P2 | Normalize/document envelopes at a deliberate API boundary; do not break every consumer in a migration hotfix. Helper unwraps only known finalize envelope. |
-| F12 | Included helper | Target the known signed preview iframe for QA. No arbitrary iframe selection or persisted browser session. A first-class direct-preview contract is future work. |
+| F6 | Implemented / documented | Implemented native text wordmark and per-instance image override in template/site_logo; header/footer can use separate assets. No mandatory font-to-SVG conversion. |
+| F7 | Implemented / documented | Implemented in self-host GCP provisioning/doctor required API list. Managed Cloud enablement was reported already done; this task does not change production GCP services. |
+| F8 | Implemented / documented | Implemented: denied Search Console requests identify exact property and service identity and explain read access/API enablement/CSV fallback. No silent property substitution. |
+| F9 | Implemented / documented | Implemented bounded public WordPress REST discovery (including exposed custom types) and opt-in same-origin crawling, in API/MCP and Migration URLs UI. Limits and incomplete coverage are explicit; authoritative historical inventories remain required. |
+| F10 | Implemented / documented | Retain explicit Organization/Site selection and scoped credentials. A site-bound key cannot switch Organizations; use an authorized OAuth connection or a separately configured key. No broadened grant or implicit tenant fallback. |
+| F11 | Implemented / documented | Document the existing REST/MCP envelopes and working-copy save boundary. Helpers unwrap only known responses. Renaming every envelope would break clients without improving migration correctness. |
+| F12 | Implemented / documented | Implemented frame_url in get_preview_link response, same signed ticket and sandbox, fresh bridge nonce. Rendering QA may open it directly; extension/host-protocol QA uses the normal wrapper. |
 | F13 | Included initial tool | Explicit-region preserved-text diff. Automatic source-to-page matching and semantic/content completeness still require review. |
 | F14 | Included | About column separate from link grid; inspect density and intermediate desktop widths. No universal pixel sizes. |
-| F15 | P1 | Source confirms path-only navigation matching in renderer; add same-origin matching and external-root regression next. Do not deploy a footer workaround as a platform fix. |
+| F15 | Implemented / documented | Implemented same-origin resolved URL matching for current navigation, with external-root and relative-link coverage. Static and preview pass the real site origin. |
 | F16 | Fixed locally | Reproduced API success with dropped flag. PAGE_WC_FIELDS omitted append_seo_suffix; now stages/saves false/true/null. Existing preview/static renderers already honor false. API regression fails before fix. |
-| F17 | P1 | Renderer already reads image_alt; schema/editor exposure and media-default behavior need alignment. Preserve decorative-image semantics. |
-| F18 | P1 | Hero role color/part background needs actual rendered contrast review. No blanket plate rule or simplistic photo sampler. |
+| F17 | Implemented / documented | Implemented post_card image_alt editor/schema exposure; preserves explicit decorative alt and existing accessible link-name fallback. No ambiguous media-library lookup: map image_alt_field explicitly for listings. |
+| F18 | Implemented / documented | Implemented full-image hero heading color inheritance; known-background part checks plus browser review. Image contrast still requires author judgement at every breakpoint. |
 | F19 | Included | Public REST/HTML vs authenticated helper decision table; no unnecessary install. WordPress.org listing is separate review/publication work. |
-| F20 | P2 | Document original/contain choices now; design never-upscale semantics across responsive image widths. |
-| F21 | P1 | Hero focal point/aspect/text-position controls are reusable. Add native controls with mobile panorama fixtures next. |
+| F20 | Implemented / documented | Implemented opt-in never_upscale on core/image. Original/contain choices remain independent; explicit crop or enlargement is an owner choice. |
+| F21 | Implemented / documented | Implemented responsive hero focal point, aspect ratio, fit, vertical text position and alignment; container background focal point/fit. Browser coverage includes narrow/wide boundaries. |
 | F22 | P0 fixed locally | Remove excerpt/meta opacity, isolate whole-card stacking and raise its stretched link; warn about incompatible secondary actions. Browser clicks/contrast at 390/768/1280; no customer CSS. Requires Core release + customer's normal rebuild before launch acceptance. |
-| F23 | P1 | Click-to-load video facade is valuable privacy behavior. Lazy loading is not consent; poster/network/keyboard policy needs explicit design. |
-| F24 | P1 | Add matched_draft/unpublished_target evidence without counting it as a deployed migration success. |
+| F23 | Implemented / documented | Implemented click_to_load video facade with accessible keyboard button, optional explicit poster, no automatic external thumbnail and no provider iframe until activation. Existing embeds remain opt-in compatible; this is not a general consent manager. |
+| F24 | Implemented / documented | Implemented matched_draft inventory status and unpublished_targets in internal-link reports. These do not count as successful deployment coverage and remain launch blockers. |
 | F25 | Included | Parse and exclude HTML comments before text extraction/reconstruction. Text checker regression covers comments and scripts. Do not promise every server importer was changed. |
 | F26 | Included | last_row:start is default; centering only on explicit owner request. No stretched peer to fill gaps. |
-| F27 | P1 | Link extraction must use href/URL fields, not arbitrary style strings; distinguish unpublished from missing routes. Add regression fixtures next. |
-| F28 | P1 | Separate attempt/progress, DNS propagation and verifier access failures. External starter checks supplement but do not repair platform verifier. Prior domain PR contains related work, not proof this case is resolved. |
-| F29 | P1 | Responsive vertical padding + no silent type mismatch. Current shared type checks already warn select/map mismatch; verify hosted tool/runtime revision before claiming the report fixed. |
-| F30 | P2 | Avoid new aliases everywhere until a versioned input contract is agreed. Document target and pagination now; clear errors can be independent fixes. |
-| F31 | P1 + helper | Unsaved-copy gate included. Product should warn before deploy, never silently save another editor's drafts. Saved/working/deployed remain separate. |
-| F32 | P1 + helper | Chain detection included in hosted parity check. Add write-time warning and migration report next; do not rewrite intentional redirects automatically. |
+| F27 | Implemented / documented | Implemented exclusion of style metadata during link extraction and separate unpublished-target reporting, including draft sources. Arbitrary HTML/custom-block semantics still require artifact/hosted validation. |
+| F28 | Implemented / documented | Implemented exact-job build_progress with attempt/file counters (no runner secrets), UI display, public DNS fallback and explicit verifier-access failures. No new watchdog/retry timer, no bot impersonation, no claim that a blocked verifier proves missing content. |
+| F29 | Implemented / documented | Implemented responsive section padding_y. Use mobile/tablet/laptop/desktop/wide keys, not base. New fields are discoverable through read_block_type; invalid schema values retain existing warnings. |
+| F30 | Implemented / documented | Keep established target envelopes/IDs/pagination; document canonical calls. Fix status-only batch saved reporting and expose staged/applied_immediately fields. Template writes remain immediate; no misleading template working copies or breaking API-wide aliases. |
+| F31 | Implemented / documented | Implemented HTTP 409 unsaved_content before queueing, target-only metadata, explicit allow_unsaved confirmation in MCP/API and portal. Confirmation publishes saved content only; it never saves another editor’s work. |
+| F32 | Implemented / documented | Implemented redirect-chain/loop warnings on write, in Redirects UI and migration launch report, plus hosted parity checks. No automatic rewrite of intentional redirects. |
 
 ## Acceptance and release boundaries
 
@@ -108,7 +108,11 @@ site after the matching Core release and customer-authorized publication.
 The prior guided-domain PR is separate. Coordinate artifact versions with that
 pending release; do not assign two different sources the same Core/MCP version.
 
-## Verification of this candidate
+## Verification of first candidate ab8df71
+
+The expanded candidate below requires its own release gate; these numbers are the first batch only.
+
+### First-batch evidence
 
 - Full local release gate (`oss-release-check.mjs --release-artifacts`) passed:
   251 infrastructure, 276 MCP, 3,084 portal and 1,613 shared tests, plus
@@ -120,3 +124,39 @@ pending release; do not assign two different sources the same Core/MCP version.
 - Read-only hosted MCP probe with the adapted helper confirmed the configured
   Organization/Site and enumerated 48 Pages, 60 containers and 82 inventory URLs.
   No saved content, deployment, DNS or customer configuration changed.
+
+## Expanded batch: explicit limits and acceptance
+
+The follow-up implements the reusable P1 capabilities, not the source site's
+custom converter, copy decisions, taxonomy or design. It retains explicit
+Organization/Site/Version binding throughout. No change auto-publishes ulvon.
+
+- Public REST discovery is bounded (30 requests by default, 50 maximum, 5,000
+  URLs, 20 pages per REST type, 100 rows per page, 45-second discovery budget plus
+  an in-flight request). UI crawls at most ten pages; API/MCP permit 0–50.
+  Restricted types, historical redirects and orphan pages still need exports.
+- Known solid-color contrast can be checked from block ancestry. Custom CSS,
+  gradients, photo backgrounds and all responsive variants need visual review.
+- Draft link checks help before publication, but do not count drafts as live.
+- The structured progress field describes the exact queued task and attempt;
+  counters are not an ETA or an overall progress percentage.
+- Render reference changes restore declared spacing and hero/background behavior
+  and add opt-in controls. Existing render-version fixtures are intentionally
+  refreshed for these bug fixes; customer output changes only on normal rebuild.
+- Preview frame links retain the signed ticket's expiry and opaque sandbox.
+  Use the normal preview wrapper when testing extension host messages.
+
+### Expanded-batch verification
+
+- Full local release gate passed: 251 infrastructure, 278 MCP, 3,093 portal and
+  1,619 shared tests, type checks, dependency audit, builds, static publication
+  smoke scenarios, public documentation and release-artifact preparation.
+- Final focused checks cover the HTML-parser-based discovery, solid-background
+  warnings, actionable API envelopes and the progressive video facade. The
+  facade keeps a normal source link without JavaScript and upgrades to a
+  keyboard-operable player button when its runtime loads.
+- 13 isolated browser checks pass, including actual site-template sanitization,
+  widths 375/639/640/767/768/1279/1280, clickable/readable cards and no provider
+  request before keyboard video activation. Desktop/mobile images inspected.
+- The exact committed candidate still needs PR CI and authorized publication;
+  local artifact files are not a production release receipt.

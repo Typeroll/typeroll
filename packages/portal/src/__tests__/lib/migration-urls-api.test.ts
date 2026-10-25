@@ -6,11 +6,15 @@ import { connectionPath } from '../../lib/publishing/connections';
 // properties pinned hardest here are: (1) nothing is dropped silently, and
 // (2) coverage is recomputed from live state, never cached.
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
 import type { Page, Site, SiteVersion } from '@typeroll/shared';
+
+// Stub the public transport, not DNS: route tests exercise classification.
+// public-response has its own pinned-IP, private-address and DNS fallback tests.
+vi.mock('../../lib/deploy/public-response', () => ({ publicationResponse: async (url: URL, init: RequestInit) => ({response:await fetch(url,init),close:async () => {}}) }));
 
 const ORG = 'orgone';
 const SITE = 'mysite';

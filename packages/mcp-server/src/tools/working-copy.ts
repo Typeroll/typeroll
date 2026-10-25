@@ -37,7 +37,7 @@ export const workingCopyTools: ToolDef[] = [
   {
     name: 'read_working_copy',
     description:
-      'Read a doc\'s unsaved draft (working copy) as a raw field diff — { working_copy: null } means everything is saved. read_page/get_page_blocks already return the draft VIEW; use this when you need to know exactly WHICH fields are unsaved, e.g. before discarding (the draft may hold the user\'s in-progress editor work, not just yours).',
+      'Templates save immediately and do not use this tool. Use target: {kind: page|partial, id: ...}, not page_id. Read a doc\'s unsaved draft (working copy) as a raw field diff — { working_copy: null } means everything is saved. read_page/get_page_blocks already return the draft VIEW; use this when you need to know exactly WHICH fields are unsaved, e.g. before discarding (the draft may hold the user\'s in-progress editor work, not just yours).',
     inputSchema: {
       target: wcTargetSchema,
       version: versionParam,

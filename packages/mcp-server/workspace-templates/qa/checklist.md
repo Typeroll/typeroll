@@ -25,3 +25,11 @@
 Commands/dependencies/limits: scripts/README.md. Design: workflows/design.md.
 Follow existing owner authorization; test publication, traffic cutover and
 indexing have distinct effects but do not require repeated approval if covered.
+
+
+- [ ] Check heading role spacing, slot gap and responsive vertical padding in the browser.
+- [ ] Review global/current navigation colors against the real parent background.
+- [ ] Check intrinsic-width image and full-image hero framing at breakpoint boundaries.
+- [ ] Test click-to-load video with keyboard; no provider request before activation.
+- [ ] Review matched drafts, unpublished targets and redirect chains before launch.
+- [ ] Explicitly save working copies, or obtain approval to publish saved content only.
