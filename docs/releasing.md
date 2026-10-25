@@ -104,13 +104,23 @@ must never reconstruct a release from a mutable tag or rebuild the public image.
 
 ## Documentation-only source checks
 
-`source-check-plan.mjs` selects a short lane only for a push to public `main`
-whose previous commit already passed the exact repository's `Tests` workflow.
-The complete Git diff must contain only Markdown/MDX under `docs/` or
-`packages/docs-site/src/content/`, or the named top-level Markdown guides.
-Renames include both paths. Unknown paths, dependencies, CI changes, incomplete
-history, missing baseline proof and pull requests all use the full source gate,
-unless a push qualifies for pull request reuse below.
+`source-check-plan.mjs` selects the documentation lane for:
+
+- A push to public `main` whose previous commit passed this repository's exact
+  `Tests` workflow.
+- A same-repository pull request targeting `main`, whose tested merge has the
+  event's exact base and head commits as its two parents, and whose base passed
+  the same successful `main` workflow. The checkout must match that tested merge.
+
+Both paths inspect the complete Git diff against the qualified baseline, not a
+PR label, title or changed-file summary. Only Markdown/MDX under `docs/` or
+`packages/docs-site/src/content/`, or the named top-level Markdown guides qualify.
+Renames include both paths, including runtime files moved into documentation.
+Unknown paths, dependencies, CI changes, docs components/styles/configuration,
+incomplete history, missing or failed baseline proof and fork pull requests use
+the full source gate, unless a main push qualifies for full PR reuse below.
+If main moves after PR qualification, its push checks its own complete delta;
+PR documentation success is never accepted as proof of full source qualification.
 
 The short lane still installs locked dependencies, validates the release plan,
 audits dependencies, checks documentation schema/types and formatting, builds
@@ -120,6 +130,34 @@ Core and MCP versions remain unchanged; documentation work needs no Cloud rollou
 A docs-only CI success can serve as the baseline for the next docs-only delta.
 A change to this selection logic is never documentation-only, so it always
 receives full qualification, in its pull request run or on `main`.
+
+## Merge an approved documentation candidate
+
+Keep the pull request and the user's production approval. An explicit request
+such as "merge PR 76" authorizes merging that reviewed candidate and its normal
+automatic docs publication; do not ask for the same approval again after checks.
+For an approved candidate, wait for its checks and merge with an exact head guard
+in one operation rather than manually polling individual jobs:
+
+```sh
+# Set PR and APPROVED_SHA to the reviewed number and full 40-character head SHA.
+gh pr checks "${PR:?Set the approved PR number}" --repo Typeroll/typeroll --watch --interval 30 &&
+  gh pr merge "$PR" --repo Typeroll/typeroll --merge --delete-branch \
+    --match-head-commit "${APPROVED_SHA:?Set the approved full head SHA}"
+```
+
+Run through the documented release credential profile. A failed check or changed
+head stops the merge; never use `--admin` to bypass checks. This bounded operation
+needs no repository-wide auto-merge setting and cannot silently approve a later
+head. GitHub's persistent `--auto` setting is not a durable approval for an exact
+commit: new commits require a fresh scope review. Keep automatic branch deletion,
+then fast-forward the ordinary local checkout and remove its merged branch.
+
+After merge, the existing main docs lane seals the artifact for the merge SHA;
+the normal release workflow publishes it and verifies that exact SHA live.
+Check both the HTML guide and its agent-readable `index.txt` when text changed.
+No separate Core/MCP version or Cloud deployment is needed for documentation-only
+changes. Do not report a merge as a completed docs deployment.
 
 ## Pull request qualification reuse
 

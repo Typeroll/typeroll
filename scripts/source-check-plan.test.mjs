@@ -1,4 +1,8 @@
 import test from 'node:test';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import assert from 'node:assert/strict';
 import { sourceCheckPlan, resolveSourceCheckPlan, resolvePrQualification, qualificationRecord, releaseTags, recordName } from './source-check-plan.mjs';
 
@@ -115,4 +119,129 @@ test('pull request runs record the exact tested commit, tree and release tags', 
   for (const input of [{ repository: 'fork/typeroll', sha: merge }, { repository, sha: head }, { repository, sha: undefined }]) {
     assert.throws(() => qualificationRecord({ ...input, run }), /Unexpected qualification identity/);
   }
+});
+
+function docsPullRequest({ files = docs, proof = {}, parents = [merge, base, head], checkout = merge, fail, calls = [] } = {}) {
+  const input = { eventName: 'pull_request', sha: merge, repository,
+    event: { pull_request: { base: { ref: 'main', sha: base, repo: { full_name: repository } },
+      head: { sha: head, repo: { full_name: repository } } } } };
+  const baseline = { conclusion: 'success', status: 'completed', event: 'push', head_branch: 'main',
+    head_sha: base, head_repository: { full_name: repository }, path: '.github/workflows/test.yml', ...proof };
+  return { ...input, run: (cmd, args) => {
+    calls.push([cmd, ...args]);
+    if (fail === args[0]) throw Error('Unavailable');
+    if (cmd === 'git' && args[0] === 'rev-list') {
+      assert.deepEqual(args, ['rev-list', '--parents', '-n', '1', merge]);
+      return parents.join(' ') + '\n';
+    }
+    if (cmd === 'git' && args[0] === 'rev-parse') return checkout + '\n';
+    if (cmd === 'git' && args[0] === 'diff') {
+      assert.deepEqual(args, ['diff', '--name-only', '--no-renames', '-z', base, merge]);
+      return files.join('\0');
+    }
+    assert.equal(cmd, 'gh');
+    assert.deepEqual(args, ['api', `/repos/${repository}/actions/workflows/test.yml/runs?event=push&head_sha=${base}&per_page=100`]);
+    return JSON.stringify({ workflow_runs: [baseline] });
+  } };
+}
+
+test('a docs pull request qualifies its complete tested merge against exact successful main', () => {
+  assert.equal(resolveSourceCheckPlan(docsPullRequest()).lane, 'docs');
+});
+
+test('mixed, renamed, deleted runtime and unknown paths keep pull requests on the full gate', () => {
+  for (const file of ['packages/shared/src/pages.ts', '.github/workflows/test.yml',
+    'scripts/source-check-plan.mjs', 'package-lock.json', 'packages/docs-site/astro.config.mjs',
+    'packages/docs-site/src/components/Header.astro', 'packages/docs-site/src/styles/custom.css']) {
+    const calls = [];
+    assert.equal(resolveSourceCheckPlan(docsPullRequest({ files: [...docs, file], calls })).lane, 'full', file);
+    assert.ok(calls.every(([cmd]) => cmd !== 'gh'), 'runtime changes need no baseline lookup');
+  }
+  assert.equal(resolveSourceCheckPlan(docsPullRequest({ files: [] })).lane, 'full');
+});
+
+test('pull requests require a matching checkout and both exact merge parents', () => {
+  for (const change of [{ parents: [merge, base] }, { parents: [head, base, head] },
+    { parents: [merge, main, head] }, { parents: [merge, base, main] },
+    { parents: [merge, base, head, main] }, { checkout: head }]) {
+    assert.equal(resolveSourceCheckPlan(docsPullRequest(change)).lane, 'full', JSON.stringify(change));
+  }
+});
+
+test('forks, other targets and missing identities never use the pull request short lane', () => {
+  const changes = [
+    pr => { pr.base.ref = 'staging'; },
+    pr => { pr.base.repo.full_name = 'other/repo'; },
+    pr => { pr.head.repo.full_name = 'fork/repo'; },
+    pr => { pr.head.repo = null; },
+    pr => { pr.head.sha = 'HEAD'; },
+    pr => { pr.base.sha = ''; },
+  ];
+  for (const change of changes) {
+    const input = docsPullRequest(); change(input.event.pull_request);
+    input.run = () => { assert.fail('untrusted metadata must not reach Git or GitHub'); };
+    assert.equal(resolveSourceCheckPlan(input).lane, 'full');
+  }
+  assert.equal(resolveSourceCheckPlan({ ...docsPullRequest(), repository: 'other/repo' }).lane, 'full');
+  assert.equal(resolveSourceCheckPlan({ ...docsPullRequest(), sha: undefined }).lane, 'full');
+});
+
+test('failed, pending or unrelated baseline runs and unavailable history fail closed for docs PRs', () => {
+  for (const proof of [{ conclusion: 'failure' }, { status: 'in_progress' },
+    { event: 'pull_request' }, { head_branch: 'staging' }, { head_sha: main },
+    { head_repository: { full_name: 'fork/repo' } }, { path: '.github/workflows/other.yml' }]) {
+    assert.equal(resolveSourceCheckPlan(docsPullRequest({ proof })).lane, 'full', JSON.stringify(proof));
+  }
+  for (const fail of ['rev-list', 'rev-parse', 'diff', 'api']) {
+    assert.equal(resolveSourceCheckPlan(docsPullRequest({ fail })).lane, 'full', fail);
+  }
+});
+
+test('real Git merge diffs include stale-branch code and both sides of a runtime-to-docs rename', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'typeroll-docs-pr-'));
+  const git = args => execFileSync('git', args, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  try {
+    git(['init', '--initial-branch=main']);
+    git(['config', 'user.name', 'Test']); git(['config', 'user.email', 'test@example.invalid']);
+    mkdirSync(path.join(dir, 'docs'));
+    mkdirSync(path.join(dir, 'packages/shared/src'), { recursive: true });
+    writeFileSync(path.join(dir, 'docs/guide.md'), '# Guide\n');
+    writeFileSync(path.join(dir, 'packages/shared/src/runtime.ts'), 'export const value = 1;\n');
+    git(['add', '.']); git(['commit', '-m', 'Baseline']);
+    const baseline = git(['rev-parse', 'HEAD']).trim();
+    const evaluate = () => {
+      const testedMerge = git(['rev-parse', 'HEAD']).trim();
+      const prHead = git(['rev-parse', 'HEAD^2']).trim();
+      const input = docsPullRequest();
+      input.sha = testedMerge;
+      input.event.pull_request.base.sha = baseline;
+      input.event.pull_request.head.sha = prHead;
+      input.run = (cmd, args) => cmd === 'git' ? git(args) : JSON.stringify({ workflow_runs: [{
+        conclusion: 'success', status: 'completed', event: 'push', head_branch: 'main',
+        head_sha: baseline, head_repository: { full_name: repository }, path: '.github/workflows/test.yml',
+      }] });
+      return resolveSourceCheckPlan(input).lane;
+    };
+    git(['checkout', '-b', 'docs-only', baseline]);
+    writeFileSync(path.join(dir, 'docs/guide.md'), '# Updated guide\n');
+    git(['commit', '-am', 'Update guide']);
+    git(['checkout', 'main']); git(['merge', '--no-ff', '-m', 'Test docs merge', 'docs-only']);
+    assert.equal(evaluate(), 'docs');
+
+    git(['checkout', '-b', 'runtime-rename', baseline]);
+    renameSync(path.join(dir, 'packages/shared/src/runtime.ts'), path.join(dir, 'docs/runtime.md'));
+    git(['add', '.']); git(['commit', '-m', 'Move runtime into docs']);
+    git(['checkout', '-b', 'rename-merge', baseline]);
+    git(['merge', '--no-ff', '-m', 'Test rename merge', 'runtime-rename']);
+    assert.equal(evaluate(), 'full');
+
+    git(['checkout', '-b', 'mixed-history', baseline]);
+    writeFileSync(path.join(dir, 'packages/shared/src/runtime.ts'), 'export const value = 2;\n');
+    git(['commit', '-am', 'Earlier runtime change']);
+    writeFileSync(path.join(dir, 'docs/guide.md'), '# Latest commit is only docs\n');
+    git(['commit', '-am', 'Update guide']);
+    git(['checkout', '-b', 'mixed-merge', baseline]);
+    git(['merge', '--no-ff', '-m', 'Test full branch merge', 'mixed-history']);
+    assert.equal(evaluate(), 'full');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });

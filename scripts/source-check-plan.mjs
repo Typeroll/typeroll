@@ -71,7 +71,28 @@ export function resolvePrQualification({ sha, repository, run, read, wait = () =
   return null;
 }
 
+// Inspect the complete tested merge against its qualified main parent, not just
+// the PR file list: an old branch may carry runtime changes or revert newer code.
+export function resolveDocsPullRequest({ event, sha, repository, run }) {
+  const pr = event.pull_request;
+  if (repository !== 'Typeroll/typeroll' || !GIT_SHA.test(sha ?? '') ||
+      pr?.base?.ref !== 'main' || pr.base.repo?.full_name !== repository ||
+      pr.head?.repo?.full_name !== repository ||
+      !GIT_SHA.test(pr.base.sha ?? '') || !GIT_SHA.test(pr.head.sha ?? '')) return sourceCheckPlan();
+  try {
+    const parents = run('git', ['rev-list', '--parents', '-n', '1', sha]).trim().split(/\s+/);
+    if (parents.length !== 3 || parents[0] !== sha || parents[1] !== pr.base.sha ||
+        parents[2] !== pr.head.sha || run('git', ['rev-parse', 'HEAD']).trim() !== sha) return sourceCheckPlan();
+    const files = run('git', ['diff', '--name-only', '--no-renames', '-z', pr.base.sha, sha]).split('\0').filter(Boolean);
+    if (!sourceCheckPlan({ files, baselineQualified: true, completeRange: true }).docs_only) return sourceCheckPlan();
+    const response = JSON.parse(run('gh', ['api', `/repos/${repository}/actions/workflows/test.yml/runs?event=push&head_sha=${pr.base.sha}&per_page=100`]));
+    const baselineQualified = response.workflow_runs.some(item => qualifiedRun(item, repository, pr.base.sha));
+    return sourceCheckPlan({ files, baselineQualified, completeRange: true });
+  } catch { return sourceCheckPlan(); }
+}
+
 export function resolveSourceCheckPlan({ event, eventName, sha, repository, run, read, wait }) {
+  if (eventName === 'pull_request') return resolveDocsPullRequest({ event, sha, repository, run });
   if (eventName !== 'push' || event.ref !== 'refs/heads/main' || repository !== 'Typeroll/typeroll' || !GIT_SHA.test(sha ?? '')) return sourceCheckPlan();
   if (GIT_SHA.test(event.before ?? '') && !/^0+$/.test(event.before)) {
     try {
