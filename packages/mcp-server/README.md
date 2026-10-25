@@ -21,7 +21,11 @@ to add them to an existing workspace; edited files are preserved for manual revi
 This is separate from the generated publication repository. The CMS owns current
 content and settings. Hosted MCP does not require a local workspace. Read the
 [workspace guide](https://typeroll.com/docs/getting-started/agent-workspace/) and
-[WordPress kickoff prompt](https://typeroll.com/docs/guides/wordpress-migration/#copyable-agent-kickoff).
+[guided-start documentation](https://typeroll.com/docs/getting-started/agent-workspace/#guided-start).
+Kickoff prompts live only in the starter files: `workflows/new-site.md` and
+`workflows/migration.md`. `workflows/interview.md` guides missing decisions one
+question at a time and resumes from `brief/interview.md`. Migrations choose text
+and design/image preservation independently.
 Load task recipes on demand instead of copying the complete manual into context.
 
 ## One Page model

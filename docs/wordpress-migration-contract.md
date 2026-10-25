@@ -1,9 +1,29 @@
-# WordPress migration contract — Core 0.2.6
+# WordPress migration contract
+
+Maintained contract; historical version references below identify feature introductions.
 
 The importer preserves content and shared identity. It does not automatically
 redesign a site or send every page to an LLM. Presentation is a separate,
 reviewable Page-template decision. The public guide and MCP recipe describe
 the same contract for Cloud and self-hosting.
+
+## Planning and acceptance references
+
+Record `text_intent` and `design_intent` independently as preserve or renew in the
+workspace migration brief; design includes images. These are planning labels,
+not API fields. All four combinations keep URL continuity, source facts and
+required business behavior. Review preserved text against original wording even
+when the design is renewed. Review renewed dimensions against their own approved
+brief. Record metadata rules, required assets, permitted image replacements,
+rights and per-page exceptions; SEO/design work does not authorize text rewriting.
+Source-fidelity instructions below apply to preserved dimensions; use approved
+prototypes for renewed design while still accounting for source content and URLs.
+
+Canonical kickoff prompts and the resumable interview live in
+`packages/mcp-server/workspace-templates/`. `typeroll init` generates those exact
+files; public docs describe the flow and reference them rather than duplicate
+prompts. `brief/interview.md` preserves answers, unknowns and the next question.
+MCP recipes load on demand and use this same independent-choice contract.
 
 ## Extraction and mapping
 
@@ -20,14 +40,16 @@ the same contract for Cloud and self-hosting.
 5. Validate membership, parent chains, primary category and identity/path
    conflicts before body writes. Do not guess a primary among multiple terms.
 6. Restore lazy media, transfer required files to verified storage, rewrite
-   references, and deterministically convert cleaned bodies to native blocks.
+   references, and preserve cleaned bodies in HTML mode. The external agent
+   reconstructs reviewed editable blocks separately; no automatic converter or
+   editor conversion preview is available (removed in Core 0.2.58).
    Preserve manual order, page hierarchy and source paths. A failed required
    transfer stops the item; successful transfers remain reusable on retry.
 7. Create imported Pages in Review using stable IDs. Repeating an import skips
    existing source-owned Pages and preserves later edits. This is recovery, not
    source synchronization. Schema or source-identity conflicts require review.
 
-The converter reports HTML exceptions. Interactive WordPress markup needs a
+The agent records justified HTML exceptions during reconstruction. Interactive WordPress markup needs a
 configured Form/Extension and functional verification. Theme CSS, source scripts
 and arbitrary ACF relationship semantics are not automatically ported. Complex
 unknown values remain reviewable data; do not claim they are normalized refs.

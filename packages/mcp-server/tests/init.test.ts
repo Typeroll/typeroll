@@ -22,7 +22,11 @@ describe('agent-neutral workspace', () => {
     expect(await read('.gitignore')).toContain('.mcp.json');
     expect(await read('.gitignore')).toContain('.env');
     expect(await read('brief/site.md')).toContain('Editorial constraints');
-    expect(await read('brief/migration.md')).toContain('Intent: preserve or renew');
+    expect(await read('brief/migration.md')).toContain('text_intent: undecided');
+    expect(await read('brief/migration.md')).toContain('design_intent: undecided');
+    expect(await read('AGENTS.md')).toContain('workflows/interview.md');
+    expect(await read('brief/interview.md')).toContain('Status: not started');
+    expect(await read('workflows/new-site.md')).toContain('Create [website]');
   });
   it('preserves edited files and configuration while updating unchanged managed templates', async () => {
     await writeWorkspaceFiles(dir, { 'AGENTS.md': 'old', 'brief/site.md': 'original' }, false);
@@ -39,9 +43,11 @@ describe('agent-neutral workspace', () => {
     await fs.mkdir(path.join(dir, 'brief'), { recursive: true });
     await fs.writeFile(path.join(dir, 'brief/rules.md'), 'Keep approved legal copy unchanged.');
     await fs.writeFile(path.join(dir, 'brief/seo.md'), 'Preserve our existing article URLs.');
+    await fs.writeFile(path.join(dir, 'brief/interview.md'), 'Text: preserve. Design: renew. Next question: images to retain.');
     await runInit({ dir, update: true });
     expect(await read('brief/rules.md')).toBe('Keep approved legal copy unchanged.');
     expect(await read('brief/seo.md')).toBe('Preserve our existing article URLs.');
+    expect(await read('brief/interview.md')).toBe('Text: preserve. Design: renew. Next question: images to retain.');
     expect(await read('workflows/migration.md')).toContain('Migrate [source URL]');
     expect(await read('workflows/migration.md')).toContain('no manual editor conversion');
     expect(await read('workflows/README.md')).toContain('tr-seo');

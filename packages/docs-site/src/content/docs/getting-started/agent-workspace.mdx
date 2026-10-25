@@ -75,10 +75,13 @@ my-site/
 │   ├── brand.md
 │   ├── content-model.md
 │   ├── migration.md
+│   ├── interview.md
 │   ├── rules.md
 │   └── seo.md
 ├── workflows/
 │   ├── README.md
+│   ├── interview.md
+│   ├── new-site.md
 │   └── migration.md
 ├── decisions.md
 ├── sources/README.md
@@ -116,7 +119,7 @@ does not depend on the portal's optional built-in AI chat:
   and event structured data ([Pages tools](../../tools/pages/#structured-data-tools)).
 - `tr-starter-design` for a blank Site or one that keeps the starter design.
 - For migrations, read `tr-migration-evidence` before the source-specific recipe.
-  Record preserve/renew intent in `brief/migration.md`; see
+  Record independent text and design/image choices in `brief/migration.md`; see
   [Choose your migration approach](../../guides/migration-approach/).
 - When an AI workflow fails with `ai_not_enabled`, the agent does the same work
   itself with the matching recipe and says so
@@ -161,30 +164,37 @@ Use private client settings or environment injection. `.gitignore` excludes
 `.env`, local client configurations and temporary/private output. Ignore rules
 cannot remove secrets that were already committed; inspect existing repositories.
 
-## Give the agent a clear starting instruction
+## Guided start
 
-For a new website, fill in this prompt:
+The kickoff prompts live in the generated starter, not in this documentation:
 
-```text
-Create [website] for [audience and purpose] in Typeroll Organization [ID/name].
-Read AGENTS.md, confirm the Site and Version, and help me complete brief/site.md,
-brand.md, content-model.md, rules.md and seo.md. Separate proposals from decisions.
-Read tr-new-site and relevant tool schemas on demand. Build representative desktop
-and mobile layouts with editable blocks and shared templates, then share previews.
-Record my preferences and agreed exceptions so another session can continue.
-Do not publish, change DNS or send messages without explicit approval.
-```
+- `workflows/interview.md` — the agent's structured interview when you need guidance.
+- `workflows/new-site.md` — the kickoff for a new website with a clear brief.
+- `workflows/migration.md` — the kickoff for a migration with a clear brief.
 
-For an existing WordPress website, use the
-[copyable migration prompt](../../guides/wordpress-migration/#copyable-agent-kickoff)
-and choose preserve or renew first. The agent does the block reconstruction;
-the owner reviews the outcome rather than manually converting every imported Page.
+The canonical Markdown sources are in the public repository's
+[workspace-templates](https://github.com/Typeroll/typeroll/tree/main/packages/mcp-server/workspace-templates)
+directory and are shipped with MCP 0.45.77+. The starter generator uses those same
+files. Adapt your generated copies to your project; updates preserve your edits.
 
-Read `AGENTS.md` and the task's relevant files at the start of each session.
-Keep durable rules separate from temporary research and load only the relevant
-SEO, migration or other recipe. On a client without local filesystem access,
-place the brief and rules in its project context and connect hosted MCP directly.
-The hosted server cannot read a local folder automatically.
+Open your workspace with your agent and have it read `AGENTS.md`. When guidance
+is needed or an important decision is missing, those instructions lead it into
+the interview. It asks one short question at a time, reuses answers already given
+and saves progress in `brief/interview.md`. You can pause and resume in another
+session; a complete brief skips the interview. It is an agent routine, not a
+portal wizard, and planning can start before connecting MCP.
+
+The interview covers goals, target Site, text preservation, design and images,
+content/features, SEO, owner rules and acceptance. For a migration, you choose
+preserve or renew **separately for text and for design/images**. It also records
+image exceptions and metadata rules. The agent recaps confirmed decisions and
+open questions before dependent work. Silence is never approval, and approving
+the brief alone does not authorize publication, DNS changes or messages.
+
+Keep prompts in your project alongside the brief, rules and QA evidence. Read
+only the relevant routine and load MCP recipes on demand. If your client cannot
+read local files, attach the relevant starter files to its project context;
+hosted MCP cannot read your folder automatically.
 
 ## Optional local client configuration
 

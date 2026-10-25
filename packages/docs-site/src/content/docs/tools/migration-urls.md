@@ -157,7 +157,7 @@ review, not an automated visual test. Missing evidence reports
 ## Reviewed migration compositions
 
 `get_migration_readiness` accepts `compositions` for a read-only block/field
-review. Choose [preserve or renew](../../guides/migration-approach/) in the project
+review. Choose [separate text and design/image choices](../../guides/migration-approach/) in the project
 brief; these intent labels are not migration API parameters.
 
 After reviewing standard-block alternatives, record an intentional custom type

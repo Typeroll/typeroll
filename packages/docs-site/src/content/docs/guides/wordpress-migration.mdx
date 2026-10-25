@@ -14,8 +14,8 @@ review and fix a migration with your own AI agent (Claude Code, Codex or another
 MCP client) through [MCP](../../getting-started/mcp-server/). The built-in AI
 assistant in the portal has no migration tools.
 
-Start with [Choose your migration approach](../migration-approach/): preserve the
-existing site or renew its design and content. Both paths use standard blocks
+Start with [Choose your migration approach](../migration-approach/): choose preserve or renew
+for text and design/images independently. Every combination uses standard blocks
 first, custom block types when needed and rare documented HTML exceptions.
 Every old public URL must keep working or redirect to relevant content.
 
@@ -65,7 +65,7 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 
 1. **Build the target site's design**
 
-   Decide whether to preserve the current appearance or deliberately redesign it. Import does not automatically reproduce a WordPress theme. Configure shared presentation separately:
+   Record the text decision separately from the design/image decision. Preserve wording when requested even when deliberately redesigning. Import does not automatically reproduce a WordPress theme. Configure shared presentation separately:
    - Colour palette and fonts (`update_site_settings`)
    - Header partial with navigation
    - Footer partial
@@ -86,45 +86,19 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 
 ## Running the migration
 
-### Copyable agent kickoff
+### Start from your workspace
 
-For a substantial migration, create an [agent workspace](../../getting-started/agent-workspace/)
-and keep the brief, owner rules and SEO strategy there. Fill in this prompt:
+The [workspace starter](../../getting-started/agent-workspace/#guided-start) owns
+all kickoff prompts. Open `workflows/migration.md` there; if you want guidance,
+the agent starts or resumes `workflows/interview.md` and saves progress in
+`brief/interview.md`. The interview asks about text and design/images separately.
+For example, retaining all text while refreshing the design is a supported choice.
 
-```text
-Migrate [source URL] to Typeroll, Organization [ID/name], Site [ID/name], Version [ID].
-Our goal is [preserve the existing appearance and content / renew it against an agreed brief].
-Read tr-migration-evidence, then tr-migrate-wp (or the appropriate source recipe).
-Confirm the target and check import readiness before writes. Inventory source URLs,
-content, media, shared templates and integrations. Record the brief and SEO strategy.
-Build and verify one prototype per distinct layout before bulk reconstruction.
-Use standard blocks first, editable custom block types when needed, and isolated HTML
-only for documented exceptions. Rebuild imported HTML with the block tools; a mode
-switch does not convert it. Preserve wording unless rewriting is explicitly agreed.
-Preserve every old public URL or redirect it to a relevant working destination.
-Protect existing CMS edits. Review mobile/desktop appearance, content, downloads,
-forms and URL coverage, and report unverified items separately.
-Do not publish, switch DNS or send messages without explicit approval.
-```
-
-The workspace's `workflows/migration.md` carries the same kickoff routine in the
-updated starter. With hosted MCP alone, keep these decisions in your agent's
-project instructions; a local repository is optional.
-
-### Short requests after setup
-
-Start your AI agent and describe the migration:
-
-```
-Migrate my WordPress site at https://acme.se to this Typeroll site.
-```
-
-Or with the helper plugin:
-
-```
-Migrate the WordPress site at https://acme.se — I've installed the helper plugin
-and configured its API key securely in the agent environment.
-```
+Record both choices, source URLs, target Site/Version and exceptions in
+`brief/migration.md`, with owner rules and SEO strategy in their own brief files.
+Configure any WordPress Helper key through the agent's secure credential mechanism,
+never in the prompt or repository. Documentation describes the workflow; prompts
+remain in the starter so you can adapt them in your own repository.
 
 The AI agent will:
 
@@ -345,8 +319,9 @@ connect the organization’s own storage in Publishing.
 Ask the agent to read the shared **`tr-migration-evidence`** skill before applying
 one template to many Pages. It starts with the original site's fonts, colors,
 header, hero, card grids and article/sidebar geometry. A partially migrated
-Typeroll site is not the authoritative design reference. Preservation is the
-default unless you request a redesign.
+Typeroll site is not the authoritative design reference. Use the source for preserved design; use approved prototypes for renewed design.
+Review text separately against its own preserve/renew choice; ask when either
+choice is missing before dependent writes.
 
 First verify one saved prototype for each active layout: home, archive, long and
 short articles, downloads and any special template overrides. Compare matching

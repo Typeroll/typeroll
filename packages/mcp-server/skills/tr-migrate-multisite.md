@@ -10,10 +10,10 @@ another MCP client) working through MCP and the public API. The portal's built-i
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
 **Before import or reconstruction:** read `tr-migration-evidence` with
-`read_skill`. Choose preserve (platform change) or renew (new design/content),
-record the brief and verify one prototype per active template before bulk writes.
+`read_skill`. Choose preserve or renew independently for text and design/images,
+record text_intent and design_intent in the brief and verify one prototype per active template before bulk writes.
 Use standard blocks first, reviewed custom types next, rare documented HTML last.
-Both paths must preserve or meaningfully redirect every old public URL. That
+All four combinations must preserve or meaningfully redirect every old public URL. That
 shared contract defines acceptance; this recipe only adds source-specific steps.
 
 
@@ -69,7 +69,7 @@ required before import; GitHub/build/domain readiness is checked separately for
 publication. Do not infer that every Site shares the same blockers.
 
 Ask explicitly:
-- Which intent applies per Site: preserve or renew? Which source or approved
+- Which text_intent and design_intent apply per Site, each preserve or renew? Which source or approved
   prototype is the **design reference**? Build that one properly first.
 - Are the sites **translations of each other** (same page structure) or
   independent? This decides whether hreflang clusters are mechanical or

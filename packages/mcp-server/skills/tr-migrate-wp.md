@@ -10,10 +10,10 @@ another MCP client) working through MCP and the public API. The portal's built-i
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
 **Before import or reconstruction:** read `tr-migration-evidence` with
-`read_skill`. Choose preserve (platform change) or renew (new design/content),
-record the brief and verify one prototype per active template before bulk writes.
+`read_skill`. Choose preserve or renew independently for text and design/images,
+record text_intent and design_intent in the brief and verify one prototype per active template before bulk writes.
 Use standard blocks first, reviewed custom types next, rare documented HTML last.
-Both paths must preserve or meaningfully redirect every old public URL. That
+All four combinations must preserve or meaningfully redirect every old public URL. That
 shared contract defines acceptance; this recipe only adds source-specific steps.
 
 
@@ -80,7 +80,7 @@ Then the ordinary preconditions:
   REST API disabled" if not — common for hardened hosts).
 - The target exists. Establish the source design baseline first, then prove
   representative target templates using `tr-migration-evidence`. Preserve
-  appearance in preserve mode; use the approved design/content brief in renew mode.
+  appearance when design_intent is preserve; use the approved design brief when it is renew. Review text against its separate choice.
 - If the target already has content, you must NOT clobber it — always
   `list_pages` first and only write to slugs that don't already exist.
   Pass the slug explicitly: `create_page` then refuses an address that is
@@ -168,7 +168,7 @@ c. Migrate referenced images with `upload_media_from_url`. The customer's
 The managed importer stores cleaned HTML. Typeroll does not convert HTML into blocks, and `set_page_mode` never rewrites HTML. You, the external agent, rebuild the imported content with ordinary block tools. The owner does not need to convert every Page manually. There is no editor conversion preview; it was removed in Core 0.2.58. Preserve the complete source before switching modes and never publish the empty intermediate Page.
 
 d. Rebuild into editable blocks according to the selected intent. Preserve exact
-   wording in preserve mode; track approved changes in renew mode. Map headings,
+   wording when text_intent is preserve; track approved changes when it is renew, independently of design. Map headings,
    prose, images, buttons and layout to standard fields first, then create
    reviewed custom types where needed. Use raw HTML only for a documented,
    exceptional fragment. Preserve anchors and map every old URL in either mode.

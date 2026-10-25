@@ -29,7 +29,8 @@
     "dist",
     "AGENTS.md",
     "README.md",
-    "skills"
+    "skills",
+    "workspace-templates"
   ],
   "scripts": {
     "gen": "node scripts/embed-content.mjs",

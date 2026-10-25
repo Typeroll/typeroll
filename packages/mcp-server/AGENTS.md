@@ -36,8 +36,10 @@ create the branch, then work on it with `version=<id>`.
 ## Migration intent and acceptance
 
 Read `tr-migration-evidence` before a source-specific migration skill. Choose
-preserve (match the old site) or renew (use it as raw material for an agreed new
-design/content plan). Record that decision before writes. In both cases prefer
+text_intent and design_intent independently as preserve or renew; design includes
+images. Record both before writes. A new design never permits rewriting preserved
+text. Use workflows/interview.md in the starter when guidance is needed; resume
+existing answers instead of repeating the interview. In both cases prefer
 standard blocks, then editable custom types, and only rare documented HTML
 exceptions. Keep every old public URL working or meaningfully redirected.
 Managed HTML import is only an intermediate step, not completed reconstruction.

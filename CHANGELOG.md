@@ -2,7 +2,7 @@
 
 ## Core 0.2.100 / MCP 0.45.77
 
-- Expand the website workspace with owner rules, SEO strategy and task routines, including a copyable migration kickoff. Keep edited project files on update.
+- Expand the website workspace with owner rules, SEO strategy, canonical starter prompts and a resumable guided interview. Choose text and design/image preservation independently, with explicit asset/metadata exceptions. Keep edited project files and interview answers on update.
 - Clarify that the managed WordPress import stages HTML and the external agent reconstructs editable blocks. Remove obsolete editor-conversion instructions from public docs and workflow messages; no import/conversion behavior changes.
 
 ## Core 0.2.89 / MCP 0.45.69
