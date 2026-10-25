@@ -14,6 +14,26 @@ Hosted compact discovery and the Site Organization ID check require Core
 [hosted connection](../mcp-server/). These are version requirements, not a promise
 that every Cloud or self-hosted portal has already upgraded.
 
+## A starter you can keep in your own repository
+
+Use `typeroll init` below to generate the starter rather than copying an old
+website or maintaining a second template repository. It creates a normal folder
+that you can keep in your own private Git repository. No repository or remote
+Site is created automatically. This planning workspace is separate from the
+Typeroll-managed publication repository; never edit generated publishing source
+to change the website.
+
+The starter has places for the owner's wishes and rules, brand direction,
+content model, SEO strategy, migration plan, decisions, task routines and QA.
+The owner and agent can maintain these together. Current Pages, schema and
+settings remain in the CMS, not in duplicated local exports.
+
+The expanded rules/SEO/routines scaffold requires MCP 0.45.77 or later. If that
+release is not installed yet, create those Markdown files yourself using the
+structure below; hosted MCP editing does not depend on the local scaffold.
+`@latest` selects the published starter version. The generated lock records it;
+client adapters pin their generated MCP version. Review upgrades explicitly.
+
 ## Start without a repository
 
 1. Connect your agent to `https://app.typeroll.com/api/mcp?tools=compact`.
@@ -35,7 +55,7 @@ check `get_import_readiness`. This is distinct from ordinary new draft uploads.
 Use Node.js 20 or later for the standalone MCP package:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site
+npx @typeroll/mcp-server@latest init ./my-site
 ```
 
 This is a local filesystem operation: it creates no remote Site, repository,
@@ -53,7 +73,16 @@ my-site/
 ├── brief/
 │   ├── site.md
 │   ├── brand.md
-│   └── content-model.md
+│   ├── content-model.md
+│   ├── migration.md
+│   ├── interview.md
+│   ├── rules.md
+│   └── seo.md
+├── workflows/
+│   ├── README.md
+│   ├── interview.md
+│   ├── new-site.md
+│   └── migration.md
 ├── decisions.md
 ├── sources/README.md
 ├── scripts/README.md
@@ -62,6 +91,15 @@ my-site/
 
 - **Brief:** purpose, audience, languages, brand, editorial constraints, content
   authority, types/routes and desktop/mobile navigation intent.
+- **Owner rules:** `brief/rules.md` records confirmed preferences, writing and
+  design constraints, approval boundaries and exceptions, with dates and owners.
+  Distinguish proposals from approved decisions. Local notes do not bypass permissions.
+- **SEO strategy:** `brief/seo.md` records audiences, search intent, research
+  evidence, topic coverage, page roles, URL/indexing policy, editorial standards
+  and measurement. Actual metadata, canonicals and robots settings live in the CMS.
+- **Routines:** `workflows/README.md` maps tasks to the relevant project files and
+  on-demand MCP skills. `workflows/migration.md` includes a copyable kickoff prompt.
+  Add your own routines with inputs, steps, acceptance checks and approval boundaries.
 - **Decisions:** approved scope, design choices and deliberate deviations.
 - **Sources:** research and proposals. Keep private extracts in ignored
   `sources/private/`. Do not store media libraries or current CMS content as a
@@ -81,7 +119,7 @@ does not depend on the portal's optional built-in AI chat:
   and event structured data ([Pages tools](../../tools/pages/#structured-data-tools)).
 - `tr-starter-design` for a blank Site or one that keeps the starter design.
 - For migrations, read `tr-migration-evidence` before the source-specific recipe.
-  Record preserve/renew intent in `brief/migration.md`; see
+  Record independent text and design/image choices in `brief/migration.md`; see
   [Choose your migration approach](../../guides/migration-approach/).
 - When an AI workflow fails with `ai_not_enabled`, the agent does the same work
   itself with the matching recipe and says so
@@ -126,15 +164,47 @@ Use private client settings or environment injection. `.gitignore` excludes
 `.env`, local client configurations and temporary/private output. Ignore rules
 cannot remove secrets that were already committed; inspect existing repositories.
 
+## Guided start
+
+The kickoff prompts live in the generated starter, not in this documentation:
+
+- `workflows/interview.md` — the agent's structured interview when you need guidance.
+- `workflows/new-site.md` — the kickoff for a new website with a clear brief.
+- `workflows/migration.md` — the kickoff for a migration with a clear brief.
+
+The canonical Markdown sources are in the public repository's
+[workspace-templates](https://github.com/Typeroll/typeroll/tree/main/packages/mcp-server/workspace-templates)
+directory and are shipped with MCP 0.45.77+. The starter generator uses those same
+files. Adapt your generated copies to your project; updates preserve your edits.
+
+Open your workspace with your agent and have it read `AGENTS.md`. When guidance
+is needed or an important decision is missing, those instructions lead it into
+the interview. It asks one short question at a time, reuses answers already given
+and saves progress in `brief/interview.md`. You can pause and resume in another
+session; a complete brief skips the interview. It is an agent routine, not a
+portal wizard, and planning can start before connecting MCP.
+
+The interview covers goals, target Site, text preservation, design and images,
+content/features, SEO, owner rules and acceptance. For a migration, you choose
+preserve or renew **separately for text and for design/images**. It also records
+image exceptions and metadata rules. The agent recaps confirmed decisions and
+open questions before dependent work. Silence is never approval, and approving
+the brief alone does not authorize publication, DNS changes or messages.
+
+Keep prompts in your project alongside the brief, rules and QA evidence. Read
+only the relevant routine and load MCP recipes on demand. If your client cannot
+read local files, attach the relevant starter files to its project context;
+hosted MCP cannot read your folder automatically.
+
 ## Optional local client configuration
 
 Hosted MCP is sufficient. If your client launches local stdio processes, you can
 also generate a client configuration explicitly:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client claude
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client cursor
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client vscode
+npx @typeroll/mcp-server@latest init ./my-site --client claude
+npx @typeroll/mcp-server@latest init ./my-site --client cursor
+npx @typeroll/mcp-server@latest init ./my-site --client vscode
 ```
 
 Choose one command for your client. These generate `.mcp.json`, `.cursor/mcp.json`
@@ -154,14 +224,14 @@ After creation, fill the IDs in `typeroll.json` and reconnect before editing.
 For clients without an adapter, launch:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 workspace-mcp ./my-site
+npx @typeroll/mcp-server@latest workspace-mcp ./my-site
 ```
 
 ## Check the setup
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 doctor ./my-site --offline
-npx @typeroll/mcp-server@0.45.23 doctor ./my-site --json
+npx @typeroll/mcp-server@latest doctor ./my-site --offline
+npx @typeroll/mcp-server@latest doctor ./my-site --json
 ```
 
 The online command uses the injected API key. It reads accessible sites, the
@@ -230,7 +300,7 @@ restore the named-tool catalog if a client handles it better.
 ## Update without losing project work
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --update
+npx @typeroll/mcp-server@latest init ./my-site --update
 ```
 
 An unchanged generated file can be upgraded. A user-edited file is reported as
@@ -246,8 +316,8 @@ Without `--client`, the updater leaves local client configurations alone.
 Recipes are served by MCP by default. For offline reference, opt in:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes
-npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes --update
+npx @typeroll/mcp-server@latest init ./my-site --recipes
+npx @typeroll/mcp-server@latest init ./my-site --recipes --update
 ```
 
 They live in neutral `typeroll-skills/` and follow the same hash-based update

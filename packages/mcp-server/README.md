@@ -10,6 +10,24 @@ with a few workflow tools composing consecutive API calls such as config plus
 deploy. Auth happens at the API layer with a site- or org-scoped key; the MCP
 just carries the bearer through.
 
+## Website starter workspace
+
+Run `npx @typeroll/mcp-server@latest init ./my-site` to generate a project folder
+for your own repository. It keeps owner rules in `brief/rules.md`, search strategy
+in `brief/seo.md`, a migration brief, task entry points under `workflows/`, decisions
+and QA. MCP 0.45.77 adds the rules/SEO/routines files. Use `init ./my-site --update`
+to add them to an existing workspace; edited files are preserved for manual review.
+
+This is separate from the generated publication repository. The CMS owns current
+content and settings. Hosted MCP does not require a local workspace. Read the
+[workspace guide](https://typeroll.com/docs/getting-started/agent-workspace/) and
+[guided-start documentation](https://typeroll.com/docs/getting-started/agent-workspace/#guided-start).
+Kickoff prompts live only in the starter files: `workflows/new-site.md` and
+`workflows/migration.md`. `workflows/interview.md` guides missing decisions one
+question at a time and resumes from `brief/interview.md`. Migrations choose text
+and design/image preservation independently.
+Load task recipes on demand instead of copying the complete manual into context.
+
 ## One Page model
 
 Core 0.2.0 and MCP 0.45.0 use one content entity: **Page**. Every article,

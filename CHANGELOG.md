@@ -1,5 +1,10 @@
 # Changelog
 
+## Core 0.2.100 / MCP 0.45.77
+
+- Expand the website workspace with owner rules, SEO strategy, canonical starter prompts and a resumable guided interview. Choose text and design/image preservation independently, with explicit asset/metadata exceptions. Keep edited project files and interview answers on update.
+- Clarify that the managed WordPress import stages HTML and the external agent reconstructs editable blocks. Remove obsolete editor-conversion instructions from public docs and workflow messages; no import/conversion behavior changes.
+
 ## Core 0.2.89 / MCP 0.45.69
 
 - Define preserve and renew migration approaches, with a shared editable-block hierarchy and continuity for every old public URL. Include art-directed hero HTML exceptions and explicit content/design acceptance references.

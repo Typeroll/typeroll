@@ -13,7 +13,7 @@ assistant in the portal has no migration tools.
 
 For a single site, use [tr-migrate-wp](../tr-migrate-wp/) or [tr-import-url](../tr-import-url/) instead.
 
-Record [preserve or renew](../../guides/migration-approach/) per Site before
+Record [separate text and design/image choices](../../guides/migration-approach/) per Site before
 building. Both use editable blocks and preserve or redirect old public URLs.
 
 ## One site or several?
@@ -53,8 +53,9 @@ Because each market is its own site, nothing can work out which German page corr
 
 The AI agent writes the cluster on **all** sides (search engines ignore one-sided clusters), uses the final domains rather than temporary URLs, and adds each page's self-reference automatically.
 
-## Try it
+## Start from your workspace
 
-> "We have ten WordPress sites in a multisite — a .se, a .de, a .co.uk and seven more. Read the tr-migrate-multisite skill and let's plan the move."
-
-The AI agent starts with the plan table and the URL inventories, not with building. That order is deliberate: the inventory is what makes "are we finished?" answerable.
+Use `workflows/migration.md` and the guided interview in the
+[workspace starter](../../getting-started/agent-workspace/#guided-start), recording
+text and design/image choices for each Site. Select `tr-migrate-multisite` as the
+source recipe. The agent starts with the site plan and URL inventories.

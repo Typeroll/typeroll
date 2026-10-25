@@ -1,6 +1,6 @@
 ---
 name: tr-migration-evidence
-description: Choose preserve or renew intent, map standard and custom blocks, preserve old URLs, and verify content, design and behavior before migration acceptance.
+description: Choose text and design/image preservation independently, map standard and custom blocks, preserve old URLs, and verify content, design and behavior before migration acceptance.
 ---
 
 # Migration evidence contract
@@ -12,22 +12,33 @@ AI assistant has no migration tools: it does not import, convert or verify sites
 Use this shared contract with WordPress, Astro, URL and multisite recipes.
 ## Choose the migration intent before writes
 
-Record `preserve` or `renew` in the workspace's `brief/migration.md` (or the
-project's equivalent brief), with scope, source URLs and the user's decision.
-These are planning labels, not fields accepted by the migration API. Ask when
-the intent is unclear; do not infer redesign permission from “migrate”.
+Record two independent choices in `brief/migration.md` (or the project's
+corresponding brief): `text_intent` and `design_intent`, each `preserve` or `renew`.
+Design includes images. These are planning labels, not migration API parameters.
+Use the starter's `workflows/interview.md` when guidance or decisions are missing;
+resume existing answers. Do not infer either choice from a vague "migrate" or
+"renew", or silently apply an old single-choice brief to both dimensions.
 
-| Intent | Source material | Acceptance reference |
+| Text | Design/images | Acceptance |
 | --- | --- | --- |
-| Preserve: change publishing platform | Keep text, images, structure, visual identity and behavior as closely as practical. | The original site. Record deliberate deviations and their agreed benefit. |
-| Renew: improve design and content | Use source text, images, structure and graphic design as raw material. Agree what to retain, rewrite, combine or replace. | The agreed brief, content plan and approved prototypes, not visual similarity to the old site. |
+| Preserve | Preserve | Compare wording and appearance separately with the source. |
+| Preserve | Renew | Keep wording; compare appearance with approved new prototypes. |
+| Renew | Preserve | Review copy against the editorial brief; keep source appearance, allowing documented layout adjustments for new text length. |
+| Renew | Renew | Review copy and appearance against their separately approved briefs. |
 
-Both paths preserve facts, ownership, required business behavior and historical
-URL continuity. Renewal does not authorize invented claims, removal of useful
-content or an unapproved domain switch. Do not use a partly migrated target as
-an accidental design reference. Protect existing target edits in either path.
+Preserved text includes headings, body copy, CTA labels and captions. Record
+metadata, alt text, legal text and translation rules explicitly; SEO is not an
+exception permitting silent rewrites. With renewed design, list required assets
+and which images may be replaced or generated, including cropping, credits and
+rights. Format/size optimization must not change a preserved image's motif.
 
-## Use editable blocks in both paths
+Record source URLs, dates, approved scope, per-Page exceptions and acceptance
+references separately. Both choices preserve facts, ownership, required behavior
+and historical URL continuity. Renewing design does not authorize text rewrites;
+renewing text does not authorize new imagery. Neither authorizes invented claims,
+unreviewed content removal or domain cutover. Protect existing target edits.
+
+## Use editable blocks for all four combinations
 
 1. Inspect standard block schemas, composition starters, named styles and Page
    templates. Prefer these when they fit.
@@ -60,10 +71,10 @@ still needs a platform fix, not a disguised HTML/CSS workaround.
 
 The managed WordPress importer deterministically stores cleaned HTML and shared
 references, without AI rewriting. That is a source-preserving intermediate step.
-The external agent rebuilds it into reviewed blocks/templates for either intent;
+The external agent rebuilds it into reviewed blocks/templates for all four combinations;
 `set_page_mode` does not perform conversion. Keep the complete source, map every
-in-scope content element, and do not silently truncate long pages. In preserve
-mode retain wording; in renew mode track approved rewrites and source facts.
+in-scope content element, and do not silently truncate long pages. When text_intent is preserve retain wording; when it is renew track approved
+rewrites and source facts, independently of design_intent.
 An import finishing does not mean design, block reconstruction or launch is done.
 
 ## Old URLs must continue to work
@@ -86,10 +97,10 @@ Do not switch traffic until these checks pass and cutover is authorized.
 
 ## Gate 1: source baseline, before conversion
 
-Record the chosen intent, authoritative source URL/date, scope, relevant Core version, active
+Record both chosen intents, authoritative source URL/date, scope, relevant Core version, active
 Page templates and overrides. Inventory home, category/archive, long/short
 articles, downloads, empty related lists and each distinct business surface.
-For preserve, capture source and target geometry; for renew, compare the target
+For design_intent=preserve, capture source and target geometry; for design_intent=renew, compare the target
 with the approved design while retaining source coverage evidence. Capture
 screenshots and computed geometry at matching actual `innerWidth`
 values (320/390/768/1024/1280/1536 where relevant, plus both sides of actual
@@ -249,14 +260,15 @@ pre-cutover scope honestly when DNS or integrations remain out of scope.
 
 The initial route census must combine source sitemaps, internal links, archive
 pagination, CMS inventory and known utility routes. Include homepage, archives,
-404/search behavior and routes outside the sitemap where present. In preserve mode, do not invent
-features absent from the source. In renew mode, include additions in the agreed brief. Assign every route a recipe, template override,
+404/search behavior and routes outside the sitemap where present. Do not invent features absent from the source; include additions only in the agreed brief. Assign every route a recipe, template override,
 composition or documented exception. Inventory the whole shell: content outside
 `main`, header, footer, service navigation and archive heroes are not optional.
 
-Derive required evidence from that census. For preserve, pair every in-scope source/target route
-at mobile and desktop; for renew, compare every target route to its approved
-prototype and account for the source content/URL mapping; add each unique component, breakpoint and interaction
+Derive required evidence from that census. For design_intent=preserve, pair every
+in-scope source/target route at mobile and desktop; for design_intent=renew, compare
+every target route to its approved prototype. Independently compare preserved text
+to the source and renewed text to its editorial brief; account for the source
+content/URL mapping in every combination; add each unique component, breakpoint and interaction
 state. Inspect page-specific media, lists, tables, embeds, CTAs, anchors and related
 content. One representative article cannot attest every article's content.
 

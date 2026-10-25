@@ -29,16 +29,11 @@ The migration workflow runs in stages:
 
 All imported pages start with `status: "review"`. You sign off before anything goes live.
 
-## Example prompts
+## Start from the workspace
 
-```
-Migrate my WordPress site at acme.se to this Typeroll site.
-```
-
-```
-The source site is at https://old.acme.com/wp-json — migrate it here.
-I have installed the helper plugin and configured its key securely.
-```
+Use the migration routine in the [workspace starter](../../getting-started/agent-workspace/#guided-start).
+Its interview guides missing decisions and records text and design/image choices
+separately. Kickoff prompts are maintained in the starter files.
 
 ## Before you start
 
@@ -48,10 +43,10 @@ The target Typeroll site should already have:
 - Header and footer partials built (at least a basic version)
 - Source and target examples for desktop/mobile comparison
 
-Choose [preserve or renew](../../guides/migration-approach/) first. The managed
+Choose [separate text and design/image choices](../../guides/migration-approach/) first. The managed
 import preserves cleaned HTML; the agent separately rebuilds editable blocks and
-templates. Review against the source in preserve mode or the agreed design and
-content plan in renew mode. Custom block types are appropriate when standard
+templates. Review text and design/images separately against the source for preserve or
+the relevant approved brief for renew. Custom block types are appropriate when standard
 blocks do not fit; raw HTML is an exceptional fallback.
 
 ## The helper plugin
