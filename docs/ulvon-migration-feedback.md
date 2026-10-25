@@ -164,3 +164,23 @@ Organization/Site/Version binding throughout. No change auto-publishes ulvon.
 The renderer capability contract advances to **0.53.0** so clients refresh cached
 block schemas for the added native controls. Core/MCP release versions remain
 0.2.103 / 0.45.79; frozen output dependencies retain the exact Core revision.
+
+## Staging follow-up, 2026-10-25
+
+Core 0.2.103 / MCP 0.45.79 and the synchronized starter were released. Cloud
+staging run 40238403836 passed the private checks, 60 browser contracts, the
+hosted agent journey and the real Cloudflare publication journey. It did not
+qualify for production: the fallback-indexing fixture had two working copies
+from September, so the new `unsaved_content` guard correctly refused its deploy.
+The bounded fixture journey now explicitly publishes saved content only after
+checking its exact site and fallback origin. It never saves or discards drafts;
+customer publication keeps the confirmation requirement. The corrected journey
+was rerun against staging successfully: HEAD and GET returned 200 with
+`X-Robots-Tag: noindex, nofollow`.
+
+Additional staging acceptance verified `append_seo_suffix: false` persistence,
+the unsaved guard, and rendered card click targets/contrast at 390/768/1280px.
+It also found public URL discovery hidden by the Migration page's empty-state
+branch. Core 0.2.104 always mounts the discovery component. Browser regressions
+cover an empty inventory, discovery input, result display and mobile overflow
+at 390/1440px. Production remains pending a qualified follow-up release.
