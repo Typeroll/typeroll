@@ -104,7 +104,9 @@ Show me a preview of the site.
 
 The preview link is valid for 24 hours and renders saved database state, not
 the last deploy. Pass `include_working_copy: true` when the reviewer should also
-see unsaved drafts; that choice is signed into the link.
+see unsaved drafts; that choice is signed into the link. Anyone holding the link
+sees unpublished content, so creating one needs write permission on the site, in
+the portal as well as through the API.
 
 ## `get_page_preview`
 

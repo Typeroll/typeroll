@@ -260,8 +260,18 @@ on the portal's **New site** page. See
 ## `update_site`
 
 Changes a site's name, slug, domain, language or `ai_scripts_enabled`. Over REST
-this is `PATCH /api/v1/sites/{siteId}`. The slug is uniqueness-checked because it
-determines the fallback subdomain. Resubmitting the current slug is idempotent
+this is `PATCH /api/v1/sites/{siteId}`. Changing `slug` or `domain` requires
+admin permission on the site (`403` otherwise): the slug determines the fallback
+subdomain and the domain becomes the canonical URL of every build. Name and
+language need write permission.
+
+The slug is uniqueness-checked within the Organization, and its fallback
+subdomain is reserved across the whole platform: a slug whose fallback
+subdomain another site already uses is refused with `409` and code
+`slug_unavailable`, and the site keeps its current slug. Typeroll never
+re-points a fallback subdomain whose DNS record or hosting attachment belongs
+to another site. Sites that publish to the Organization's own Git repository
+get no platform fallback subdomain. Resubmitting the current slug is idempotent
 and repairs missing fallback hosting coordinates, including the Pages project
 and DNS record, when the hosting provider is configured.
 

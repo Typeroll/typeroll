@@ -16,19 +16,33 @@ site key gets `403`.
 
 ## API keys
 
-| Action                     | MCP tool                      | API route below `/api/v1`                | Permission             |
-| -------------------------- | ----------------------------- | ---------------------------------------- | ---------------------- |
-| List a Site's keys         | `list_api_keys`               | `GET /sites/{site}/api-keys`             | Any access to the Site |
-| Revoke a site key          | `revoke_api_key`              | `DELETE /sites/{site}/api-keys/{key_id}` | Admin on the Site      |
-| List organization keys     | `list_organization_api_keys`  | `GET /organization/api-keys`             | Organization key       |
-| Revoke an organization key | `revoke_organization_api_key` | `DELETE /organization/api-keys/{key_id}` | Organization key       |
+| Action                     | MCP tool                      | API route below `/api/v1`                | Permission        |
+| -------------------------- | ----------------------------- | ---------------------------------------- | ----------------- |
+| List a Site's keys         | `list_api_keys`               | `GET /sites/{site}/api-keys`             | Admin on the Site |
+| Revoke a site key          | `revoke_api_key`              | `DELETE /sites/{site}/api-keys/{key_id}` | Admin on the Site |
+| List organization keys     | `list_organization_api_keys`  | `GET /organization/api-keys`             | Organization key  |
+| Revoke an organization key | `revoke_organization_api_key` | `DELETE /organization/api-keys/{key_id}` | Organization key  |
 
 New API keys are created only in the portal (**Site settings → API keys** or
 **Organization settings → API keys**), where the token is shown once to the
-person creating it. The API and MCP do not create keys, so a secret never lands
+person creating it. Organization keys are created, listed and revoked in the
+portal by organization owners and admins only, also in Organizations that do not
+enforce member roles. The API and MCP do not create keys, so a secret never lands
 in an agent's conversation, a tool log or a chat history; `POST` to these routes
 returns `403` saying where to create one. Lists return metadata only: id, name,
-creation, last use and revocation.
+creator, creation, last use and revocation, and need admin permission on the
+Site because they name people and addresses. The last-use address is the one
+the deployment's trusted proxy appended (`AUTH_TRUST_PROXY_HOPS`, see
+[self-hosting](../../guides/self-hosting/)); a client-supplied
+`X-Forwarded-For` value is not stored.
+
+Site keys are created only by the Organization that owns the Site. An
+administrator of an Organization the Site is shared with can list and revoke
+its keys through the API and MCP but not create one: a site key is stored
+with the Site, not with the share, and would otherwise outlive it. Use an organization key to reach shared
+Sites. Site keys a recipient created before this rule are revoked when its
+share is revoked or lowered below admin, and cannot archive, restore or purge
+the Site.
 
 A site key can revoke keys for its own Site only. Revoking a key stops it
 authenticating immediately, including the key making the call. Revoked keys
@@ -43,7 +57,11 @@ stay listed for audit.
 | Change permission | `update_site_share` | `PATCH /sites/{site}/shares/{share_id}`  |
 | Revoke a share    | `revoke_site_share` | `DELETE /sites/{site}/shares/{share_id}` |
 
-All four need admin permission on the Site, as in the portal. `share_site`
+All four need admin permission on the Site, as in the portal. Sharing the Site,
+changing a share and revoking one also require the Organization that owns the
+Site: a recipient cannot pass on or change access it was given, however much
+access its share grants. Extension installation credentials cannot manage
+shares or keys. `share_site`
 takes `org_id` or `org_slug`, an optional `permission` (`read`, `write` — the
 default — or `admin`) and an optional `label`. An Organization can hold one
 active share per Site; change it with `update_site_share` instead of sharing
@@ -56,12 +74,26 @@ access for the recipient and its keys immediately; the record stays listed with
 `create_organization_invite` (`POST /api/v1/organization/invites`, body
 `{ "ttl_days": 14 }`) returns a signed `invite_url` and its `expires_at`. The
 lifetime is 1–30 days, 7 by default. The invited person opens the link, signs
-in and joins as an **editor**, the same role as a portal invite. The link cannot be revoked before it expires, so send it only to the intended
-person. Any member can invite in the portal; through the API this needs an
-organization key.
+in and joins as an **editor**, the same role as a portal invite. Through the API
+this needs an organization key.
 
-**Self-hosting:** invites are signed with `FORMS_HMAC_SECRET` and use
-`PORTAL_PUBLIC_URL` for the link. Without the secret the route returns `503`.
+Every invite is stored by the portal and is **single use**: once someone joins
+with it, the link stops working, and a person who was removed from the
+Organization cannot use the same link to come back. Someone who is already a
+member can open it without using it up. In the portal, organization owners and
+admins create invites (`POST /api/orgs/invite/generate`, optional `ttlDays`,
+`max_uses` from 1 to 50 for a link several people may use, and `email` to
+accept only a person signed in with that address). They list them with
+`GET /api/orgs/invite` (state, uses, expiry and creator, never the link) and
+revoke one with `DELETE /api/orgs/invite/{invite_id}`; a revoked link stops
+working immediately, and people who already joined keep their membership.
+
+Invite links created before stored invites were introduced are no longer
+accepted, because they could not be revoked. Create a new invite instead.
+
+**Self-hosting:** invites are signed with a key derived from
+`FORMS_HMAC_SECRET` and use `PORTAL_PUBLIC_URL` for the link. Without the
+secret the route returns `503`.
 
 ## Workflows
 
