@@ -85,8 +85,8 @@ COPY --from=builder /repo /app
 # (wrangler) write at runtime are owned by `node`. Temporary build output
 # goes to the OS temp directory and npm/wrangler state to /home/node.
 RUN set -eux; \
-    mkdir -p /app/packages/site-template/.astro /app/packages/site-template/node_modules; \
-    chown -R node:node /app/packages/site-template/.astro /app/packages/site-template/node_modules; \
+    mkdir -p /app/packages/site-template/.astro /app/packages/site-template/node_modules /app/packages/portal/.wrangler; \
+    chown -R node:node /app/packages/site-template/.astro /app/packages/site-template/node_modules /app/packages/portal/.wrangler; \
     for dir in /app/node_modules /app/packages/portal/node_modules; do \
       if [ -d "$dir" ]; then mkdir -p "$dir/.cache"; chown -R node:node "$dir/.cache"; fi; \
     done
