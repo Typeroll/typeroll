@@ -164,6 +164,10 @@ export async function readWorkingCopy(
  * Shallow-merge fields into the working copy (creating it if absent).
  * Callers whitelist fields BEFORE calling this — the module trusts its
  * input so the blocks-mutation path can reuse it without re-filtering.
+ * HTML is the exception: `html_content` is sanitized here, at the single
+ * point every draft write passes through, so a stored draft is never more
+ * permissive than the saved doc it will become (editor previews and
+ * agents read drafts before any commit).
  */
 export async function mergeWorkingCopy(
   ctx: WcCtx,
@@ -173,6 +177,9 @@ export async function mergeWorkingCopy(
   answerSources?: WorkingCopy['answer_sources'],
 ): Promise<WorkingCopy> {
   const key = wcKey(target);
+  if (typeof fields.html_content === 'string' && fields.html_content) {
+    fields = { ...fields, html_content: await sanitizeSiteHtml(ctx, fields.html_content) };
+  }
   const existing = await readWorkingCopy(ctx, target);
   const page = target.kind === 'page' && fields.fields && !existing?.answer_base
     ? await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id) : null;
@@ -192,6 +199,11 @@ export async function mergeWorkingCopy(
     body,
   );
   return next;
+}
+
+async function sanitizeSiteHtml(ctx: WcCtx, html: string): Promise<string> {
+  const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+  return sanitizeBody(html, settings?.iframe_allowed_hosts);
 }
 
 export async function discardWorkingCopy(ctx: WcCtx, target: WcTarget): Promise<void> {
@@ -289,8 +301,8 @@ async function maybeAutoRedirect(
 /**
  * The deliberate Save: promote the working copy's fields onto the canonical
  * doc through the SAME invariants as a direct canonical write — revision
- * snapshot of the pre-edit state, SEO transform for page HTML, sanitize for
- * partial HTML, redirect hygiene (auto-301 from the old URL + retiring
+ * snapshot of the pre-edit state, sanitize for page and partial HTML (plus
+ * the SEO transform for page HTML), redirect hygiene (auto-301 from the old URL + retiring
  * redirects that would shadow the new one) — then delete the copy.
  *
  * This is the single commit path shared by the editors' Save button and
@@ -339,7 +351,10 @@ export async function commitWorkingCopy(
         existing.image_sizes_default ||
         settings?.image_sizes_default ||
         undefined;
-      const transformed = transformBodyForSeo(update.html_content, buildMediaLookup(media), {
+      // Sanitize before the SEO transform, as page creation does: copies
+      // stored before drafts were sanitized must not reach the saved page raw.
+      const clean = sanitizeBody(update.html_content, settings?.iframe_allowed_hosts);
+      const transformed = transformBodyForSeo(clean, buildMediaLookup(media), {
         cfImageOrigin: process.env.CF_IMAGE_ORIGIN || undefined,
         defaultSizes,
       });
