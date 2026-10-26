@@ -2,8 +2,6 @@
 import AppLayout from '../../../../layouts/AppLayout.astro';
 import MigrationUrls from '../../../../components/MigrationUrls.tsx';
 import { getStore } from '../../../../lib/datastore';
-import { paths } from '@typeroll/shared';
-import type { Site } from '@typeroll/shared';
 import { analyzeCoverage } from '../../../../lib/wp/url-inventory';
 import { runMigrationPreflight } from '../../../../lib/migration-preflight';
 import { loadSiteContext } from '../../../../lib/access';
@@ -59,14 +57,8 @@ const problems = [...preflight.blockers, ...preflight.warnings];
     </div>
   )}
 
-  {initial.urls.length === 0 ? (
-    <div class="card" style="text-align: center; padding: 3rem 2rem;">
-      <h2 style="font-size: 1.25rem;">No URLs discovered yet</h2>
-      <p class="muted" style="margin-top: 0.5rem;">Run a migration workflow first. The inventory step populates this page from the source site's sitemap and the helper plugin.</p>
-    </div>
-  ) : (
-    <MigrationUrls client:load siteId={siteId} initial={initial} />
-  )}
+  <MigrationUrls client:load siteId={siteId} initial={initial} />
+
 </AppLayout>
 
 <style>
