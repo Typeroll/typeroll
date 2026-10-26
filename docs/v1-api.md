@@ -419,7 +419,7 @@ Use `page_ids` or `content_type`, to split a large
 repair into reviewable batches. `diff_limit` defaults to 500 and is capped at
 2,000; `truncated` and `additional_diffs` make omitted diffs explicit.
 
-## Public verification diagnostics (Core 0.2.96 candidate)
+## Public verification diagnostics (Core 0.2.108)
 
 `GET /sites/{siteId}/deploys/{jobId}` and MCP `get_deploy_status` expose the
 saved job's `static_probe` when public distribution verification fails. Alongside
@@ -439,7 +439,7 @@ without an additional HTTP request. Successful 404 checks do not read the body.
 
 The evidence does not weaken status/content verification. Continue observing the
 same job; a local polling timeout must not create a replacement publication.
-This candidate is not available in Core 0.2.95.
+Available from Core 0.2.108; earlier installations do not expose these fields.
 
 ## Publication impact
 
@@ -652,3 +652,32 @@ and redirects. This does not provision hosting or prove external availability;
 the owning deployment must verify its public URLs. Declared links produce
 source-located warnings; sitemap and breadcrumb validation remain strict.
 The setting is available through `update_site_settings` and the Site settings UI.
+
+
+## Private questionnaire progress (Core 0.2.97 / MCP 0.45.75 candidate)
+
+`POST /sites/{siteId}/forms/{formId}/intake` is installation-authorized
+(`forms:execute`); the Form must target that installation. `describe` resumes
+one trusted interview, `save` persists the complete visible answer snapshot,
+and `complete` validates and closes it. Save/complete use `revision` plus a
+stable `request_id`; retry uncertain requests unchanged. Conflicts return 409.
+Hidden conditional answers are removed server-side. Saved partials are durable;
+only never-answered descriptors expire after 30 days. Completed owner responses
+never expose the stored answers or question history.
+
+Optional private `notifications: {recipient, first_answer_field}` also requires
+`email:send`. The first set answer, including false, and a changed completion
+summary enqueue at most two durable notification events in the submission.
+Only definite failures can be retried; uncertain delivery is never resent by a
+timer. The site must have an email connector. No Form action hooks are executed.
+
+`GET /sites/{siteId}/forms/{formId}/intake-responses?page_id=...` is private
+administrative access to profile-linked answers and status (50 rows, `after_id`
+and `next_after_id`). Humans need site admin; installations need the new narrow
+`forms:intake:read` scope and exact Form/record installation ownership. POST to
+that URL with `{submission_id,event}` explicitly retries a pending/failed event;
+installation callers additionally need `email:send`. MCP exposes
+`list_form_intake_responses` and `retry_form_intake_notification`.
+
+This candidate is not present in Core 0.2.95/MCP 0.45.74. App-specific setup
+and copy stay in the enabled app's private guide.

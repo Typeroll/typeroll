@@ -43,7 +43,7 @@ export const BLOCK_TYPE_FIELD_TYPES: readonly FieldType[] = [
 ];
 const FIELD_KEYS = new Set(['name', 'type', 'label', 'help', 'required', 'default', 'placeholder', 'options', 'option_labels', 'fields',
   'item_label', 'min_items', 'max_items', 'responsive', 'min', 'max', 'style_target', 'editor_group', 'ref_content_type', 'choices_markup',
-  'responsive_css', 'css_unit', 'item_key', 'style_default_role', 'min_render_version']);
+  'responsive_css', 'css_unit', 'design_token', 'item_key', 'style_default_role', 'min_render_version']);
 /** Properties a block type definition may carry. */
 export const BLOCK_TYPE_WRITABLE = ['name', 'label', 'icon', 'category', 'container', 'slot_count', 'slot_labels', 'item_compatible',
   'expand_to', 'schema', 'template', 'styles', 'script', 'composition', 'description', 'parts'] as const;
@@ -250,6 +250,8 @@ function checkFields(
     if (!(BLOCK_TYPE_FIELD_TYPES as readonly unknown[]).includes(raw.type)) error(`${at}/type`, `type must be one of ${BLOCK_TYPE_FIELD_TYPES.join(', ')}.`);
     if (typeof raw.label !== 'string' || !raw.label.trim() || raw.label.length > 120) error(`${at}/label`, 'label must be text up to 120 characters.');
     if (raw.help !== undefined && (typeof raw.help !== 'string' || raw.help.length > 500)) error(`${at}/help`, 'help must be text up to 500 characters.');
+    if (raw.design_token !== undefined && (raw.type !== 'number' || !['type_size','space','leading'].includes(String(raw.design_token)) || !['px','number'].includes(String(raw.css_unit)))) error(`${at}/design_token`, 'design_token needs a number field with css_unit and a type_size, space or leading scale.');
+    if (typeof name === 'string' && /(?:^|_)(?:font|font_family)$/.test(name) && (raw.type !== 'select' || !Array.isArray(raw.options) || raw.options.some(option => !['heading','body','mono','inherit'].includes(String(option))))) error(`${at}/options`, 'Font fields must select heading, body, mono or inherit from the site fonts; free font-family values are not supported.');
     if (raw.type === 'select' || raw.type === 'multiselect') {
       if (!Array.isArray(raw.options) || !raw.options.length || raw.options.some(option => typeof option !== 'string' || !option)) error(`${at}/options`, 'A select field needs a non-empty list of options.');
       else if (raw.option_labels !== undefined && (!Array.isArray(raw.option_labels) || raw.option_labels.length !== raw.options.length)) error(`${at}/option_labels`, 'option_labels must match options one to one.');

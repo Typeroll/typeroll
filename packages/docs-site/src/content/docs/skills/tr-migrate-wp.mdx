@@ -21,7 +21,7 @@ The migration workflow runs in stages:
 | Stage               | What happens                                                                                                                                 |
 | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Discover**        | Verifies the WP REST API is reachable, probes for the helper plugin                                                                          |
-| **Inventory**       | Walks the sitemap + REST API to build a complete URL list                                                                                    |
+| **Inventory**       | Combines sitemap, REST inventory and discovered internal links; checks coverage                                                              |
 | **Custom types**    | ACF/CPT schemas inferred; each becomes a Typeroll content type whose records are Pages                                                       |
 | **Extract content** | Cleaned HTML is kept in HTML mode. Automatic HTML-to-blocks conversion is not applied. Shared terms are referenced and media is copied to R2 |
 | **Redirects**       | Old WordPress URLs mapped to new Typeroll slugs                                                                                              |
@@ -29,16 +29,11 @@ The migration workflow runs in stages:
 
 All imported pages start with `status: "review"`. You sign off before anything goes live.
 
-## Example prompts
+## Start from the workspace
 
-```
-Migrate my WordPress site at acme.se to this Typeroll site.
-```
-
-```
-The source site is at https://old.acme.com/wp-json — migrate it here.
-I have installed the helper plugin and configured its key securely.
-```
+Use the migration routine in the [workspace starter](../../getting-started/agent-workspace/#guided-start).
+Its interview guides missing decisions and records text and design/image choices
+separately. Kickoff prompts are maintained in the starter files.
 
 ## Before you start
 
@@ -48,10 +43,10 @@ The target Typeroll site should already have:
 - Header and footer partials built (at least a basic version)
 - Source and target examples for desktop/mobile comparison
 
-Choose [preserve or renew](../../guides/migration-approach/) first. The managed
+Choose [separate text and design/image choices](../../guides/migration-approach/) first. The managed
 import preserves cleaned HTML; the agent separately rebuilds editable blocks and
-templates. Review against the source in preserve mode or the agreed design and
-content plan in renew mode. Custom block types are appropriate when standard
+templates. Review text and design/images separately against the source for preserve or
+the relevant approved brief for renew. Custom block types are appropriate when standard
 blocks do not fit; raw HTML is an exceptional fallback.
 
 ## The helper plugin
@@ -66,6 +61,17 @@ The optional open-source Typeroll Helper Plugin exposes:
 - Taxonomy terms, their archive URLs, custom fields and hierarchy
 
 Without the plugin, the migration falls back to the standard `/wp-json/wp/v2/` API, which may miss CPTs and ACF data.
+
+Public REST and rendered HTML can be sufficient when all required Pages, posts,
+media, SEO metadata and menus are visible. A helper/export is useful for hidden
+post types, custom fields, drafts or precise menus. Known old slugs and redirect
+plugin rules need authoritative export where available; public crawling only
+approximates them. Check the current helper contract before promising a field.
+Do not require a plugin install when the public sources cover the agreed scope.
+
+During reconstruction, discard HTML comments before extracting text, resolve
+relative links against the source URL and verify preserved text separately from
+design. Never point every missing destination at the home page.
 
 ### Installing the helper plugin
 
@@ -121,3 +127,11 @@ ordering fields per article. Repeated imports preserve saved edits.
 Review the home page, an archive and representative articles at desktop and
 mobile widths. URL coverage is only one check: record visual, shared-data and
 integration evidence before treating the migration as launch-ready.
+
+## Palette and scale consistency
+
+Configure colours and font families in site settings. Use palette names and
+named styles in blocks; document deliberate exceptions in `decisions.md`.
+Core 0.2.106 adds block palette names, named size/spacing steps and
+`lint_design_tokens`. Follow the [design-token guide](/docs/guides/design-tokens/)
+and the site starter’s `workflows/design.md`; on older Core use palette CSS variables.

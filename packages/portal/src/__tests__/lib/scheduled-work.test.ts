@@ -126,3 +126,31 @@ it('parks a due site behind the active job and wakes only on its completion', as
   await wakePendingSite('org','site','job');
   expect((await getStore().getDoc<any>(path)).due_at).toBeLessThanOrEqual(Date.now());
 });
+it('parks future page actions after access expires, resumes only after explicit rescheduling, and finishes accepted jobs', async () => {
+  vi.stubEnv('TYPEROLL_ORGANIZATION_ACCESS_POLICY', JSON.stringify({ initial_days: 30, read_days: 90, own_smtp: true, contact_url: 'https://example.invalid/' }));
+  try {
+    const store = getStore();
+    await store.setDoc(paths.org('org'), { service_access: { schema_version: 1, initial_period: {
+      starts_at: new Date(now - 31 * 86400000).toISOString(), ends_at: new Date(now - 86400000).toISOString(), read_until: new Date(now + 89 * 86400000).toISOString(),
+    } } });
+    await store.setDoc(sitePath, { name: 'Scheduled site' });
+    const page = paths.page('org', 'site', 'due');
+    await store.setDoc(page, { status: 'draft', publish_at: new Date(now - 1000).toISOString() });
+    const eventPath = workPath(page, 'page_schedule');
+    const scheduled = await store.getDoc<any>(eventPath);
+    await executeScheduledWork(id(eventPath), scheduled.generation);
+    expect(await store.getDoc(page)).toMatchObject({ status: 'draft' });
+    expect(await store.getDoc(eventPath)).toMatchObject({ blocked_by: 'organization_access', due_at: Number.MAX_SAFE_INTEGER });
+    await schedulePublication(jobPath, 'accepted-before-expiry');
+    mocks.execute.mockResolvedValueOnce('done');
+    await executeScheduledWork(id(workPath(jobPath, 'publication')));
+    expect(mocks.execute).toHaveBeenCalledOnce();
+    await store.updateDoc(paths.org('org'), { service_access: { schema_version: 1, override: { state: 'active', ends_at: null, read_until: null } } });
+    await executeScheduledWork(id(eventPath), scheduled.generation);
+    expect(await store.getDoc(page)).toMatchObject({ status: 'draft' });
+    await store.updateDoc(page, { publish_at: new Date(now - 500).toISOString() });
+    const resumed = await store.getDoc<any>(eventPath);
+    await executeScheduledWork(id(eventPath), resumed.generation);
+    expect(await store.getDoc(page)).toMatchObject({ status: 'published' });
+  } finally { vi.unstubAllEnvs(); }
+});

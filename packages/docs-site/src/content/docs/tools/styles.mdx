@@ -16,6 +16,9 @@ There are two kinds:
 - **Styles chosen per block**, such as an eyebrow, a lead paragraph, a quote, a
   button or section spacing. Pick them in a block's **Style** field.
 
+See [Design tokens](/docs/guides/design-tokens/) for palette-first block fields,
+named scales, auditing and migration (prepared for Core 0.2.106).
+
 ## Start with the standard styles
 
 New sites start with a considered standard set: body text, Heading 1–6, link,
@@ -271,3 +274,9 @@ site settings, so a branch can try new styles without changing the live site.
 
 AI agents follow the same rule as people: a look that could recur becomes a
 named style, and only a clearly unique one-off uses block settings.
+
+Heading roles (`h1`–`h6`) support `space_before` and `space_after` at the base and
+at each style breakpoint. Use these for consistent vertical rhythm, rather than
+adding a spacer to every page. Whole-tree writes check global part styles as
+well as per-instance styles against known ancestor background colors. These
+checks do not replace browser review of images, gradients or custom CSS.

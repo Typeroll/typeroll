@@ -1,7 +1,7 @@
 import { useContext, useEffect, useId, useState } from 'react';
 import type { BlockPart, BlockType, Breakpoint, FieldDefinition, ResponsiveBreakpoints, SiteStyle } from '@typeroll/shared';
 import {
-  BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, blockPartRef, instanceStyleParts, resolveBreakpointWidths, responsiveBreakpointsError, styleFitsPart, stylesForTarget,
+  COLOR_TOKENS, TOKEN_SCALES, tokenScale, scaleValue, validColor, BREAKPOINTS, BREAKPOINTS_ABOVE_MOBILE, blockPartRef, instanceStyleParts, resolveBreakpointWidths, responsiveBreakpointsError, styleFitsPart, stylesForTarget,
 } from '@typeroll/shared';
 import { Monitor } from 'lucide-react';
 import RichTextInput from './RichTextInput';
@@ -170,27 +170,16 @@ export default function FieldInput({
         </div>
       );
     case 'color':
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined} type="color" value={v || '#000000'} onChange={(e) => onChange(e.target.value)} />
-        </div>
-      );
-    case 'number':
-      return (
-        <div style={fieldGroup}>
-          {label}
-          <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined} aria-describedby={describedBy}
-            type="number"
-            min={field.min}
-            max={field.max}
-            step="any"
-            value={(value as number) ?? ''}
-            onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
-            style={textInput}
-          />
-        </div>
-      );
+      return <div style={fieldGroup}>{label}<PaletteField id={fieldId} label={field.label ?? field.name} value={v} onChange={onChange} /></div>;
+    case 'number': {
+      const scale = tokenScale(field);
+      return <div style={fieldGroup}>{label}{scale
+        ? <ScaleField id={fieldId} field={field} scale={scale} value={value} onChange={onChange} />
+        : <input id={fieldId} aria-label={field.label} aria-required={field.required || undefined} aria-describedby={describedBy}
+            type="number" min={field.min} max={field.max} step="any" value={(value as number) ?? ''}
+            onChange={e => onChange(e.target.value === '' ? '' : Number(e.target.value))} style={textInput} />}
+      </div>;
+    }
     case 'list':
     case 'list_simple':
       return (
@@ -520,3 +509,44 @@ const smallActionBtn: React.CSSProperties = {
   padding: '0.3rem 0.55rem', fontSize: '.75rem', cursor: 'pointer',
   background: '#1f1f23', color: '#d4d4d8', border: '1px solid #3f3f46', borderRadius: 5,
 };
+
+function PaletteField({ id, label, value, onChange }: { id: string; label: string; value: string; onChange: (value: unknown) => void }) {
+  const [custom, setCustom] = useState(false);
+  useEffect(() => { if (value === undefined || value === null || value === '') setCustom(false); }, [value]);
+  const named = (COLOR_TOKENS as readonly string[]).includes(value) || !value;
+  const isCustom = custom || !named;
+  return <>
+    <select id={id} aria-label={label} value={isCustom ? '__custom' : value} style={selectInput} onChange={event => {
+      const next = event.target.value;
+      setCustom(next === '__custom');
+      if (next !== '__custom') onChange(next || undefined);
+    }}>
+      <option value="">Default</option>
+      <optgroup label="Site palette">{COLOR_TOKENS.map(token => <option key={token} value={token}>{token.replaceAll('_', ' ')}</option>)}</optgroup>
+      <option value="__custom">Custom colour (exception)…</option>
+    </select>
+    {isCustom && <>
+      <input aria-label={`${label} custom colour`} type="text" value={value} placeholder="#ffffff or color-mix(in srgb, var(--color-surface) 92%, var(--color-primary))" style={textInput} onChange={event => onChange(event.target.value)} />
+      <p style={fieldHelp}>Exception: a fixed colour does not follow palette changes. Record the reason in decisions.md.</p>
+      {value && !validColor(value) && <p role="alert">Unknown colour. Choose a palette name or a valid CSS colour.</p>}
+    </>}
+  </>;
+}
+function ScaleField({ id, field, scale, value, onChange }: { id: string; field: FieldDefinition; scale: keyof typeof TOKEN_SCALES; value: unknown; onChange: (value: unknown) => void }) {
+  const [custom, setCustom] = useState(false);
+  useEffect(() => { if (value === undefined || value === null || value === '') setCustom(false); }, [value]);
+  const isCustom = custom || (value !== undefined && value !== null && value !== '' && !scaleValue(scale, value));
+  return <>
+    <select id={id} aria-label={field.label} style={selectInput} value={isCustom ? '__custom' : String(value ?? '')} onChange={event => {
+      const next = event.target.value; setCustom(next === '__custom'); if (next !== '__custom') onChange(next || undefined);
+    }}>
+      <option value="">Default</option>
+      {Object.keys(TOKEN_SCALES[scale]).map(step => <option key={step} value={step}>{step}</option>)}
+      <option value="__custom">Custom {scale === 'leading' ? 'line height' : field.label.includes('(em)') ? 'em' : 'pixels'} (exception)…</option>
+    </select>
+    {isCustom && <>
+      <input aria-label={`${field.label} custom value`} type="number" min={field.min} max={field.max} step="any" value={typeof value === 'number' ? value : ''} style={textInput} onChange={event => onChange(event.target.value === '' ? undefined : Number(event.target.value))} />
+      <p style={fieldHelp}>Exception: this value does not follow the site scale.</p>
+    </>}
+  </>;
+}

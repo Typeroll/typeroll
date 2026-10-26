@@ -17,7 +17,7 @@ import {
   readBundledSkill,
   readPackageDoc,
 } from '../src/tools/skills.js';
-import { BUNDLED_SKILLS, BUNDLED_DOCS } from '../src/bundled-content.js';
+import { BUNDLED_SKILLS, BUNDLED_DOCS, BUNDLED_WORKSPACE_TEMPLATES } from '../src/bundled-content.js';
 import { TyperollClient } from '../src/client.js';
 
 const PKG_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -176,6 +176,21 @@ describe('embedded content is in sync with source files', () => {
       const onDisk = await fs.readFile(path.join(SKILLS_DIR, `${name}.md`), 'utf8');
       expect(BUNDLED_SKILLS[name]).toBe(onDisk);
     }
+  });
+
+  it('ships the exact canonical starter files, including resumable interview and independent choices', async () => {
+    const dir = path.join(PKG_ROOT, 'workspace-templates');
+    const names = (await fs.readdir(dir, { recursive: true })).filter(name => /\.(md|py|cjs|json)$/.test(name)).sort();
+    expect(Object.keys(BUNDLED_WORKSPACE_TEMPLATES).sort()).toEqual(names);
+    for (const name of names) expect(BUNDLED_WORKSPACE_TEMPLATES[name]).toBe(await fs.readFile(path.join(dir, name), 'utf8'));
+    const interview = BUNDLED_WORKSPACE_TEMPLATES['workflows/interview.md'];
+    expect(interview).toContain('Do not restart an interview');
+    expect(interview).toContain('Never treat silence as approval');
+    expect(interview).toContain('A fresh design never');
+    expect(interview).toContain('text_intent');
+    expect(interview).toContain('design_intent');
+    const manifest = JSON.parse(await fs.readFile(path.join(PKG_ROOT, 'package.json'), 'utf8'));
+    expect(manifest.files).toContain('workspace-templates');
   });
 
   it('AGENTS.md + README match the embedded docs', async () => {

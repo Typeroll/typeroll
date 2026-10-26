@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { digest, routeFingerprint, validCacheEntry } from './publication-render-cache.mjs';
-import { dependenciesMatch } from './publication-dependencies.mjs';
+import { digest, routeFingerprint, validCacheEntry, domainRouteFingerprint, canRebaseCache, replaceRenderOrigins } from './publication-render-cache.mjs';
+import { dependenciesMatch, refreshDependencies } from './publication-dependencies.mjs';
 
 let input;
 export async function renderCacheInput() {
@@ -35,6 +35,13 @@ export async function selectChangedRoutes(routes, resolvers, trailingSlash) {
     const fingerprint = routeFingerprint(input.plan, pathname, route.props);
     if (validCacheEntry(previous, fingerprint) && dependenciesMatch(previous.dependencies, resolvers, queries)) {
       await writeRouteReceipt({ ...previous, pathname, reused: true, reason: 'unchanged' });
+    } else if (canRebaseCache(input.cache, input.plan) && previous?.domain_fingerprint === domainRouteFingerprint(input.plan, pathname, route.props) && validCacheEntry(previous, previous.fingerprint)) {
+      try {
+        const html = replaceRenderOrigins(previous.html, input.cache.origins, input.plan.origins);
+        const dependencies = refreshDependencies(previous.dependencies, resolvers, input.cache.origins, input.plan.origins, replaceRenderOrigins);
+        await writeRouteReceipt({ ...previous, pathname, html, sha256: digest(html), fingerprint,
+          domain_fingerprint: domainRouteFingerprint(input.plan, pathname, route.props), dependencies, dependencyHash: digest(dependencies), reused: true, reason: 'origins_rebased' });
+      } catch { changed.push(route); }
     } else changed.push(route);
   }
   return changed;

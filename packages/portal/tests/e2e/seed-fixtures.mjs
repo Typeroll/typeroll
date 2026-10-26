@@ -20,7 +20,7 @@
  * Usage: node ./tests/e2e/seed-fixtures.mjs <destination-dir>
  */
 
-import { cpSync, existsSync, realpathSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -93,6 +93,12 @@ if (!tmpRoots.some((root) => resolvedDest.startsWith(root + sep))) {
 
 rmSync(resolvedDest, { recursive: true, force: true });
 cpSync(SOURCE, dest, { recursive: true, filter: (src) => !isRuntimeOnly(src) });
+// The legacy local editor uses default/default without a login. With the Cloud
+// access policy enabled, its owning organization must still be a real record.
+// Leave service_access absent to exercise existing-organization compatibility.
+writeFileSync(join(dest, 'organizations/default.json'), JSON.stringify({
+  id: 'default', name: 'Local fixture organization', created_at: '2026-01-01T00:00:00Z',
+}));
 seedLocalPersonas({ fixtureRoot: dest });
 verifyLocalPersonas({ fixtureRoot: dest });
 

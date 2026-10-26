@@ -150,7 +150,7 @@ describe('analyzeCoverage', () => {
     expect(summary.migrated).toBe(1);
   });
 
-  it('does not count draft typed Pages', async () => {
+  it('identifies draft typed Pages without counting them as migrated', async () => {
     await setup();
     await seedInventory([{ path: '/blog/draft-post' }]);
     await seedContentType({ name: 'posts', route_template: '/blog/{slug}' });
@@ -158,8 +158,8 @@ describe('analyzeCoverage', () => {
     const { analyzeCoverage } = await import('../../lib/wp/url-inventory');
     const { getStore } = await import('../../lib/datastore');
     const { urls, summary } = await analyzeCoverage(getStore(), ORG, SITE);
-    expect(urls[0]?.status).toBe('unhandled');
-    expect(summary.unhandled).toBe(1);
+    expect(urls[0]?.status).toBe('matched_draft');
+    expect(summary.matched_draft).toBe(1);
     expect(summary.migrated).toBe(0);
   });
 

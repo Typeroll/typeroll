@@ -1,3 +1,4 @@
+import { readOrganizationAccess } from '../organization-access';
 import { resolvePublicationVersion } from './publication-version';
 import { selectedBuildProvider } from '../builds/selection';
 import { readBuildEngine } from '../builds/cloudflare';
@@ -7,8 +8,7 @@ import { siteHostingGroup } from './hosting-groups';
 import { paths, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, connectionSummary, ConnectionError } from './connections';
-import { getOrganizationDomains, getSiteDomains, samePublicationHosts, sameRedirectHosts } from './domain-config';
-import { siteHostChecks } from './host-checks';
+import { getOrganizationDomains, getSiteDomains, activePublicationDomains } from './domain-config';
 
 export function newSitePublishingMode(): 'customer_git' | 'managed' {
   const mode = process.env.NEW_SITE_PUBLISHING_MODE ?? 'managed';
@@ -23,6 +23,10 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   const site = await store.getDoc<Site>(paths.site(orgId, siteId));
   if (!site) throw new ConnectionError('Site not found.', 404);
   const required: PublishingRequirement[] = [];
+  if (options.checkBuild !== false && !(await readOrganizationAccess(orgId)).can_write) {
+    return { ready: false, mode: site.publishing_mode === 'customer_git' ? 'customer_git' as const : 'managed' as const,
+      required: [{ code: 'organization_access_ended', message: 'Activate a subscription to continue publishing. Existing static sites remain online.', settings_url: '/app/settings/access' }] };
+  }
   // Accepted jobs validate their frozen source; new admissions validate saved content.
   if (options.checkBuild !== false) {
     try { await resolvePublicationVersion(orgId, siteId, versionId); }
@@ -32,24 +36,18 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   }
   if (site.publishing_mode !== 'customer_git') return { ready: required.length === 0, mode: 'managed' as const, required };
   const group = await siteHostingGroup(orgId, siteId);
-  const [github, cloudflare, organization, domains, media, storage] = await Promise.all([
+  const [github, cloudflare, organization, savedDomains, media, storage] = await Promise.all([
     getConnection(orgId, 'github'), getConnection(orgId, 'cloudflare', group.id), getOrganizationDomains(orgId), getSiteDomains(orgId, siteId),
     store.listDocs(paths.media(orgId, siteId), { limit: 1 }), getConnection(orgId, 'cloudflare'),
   ]);
+  const domains = activePublicationDomains(savedDomains, site?.publishing_migration?.website_host);
   const require = (condition: unknown, code: string, message: string, settings_url = '/app/settings/publishing') => {
     if (!condition) required.push({ code, message, settings_url });
   };
   require(github.status === 'connected' && github.github, 'github_connection_required', 'Connect GitHub for your organization.');
   require(cloudflare.status === 'connected' && cloudflare.cloudflare, 'cloudflare_connection_required', 'Connect Cloudflare for this site’s Hosting Group.');
   require(versionId === 'main' && domains.desired.website_host || group.sites_domain,
-    'publishing_domain_required', versionId === 'main' ? 'Set a site address base for the Hosting Group or a website host in site settings.' : 'Set a site address base for the Hosting Group to publish this version.');
-  // A future host Cloudflare cannot serve is reported before a build. Live hosts are not rechecked.
-  const changing = !domains.active || !samePublicationHosts(domains.active, domains.desired) || !sameRedirectHosts(domains.active, domains.desired);
-  if (options.checkBuild !== false && versionId === 'main' && domains.desired.website_host && changing) {
-    let checks: Awaited<ReturnType<typeof siteHostChecks>> = null;
-    try { checks = await siteHostChecks(orgId, siteId, domains); } catch { /* Provider outages are reported by the publication itself. */ }
-    for (const blocker of checks?.blockers ?? []) require(false, blocker.code, blocker.message, `/app/sites/${encodeURIComponent(siteId)}/settings`);
-  }
+    'publishing_domain_required', versionId === 'main' ? 'Set a site address base for the Hosting Group before the first publication. Future website hosts are prepared separately.' : 'Set a site address base for the Hosting Group to publish this version.');
   // Accepted publications validate their frozen engine in the runner. Only new
   // admissions depend on the currently selected engine and its latest capabilities.
   if (options.checkBuild !== false) {
@@ -73,7 +71,7 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   }
   if (media.length) {
     require(connectionSummary(storage).media_ready, 'media_storage_required', 'Complete R2 media storage setup for your organization.', '/app/settings/publishing#media-title');
-    require(domains.desired.media_host || organization.media_host, 'media_domain_required', 'Set a site media host or a shared media host for the organization.');
+    require(domains.desired.media_host || organization.media_host, 'media_domain_required', 'Set the organization’s shared media host before publishing media at the current address. Future media hosts are prepared separately.');
   }
   return { ready: required.length === 0, mode: 'customer_git' as const, hosting_group_id: group.id, required };
 }

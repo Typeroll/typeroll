@@ -19,6 +19,25 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 export const domainTools: ToolDef[] = [
   {
+    name: 'onboard_publishing_domain_zone', noSite: true,
+    description: 'Organization-admin DNS onboarding for a site owned by that organization. Create a zone in its Hosting Group account, start a Cloudflare DNS scan, review the discovered records against current public DNS and existing zone records, then apply a reviewed plan as DNS only. Nameservers are returned for the human registrar step; never changed automatically. A scan is incomplete: confirm the full old-provider inventory, especially MX/SPF/DKIM/DMARC, before applying. Existing conflicting records are never replaced. Only pending zones can import records; active zones use normal domain management.',
+    inputSchema: { site_id: z.string(), zone_name: z.string(), action: z.enum(['create_zone', 'scan_dns', 'review_dns', 'apply_dns']), plan_revision: z.string().optional(), confirm_inventory: z.boolean().optional() },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/domain-onboarding', args))),
+  },
+  {
+    name: 'guide_publishing_domain_change',
+    description: 'Guide a site domain move. Start with check: returns hosting, zone, nameserver, certificate, permission, publishing, redirect capacity and candidate checks, current phase, next action and an explicit switch summary. Preview proposed hosts before save; confirm_rebuild is required if an existing candidate would be replaced. Prepare freezes the last published content, not current CMS edits. Adding redirect hosts preserves the content candidate. Approve requires explicit user approval of the switch summary and any validation interruption. Automatic DNS is journaled and rolled back after a failed check or the agreed deadline; later external edits require manual attention. Rollback requests restoration through the serialized publication chain. External DNS remains the caller’s responsibility.',
+    inputSchema: {
+      action: z.enum(['check', 'preview', 'save', 'prepare', 'approve', 'rollback']),
+      revision: z.string().optional(), candidate_id: z.string().optional(),
+      website_host: z.string().nullable().optional(), media_host: z.string().nullable().optional(), media_path_prefix: z.string().optional(),
+      redirect_hosts: z.array(z.string()).max(4).optional(), dns_mode: z.enum(['automatic', 'external']).optional(),
+      confirm_rebuild: z.boolean().optional(), accept_validation_window: z.boolean().optional(),
+      validation_timeout_minutes: z.number().int().min(5).max(45).optional(),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/domain-guide', args))),
+  },
+  {
     name: 'check_managed_site_migration',
     description: 'Verify migration of an existing static managed Pages site to connected Git publishing. Checks the original hosting account, project, domain and shared build engine. Returns a revision and previous live deployment; does not migrate or deploy.',
     inputSchema: {},
@@ -166,7 +185,7 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'prepare_publishing_domain_change',
-    description: 'Prepare future website and media hosts using only the last successfully published snapshot. Saved CMS changes stay unpublished. Requires the current domain revision. Poll read_publishing_domains for certificate and DNS requirements, then explicitly approve the verified cutover.',
+    description: 'Explicitly prepare for a domain switch, shortly before changing DNS, using only the last successfully published snapshot. Publish intended edits normally at the current or temporary address first. Newer unpublished CMS changes are excluded. Normal publication remains available; a newer successful publication makes this candidate outdated and requires preparation again. Requires the current domain revision. Poll read_publishing_domains for certificate and DNS requirements, then explicitly approve the verified cutover.',
     inputSchema: { revision: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/prepare', args))),
   },
@@ -195,21 +214,23 @@ export const domainTools: ToolDef[] = [
     description: 'Approve switching website traffic to the verified frozen deployment. Read publishing domains first and review DNS requirements, certificate readiness and redirect_preparations. Existing traffic is preserved until validation succeeds. With automatic DNS, redirect hosts switch after the website host: Typeroll ensures their zone redirect rule, then changes their reviewed record to a proxied placeholder. The publication goes live only after every redirect host answers 301 to the website host with the same path and query. When preparation.validation_blocker.resolution is accept_validation_window, Cloudflare can validate the website host only after its one existing record points at Pages: approving with accept_validation_window: true lets Typeroll change that record, and the host does not answer until Cloudflare validates it (Cloudflare does not document how long; previous_records holds the rollback). Get the user\'s explicit go-ahead for that window and choose a quiet time. External DNS management remains the caller’s responsibility.',
     inputSchema: {
       revision: z.string(), candidate_id: z.string(),
+      validation_timeout_minutes: z.number().int().min(5).max(45).optional(),
       accept_validation_window: z.boolean().optional().describe('Accept the interruption until Cloudflare validates the website host after its single reviewed record changes. Only valid when preparation.validation_blocker.resolution is accept_validation_window.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/cutover', args))),
   },
   {
     name: 'read_publishing_domains',
-    description: 'Read the desired and active website, redirect and media hosts, retained media aliases, DNS management mode and domain configuration revision. host_checks lists each future host with its Cloudflare zone and structured blockers and warnings (code, host, message), for example apex_zone_required (an apex such as example.com needs an active Cloudflare zone in the hosting account), zone_not_active (the zone is pending until its nameservers change) or redirect_zone_required. Resolve blockers before preparing. preparation and redirect_preparations hold DNS records, the zone redirect rule and certificate state after preparation. Saving intent does not switch traffic.',
+    description: 'Read the desired and active website, redirect and media hosts, retained media aliases, DNS management mode and domain configuration revision. host_checks lists each future host with its Cloudflare zone and structured blockers and warnings (code, host, message), for example apex_zone_required (an apex such as example.com needs an active Cloudflare zone in the hosting account), zone_not_active (the zone is pending until its nameservers change) or redirect_zone_required. Resolve blockers before preparing. preparation and redirect_preparations hold DNS records, the zone redirect rule and certificate state after preparation. Saving intent does not switch traffic. next_publication explains that normal publication keeps updating the active or temporary host. Only prepare_publishing_domain_change builds for future hosts; a newer normal publication makes an older candidate outdated. candidate.sitewide_noindex describes the frozen candidate, not current settings; do not approve an unintentionally noindex launch.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'publishing/domains'))),
   },
   {
     name: 'set_publishing_domains',
-    description: 'Save future website, redirect and media hosts before preparing a deployment. Requires the current revision from read_publishing_domains. This does not publish content or change traffic DNS. Choose external DNS when your agent manages Cloudflare independently. redirect_hosts (for example www.example.com when example.com is the website host) answer 301 to the website host, keeping path and query, through a Single Redirect rule in the host\'s Cloudflare zone; they are switched and verified with the website. The response includes host_checks: resolve its blockers before preparing.',
+    description: 'Save future website, redirect and media hosts before preparing a deployment. Normal trigger_deploy continues updating the current or temporary address, even while future hosts await validation. Shortly before changing DNS, explicitly call prepare_publishing_domain_change to prepare the last published snapshot for these hosts. A newer normal publication makes the older candidate outdated; prepare again before cutover. Requires the current revision from read_publishing_domains. This does not publish content or change traffic DNS. Choose external DNS when your agent manages Cloudflare independently. redirect_hosts (for example www.example.com when example.com is the website host) answer 301 to the website host, keeping path and query, through a Single Redirect rule in the host\'s Cloudflare zone; they are switched and verified with the website. The response includes host_checks: resolve its blockers before preparing.',
     inputSchema: {
       revision: z.string(), website_host: z.string().nullable(), media_host: z.string().nullable(),
+      confirm_rebuild: z.boolean().optional().describe('Confirm replacing a prepared content candidate after reviewing domain_rebuild_confirmation_required or the guide preview.'),
       media_path_prefix: z.string().optional().describe('Empty on a separate media host; /media when using the website host.'),
       redirect_hosts: z.array(z.string()).max(4).optional().describe('Hostnames that redirect permanently to website_host, such as www.example.com. Omit or send [] for none.'),
       dns_mode: z.enum(['automatic', 'external']),

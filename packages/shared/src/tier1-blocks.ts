@@ -18,7 +18,7 @@ import type { BlockType } from './types.js';
 import { pixels, articleHeadingFields, focalPointFields, postCardImageSizing } from './presentation-fields.js';
 import { backgroundGradientField } from './surface-presentation.js';
 import { navigationForm } from './navigation-form.js';
-import { HERO_VIDEO_RUNTIME } from './block-media.js';
+import { HERO_VIDEO_RUNTIME, VIDEO_FACADE_RUNTIME } from './block-media.js';
 import { navigationMenu, navigationLinks } from './navigation-menu.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
@@ -53,7 +53,7 @@ ${[1,2,3,4,5,6].map(level => `:is([data-block="container"], [data-block="semanti
   padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
   background: var(--bg, transparent);
 }
-:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:cover; background-position:center; }
+:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:var(--background_fit,cover); background-position:calc(var(--focal_x,50) * 1%) calc(var(--focal_y,50) * 1%); }
 [data-block="container"][data-width="narrow"] { max-width: var(--max_width_px, 42rem); margin-inline: auto; }
 [data-block="container"][data-width="normal"] { max-width: var(--max_width_px, 65rem); margin-inline: auto; }
 [data-block="container"][data-width="wide"]   { max-width: var(--max_width_px, 80rem); margin-inline: auto; }
@@ -134,6 +134,8 @@ const container: BlockType = {
     pixels('radius_px', 'Corner radius (px)', 0, 100),
     { name: 'shadow', type: 'select', label: 'Shadow', options: ['none', 'subtle', 'header'], default: 'none' },
     { name: 'overflow', type: 'select', label: 'Child content', options: ['visible', 'clip'], option_labels: ['Allow overflow', 'Clip to rounded edges'], default: 'visible' },
+    ...focalPointFields,
+    { name: 'background_fit', type: 'select', label: 'Background fit', options: ['cover','contain'], default: 'cover', responsive: true, responsive_css: { cover:'background-size:cover;',contain:'background-size:contain;background-repeat:no-repeat;' } },
     { name: 'background_image', type: 'image', label: 'Background image' },
     { name: 'min_height', type: 'select', label: 'Minimum height', options: ['auto', 'sm', 'md', 'lg', 'screen'], default: 'auto' },
   ],
@@ -141,7 +143,7 @@ const container: BlockType = {
   // named `--{field-name}` so the @media compiler can override it cleanly.
   // Layout-control CSS reads `var(--gap)` etc. and maps the token (sm/md/lg)
   // to a real rem value via attribute-selectors against the inline style.
-  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});{{surface_gradient_css}}{{inline_style}}">{{children}}</{{=tag}}>`,
+  template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});--background_fit:{{background_fit}};{{surface_gradient_css}}{{inline_style}}">{{children}}</{{=tag}}>`,
   styles: containerStyles(false),
   render_versions: [{ from: 9, styles: containerStyles(true) }],
   origin: 'core',
@@ -488,11 +490,16 @@ const hero: BlockType = {
     { name: 'video_url', type: 'url', label: 'Video URL (optional)' },
     { name: 'layout', type: 'select', label: 'Layout',
       options: ['split-left', 'split-right', 'centered', 'full-image'], default: 'centered', responsive: true },
+    ...focalPointFields,
+    { name: 'image_fit', type: 'select', label: 'Background image fit', options: ['cover','contain'], default: 'cover', responsive: true, responsive_css: { cover:'--hero-fit:cover;', contain:'--hero-fit:contain;' } },
+    { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio', options: ['auto','21:9','16:9','4:3','1:1'], default: 'auto', responsive: true, responsive_css: Object.fromEntries(Object.entries({auto:'auto','21:9':'21/9','16:9':'16/9','4:3':'4/3','1:1':'1'}).map(([key,value])=>[key,`aspect-ratio:${value};`])) },
+    { name: 'text_vertical', type: 'select', label: 'Text position', options: ['start','center','end'], default: 'center', responsive: true, responsive_css: { start:'--hero-align:start;',center:'--hero-align:center;',end:'--hero-align:end;' } },
+    { name: 'text_align', type: 'select', label: 'Text alignment', options: ['start','center','end'], default: 'start', responsive: true, responsive_css: { start:'--hero-justify:start;--hero-text-align:start;',center:'--hero-justify:center;--hero-text-align:center;',end:'--hero-justify:end;--hero-text-align:end;' } },
     { name: 'height', type: 'select', label: 'Height', options: ['auto', 'half-screen', 'screen'], default: 'auto' },
     { name: 'overlay_opacity', type: 'number', label: 'Overlay opacity (0-100)', default: 0, min: 0, max: 100 },
     { name: 'background', type: 'color', label: 'Background color' },
   ],
-  template: `<section data-block="hero" data-height="{{height}}" style="--layout:{{layout}};--bg:{{background}};--overlay:{{overlay_opacity}}%;--bg-image:url({{image}})">
+  template: `<section data-block="hero" data-height="{{height}}" data-aspect="{{aspect_ratio}}" style="--hero-fit:{{image_fit}};--hero-align:{{text_vertical}};--hero-justify:{{text_align}};--hero-text-align:{{text_align}};--layout:{{layout}};--bg:{{background}};--overlay:{{overlay_opacity}}%;--bg-image:url({{image}})">
   <div class="block-hero-inner">
     <div class="block-hero-text">
       <span class="block-hero-eyebrow">{{eyebrow}}</span>
@@ -513,6 +520,10 @@ const hero: BlockType = {
 [data-block="hero"] {
   position: relative; padding: var(--section-padding, 3rem) var(--content-gutter, 1.25rem); background: var(--bg, transparent); overflow: hidden;
 }
+[data-block="hero"][data-aspect="21:9"] { aspect-ratio:21/9; }
+[data-block="hero"][data-aspect="16:9"] { aspect-ratio:16/9; }
+[data-block="hero"][data-aspect="4:3"] { aspect-ratio:4/3; }
+[data-block="hero"][data-aspect="1:1"] { aspect-ratio:1; }
 [data-block="hero"][data-height="half-screen"] { min-height: 50vh; display: flex; align-items: center; }
 [data-block="hero"][data-height="screen"]      { min-height: 100vh; display: flex; align-items: center; }
 [data-block="hero"] .block-hero-inner {
@@ -525,10 +536,12 @@ const hero: BlockType = {
 [data-block="hero"][style*="--layout:split-right"] .block-hero-text  { order: 2; }
 [data-block="hero"][style*="--layout:split-right"] .block-hero-media { order: 1; }
 [data-block="hero"][style*="--layout:full-image"] {
-  background-size: cover; background-position: center;
+  display:grid; align-items:var(--hero-align,center); background-size:var(--hero-fit,cover); background-position:calc(var(--focal_x,50) * 1%) calc(var(--focal_y,50) * 1%); background-repeat:no-repeat;
 }
 [data-block="hero"][style*="--layout:full-image"]:not([style*="--bg-image:url()"]) { background-image: var(--bg-image); color: white; }
-[data-block="hero"][style*="--layout:full-image"] .block-hero-text  { max-width: 36rem; }
+[data-block="hero"][style*="--layout:full-image"] .block-hero-inner { grid-template-columns:1fr; }
+[data-block="hero"][style*="--layout:full-image"] .block-hero-text { max-width:36rem; justify-self:var(--hero-justify,start); text-align:var(--hero-text-align,start); }
+[data-block="hero"][style*="--layout:full-image"] .block-hero-heading { color:inherit; }
 [data-block="hero"][style*="--layout:full-image"] .block-hero-media { display: none; }
 [data-block="hero"] .block-hero-overlay { position: absolute; inset: 0; background: rgba(0,0,0,0.5); opacity: var(--overlay, 0); z-index: 1; }
 [data-block="hero"] .block-hero-eyebrow {
@@ -901,6 +914,7 @@ const postCard: BlockType = {
     { name: 'title_field', type: 'text', label: 'Title field', default: 'title' },
     { name: 'excerpt_field', type: 'text', label: 'Excerpt field', default: 'excerpt' },
     { name: 'image_field', type: 'text', label: 'Image field', default: 'image' },
+    { name: 'image_alt', type: 'text', label: 'Image description (empty for a decorative image)' },
     { name: 'image_alt_field', type: 'text', label: 'Image alt field', default: 'image_alt' },
     { name: 'date_field', type: 'text', label: 'Date field', default: 'published_at' },
     { name: 'author_field', type: 'text', label: 'Author field', default: 'author' },
@@ -936,7 +950,7 @@ const postCard: BlockType = {
     { name: 'hover_border_color', type: 'color', label: 'Interactive card border' },
     { name: 'hover_color', type: 'color', label: 'Interactive card text' },
     pixels('border_width_px', 'Card border width (px)', 0, 20),
-    { name: 'title_font', type: 'select', label: 'Title font', options: ['heading', 'body', 'inherit'], default: 'heading' },
+    { name: 'title_font', type: 'select', label: 'Title font', options: ['heading', 'body', 'mono', 'inherit'], default: 'heading' },
     pixels('body_padding_x_px', 'Panel horizontal padding (px)', 0, 100),
     pixels('body_padding_y_px', 'Panel vertical padding (px)', 0, 100),
     pixels('body_padding_px', 'Panel padding (px)', 0, 100),
@@ -984,6 +998,7 @@ const postCard: BlockType = {
 </article>`,
   styles: `
 [data-block="post_card"] { display: flex; flex-direction:var(--card-direction,column); gap:0.75rem; border:var(--border_width_px,0px) solid var(--card-border-color,transparent);min-width:0; position:relative; }
+[data-block="post_card"][data-title-font="mono"] .block-postcard-title { font-family:var(--font-mono,monospace); }
 [data-block="post_card"][data-appearance="card"] { background:var(--card-bg,var(--color-background,#fff)); border-radius:var(--radius_px,0.5rem); overflow:hidden; box-shadow:0 2px 8px rgb(0 0 0 / 12%); gap:0; }
 [data-block="post_card"][data-appearance="card"] .block-postcard-image { display:block; margin:0; border-radius:0; }
 [data-block="post_card"][data-appearance="card"] .block-postcard-body { padding:var(--body_padding_y_px,var(--body_padding_px,var(--card-padding,1rem))) var(--body_padding_x_px,var(--body_padding_px,var(--card-padding,1rem))); }
@@ -1005,9 +1020,9 @@ const postCard: BlockType = {
 [data-block="post_card"] .block-postcard-placeholder svg { width:1em;height:1em; }
 [data-block="post_card"] .block-postcard-body { display:flex;flex:1;flex-direction:column;gap:var(--body_gap_px,0.65rem);min-width:0;padding:var(--body_padding_y_px,var(--body_padding_px,0)) var(--body_padding_x_px,var(--body_padding_px,0)); }
 [data-block="post_card"] .block-postcard-title { margin: 0; font-size:var(--title_size_px,1.25rem);font-weight:var(--title_weight,600);line-height:var(--title_line_height,1.3); }
-[data-block="post_card"] .block-postcard-excerpt { margin: 0; opacity: 0.8; line-height: 1.5; }
+[data-block="post_card"] .block-postcard-excerpt { margin: 0; line-height: 1.5; }
 [data-block="post_card"][data-exc="false"]     .block-postcard-excerpt { display: none; }
-[data-block="post_card"] .block-postcard-meta  { font-size: 0.875rem; opacity: 0.6; display: flex; gap: 0.75rem; }
+[data-block="post_card"] .block-postcard-meta  { font-size: 0.875rem; display: flex; gap: 0.75rem; }
 [data-block="post_card"][data-date="false"]    .block-postcard-date    { display: none; }
 [data-block="post_card"][data-author="false"]  .block-postcard-author  { display: none; }
 [data-block="post_card"] .block-postcard-download { align-self:var(--download-align,auto);flex:var(--download-flex,0 1 auto);width:var(--download-width,auto);text-align:center;overflow-wrap:anywhere;color:var(--download-color,inherit); }
@@ -1015,7 +1030,8 @@ const postCard: BlockType = {
 [data-block="post_card"] .block-postcard-media > a { display:block; }
 [data-block="post_card"] :is(.block-postcard-excerpt,.block-postcard-date,.block-postcard-author):empty { display:none; }
 [data-block="post_card"] .block-postcard-meta:not(:has(:is(time,span):not(:empty))) { display:none; }
-[data-block="post_card"][data-whole="true"] .block-postcard-title > a::after { content:'';position:absolute;inset:0; }
+[data-block="post_card"][data-whole="true"] { isolation:isolate; }
+[data-block="post_card"][data-whole="true"] .block-postcard-title > a::after { content:'';position:absolute;inset:0;z-index:1; }
 [data-block="post_card"][data-whole="true"]:has(a:focus-visible) { outline:2px solid currentColor;outline-offset:3px; }
 [data-block="post_card"][data-shadow="none"] { box-shadow:none; }
 [data-block="post_card"][data-shadow="subtle"] { box-shadow:0 2px 8px rgb(0 0 0 / 12%); }
@@ -1276,6 +1292,8 @@ const video: BlockType = {
   // The embed (YouTube, Vimeo) or the file player, whichever the source renders.
   parts: [
     { name: 'player', label: 'Player', selector: 'iframe, video', target: 'image', decorative: true },
+    { name: 'facade', label: 'Video placeholder', selector: '.tr-video-facade', target: 'button', min_render_version: 7 },
+    { name: 'facade_label', label: 'Load video label', selector: '.tr-video-facade span', target: 'button', min_render_version: 7 },
   ],
   schema: [
     { name: 'source', type: 'select', label: 'Source', options: ['youtube', 'vimeo', 'url'], default: 'youtube' },
@@ -1287,6 +1305,7 @@ const video: BlockType = {
     { name: 'controls', type: 'boolean', label: 'Show controls', default: true },
     { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio',
       options: ['16:9', '4:3', '1:1', '9:16'], default: '16:9', responsive: true },
+    { name: 'click_to_load', type: 'boolean', label: 'Load external player only after a click', default: false, min_render_version: 7 },
     { name: 'lazy_load', type: 'boolean', label: 'Lazy-load', default: true },
     { name: 'title', type: 'text', label: 'Accessible title', default: 'Video', min_render_version: 7 },
   ],
@@ -1848,9 +1867,14 @@ pricingPlan.render_versions![0]!.styles = `${pricingPlan.styles}
 // (block-media.ts). Earlier versions keep the templates above.
 video.render_versions = [{
   from: 7,
+  script: VIDEO_FACADE_RUNTIME,
   template: `<div data-block="video" data-source="{{source}}" style="--aspect_ratio:{{aspect_ratio}}">{{{video_html}}}</div>`,
   styles: `${video.styles}
 [data-block="video"]:empty { display: none; }
+[data-block="video"] .tr-video-facade { position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:.5rem;overflow:hidden;background:#111;color:#fff;cursor:pointer;display:grid;place-items:center;font:inherit;text-decoration:none; }
+[data-block="video"] .tr-video-facade img { position:absolute;inset:0;width:100%;height:100%;object-fit:cover; }
+[data-block="video"] .tr-video-facade span { z-index:1;position:relative;padding:.75rem 1rem;background:#111;color:#fff;border-radius:.3rem; }
+[data-block="video"] .tr-video-facade:focus-visible { outline:3px solid currentColor;outline-offset:3px; }
 [data-block="video"] video { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0.5rem; background: #000; object-fit: contain; }`,
 }];
 hero.render_versions = [{

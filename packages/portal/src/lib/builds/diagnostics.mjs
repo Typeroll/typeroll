@@ -76,3 +76,14 @@ export function normalizeDiagnostic(value) {
   const cause = typeof value.cause === 'string' && value.cause.trim() ? redactDiagnosticLine(value.cause.trim()).slice(0, DIAGNOSTIC_CAUSE_LENGTH) : diagnosticCause(lines);
   return cause || lines.length ? { cause: cause || null, lines } : undefined;
 }
+
+/** Older installed engines sanitize DOMException timeouts to build_failed.
+ * Recover that specific transient cause without retrying arbitrary failures,
+ * cancelled operations, integrity errors or a different build stage. The queue
+ * still enforces attempt/deadline limits and the original publication identity.
+ */
+export function mediaFailureCode(stage, code, diagnostic) {
+  if (stage === 'media' && ['build_failed', 'shared_build_failed', 'build_process_exit_1'].includes(code) &&
+      /^TimeoutError: (?:The operation was aborted due to timeout|The operation timed out)\.?$/.test(diagnostic?.cause ?? '')) return 'media_transfer_interrupted';
+  return code;
+}

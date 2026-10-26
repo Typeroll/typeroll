@@ -1,5 +1,7 @@
 ---
 import '../styles/global.css';
+import { readOrganizationAccess } from '../lib/organization-access';
+import OrganizationAccessNotice from '../components/OrganizationAccessNotice.astro';
 import { getSession } from '../lib/auth';
 import { resolveVersionId } from '../lib/access';
 import type { FullSession } from '../lib/access';
@@ -22,12 +24,13 @@ import { resolveOwnerOrgAccess } from '../lib/member-role';
 interface Props {
   title?: string;
   siteId?: string;
+  accessSiteId?: string;
   /** Full-bleed mode: hide the sidebar/nav and let the slot fill the whole
    *  viewport. Used by the page/template editors so the editing surface owns
    *  the screen (they provide their own "Exit editor" control). */
   bare?: boolean;
 }
-const { title = 'Typeroll', siteId, bare = false } = Astro.props;
+const { title = 'Typeroll', siteId, accessSiteId, bare = false } = Astro.props;
 
 const session = await getSession(Astro.cookies);
 // Middleware redirects pending sessions to /onboarding before this layout
@@ -51,13 +54,16 @@ const pathname = Astro.url.pathname;
 // permission badge point at the right place.
 let activeOwnerOrgId = fullSession.orgId;
 let activePermission: SharePermission = 'admin';
-if (siteId) {
-  const sharedMatch = sharedSites.find((s) => s.site.id === siteId);
+if (siteId || accessSiteId) {
+  const sharedMatch = sharedSites.find((s) => s.site.id === (siteId ?? accessSiteId));
   if (sharedMatch) {
     activeOwnerOrgId = sharedMatch.share.owner_org_id;
     activePermission = sharedMatch.share.permission;
   }
 }
+
+const serviceAccess = await readOrganizationAccess(activeOwnerOrgId);
+if (!serviceAccess.can_read && siteId) return Astro.redirect(`/app/settings/access?site=${encodeURIComponent(siteId)}`);
 
 // Load version list for the active site (if any) so the picker can render.
 let siteVersions: SiteVersion[] = [];
@@ -129,7 +135,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
   </head>
   <body>
     {bare ? (
-      <main class="app-main app-main--bare"><slot /></main>
+      <main class="app-main app-main--bare"><OrganizationAccessNotice access={serviceAccess} siteId={siteId ?? accessSiteId} /><slot /></main>
     ) : (
     <div class="app-shell" data-shell>
       <button
@@ -147,6 +153,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
       </button>
       <div class="app-shell__backdrop" data-shell-backdrop aria-hidden="true"></div>
       <aside class="app-sidebar" id="app-sidebar">
+        <div class="app-sidebar__scroll">
         <div class="app-sidebar__top">
           <a href="/app" class="app-sidebar__brand" aria-label="Typeroll — go to dashboard">
             <img src="/brand/typeroll-main-white.svg" alt="Typeroll" width="248" height="54" />
@@ -261,6 +268,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="User" /></span>
               <span>Account</span>
             </a>
+            {serviceAccess.state !== 'unrestricted' && <a href="/app/settings/access" class="app-sidebar__link">Organization access</a>}
             {canManagePublishing && <a href="/app/settings/publishing" class:list={["app-sidebar__link", isActive('/app/settings/publishing', true) && "app-sidebar__link--active"]}>
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="PlugZap" /></span>
               <span>Publishing</span>
@@ -288,6 +296,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
 
           </div>
         </nav>
+        </div>
 
         <form method="POST" action="/api/auth/logout" class="app-sidebar__signout-form">
           <button type="submit" class="app-sidebar__link app-sidebar__link--button">
@@ -310,6 +319,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
         </a>
       </aside>
       <main class="app-main">
+        <OrganizationAccessNotice access={serviceAccess} siteId={siteId ?? accessSiteId} />
         <slot />
       </main>
     </div>
@@ -722,6 +732,8 @@ const initials = (session.displayName ?? session.email ?? 'U')
         font-size: 0.78rem;
       }
 
+      .app-sidebar__scroll { display: contents; }
+
       /* ─────────── Nav ─────────── */
       .app-sidebar__nav {
         flex: 1;
@@ -1010,10 +1022,28 @@ const initials = (session.displayName ?? session.email ?? 'U')
           bottom: 0;
           width: 280px;
           max-height: 100vh;
+          max-height: 100dvh;
+          overflow: hidden;
+          padding-bottom: max(12px, env(safe-area-inset-bottom));
           z-index: 50;
           transform: translateX(-100%);
           transition: transform 220ms cubic-bezier(.2,.7,.3,1);
           box-shadow: 12px 0 32px -12px rgba(0,0,0,0.45);
+        }
+        /* Keep expanded pickers in the drawer's scroll flow. An absolute menu
+           can extend beyond the viewport and be clipped by the sidebar. */
+        .app-sidebar__scroll {
+          display: block;
+          flex: 1;
+          min-height: 0;
+          overflow-y: auto;
+          overscroll-behavior-y: contain;
+        }
+        .app-sidebar__top, .app-sidebar__user { flex-shrink: 0; }
+        .app-sidebar__nav { flex: 1 0 auto; overflow-y: visible; }
+        .app-sidebar .ws__menu, .app-sidebar .vp__menu {
+          position: static;
+          margin-top: 6px;
         }
         .app-shell.is-sidebar-open .app-sidebar { transform: translateX(0); }
         .app-shell.is-sidebar-open .app-shell__backdrop { display: block; opacity: 1; }

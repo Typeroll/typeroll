@@ -1,5 +1,58 @@
 # Changelog
 
+## 0.2.107 / MCP 0.45.81 — Focused settings and guided domain migration
+
+- Split Site settings into seven linked sections with independent saves and retained unsaved inputs.
+- Add a shared UI/API/MCP domain checklist, explicit DNS inventory review, bounded validation and journaled traffic rollback.
+- Preserve verified candidates when only redirect hosts change; reuse compatible origin-only output and promote the same artifact without a second build.
+- Retry transient media preparation failures in the same frozen job. Share Pages redirect limits between preflight and upload.
+- Retain explicit late domain preparation: normal publication keeps using the active or temporary address, and newer content invalidates an older candidate.
+- Keep design tokens editable in the Design section without resetting unrelated settings.
+
+## 0.2.106 / MCP 0.45.80 — Site design tokens and migration safeguards (unreleased)
+
+- Make the expanded mobile site selector scroll with the drawer (F33, from PR #82).
+- Resolve palette names in block colour fields in static output and preview;
+  preserve stored names and report unknown colours as `field_type_mismatch`.
+- Add configurable typography, spacing and line-height scales, responsive step
+  values, palette-first editor controls and a site-owned mono font role.
+- Add read-only `lint_design_tokens`, non-blocking launch findings and a starter
+  dry-run migration for exact, unambiguous scalar hex matches in a test Version.
+- Keep normal publication on the active/temporary host after future domains are
+  saved. Prepare the last published snapshot for a domain switch only on explicit
+  request; release waiting candidates from the publication lock, reject outdated
+  cutovers and disclose frozen indexing settings in UI/API/MCP (F35).
+- Add local ICC-aware original-to-sRGB image preparation and source-media
+  archival guidance; never delete originals or automatically retire hosting.
+- Update public docs, design/migration recipes and generated starter guidance.
+- Capability contract 0.54.0 invalidates old output dependencies. Render reference
+  updates add previously unused scale/hover/mono variables and opt-in mono rules;
+  existing numeric values and existing font choices retain their output.
+
+
+## Core 0.2.103 / MCP 0.45.79 (prepared)
+
+- Complete reusable migration feedback: native responsive slot/section/hero
+  controls, heading-role spacing, text wordmarks, intrinsic image sizing and
+  accessible click-to-load videos; refresh renderer references for the fixes.
+- Check known parent backgrounds for global part styles and same-origin current
+  navigation. Expose post-card image alt without losing decorative semantics.
+- Discover bounded public WordPress URLs; distinguish draft targets, report
+  redirect chains and exact Search Console access requirements.
+- Require explicit acknowledgement of unsaved content before queueing a deploy;
+  expose exact-task file/attempt progress and a signed rendering-only frame URL.
+
+
+- Add version-bound migration QA helpers to the generated site workspace: unsaved-content checks, deployed URL/media checks, screenshots, card hit tests and preserved-text comparisons. Preserve edited scripts on update.
+- Correct header/footer, grid and WordPress recipes; explain when public REST is sufficient and when a helper/export is needed. Record all Ulvon migration findings with priorities and follow-up scope.
+- Preserve page append_seo_suffix through the working-copy/save path, including false. Existing saved preferences and customer copy are not changed.
+- Fix post-card whole-link hit areas and faded body/meta contrast for all supported render versions. The render references change only for that corrective CSS; no new render version or automatic customer publication is introduced. Conflicting secondary actions now produce a write warning.
+
+## Core 0.2.100 / MCP 0.45.77
+
+- Expand the website workspace with owner rules, SEO strategy, canonical starter prompts and a resumable guided interview. Choose text and design/image preservation independently, with explicit asset/metadata exceptions. Keep edited project files and interview answers on update.
+- Clarify that the managed WordPress import stages HTML and the external agent reconstructs editable blocks. Remove obsolete editor-conversion instructions from public docs and workflow messages; no import/conversion behavior changes.
+
 ## Core 0.2.89 / MCP 0.45.69
 
 - Define preserve and renew migration approaches, with a shared editable-block hierarchy and continuity for every old public URL. Include art-directed hero HTML exceptions and explicit content/design acceptance references.

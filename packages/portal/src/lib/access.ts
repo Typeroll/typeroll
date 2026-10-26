@@ -1,3 +1,4 @@
+import { organizationRequestRefusal } from './organization-access';
 // Centralized auth, authorization, and JSON-response helpers used by every
 // API route. Routes call requireSession() / requireSiteAccess() and short-
 // circuit if a Response comes back instead of the resource.
@@ -43,6 +44,10 @@ export async function requireFullSession(cookies: AstroCookies): Promise<GuardRe
   if (isPendingSession(result.value)) {
     return { ok: false, response: json({ error: 'Organization not set up. Visit /onboarding.' }, 403) };
   }
+  // This guard is organization-scoped. Site routes use requireSiteAccess,
+  // which resolves the owning organization before evaluating access.
+  const refusal = await organizationRequestRefusal(result.value.orgId!);
+  if (refusal) return { ok: false, response: refusal };
   return { ok: true, value: result.value as FullSession };
 }
 
@@ -172,7 +177,8 @@ export async function requireOrgAdmin(
   if (permission !== 'admin') {
     return { ok: false, response: json({ error: 'Insufficient permission' }, 403) };
   }
-  return { ok: true, value: session };
+  const refusal = await organizationRequestRefusal(session.orgId);
+  return refusal ? { ok: false, response: refusal } : { ok: true, value: session };
 }
 
 /**
@@ -300,6 +306,7 @@ export async function loadSiteContext(
   if (isPendingSession(session)) return { redirect: '/onboarding' };
   if (!siteId) return { redirect: '/app' };
   const ctx = await resolveSiteContext(session as FullSession, siteId, astro.locals.versionId);
+  if (ctx && await organizationRequestRefusal(ctx.owner_org_id)) return { redirect: `/app/settings/access?site=${encodeURIComponent(siteId)}` };
   return ctx ?? { redirect: '/app' };
 }
 
@@ -374,5 +381,7 @@ export async function requireSiteAccess(
     sessionResult.value as FullSession, siteId, locals?.versionId,
   );
   if (!ctx) return { ok: false, response: json({ error: 'Site not found' }, 404) };
+  const refusal = await organizationRequestRefusal(ctx.owner_org_id);
+  if (refusal) return { ok: false, response: refusal };
   return { ok: true, value: ctx };
 }

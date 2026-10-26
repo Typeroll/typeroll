@@ -1,0 +1,42 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import { requireSiteAccess } from '../../../lib/access';
+import { getStore } from '../../../lib/datastore';
+import { paths } from '@typeroll/shared';
+import { getSession } from '../../../lib/auth';
+import { readOrganizationAccess } from '../../../lib/organization-access';
+import { organizationMembership } from '../../../lib/organization-session';
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+if (!session.orgId) return Astro.redirect('/onboarding');
+const membership = await organizationMembership(session.userId, session.orgId);
+const siteId = Astro.url.searchParams.get('site') || undefined;
+const siteGuard = siteId ? await requireSiteAccess(Astro.cookies, siteId) : null;
+if (siteGuard && !siteGuard.ok) return new Response('Not found', { status: 404 });
+const ownerOrgId = siteGuard?.ok ? siteGuard.value.owner_org_id : session.orgId;
+const owner = await getStore().getDoc<{ name: string }>(paths.org(ownerOrgId));
+const access = await readOrganizationAccess(ownerOrgId);
+const date = (value: string | null) => value ? new Date(value).toLocaleString('en-GB', { timeZone: 'UTC', dateStyle: 'long', timeStyle: 'short' }) + ' UTC' : 'No deadline';
+const title = access.state === 'trial' ? 'Your free trial' : access.state === 'active' || access.state === 'unrestricted' ? 'Organization access' : 'Restore Cloud access';
+---
+<AppLayout title="Organization access" accessSiteId={siteId}>
+  <div class="app-header"><h1>{title}</h1></div>
+  <section class="card stack" style="max-width: 48rem;">
+    <h2>{owner?.name ?? membership?.name ?? 'Your organization'}</h2>
+    {ownerOrgId !== session.orgId && <p>This site's access is managed by its owning organization. Contact its administrator about the subscription.</p>}
+    <p><strong>{access.can_write ? 'Editing and publishing are available.' : access.can_read ? 'Read and export access only.' : 'Content access has ended.'}</strong></p>
+    {access.state !== 'unrestricted' && <dl class="access-dates">
+      <dt>Editing and publishing until</dt><dd>{date(access.ends_at)}</dd>
+      <dt>Read and export until</dt><dd>{date(access.read_until)}</dd>
+    </dl>}
+    {access.state === 'trial' && <p>No payment card is required. Nothing is charged automatically when the trial ends.</p>}
+    <p>Published static websites stay on your own hosting account. Ending Cloud access does not remove your deployed pages, media, repositories or domains.</p>
+    {access.state !== 'unrestricted' && <p>During the trial, Forms accepts submissions and sends webhooks. To send notification or confirmation emails, configure your own SMTP account in the site's <strong>Settings → Email &amp; notifications</strong>. Without SMTP, submissions and webhooks still work.</p>}
+    <p>The built-in AI assistant uses your organization's own API key. There is no trial-specific AI allowance. Your hosting and AI providers bill their own usage separately.</p>
+    {!access.can_write && <p>New form submissions and preview links are unavailable until access is restored. Previously accepted deliveries can finish. Scheduled page changes that fell due while access was paused will not run automatically when you return; review their dates and schedule them again.</p>}
+    {access.can_read && <p>Download the site's content export from Site settings → Export content, or use <code>GET /api/v1/sites/:siteId/export</code>. A generated Git repository is not a full CMS backup.</p>}
+    {access.contact_url && <div><a class="btn btn-primary" href={access.contact_url}>Contact us about a subscription</a></div>}
+    <a href="/app">Back to sites</a>
+  </section>
+</AppLayout>
+<style>.access-dates{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:.65rem 1rem}.access-dates dt{font-weight:600}.access-dates dd{margin:0;overflow-wrap:anywhere}@media(max-width:600px){.access-dates{grid-template-columns:1fr;gap:.3rem}.access-dates dd{margin-bottom:.7rem}}</style>

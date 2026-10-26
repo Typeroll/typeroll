@@ -1,5 +1,5 @@
 import { defineMiddleware } from 'astro:middleware';
-import { digest, routeFingerprint } from './lib/publication-render-cache.mjs';
+import { digest, routeFingerprint, domainRouteFingerprint } from './lib/publication-render-cache.mjs';
 import { captureDependencies } from './lib/publication-dependencies.mjs';
 import { renderCacheInput, writeRouteReceipt } from './lib/publication-route-cache.mjs';
 
@@ -16,7 +16,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     return { response, html: response.status === 200 ? await response.clone().text() : null };
   });
   if (value.html !== null) await writeRouteReceipt({ pathname,
-    fingerprint: routeFingerprint(plan, pathname, context.props),
+    fingerprint: routeFingerprint(plan, pathname, context.props), domain_fingerprint: domainRouteFingerprint(plan, pathname, context.props),
     html: value.html, sha256: digest(value.html), dependencies, dependencyHash: digest(dependencies),
     reused: false, reason: 'rendered',
   });

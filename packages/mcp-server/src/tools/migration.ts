@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
 
-const STATUS = z.enum(['migrated', 'redirected', 'excluded', 'unhandled']);
+const STATUS = z.enum(['migrated', 'redirected', 'excluded', 'unhandled', 'matched_draft']);
 const PLAIN_TEXT_REPAIR_FIELD = z.enum(['title', 'seo_title', 'seo_description', 'excerpt']);
 
 export const migrationTools: ToolDef[] = [
@@ -11,6 +11,8 @@ export const migrationTools: ToolDef[] = [
       'Import an explicit sitemap URL into the migration URL inventory. Sitemap indexes are followed recursively; URLs outside source_origin are rejected and reported.',
     inputSchema: {
       url: z.string().url().describe('Absolute URL of a sitemap or sitemap index.'),
+      include_wordpress: z.boolean().optional().describe('Also enumerate public WordPress REST pages/posts/types. No helper installation required; incomplete discovery is reported.'),
+      crawl_pages: z.number().int().min(0).max(50).optional().describe('With include_wordpress, crawl up to this many source pages for same-origin legacy links. Default 0; bounded discovery is not an authoritative old-slug export.'),
       source_origin: z.string().url().optional().describe('Expected legacy-site origin. Defaults to the sitemap origin.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
@@ -79,7 +81,7 @@ export const migrationTools: ToolDef[] = [
   {
     name: 'list_migration_urls',
     description:
-      "The legacy site's URL inventory with LIVE coverage status. Every entry is classified on read against the site's current pages + redirects: `migrated` (a Page answers at that path), `redirected` (a redirect rule covers it), `excluded` (signed off as an intentional 404), `unhandled` (nothing covers it — the work list). Returns a summary over the whole inventory plus a page of entries, sorted worst-first then by GSC clicks. Use `status: \"unhandled\"` to get exactly what's left to do before cutover. Coverage is computed, never stored, so it's current the moment you create a redirect.",
+      "The legacy site's URL inventory with LIVE coverage status. Every entry is classified on read against the site's current pages + redirects: `migrated` (a Page answers at that path), `redirected` (a redirect rule covers it), `excluded` (signed off as an intentional 404), `matched_draft` (a saved but unpublished Page owns the path; not launch-ready), `unhandled` (nothing covers it — the work list). Returns a summary over the whole inventory plus a page of entries, sorted worst-first then by GSC clicks. Use `status: \"unhandled\"` to get exactly what's left to do before cutover. Coverage is computed, never stored, so it's current the moment you create a redirect.",
     inputSchema: {
       status: STATUS.optional().describe('Only return entries with this coverage status.'),
       limit: z.number().int().positive().max(1000).optional().describe('Default 200.'),

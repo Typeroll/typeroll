@@ -2,6 +2,7 @@
 // /onboarding — Shown to authenticated users who have no org yet.
 // Redirect to /login if there's no session at all.
 // Existing members can add another organization or accept an invite.
+import { organizationAccessPolicy } from '../lib/organization-access';
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import OnboardingForm from '../components/OnboardingForm.tsx';
 import OrganizationSwitcher from '../components/OrganizationSwitcher.tsx';
@@ -17,6 +18,7 @@ const next = safeReturnPath(Astro.url.searchParams.get('next'));
 
 if (session.orgId && !Astro.url.searchParams.has('add') && !Astro.url.searchParams.has('invite')) return Astro.redirect(next ?? '/app');
 const organizations = await listOrganizations(session);
+const accessPolicy = organizationAccessPolicy();
 
 // Pick up a pre-filled invite token from ?invite= so the Join tab is
 // activated automatically when someone follows an invite link.
@@ -33,6 +35,7 @@ const prefillToken = Astro.url.searchParams.get('invite') ?? undefined;
       </div>
       {organizations.length > 0 && <OrganizationSwitcher client:load organizations={organizations} currentOrgId={session.orgId} />}
       {session.orgId && <a href="/app">Back to dashboard</a>}
+      {accessPolicy && <p class="text-sm">New organizations get a {accessPolicy.initial_days}-day free trial. No payment card required and no automatic charge. Published static sites remain on your hosting account when the trial ends.</p>}
       <OnboardingForm client:load prefillToken={prefillToken} next={next} />
     </div>
   </section>

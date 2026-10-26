@@ -3,6 +3,7 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { VERSION } from './version.js';
+import { BUNDLED_WORKSPACE_TEMPLATES } from './bundled-content.js';
 import { ApiError, TyperollClient } from './client.js';
 
 export const workspaceSchema = z.object({
@@ -19,14 +20,24 @@ export type Workspace = z.infer<typeof workspaceSchema>;
 export const defaultWorkspace: Workspace = { schema_version: 1, portal: 'https://app.typeroll.com', organization_id: null, site_id: null, version: 'main', tool_mode: 'compact' };
 const lockSchema = z.object({ schema_version: z.literal(1), generator_version: z.string(), files: z.record(z.string(), z.string().regex(/^[a-f0-9]{64}$/)) }).strict();
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-export const ignores = ['.typeroll/', '.env', '.env.*', '!.env.example', '.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', 'qa/reports/', 'sources/private/'];
+export const ignores = ['.typeroll/', '.env', '.env.*', '!.env.example', '.mcp.json', '.cursor/mcp.json', '.vscode/mcp.json', 'qa/reports/', 'sources/private/', '**/__pycache__/', 'scripts/typeroll/node_modules/'];
 
 export const agentInstructions = `# Working on this website
 
-Read typeroll.json, brief/ and decisions.md. Confirm the portal, Organization,
+Read typeroll.json, brief/site.md, brief/rules.md and decisions.md first. Read
+other brief/ files and workflows/ only when relevant. Confirm the portal, Organization,
 Site and working Version before writes. This workspace is not the generated
 publication repository. The CMS owns current content and configuration; local
 sources are proposals unless the user explicitly adopts them.
+
+## Guided start
+
+When the owner needs guidance or a material decision is missing, start or resume
+workflows/interview.md. Read brief/interview.md and existing answers first; ask
+one short question at a time and save progress. Do not repeat confirmed questions
+or treat silence as approval. For a complete brief, proceed directly to
+workflows/new-site.md or workflows/migration.md. All kickoff prompts live here
+in the workspace; public docs explain the flow and link to these source files.
 
 ## Discover only what the task needs
 
@@ -44,6 +55,8 @@ Public documentation: https://typeroll.com/docs/llms.txt
 
 - Read current Pages, Content types, templates, partials and relevant block schemas.
 - Use native editable blocks; document necessary exceptions and design decisions.
+- Configure palette/font roles and design scales in site settings. Read workflows/design.md
+  before styling blocks; run lint_design_tokens and document hardcoded exceptions.
 - Discover get_composition_starter for qualified native starting layouts. Read one
   recipe at a time; map it to the actual schema. Never overwrite an existing
   template with a starter. Sections own gutters; avoid extra nested padding.
@@ -63,12 +76,24 @@ Public documentation: https://typeroll.com/docs/llms.txt
 ## Migrations
 
 Read tr-migration-evidence, then the source-specific recipe (tr-migrate-wp,
-tr-import-url, tr-migrate-astro or tr-migrate-multisite). Record preserve or renew
-intent in brief/migration.md; ask if unclear. Standard blocks first, reviewed
+tr-import-url, tr-migrate-astro or tr-migrate-multisite). Record text_intent and design_intent separately as preserve or renew
+in brief/migration.md; design includes images. Ask if either is unclear. Standard blocks first, reviewed
 custom types next, documented HTML exceptions last. Preserve or meaningfully
 redirect every old public URL. Import completion is not block reconstruction
-or launch acceptance. Compare preserve work to the source, renew work to the
-approved design/content brief. Discover tools and recipes on demand.
+or launch acceptance. Compare text and design/images separately: preserved dimensions to the source,
+renewed dimensions to their approved brief. New design never permits rewriting preserved text. Start with workflows/migration.md for the kickoff
+prompt. The agent rebuilds imported HTML using ordinary block tools; the owner
+does not need to manually convert each Page. No automatic converter is available.
+Discover tools and recipes on demand. Read scripts/README.md for version-bound
+pre-deploy and hosted QA tools. Follow workflows/design.md for layout defaults.
+
+## Project rules and search strategy
+
+Record the owner's preferences and durable constraints in brief/rules.md; put
+approved search intent, topic coverage and URL/indexing strategy in brief/seo.md.
+These are project decisions, not CMS settings or permission to publish. If a
+request conflicts with an agreed rule, ask and record the resulting decision.
+Use workflows/README.md to find the relevant routine, not load every recipe.
 
 ## Everyday requests
 
@@ -85,16 +110,17 @@ Store credentials in the client's private settings or injected environment.
 Run the workspace doctor after setup and after changing the binding.
 `;
 export const workspaceTemplates: Record<string, string> = {
+  ...BUNDLED_WORKSPACE_TEMPLATES,
   'AGENTS.md': agentInstructions,
-  'README.md': `# Website workspace\n\nKeep project intent here; edit the website through Typeroll CMS.\n\n1. Fill in brief/site.md and brief/brand.md.\n2. Connect hosted MCP at https://app.typeroll.com/api/mcp?tools=compact.\n3. Use an Organization key to create a site, or select an existing one.\n4. Record its IDs and working version in typeroll.json. No secrets belong there.\n5. Run npx @typeroll/mcp-server doctor . (inject TYPEROLL_API_KEY privately).\n\nStart guide: https://typeroll.com/docs/getting-started/agent-workspace/\n\nUpdate the generated scaffold with npx @typeroll/mcp-server init . --update.\nEdited files are preserved and reported for manual reconciliation. Optional local\nrecipes: init . --recipes. They are reference Markdown, not automatically loaded.\n`,
+  'README.md': `# Website workspace\n\nKeep project intent here; edit the website through Typeroll CMS.\n\n1. Read AGENTS.md. For guidance, ask your agent to start or resume workflows/interview.md. Otherwise use workflows/new-site.md or workflows/migration.md. Save confirmed goals, rules and SEO strategy in brief/; record text and design/image choices separately for migrations.\n2. Connect hosted MCP at https://app.typeroll.com/api/mcp?tools=compact.\n3. Use an Organization key to create a site, or select an existing one.\n4. Record its IDs and working version in typeroll.json. No secrets belong there.\n5. Run npx @typeroll/mcp-server doctor . (inject TYPEROLL_API_KEY privately).\n\nStart guide: https://typeroll.com/docs/getting-started/agent-workspace/\n\nUpdate the generated scaffold with npx @typeroll/mcp-server init . --update.\nEdited files are preserved and reported for manual reconciliation. Optional local\nrecipes: init . --recipes. They are reference Markdown, not automatically loaded.\n`,
   'brief/site.md': '# Site brief\n\n## Purpose and audience\n\n## Languages and scope\n\n## Primary user journeys\n\n## Content authority and sources\n\n## Editorial constraints and forbidden internal markers\n',
-  'brief/brand.md': '# Brand\n\n## Voice and tone\n\n## Visual direction and references\n\n## Typography, colors and image policy\n\n## Desktop and mobile navigation\n\nRecord intent here; current design tokens belong in CMS settings.\n',
+  'brief/brand.md': '# Brand\n\n## Voice and tone\n\n## Visual direction and references\n\n## Typography, colors and image policy\n\n## Desktop and mobile navigation\n\nRecord intent here; current design tokens belong in CMS settings. Choose semantic palette roles and typography/spacing steps; record deliberate hardcoded exceptions in decisions.md.\n',
   'brief/content-model.md': '# Content model\n\n## Page types and routes\n\n## Fields and references\n\n## Shared templates and partials\n\n## Taxonomy and navigation\n\nUse the current CMS schema. This document describes decisions, not a second schema store.\n',
-  'brief/migration.md': '# Migration brief (when applicable)\n\n## Intent: preserve or renew\n\n## Source URLs, date and agreed scope\n\n## Design and content acceptance reference\n\n## Retained facts and approved content changes\n\n## Standard blocks, custom types and HTML exceptions\n\n## Old URL to preserved path or relevant redirect\n\n## Prototype and verification evidence\n\nKeep private extracts in sources/private/ and screenshots in qa/reports/.\n',
-  'decisions.md': '# Decisions\n\nRecord date, decision, reason, approved scope and alternatives when useful.\n',
+  'brief/rules.md': "# Owner preferences and project rules\n\n## Confirmed rules\n\nRecord each rule, its scope, who approved it and the date. Separate confirmed rules from proposals.\n\n## Writing and factual accuracy\n\nVoice, terminology, prohibited claims, source requirements and legal copy that must not be rewritten.\n\n## Design and editing\n\nBrand constraints, accessibility, editable content, standard/custom blocks and documented HTML exceptions.\n\n## Operations and approval\n\nWho may approve content, publication, DNS changes and messages? Credentials stay outside this repository.\n\n## Exceptions and superseded rules\n\nLink decisions.md; do not silently override a confirmed rule. Project notes do not grant permissions beyond the user's authorization or account access.\n",
+  'brief/seo.md': "# SEO strategy\n\n## Business goals, audience, markets and languages\n\n## Search intent and topic coverage\n\nRecord research sources and dates. Distinguish evidence from assumptions; do not invent traffic or ranking forecasts.\n\n## Page roles and URL plan\n\nContent types, useful landing pages, taxonomy, internal links and routes to preserve or redirect. Avoid near-duplicate pages created only for keyword variants.\n\n## Indexing and canonical policy\n\nWhich pages should be indexable, public noindex, or private? Record deliberate canonical overrides and sitemap policy; actual values live in the CMS.\n\n## Editorial standards and structured data\n\nUnique useful copy, supported claims, descriptive titles and links, accessible image text, schema matching visible content. No fixed title length or word count is a hard SEO rule.\n\n## Measurement and review\n\nBaseline, analytics/consent decisions, measures of success and review dates. Never store credentials or private analytics exports here.\n",
+  'workflows/README.md': "# Project routines\n\nRead only the relevant routine and discover current tool schemas through MCP.\nProject files record intent; the CMS owns current content and configuration.\n\n| Task | Project context | On-demand recipe |\n| --- | --- | --- |\n| Guided start | workflows/interview.md, brief/interview.md | Ask one question at a time; resume confirmed answers |\n| New website | workflows/new-site.md, brief/site.md, brief/brand.md, brief/content-model.md | tr-new-site, tr-starter-design |\n| Migration | workflows/migration.md, brief/migration.md | tr-migration-evidence, then tr-migrate-wp or the matching source recipe |\n| Everyday editing | brief/rules.md and the relevant Page | tr-edit-site |\n| SEO | brief/seo.md and current site settings | tr-seo |\n| New reusable block | brief/brand.md and recorded editing needs | tr-custom-blocks |\n| Verification and publication | qa/checklist.md, decisions.md | Current preview/deploy tools and publishing readiness |\n\nAdd project-specific routines here with inputs, steps, acceptance evidence and approval boundaries. Do not copy the complete Typeroll manual or private app guides. Discover enabled app guidance with read_app_documentation. Load a recipe when needed so instructions stay current and context stays small.\n",
+  'decisions.md': '# Decisions\n\nRecord date, decision, reason, approved scope and alternatives when useful. For design-token exceptions include the source/block, fixed value, reason (e.g. white text on a photograph) and review criteria.\n',
   'sources/README.md': '# Sources\n\nStore research references and copy proposals. Record source URLs and dates.\nPrivate extracts belong in ignored private/ or an approved external store.\nDo not treat local drafts as current CMS content or commit media libraries.\n',
-  'scripts/README.md': '# Project automation\n\nKeep repeatable imports and QA scripts here. Use the authenticated REST API\nfor scripted work; keep credentials outside files and inject them at runtime.\nMCP remains the interactive interface. Typeroll currently has no general site CRUD CLI.\n',
-  'qa/checklist.md': '# Verification\n\n- Confirm Site, Version and deployed/source identity.\n- Read back saved content and inspect desktop/mobile previews.\n- Exercise menus, keyboard focus, links and enabled app states.\n- Verify routes, metadata, media and publishing readiness before launch.\n- Check that structured data (FAQ, recipe, event) matches what each page shows.\n- Record tested pages, viewports, results and unresolved issues.\n- Store screenshots and private runtime reports in ignored reports/.\n- Publishing validation does not prove visual or editorial completeness.\n',
 };
 
 export async function readWorkspace(dir: string): Promise<Workspace> {

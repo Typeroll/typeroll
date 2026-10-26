@@ -52,6 +52,7 @@ beforeEach(async () => {
   await store.setDoc(connectionPath('org', 'cloudflare'), { status: 'connected', revision: 'cf', cloudflare: { account_id: 'a'.repeat(32), bucket: '' } });
   const domains = await getSiteDomains('org', 'site');
   await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', dns_mode: 'automatic' });
+  await store.updateDoc(siteDomainConfigPath('org','site'), {active:{website_host:'www.example.com',media_host:null,media_path_prefix:''},active_dns_mode:'automatic'});
   await store.setDoc(jobPath, { version_id: 'main', status: 'queued', environment: 'production', started_at: new Date().toISOString() });
   mocks.source.mockImplementation(async frozen => ({ 'publication.json': JSON.stringify(frozen), 'scripts/build.mjs': 'synthetic source' }));
   mocks.push.mockResolvedValue({ commit: 'b'.repeat(40), changed: true });
@@ -62,14 +63,25 @@ beforeEach(async () => {
     if (route.endsWith('/deployments/deployment')) return mocks.deployment;
     if (route.includes('/deployments?')) return mocks.deployment ? [mocks.deployment] : [];
     if (route.includes('/domains/')) return { status: 'active' };
-    if (route.startsWith('/zones?')) return [{ id: 'zone', name: 'www.example.com', status: 'active', account: { id: 'a'.repeat(32) } }];
-    if (route.includes('/dns_records')) return options?.method ? {} : [{ id: 'dns', name: 'www.example.com', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
+    if (route.startsWith('/zones?')) return [{ id: 'zone', name: new URL('https://api.invalid'+route).searchParams.get('name'), status: 'active', account: { id: 'a'.repeat(32) } }];
+    if (route.includes('/dns_records')) return options?.method ? {} : [{ id: 'dns', name: new URL('https://api.invalid'+route).searchParams.get('name') ?? 'www.example.com', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
     return { source: { type: 'github', config: { owner: 'Synthetic', repo_name: project, repo_id: '789' } }, production_branch: 'main', build_config: { build_command: 'npm ci && npm run build' } };
   });
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.restoreAllMocks(); });
 function complete(branch = 'main') {
   mocks.deployment = { id: 'deployment', project_name: project, url: `https://immutable.${project}.pages.dev`, environment: branch === 'main' ? 'production' : 'preview', deployment_trigger: { metadata: { commit_hash: 'b'.repeat(40), branch } }, latest_stage: { name: 'deploy', status: 'success' }, uses_functions: false };
+}
+
+async function prepareFromCurrentPublication() {
+  const baselineArgs = {...args,jobId:'baseline'};
+  await getStore().setDoc(paths.deploy('org','site','baseline'),{version_id:'main',status:'queued'});
+  await executeCustomerPublication(baselineArgs); complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(baselineArgs);
+  const target=await getStore().getDoc<any>(`${paths.site('org','site')}/publishing_targets/main`);
+  expect(target.last_publication,JSON.stringify(await getStore().getDoc(paths.deploy('org','site','baseline')))).toBeTruthy();
+  await getStore().updateDoc(jobPath,{publication_intent:'domain_prepare',domain_revision:((await getSiteDomains('org','site')).publication_revision ?? (await getSiteDomains('org','site')).revision),source_publication:target.last_publication});
+  mocks.push.mockClear(); mocks.cloudflare.mockClear(); mocks.deployment=null; mocks.probe.mockResolvedValue(false);
 }
 
 it('freezes once, waits for the exact Git commit, and hides the live link until public verification', async () => {
@@ -165,6 +177,7 @@ it('does not treat main plus staging as authorization to publish the live branch
 it('prepares a future domain on a separate branch while the current website remains active', async () => {
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await prepareFromCurrentPublication();
   await executeCustomerPublication(args);
   const candidateBranch = mocks.push.mock.calls[0][1].branch;
   expect(candidateBranch).toMatch(/^version-domain-/);
@@ -216,11 +229,13 @@ it('a domain-only preparation reuses the public snapshot and does not publish la
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<h1>Unpublished edit</h1>' });
   const domains = await getSiteDomains('org', 'site');
   const next = await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'new.example.com', dns_mode: 'external' });
+  vi.stubEnv('TYPEROLL_SOURCE_SHA', 'c'.repeat(40));
   const nextArgs = { ...args, jobId: 'domain-job' };
   await getStore().setDoc(paths.deploy('org', 'site', nextArgs.jobId), { status: 'queued', publication_intent: 'domain_prepare', domain_revision: next.revision, source_publication: previous });
   mocks.deployment = null;
   expect(await executeCustomerPublication(nextArgs)).toBe('waiting');
   const source = resolvePublicationReferences(JSON.parse(mocks.push.mock.calls.at(-1)![1].files['publication.json']));
+  expect(source.core_commit).toBe('c'.repeat(40));
   expect(source.pages[0].html_content).toContain('https://new.example.com/about?from=home#team');
   expect(source.pages[0].canonical_url).toBe('https://new.example.com/');
   expect(JSON.stringify(source)).not.toContain('Unpublished edit');
@@ -276,6 +291,7 @@ it('clears preview identity under Firestore nested-merge semantics before promot
     await update(path, patch);
   });
   await update(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await prepareFromCurrentPublication();
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
   await executeCustomerPublication(args);
@@ -287,6 +303,41 @@ it('clears preview identity under Firestore nested-merge semantics before promot
   expect(mocks.push).toHaveBeenCalledTimes(2);
   expect(mocks.push.mock.calls[1][1].branch).toBe('main');
   expect(mocks.push.mock.calls[1][1].files).toEqual(mocks.push.mock.calls[0][1].files);
+});
+
+it('promotes the verified artifact without dispatching a second shared build', async () => {
+  const store = getStore();
+  await prepareFromCurrentPublication();
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}`) return { name: project, production_branch: 'main' };
+    return provider(route, options);
+  });
+  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  mocks.enqueue.mockResolvedValue({ key: 'same-task' }); mocks.built.mockResolvedValue(null);
+  mocks.verify.mockResolvedValue(true); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  const frozen = (await store.getDoc<any>(jobPath)).git_publication;
+  complete(frozen.branch);
+  const preview = mocks.deployment; mocks.deployment = null;
+  mocks.built.mockResolvedValue({ task: {}, files: { 'index.html': Buffer.from('verified candidate') } });
+  mocks.upload.mockImplementation(async (_client, target) => {
+    const deployment = { ...preview, id: target.branch === 'main' ? 'promoted' : 'deployment', environment: target.branch === 'main' ? 'production' : 'preview', deployment_trigger: { metadata: { commit_hash: target.commit, branch: target.branch } } };
+    mocks.deployment = deployment; return deployment;
+  });
+  await executeCustomerPublication(args);
+  expect((await store.getDoc<any>(jobPath)).phase).toBe('awaiting domain cutover approval');
+  const domains = await getSiteDomains('org', 'site');
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: domains.revision, approved_preparation: domains.preparation });
+  await executeCustomerPublication(args);
+  expect((await store.getDoc<any>(jobPath)).git_publication.build_task_key).toBe('same-task');
+  mocks.deployment = null;
+  await executeCustomerPublication(args);
+  expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+  expect(mocks.upload).toHaveBeenCalledTimes(2);
+  expect(mocks.upload.mock.calls[0][2]).toEqual(mocks.upload.mock.calls[1][2]);
+  expect((await store.getDoc<any>(jobPath)).status).toBe('succeeded');
 });
 
 it('freezes the Hosting Group and hosting account independently from the organization connection', async () => {
@@ -399,6 +450,7 @@ it('does not fall back to per-site Git builds when shared engine setup is unfini
 it('keeps the candidate and existing traffic when the provider cannot prevalidate several records', async () => {
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await prepareFromCurrentPublication();
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
   const provider = mocks.cloudflare.getMockImplementation()!;
@@ -414,10 +466,11 @@ it('keeps the candidate and existing traffic when the provider cannot prevalidat
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
 });
 
-it('switches one reviewed record only after the validation window is accepted, then waits for Cloudflare validation', async () => {
+it.each(['live', 'timeout', 'manual rollback'])('switches one reviewed record after acceptance and handles %s under the publication lease', async (outcome) => {
   const store = getStore();
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await store.updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await prepareFromCurrentPublication();
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch);
   let validated = false;
@@ -426,7 +479,7 @@ it('switches one reviewed record only after the validation window is accepted, t
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => {
     if (route.includes('/domains/')) return validated ? { status: 'active' } : { status: 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
-    if (route === '/zones/zone/dns_records/existing' && options?.method === 'PATCH') { records.splice(0, 1, { id: 'existing', ...options.body }); return {}; }
+    if (route === '/zones/zone/dns_records/existing' && ['PATCH', 'PUT'].includes(options?.method)) { records.splice(0, 1, { id: 'existing', ...options.body }); return {}; }
     if (route.includes('/dns_records') && !options?.method) return records;
     return provider(route, options);
   });
@@ -446,10 +499,26 @@ it('switches one reviewed record only after the validation window is accepted, t
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(records[0]).toMatchObject({ type: 'CNAME', content: `${project}.pages.dev`, proxied: true });
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'waiting for Cloudflare to validate www.example.com after the approved switch',
-    verification_message: expect.stringContaining('restore A www.example.com 192.0.2.10 (DNS only)') });
+    verification_message: expect.stringContaining('Previous destination: A www.example.com 192.0.2.10 (DNS only)') });
+  if (outcome === 'timeout') {
+    await store.updateDoc(`${paths.site('org', 'site')}/domain_cutovers/${prepared.candidate!.id}`, { deadline_at: Date.now() - 1 });
+    await executeCustomerPublication(args);
+    expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_cutover_timeout' } });
+    expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10', proxied: false });
+    expect(await getSiteDomains('org', 'site')).toMatchObject({ active, rollback_status: 'rolled_back' });
+    return;
+  }
   validated = true;
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com', verification_message: null });
+  if (outcome === 'manual rollback') {
+    await store.updateDoc(siteDomainConfigPath('org', 'site'), { rollback_requested: true, state: 'distributing' });
+    await store.updateDoc(jobPath, { status: 'running', phase: 'restoring previous domain traffic' });
+    await executeCustomerPublication(args);
+    expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', phase: 'previous traffic restored' });
+    expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10', proxied: false });
+    expect(await getSiteDomains('org', 'site')).toMatchObject({ active, rollback_status: 'rolled_back' });
+  }
 });
 
 it('explains the observed verification failure when the observation window expires', async () => {
@@ -470,7 +539,8 @@ it('captures media impact from the same records used in the frozen media manifes
   const media = { id: 'photo', filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12, storage: { provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'originals', key: 'photo.png' } };
   await store.setDoc(`${paths.media('org', 'site')}/photo`, media);
   const domains = await getSiteDomains('org', 'site');
-  await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', media_host: 'media.example.com', dns_mode: 'automatic' });
+  await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'future.example.com', media_host: 'future-media.example.com', media_path_prefix: '/future', dns_mode: 'automatic' });
+  await store.updateDoc(siteDomainConfigPath('org','site'), {active:{website_host:'www.example.com',media_host:'media.example.com',media_path_prefix:''}});
   const list = vi.spyOn(store, 'listDocs');
   await executeCustomerPublication({ ...args, dryRun: true });
   expect((await store.getDoc<any>(jobPath)).error).toBeFalsy();
@@ -479,6 +549,9 @@ it('captures media impact from the same records used in the frozen media manifes
   const expected = captureImpact({ version_id: 'main', pages: [{ id: 'home', html_content: '<img src="https://media.example.com/photo.png">' }] }, 'org', 'site', [media]).entries.find(entry => entry.kind === 'media');
   expect(observed.fields).toEqual(expected?.fields);
   expect(frozen.media_manifest.entries[0].sha256).toBe(media.sha256);
+  expect(frozen.media_manifest.media_host).toBe('media.example.com');
+  expect(frozen.media_manifest.entries[0].cdn_url).not.toContain('/future');
+  expect(frozen.site_url).toBe('https://www.example.com');
   expect(list.mock.calls.filter(([path]) => path === paths.media('org', 'site'))).toHaveLength(2);
 });
 
@@ -607,7 +680,7 @@ it('freezes a www redirect host, switches it after approval with the apex and ve
   let ruleset: any = null;
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route: string, options?: any) => {
-    if (route.startsWith('/zones?')) return route.includes('name=moveria.se') ? [{ id: 'zone', name: 'moveria.se', status: 'active', account: { id: 'a'.repeat(32) } }] : [];
+    if (route.startsWith('/zones?') && route.includes('moveria.se')) return route.includes('name=moveria.se') ? [{ id: 'zone', name: 'moveria.se', status: 'active', account: { id: 'a'.repeat(32) } }] : [];
     if (route === '/zones/zone/ssl/verification') return [{ certificate_status: 'active' }];
     if (route === '/zones/zone/rulesets/phases/http_request_dynamic_redirect/entrypoint') return ruleset;
     if (route === '/zones/zone/rulesets' && options?.method === 'POST') { ruleset = { id: 'rs', rules: options.body.rules }; return ruleset; }
@@ -616,6 +689,7 @@ it('freezes a www redirect host, switches it after approval with the apex and ve
     if (route.startsWith('/zones/zone/dns_records?name=moveria.se')) return [{ id: 'apex', name: 'moveria.se', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
     return provider(route, options);
   });
+  await prepareFromCurrentPublication();
   await executeCustomerPublication(args);
   const frozen = JSON.parse(mocks.push.mock.calls[0][1].files['publication.json']);
   expect(frozen.reference_mapping.website_origins).toContain('https://www.moveria.se');
@@ -656,9 +730,10 @@ it('stops a redirect change with a conflicting zone rule before asking for appro
     if (route === '/zones/zone/ssl/verification') return [{ certificate_status: 'active' }];
     if (route === '/zones/zone/rulesets/phases/http_request_dynamic_redirect/entrypoint') return { id: 'rs', rules: [{ ref: spec.ref, action: 'redirect', expression: spec.expression, action_parameters: { from_value: { target_url: { value: 'https://elsewhere.example' }, status_code: 302 } } }] };
     if (route.startsWith('/zones/zone/dns_records?name=example.com')) return [{ id: 'apex', type: 'A', content: '192.0.2.44', proxied: false }];
-    if (route.startsWith('/zones/zone/dns_records?name=www.example.com')) return [{ id: 'dns', name: 'www.example.com', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
+    if (route.startsWith('/zones/zone/dns_records?name=www.example.com')) return [{ id: 'dns', name: new URL('https://api.invalid'+route).searchParams.get('name') ?? 'www.example.com', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
     return provider(route, options);
   });
+  await prepareFromCurrentPublication();
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
   expect(await executeCustomerPublication(args)).toBe('ran');
@@ -714,4 +789,95 @@ it.each(['cloudflare', 'github'] as const)('freezes derived output once before d
   expect(await store.getDoc(paths.deploy('org', 'site', failedArgs.jobId))).toMatchObject({ status: 'failed', failure: { code: 'publication_derivation_failed' }, error: expect.stringContaining('Mapped field is missing') });
   expect(await store.getDoc(paths.site('org', 'site'))).toEqual(before);
   expect(mocks.push).toHaveBeenCalledTimes(1); expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+});
+
+
+it('publishes to the active host without touching declared future hosts', async () => {
+  const store=getStore();
+  await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await executeCustomerPublication(args);
+  const frozen=JSON.parse(mocks.push.mock.calls[0][1].files['publication.json']);
+  expect(frozen.site_url).toBe('https://old.example.com');
+  expect(mocks.push.mock.calls[0][1].branch).toBe('main');
+  // Editing future configuration while this build is in flight cannot invalidate it.
+  const initial=await getSiteDomains('org','site');
+  await saveSiteDomains('org','site',{revision:initial.revision,website_host:'newer.example.com',dns_mode:'external'});
+  complete();mocks.probe.mockResolvedValue(true);await executeCustomerPublication(args);
+  expect(await store.getDoc(jobPath)).toMatchObject({status:'succeeded',deploy_url:'https://old.example.com'});
+  expect(await getSiteDomains('org','site')).toMatchObject({active:{website_host:'old.example.com'},desired:{website_host:'newer.example.com'},candidate:null,state:'declared'});
+  expect(mocks.cloudflare.mock.calls.some(([route])=>route.includes('newer.example.com'))).toBe(false);
+});
+
+it('publishes first to the temporary address even when future hosts have been entered', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{active:null});
+  const {getOrganizationDomains,saveOrganizationDomains}=await import('../../lib/publishing/domain-config');
+  const organization=await getOrganizationDomains('org');
+  await saveOrganizationDomains('org',{revision:organization.revision,sites_domain:'sites.example.com',media_host:'media.example.com',dns_mode:'automatic'});
+  await executeCustomerPublication(args);
+  const frozen=JSON.parse(mocks.push.mock.calls[0][1].files['publication.json']);
+  expect(frozen.site_url).toBe(`https://site-${prefix}.sites.example.com`);
+  expect(frozen.robots_blocked).toBe(true);
+  expect(frozen.settings.sitewide_noindex).toBe(true);
+  expect((await getSiteDomains('org','site')).desired.website_host).toBe('www.example.com');
+  complete(); mocks.probe.mockResolvedValue(true); await executeCustomerPublication(args);
+  expect(await getStore().getDoc(jobPath)).toMatchObject({status:'succeeded'});
+  await getStore().setDoc(paths.deploy('org','site','second-temporary'), {version_id:'main',status:'queued'});
+  mocks.deployment=null; mocks.probe.mockResolvedValue(false);
+  await executeCustomerPublication({...args,jobId:'second-temporary'});
+  const next = JSON.parse(mocks.push.mock.lastCall![1].files['publication.json']);
+  expect(next.site_url).toBe(frozen.site_url);
+  expect(next.robots_blocked).toBe(true);
+});
+
+it('reports noindex from the prepared published snapshot rather than later CMS settings', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await getStore().updateDoc(paths.settings('org','site'),{sitewide_noindex:true});
+  await prepareFromCurrentPublication();
+  await getStore().updateDoc(paths.settings('org','site'),{sitewide_noindex:false});
+  await executeCustomerPublication(args); complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  expect((await getSiteDomains('org','site')).candidate).toMatchObject({sitewide_noindex:true,robots_blocked:false});
+});
+
+it('keeps normal publication usable while a candidate awaits approval and rejects its old content', async () => {
+  const store=getStore();
+  await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await prepareFromCurrentPublication(); await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true); await executeCustomerPublication(args);
+  const prepared=await getSiteDomains('org','site');
+  expect(prepared.state).toBe('ready_to_switch');
+  const {prepareDomainTransition} = await import('../../lib/publishing/domain-transition');
+  expect(await prepareDomainTransition('org','site',{revision:prepared.revision})).toMatchObject({job_id:args.jobId,reused_candidate:true});
+  expect((await store.getDoc<any>(`${paths.site('org','site')}/publishing_targets/main`)).job_id).toBeNull();
+  await store.updateDoc(paths.page('org','site','home'),{html_content:'<h1>New current content</h1>'});
+  const next={...args,jobId:'current-update'};
+  await store.setDoc(paths.deploy('org','site',next.jobId),{version_id:'main',status:'queued'});
+  mocks.deployment=null; mocks.probe.mockResolvedValue(false);
+  await executeCustomerPublication(next); complete(); mocks.probe.mockResolvedValue(true); await executeCustomerPublication(next);
+  expect(await store.getDoc(paths.deploy('org','site',next.jobId))).toMatchObject({status:'succeeded',deploy_url:'https://old.example.com'});
+  expect(await getSiteDomains('org','site')).toMatchObject({state:'outdated',desired:{website_host:'www.example.com'}});
+  const {approveDomainCutover}=await import('../../lib/publishing/domain-config');
+  await expect(approveDomainCutover('org','site',{revision:prepared.revision,candidate_id:prepared.candidate!.id})).rejects.toMatchObject({code:'domain_candidate_outdated'});
+  expect(await store.getDoc(jobPath)).toMatchObject({phase:'superseded'});
+});
+
+
+it('rejects a superseded source before freezing or pushing a domain preparation', async () => {
+  await getStore().updateDoc(jobPath, { publication_intent: 'domain_prepare', source_publication: { publication_id: 'older' } });
+  await getStore().setDoc(`${paths.site('org', 'site')}/publishing_targets/main`, { job_id: null, lease_until: 0, last_publication: { publication_id: 'newer' } });
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_candidate_outdated' } });
+  expect(mocks.push).not.toHaveBeenCalled();
+});
+
+it('requires explicit preparation instead of resuming an older automatically retargeted job', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await prepareFromCurrentPublication();
+  await executeCustomerPublication(args);
+  const current = await getStore().getDoc<any>(jobPath);
+  await getStore().updateDoc(jobPath, { publication_intent: null, git_publication: { ...current.git_publication, destination: null } });
+  mocks.push.mockClear();
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'explicit_domain_preparation_required' } });
+  expect(mocks.push).not.toHaveBeenCalled();
 });

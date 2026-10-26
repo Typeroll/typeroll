@@ -9,12 +9,12 @@
 // Returns: { inviteUrl: string }
 
 import type { APIRoute } from 'astro';
-import { json, requireSession } from '../../../../lib/access';
+import { json, requireFullSession } from '../../../../lib/access';
 import { createInviteUrl, parseInviteTtlDays } from '../../../../lib/invite';
 import { isFormsSigningConfigured } from '../../../../lib/forms-signing';
 
 export const POST: APIRoute = async ({ request, cookies }) => {
-  const guard = await requireSession(cookies);
+  const guard = await requireFullSession(cookies);
   if (!guard.ok) return guard.response;
   const session = guard.value;
 

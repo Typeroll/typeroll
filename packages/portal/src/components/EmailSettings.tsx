@@ -54,6 +54,7 @@ function valuesFromConnector(p: ProviderDescriptor, c: MaskedConnector): Values 
 }
 
 export default function EmailSettings({ siteId }: { siteId: string }) {
+  const [ownSmtpRequired, setOwnSmtpRequired] = useState(false);
   const [providers, setProviders] = useState<ProviderDescriptor[]>([]);
   const [type, setType] = useState<string>('');
   const [from, setFrom] = useState('');
@@ -79,6 +80,7 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
         const provs: ProviderDescriptor[] = data.providers ?? [];
         setProviders(provs);
         setCryptoOk(Boolean(data.crypto_configured));
+        setOwnSmtpRequired(data.own_smtp_required === true);
         const email: MaskedConnector | null = data.email;
         const initial = email && provs.find((p) => p.type === email.type);
         if (email && initial) {
@@ -155,6 +157,7 @@ export default function EmailSettings({ siteId }: { siteId: string }) {
 
   return (
     <form onSubmit={save} className="stack">
+      {ownSmtpRequired && <p role="note">During your trial, email requires your own SMTP account. Receiving form submissions and sending webhooks work without email. Typeroll does not send form emails on your behalf.</p>}
       {!cryptoOk && (
         <div className="card" style={{ borderColor: 'var(--danger, #b91c1c)' }}>
           <p className="text-sm">Server-side encryption key (<code>INTEGRATIONS_SECRET_KEY</code>) is not configured, so credentials can't be saved.</p>

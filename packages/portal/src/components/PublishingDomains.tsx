@@ -1,3 +1,4 @@
+import PublishingDomainGuide from './PublishingDomainGuide';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { CircleCheck } from 'lucide-react';
 import PublishingCard from './PublishingCard';
@@ -16,22 +17,16 @@ type DomainData = {
   revision: string; default_domain?: string | null; dns_mode: 'automatic' | 'external'; verified_at?: string | null;
   desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string; redirect_hosts?: string[] };
   active?: { website_host: string | null; redirect_hosts?: string[] }; state?: string;
-  candidate?: { id: string } | null;
+  candidate?: { id: string; sitewide_noindex?: boolean; robots_blocked?: boolean } | null;
   preparation?: Preparation | null;
   media_preparation?: Preparation | null;
   redirect_preparations?: RedirectPreparation[] | null;
+  next_publication?: { message: string } | null;
   host_checks?: { blockers: HostCheckItem[]; warnings: HostCheckItem[] } | null;
 };
 
-/** The same readiness rule as the server's redirect approval check. */
-function redirectBlocker(preparation: RedirectPreparation) {
-  if (preparation.blocker) return preparation.blocker.message;
-  if (preparation.zone_id && preparation.has_existing_traffic && preparation.action !== 'verify' && !preparation.certificate_ready) return `Waiting for the Universal SSL certificate of ${preparation.rule.zone_name ?? preparation.hostname}.`;
-  return null;
-}
-
 export default function PublishingDomains({ siteId }: { siteId?: string }) {
-  const FormContainer = siteId ? 'div' : 'details';
+  const FormContainer = 'details';
   const endpoint = siteId ? `/api/sites/${encodeURIComponent(siteId)}/publishing/domains` : '/api/orgs/publishing/domains';
   const [data, setData] = useState<DomainData | null>(null);
   const [error, setError] = useState('');
@@ -41,7 +36,6 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(false);
   const [dnsMode, setDnsMode] = useState<'automatic' | 'external'>('automatic');
-  const [acceptWindow, setAcceptWindow] = useState(false);
   useEffect(() => {
     let cancelled = false;
     fetch(endpoint, { cache: 'no-store' }).then(async response => {
@@ -58,11 +52,21 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     setFeedbackLocation('manual');
     setBusy(true); setError(''); setNotice('');
     try {
-      const body = { revision: data.revision, ...Object.fromEntries(form.entries()) };
+      const body = { revision: data.revision, ...Object.fromEntries(form.entries()), confirm_rebuild: false };
+      if (siteId) {
+        const preview = await fetch(endpoint.replace(/domains$/, 'domain-guide'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, action: 'preview' }) });
+        const impact = await preview.json();
+        if (!preview.ok) throw new Error(impact.error || 'Could not review the change.');
+        if (impact.confirmation_required) {
+          if (!window.confirm(impact.message + ' Continue?')) return;
+          body.confirm_rebuild = true;
+        }
+      }
       const response = await fetch(endpoint, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not save domain settings.');
       setData(result); setDnsMode(result.dns_mode);
+      if (siteId) window.dispatchEvent(new Event('typeroll:site-domains-changed'));
       setNotice(siteId ? 'Future addresses saved. Prepare and verify a deployment before switching website traffic.' : 'Organization domains saved. Check the connection status and next steps below.');
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not save domain settings.'); }
     finally { setBusy(false); }
@@ -106,46 +110,6 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     const interval = setInterval(() => { void refresh().catch(error => setError(error.message)); }, 5000);
     return () => clearInterval(interval);
   }, [endpoint, siteId, data?.revision, data?.domain_status?.state]);
-  async function prepare() {
-    if (!data) return;
-    setBusy(true); setError('');
-    try {
-      const response = await fetch(endpoint.replace(/domains$/, 'prepare'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: data.revision }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not prepare the domain change.');
-      setNotice('Preparing the last published content with the new addresses. Saved changes stay unpublished. Verification updates automatically.');
-      await refresh();
-    } catch (error) { setError(error instanceof Error ? error.message : 'Could not prepare the domain change.'); }
-    finally { setBusy(false); }
-  }
-  useEffect(() => {
-    if (!siteId || !data || data.state === 'live' || data.state === 'unconfigured') return;
-    const interval = setInterval(() => { void refresh().catch(error => setError(error.message)); }, 5000);
-    return () => clearInterval(interval);
-  }, [endpoint, siteId, data?.state]);
-  async function checkSiteDomain() {
-    setChecking(true); setError(''); setNotice('');
-    try {
-      const current = await refresh();
-      const blocker = current.preparation?.validation_blocker ?? current.media_preparation?.validation_blocker;
-      setNotice(blocker ? 'Checked: Cloudflare can validate the website host only after its record changes. See the explanation below.'
-        : current.preparation?.certificate_ready && (!current.media_preparation || current.media_preparation.certificate_ready)
-        ? 'Checked: Cloudflare has confirmed the website and media certificates.'
-        : 'Checked: domain validation is still pending. Keep existing traffic in place.');
-    } catch (error) { setError(error instanceof Error ? error.message : 'Could not check domain verification.'); }
-    finally { setChecking(false); }
-  }
-  async function switchTraffic() {
-    if (!data?.candidate) return;
-    setBusy(true); setError('');
-    try {
-      const response = await fetch(endpoint.replace(/domains$/, 'cutover'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ revision: data.revision, candidate_id: data.candidate.id, ...(windowRequired ? { accept_validation_window: acceptWindow } : {}) }) });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Could not switch website traffic.');
-      setData(result); setNotice('Traffic switch approved. Typeroll will verify the deployment at your website address before showing its live link.');
-    } catch (error) { setError(error instanceof Error ? error.message : 'Could not switch website traffic.'); }
-    finally { setBusy(false); }
-  }
   useEffect(() => {
     if (siteId || busy || (!notice && !error)) return;
     feedbackRef.current?.focus({ preventScroll: true });
@@ -160,14 +124,14 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     {error && <p role="alert">{error}</p>}
   </div>;
   const validationBlocker = data?.preparation?.validation_blocker ?? data?.media_preparation?.validation_blocker;
-  const windowRequired = data?.preparation?.validation_blocker?.resolution === 'accept_validation_window' && !data?.media_preparation?.validation_blocker;
+  const windowRequired = validationBlocker?.resolution === 'accept_validation_window';
+  const redirectBlocker = (item: RedirectPreparation) => item.blocker?.message ?? item.validation_blocker?.message;
   const redirectPreparations = data?.redirect_preparations ?? [];
-  const redirectWaiting = redirectPreparations.some(item => redirectBlocker(item));
   const hostBlockers = data?.host_checks?.blockers ?? [];
   const hostWarnings = data?.host_checks?.warnings ?? [];
   const alertStyle = { borderLeft: '4px solid var(--color-danger)', background: 'color-mix(in srgb, var(--color-danger) 6%, var(--color-surface))', padding: '1rem', borderRadius: 6 };
   const content = <>
-    <p>{siteId ? 'Choose the website host and the host used for images and other media. Saving these addresses prepares a future change; your current website stays live at its existing address.' : 'Choose addresses for your sites and media. Each site can also use its own domain.'}</p>
+    <p>{siteId ? `Website: ${data?.desired?.website_host || 'Not set'}. Saving an address does not switch traffic.` : 'Choose addresses for your sites and media. Each site can also use its own domain.'}</p>
     {error && (siteId || !feedbackLocation) && <p role="alert">{error}</p>}
     {siteId && notice && <p role="status">{notice}</p>}
     {!data && !error && <p role="status">Loading domain settings…</p>}
@@ -176,8 +140,8 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <ul>{hostBlockers.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul>
     </div>}
     {siteId && hostWarnings.length > 0 && <div className="muted"><strong>Check before preparing</strong><ul>{hostWarnings.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul></div>}
-    {siteId && data?.active && data.state !== 'live' && <button type="button" className="btn" disabled={busy || hostBlockers.length > 0} onClick={() => void prepare()}>Prepare domain change from published content</button>}
-    {data?.preparation && <div className="stack">
+    {siteId && data?.next_publication && <p role="status">{data.next_publication.message}</p>}
+    {data?.preparation && <details className="stack"><summary>Detailed DNS and redirect instructions</summary>
       <h3>Domain verification</h3>
       {validationBlocker && <div role="alert" style={alertStyle}><strong>{windowRequired ? 'The switch has a short validation window' : 'Domain transition needs a DNS change outside Typeroll'}</strong><p>{validationBlocker.message}</p></div>}
       {redirectPreparations.map(item => <p key={item.hostname}>{redirectBlocker(item)
@@ -206,19 +170,15 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
         </div>)}
         {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME. A redirect host needs its proxied record and redirect rule; it does not serve pages.</p>}
       </details>
-      <button type="button" className="btn" disabled={busy || checking} onClick={() => void checkSiteDomain()}>{checking ? 'Checking…' : 'Refresh verification'}</button>
-      {data.candidate && data.state === 'ready_to_switch' && <>
-        <p>The prepared build uses the future website and media addresses. Switching traffic makes this build public.</p>
-        {windowRequired && <label className="field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-          <input type="checkbox" checked={acceptWindow} onChange={event => setAcceptWindow(event.target.checked)} style={{ width: 'auto', marginTop: '0.25rem' }} />
-          <span>I am switching at a quiet time and accept that {data.preparation.hostname ?? 'the website'} does not answer until Cloudflare validates it.</span>
-        </label>}
-        <button type="button" className="btn" disabled={busy || redirectWaiting || (windowRequired ? !acceptWindow : (!data.preparation.certificate_ready && data.preparation.has_existing_traffic !== false)) || Boolean(data.media_preparation && !data.media_preparation.certificate_ready && data.media_preparation.has_existing_traffic !== false)} onClick={() => void switchTraffic()}>Switch website traffic</button>
-      </>}
-    </div>}
+    </details>}
+    {data?.state === 'outdated' && <p role="alert">Newer content is live at the current address. Prepare for domain switch again to include it before changing DNS.</p>}
+    {data?.candidate && data.state === 'ready_to_switch' && <>
+      {data.candidate.sitewide_noindex === true && <p role="alert">This frozen candidate has noindex enabled. Switching traffic will not make it indexable. If search indexing is intended, do not switch this candidate: save the intended indexing setting, publish normally at the current address, then choose Prepare for domain switch again. The prepared candidate uses the last published settings.</p>}
+      {data.candidate.sitewide_noindex === undefined && <p>Indexing status is unavailable for this older candidate. Verify its actual robots output before switching traffic; current CMS settings do not change a frozen candidate.</p>}
+    </>}
     {!siteId && data && <OrganizationDomainSetup data={data} busy={busy || checking} onSetup={setupOrganization} feedback={feedbackLocation === 'setup' ? organizationFeedback : undefined} />}
-    {data && <FormContainer>
-    {!siteId && <summary>Manual settings or external DNS</summary>}
+    {data && <FormContainer open={siteId && !data.desired?.website_host ? true : undefined}>
+    <summary>{siteId ? 'Edit website and media addresses' : 'Manual settings or external DNS'}</summary>
     <form className="stack" onSubmit={save} key={data.revision}>
       {siteId ? <>
         <label className="field">Website host<input name="website_host" defaultValue={data.desired?.website_host ?? ''} placeholder="www.example.com" autoCapitalize="none" spellCheck={false} /></label>
@@ -243,6 +203,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <div><button className="btn" type="submit" disabled={busy || checking}>{busy ? 'Saving…' : 'Save domain settings'}</button></div>
     {!siteId && feedbackLocation === 'manual' && organizationFeedback}
     </form></FormContainer>}
+    {siteId && <PublishingDomainGuide siteId={siteId} />}
     {!siteId && data?.sites_domain && <p className="muted">Site address base: <strong>{data.sites_domain}</strong></p>}
     {!siteId && data && <OrganizationDomainStatus key={data.revision} status={data.domain_status} checking={checking || busy} onRefresh={checkOrganizationDomain} />}
   </>;

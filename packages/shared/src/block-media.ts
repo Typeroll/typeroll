@@ -103,6 +103,10 @@ export function videoPlayerHtml(data: Data): string {
   // A YouTube or Vimeo page address becomes the embed address; an address the
   // block cannot convert is kept and left to the iframe host allowlist.
   const src = providerEmbedUrl(address, { autoplay, loop, controls }) || address;
+  if (data.click_to_load === true && providerEmbedUrl(address, { autoplay, loop, controls })) {
+    const poster = mediaAddress(data.poster);
+    return `<a href="${escapeAttr(address)}" class="tr-video-facade" data-video-src="${escapeAttr(src)}" data-video-title="${escapeAttr(title)}" aria-label="${escapeAttr(`Load video: ${title}`)}">${poster ? `<img src="${escapeAttr(poster)}" alt="" loading="lazy" />` : ''}<span>▶ ${escapeAttr(title)}</span></a>`;
+  }
   return `<iframe src="${escapeAttr(src)}" title="${escapeAttr(title)}"${lazy ? ' loading="lazy"' : ''} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
 }
 
@@ -234,5 +238,26 @@ window.TyperollBlocks.register('core/repeater', function (el) {
     if (stopped || hovering || focused || document.hidden || !el.isConnected) return;
     if (track.scrollLeft >= maxScroll() - 1) go(0); else go(current() + 1);
   }, 5000);
+});
+`;
+
+/** Provider connections start only after an explicit visitor action. No automatic thumbnails. */
+export const VIDEO_FACADE_RUNTIME = String.raw`
+window.TyperollBlocks.register('core/video', function (el) {
+  var button = el.querySelector('.tr-video-facade[data-video-src]');
+  if (!button) return;
+  button.setAttribute('role', 'button');
+  button.addEventListener('keydown', function (event) { if (event.key === ' ') { event.preventDefault(); button.click(); } });
+  button.addEventListener('click', function (event) {
+    event.preventDefault();
+    var url;
+    try { url = new URL(button.dataset.videoSrc); } catch (_) { return; }
+    if (url.protocol !== 'https:' || !['www.youtube-nocookie.com','player.vimeo.com'].includes(url.hostname)) return;
+    var frame = document.createElement('iframe');
+    frame.tabIndex = -1; frame.src = url.href; frame.title = button.dataset.videoTitle || 'Video';
+    frame.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+    frame.allowFullscreen = true; frame.referrerPolicy = 'strict-origin-when-cross-origin';
+    button.replaceWith(frame); frame.focus();
+  }, {once:true});
 });
 `;

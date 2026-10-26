@@ -28,6 +28,9 @@ export interface SiteTemplateCapabilities {
 
   // Page bodies
   supports_blocks_mode: boolean;
+  supports_block_palette_tokens: boolean;
+  supports_design_scales: boolean;
+  supports_design_token_audit: boolean;
   supports_html_mode: boolean;
   supports_x_include: boolean;
   supports_inline_style_tag: boolean;
@@ -284,7 +287,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.52.0',
+  template_capabilities_version: '0.54.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -309,6 +312,9 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   extension_render_modes: ['bundled_component', 'embedded_app'],
 
   supports_blocks_mode: true,
+  supports_block_palette_tokens: true,
+  supports_design_scales: true,
+  supports_design_token_audit: true,
   supports_html_mode: true,
   supports_x_include: true,
   supports_inline_style_tag: true,

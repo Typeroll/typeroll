@@ -1,3 +1,4 @@
+import { tokenScale } from './design-tokens.js';
 import type { FieldDefinition } from './types.js';
 export const pixels = (name: string, label: string, min = 0, max = 2400): FieldDefinition => ({
   name, label, type: 'number', min, max, responsive: true, css_unit: 'px',
@@ -24,6 +25,8 @@ export const postCardImageSizing: Record<string, string> = {
 
 /** Registry metadata also keeps API/MCP clients aligned with the native inspector. */
 export function groupPresentationField(field: FieldDefinition): FieldDefinition {
+  const scale = tokenScale(field);
+  if (scale) field = { ...field, design_token: scale, help: `Use a named ${scale} step from site settings. Numbers are explicit overrides. ${field.help ?? ''}`.trim() };
   if (field.editor_group || field.required) return field;
   const advanced = field.css_unit || ['responsive_breakpoints','inline_style','css_class','html_id','attributes','anchor_id','stack_below_px'].includes(field.name);
   const appearance = field.responsive || field.type === 'color' || ['font_weight','width','max_width','appearance','shadow','overflow','radius','size','font','image_fit','fit','image_aspect','aspect_ratio','title_font','image_sizing','download_style','download_behavior','panel_padding','collapse_below','rhythm'].includes(field.name);

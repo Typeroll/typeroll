@@ -1,4 +1,4 @@
-<div class="" id="" aria-label=""  data-block="container" data-shadow="none" data-overflow="visible" data-rhythm="default" data-sticky="false" data-width="normal" data-min-h="auto" style="--direction:column;--wrap:wrap;--gap:auto;--align_main:start;--align_cross:stretch;--padding_y:none;--padding_x:none;--bg:;--bg-image:url();" data-presentation="core%2Fcontainer"><div data-block="prose" data-w="normal" data-font="inherit" style="--text_align:inherit;--font_weight:inherit" data-presentation="core%2Fprose"><p>Child</p></div></div>
+<div class="" id="" aria-label=""  data-block="container" data-shadow="none" data-overflow="visible" data-rhythm="default" data-sticky="false" data-width="normal" data-min-h="auto" style="--direction:column;--wrap:wrap;--gap:auto;--align_main:start;--align_cross:stretch;--padding_y:none;--padding_x:none;--bg:;--bg-image:url();--background_fit:cover;--focal_x:50;--focal_y:50" data-presentation="core%2Fcontainer"><div data-block="prose" data-w="normal" data-font="inherit" style="--text_align:inherit;--font_weight:inherit" data-presentation="core%2Fprose"><p>Child</p></div></div>
 
 /* css */
 /* blocks-runtime */
@@ -25,7 +25,7 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
-[data-presentation="core%2Fcontainer"]{--h1_size_px:inherit;--h2_size_px:inherit;--h3_size_px:inherit;--h4_size_px:inherit;--h5_size_px:inherit;--h6_size_px:inherit;--heading_before_px:inherit;--heading_after_px:inherit;--max_width_px:initial;--min_height_px:initial;--gap_px:initial;--padding_x_px:initial;--padding_y_px:initial;--padding_top_px:initial;--padding_bottom_px:initial;--sticky_top_px:initial;--radius_px:initial}
+[data-presentation="core%2Fcontainer"]{--h1_size_px:inherit;--h2_size_px:inherit;--h3_size_px:inherit;--h4_size_px:inherit;--h5_size_px:inherit;--h6_size_px:inherit;--heading_before_px:inherit;--heading_after_px:inherit;--max_width_px:initial;--min_height_px:initial;--gap_px:initial;--padding_x_px:initial;--padding_y_px:initial;--padding_top_px:initial;--padding_bottom_px:initial;--sticky_top_px:initial;--radius_px:initial;--focal_x:initial;--focal_y:initial}
 
 /* core/container */
 :is([data-block="container"], [data-block="semantic-container"]) { --surface-gradient:initial;border-radius:var(--radius_px,0px); }
@@ -52,7 +52,7 @@
   padding-block: var(--padding_top_px, var(--padding_y_px, var(--block-py, 2rem))) var(--padding_bottom_px, var(--padding_y_px, var(--block-py, 2rem))); padding-inline: var(--padding_x_px, var(--block-px, 1rem));
   background: var(--bg, transparent);
 }
-:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:cover; background-position:center; }
+:is([data-block="container"], [data-block="semantic-container"]) { background-image:var(--surface-gradient,var(--bg-image,none)); background-size:var(--background_fit,cover); background-position:calc(var(--focal_x,50) * 1%) calc(var(--focal_y,50) * 1%); }
 [data-block="container"][data-width="narrow"] { max-width: var(--max_width_px, 42rem); margin-inline: auto; }
 [data-block="container"][data-width="normal"] { max-width: var(--max_width_px, 65rem); margin-inline: auto; }
 [data-block="container"][data-width="wide"]   { max-width: var(--max_width_px, 80rem); margin-inline: auto; }
@@ -91,6 +91,7 @@
 [data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
 [data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
 [data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
+[data-block="prose"][data-font="mono"] { font-family:var(--font-mono,monospace); }
 [data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: var(--h1-size, clamp(1.75rem, 1rem + 3.5vw, 3.5rem)); line-height: var(--h1-leading, 1.15); }
 [data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: var(--h2-size, clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem)); line-height: var(--h2-leading, 1.2); }
 [data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: var(--h3-size, clamp(1.25rem, 0.75rem + 2vw, 1.75rem)); line-height: var(--h3-leading, 1.25); }

@@ -17,6 +17,7 @@ export const REQUIRED_GCP_APIS = Object.freeze([
   'identitytoolkit.googleapis.com',
   'run.googleapis.com',
   'secretmanager.googleapis.com',
+  'searchconsole.googleapis.com',
 ]);
 
 export const REQUIRED_SECRET_ENV = Object.freeze([

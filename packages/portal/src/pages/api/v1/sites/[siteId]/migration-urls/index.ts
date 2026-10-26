@@ -20,7 +20,7 @@ import {
   type UrlStatus,
 } from '../../../../../../lib/wp/url-inventory';
 
-const STATUSES: UrlStatus[] = ['migrated', 'redirected', 'excluded', 'unhandled'];
+const STATUSES: UrlStatus[] = ['migrated', 'redirected', 'excluded', 'unhandled', 'matched_draft'];
 const MAX_BULK = 2000;
 const DEFAULT_LIMIT = 200;
 const MAX_LIMIT = 1000;

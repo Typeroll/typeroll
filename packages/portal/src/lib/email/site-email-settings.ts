@@ -1,3 +1,4 @@
+import { readOrganizationAccess } from '../organization-access';
 // Site email settings shared by the portal (Settings → Email & notifications), the v1 API and
 // MCP: the outgoing email connector used for form notifications, its test
 // send, and incoming email forwarding. Each surface checks admin permission
@@ -24,9 +25,11 @@ export class EmailSettingsError extends Error {
 /** The connector (secrets masked), the available providers and whether secrets can be saved. */
 export async function readEmailSettings(orgId: string, siteId: string) {
   const doc = await getStore().getDoc<SiteIntegrations>(paths.integrations(orgId, siteId));
+  const access = await readOrganizationAccess(orgId);
   return {
+    own_smtp_required: access.own_smtp,
     email: maskConnector(doc?.email),
-    providers: providerDescriptors(),
+    providers: providerDescriptors().filter(provider => !access.own_smtp || provider.type === 'smtp'),
     crypto_configured: isSecretCryptoConfigured(),
   };
 }
@@ -44,6 +47,7 @@ export async function saveEmailSettings(orgId: string, siteId: string, body: Ema
     throw new EmailSettingsError('Email secrets cannot be saved: INTEGRATIONS_SECRET_KEY is not configured on the server.', 503);
   }
   if (!body || typeof body !== 'object' || Array.isArray(body)) throw new EmailSettingsError('Invalid JSON body', 400);
+  if ((await readOrganizationAccess(orgId)).own_smtp && body.type !== 'smtp') throw new EmailSettingsError('During the trial, use your own SMTP account. Form submissions and webhooks work without email.', 400);
   const config = body.config ?? {};
   if (typeof config !== 'object' || Array.isArray(config) || config === null) {
     throw new EmailSettingsError('config must be an object of provider fields', 400);
@@ -89,6 +93,7 @@ export async function sendTestEmail(orgId: string, site: { id: string; name: str
   if (!to) throw new EmailSettingsError('A recipient "to" is required for the test', 400);
   const doc = await getStore().getDoc<SiteIntegrations>(paths.integrations(orgId, site.id));
   if (!doc?.email) throw new EmailSettingsError('No email connector configured yet', 400);
+  if ((await readOrganizationAccess(orgId)).own_smtp && doc.email.type !== 'smtp') throw new EmailSettingsError('Configure your own SMTP account during the trial.', 400);
   try {
     const res = await sendViaConnector(doc.email, {
       from: doc.email.from,

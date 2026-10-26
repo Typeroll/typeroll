@@ -310,7 +310,9 @@ test('image spacing_after_px sets the space to the next heading per breakpoint, 
     expect(await gap(0, 'Flow heading')).toBe(expected);
     // A Container lays children out with its own gap; the image's space comes on top of it.
     expect(await gap(1, 'Container heading')).toBe(expected + 24);
-    expect(await gap(2, 'Column heading')).toBe(expected);
+    // Columns now provide the theme flow gap (24px mobile, 32px desktop).
+    // Image margins add to that gap, just as they do inside a Container.
+    expect(await gap(2, 'Column heading')).toBe(expected + (width >= 1280 ? 32 : 24));
     baseline[width] = await gap(3, 'Unset heading');
     expect(baseline[width]).toBeLessThan(expected);
     await page.screenshot({ path: info.outputPath(`image-spacing-${width}.png`), fullPage: true });
@@ -320,5 +322,35 @@ test('image spacing_after_px sets the space to the next heading per breakpoint, 
   for (const width of [390, 1280]) {
     await page.setViewportSize({ width, height: 900 });
     expect(await gap(0, 'Unset heading')).toBe(baseline[width]);
+  }
+});
+
+test('column content gaps add to image margins and support responsive and zero overrides', async ({ page }) => {
+  const tree: Block[] = [{
+    id: 'columns-gap', type: 'core/columns', data: {
+      content_gap_px: { mobile: 0, tablet: 17, desktop: 41 },
+    }, slots: [[
+      { id: 'image-gap', type: 'core/image', data: { src: image, alt: 'Landscape', spacing_after_px: { mobile: 23, desktop: 13 } } },
+      heading('after-image', 'After image'),
+    ], [
+      { id: 'image-default', type: 'core/image', data: { src: image, alt: 'Landscape without margin' } },
+      heading('after-default', 'After default'),
+    ]],
+  }];
+  await page.setContent(documentHtml(tree));
+  for (const [width, columnGap, imageMargin] of [[390, 0, 23], [639, 0, 23], [640, 17, 23], [1279, 17, 23], [1280, 41, 13]] as const) {
+    await page.setViewportSize({ width, height: 900 });
+    const slots = page.locator('[data-block="columns"] > .block-columns-col');
+    for (const [index, margin] of [[0, imageMargin], [1, 0]] as const) {
+      const geometry = await slots.nth(index).evaluate(el => {
+        const picture = el.querySelector('[data-block="image"]')!;
+        const title = el.querySelector('h2')!;
+        return {
+          gap: getComputedStyle(el).rowGap,
+          distance: Math.round(title.getBoundingClientRect().top - picture.getBoundingClientRect().bottom),
+        };
+      });
+      expect(geometry).toEqual({ gap: `${columnGap}px`, distance: columnGap + margin });
+    }
   }
 });

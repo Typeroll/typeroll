@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 type Tab = 'create' | 'join';
 
@@ -13,6 +13,7 @@ export default function OnboardingForm({ prefillToken, next }: Props) {
 
   // Create org state
   const [orgName, setOrgName] = useState('');
+  const creationKey = useRef<{ name: string; key: string } | null>(null);
 
   // Join state
   const [inviteInput, setInviteInput] = useState(prefillToken ?? '');
@@ -27,13 +28,20 @@ export default function OnboardingForm({ prefillToken, next }: Props) {
     setError(null);
     setBusy(true);
     try {
+      if (creationKey.current?.name !== orgName.trim()) {
+        let saved: { name?: string; key?: string } | null = null;
+        try { saved = JSON.parse(sessionStorage.getItem('typeroll-organization-creation') ?? 'null'); } catch { /* Storage may be unavailable. */ }
+        creationKey.current = { name: orgName.trim(), key: saved?.name === orgName.trim() && typeof saved.key === 'string' ? saved.key : crypto.randomUUID() };
+        try { sessionStorage.setItem('typeroll-organization-creation', JSON.stringify(creationKey.current)); } catch { /* The in-memory key still protects retries. */ }
+      }
       const res = await fetch('/api/orgs/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': creationKey.current.key },
         body: JSON.stringify({ name: orgName }),
       });
       const data = (await res.json()) as { ok?: boolean; error?: string; };
       if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
+      try { sessionStorage.removeItem('typeroll-organization-creation'); } catch { /* No persistent storage. */ }
       window.location.href = next ?? '/app';
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

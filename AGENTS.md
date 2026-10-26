@@ -9,7 +9,10 @@
   dependencies and seals docs for its own SHA. A missing, failed, incomplete,
   fork, documentation-only or mismatched proof, or any API error, runs the
   complete gate (`docs/releasing.md`). The documentation-only lane may reuse a qualified
-  baseline and omit application checks only for the allowlisted documentation delta.
+  baseline and omit application checks only for the allowlisted documentation delta,
+  including same-repository PRs whose exact tested merge is based on qualified main.
+  For an explicitly approved candidate, use the guarded wait-and-merge routine in
+  `docs/releasing.md`; changed heads and failed checks must stop it.
   Run `node scripts/oss-release-check.mjs --release-artifacts` locally
   for broad shared changes, release-infrastructure changes or unresolved risk;
   do not repeat the full gate after every small edit. The release workflow

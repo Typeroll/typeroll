@@ -1,3 +1,4 @@
+import { assertOrganizationAccess } from './organization-access';
 import { createHash, randomBytes } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { paths, pageAuthorityFields, pageContentValues, PAGE_BUILTIN_FIELDS, type Page, type FieldDefinition, type ContentType } from '@typeroll/shared';
@@ -13,6 +14,7 @@ export class ProposalError extends Error { constructor(message: string, readonly
 export interface OwnerProposal {
   id: string; page_id: string; title: string; version_id: string; content_type: string;
   installation_id: string; subject_id: string; base_revision: string; schema_revision: string;
+  group_id?: string;
   before: Record<string, unknown>; changes: Record<string, unknown>; fingerprint: string;
   status: 'pending' | 'approved' | 'rejected' | 'revoked'; created_at: string;
   review: { hash: string; encrypted_token: string; expires_at: number; revoked_at?: string };
@@ -119,8 +121,37 @@ export async function ownerEditorFields(scope: ProposalScope, page: Page, fields
   });
 }
 
+interface OwnerReviewGroup {
+  page_id: string; version_id: string; installation_id: string; subject_id: string;
+  group_id: string; proposal_id: string;
+}
+const groupCollection = (scope: ProposalScope) => `organizations/${scope.orgId}/sites/${scope.siteId}/owner_review_groups`;
+const groupPath = (scope: ProposalScope, pageId: string, identity: { installationId: string; subjectId: string }, group: string) =>
+  `${groupCollection(scope)}/${answerRevision([scope, pageId, identity, group])}`;
+const unchangedProposalFields = (proposal: OwnerProposal, page: Page, fields: FieldDefinition[]) => Object.entries(proposal.before).every(([name, before]) => {
+  const field = fields.find(item => item.name === name);
+  return field && isDeepStrictEqual(before, ownerAnswerValue(field, pageContentValues(page)[name]));
+});
+
+/** Only this verified subject's active review groups; never other owners' drafts. */
+export async function ownerReviewGroups(scope: ProposalScope, pageId: string, identity: { installationId: string; subjectId: string }) {
+  if (!/^[a-f0-9]{64}$/.test(identity.subjectId)) return {};
+  const { page, type, fields } = await ownerFieldDescriptor(scope, pageId);
+  const groups = await getStore().listDocs<OwnerReviewGroup>(groupCollection(scope), { filters: [{ field: 'page_id', op: '==', value: pageId }] });
+  const result: Record<string, { revision: string; changes: Record<string, unknown>; status: string }> = {};
+  for (const group of groups) {
+    if (group.version_id !== scope.versionId || group.installation_id !== identity.installationId || group.subject_id !== identity.subjectId) continue;
+    const proposal = await getStore().getDoc<OwnerProposal>(proposalPath(scope, group.proposal_id));
+    if (!proposal) continue;
+    const current = proposal.schema_revision === answerRevision(type) && unchangedProposalFields(proposal, page, fields);
+    result[group.group_id] = { revision: group.proposal_id, status: proposal.status === 'pending' && !current ? 'conflict' : proposal.status,
+      changes: proposal.status === 'pending' && current ? proposal.changes : {} };
+  }
+  return result;
+}
+
 export async function submitOwnerProposal(scope: ProposalScope, pageId: string, identity: { installationId: string; subjectId: string }, input: {
-  changes: unknown; base_revision: string; request_id: string;
+  changes: unknown; base_revision: string; request_id: string; group_id?: string; group_revision?: string | null;
 }) {
   // Reported separately, because only one of the two is ever the caller's to
   // send. Naming both together told an integrator that something was missing
@@ -137,35 +168,55 @@ export async function submitOwnerProposal(scope: ProposalScope, pageId: string, 
   const settings = await store.getDoc<ReviewSettings>(reviewSettingsPath(scope));
   if (!settings || !await ownerReviewReady(scope)) throw new ProposalError('Owner-change review is not configured for this site', 409);
   const { page, type, fields, revision } = await ownerFieldDescriptor(scope, pageId);
-  const changes = checkedPatch(type, fields, input.changes);
+  const submitted = checkedPatch(type, fields, input.changes);
+  if (input.group_id !== undefined && (typeof input.group_id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(input.group_id) || ['__proto__', 'prototype', 'constructor'].includes(input.group_id))) throw new ProposalError('Invalid review group');
+  if (input.group_id !== undefined && input.group_revision !== null && !/^[a-f0-9]{64}$/.test(input.group_revision ?? '')) throw new ProposalError('Review group revision is required', 409);
+  const groupKey = input.group_id ? groupPath(scope, pageId, identity, input.group_id) : null;
+  const group = groupKey ? await store.getDoc<OwnerReviewGroup>(groupKey) : null;
+  const previous = group ? await store.getDoc<OwnerProposal>(proposalPath(scope, group.proposal_id)) : null;
   const id = answerRevision([scope, pageId, identity, input.request_id]);
   const path = proposalPath(scope, id);
-  const fingerprint = answerRevision({ changes, base_revision: input.base_revision });
+  const fingerprint = answerRevision({ changes: submitted, base_revision: input.base_revision, ...(input.group_id ? { group_id: input.group_id, group_revision: input.group_revision } : {}) });
   const prior = await store.getDoc<OwnerProposal>(path);
   if (prior) {
     if (prior.fingerprint !== fingerprint) throw new ProposalError('This request ID was already used for another proposal', 409);
     return { proposal_id: id, status: prior.status };
   }
+  if (groupKey && (group?.proposal_id ?? null) !== input.group_revision) throw new ProposalError('This step was saved elsewhere. Reload before saving again.', 409);
+  if (previous?.status === 'pending' && (previous.schema_revision !== answerRevision(type) || !unchangedProposalFields(previous, page, fields)))
+    throw new ProposalError('Answers in this step changed during review. Reload and resolve the pending review before editing them.', 409);
+  const changes = { ...(previous?.status === 'pending' ? previous.changes : {}), ...submitted };
   if (input.base_revision !== revision) throw new ProposalError('The profile changed. Reload it before submitting.', 409);
   const authority = applyFieldAuthority({ fields, incoming: changes, existing: page, actor: 'owner', actorId: `${identity.installationId}:${identity.subjectId}` });
   if (authority.rejected.length) throw new ProposalError(conflictResponse(authority.rejected).error, 409);
   const values = pageContentValues(page);
   const deliberate = Object.fromEntries(Object.entries(authority.update).filter(([name, value]) => !isDeepStrictEqual(values[name], value)));
-  if (!Object.keys(deliberate).length) throw new ProposalError('No changed answers to submit');
+  if (!Object.keys(deliberate).length && !groupKey) throw new ProposalError('No changed answers to submit');
   const token = randomBytes(32).toString('base64url');
   const now = new Date().toISOString();
   const proposal: OwnerProposal = { id, page_id: pageId, title: page.title, version_id: scope.versionId, content_type: type.id,
     installation_id: identity.installationId, subject_id: identity.subjectId, base_revision: revision, schema_revision: answerRevision(type),
     before: Object.fromEntries(Object.keys(deliberate).map(name => [name, ownerAnswerValue(fields.find(field => field.name === name)!, values[name])])), changes: Object.fromEntries(Object.entries(deliberate).map(([name, value]) => [name, ownerAnswerValue(fields.find(field => field.name === name)!, value)])), fingerprint,
-    status: 'pending', created_at: now,
+    ...(input.group_id ? { group_id: input.group_id } : {}),
+    status: Object.keys(deliberate).length ? 'pending' : 'revoked', created_at: now,
     review: { hash: tokenHash(token), encrypted_token: encryptSecret(token), expires_at: Date.now() + settings.link_ttl_hours * 3_600_000 },
     notification: { status: 'pending', attempts: 0 } };
-  if (!(await store.createDocIfMissing(path, proposal))) {
+  const effects: import('./datastore').ConditionalEffect[] = [];
+  if (groupKey) {
+    const snapshot = await pageWriteSnapshot(scope.orgId, scope.siteId, scope.versionId, pageId);
+    const schema = await contentTypeWriteSnapshot(scope.orgId, scope.siteId, scope.versionId, type.id);
+    if (answerRevision(snapshot.page) !== revision || answerRevision(schema.type) !== answerRevision(type)) throw new ProposalError('The profile changed while saving. Reload.', 409);
+    effects.push(...snapshot.guards, ...schema.guards,
+      { path: groupKey, expected: group, replace: true, data: { page_id: pageId, version_id: scope.versionId, installation_id: identity.installationId, subject_id: identity.subjectId, group_id: input.group_id, proposal_id: id } });
+    if (previous?.status === 'pending') effects.push({ path: proposalPath(scope, previous.id), expected: previous, replace: true,
+      data: { ...previous, status: 'revoked', review: { ...previous.review, revoked_at: now } } });
+  }
+  if (!(groupKey ? await store.compareAndReplaceDoc(path, null, proposal, effects) : await store.createDocIfMissing(path, proposal))) {
     const winner = await store.getDoc<OwnerProposal>(path);
     if (winner?.fingerprint !== fingerprint) throw new ProposalError('Proposal request conflict', 409);
     return { proposal_id: id, status: winner.status };
   }
-  return { proposal_id: id, status: 'pending' as const };
+  return { proposal_id: id, status: proposal.status };
 }
 
 export async function readOwnerProposal(scope: ProposalScope, id: string, token?: string) {
@@ -174,6 +225,7 @@ export async function readOwnerProposal(scope: ProposalScope, id: string, token?
   if (!proposal || proposal.version_id !== scope.versionId) throw new ProposalError('Review link unavailable', 404);
   if (token !== undefined && (!/^[A-Za-z0-9_-]{43}$/.test(token) || tokenHash(token) !== proposal.review.hash ||
       proposal.review.revoked_at || proposal.review.expires_at <= Date.now())) throw new ProposalError('This review link has expired or was revoked. Open the review queue in Typeroll.', 401);
+  if (token !== undefined) await assertOrganizationAccess(scope.orgId, 'read');
   return proposal;
 }
 export async function decideOwnerProposal(scope: ProposalScope, id: string, auth: { token: string } | { adminId: string }, input: {
@@ -189,12 +241,14 @@ export async function decideOwnerProposal(scope: ProposalScope, id: string, auth
       return { proposal_id: id, status: proposal.status };
     throw new ProposalError('This proposal has already been decided or revoked', 409);
   }
+  await assertOrganizationAccess(scope.orgId, 'write');
   const snapshot = await pageWriteSnapshot(scope.orgId, scope.siteId, scope.versionId, proposal.page_id);
   const page = snapshot.page;
   const { type, fields } = await ownerFieldDescriptor(scope, proposal.page_id);
-  if (!page || answerRevision(page) !== proposal.base_revision || answerRevision(type) !== proposal.schema_revision)
+  if (!page || !unchangedProposalFields(proposal, page, fields) || answerRevision(type) !== proposal.schema_revision)
     throw new ProposalError('The accepted profile or its fields changed. Review the current version before applying this proposal.', 409);
   const adjustments = input.adjustments ? checkedPatch(type, fields, input.adjustments) : {};
+  if (Object.keys(adjustments).some(name => !Object.hasOwn(proposal.before, name)) && answerRevision(page) !== proposal.base_revision) throw new ProposalError('Other fields changed. Reload before editing them in this review.', 409);
   if (input.action === 'reject' && Object.keys(adjustments).length) throw new ProposalError('A rejection cannot contain edits');
   const schema = await contentTypeWriteSnapshot(scope.orgId, scope.siteId, scope.versionId, proposal.content_type);
   if (!schema.type || answerRevision(schema.type) !== proposal.schema_revision) throw new ProposalError('The field schema changed during review.', 409);

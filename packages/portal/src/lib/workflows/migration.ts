@@ -48,7 +48,7 @@ export const migrationWorkflow: WorkflowDef = {
   type: 'migration',
   label: 'Migrate from WordPress',
   description:
-    'Import WordPress pages, shared categories and references without rewriting content. Convert bodies to editable blocks, move referenced media to your storage, then review templates and fidelity before publishing.',
+    'Import WordPress pages, shared categories and references without rewriting content. Stage cleaned HTML and move referenced media to your storage. Then use your external agent to rebuild editable blocks and review templates before publishing.',
   steps: [
     {
       name: 'preflight',
@@ -638,7 +638,7 @@ export const migrationWorkflow: WorkflowDef = {
           const path = isHome ? '/' : pathFromUrl(item.link, sourceOrigin) ?? `/${rawSlug}`;
           const notes: string[] = [];
           if (String(ctx.config.target_content_mode ?? 'blocks') !== 'html') {
-            notes.push('Automatic HTML-to-blocks conversion was not applied. The page stays in HTML mode until a person accepts a preview.');
+            notes.push('Automatic HTML-to-blocks conversion was not applied. The page is staged in HTML mode. Rebuild it with editable blocks through your external agent before completing a block-based migration.');
           }
           if (/<(?:form|script|object|embed)\b/i.test(rawHtml)) notes.push('Source contains interactive markup. Recreate and test the corresponding Form or Extension; imported content alone does not activate it.');
           if (notes.length) conversionReview.push({ page_id: pageId, notes, html_blocks: 0 });

@@ -72,6 +72,17 @@ describe('migration launch report', () => {
     await resetDatastore();
   });
 
+  it('reports hardcoded design values without blocking a ready migration', async () => {
+    const site = await seedReadyEvidence();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.updateDoc(paths.settings(ORG, SITE), { custom_css: '.example{color:#123456;padding:20px}' });
+    const report = await buildMigrationLaunchReport({ store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site,
+      now: () => new Date('2026-09-06T11:00:00.000Z') });
+    expect(report.launch_ready).toBe(true);
+    expect(report.design_tokens).toMatchObject({ blocking: false, counts: {hardcoded_color:1,hardcoded_size:1} });
+  });
+
   it('is ready only when every independent section is complete and current', async () => {
     const site = await seedReadyEvidence();
     const { getStore } = await import('../../lib/datastore');

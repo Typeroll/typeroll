@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
-import { buildDiagnostic, secretValues } from './diagnostics.mjs';
+import { buildDiagnostic, secretValues, mediaFailureCode } from './diagnostics.mjs';
 import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, MAX_SEO_REPORT_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
 
 // The rolling package pool removes superseded packages; retain this exact verified binary.
@@ -432,8 +432,9 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
   } catch (error) {
     let validation;
     if (job.kind === 'publication') { try { validation = await readSeoReport(work, job.identity.publication_id); } catch { /* A renderer may fail before validation. */ } }
-    const code = validation && !validation.passed ? 'publication_validation_failed' : artifactFailureCode(error.message);
-    const diagnostic = failureDiagnostic(error, code, secrets);
+    const reportedCode = validation && !validation.passed ? 'publication_validation_failed' : artifactFailureCode(error.message);
+    const diagnostic = failureDiagnostic(error, reportedCode, secrets);
+    const code = mediaFailureCode(stage, reportedCode, diagnostic);
     // The provider's build log is the one record a reader can always open.
     for (const line of diagnostic?.lines ?? []) console.error(`TYPEROLL_BUILD_LOG ${line}`);
     if (diagnostic?.cause) console.error(`TYPEROLL_BUILD_CAUSE ${diagnostic.cause}`);

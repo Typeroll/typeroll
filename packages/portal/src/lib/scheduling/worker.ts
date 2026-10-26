@@ -1,3 +1,4 @@
+import { readOrganizationAccess } from '../organization-access';
 import { createHash, randomUUID } from 'node:crypto';
 import { getStore } from '../datastore';
 import { paths, type DeployJob } from '@typeroll/shared';
@@ -25,7 +26,15 @@ export async function executeScheduledWork(id: string, generation?: string, now 
   if (!acquired) throw new Error('Scheduled work is already running');
   try {
     const parts = current.source.split('/'), org = parts[1], siteId = parts[3];
-    if (current.kind === 'build_continue') {
+    if (['page_schedule', 'site_publish'].includes(current.kind) && !(await readOrganizationAccess(org)).can_write) {
+      await store.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation && value.lease_owner === owner,
+        { due_at: Number.MAX_SAFE_INTEGER, lease_until: 0, lease_owner: null, blocked_by: 'organization_access' });
+      return result;
+    }
+    if (current.kind === 'organization_access_notice') {
+      const { deliverAccessNotice } = await import('../organization-access-notices');
+      await deliverAccessNotice(org, current.payload.ends_at, current.payload.days_before, now.valueOf());
+    } else if (current.kind === 'build_continue') {
       const task = await store.getDoc<any>(current.source);
       if (task?.status === 'queued' && task.attempt === current.payload.attempt && task.media_cursor === current.payload.cursor) {
         const { completedBuild } = await import('../builds/jobs');

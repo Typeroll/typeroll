@@ -10,10 +10,10 @@ another MCP client) working through MCP and the public API. The portal's built-i
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
 **Before import or reconstruction:** read `tr-migration-evidence` with
-`read_skill`. Choose preserve (platform change) or renew (new design/content),
-record the brief and verify one prototype per active template before bulk writes.
+`read_skill`. Choose preserve or renew independently for text and design/images,
+record text_intent and design_intent in the brief and verify one prototype per active template before bulk writes.
 Use standard blocks first, reviewed custom types next, rare documented HTML last.
-Both paths must preserve or meaningfully redirect every old public URL. That
+All four combinations must preserve or meaningfully redirect every old public URL. That
 shared contract defines acceptance; this recipe only adds source-specific steps.
 
 
@@ -81,7 +81,7 @@ list_pages limit=5
 ```
 
 Read existing target data to avoid overwriting work. Compare prototypes to the
-source in preserve mode, or to the agreed new design in renew mode. Validate
+source when design_intent is preserve, or to the agreed new design when it is renew. Review text separately. Validate
 standard/custom blocks using `tr-migration-evidence` before mass writes.
 
 ### 3. Fetch and clean each source page
@@ -123,8 +123,8 @@ omit it. Inventory PDFs, download hrefs, srcsets and backgrounds as well.
 
 **d. Adapt to the target's design.**
 Use standard blocks first, then reusable custom types with editable fields.
-Preserve source appearance/text in preserve mode; use the approved new design
-and content plan in renew mode. Raw HTML is the documented last resort.
+Review appearance and text independently according to design_intent and text_intent;
+compare each preserved dimension to the source and each renewed dimension to its approved brief. Raw HTML is the documented last resort.
 
 ### 4. Create pages as drafts
 

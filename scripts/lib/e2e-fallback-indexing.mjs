@@ -18,7 +18,9 @@ export async function runFallbackIndexingJourney({
   if (prepared?.urls?.fallback !== expectedFallbackOrigin) {
     throw new Error(`unexpected fallback origin: ${prepared?.urls?.fallback ?? 'missing'}`);
   }
-  const deployment = await call('trigger_deploy', { environment: 'production' });
+  // This bounded staging fixture checks saved output, not unrelated editor drafts.
+  // Keep working copies untouched; the caller explicitly confirms this test site.
+  const deployment = await call('trigger_deploy', { environment: 'production', allow_unsaved: true });
   const jobId = deployment?.job_id;
   if (!jobId) throw new Error('trigger_deploy returned no job id');
 

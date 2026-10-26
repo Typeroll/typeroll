@@ -1,3 +1,4 @@
+import { organizationUploadTtl } from '../../../../../../lib/organization-access';
 // POST /api/v1/sites/{siteId}/media/upload-url
 //
 // Mints a signed PUT URL for direct-to-R2 upload (no bytes touch this
@@ -51,7 +52,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     try {
       const uploaded = await createMediaUpload(ctx.orgId, ctx.siteId, { filename, contentType, size, altText: alt_text, actor: `api-key:${ctx.keyPrefix}` });
       return apiResponse(ctx, { upload_url: uploaded.uploadUrl, cdn_url: uploaded.cdnUrl, key: uploaded.key, media_id: uploaded.mediaId,
-        storage: uploaded.storage, expires_in: 300, finalize_url: `/api/v1/sites/${ctx.siteId}/media/${uploaded.mediaId}/finalize`,
+        storage: uploaded.storage, expires_in: uploaded.expiresIn, finalize_url: `/api/v1/sites/${ctx.siteId}/media/${uploaded.mediaId}/finalize`,
         next_step: 'Upload the binary file directly to upload_url, then POST to finalize_url to verify it. Responsive variants are generated during the customer build.' });
     } catch (error) { return connectionFailure(error); }
   }
@@ -83,10 +84,11 @@ export const POST: APIRoute = async ({ request, params }) => {
     requestChecksumCalculation: 'WHEN_REQUIRED',
     responseChecksumValidation: 'WHEN_REQUIRED',
   });
+  const uploadTtl = await organizationUploadTtl(ctx.orgId);
   const uploadUrl = await getSignedUrl(
     r2,
     new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType }),
-    { expiresIn: 300 },
+    { expiresIn: uploadTtl },
   );
   const cdnUrl = `${publicBase.replace(/\/$/, '')}/${key}`;
 
@@ -115,7 +117,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       cdn_url: cdnUrl,
       key,
       media_id: mediaId,
-      expires_in: 300,
+      expires_in: uploadTtl,
       /** REQUIRED follow-up: POST here after the PUT completes. Sets
        *  immutable Cache-Control on the original AND generates AVIF/WebP
        *  responsive variants. Skipping this leaves the image uncached

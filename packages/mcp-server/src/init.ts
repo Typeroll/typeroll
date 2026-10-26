@@ -37,7 +37,7 @@ export async function runInitCli(args: string[]): Promise<number> {
   try {
     const result = await runInit({ dir, update, recipes, client });
     console.log(JSON.stringify(result, null, 2));
-    console.log('Next: fill brief/, connect hosted MCP at https://app.typeroll.com/api/mcp?tools=compact, create/select your Site, record its IDs/Version in typeroll.json, then run typeroll doctor. Local MCP uses an injected TYPEROLL_API_KEY; no key is stored by init. See README.md.');
+    console.log('Next: read AGENTS.md. For guidance, start/resume workflows/interview.md; otherwise use workflows/new-site.md or workflows/migration.md. Record decisions in brief/, connect hosted MCP at https://app.typeroll.com/api/mcp?tools=compact, create/select your Site, record its IDs/Version in typeroll.json, then run typeroll doctor. Local MCP uses an injected TYPEROLL_API_KEY; no key is stored by init. See README.md.');
     return 0;
   } catch { console.error('Workspace could not be created/updated. Check file permissions, symlinks and typeroll.lock.json. Existing edited files are not overwritten.'); return 1; }
 }

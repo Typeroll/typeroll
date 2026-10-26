@@ -14,6 +14,90 @@ Hosted compact discovery and the Site Organization ID check require Core
 [hosted connection](../mcp-server/). These are version requirements, not a promise
 that every Cloud or self-hosted portal has already upgraded.
 
+## A starter you can keep in your own repository
+
+Start with the public [Typeroll/site-starter](https://github.com/Typeroll/site-starter)
+GitHub template, or use `typeroll init` below to generate a local folder.
+Both contain the same released starter instructions and prompts. The template
+adds a GitHub introduction and maintenance files; it is generated from the
+published MCP package rather than maintained as a second set of instructions.
+This planning workspace is separate from the
+Typeroll-managed publication repository; never edit generated publishing source
+to change the website.
+
+The starter has places for the owner's wishes and rules, brand direction,
+content model, SEO strategy, migration plan, decisions, task routines and QA.
+The owner and agent can maintain these together. Current Pages, schema and
+settings remain in the CMS, not in duplicated local exports.
+
+The expanded rules/SEO/routines scaffold requires MCP 0.45.77 or later. If that
+release is not installed yet, create those Markdown files yourself using the
+structure below; hosted MCP editing does not depend on the local scaffold.
+`@latest` selects the published starter version. The generated lock records it;
+client adapters pin their generated MCP version. Review upgrades explicitly.
+
+## Ask your agent to start a migration
+
+In a new conversation, replace `[website URL]` and send:
+
+```text
+Help me migrate [website URL] to Typeroll CMS using https://github.com/Typeroll/site-starter. Read its AGENTS.md and guide me through the migration interview before starting work.
+```
+
+This points the agent to the starter instead of duplicating its instructions.
+The interview records your choices for text and design/images independently.
+The agent can help with the workspace setup below; if it cannot read GitHub,
+provide the starter files through your client's supported file access.
+See the [WordPress migration guide](../../guides/wordpress-migration/) for import
+requirements and review steps.
+
+## Create your repository from the GitHub template
+
+1. Open [Typeroll/site-starter](https://github.com/Typeroll/site-starter).
+2. Choose **Use this template → Create a new repository**.
+3. Select the GitHub account or organization that should own the project and
+   give it a name, such as `my-site-workspace`. Choose **Private** for customer
+   projects, business plans or unpublished research. Copy only the default branch.
+4. Choose **Create repository from template**. Your new repository is independent, with fresh
+   history. A fork is not needed.
+5. Open **your new repository**, choose **Code**, and copy its clone URL.
+   Clone it in the environment where your agent works. Replace the placeholders:
+
+   ```sh
+   git clone https://github.com/YOUR-OWNER/YOUR-SITE.git
+   cd YOUR-SITE
+   ```
+
+   Or open your repository in a GitHub Codespace or connect it to an agent's
+   cloud environment. Keep the workspace in your own repository so it is not
+   tied to one computer. If the client only accepts uploaded project files,
+   attach the relevant starter files; MCP cannot read a GitHub repository or
+   local folder automatically.
+
+6. Have the agent read `AGENTS.md` and use the [guided start](#guided-start).
+   The files are ready to read without installing Node.js. Node.js 20 or later
+   is only needed for the optional CLI setup, update and doctor commands.
+7. Connect MCP, select the correct Site and Version and fill `typeroll.json`
+   as described below. Creating the GitHub repository does not create a
+   Typeroll account, Site, hosting connection or deployment.
+
+With an authenticated GitHub CLI, steps 1–5 can also be done with:
+
+```sh
+gh repo create YOUR-OWNER/YOUR-SITE --template Typeroll/site-starter --private --clone
+cd YOUR-SITE
+```
+
+Use the template for **new** projects. For an existing workspace, use
+[`init --update`](#update-without-losing-project-work); do not copy the template
+over your project or merge its history into your own.
+
+The original template checks for stable MCP releases daily. Its maintenance
+workflows only run in `Typeroll/site-starter`, never in your copy. You may remove
+`.github/` from your own repository. Updating the original does not update your
+project automatically. Keep `typeroll.lock.json`: it lets the CLI update unchanged
+starter files while preserving your own edits.
+
 ## Start without a repository
 
 1. Connect your agent to `https://app.typeroll.com/api/mcp?tools=compact`.
@@ -30,18 +114,32 @@ GitHub, Cloudflare and a domain are not required to start authoring or previewin
 Imports require verified Organization storage **before importing any content**;
 check `get_import_readiness`. This is distinct from ordinary new draft uploads.
 
-## Create the local workspace
+## Generate a local workspace instead
 
 Use Node.js 20 or later for the standalone MCP package:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site
+npx @typeroll/mcp-server@latest init ./my-site
 ```
 
 This is a local filesystem operation: it creates no remote Site, repository,
 account, deployment or login, and needs no API key. Open the folder in your agent
 client and point it at `AGENTS.md`. Automatic instruction loading depends on the
 client; creating the folder does not guarantee that it reads the file.
+
+If you later want to store this generated folder on GitHub, inspect its files
+for secrets or private exports, then initialize your own repository:
+
+```sh
+cd my-site
+git init -b main
+git add .
+git commit -m "Start website workspace"
+gh repo create YOUR-OWNER/YOUR-SITE --private --source=. --remote=origin --push
+```
+
+This alternative needs Git and an authenticated GitHub CLI. It creates and
+pushes your private workspace; it does not publish a website.
 
 ```text
 my-site/
@@ -53,7 +151,16 @@ my-site/
 ├── brief/
 │   ├── site.md
 │   ├── brand.md
-│   └── content-model.md
+│   ├── content-model.md
+│   ├── migration.md
+│   ├── interview.md
+│   ├── rules.md
+│   └── seo.md
+├── workflows/
+│   ├── README.md
+│   ├── interview.md
+│   ├── new-site.md
+│   └── migration.md
 ├── decisions.md
 ├── sources/README.md
 ├── scripts/README.md
@@ -62,6 +169,15 @@ my-site/
 
 - **Brief:** purpose, audience, languages, brand, editorial constraints, content
   authority, types/routes and desktop/mobile navigation intent.
+- **Owner rules:** `brief/rules.md` records confirmed preferences, writing and
+  design constraints, approval boundaries and exceptions, with dates and owners.
+  Distinguish proposals from approved decisions. Local notes do not bypass permissions.
+- **SEO strategy:** `brief/seo.md` records audiences, search intent, research
+  evidence, topic coverage, page roles, URL/indexing policy, editorial standards
+  and measurement. Actual metadata, canonicals and robots settings live in the CMS.
+- **Routines:** `workflows/README.md` maps tasks to the relevant project files and
+  on-demand MCP skills. `workflows/migration.md` includes a copyable kickoff prompt.
+  Add your own routines with inputs, steps, acceptance checks and approval boundaries.
 - **Decisions:** approved scope, design choices and deliberate deviations.
 - **Sources:** research and proposals. Keep private extracts in ignored
   `sources/private/`. Do not store media libraries or current CMS content as a
@@ -81,7 +197,7 @@ does not depend on the portal's optional built-in AI chat:
   and event structured data ([Pages tools](../../tools/pages/#structured-data-tools)).
 - `tr-starter-design` for a blank Site or one that keeps the starter design.
 - For migrations, read `tr-migration-evidence` before the source-specific recipe.
-  Record preserve/renew intent in `brief/migration.md`; see
+  Record independent text and design/image choices in `brief/migration.md`; see
   [Choose your migration approach](../../guides/migration-approach/).
 - When an AI workflow fails with `ai_not_enabled`, the agent does the same work
   itself with the matching recipe and says so
@@ -126,15 +242,47 @@ Use private client settings or environment injection. `.gitignore` excludes
 `.env`, local client configurations and temporary/private output. Ignore rules
 cannot remove secrets that were already committed; inspect existing repositories.
 
+## Guided start
+
+The detailed kickoff prompts and interview routines live in the generated starter:
+
+- `workflows/interview.md` — the agent's structured interview when you need guidance.
+- `workflows/new-site.md` — the kickoff for a new website with a clear brief.
+- `workflows/migration.md` — the kickoff for a migration with a clear brief.
+
+The canonical Markdown sources are in the public repository's
+[workspace-templates](https://github.com/Typeroll/typeroll/tree/main/packages/mcp-server/workspace-templates)
+directory and are shipped with MCP 0.45.77+. The starter generator uses those same
+files. Adapt your generated copies to your project; updates preserve your edits.
+
+Open your workspace with your agent and have it read `AGENTS.md`. When guidance
+is needed or an important decision is missing, those instructions lead it into
+the interview. It asks one short question at a time, reuses answers already given
+and saves progress in `brief/interview.md`. You can pause and resume in another
+session; a complete brief skips the interview. It is an agent routine, not a
+portal wizard, and planning can start before connecting MCP.
+
+The interview covers goals, target Site, text preservation, design and images,
+content/features, SEO, owner rules and acceptance. For a migration, you choose
+preserve or renew **separately for text and for design/images**. It also records
+image exceptions and metadata rules. The agent recaps confirmed decisions and
+open questions before dependent work. Silence is never approval, and approving
+the brief alone does not authorize publication, DNS changes or messages.
+
+Keep prompts in your project alongside the brief, rules and QA evidence. Read
+only the relevant routine and load MCP recipes on demand. If your client cannot
+read local files, attach the relevant starter files to its project context;
+hosted MCP cannot read your folder automatically.
+
 ## Optional local client configuration
 
 Hosted MCP is sufficient. If your client launches local stdio processes, you can
 also generate a client configuration explicitly:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client claude
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client cursor
-npx @typeroll/mcp-server@0.45.23 init ./my-site --client vscode
+npx @typeroll/mcp-server@latest init ./my-site --client claude
+npx @typeroll/mcp-server@latest init ./my-site --client cursor
+npx @typeroll/mcp-server@latest init ./my-site --client vscode
 ```
 
 Choose one command for your client. These generate `.mcp.json`, `.cursor/mcp.json`
@@ -154,14 +302,14 @@ After creation, fill the IDs in `typeroll.json` and reconnect before editing.
 For clients without an adapter, launch:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 workspace-mcp ./my-site
+npx @typeroll/mcp-server@latest workspace-mcp ./my-site
 ```
 
 ## Check the setup
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 doctor ./my-site --offline
-npx @typeroll/mcp-server@0.45.23 doctor ./my-site --json
+npx @typeroll/mcp-server@latest doctor ./my-site --offline
+npx @typeroll/mcp-server@latest doctor ./my-site --json
 ```
 
 The online command uses the injected API key. It reads accessible sites, the
@@ -230,12 +378,14 @@ restore the named-tool catalog if a client handles it better.
 ## Update without losing project work
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --update
+npx @typeroll/mcp-server@latest init ./my-site --update
 ```
 
 An unchanged generated file can be upgraded. A user-edited file is reported as
 `modified` and preserved. `typeroll.json` remains user-owned. Review those files
 against current guidance manually; do not assume an update overwrote them.
+The GitHub template's additional README introduction counts as an edit, so the
+updater preserves that README too. No fork, upstream merge or re-clone is needed.
 The updater does not merge client configurations or delete removed recipes.
 There is no destructive `--force` option for the workspace scaffold.
 
@@ -246,8 +396,8 @@ Without `--client`, the updater leaves local client configurations alone.
 Recipes are served by MCP by default. For offline reference, opt in:
 
 ```sh
-npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes
-npx @typeroll/mcp-server@0.45.23 init ./my-site --recipes --update
+npx @typeroll/mcp-server@latest init ./my-site --recipes
+npx @typeroll/mcp-server@latest init ./my-site --recipes --update
 ```
 
 They live in neutral `typeroll-skills/` and follow the same hash-based update
@@ -261,3 +411,23 @@ Use MCP for interactive agent work and the CLI for workspace setup/checks.
 For repeatable large imports and integration scripts, use the same authenticated
 REST API. The CLI also has Extension commands, but it is not a full site CRUD CLI.
 Both transports use the same CMS; changing transport does not make builds faster.
+
+## Repeatable migration QA tools
+
+MCP **0.45.79** adds optional Python and Playwright helpers under
+`scripts/typeroll/`. Availability depends on the installed MCP starter version;
+check `scripts/README.md` in your generated workspace. The GitHub template only
+syncs released versions. Existing projects use `init --update`; edited scripts
+and owner instructions are preserved for manual reconciliation.
+
+The tools check unsaved Pages/partials before deployment, migration URL chains
+and media after deployment, screenshots around breakpoints, whole-card targets,
+and preserved text against saved HTML or a WordPress REST record. They read the
+workspace binding, keep credentials outside files, and do not publish or switch
+DNS. Browser review still matters: automated output is not visual acceptance,
+and an unreachable URL is unverified rather than automatically broken.
+
+See the starter's `workflows/migration.md`, `workflows/design.md`,
+`qa/checklist.md` and `scripts/README.md` for the routines and commands.
+Keep platform findings in `qa/typeroll-platform-feedback.md`. Customer-specific
+conversion scripts are examples, not a universal automatic HTML-to-blocks pipeline.

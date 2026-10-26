@@ -27,7 +27,7 @@ export interface BlockTreeWarning {
    * block's `part_styles` and need the site's styles (block-parts.ts
    * `partStyleIssues`); the portal adds them to tree writes.
    */
-  code: 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field' | 'unknown_style' | 'style_target_mismatch' | 'part_style_contrast';
+  code: 'ineffective_whole_card_link' | 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field' | 'unknown_style' | 'style_target_mismatch' | 'part_style_contrast';
   /** The block's id where it has one; a tree may be written before ids exist. */
   block_id?: string;
   /** Path to the offending key, e.g. `blocks[0].style_overrides.class`. */
@@ -93,6 +93,7 @@ export function blockTreeWarnings(value: unknown, root = 'blocks', registry?: Re
           message: `This text block only holds the label "${label}" above a heading. Put it in the heading block's eyebrow field and give it a named style instead of classed HTML.`,
         });
       }
+      warnings.push(...blockBehaviorWarnings(block as { id?: string; type?: string; data?: Record<string, unknown> }, at));
       const children = (block as { children?: unknown }).children;
       if (children !== undefined) visit(children, `${at}.children`);
       const slots = (block as { slots?: unknown }).slots;
@@ -141,4 +142,19 @@ export function styleOverrideWarnings(
       key,
       message: `style_overrides.${key} is not a style override and will never be applied. Supported keys: ${STYLE_OVERRIDE_KEYS.join(', ')}.`,
     }));
+}
+
+
+/** Conflicting presentation choices are reported without discarding content. */
+export function blockBehaviorWarnings(block: { id?: string; type?: string; data?: Record<string, unknown> }, path = 'block'): BlockTreeWarning[] {
+  const data = block.data ?? {};
+  const check = (value: Record<string, unknown>, at: string): BlockTreeWarning[] =>
+    value.whole_card_link === true && (String(value.action_label ?? '').trim() || String(value.download_url_field ?? '').trim() || value.title_link === false)
+      ? [{ code: 'ineffective_whole_card_link', block_id: block.id, block_type: block.type, path: `${at}.whole_card_link`,
+        message: 'The whole-card link needs a linked title and no secondary actions. Remove action_label/download_url_field and enable title_link, or disable whole_card_link and keep separate links.' }] : [];
+  if (block.type === 'core/post_card') return check(data, `${path}.data`);
+  if ((block.type === 'core/page_list' || block.type === 'core/repeater') && (!data.item_block || data.item_block === 'core/post_card')) {
+    return check((data.item_overrides ?? {}) as Record<string, unknown>, `${path}.data.item_overrides`);
+  }
+  return [];
 }

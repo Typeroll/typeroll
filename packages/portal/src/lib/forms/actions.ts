@@ -1,3 +1,4 @@
+import { readOrganizationAccess } from '../organization-access';
 // Form actions — what happens after a form is submitted.
 //
 // `Form.actions` is a list of `{ type, config }`, and this is the registry
@@ -88,8 +89,9 @@ const CORE_ACTIONS: FormActionDef[] = [
         paths.integrations(ctx.orgId, ctx.siteId),
       );
       const connector: EmailConnector | undefined = integrations?.email;
-      if (!connector) {
-        console.warn(`[form action] email skipped — no connector for site ${ctx.siteId}`);
+      const access = await readOrganizationAccess(ctx.orgId);
+      if (!connector || (access.own_smtp && connector.type !== 'smtp')) {
+        console.warn(`[form action] email skipped — own SMTP not configured for site ${ctx.siteId}`);
         return;
       }
       const { message, error } = buildEmailMessage(

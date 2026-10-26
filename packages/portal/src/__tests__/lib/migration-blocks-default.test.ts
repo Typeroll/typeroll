@@ -47,7 +47,7 @@ it.each(['blocks', 'html'])('imports both WordPress pages and posts through the 
     expect(result).toMatchObject({
       state: {
         conversion_review: expect.arrayContaining([
-          expect.objectContaining({ notes: [expect.stringContaining('not applied')] }),
+          expect.objectContaining({ notes: [expect.stringContaining('external agent')] }),
         ]),
       },
     });

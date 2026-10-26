@@ -1,3 +1,4 @@
+import { colorCss, tokenScale, scaleValue } from './design-tokens.js';
 import { queryDerivedSource, type DerivedQuery } from './derived-source.js';
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
@@ -365,9 +366,10 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   if (effectiveBlock.type === 'template/page_author' && !String((options.context?.page?.author as { name?: string } | undefined)?.name ?? '').trim()) return '';
   if (effectiveBlock.type === 'template/site_logo') {
     const site = options.context?.site;
-    compiled.flatData.site_logo_html = site?.logo
-      ? `<img src="${escapeHtml(site.logo)}" alt="${escapeHtml(site.name ?? '')}" />`
-      : escapeHtml(site?.name || 'Home');
+    const logo = compiled.flatData.image || site?.logo;
+    const name = compiled.flatData.text || site?.name || 'Home';
+    compiled.flatData.site_logo_html = compiled.flatData.mode !== 'text' && logo
+      ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(name)}" />` : escapeHtml(name);
   }
   if (effectiveBlock.type === 'template/page_breadcrumbs') {
     compiled.flatData.breadcrumbs_html = renderBreadcrumbs(
@@ -402,6 +404,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       effectiveBlock.data?.links,
       options.context?.page,
       effectiveBlock.type === 'core/navigation_links',
+      String(options.context?.site?.url ?? ''),
     );
   }
   if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots);
@@ -1040,6 +1043,8 @@ export function composePageWithTemplate(
         ] as const;
         const declarations = typography.flatMap(([field, min, max, unit, property]) => {
           const value = b.data?.[field];
+          const token = scaleValue(field === 'font_size' ? 'type_size' : field === 'line_height' ? 'leading' : 'space', value);
+          if (token) return [`${property}:${token}`];
           return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
             ? [`${property}:${value}${unit}`] : [];
         });
@@ -1164,6 +1169,7 @@ function resolveFieldBindings(blockType: BlockType, data: Record<string, unknown
     } else {
       data[field.name] = resolved == null ? '' : typeof resolved === 'object' ? (typeof (resolved as { href?: unknown }).href === 'string' ? (resolved as { href: string }).href : '') : String(resolved);
     }
+    if (field.type === 'color' && typeof data[field.name] === 'string') data[field.name] = colorCss(data[field.name] as string);
   }
 }
 
@@ -1403,6 +1409,7 @@ function renderNavigationLinks(
   raw: unknown,
   page: Record<string, unknown> | undefined,
   withIcons = false,
+  siteUrl = '',
 ): string {
   if (!Array.isArray(raw)) return '';
   const currentRaw = String(page?.path ?? page?.url ?? page?.slug ?? '/');
@@ -1414,14 +1421,18 @@ function renderNavigationLinks(
       return value === '/' ? '/' : value.replace(/[?#].*$/, '').replace(/\/+$/, '');
     }
   };
-  const current = normalize(currentRaw.startsWith('/') ? currentRaw : `/${currentRaw}`);
+  const base = /^https?:\/\//i.test(siteUrl) ? siteUrl : /^https?:\/\//i.test(currentRaw) ? currentRaw : 'https://typeroll.invalid';
+  const currentUrl = new URL(currentRaw.startsWith('/') || /^https?:/i.test(currentRaw) ? currentRaw : `/${currentRaw}`, base);
+  const current = normalize(currentUrl.href);
   return raw
     .filter((entry): entry is Record<string, unknown> => !!entry && typeof entry === 'object')
     .map((entry) => {
       const label = String(entry.label ?? '').trim();
       const href = String(entry.href ?? '').trim();
       if (!label || !href) return '';
-      const ariaCurrent = normalize(href) === current ? ' aria-current="page"' : '';
+      let sameOrigin = false, targetPath = '';
+      try { const target = new URL(href, currentUrl); sameOrigin = target.origin === currentUrl.origin; targetPath = normalize(target.href); } catch { /* Not a navigable URL. */ }
+      const ariaCurrent = sameOrigin && !href.startsWith('#') && targetPath === current ? ' aria-current="page"' : '';
       const icon = withIcons ? String(entry.icon ?? '').trim() : '';
       return `<li><a href="${escapeHtml(href)}"${ariaCurrent}>${icon ? `<span class="block-nav-icon" aria-hidden="true">${renderIconHtml(icon)}</span><span>${escapeHtml(label)}</span>` : escapeHtml(label)}</a></li>`;
     })
@@ -1754,6 +1765,9 @@ interface ResponsiveCompileResult {
 }
 
 function numericPresentationValue(field: FieldDefinition, raw: unknown): string | undefined {
+  const scale = tokenScale(field);
+  const token = scale && scaleValue(scale, raw);
+  if (token) return token;
   if (field.type !== 'number' || !['px', 'number'].includes(field.css_unit ?? '') ||
       !/^[a-z][a-z0-9_]*$/.test(field.name) || typeof raw !== 'number' || !Number.isFinite(raw)) return undefined;
   const value = Math.min(field.max ?? 10000, Math.max(field.min ?? 0, raw));
@@ -1775,6 +1789,19 @@ function compileResponsiveData(
   for (const field of blockType.schema ?? []) {
     if (data[field.name] !== undefined) data[field.name] = coerceFieldValue(field, data[field.name]);
   }
+  const resolveColors = (fields: FieldDefinition[], values: Record<string, unknown>): void => {
+    for (const field of fields) {
+      const raw = values[field.name];
+      if (field.type === 'color') {
+        if (typeof raw === 'string') values[field.name] = BINDING.test(raw) ? raw : colorCss(raw);
+        else if (field.responsive && isResponsiveValue(raw)) values[field.name] = Object.fromEntries(Object.entries(raw as object).map(([bp, val]) => [bp, typeof val === 'string' ? colorCss(val) : '']));
+      } else if (field.fields) {
+        if (Array.isArray(raw)) values[field.name] = raw.map(item => { if (!item || typeof item !== 'object') return item; const copy = { ...item }; resolveColors(field.fields!, copy); return copy; });
+        else if (raw && typeof raw === 'object') { const copy = { ...raw } as Record<string, unknown>; resolveColors(field.fields, copy); values[field.name] = copy; }
+      }
+    }
+  };
+  resolveColors(blockType.schema ?? [], data);
   const flatData: Record<string, unknown> = { ...data };
   const cssVars: Partial<Record<Breakpoint, Record<string, string>>> = {};
   const mappedCss: Partial<Record<Breakpoint, string>> = {};
