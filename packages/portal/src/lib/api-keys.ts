@@ -36,7 +36,7 @@
 
 import crypto from 'node:crypto';
 import { paths } from '@typeroll/shared';
-import type { SiteApiKey } from '@typeroll/shared';
+import type { Member, SiteApiKey } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { organizationMembership } from './organization-session';
 import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
@@ -116,8 +116,17 @@ export interface CreateKeyArgs {
   siteId: string | null;
   name: string;
   createdBy: string;
+  /**
+   * Organization of the person minting the key. Keys are minted only by the
+   * organization that owns them, so this defaults to `orgId`; it is recorded
+   * so a key's provenance is explicit rather than inferred from an email.
+   */
+  createdByOrgId?: string;
   oauthUserId?: string;
 }
+
+/** Stored key metadata. `created_by_org_id` is absent on keys minted before it was recorded. */
+type StoredApiKey = SiteApiKey & { created_by_org_id?: string };
 
 export interface CreateKeyResult {
   key: SiteApiKey;
@@ -146,12 +155,13 @@ export async function createApiKey(args: CreateKeyArgs): Promise<CreateKeyResult
   const keyHash = hashSecret(secret);
   const createdAt = new Date().toISOString();
 
-  const doc: SiteApiKey = {
+  const doc: StoredApiKey = {
     id: prefix,
     name: args.name.trim() || 'Untitled key',
     key_hash: keyHash,
     created_at: createdAt,
     created_by: args.createdBy,
+    created_by_org_id: args.createdByOrgId ?? args.orgId,
   };
   const lookup: ApiKeyLookupEntry = {
     id: prefix,
@@ -281,7 +291,9 @@ export interface VerifiedKey {
  */
 export async function verifyApiToken(token: string): Promise<VerifiedKey | null> {
   const parsed = parseKey(token);
-  if (!parsed) return null;
+  // The prefix becomes a document path segment: only an id generateNewKey can
+  // mint may reach the store.
+  if (!parsed || !isApiKeyPrefix(parsed.prefix)) return null;
   const lookup = await getStore().getDoc<ApiKeyLookupEntry>(
     paths.apiKeyLookupEntry(parsed.prefix),
   );
@@ -344,6 +356,60 @@ export async function recordKeyUse(
   } catch {
     /* swallow */
   }
+}
+
+async function memberEmails(orgId: string): Promise<Set<string>> {
+  const members = await getStore().listDocs<Member>(paths.members(orgId));
+  return new Set(members.map((member) => String(member.email ?? '').trim().toLowerCase()).filter(Boolean));
+}
+
+/**
+ * Whether a site-scoped key of `orgId` was minted by someone outside that
+ * organization. Before minting was restricted to the owning organization, an
+ * administrator of a share recipient could mint a site key, stored under the
+ * owner like any other. Such a key must not perform owner-only actions.
+ *
+ * New keys record the minting organization. A key minted before that is
+ * attributed by its creator's email: unless a current member of the owning
+ * organization has that email, the key is treated as minted outside it.
+ * Missing metadata fails closed.
+ */
+export async function apiKeyCreatedOutsideOwner(orgId: string, siteId: string, prefix: string): Promise<boolean> {
+  const key = await getStore().getDoc<StoredApiKey>(metaPath(orgId, siteId, prefix));
+  if (!key) return true;
+  if (key.created_by_org_id) return key.created_by_org_id !== orgId;
+  const creator = String(key.created_by ?? '').trim().toLowerCase();
+  return !creator || !(await memberEmails(orgId)).has(creator);
+}
+
+/**
+ * Revoke the site keys a share recipient minted through its share, when that
+ * share is revoked or loses `admin`. A key minted with the recorded
+ * organization is matched on it; an older key is matched when its creator's
+ * email belongs to a member of the recipient organization and to no member of
+ * the owning organization. Returns the revoked key ids.
+ */
+export async function revokeSiteKeysMintedByOrg(
+  ownerOrgId: string,
+  siteId: string,
+  recipientOrgId: string,
+): Promise<string[]> {
+  const keys = (await getStore().listDocs<StoredApiKey>(paths.apiKeys(ownerOrgId, siteId)))
+    .filter((key) => !key.revoked_at);
+  if (keys.length === 0) return [];
+  const legacy = keys.some((key) => !key.created_by_org_id);
+  const [recipientEmails, ownerEmails] = legacy
+    ? await Promise.all([memberEmails(recipientOrgId), memberEmails(ownerOrgId)])
+    : [new Set<string>(), new Set<string>()];
+  const revoked: string[] = [];
+  for (const key of keys) {
+    const creator = String(key.created_by ?? '').trim().toLowerCase();
+    const mintedByRecipient = key.created_by_org_id
+      ? key.created_by_org_id === recipientOrgId
+      : Boolean(creator) && recipientEmails.has(creator) && !ownerEmails.has(creator);
+    if (mintedByRecipient && await revokeApiKey(ownerOrgId, siteId, key.id)) revoked.push(key.id);
+  }
+  return revoked;
 }
 
 /**

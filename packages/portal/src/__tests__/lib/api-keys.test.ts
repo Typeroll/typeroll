@@ -110,6 +110,17 @@ describe('createApiKey + verifyApiToken round-trip', () => {
     const tampered = `${scheme}_${variant}_${prefix}_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`;
     expect(await verifyApiToken(tampered)).toBeNull();
   });
+
+  it('never looks up a prefix generateNewKey cannot mint', async () => {
+    await setup();
+    const { verifyApiToken, hashSecret } = await import('../../lib/api-keys');
+    const { getStore } = await import('../../lib/datastore');
+    // A lookup document at a non-hex id must not be reachable, even with a
+    // matching secret: the prefix is a document path segment.
+    const secret = 'c'.repeat(48);
+    await getStore().setDoc(paths.apiKeyLookupEntry('NOT-A-PREFIX'), { org_id: ORG, site_id: SITE, key_hash: hashSecret(secret) });
+    expect(await verifyApiToken(`typeroll_live_NOT-A-PREFIX_${secret}`)).toBeNull();
+  });
 });
 
 describe('revokeApiKey', () => {

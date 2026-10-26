@@ -70,7 +70,10 @@ email or webhook actions remain managed in the ordinary Forms admin.
 
 Draft and review versions can only be installed on sites owned by the
 Extension's developer organization. Other organizations can only install a
-published version. You may change `distribution` while every saved version is
+published version. A `private` Extension is installable by the organizations in
+`allowed_org_ids` and on the sites in `allowed_site_ids`. A site id is unique
+only within its organization, so name each site as `{org_id}/{site_id}`; a bare
+site id matches only a site of the developer organization itself. You may change `distribution` while every saved version is
 still a draft; Typeroll updates those draft manifests and hashes together. Once
 any version has been published or submitted for review, distribution is locked.
 

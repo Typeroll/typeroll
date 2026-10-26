@@ -17,14 +17,15 @@ import { organizationRequestRefusal } from './organization-access';
 // Any failure returns a 401/403 Response. Routes call this and short-circuit
 // the same way they do for requireSiteAccess.
 
-import { paths, MAIN_VERSION_ID, ARCHIVED_SITE_MESSAGE, isArchivedSite } from '@typeroll/shared';
+import { paths, MAIN_VERSION_ID, ARCHIVED_SITE_MESSAGE, EXTENSION_SCOPE_REGISTRY, isArchivedSite } from '@typeroll/shared';
 import type { ExtensionScope, Site, SharePermission } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { json, resolveRequestedVersion, unknownVersionResponse } from './access';
-import { recordKeyUse, verifyApiToken } from './api-keys';
+import { apiKeyCreatedOutsideOwner, recordKeyUse, verifyApiToken } from './api-keys';
 import { rateLimit } from './rate-limit';
 import { recordAudit, previewBody, shouldAudit } from './api-audit';
-import { hydrateSharedSites } from './shares';
+import { hydrateCanonicalSharedSites } from './shares';
+import { authClientAddress } from './auth-request';
 import { resolvePersonalSite } from './personal-site-access';
 import { organizationMembership } from './organization-session';
 
@@ -89,8 +90,10 @@ async function resolveTokenSite(
   // Org-scoped key — check owned-by-tokenOrgId first.
   const owned = await store.getDoc<Site>(paths.site(tokenOrgId, urlSiteId));
   if (owned) return { ownerOrgId: tokenOrgId, permission: 'admin', site: owned };
-  // Fall back to shared-in via the cross-org share index.
-  const shared = await hydrateSharedSites(tokenOrgId);
+  // Fall back to shared-in via the cross-org share index. The index is only
+  // the discovery hop: each entry is re-read from the owner's canonical share
+  // record, as requireSiteAccess does, so a stale index cannot grant access.
+  const shared = await hydrateCanonicalSharedSites(tokenOrgId);
   const match = shared.find((s) => s.site.id === urlSiteId);
   if (!match) return null;
   return {
@@ -131,24 +134,63 @@ function siteVersionParam(pathname: string): 'version' | 'version_branch' {
   return /\/blocks\/export\/?$/.test(pathname) ? 'version_branch' : 'version';
 }
 
+/**
+ * The one map from a site API route to the Extension scope an installation
+ * credential needs for it. Deny by default: a route that is not listed here is
+ * unreachable with an installation credential, whatever scopes it holds.
+ *
+ * Matching is anchored on the part of the path AFTER `/api/v1/sites/{siteId}`.
+ * The site id, page ids, form ids and branch names are customer-chosen words,
+ * so a pattern matched anywhere in the full path would let a site called
+ * "media" or a branch called "styles" turn `/shares` or `/versions/.../merge`
+ * into a content route.
+ */
+const SITE_API_PATH = /^\/api\/v1\/sites\/[^/]+(\/.*)?$/;
+const ID = '[^/]+';
+type ExtensionRouteRule = {
+  path: RegExp;
+  scope: (write: boolean, method: string) => ExtensionScope | null;
+};
+const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
+  { path: /^\/delivery\/inbound(?:\/[a-f0-9]{64})?$/, scope: (_w, m) => (m === 'GET' ? 'email:inbound:status' : null) },
+  { path: /^\/delivery\/email$/, scope: (_w, m) => (m === 'POST' ? 'email:send' : null) },
+  { path: /^\/delivery\/email\/[a-f0-9]{64}$/, scope: (_w, m) => (m === 'GET' ? 'email:send' : null) },
+  { path: /^\/extensions\/self$/, scope: (w) => (w ? null : 'extension:config:read') },
+  { path: /^\/apps\/documentation$/, scope: (w) => (w ? null : 'content:read') },
+  { path: /^\/(?:deploy|deploys(?:\/[^/]+)?)$/, scope: () => 'deploy:request' },
+  { path: new RegExp(`^/forms/${ID}/intake-responses$`), scope: (w) => (w ? 'email:send' : 'forms:intake:read') },
+  { path: new RegExp(`^/forms/${ID}/submissions(?:/${ID})?$`), scope: (w) => (w ? null : 'submissions:read') },
+  { path: new RegExp(`^/forms/${ID}/(?:actions|intake)$`), scope: (w, m) => (m === 'POST' ? 'forms:execute' : w ? 'forms:write' : 'forms:read') },
+  { path: new RegExp(`^/forms(?:/${ID})?$`), scope: (w) => (w ? 'forms:write' : 'forms:read') },
+  // Purging media is a lifecycle action of the owning organization.
+  { path: /^\/media\/purge$/, scope: () => null },
+  { path: /^\/media(?:\/.*)?$/, scope: (w) => (w ? 'media:write' : 'media:read') },
+  { path: new RegExp(`^/pages/${ID}/owner-fields$`), scope: () => 'content:owner' },
+  { path: new RegExp(`^/containers/${ID}/${ID}/blocks(?:/.*)?$`), scope: (w) => (w ? 'content:write' : 'content:read') },
+  {
+    path: /^\/(?:pages|content-types|partials|block-types|block-templates|blocks|settings|styles)(?:\/.*)?$/,
+    scope: (w) => (w ? 'content:write' : 'content:read'),
+  },
+];
+
 export function extensionScopeForApiRequest(pathname: string, method: string): ExtensionScope | null {
-  if (/\/delivery\/inbound(?:\/[a-f0-9]{64})?\/?$/.test(pathname) && method === 'GET') return 'email:inbound:status';
+  const match = SITE_API_PATH.exec(pathname);
+  if (!match) return null;
+  const rest = (match[1] ?? '').replace(/\/+$/, '');
+  if (!rest) return null;
   const write = method !== 'GET' && method !== 'HEAD';
-  if (/\/extensions\/self\/?$/.test(pathname) && !write) return 'extension:config:read';
-  if (/\/pages\/[^/]+\/owner-fields\/?$/.test(pathname)) return 'content:owner';
-  if (/\/delivery\/email\/?$/.test(pathname) && method === 'POST') return 'email:send';
-  if (/\/delivery\/email\/[a-f0-9]{64}\/?$/.test(pathname) && method === 'GET') return 'email:send';
-  if (!write && /\/apps\/documentation\/?$/.test(pathname)) return 'content:read';
-  if (/\/deploys?(?:\/|$)/.test(pathname)) return 'deploy:request';
-  if (/\/forms\/[^/]+\/intake-responses\/?$/.test(pathname)) return write ? 'email:send' : 'forms:intake:read';
-  if (/\/submissions(?:\/|$)/.test(pathname)) return write ? null : 'submissions:read';
-  if (/\/forms\/[^/]+\/(?:actions|intake)\/?$/.test(pathname) && method === 'POST') return 'forms:execute';
-  if (/\/forms(?:\/|$)/.test(pathname)) return write ? 'forms:write' : 'forms:read';
-  if (/\/media(?:\/|$)/.test(pathname)) return write ? 'media:write' : 'media:read';
-  if (/\/(?:pages|content-types|partials|block-types|block-templates|blocks|templates|settings|styles)(?:\/|$)/.test(pathname)) {
-    return write ? 'content:write' : 'content:read';
-  }
-  return null;
+  const rule = EXTENSION_ROUTE_RULES.find((candidate) => candidate.path.test(rest));
+  return rule ? rule.scope(write, method) : null;
+}
+
+/**
+ * The site permission an installation credential acts with on one request:
+ * the minimum the matched scope requires, never more. Routes that gate on
+ * `admin` therefore refuse a `content:write` or `media:write` caller, and the
+ * routes no scope maps to are refused before they run.
+ */
+export function extensionPermissionForScope(scope: ExtensionScope): SharePermission {
+  return EXTENSION_SCOPE_REGISTRY[scope]?.minimum_permission ?? 'read';
 }
 
 async function requireExtensionApiCredential(
@@ -174,7 +216,11 @@ async function requireExtensionApiCredential(
     return { ok: false, response: json({ error: 'Invalid or revoked token' }, 401) };
   }
   const pathname = new URL(request.url).pathname;
-  const requiredScope = extensionScopeForApiRequest(pathname, request.method);
+  // The scope map reads the path after the site segment; that segment must
+  // name the site this request was routed to, or the two could disagree.
+  let pathSiteId: string | null = null;
+  try { pathSiteId = decodeURIComponent(pathname.split('/')[4] ?? ''); } catch { pathSiteId = null; }
+  const requiredScope = pathSiteId === urlSiteId ? extensionScopeForApiRequest(pathname, request.method) : null;
   if (!requiredScope || !authenticated.scopes.includes(requiredScope)) {
     return { ok: false, response: json({ error: 'Extension credential lacks the required scope' }, 403) };
   }
@@ -207,7 +253,7 @@ async function requireExtensionApiCredential(
       site,
       versionId,
       keyPrefix: `extension:${installationId}`,
-      permission: 'admin',
+      permission: extensionPermissionForScope(requiredScope),
       request,
       path: pathname,
       extensionIdentity: { installationId, scopes: authenticated.scopes },
@@ -216,10 +262,10 @@ async function requireExtensionApiCredential(
 }
 
 function clientIp(request: Request): string | undefined {
-  // Cloud Run honours X-Forwarded-For; first hop is the real client.
-  const xff = request.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0]?.trim() || undefined;
-  return undefined;
+  // The leftmost X-Forwarded-For value is whatever the client wrote. Only the
+  // configured trusted proxy hops are believed (AUTH_TRUST_PROXY_HOPS); with
+  // none configured no address is recorded rather than a forged one.
+  return authClientAddress(request, '') || undefined;
 }
 
 /**
@@ -496,6 +542,18 @@ async function resolveApiKey(
 }
 
 /**
+ * True when the caller acts for the organization that owns the site: an
+ * org-scoped key of that organization, a site-scoped key, or a personal
+ * connection through owner-organization membership. False for any caller that
+ * reaches the site through a cross-org share and for Extension installation
+ * credentials. Owner-only actions (sharing the site, minting credentials,
+ * changing its lifecycle) gate on this as well as on `admin`.
+ */
+export function isApiSiteOwner(ctx: ApiContext): boolean {
+  return !ctx.extensionIdentity && ctx.orgId === ctx.tokenOrgId;
+}
+
+/**
  * API-key counterpart of lib/access.ts → requireSiteLifecycleChange, for
  * archiving, restoring and purging a retired site's media.
  *
@@ -503,13 +561,22 @@ async function resolveApiKey(
  * of the owning organization or a site-scoped key (both resolve to `admin`).
  * A key that reaches the site through a cross-org share is refused however
  * privileged the share, and so is an Extension installation credential.
+ *
+ * Site-scoped keys are stored under the owning organization whoever minted
+ * them. Before minting was restricted to the owner, an administrator of a
+ * share recipient could mint one, and it would pass the organization check
+ * above. Such a key is refused here too (see apiKeyCreatedOutsideOwner).
  */
-export function requireApiSiteLifecycleChange(ctx: ApiContext): GuardResult<ApiContext> {
-  if (ctx.extensionIdentity || ctx.orgId !== ctx.tokenOrgId) {
+export async function requireApiSiteLifecycleChange(ctx: ApiContext): Promise<GuardResult<ApiContext>> {
+  if (!isApiSiteOwner(ctx)) {
     return { ok: false, response: apiError('Only the owning organization can change a site lifecycle', 403, ctx) };
   }
   if (ctx.permission !== 'admin') {
     return { ok: false, response: apiError('Insufficient permission (admin required)', 403, ctx) };
+  }
+  if (!ctx.personalUserId && ctx.tokenSiteId !== null
+    && await apiKeyCreatedOutsideOwner(ctx.orgId, ctx.tokenSiteId, ctx.keyPrefix)) {
+    return { ok: false, response: apiError('Only the owning organization can change a site lifecycle', 403, ctx) };
   }
   return { ok: true, value: ctx };
 }
@@ -618,7 +685,7 @@ export async function listAllowedSites(
     return [{ siteId: tokenSiteId, ownerOrgId: tokenOrgId, permission: 'admin', site }];
   }
   const owned = await store.listDocs<Site>(paths.sites(tokenOrgId));
-  const shared = await hydrateSharedSites(tokenOrgId);
+  const shared = await hydrateCanonicalSharedSites(tokenOrgId);
   return [
     ...owned.map((s) => ({
       siteId: s.id,

@@ -180,3 +180,41 @@ describe('requireApiKey', () => {
     if (r.ok) expect(r.value.versionId).toBe(MAIN_VERSION_ID);
   });
 });
+
+describe('last_used_ip', () => {
+  const saved = process.env.AUTH_TRUST_PROXY_HOPS;
+  beforeEach(async () => {
+    await resetDatastore();
+  });
+
+  async function lastUsedIp(token: string, xff: string): Promise<string | undefined> {
+    const { requireApiKey } = await import('../../lib/api-auth');
+    const r = await requireApiKey(makeRequest(`https://api.example/v1/sites/${SITE}/pages`, {
+      headers: { authorization: `Bearer ${token}`, 'x-forwarded-for': xff },
+    }), SITE);
+    expect(r.ok).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const { listApiKeys } = await import('../../lib/api-keys');
+    return (await listApiKeys(ORG, SITE))[0]?.last_used_ip;
+  }
+
+  it('ignores a client-written X-Forwarded-For without trusted proxy hops', async () => {
+    delete process.env.AUTH_TRUST_PROXY_HOPS;
+    try {
+      const { token } = await setup();
+      expect(await lastUsedIp(token, '6.6.6.6')).toBeUndefined();
+    } finally {
+      if (saved === undefined) delete process.env.AUTH_TRUST_PROXY_HOPS; else process.env.AUTH_TRUST_PROXY_HOPS = saved;
+    }
+  });
+
+  it('records the address the trusted proxy appended', async () => {
+    process.env.AUTH_TRUST_PROXY_HOPS = '1';
+    try {
+      const { token } = await setup();
+      expect(await lastUsedIp(token, '6.6.6.6, 203.0.113.9')).toBe('203.0.113.9');
+    } finally {
+      if (saved === undefined) delete process.env.AUTH_TRUST_PROXY_HOPS; else process.env.AUTH_TRUST_PROXY_HOPS = saved;
+    }
+  });
+});

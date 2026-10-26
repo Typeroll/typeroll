@@ -12,7 +12,7 @@ const keyId = z.string().regex(/^[a-f0-9]{12}$/).describe('Key id (the 12-hex pr
 export const accessTools: ToolDef[] = [
   {
     name: 'list_api_keys',
-    description: 'List this Site\'s site-scoped API keys: id (prefix), name, created_at/created_by, last_used_at/last_used_ip and revoked_at. Never returns secrets or hashes. Any key that reaches the Site may list, as in Site settings → API keys.',
+    description: 'List this Site\'s site-scoped API keys: id (prefix), name, created_at/created_by, last_used_at/last_used_ip and revoked_at. Never returns secrets or hashes. Requires admin on the Site, as in Site settings → API keys.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'api-keys'))),
   },

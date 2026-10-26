@@ -83,8 +83,13 @@ export function extensionJwks(): { keys: crypto.JsonWebKey[] } {
   if (process.env.EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS) {
     try {
       const parsed = JSON.parse(process.env.EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS) as { keys?: crypto.JsonWebKey[] };
+      // Republish only the public members of each previous key. A private
+      // JWK pasted here by mistake must not publish its `d`.
       previous = Array.isArray(parsed.keys)
-        ? parsed.keys.filter((key) => key.kty === 'EC' && key.crv === 'P-256' && typeof key.kid === 'string')
+        ? parsed.keys
+          .filter((key) => key && key.kty === 'EC' && key.crv === 'P-256' && typeof key.kid === 'string'
+            && typeof key.x === 'string' && typeof key.y === 'string')
+          .map((key) => ({ kty: 'EC', crv: 'P-256', x: key.x, y: key.y, kid: key.kid, alg: 'ES256', use: 'sig' }))
         : [];
     } catch {
       throw new ExtensionAuthError('EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS is invalid', 500);
@@ -484,5 +489,9 @@ export async function authenticateInstallationCredential(args: {
     throw new ExtensionAuthError('Invalid installation credential', 401);
   }
   await store.updateDoc(paths.extensionCredential(args.ownerOrgId, args.siteId, args.installationId, credential.id), { last_used_at: now.toISOString() });
-  return { installation, scopes: credential.scopes };
+  // The credential's scopes were copied from the grant when it was issued.
+  // The current grant is authoritative: a scope the administrator removed
+  // since then is not usable, and one added since then needs a new credential.
+  const granted = new Set(installation.granted_scopes ?? []);
+  return { installation, scopes: (credential.scopes ?? []).filter((scope) => granted.has(scope)) };
 }

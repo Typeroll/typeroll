@@ -1,18 +1,18 @@
 ---
 import AppLayout from '../../../../../layouts/AppLayout.astro';
-import { getStore } from '../../../../../lib/datastore';
 import { listApiKeys } from '../../../../../lib/api-keys';
 import ApiKeyManager from '../../../../../components/ApiKeyManager.tsx';
-import { paths } from '@typeroll/shared';
-import type { Site } from '@typeroll/shared';
 import { loadSiteContext } from '../../../../../lib/access';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
-const { session, site, owner_org_id: orgId } = ctx;
+const { site, owner_org_id: orgId } = ctx;
 const siteId = site.id;
-
-const store = getStore();
+// Key metadata names who created each key and where it was last used, so the
+// page is for site admins, as the key routes are. Only the owning
+// organization mints keys, so a share recipient's admin sees a note instead.
+if (ctx.permission !== 'admin') return Astro.redirect(`/app/sites/${encodeURIComponent(siteId)}/settings?section=access`);
+const canCreate = ctx.is_owner;
 
 const keys = await listApiKeys(orgId, siteId);
 const summaries = keys.map((k) => ({
@@ -35,7 +35,9 @@ const summaries = keys.map((k) => ({
   </div>
 
   <div style="max-width: 760px;">
-    <ApiKeyManager client:load siteId={siteId} initialKeys={summaries} />
+    {canCreate
+      ? <ApiKeyManager client:load siteId={siteId} initialKeys={summaries} />
+      : <p class="muted">This site is shared with your organization. API keys for it are created by its owning organization; use an organization API key to reach shared sites.</p>}
   </div>
 
   <p class="text-sm muted" style="margin-top: 1.5rem;">

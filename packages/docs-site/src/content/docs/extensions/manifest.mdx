@@ -89,7 +89,6 @@ deploy. The developer CLI and MCP tool queue that deploy by default.
 ## Available scopes
 
 - `content:read`, `content:write`
-- `content:read`, `content:write`
 - `forms:read`, `forms:submit`, `forms:write`
 - `submissions:read`
 - `forms:intake:read` (next release: private responses for Forms bound to this installation; site administrator approval required)
@@ -101,6 +100,19 @@ deploy. The developer CLI and MCP tool queue that deploy by default.
 The effective permission is the intersection of the manifest request, the
 site administrator's grant, and the current Typeroll user's permission. The
 portal rejects unknown scopes and routes.
+
+An installation server credential is checked against the current grant on
+every request. A scope the site administrator removes stops working at once on
+credentials already issued, and a scope added later needs a newly issued
+credential. Each site API route an installation may call maps to one scope;
+any other route, such as sharing, API keys, branches, domains, publishing,
+email settings, Extension management and the site lifecycle, refuses
+installation credentials. On an allowed route the credential acts with that
+scope's minimum site permission (for example write for `content:write` and
+`media:write`), never as a site administrator. With `content:write` an
+installation may change presentational site settings but not scripts, custom
+CSS, robots and indexing settings, the staging URL, iframe hosts, external
+routes, the render version or agent instructions.
 
 `forms:submit` is deliberately narrower than `forms:write`: it permits a
 component to submit to its declared bindings, but cannot create or edit forms

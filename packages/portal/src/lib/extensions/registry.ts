@@ -11,6 +11,7 @@ import {
   type ExtensionManifest,
   type ExtensionScope,
   type ExtensionVersion,
+  type InstallationCredential,
 } from '@typeroll/shared';
 import { getStore, generateDocId } from '../datastore';
 import { saveExtensionPublicConfig, versionedExtensionInstallation } from './version-config';
@@ -361,6 +362,54 @@ export async function setExtensionVersionLifecycle(args: {
   return next;
 }
 
+/**
+ * Whether a private Extension's site allow-list names this site.
+ *
+ * A site id is unique only within its organization, so an entry is
+ * `{org_id}/{site_id}`. A bare site id is still read for allow-lists written
+ * before that, but it names the site only in the developer organization:
+ * otherwise any organization that creates a site with the same id would match.
+ */
+export function privateExtensionSiteAllowed(
+  extension: Pick<Extension, 'allowed_site_ids'>,
+  developerOrgId: string,
+  ownerOrgId: string,
+  siteId: string,
+): boolean {
+  return (extension.allowed_site_ids ?? []).some((entry) => {
+    const separator = entry.indexOf('/');
+    if (separator === -1) return entry === siteId && ownerOrgId === developerOrgId;
+    return entry.slice(0, separator) === ownerOrgId && entry.slice(separator + 1) === siteId;
+  });
+}
+
+/**
+ * Keep issued installation credentials within the current grant. A credential
+ * copies the granted scopes when it is issued; when an administrator narrows
+ * the grant, each live credential is narrowed with it, so a later re-grant
+ * does not silently revive the scope on an old credential. Authentication
+ * also intersects with the grant (lib/extensions/auth.ts).
+ */
+async function narrowInstallationCredentials(
+  ownerOrgId: string,
+  siteId: string,
+  installationId: string,
+  granted: readonly ExtensionScope[],
+): Promise<number> {
+  const store = getStore();
+  const allowed = new Set(granted);
+  let narrowed = 0;
+  const credentials = await store.listDocs<InstallationCredential>(paths.extensionCredentials(ownerOrgId, siteId, installationId));
+  for (const credential of credentials) {
+    if (credential.revoked_at) continue;
+    const scopes = (credential.scopes ?? []).filter((scope) => allowed.has(scope));
+    if (scopes.length === (credential.scopes ?? []).length) continue;
+    await store.updateDoc(paths.extensionCredential(ownerOrgId, siteId, installationId, credential.id), { scopes });
+    narrowed += 1;
+  }
+  return narrowed;
+}
+
 export async function installExtension(args: {
   developerOrgId: string;
   ownerOrgId: string;
@@ -383,7 +432,7 @@ export async function installExtension(args: {
   }
   if (extension.distribution === 'private') {
     const orgAllowed = extension.allowed_org_ids?.includes(args.ownerOrgId) ?? false;
-    const siteAllowed = extension.allowed_site_ids?.includes(args.siteId) ?? false;
+    const siteAllowed = privateExtensionSiteAllowed(extension, args.developerOrgId, args.ownerOrgId, args.siteId);
     if (!orgAllowed && !siteAllowed && !developerInstalling) throw new ExtensionRegistryError('Extension is not allowed for this site', 403);
   }
   const requested = new Set(version.manifest.permissions.map((entry) => entry.scope));
@@ -538,6 +587,10 @@ export async function updateExtensionInstallation(args: {
   }
   const { id: _id, ...body } = next;
   await store.setDoc(installationPath, body);
+  const removedScopes = current.granted_scopes.filter((scope) => !next.granted_scopes.includes(scope));
+  if (removedScopes.length > 0) {
+    await narrowInstallationCredentials(args.ownerOrgId, args.siteId, current.id, next.granted_scopes);
+  }
   await saveExtensionPublicConfig(next, nextVersion.manifest.config_schema, config.public_config, 'main');
   if (next.status === 'enabled') await provisionExtensionBlocks(args.ownerOrgId, args.siteId, next, nextVersion.manifest, true);
   await recordExtensionAudit({

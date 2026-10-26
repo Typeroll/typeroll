@@ -20,7 +20,15 @@ export const APP_DOCUMENTATION: Record<AppId, { slug: string; instructions: stri
 
 };
 
-export async function siteAppDocumentation(orgId: string, siteId: string) {
+/**
+ * Documentation of the site's enabled modules and Extensions.
+ *
+ * `viewer.installationId` is set when the caller is an Extension installation
+ * credential. Such a caller reads only its own installation's entry: another
+ * provider's private guide is available only through authorized access to
+ * that installation, and `content:read` is not that.
+ */
+export async function siteAppDocumentation(orgId: string, siteId: string, viewer: { installationId?: string } = {}) {
   const store = getStore();
   const state = await store.getDoc<SiteApps>(paths.apps(orgId, siteId));
   const apps = listAppDefs().filter(def => state?.apps?.[def.id]?.enabled).map(def => {
@@ -34,7 +42,9 @@ export async function siteAppDocumentation(orgId: string, siteId: string) {
     };
   });
   const installations = await store.listDocs<ExtensionInstallation>(paths.extensionInstallations(orgId, siteId));
-  const extensions = await Promise.all(installations.filter(item => item.status === 'enabled').map(async item => {
+  const visible = installations.filter(item => item.status === 'enabled'
+    && (viewer.installationId === undefined || item.id === viewer.installationId));
+  const extensions = await Promise.all(visible.map(async item => {
     const { version } = await resolveExtensionVersion(item);
     const documentation = version?.manifest.documentation;
     const privateGuide = version && documentation?.access === 'installation' ? await readInstallationGuide(item, version) : null;

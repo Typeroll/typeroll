@@ -1887,6 +1887,7 @@ export interface SiteApiKey {
   key_hash: string;       // sha256(secret), hex
   created_at: string;
   created_by: string;     // email of the user who created the key
+  created_by_org_id?: string; // organization the creator acted for; set on new keys
   last_used_at?: string;
   last_used_ip?: string;
   revoked_at?: string;

@@ -92,7 +92,7 @@ async function registeredInstallation() {
     id: 'se.vendor.quote-generator',
     name: 'Quote Generator',
     trustedOrigins: ['https://vendor.example', 'https://93.184.216.34'],
-    allowedSiteIds: [SITE],
+    allowedSiteIds: [`${OWNER_ORG}/${SITE}`],
   });
   await saveExtensionVersion({ developerOrgId: DEV_ORG, extensionId: created.extension.id, actorId: 'developer-user', manifest: manifest() });
   await publishExtensionVersion({ developerOrgId: DEV_ORG, extensionId: created.extension.id, version: '1.0.0', verifyAssets: async () => {} });
@@ -363,7 +363,7 @@ describe('Extension control plane', () => {
     });
     const created = await createExtension({
       developerOrgId: DEV_ORG, actorId: 'developer-user', id: withForms.id,
-      name: withForms.name, trustedOrigins: ['https://vendor.example', 'https://93.184.216.34'], allowedSiteIds: [SITE],
+      name: withForms.name, trustedOrigins: ['https://vendor.example', 'https://93.184.216.34'], allowedSiteIds: [`${OWNER_ORG}/${SITE}`],
     });
     await saveExtensionVersion({ developerOrgId: DEV_ORG, extensionId: created.extension.id, actorId: 'developer-user', manifest: withForms });
     await publishExtensionVersion({ developerOrgId: DEV_ORG, extensionId: created.extension.id, version: withForms.version, verifyAssets: async () => {} });
@@ -411,7 +411,7 @@ describe('Extension control plane', () => {
     });
     const created = await createExtension({
       developerOrgId: DEV_ORG, actorId: 'developer-user', id: receiver.id,
-      name: receiver.name, trustedOrigins: ['https://vendor.example', 'https://93.184.216.34'], allowedSiteIds: [SITE],
+      name: receiver.name, trustedOrigins: ['https://vendor.example', 'https://93.184.216.34'], allowedSiteIds: [`${OWNER_ORG}/${SITE}`],
     });
     await saveExtensionVersion({ developerOrgId: DEV_ORG, extensionId: created.extension.id, actorId: 'developer-user', manifest: receiver });
     await publishExtensionVersion({ developerOrgId: DEV_ORG, extensionId: created.extension.id, version: receiver.version, verifyAssets: async () => {} });
@@ -769,7 +769,7 @@ describe('Extension control plane', () => {
     }
     expect(await resolveExtensionVersion(installation)).toMatchObject({ resolved_version: '1.0.0', pending_activation_version: '1.1.1' });
     const { getStore } = await import('../../lib/datastore');
-    await getStore().updateDoc(paths.extension(DEV_ORG, installation.extension_id), { allowed_site_ids: [SITE, 'site-two'] });
+    await getStore().updateDoc(paths.extension(DEV_ORG, installation.extension_id), { allowed_site_ids: [`${OWNER_ORG}/${SITE}`, `${OWNER_ORG}/site-two`] });
     const other = await installExtension({ developerOrgId: DEV_ORG, ownerOrgId: OWNER_ORG, siteId: 'site-two',
       actorId: 'customer-admin', extensionId: installation.extension_id, version: '1.0.0', grantedScopes: ['content:read'],
       config: { price_list_id: 'other', api_secret: 'other-secret' } });
