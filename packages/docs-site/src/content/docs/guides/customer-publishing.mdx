@@ -461,7 +461,8 @@ aliases remain available through organization storage and configured URL rules.
 No dynamic Worker serves the website or the images.
 
 A media item's `public_path` can preserve a legacy path such as
-`/wp-content/uploads/2024/photo.jpg`. Public paths are immutable: a different file
+`/wp-content/uploads/2024/photo.jpg`. The path must end in an extension that
+matches the file's type. Public paths are immutable: a different file
 must use a new path. This protects older deployments and cached links.
 Organization media URLs and previously published aliases remain available after
 a site changes its preferred host. Builds use the new preferred addresses;

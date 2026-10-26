@@ -3,6 +3,7 @@
 // Applies the post-upload finishes on a single media item:
 //   1. CopyObject in place to set Cache-Control: public, max-age=31536000, immutable
 //      on the R2 original (so cdn.typeroll.com caches like the variants do).
+//      SVGs are sanitized first; only inert SVG is published (lib/media/svg-media.ts).
 //   2. Generates the AVIF/WebP responsive variants if not already present
 //      (same pipeline as /generate-variants — this endpoint subsumes that
 //      one for new uploads; keep generate-variants for surgical reruns).
@@ -17,8 +18,9 @@ import { getStore } from '../../../../../../../lib/datastore';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../lib/api-auth';
 import { finalizeMedia, MediaIntegrityError } from '../../../../../../../lib/media-finalize';
 import { requestMediaMigration } from '../../../../../../../lib/publishing/media-migration';
-import { finalizeStoredMedia } from '../../../../../../../lib/publishing/media-storage';
+import { finalizeOrganizationMedia } from '../../../../../../../lib/media/svg-media';
 import { connectionFailure } from '../../../../../../../lib/publishing/http';
+import { ConnectionError } from '../../../../../../../lib/publishing/connections';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -29,7 +31,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (ctx.permission === 'read') return apiError('Finalizing media requires write permission.', 403);
   if ((await getStore().getDoc<Media>(`${paths.media(ctx.orgId, ctx.siteId)}/${mediaId}`))?.storage) {
     const body = await request.json().catch(() => ({}));
-    try { return apiResponse(ctx, { ok: true, result: await finalizeStoredMedia(ctx.orgId, ctx.siteId, mediaId, typeof body?.expected_sha256 === 'string' ? body.expected_sha256 : undefined) }); }
+    try { return apiResponse(ctx, { ok: true, result: await finalizeOrganizationMedia(ctx.orgId, ctx.siteId, mediaId, typeof body?.expected_sha256 === 'string' ? body.expected_sha256 : undefined) }); }
     catch (error) { return connectionFailure(error); }
   }
 
@@ -55,6 +57,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   } catch (e) {
     // Corruption is the CALLER's signal to re-upload — 422, not a server error.
     if (e instanceof MediaIntegrityError) return apiError(e.message, 422);
+    // An SVG that cannot be made inert is the caller's to fix — 400.
+    if (e instanceof ConnectionError) return connectionFailure(e);
     return apiError(
       `Finalize failed: ${e instanceof Error ? e.message : String(e)}`,
       500,

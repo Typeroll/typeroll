@@ -17,6 +17,8 @@ import { paths } from '@typeroll/shared';
 import { usesPrivateMedia } from '../../../../../lib/publishing/media-policy';
 import { createMediaUpload } from '../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../lib/publishing/http';
+import { withMediaExtension } from '../../../../../lib/media/file-types';
+import { platformSvgStaging, requiresSvgSanitization, SVG_MEDIA_TYPE } from '../../../../../lib/media/svg-media';
 
 const MAX_SIZE = 25 * 1024 * 1024;
 
@@ -31,13 +33,13 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!writeCheck.ok) return writeCheck.response;
   const { session, site, owner_org_id } = guard.value;
 
-  const { filename, contentType, size } = (await request.json()) as {
+  const { filename: requested, contentType, size } = (await request.json()) as {
     filename: string;
     contentType: string;
     size?: number;
   };
 
-  if (!filename || !contentType) {
+  if (!requested || !contentType) {
     return json({ error: 'filename and contentType are required' }, 400);
   }
   if (size && size > MAX_SIZE) {
@@ -46,6 +48,10 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!contentType.startsWith('image/') && contentType !== 'application/pdf') {
     return json({ error: 'Unsupported content type' }, 415);
   }
+  // Static website hosts serve media by file extension: a name without the
+  // type's extension gets it appended (415 for a type that cannot be published).
+  let filename: string;
+  try { filename = withMediaExtension(String(requested), contentType); } catch (error) { return connectionFailure(error); }
 
   const accountId = process.env.R2_ACCOUNT_ID;
   if (await usesPrivateMedia(owner_org_id, site)) {
@@ -66,7 +72,14 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   // Namespace by the site's anonymous random media_id (see lib/media-keys.ts):
   // unique per site, keeps org/site names out of the public URL, and survives
   // a site moving between orgs. orgId only locates the site doc, not the key.
-  const key = `${await siteMediaPrefix(owner_org_id, site.id)}/${Date.now()}-${sanitize(filename)}`;
+  const prefix = await siteMediaPrefix(owner_org_id, site.id);
+  const key = `${prefix}/${Date.now()}-${sanitize(filename)}`;
+  // Every key in the platform bucket is public: an SVG is PUT to private
+  // staging and only its sanitized bytes are published at `key` by finalize.
+  let staging: { bucket: string; key: string } | null = null;
+  if (requiresSvgSanitization({ mime_type: contentType, filename })) {
+    try { staging = platformSvgStaging(prefix, sanitize(filename)); } catch (error) { return connectionFailure(error); }
+  }
 
   const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
   const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
@@ -94,7 +107,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
 
   const uploadUrl = await getSignedUrl(
     r2,
-    new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType }),
+    new PutObjectCommand({ Bucket: staging?.bucket ?? bucket, Key: staging?.key ?? key, ContentType: contentType }),
     { expiresIn: await organizationUploadTtl(owner_org_id) }
   );
 
@@ -108,7 +121,8 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     filename,
     cdn_url: cdnUrl,
     r2_key: key,
-    mime_type: contentType,
+    mime_type: staging ? SVG_MEDIA_TYPE : contentType,
+    ...(staging ? { svg_staging_key: staging.key } : {}),
     size_bytes: size,
     uploaded_by: session.userId,
     created_at: new Date().toISOString(),
@@ -137,5 +151,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
      *  to the original and generates AVIF/WebP responsive variants. Without
      *  it the image ships uncached and unoptimised. */
     finalizeUrl,
+    mediaId: justAdded?.id ?? null,
+    filename,
   });
 };

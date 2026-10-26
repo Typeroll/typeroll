@@ -5,6 +5,8 @@ import { getStore } from '../../../../../lib/datastore';
 import { paths, collectStepFields } from '@typeroll/shared';
 import type { Form } from '@typeroll/shared';
 import FormsManager from '../../../../../components/FormsManager.tsx';
+import FormSubmissionRetention from '../../../../../components/FormSubmissionRetention.tsx';
+import { siteSubmissionRetentionDays } from '../../../../../lib/form-submissions';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -44,5 +46,10 @@ const initialForms = forms.map((f) => ({
 
   <div style="max-width: 860px;">
     <FormsManager client:load siteId={siteId} initialForms={initialForms} canWrite={permission !== 'read'} />
+    {permission === 'admin' && (
+      <div style="margin-top: 1.5rem;">
+        <FormSubmissionRetention client:load siteId={siteId} initialDays={siteSubmissionRetentionDays(site)} />
+      </div>
+    )}
   </div>
 </AppLayout>

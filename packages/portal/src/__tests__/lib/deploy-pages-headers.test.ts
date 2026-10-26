@@ -26,6 +26,20 @@ describe('buildPagesHeaders', () => {
     expect(headers.split('\n').filter(line => line.includes('Cache-Control:')).every(line => line.includes('no-transform'))).toBe(true);
   });
 
+  it('sandboxes SVG and XHTML documents opened directly, but not PDFs or pages', () => {
+    const headers = buildPagesHeaders();
+    const policy = "Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:";
+    for (const pattern of ['/*.svg', '/*.SVG', '/*.svgz', '/*.xhtml', '/*.xht']) expect(headers).toContain(`${pattern}\n  ${policy}\n`);
+    expect(headers).not.toMatch(/\/\*\.pdf|\/\*\.html/);
+    // Exactly one global rule, and no rule has more than one wildcard (Pages rejects those).
+    const patterns = headers.split('\n').filter(line => line && !/^\s/.test(line));
+    expect(patterns.filter(line => line === '/*')).toHaveLength(1);
+    expect(patterns.every(line => (line.match(/\*/g) ?? []).length <= 1)).toBe(true);
+    expect(headers.match(/Content-Security-Policy/g)).toHaveLength(5);
+    // The global stamp keeps the sandbox rules.
+    expect(withGlobalHeaders(headers, { 'X-Typeroll-Publication': 'x' })).toContain(`/*.svg\n  ${policy}`);
+  });
+
   it('adds noindex only for the hosted fallback namespace', () => {
     const headers = buildPagesHeaders('SITES.TYPEROLL.COM.');
 

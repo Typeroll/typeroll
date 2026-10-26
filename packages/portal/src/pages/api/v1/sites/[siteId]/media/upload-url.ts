@@ -19,6 +19,8 @@ import { paths } from '@typeroll/shared';
 import { usesPrivateMedia } from '../../../../../../lib/publishing/media-policy';
 import { createMediaUpload } from '../../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../../lib/publishing/http';
+import { withMediaExtension } from '../../../../../../lib/media/file-types';
+import { platformSvgStaging, requiresSvgSanitization, SVG_MEDIA_TYPE } from '../../../../../../lib/media/svg-media';
 
 const MAX_SIZE = 25 * 1024 * 1024;
 
@@ -39,19 +41,23 @@ export const POST: APIRoute = async ({ request, params }) => {
     alt_text?: string;
   } | null;
   if (!body) return apiError('Invalid JSON body');
-  const { filename, content_type: contentType, size, alt_text } = body;
+  const { filename: requested, content_type: contentType, size, alt_text } = body;
 
-  if (!filename || !contentType) return apiError('filename and content_type are required');
+  if (!requested || !contentType) return apiError('filename and content_type are required');
   if (size && size > MAX_SIZE) return apiError(`File too large (max ${MAX_SIZE} bytes)`, 413);
   if (!contentType.startsWith('image/') && contentType !== 'application/pdf') {
     return apiError('Unsupported content type', 415);
   }
+  // Static website hosts serve media by file extension: a name without the
+  // type's extension gets it appended (415 for a type that cannot be published).
+  let filename: string;
+  try { filename = withMediaExtension(String(requested), contentType); } catch (error) { return connectionFailure(error); }
 
   const accountId = process.env.R2_ACCOUNT_ID;
   if (await usesPrivateMedia(ctx.orgId, ctx.site)) {
     try {
       const uploaded = await createMediaUpload(ctx.orgId, ctx.siteId, { filename, contentType, size, altText: alt_text, actor: `api-key:${ctx.keyPrefix}` });
-      return apiResponse(ctx, { upload_url: uploaded.uploadUrl, cdn_url: uploaded.cdnUrl, key: uploaded.key, media_id: uploaded.mediaId,
+      return apiResponse(ctx, { upload_url: uploaded.uploadUrl, cdn_url: uploaded.cdnUrl, key: uploaded.key, media_id: uploaded.mediaId, filename: uploaded.filename,
         storage: uploaded.storage, expires_in: uploaded.expiresIn, finalize_url: `/api/v1/sites/${ctx.siteId}/media/${uploaded.mediaId}/finalize`,
         next_step: 'Upload the binary file directly to upload_url, then POST to finalize_url to verify it. Responsive variants are generated during the customer build.' });
     } catch (error) { return connectionFailure(error); }
@@ -65,7 +71,14 @@ export const POST: APIRoute = async ({ request, params }) => {
     );
   }
 
-  const key = `${await siteMediaPrefix(ctx.orgId, ctx.siteId)}/${Date.now()}-${sanitize(filename)}`;
+  const prefix = await siteMediaPrefix(ctx.orgId, ctx.siteId);
+  const key = `${prefix}/${Date.now()}-${sanitize(filename)}`;
+  // Every key in the platform bucket is public: an SVG is PUT to private
+  // staging and only its sanitized bytes are published at `key` by finalize.
+  let staging: { bucket: string; key: string } | null = null;
+  if (requiresSvgSanitization({ mime_type: contentType, filename })) {
+    try { staging = platformSvgStaging(prefix, sanitize(filename)); } catch (error) { return connectionFailure(error); }
+  }
 
   const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
   const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
@@ -87,7 +100,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const uploadTtl = await organizationUploadTtl(ctx.orgId);
   const uploadUrl = await getSignedUrl(
     r2,
-    new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType }),
+    new PutObjectCommand({ Bucket: staging?.bucket ?? bucket, Key: staging?.key ?? key, ContentType: contentType }),
     { expiresIn: uploadTtl },
   );
   const cdnUrl = `${publicBase.replace(/\/$/, '')}/${key}`;
@@ -96,7 +109,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     filename,
     cdn_url: cdnUrl,
     r2_key: key,
-    mime_type: contentType,
+    mime_type: staging ? SVG_MEDIA_TYPE : contentType,
+    ...(staging ? { svg_staging_key: staging.key } : {}),
     size_bytes: size,
     alt_text: alt_text ?? undefined,
     uploaded_by: `api-key:${ctx.keyPrefix}`,
@@ -117,6 +131,8 @@ export const POST: APIRoute = async ({ request, params }) => {
       cdn_url: cdnUrl,
       key,
       media_id: mediaId,
+      /** The stored name: the type's extension is appended when it was missing. */
+      filename,
       expires_in: uploadTtl,
       /** REQUIRED follow-up: POST here after the PUT completes. Sets
        *  immutable Cache-Control on the original AND generates AVIF/WebP

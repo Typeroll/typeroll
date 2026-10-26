@@ -8,6 +8,7 @@ import {
   type Extension,
   type ExtensionAuditEvent,
   type ExtensionCatalogEntry,
+  type ExtensionIdReservation,
   type ExtensionManifest,
   type ExtensionScope,
   type ExtensionVersion,
@@ -97,6 +98,58 @@ export async function recordExtensionAudit(args: {
   } satisfies Omit<ExtensionAuditEvent, 'id'>);
 }
 
+export type ExtensionIdReservationState =
+  /** This call created the reservation for the organization. */
+  | 'claimed'
+  /** The organization already held the reservation. */
+  | 'owned'
+  /** Another developer organization holds the id. */
+  | 'held_by_other';
+
+/**
+ * Claim the host-wide reservation of an Extension id for a developer
+ * organization, atomically and idempotently. Tokens Typeroll issues for an
+ * installation use the Extension id as their audience, so only one developer
+ * organization may register a given id.
+ *
+ * Extensions registered before reservations existed have none. Any create,
+ * update or publish by an organization claims the free reservation. When the
+ * id is already held by another organization this does not throw: an existing
+ * (legacy) registration keeps working, only a new registration is refused by
+ * createExtension.
+ */
+export async function claimExtensionIdReservation(
+  developerOrgId: string,
+  extensionId: string,
+  now = new Date(),
+): Promise<ExtensionIdReservationState> {
+  const store = getStore();
+  const path = paths.extensionIdReservation(extensionId);
+  // A reservation removed between the create and the read is free again, so
+  // try once more before giving up.
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const created = await store.createDocIfMissing(path, {
+      extension_id: extensionId,
+      developer_org_id: developerOrgId,
+      created_at: now.toISOString(),
+    } satisfies Omit<ExtensionIdReservation, 'id'>);
+    if (created) return 'claimed';
+    const current = await store.getDoc<ExtensionIdReservation>(path);
+    if (current) return current.developer_org_id === developerOrgId ? 'owned' : 'held_by_other';
+  }
+  throw new ExtensionRegistryError('Extension id reservation changed concurrently; retry', 409);
+}
+
+/** Read-only reservation state for the developer API. */
+export async function readExtensionIdReservation(
+  developerOrgId: string,
+  extensionId: string,
+): Promise<'reserved' | 'unreserved' | 'held_by_other'> {
+  const current = await getStore().getDoc<ExtensionIdReservation>(paths.extensionIdReservation(extensionId));
+  if (!current) return 'unreserved';
+  return current.developer_org_id === developerOrgId ? 'reserved' : 'held_by_other';
+}
+
 export async function createExtension(args: {
   developerOrgId: string;
   actorId: string;
@@ -116,6 +169,12 @@ export async function createExtension(args: {
   }
   const path = paths.extension(args.developerOrgId, args.id);
   if (await getStore().getDoc<Extension>(path)) throw new ExtensionRegistryError('Extension already exists', 409);
+  // A public catalog entry predates reservations and also names its owner.
+  const catalogEntry = await getStore().getDoc<ExtensionCatalogEntry>(paths.extensionCatalogEntry(args.id));
+  if ((catalogEntry && catalogEntry.developer_org_id !== args.developerOrgId) ||
+      await claimExtensionIdReservation(args.developerOrgId, args.id) === 'held_by_other') {
+    throw new ExtensionRegistryError('This Extension id is registered by another developer organization', 409);
+  }
   const now = new Date().toISOString();
   const clientSecret = `tre_${randomSecret()}`;
   const extension: Extension = {
@@ -146,6 +205,7 @@ export async function saveExtensionVersion(args: {
   const extension = await getStore().getDoc<Extension>(paths.extension(args.developerOrgId, args.extensionId));
   if (!extension || extension.developer_org_id !== args.developerOrgId) throw new ExtensionRegistryError('Extension not found', 404);
   if (extension.status !== 'active') throw new ExtensionRegistryError('Extension is suspended', 409);
+  await claimExtensionIdReservation(args.developerOrgId, args.extensionId);
   const validation = validateExtensionManifest(args.manifest);
   if (!validation.valid || !validation.manifest) throw new ExtensionRegistryError(validation.errors.join('\n'));
   const manifest = validation.manifest;
@@ -191,6 +251,7 @@ export async function updateExtensionDistribution(args: {
   if (!extension || extension.developer_org_id !== args.developerOrgId) {
     throw new ExtensionRegistryError('Extension not found', 404);
   }
+  await claimExtensionIdReservation(args.developerOrgId, args.extensionId);
   const versions = await store.listDocs<ExtensionVersion>(paths.extensionVersions(args.developerOrgId, args.extensionId));
   const catalogEntry = await store.getDoc<ExtensionCatalogEntry>(paths.extensionCatalogEntry(args.extensionId));
   if (versions.some((version) => version.status !== 'draft') || catalogEntry?.developer_org_id === args.developerOrgId) {
@@ -241,6 +302,7 @@ export async function publishExtensionVersion(args: {
   if (!extension || extension.distribution !== current.manifest.distribution) {
     throw new ExtensionRegistryError('Extension distribution does not match the saved manifest', 409);
   }
+  await claimExtensionIdReservation(args.developerOrgId, args.extensionId);
   if (current.status === 'published' || current.status === 'review') return current;
   if (current.status !== 'draft') throw new ExtensionRegistryError('Extension version cannot be published from its current state', 409);
   await args.verifyAssets(current.manifest);
@@ -325,6 +387,7 @@ export async function rotateExtensionClientSecret(args: {
   const path = paths.extension(args.developerOrgId, args.extensionId);
   const extension = await getStore().getDoc<Extension>(path);
   if (!extension) throw new ExtensionRegistryError('Extension not found', 404);
+  await claimExtensionIdReservation(args.developerOrgId, args.extensionId);
   const secret = `tre_${randomSecret()}`;
   await getStore().updateDoc(path, { client_secret_hash: sha256(secret), updated_at: new Date().toISOString() });
   return secret;

@@ -39,7 +39,38 @@ Verify the signature over the exact bytes
 `<X-Typeroll-Timestamp>.<raw request body>` using the configured secret. Check
 the timestamp against a small tolerance and deduplicate on the event id.
 
-Typeroll attempts transient failures up to three times. HTTP 408, 429, and 5xx
-responses are retryable; other 4xx responses stop immediately. Delivery status,
-attempt count, HTTP status, and the last operational error appear beside the
-submission in the admin inbox.
+## Timing and retries
+
+The visitor's submit request never waits long for a receiver:
+
+- Up to three webhooks of a submission get one attempt while the request is
+  running, all within three seconds in total. Respond with a `2xx` status
+  quickly and do slow work after responding.
+- Any further webhooks, and any attempt that times out or fails transiently,
+  are stored as `pending` and retried in the background: about 1 minute,
+  5 minutes, 30 minutes and 2 hours after the previous attempt. After five
+  attempts in total the delivery is `failed`.
+- HTTP 408, 429 and 5xx responses, timeouts and network errors are
+  retryable. Other 4xx responses, redirects, a destination that is not a
+  public address and a removed webhook stop immediately with `failed`.
+- The visitor's response never depends on webhook delivery. A submission is
+  stored and confirmed even when every webhook fails.
+
+Every attempt for one submission and webhook sends the same event id
+(`Idempotency-Key`, `X-Typeroll-Event-Id`, payload `id`) and the same body,
+signed with that attempt's timestamp. A request that timed out on Typeroll's
+side may still have reached you, so deduplicate on the event id.
+
+Background retries use the scheduled-work index (`scheduled_work`, kind
+`form_webhook_retry`): Cloud Tasks, the in-process timer, the self-hosted
+worker loop or the periodic `/api/internal/publish-sweep` runs a due retry,
+so the exact time depends on that scheduler's interval (`PUBLISH_SWEEP_INTERVAL_MS`
+for the worker loop; every few minutes on Cloud). Each attempt is leased on
+the delivery record with a compare-and-update, so overlapping sweeps or
+instances never send the same attempt twice. A retry uses the webhook's
+current URL and secret; removing the webhook ends its pending retries. The
+request body is kept on the delivery record only while it is pending, and the
+record is removed with its submission.
+
+Delivery status, attempt count, HTTP status, and the last operational error
+appear beside the submission in the admin inbox.

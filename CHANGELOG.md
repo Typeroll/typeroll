@@ -1,5 +1,79 @@
 # Changelog
 
+## 0.2.113 / MCP 0.45.84 — Security follow-ups
+
+Sessions
+
+- Signing out ends that browser's sign-in on the server: copies of the session
+  cookie, including copies refreshed by the rolling refresh, stop working. Other
+  devices and MCP connections stay signed in. Enable a Firestore TTL policy on
+  `expires_at` for `revoked_sessions` and `session_lineage`.
+- The session cookie is verified, and the sign-out list read, once per request
+  instead of once per session read.
+
+Media
+
+- SVGs are parsed and rebuilt from an allowlist on upload, import, storage
+  migration and publish; an upload or import that cannot be sanitized is
+  refused (`media_svg_invalid`). Platform-storage SVG uploads stay private
+  until finalize.
+- A stored SVG that cannot be sanitized no longer stops a publication: the file
+  is left out, its page references become empty, and the deploy job lists it
+  in `job.warnings`. A dry run checks legacy SVGs without writing anything.
+  Preparing a domain change of a publication that still contains an
+  unsanitized SVG returns `409 media_svg_unsanitized`: publish the site once
+  first.
+- Legacy SVGs in the platform bucket are rewritten in place once by the deploy
+  backfill; later deploys skip them. One that cannot be sanitized is served as
+  a download only when it contains script-capable content, otherwise it is left
+  unchanged; both are reported in `job.warnings`. Purge the media CDN cache
+  after the first deploy: cached copies of the old bytes can otherwise persist
+  for their cache lifetime.
+- Uploads and imports whose filename has no extension, or one of another type,
+  get the type's extension appended (`logo` → `logo.png`, `x.html` →
+  `x.html.png`); the response returns the stored `filename`. Renaming a
+  `filename` or `public_path` to a mismatched extension returns
+  `400 media_extension_mismatch`; unsupported types return
+  `415 media_type_unsupported`. Legacy records with a mismatched name get the
+  type's extension appended at publish and page references are rewritten; old
+  direct links to those files change.
+- The Media library, picker and chat uploads remove a new file only when
+  finalize refuses the file itself (400 `media_svg_invalid` or
+  `media_extension_mismatch`, 415, 422); a revision conflict or rate limit is
+  retried and other errors keep the file.
+- Static `_headers` sandbox `*.svg` and `*.xhtml` responses.
+- Self-hosting: set the optional `R2_PRIVATE_BUCKET` (a bucket without public
+  access) for SVG and draft uploads; `self-host:check` warns when it is
+  missing, and the GCP plan binds it when `secrets.R2_PRIVATE_BUCKET` is set.
+
+Forms
+
+- Webhooks get one attempt of at most 3 s during the visitor's request (at most
+  three webhooks); the rest retry in the background after about 1, 5, 30 and
+  120 minutes with the same event id. On the Extension actions endpoint a
+  queued retry counts as `ran`.
+- Submissions no longer store the visitor's IP address or user agent; legacy
+  values are hidden (IP from everyone, user agent from non-admins).
+  `scripts/scrub-submission-network-data.mjs` removes the legacy fields from
+  stored submissions (dry run by default).
+- New opt-in `form_submission_retention_days` site setting (30–3650, off by
+  default) deletes completed submissions after the period. Enable a Firestore
+  TTL policy on `delete_at` for the `submissions` collection group.
+- Rollback: Core 0.2.112 and earlier do not process `form_webhook_retry`
+  scheduled work. A rollback parks every pending webhook retry: it is not
+  delivered, also not after upgrading again, and its delivery record keeps the
+  queued payload. Stop new submissions or let pending retries finish (at most
+  about 2 hours 40 minutes after the last submission) before rolling back.
+
+Extensions
+
+- Extension ids are reserved per developer Organization; registering an id held
+  by another returns `409`. `scripts/audit-extension-ids.mjs` reports and
+  backfills reservations (dry run by default).
+- Every installation token carries `developer_org_id`; providers should verify
+  it in addition to `aud`. A later release will move `aud` to a developer-scoped
+  value after an announced deprecation window.
+
 ## 0.2.112 — Non-root legacy Pages uploads
 
 - Run the legacy Cloudflare Pages upload (wrangler) beside the build output in

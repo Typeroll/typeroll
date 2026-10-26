@@ -30,3 +30,14 @@ it('reports missing organization storage without falling back to an upload URL',
   expect(post).toHaveBeenCalledExactlyOnceWith('site', 'media/import', { source_url: 'https://source.example.com/image.jpg' });
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it('reports the stored filename when the server appends the type extension to an inline upload', async () => {
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 200 })));
+  const post = vi.fn(async (_site: string, path: string) => path === 'media/upload-url'
+    ? { upload_url: 'https://upload.example.com/put', cdn_url: 'https://cdn.example.com/logo.png', key: 'k', media_id: 'm1', filename: 'logo.png', expires_in: 300 }
+    : { ok: true });
+  const tool = mediaTools.find(item => item.name === 'upload_media_inline')!;
+  const result = await tool.handler({ filename: 'logo', content_type: 'image/png', data_base64: Buffer.from('png').toString('base64') } as never,
+    { client: { post } as unknown as TyperollClient, siteId: 'site' });
+  expect(JSON.parse(result.content[0]!.text)).toMatchObject({ media_id: 'm1', filename: 'logo.png' });
+});

@@ -102,6 +102,11 @@ export function validateSelfHostEnvironment(env) {
   if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push('TYPEROLL_ACME_EMAIL: must be an email address');
   const cdn = value(env, 'R2_PUBLIC_BASE_URL');
   if (cdn && !validHttpsUrl(cdn)) errors.push('R2_PUBLIC_BASE_URL: must be an HTTPS URL without embedded credentials');
+  // Optional: draft uploads and SVG upload staging need a bucket without public access.
+  const privateBucket = value(env, 'R2_PRIVATE_BUCKET');
+  if (!privateBucket) warnings.push('R2_PRIVATE_BUCKET: not set; SVG uploads and uploads before an organization connects its own storage return 503');
+  else if (isPlaceholder(privateBucket)) errors.push('R2_PRIVATE_BUCKET: replace the example placeholder');
+  else if (privateBucket === value(env, 'R2_BUCKET')) errors.push('R2_PRIVATE_BUCKET: must be a different bucket from R2_BUCKET, without public access');
 
   const firebaseServiceAccount = value(env, 'FIREBASE_SERVICE_ACCOUNT');
   const googleCloudProject = value(env, 'GOOGLE_CLOUD_PROJECT');

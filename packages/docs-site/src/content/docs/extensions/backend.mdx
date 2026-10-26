@@ -12,6 +12,53 @@ two distinct identity types; they must not be interchangeable:
 Always validate the token issuer dynamically. A hosted portal and a
 self-hosted portal publish discovery and JWKS from different domains.
 
+## Bind every token to your developer organization
+
+Every token Typeroll issues for an installation (admin launch and portal admin
+tokens, public Extension tokens, documentation and build derivation
+assertions, and issuer pairing assertions) has `aud` set to the Extension id
+and, from Core 0.2.113, a `developer_org_id` claim naming the developer
+Organization that registered the Extension. Check both:
+
+1. `aud` equals your Extension id;
+2. `developer_org_id` equals your own developer Organization id.
+
+Extension ids are reserved host-wide from Core 0.2.113: registering an id
+that another developer Organization holds returns 409. Registrations made
+before that release keep working without a reservation until their owner
+updates them or the host operator backfills reservations, so two developer
+Organizations can already hold the same id and both receive tokens with the
+same `aud`. The `developer_org_id` claim is what tells them
+apart. A provider that checks only `iss` and `aud` can accept a token issued
+for another Organization's Extension with the same id.
+
+Your developer Organization id is the `developer_org_id` field of the
+Extension record: it is returned when you register the Extension, by
+`GET /api/developer/extensions/{extensionId}` and by the
+`read_developer_extension` and `list_developer_extensions` MCP tools. The same
+read returns `id_reservation`: `reserved` (your Organization holds the id),
+`unreserved` (a registration from before reservations; your next update or
+publish claims it), or `held_by_other` (another developer Organization holds
+the id; your existing installations keep working, but contact the host
+operator).
+
+Store the expected value as configuration next to your Extension id and the
+trusted issuer. Treat a token without `developer_org_id` as issued by a
+portal older than Core 0.2.113: accept it only from an issuer you know runs
+such a release, and stop accepting it once every issuer you trust has
+upgraded.
+
+### Planned audience change
+
+`aud` remains the bare Extension id for compatibility. A later protocol
+version is planned to change it to
+`typeroll:ext:{developer_org_id}:{extension_id}`, which binds the
+developer Organization into the audience itself. Before that change ships,
+it will be announced in the changelog and in issuer discovery, with a
+deprecation window in which providers can accept both forms. Providers that
+already require `developer_org_id` need only to accept the new `aud` value
+when it arrives.
+
 ## Admin launch
 
 Typeroll posts a 60-second launch code, issuer, installation ID, and page ID to
@@ -30,8 +77,9 @@ Content-Type: application/json
 ```
 
 Validate the returned ES256 JWT against the issuer's discovery document and
-JWKS. Check at least `iss`, `aud`, `sub`, `org_id`, `site_id`,
-`installation_id`, `permission`, `scopes`, `jti`, `iat`, and `exp`. The client
+JWKS. Check at least `iss`, `aud`, `developer_org_id`, `sub`, `org_id`,
+`site_id`, `installation_id`, `permission`, `scopes`, `jti`, `iat`, and
+`exp`. The client
 secret and access token must never reach frontend code or logs.
 
 ## Direct frontend requests
@@ -42,8 +90,9 @@ or forward its payload. Configure CORS for each installed site origin and
 accept the `X-Typeroll-Extension-Token` request header.
 
 When `api.authentication` is `signed_installation`, verify that token's ES256
-signature and `iss`, `aud`, `sub`, `token_use=public_extension`, `org_id`,
-`site_id`, `installation_id`, `origin`, `jti`, `iat`, and `exp`. Fetch keys
+signature and `iss`, `aud`, `developer_org_id`, `sub`,
+`token_use=public_extension`, `org_id`, `site_id`, `installation_id`,
+`origin`, `jti`, `iat`, and `exp`. Fetch keys
 from the issuer's discovery/JWKS endpoints. The token proves installation
 identity only. Authenticate and authorize the visitor, recipient token and
 business action separately.
@@ -76,7 +125,9 @@ If the manifest declares `auth.pairing_url`, an administrator can explicitly
 pair a portal. The provider receives an issuer, discovery URL, nonce, JWKS
 fingerprint, and signed pairing assertion. Fetch discovery and JWKS from the
 declared issuer, compare the canonical JWKS fingerprint, verify the assertion,
-then store the trusted issuer. Never trust keys included only in the inbound
+then store the trusted issuer. The assertion has `token_use: "issuer_pairing"`,
+your Extension id as `aud` and your developer Organization as
+`developer_org_id`; check both. Never trust keys included only in the inbound
 request body.
 
 ## Lifecycle webhooks
@@ -144,7 +195,8 @@ to an app installation.
 Declare `documentation.access: "installation"` and a HTTPS guide URL on the
 approved provider origin. Omit `agent_instructions` for private guides. Core
 fetches Markdown with a 60-second ES256 assertion: verify issuer, app audience,
-`token_use: "documentation"`, organization, site, installation and app version.
+`developer_org_id`, `token_use: "documentation"`, organization, site,
+installation and app version.
 Recheck current enabled status against the CMS or a securely synchronized
 installation record. Do not follow an arbitrary caller-supplied issuer URL.
 Return `Cache-Control: private,no-store`; reject unauthorized, expired,
@@ -244,8 +296,9 @@ Each protected SDK operation rechecks the portal session, current permissions,
 enabled installation and exact host approval. An app version or organization
 change requires reloading the app. API tokens expire after five minutes; their
 claims include `token_use: "portal_admin"`, `page_id`, `version`, `sub`, `org_id`,
-`site_id`, `installation_id`, permission and effective scopes. Verify the ES256
-signature, trusted issuer, audience and expiration, bind the claims to the
+`site_id`, `installation_id`, `developer_org_id`, permission and effective
+scopes. Verify the ES256 signature, trusted issuer, audience, developer
+Organization and expiration, bind the claims to the
 requested resource, and recheck the installation. User revocation has at most
 the token lifetime at a backend unless the backend performs an additional live
 user check. Do not confuse these tokens with installation credentials or guide
@@ -367,8 +420,8 @@ Core sends `org_id`, `site_id`, `version_id`, `provider_version`, `content`,
 version's projected public `pages` and `content_types`; drafts, working copies,
 pending proposals, private fields and provenance are excluded. Configuration is
 only this installation's frozen public configuration. Authenticate the short-lived
-installation assertion with purpose `build_derivation` and verify the installation,
-site and version. Recheck authorization, but do not reread live Pages or live
+installation assertion with purpose `build_derivation` and verify the audience,
+developer Organization, installation, site and version. Recheck authorization, but do not reread live Pages or live
 configuration to calculate output. An approval made during a build belongs to the
 next publication.
 

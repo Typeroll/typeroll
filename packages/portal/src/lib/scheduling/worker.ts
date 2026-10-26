@@ -81,6 +81,15 @@ export async function executeScheduledWork(id: string, generation?: string, now 
         await postpone(path, current.generation, next);
         return result;
       }
+    } else if (current.kind === 'form_webhook_retry') {
+      // Written by lib/forms/webhook.ts for a pending webhook delivery; the
+      // delivery record leases each attempt, so duplicates are harmless.
+      const { retryFormWebhookDelivery } = await import('../forms/webhook');
+      const next = await retryFormWebhookDelivery(current.source, now.valueOf());
+      if (next !== null) {
+        await postpone(path, current.generation, next);
+        return result;
+      }
     } else if (current.kind === 'site_publish') {
       const site = await store.getDoc<any>(current.source);
       if (site) {

@@ -258,6 +258,12 @@ export interface Site {
    */
   domain_canonical?: 'apex' | 'www';
   staging_url?: string;
+  /**
+   * Opt-in retention for completed form submissions, in days (30–3650).
+   * Unset or null keeps them until someone deletes them. Stored on the Site,
+   * not per version. See packages/portal/src/lib/form-submissions.ts.
+   */
+  form_submission_retention_days?: number | null;
   source_wp_url?: string | null;
   source_builder?: 'elementor' | 'breakdance' | 'gutenberg' | 'classic' | 'none';
   hosting_adapter: HostingAdapterName;
@@ -1519,12 +1525,19 @@ export interface FormSubmission {
   /** Last completed step id (steps-mode only). */
   step?: string;
   updated_at?: string;
-  /** Partials only: ISO timestamp after which cleanup may delete the doc. */
-  expires_at?: string;
+  /**
+   * ISO timestamp after which the submission may be deleted: a partial's
+   * `partial_ttl_days`, or, for a completed submission, the site's opt-in
+   * `form_submission_retention_days`. Null or absent: kept.
+   */
+  expires_at?: string | null;
+  /** Legacy (admins only): the visitor's browser, truncated. No longer stored. */
+  user_agent?: string;
 }
 
-/** Operational log for one generic form-webhook event. Payload values stay in
- * the canonical submission document; this record contains delivery metadata. */
+/** Operational log for one generic form-webhook event. While a delivery is
+ * `pending` it also holds the exact request body so retries resend identical
+ * bytes; the body is cleared when the delivery settles. */
 export interface FormWebhookDelivery {
   id: string;
   event_id: string;
@@ -1537,8 +1550,10 @@ export interface FormWebhookDelivery {
   created_at: string;
   updated_at: string;
   delivered_at?: string;
-  response_status?: number;
-  last_error?: string;
+  /** When the next background attempt is due; null once settled. */
+  next_attempt_at?: string | null;
+  response_status?: number | null;
+  last_error?: string | null;
 }
 
 // ─── Integrations (site-level, shared across all Typeroll apps) ────────────
@@ -2128,6 +2143,13 @@ export const paths = {
   extensionCatalog: () => `extension_catalog`,
   extensionCatalogEntry: (extensionId: string) => `extension_catalog/${extensionId}`,
 
+  // Global Extension id reservation. Extensions are stored per developer
+  // organization, but tokens use the Extension id as their audience, so one id
+  // must belong to one developer organization. Doc id is the Extension id; the
+  // body is an ExtensionIdReservation. Created atomically on registration.
+  extensionIdReservations: () => `extension_ids`,
+  extensionIdReservation: (extensionId: string) => `extension_ids/${extensionId}`,
+
   // Reverse index for cross-org site sharing — "give me every site shared
   // with org X". Doc id matches the canonical SiteShare doc id so writes
   // can mirror across both paths without name juggling. The body duplicates
@@ -2138,4 +2160,13 @@ export const paths = {
     `org_share_index/${orgId}/shares`,
   sharesWithOrgEntry: (orgId: string, shareId: string) =>
     `org_share_index/${orgId}/shares/${shareId}`,
+
+  // Portal sign-out denylist. Doc id is sha256(`${uid}:${auth_time}`) of one
+  // Firebase sign-in; a revoked sign-in rejects every session cookie carrying
+  // that key. Lineage docs map a cookie re-minted by the rolling refresh to
+  // the sign-in it continues (`root_key`), so sign-out revokes every copy.
+  // Both carry a native `expires_at` timestamp for a Firestore TTL policy.
+  revokedSession: (key: string) => `revoked_sessions/${key}`,
+  sessionLineages: () => `session_lineage`,
+  sessionLineage: (key: string) => `session_lineage/${key}`,
 };

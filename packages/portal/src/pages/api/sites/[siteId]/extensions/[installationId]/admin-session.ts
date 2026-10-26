@@ -22,7 +22,7 @@ export const POST: APIRoute = async ({ cookies, params, locals, request }) => {
   const signed = signDelegatedExtensionToken({
     token_use: 'portal_admin', page_id: page.id, version: version.version,
     aud: installation.extension_id, sub: session.userId, org_id: orgId, site_id: site.id,
-    installation_id: installation.id, permission, scopes: effectiveExtensionScopes(installation.granted_scopes, permission),
+    developer_org_id: installation.developer_org_id, installation_id: installation.id, permission, scopes: effectiveExtensionScopes(installation.granted_scopes, permission),
   });
   const response = json({ token: signed.token, expires_at: signed.claims.exp * 1000,
     issuer: extensionIssuer(), org_id: orgId, site_id: site.id, installation_id: installation.id,

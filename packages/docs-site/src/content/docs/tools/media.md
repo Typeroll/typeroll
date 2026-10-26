@@ -27,7 +27,9 @@ Organization's R2. The WordPress helper plugin is not required.
    grant for this one object; the client does not need R2 credentials.
 3. After a successful upload, send `POST` to the returned `finalize_url`, with
    your Typeroll API key. Wait for successful verification before using the asset.
-   Keep the returned `media_id`; do not construct a media URL yourself.
+   Keep the returned `media_id`; do not construct a media URL yourself. The
+   returned `filename` is the stored name; see
+   [file names and types](#file-names-and-types).
 
 With verified Organization storage, the upload goes from the client to R2 and
 Core 0.1.97 verifies it in the customer's Cloudflare account. Typeroll handles
@@ -40,6 +42,131 @@ runtime storage before Organization storage is connected. That allowance must
 not be used to bypass the import prerequisite. For files already available at a
 public URL, use the URL-import endpoint below; the agent does not need to download
 and re-upload their bytes.
+
+## SVG files
+
+An SVG opened directly from the media host or the website is a document in which
+browsers can run script. Typeroll therefore stores SVG only in sanitized form:
+finalize, and every URL or WordPress import, rewrites the file as static vector
+graphics before it is stored or published. Files with the type `image/svg+xml`
+(or another XML type) or a filename ending in `.svg` are treated as SVG and are
+stored as `image/svg+xml`.
+
+- **Kept:** shapes, paths, text, groups, `<symbol>` and `<use>` with in-document
+  `#id` references, gradients, patterns, clip paths, masks, markers, common
+  filter primitives, `<title>` and `<desc>`, `<style>` and `style` CSS, animation
+  of presentation attributes, and raster images embedded as
+  `data:image/png|jpeg|gif|webp|avif;base64`.
+- **Removed:** scripts, event handler attributes, `<foreignObject>`, links (the
+  link's content stays), DOCTYPE and entity declarations, processing
+  instructions, comments, editor metadata, any `href` that is not an in-document
+  `#id`, CSS `url()` that does not point to an `#id`, `@import`, and animation of
+  links or event handlers.
+- **Rejected:** a file that is not a well-formed SVG document, such as HTML, XML
+  whose root is not `<svg>` or compressed `.svgz`, returns HTTP 400 with
+  `media_svg_invalid`. A truncated SVG returns 422 like other corrupted uploads.
+  Nothing is published; export the file again and upload it.
+
+The stored bytes differ from the uploaded bytes. For an SVG, finalize returns the
+`sha256` and `size_bytes` of the stored file together with `svg_sanitized: true`,
+`source_sha256` (the file you sent) and `removed` (the kinds of content that were
+removed). `expected_sha256` is still the hash of the file you sent, also on retries.
+
+Sites that use the server's platform storage instead of Organization storage
+stage SVG uploads in a private bucket, because every object in the public bucket
+is reachable as soon as it is written. The sanitized file appears at `cdn_url`
+after finalize. On a self-hosted server the private bucket is `R2_PRIVATE_BUCKET`;
+without it, SVG uploads return 503 with `svg_staging_unavailable`. SVGs stored in
+that public bucket earlier are sanitized in place once, by their next finalize
+or by the backfill that runs when a site is deployed; later deploys skip files
+that already hold their recorded sanitized bytes, and a dry run changes nothing.
+A file that cannot be sanitized is served only as a download when it contains
+anything that could run or load content (scripts, event handlers, `javascript:`
+URLs, `<foreignObject>`, entity declarations, style sheets, external `href`
+values or a non-UTF-8 encoding). Otherwise it stays as it is, so an existing
+logo keeps displaying. Either way each deploy lists the file in `job.warnings`
+until you replace it with a plain SVG.
+
+The rewrite changes the bytes at an existing public URL. CDNs and browsers may
+keep serving the previous bytes until their cached copy expires, up to the
+cache lifetime of the original response (platform uploads are cached for up
+to a year). After the first deploy on Core 0.2.113, purge the media host's
+CDN cache, or at least those SVG URLs, so the sanitized files are served
+everywhere.
+SVGs that were stored in Organization or draft storage before sanitizing existed
+are sanitized when they move to Organization storage and, at the latest, when a
+publication references them: publishing stores a sanitized copy as a new
+original and publishes that. A dry-run publication checks these files without
+storing anything. An SVG that cannot be sanitized is left out of the
+publication: its bytes are not published, references to it in pages become
+empty, and the rest of the site is published. The deploy job lists each
+excluded file in `job.warnings` (`get_deploy_status`, Deploy history), naming
+the media ID and filename; upload a plain SVG, select it instead and publish
+again. Preparing a domain change rebuilds the last publication exactly, so it
+stops with HTTP 409 and `media_svg_unsanitized` while that publication contains
+an unsanitized SVG; publish the site once first. Typeroll never publishes an SVG
+that was not sanitized.
+
+In the Media library, the media picker and chat attachments, a file that finalize
+refuses because of the file itself (`media_svg_invalid`,
+`media_extension_mismatch`, HTTP 415 or 422) is removed again and the reason is
+shown, instead of leaving a broken item in the library. A concurrent change
+(`media_revision_conflict`) or a rate limit is retried; other errors, such as
+an expired sign-in, keep the uploaded file and show the reason.
+
+## File names and types
+
+When media is published on the website host, the static host chooses each file's
+`Content-Type` from its extension. A filename or `public_path` must therefore end
+in an extension that belongs to the file's type. Extensions are compared without
+regard to case.
+
+| Type                                       | Allowed extensions               |
+| ------------------------------------------ | -------------------------------- |
+| `image/jpeg`                               | `.jpg`, `.jpeg`, `.jpe`, `.jfif` |
+| `image/png`                                | `.png`                           |
+| `image/apng`                               | `.apng`, `.png`                  |
+| `image/gif`                                | `.gif`                           |
+| `image/webp`                               | `.webp`                          |
+| `image/avif`                               | `.avif`                          |
+| `image/svg+xml`                            | `.svg` (stored only sanitized)   |
+| `image/x-icon`, `image/vnd.microsoft.icon` | `.ico`                           |
+| `image/bmp`                                | `.bmp`                           |
+| `image/tiff`                               | `.tif`, `.tiff`                  |
+| `image/heic`, `image/heif`                 | `.heic`, `.heif`                 |
+| `image/jxl`                                | `.jxl`                           |
+| `application/pdf`                          | `.pdf`                           |
+
+Uploads accept images and PDFs of these types. Records from earlier imports can
+also be video (`.mp4`, `.m4v`, `.webm`, `.mov`), audio (`.mp3`, `.wav`, `.ogg`) or
+fonts (`.woff`, `.woff2`).
+
+- Uploads and imports (`upload-url`, `create_upload_url`, `upload_media_*`,
+  URL and WordPress imports) append the type's canonical extension when the
+  filename has no extension or one that belongs to another type: `logo`
+  uploaded as `image/png` is stored as `logo.png`, `photo.html` as
+  `photo.html.png`, and `render.php` imported as `image/png` as
+  `render.php.png`. The response's `filename` is the stored name. Types outside
+  the table return HTTP 415 with `media_type_unsupported`, and nothing is
+  created.
+- Renames are not corrected. `PATCH /api/v1/sites/{siteId}/media/{mediaId}`
+  (`update_media`) and the Media library return HTTP 400 with
+  `media_extension_mismatch` when a changed `filename` or `public_path` does not
+  end in an extension of the stored type. Unchanged values are accepted, so
+  older records stay editable.
+- Publishing never serves a file under an extension that does not match its type.
+  An older record whose name or `public_path` does not match is published with
+  the type's extension appended, for example `/photo.html.png`, and its page
+  references are rewritten to that address. A record of any other type is
+  published as a download with `.bin` appended. Earlier publications' files
+  with mismatched names, or unsanitized SVGs, are not published again.
+
+Published websites send `X-Content-Type-Options: nosniff` for every file. Files
+ending in `.svg`, `.SVG`, `.svgz`, `.xhtml` or `.xht` also receive
+`Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:`,
+so an SVG opened directly cannot run script on the website's address. SVGs used
+in `<img>` or CSS display as before. PDFs are not sandboxed, so browsers keep
+showing them inline.
 
 ## `get_import_readiness`
 

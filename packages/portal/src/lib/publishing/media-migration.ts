@@ -11,6 +11,7 @@ import { adoptCustomerPublishingForMedia, retainsManagedMedia } from './media-po
 import { storageClient } from './media-storage';
 import { mediaTransfers, transferReservation, transferPath } from '../media/transfer';
 import { replacePublicationReferences } from './media-manifest';
+import { requiresSvgSanitization, sanitizeSvgObject, SvgRejectedError, SVG_MEDIA_TYPE, type SvgSanitizedMarker } from '../media/svg-media';
 
 const hash = (input: string | Uint8Array) => createHash('sha256').update(input).digest('hex');
 const migrationPath = (orgId: string) => `publishing_media_migrations/${hash(orgId)}`;
@@ -165,13 +166,29 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
                     const prefix = await siteMediaPrefix(orgId, site.id);
                     const temporaryKey = `transfer-staging/${prefix}/${randomUUID()}`;
                     const sourceUrl = await getSignedUrl(source, new GetObjectCommand({ Bucket: sourceLocation.bucket, Key: sourceLocation.key }), { expiresIn: 600 });
-                    const receipt = await copyWithTransferService({ orgId, sourceUrl, client: target, bucket: destination.bucket, key: temporaryKey,
+                    let receipt = await copyWithTransferService({ orgId, sourceUrl, client: target, bucket: destination.bucket, key: temporaryKey,
                       contentType: media.mime_type ?? 'image/jpeg', expectedSha256: media.sha256, expectedSize: media.size_bytes });
+                    // Organization storage holds SVG only in sanitized form. The
+                    // sanitizer rewrites the staging object and pins the read to
+                    // the verified copy; a file it cannot make inert is copied
+                    // unchanged, stays private and is refused at publish time.
+                    let svg: { mime_type: string; svg_sanitized: SvgSanitizedMarker } | null = null;
+                    if (requiresSvgSanitization(media)) {
+                      try {
+                        const sanitized = await sanitizeSvgObject(target, { bucket: destination.bucket, key: temporaryKey, etag: receipt.etag,
+                          expectedSha256: receipt.sha256, expectedSize: receipt.size, cacheControl: 'private, no-store' });
+                        receipt = { ...receipt, sha256: sanitized.sha256, size: sanitized.size, etag: sanitized.etag };
+                        svg = { mime_type: SVG_MEDIA_TYPE, svg_sanitized: { source_sha256: sanitized.source_sha256, sha256: sanitized.sha256, removed: sanitized.removed } };
+                      } catch (error) {
+                        if (!(error instanceof SvgRejectedError)) throw error;
+                        console.warn(`[media-migration] SVG ${media.id} could not be sanitized; it stays private until it is uploaded again`);
+                      }
+                    }
                     const digest = receipt.sha256;
                     const key = `private/${prefix}/originals/${digest}/${media.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
                     // Freeze exactly the verified staging object without downloading its bytes into the portal.
                     await target.send(new CopyObjectCommand({ Bucket: destination.bucket, Key: key, CopySource: `${destination.bucket}/${temporaryKey}`,
-                      CopySourceIfMatch: receipt.etag, ContentType: media.mime_type, CacheControl: 'private, no-store', MetadataDirective: 'REPLACE', Metadata: { sha256: digest } }), { abortSignal: AbortSignal.timeout(20_000) });
+                      CopySourceIfMatch: receipt.etag, ContentType: svg?.mime_type ?? media.mime_type, CacheControl: 'private, no-store', MetadataDirective: 'REPLACE', Metadata: { sha256: digest } }), { abortSignal: AbortSignal.timeout(20_000) });
                     await target.send(new DeleteObjectCommand({ Bucket: destination.bucket, Key: temporaryKey }), { abortSignal: AbortSignal.timeout(20_000) }).catch(() => {});
                     const cdnUrl = `${process.env.PORTAL_PUBLIC_URL?.replace(/\/$/, '')}/api/sites/${encodeURIComponent(site.id)}/media/${media.id}/content`;
                     const aliases = [...new Set([...(media.source_aliases ?? []), media.cdn_url, ...(media.variants ?? []).map(variant => variant.cdn_url)])];
@@ -181,7 +198,7 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
                       current => current.r2_key === media.r2_key && JSON.stringify(current.storage) === JSON.stringify(media.storage),
                       { storage: { ...destination, key, generation: connection.revision, state: 'ready', grant_expires_at: new Date().toISOString() }, r2_key: key,
                         migration_source: { provider: sourceLocation.provider, account_id: sourceLocation.account_id, bucket: sourceLocation.bucket, key: sourceLocation.key },
-                        cdn_url: cdnUrl, source_aliases: aliases, sha256: digest, size_bytes: receipt.size, variants: [] });
+                        cdn_url: cdnUrl, source_aliases: aliases, sha256: digest, size_bytes: receipt.size, variants: [], ...(svg ?? {}) });
                     if (!changed) pending++;
                     media = (await store.getDoc<Media>(`${paths.media(orgId, site.id)}/${media.id}`)) ?? media;
                   } finally { source.destroy(); }

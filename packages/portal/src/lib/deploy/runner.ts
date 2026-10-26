@@ -44,6 +44,8 @@ import { getHostingAdapter } from '../hosting';
 import { isCanonicalReady } from '../site-public-urls';
 import type { DeployResult } from '../hosting';
 import { buildPagesHeaders } from './pages-headers';
+import { requiresSvgSanitization } from '../media/file-types';
+import type { SvgMedia } from '../media/svg-media';
 import { liveDeploymentUpdate } from './live-state';
 import { stampPublication } from './availability';
 import type { DeploymentAvailability } from '@typeroll/shared';
@@ -137,7 +139,7 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   //    short-circuit). Best-effort: deploys don't fail if a single
   //    image can't be finalized.
   await phase('backfilling media variants');
-  await backfillMediaVariants(args.orgId, args.siteId);
+  warnings.push(...await backfillMediaVariants(args.orgId, args.siteId, { buildOnly: args.buildOnly === true }));
 
   // 1. Write content into a temp fixtures dir.
   await phase('materializing content');
@@ -448,7 +450,7 @@ async function measureOutput(dir: string): Promise<{ outputBytes?: number; outpu
  * that ships uncached images is still better than a deploy that doesn't
  * ship at all.
  */
-async function backfillMediaVariants(orgId: string, siteId: string): Promise<void> {
+export async function backfillMediaVariants(orgId: string, siteId: string, options: { buildOnly?: boolean } = {}): Promise<string[]> {
   const accountId = process.env.R2_ACCOUNT_ID;
   const bucket = process.env.R2_BUCKET;
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
@@ -457,11 +459,12 @@ async function backfillMediaVariants(orgId: string, siteId: string): Promise<voi
   if (!accountId || !bucket || !accessKeyId || !secretAccessKey || !publicBase) {
     // R2 not configured (self-hosted-without-R2, dev). Skip silently —
     // there's nothing for finalize to act on either.
-    return;
+    return [];
   }
 
   const store = getStore();
   const media = await store.listDocs<Record<string, unknown>>(paths.media(orgId, siteId));
+  const warnings: string[] = [];
   // Pre-filter so we only log the count of things that actually need
   // backfilling. A site with 1000 already-finalized images shouldn't
   // log "backfilling 0 images" — it should log nothing.
@@ -470,11 +473,23 @@ async function backfillMediaVariants(orgId: string, siteId: string): Promise<voi
     const r2Key = (m as { r2_key?: string }).r2_key;
     const mime = (m as { mime_type?: string }).mime_type;
     if (!r2Key) return false; // legacy doc without r2_key — can't finalize
+    if (!(m as { storage?: unknown }).storage && requiresSvgSanitization(m as { mime_type?: string; filename?: string })) {
+      // Platform-storage SVG: rewritten in place once. A sanitized marker means
+      // the public object already holds the recorded sanitized bytes.
+      const record = m as Pick<SvgMedia, 'svg_sanitized' | 'svg_staging_key' | 'svg_unsanitized' | 'filename'> & { id?: string };
+      if (record.svg_unsanitized) {
+        warnings.push(`SVG media ${record.id} (${record.filename}) could not be sanitized and is ${record.svg_unsanitized.quarantined ? 'served only as a download' : 'served unchanged (no script content found)'}. Upload a plain SVG and select it instead.`);
+        return false;
+      }
+      // A dry run never rewrites public files or records.
+      if (options.buildOnly) return false;
+      return !record.svg_sanitized?.sha256 || !!record.svg_staging_key;
+    }
     if (mime && !mime.startsWith('image/')) return false; // PDF etc.
     return !Array.isArray(variants) || variants.length === 0;
   });
   if (needsBackfill.length === 0) {
-    return;
+    return warnings;
   }
   console.log(`[deploy] backfilling variants for ${needsBackfill.length} media doc(s)…`);
 
@@ -492,9 +507,12 @@ async function backfillMediaVariants(orgId: string, siteId: string): Promise<voi
     } catch (e) {
       failed++;
       console.warn(`[deploy] finalize ${id} failed: ${e instanceof Error ? e.message : String(e)}`);
+      const after = await store.getDoc<SvgMedia>(`${paths.media(orgId, siteId)}/${id}`).catch(() => null);
+      if (after?.svg_unsanitized) warnings.push(`SVG media ${id} (${after.filename}) could not be sanitized and is ${after.svg_unsanitized.quarantined ? 'served only as a download' : 'served unchanged (no script content found)'}. Upload a plain SVG and select it instead.`);
     }
   }
   console.log(`[deploy] backfill done: ${ok} ok, ${failed} failed`);
+  return warnings;
 }
 
 // Exported for lib/export.ts (customer content export downloads the same

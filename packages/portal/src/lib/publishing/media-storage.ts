@@ -10,6 +10,7 @@ import { getConnection, connectionSummary, openCredentials, ConnectionError } fr
 import type { CloudflareCredentials } from './cloudflare-connection';
 
 import { adoptCustomerPublishingForMedia } from './media-policy';
+import { requiresSvgSanitization, withMediaExtension } from '../media/file-types';
 
 type Location = NonNullable<Media['storage']>;
 const MAX_BYTES = 25 * 1024 * 1024;
@@ -54,12 +55,16 @@ async function uploadDestination(orgId: string) {
 export async function createMediaUpload(orgId: string, siteId: string, input: { filename: string; contentType: string; size?: number; altText?: string; actor: string }) {
   if (typeof input.filename !== 'string' || !input.filename || input.filename.length > 255 || typeof input.contentType !== 'string' ||
       !/^(image\/[a-zA-Z0-9.+-]+|application\/pdf)$/.test(input.contentType)) throw new ConnectionError('Choose an image or PDF with a valid filename.', 415);
+  // Static hosts serve a file by its extension: a name without the type's
+  // extension gets it appended (415 for a type that cannot be published).
+  const filename = withMediaExtension(input.filename, input.contentType);
+  if (filename.length > 255) throw new ConnectionError('Choose an image or PDF with a valid filename.', 415);
   if (input.size !== undefined && (!Number.isSafeInteger(input.size) || input.size < 1 || input.size > MAX_BYTES)) throw new ConnectionError('The file must be between 1 byte and 25 MB.', 413);
   const uploadTtl = await organizationUploadTtl(orgId);
   const destination = await uploadDestination(orgId);
   const prefix = await siteMediaPrefix(orgId, siteId);
   const id = randomUUID();
-  const key = `private/${prefix}/uploads/${id}/${input.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+  const key = `private/${prefix}/uploads/${id}/${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
   const storage: Location = { ...destination, key, state: 'uploading', grant_expires_at: new Date(Date.now() + uploadTtl * 1000).toISOString() };
   const r2 = await storageClient(orgId, storage);
   try {
@@ -73,10 +78,10 @@ export async function createMediaUpload(orgId: string, siteId: string, input: { 
     }
     const cdnUrl = `${base}/api/sites/${encodeURIComponent(siteId)}/media/${id}/content`;
     await getStore().createDocIfMissing(`${paths.media(orgId, siteId)}/${id}`, {
-      filename: input.filename, mime_type: input.contentType, size_bytes: input.size, alt_text: input.altText,
+      filename, mime_type: input.contentType, size_bytes: input.size, alt_text: input.altText,
       uploaded_by: input.actor, created_at: new Date().toISOString(), cdn_url: cdnUrl, r2_key: key, storage,
     });
-    return { uploadUrl, cdnUrl, key, mediaId: id, storage: destination.provider, expiresIn: uploadTtl };
+    return { uploadUrl, cdnUrl, key, mediaId: id, filename, storage: destination.provider, expiresIn: uploadTtl };
   } finally { r2.destroy(); }
 }
 
@@ -124,6 +129,10 @@ export async function finalizeTransferredMedia(orgId: string, siteId: string, me
 }
 async function freezeVerifiedMedia(orgId: string, siteId: string, mediaId: string, r2: S3Client, media: Media, { sha256, size, etag }: Pick<TransferReceipt, 'sha256' | 'size' | 'etag'>) {
   const location = media.storage!, store = getStore(), path = `${paths.media(orgId, siteId)}/${mediaId}`;
+    // SVG is frozen only as the exact bytes the sanitizer wrote (lib/media/svg-media.ts).
+    if (requiresSvgSanitization(media) && (media as Media & { svg_sanitized?: { sha256?: string } }).svg_sanitized?.sha256 !== sha256) {
+      throw new ConnectionError('This SVG has not been sanitized. Finalize it through the media finalize endpoint so it can be made safe.', 409, 'media_svg_unsanitized');
+    }
     const prefix = await siteMediaPrefix(orgId, siteId);
     const key = `private/${prefix}/originals/${sha256}/${media.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
     await r2.send(new CopyObjectCommand({ Bucket: location.bucket, Key: key, CopySource: `${location.bucket}/${location.key}`,

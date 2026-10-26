@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Media } from '@typeroll/shared';
 import MediaDetail from './MediaDetail';
+import { finalizeUpload } from '../lib/media/client-upload';
 
 interface UploadState {
   id: string;
@@ -319,22 +320,11 @@ async function uploadOne(
     xhr.send(file);
   });
 
-  // 3. Finalize: apply immutable Cache-Control to the R2 original and
-  //    generate AVIF/WebP responsive variants. Best-effort — without it
-  //    the image works but Lighthouse will flag both cache lifetimes and
-  //    image delivery. We don't block the upload UX on failure (the user
-  //    can re-run via the bulk finalize endpoint later).
-  if (presignData.finalizeUrl) {
-    try {
-      const finalize = await fetch(presignData.finalizeUrl, { method: 'POST' });
-      if (!finalize.ok) {
-        const body = await finalize.text().catch(() => '');
-        console.warn(`[media-finalize] ${file.name} finalize returned ${finalize.status}: ${body}`);
-      }
-    } catch (e) {
-      console.warn(`[media-finalize] ${file.name} finalize threw:`, e);
-    }
-  }
+  // 3. Finalize: verify the upload (organization storage keeps it private
+  //    until then), sanitize SVG, and apply cache headers or queue variants.
+  //    A refused file (for example an SVG that cannot be made safe) is
+  //    deleted again and its reason shown in the upload list.
+  await finalizeUpload(siteId, presignData);
 
   // 4. The upload-url endpoint already pre-registered a media doc. We don't
   // get its id back from the signed-URL call (by design — keeps the surface

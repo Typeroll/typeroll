@@ -2,7 +2,13 @@ import type { APIRoute } from 'astro';
 import { paths, type Extension, type ExtensionVersion } from '@typeroll/shared';
 import { json } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
-import { ExtensionRegistryError, normalizeExtensionTrustedOrigins, updateExtensionDistribution } from '../../../../../lib/extensions/registry';
+import {
+  claimExtensionIdReservation,
+  ExtensionRegistryError,
+  normalizeExtensionTrustedOrigins,
+  readExtensionIdReservation,
+  updateExtensionDistribution,
+} from '../../../../../lib/extensions/registry';
 import { requireDeveloperAccess } from '../../../../../lib/extensions/developer-access';
 import { parseAllowedSiteIds } from '../../../../../lib/extensions/allowed-site-ids';
 
@@ -21,7 +27,9 @@ export const GET: APIRoute = async ({ request, cookies, params }) => {
   if (!extension) return json({ error: 'Extension not found' }, 404);
   const versions = await getStore().listDocs<ExtensionVersion>(paths.extensionVersions(developer.orgId, extensionId));
   const { client_secret_hash: _secret, ...safe } = extension;
-  return json({ extension: safe, versions });
+  // developer_org_id is the value of the `developer_org_id` claim in every
+  // token Typeroll issues for this Extension's installations.
+  return json({ extension: safe, versions, id_reservation: await readExtensionIdReservation(developer.orgId, extensionId) });
 };
 
 export const PATCH: APIRoute = async ({ request, cookies, params }) => {
@@ -43,6 +51,7 @@ export const PATCH: APIRoute = async ({ request, cookies, params }) => {
     if (Array.isArray(body.trusted_origins)) {
       update.trusted_origins = normalizeExtensionTrustedOrigins(body.trusted_origins.map(String));
     }
+    await claimExtensionIdReservation(developer.orgId, extensionId);
     let current = extension;
     if (body.distribution !== undefined) {
       current = await updateExtensionDistribution({

@@ -176,7 +176,8 @@ client conversation after refreshing the connector catalog. Do not bypass schema
 validation, change domain settings or reconnect Cloudflare merely to refresh MCP.
 
 A media item's `public_path` can retain an old path such as
-`/wp-content/uploads/2024/photo.jpg`. The next publication uses the selected
+`/wp-content/uploads/2024/photo.jpg`; it must end in an extension that matches
+the file's type. The next publication uses the selected
 active host and paths; saved future hosts take effect only through explicit
 domain preparation and cutover. Existing organization media links and previously
 published aliases remain usable; changing a preferred host does not invalidate
@@ -204,6 +205,12 @@ publication. If newer content is published at the current address, the candidate
 becomes outdated: prepare again before switching traffic. The candidate contains
 the last published content and indexing settings, not unpublished CMS changes.
 See [publication destination](../../guides/customer-publishing/#future-hosts-and-the-publication-destination).
+
+Because the candidate rebuilds the last publication exactly, preparation stops
+with HTTP 409 and `media_svg_unsanitized` when that publication still contains
+an SVG stored before Typeroll sanitized SVG files (Core 0.2.113). Publish the
+site once at the current address, which stores and publishes a sanitized copy,
+then prepare the domain change again.
 
 When a host already serves another website, Cloudflare Pages validates it only
 after its record points at Pages. Typeroll then asks you to accept a short

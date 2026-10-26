@@ -1,3 +1,15 @@
+// Pages and static media share the website origin and Pages picks a file's
+// Content-Type from its extension. Media names are restricted to extensions
+// that match their type (portal lib/media/file-types.ts) and SVG is stored
+// only sanitized; as defense in depth, an SVG or XHTML document opened
+// directly is sandboxed so it can never run script in the website origin.
+// Embedding as <img> or a CSS image is unaffected. PDFs are deliberately not
+// sandboxed: browsers refuse to show a sandboxed PDF inline. Pages matches
+// rules case-sensitively, so both common spellings of .svg are listed.
+// `X-Content-Type-Options: nosniff` on /* covers every response.
+const SCRIPTABLE_DOCUMENT_PATTERNS = ['/*.svg', '/*.SVG', '/*.svgz', '/*.xhtml', '/*.xht'];
+const SCRIPTABLE_DOCUMENT_POLICY = "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:";
+
 // Mutable URLs must revalidate after publication. Pages appends headers from
 // overlapping patterns, so immutable assets must first detach this policy.
 const BASE_HEADERS = [
@@ -15,6 +27,7 @@ const BASE_HEADERS = [
   '  ! Cache-Control',
   '  Cache-Control: public, max-age=31536000, immutable, no-transform',
   '',
+  ...SCRIPTABLE_DOCUMENT_PATTERNS.flatMap(pattern => [pattern, `  Content-Security-Policy: ${SCRIPTABLE_DOCUMENT_POLICY}`, '']),
 ];
 
 /** Pages indexes rules by pattern; repeated patterns discard earlier headers. */

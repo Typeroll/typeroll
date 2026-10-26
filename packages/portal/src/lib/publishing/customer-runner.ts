@@ -294,7 +294,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
       // Media originals and metadata for a domain-only build come from the public snapshot too.
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
-      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains });
+      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true });
+      // Non-blocking findings (for example media left out of this publication) stay on the job for users and agents.
+      if (mapped.warnings.length) await store.updateDoc(jobPath, { warnings: mapped.warnings });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
       const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
       // Links to a redirect host (for example https://www.example.com/page) are frozen as links to the website host.

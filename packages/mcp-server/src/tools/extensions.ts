@@ -163,7 +163,7 @@ export const developerExtensionTools: ToolDef[] = [
   },
   {
     name: 'read_developer_extension', noSite: true,
-    description: 'Read one of your organization\'s Extensions with all saved releases and their status (draft, review, published, deprecated, revoked). Requires an organization API key.',
+    description: 'Read one of your organization\'s Extensions with all saved releases and their status (draft, review, published, deprecated, revoked). extension.developer_org_id is the value of the developer_org_id claim in every token Typeroll issues for its installations: provider backends must require it in addition to aud. id_reservation is reserved, unreserved (a registration that predates reservations; any update claims it) or held_by_other (another developer organization holds this id). Requires an organization API key.',
     inputSchema: { extension_id: z.string().min(1) },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.developer('GET', ext(args.extension_id)))),
   },

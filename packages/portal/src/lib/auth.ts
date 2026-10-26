@@ -21,11 +21,17 @@
 // page and its resend/confirm endpoints, /login and the middleware redirect.
 // Cookies issued before this gate existed are re-checked on every request; a
 // missing claim counts as unconfirmed.
+//
+// Sign-out: /api/auth/logout revokes the cookie's Firebase sign-in in a
+// server-side denylist (lib/session-revocation.ts) before deleting the cookie,
+// so a copied cookie stops working too. Firebase refresh tokens are not
+// revoked: that would end the person's other devices and OAuth/MCP keys.
 
 import type { AstroCookies } from 'astro';
 import { resolveOrganizationSession, clearOrganization } from './organization-session';
 import { readE2ESessionCookie } from './e2e-auth';
 import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
+import { MAX_SESSION_COOKIE_LIFETIME_MS, isSignInRevoked, recordSignInLineage, revokeSignIn, signInKey, signInRootKey } from './session-revocation';
 
 export interface Session {
   userId: string;
@@ -114,16 +120,49 @@ export async function getSessionIdentity(cookies: AstroCookies): Promise<Session
   }
 
   try {
-    const { getAuth } = await import('firebase-admin/auth');
-    const app = await getFirebaseAdminApp();
-
-    // A failed revocation lookup must never restore access for disabled,
-    // deleted or revoked users. The outer catch rejects the session.
-    const decoded = await getAuth(app).verifySessionCookie(raw, true);
+    const decoded = await verifiedSessionClaims(cookies, raw);
+    if (!decoded) return null;
     return await identityFromClaims(cookies, decoded, typeof decoded.exp === 'number' ? decoded.exp * 1000 : undefined);
   } catch {
     return null;
   }
+}
+
+type VerifiedClaims = IdentityClaims & { exp?: number };
+
+/**
+ * Verified claims of a Firebase session cookie, memoized per request.
+ *
+ * Middleware, guards and the page or route all read the session; Firebase
+ * verification (with its revocation check) and the sign-out denylist read
+ * run once per request. Astro creates one cookies object per request and
+ * shares it between middleware and the page, so the memo lives exactly as
+ * long as the request and is never shared across requests. It is keyed by
+ * the cookie value, so a cookie set or deleted during the request is
+ * verified again; revokeCurrentSession() clears it.
+ */
+const verifiedSessions = new WeakMap<object, Map<string, Promise<VerifiedClaims | null>>>();
+
+function verifiedSessionClaims(cookies: AstroCookies, raw: string): Promise<VerifiedClaims | null> {
+  let byValue = verifiedSessions.get(cookies);
+  if (!byValue) { byValue = new Map(); verifiedSessions.set(cookies, byValue); }
+  let verified = byValue.get(raw);
+  if (!verified) {
+    verified = (async () => {
+      const { getAuth } = await import('firebase-admin/auth');
+      const app = await getFirebaseAdminApp();
+      // A failed revocation lookup must never restore access for disabled,
+      // deleted or revoked users: every error rejects the session.
+      const decoded = await getAuth(app).verifySessionCookie(raw, true);
+      // Signed out on this browser or another copy of the same sign-in
+      // (lib/session-revocation.ts). A failed lookup rejects the session too.
+      const key = signInKey(decoded);
+      if (key && await isSignInRevoked(key)) return null;
+      return decoded as VerifiedClaims;
+    })().catch(() => null);
+    byValue.set(raw, verified);
+  }
+  return verified;
 }
 
 async function confirmedIdentity(cookies: AstroCookies, session: Session): Promise<SessionIdentity> {
@@ -162,7 +201,7 @@ async function identityFromClaims(cookies: AstroCookies, decoded: IdentityClaims
 // burned more than a day of its lifetime, the next page view re-mints it for
 // a fresh 14 days. Active users never hit the cliff; an abandoned session
 // still dies within 14 days of the last visit.
-export const SESSION_LIFETIME_MS = 14 * 24 * 60 * 60 * 1000;
+export const SESSION_LIFETIME_MS = MAX_SESSION_COOKIE_LIFETIME_MS;
 const SESSION_REFRESH_AFTER_MS = 24 * 60 * 60 * 1000; // refresh at most ~daily
 
 export function sessionNeedsRefresh(session: Session, now = Date.now()): boolean {
@@ -181,6 +220,9 @@ export async function setSessionFromIdToken(
   const decoded = await getAuth(app).verifyIdToken(idToken, true);
   const age = Date.now() / 1000 - decoded.auth_time;
   if (!Number.isFinite(age) || age < -60 || age > 300) throw new Error('Recent sign-in required');
+  // A sign-in that was already signed out cannot be exchanged again.
+  const key = signInKey(decoded);
+  if (key && await isSignInRevoked(key)) throw new Error('Session was signed out');
   const sessionCookie = await getAuth(app).createSessionCookie(idToken, { expiresIn });
 
   // An unconfirmed account still receives a cookie, but getSession() refuses
@@ -208,11 +250,43 @@ export function clearSession(cookies: AstroCookies): void {
 }
 
 /**
+ * Sign-out on the server: revoke the Firebase sign-in behind the current
+ * cookie so copies of it (and cookies refreshed from them) stop working. The
+ * person's other sign-ins and their OAuth/MCP connections are unaffected,
+ * because Firebase refresh tokens are not revoked. Dev and E2E sessions have
+ * no Firebase sign-in; clearing their cookie is enough. Returns whether a
+ * sign-in was revoked. Throws when the denylist cannot be written.
+ */
+export async function revokeCurrentSession(cookies: AstroCookies): Promise<boolean> {
+  const raw = cookies.get(SESSION_COOKIE)?.value;
+  if (!raw || raw === 'dev' || readE2ESessionCookie(raw) || !isFirebaseConfigured()) return false;
+  const { getAuth } = await import('firebase-admin/auth');
+  let decoded;
+  try {
+    // Signature and expiry only: a disabled account can still sign out.
+    decoded = await getAuth(await getFirebaseAdminApp()).verifySessionCookie(raw, false);
+  } catch {
+    return false; // Expired or forged: nothing that could still sign in.
+  }
+  const key = signInKey(decoded);
+  if (!key) return false;
+  // Later reads in this request must see the revocation.
+  verifiedSessions.delete(cookies);
+  await revokeSignIn(key);
+  verifiedSessions.delete(cookies);
+  return true;
+}
+
+/**
  * Refreshes the session cookie for a user server-side, picking up any custom
  * claim changes (e.g. a newly-set org_id) or a newly confirmed email address
  * without requiring the client to have an active Firebase SDK auth state.
  *
- * Throws if the Firebase API key is missing or the REST exchange fails.
+ * The request must carry this user's current, valid and not signed-out
+ * session cookie; the new cookie is recorded as a continuation of its sign-in.
+ *
+ * Throws if the Firebase API key is missing, the current cookie is missing,
+ * invalid or signed out, or the REST exchange fails.
  */
 export async function refreshSessionForUser(
   cookies: AstroCookies,
@@ -221,12 +295,26 @@ export async function refreshSessionForUser(
 ): Promise<void> {
   const { getAuth } = await import('firebase-admin/auth');
   const app = await getFirebaseAdminApp();
+
+  // Only the browser's own, still valid sign-in may be re-minted. A signed-out
+  // cookie (or a copy of one) must never turn into a fresh one.
+  const raw = cookies.get(SESSION_COOKIE)?.value;
+  if (!raw) throw new Error('No session cookie to refresh');
+  const current = await getAuth(app).verifySessionCookie(raw, true);
+  if (current.uid !== userId) throw new Error('Session cookie belongs to another user');
+  const currentKey = signInKey(current);
+  const rootKey = currentKey ? await signInRootKey(currentKey) : null;
+  if (currentKey && rootKey && (await isSignInRevoked(currentKey) || await isSignInRevoked(rootKey))) {
+    throw new Error('Session was signed out');
+  }
+
   const idToken = await idTokenForUser(userId, firebaseApiKey);
 
   // Every caller refreshes a confirmed account (rolling refresh, new
   // Organization claims, a just-confirmed email). Never replace a working
   // cookie with one the email gate would reject.
-  if (!hasConfirmedEmail(await getAuth(app).verifyIdToken(idToken))) {
+  const refreshed = await getAuth(app).verifyIdToken(idToken);
+  if (!hasConfirmedEmail(refreshed)) {
     throw new Error('Refreshed identity has no confirmed email');
   }
 
@@ -234,6 +322,10 @@ export async function refreshSessionForUser(
   // the response. This replaces the old cookie and its claims.
   const expiresIn = SESSION_LIFETIME_MS;
   const sessionCookie = await getAuth(app).createSessionCookie(idToken, { expiresIn });
+  // The custom-token exchange is a new Firebase sign-in with its own
+  // auth_time: link it to the sign-in it continues so sign-out revokes both.
+  const refreshedKey = signInKey(refreshed);
+  if (rootKey && refreshedKey) await recordSignInLineage(refreshedKey, rootKey);
   setSessionCookie(cookies, sessionCookie, expiresIn);
 }
 
