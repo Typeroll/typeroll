@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 // POST /api/v1/sites/{siteId}/preview-link
 //
 // Mints a signed URL the agent can paste into its own browser/Playwright
@@ -66,6 +67,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const url = `${origin}${path}${path.includes('?') ? '&' : '?'}t=${encodeURIComponent(token)}`;
   return apiResponse(ctx, {
     url,
+    frame_url: `${url}&frame=1&bridge=${randomUUID()}`,
+    frame_limitations: 'Rendering-only QA. Use url for Extension state, navigation and parent-bridge interactions.',
     expires_at: expiresAt,
     version_id: ctx.versionId,
     include_working_copy: body.include_working_copy === true,

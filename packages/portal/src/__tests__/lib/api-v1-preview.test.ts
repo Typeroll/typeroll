@@ -85,7 +85,11 @@ describe('POST /v1/.../preview-link', () => {
       { siteId: SITE },
       { headers: bearer(token), body: { page_id: 'home' } },
     );
-    const body = await res.json() as { url: string };
+    const body = await res.json() as { url: string; frame_url: string };
+    const frameUrl = new URL(body.frame_url);
+    expect(frameUrl.searchParams.get('t')).toBe(new URL(body.url).searchParams.get('t'));
+    expect(frameUrl.searchParams.get('frame')).toBe('1');
+    expect(frameUrl.searchParams.get('bridge')).toMatch(/^[a-f0-9-]{36}$/);
     expect(body.url).toMatch(new RegExp(`/preview/${SITE}/?\\?t=`));
   });
 

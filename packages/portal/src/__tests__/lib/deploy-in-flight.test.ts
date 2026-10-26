@@ -30,6 +30,11 @@ describe('findActiveDeploy', () => {
     const pending = job({ id: 'external', execution_backend, started_at: new Date(NOW - DEPLOY_STALE_AFTER_MS - 1).toISOString() });
     expect(findActiveDeploy([pending], NOW)?.id).toBe('external');
   });
+  it('does not let a domain candidate block normal publication', () => {
+    const candidate = { ...job({ id: 'candidate', execution_backend: 'customer_git' }), publication_intent: 'domain_prepare' };
+    expect(findActiveDeploy([candidate], NOW)).toBeNull();
+    expect(findActiveDeploy([candidate, job({ id: 'normal' })], NOW)?.id).toBe('normal');
+  });
   it('finds a running build', () => {
     expect(findActiveDeploy([job({ id: 'a' })], NOW)?.id).toBe('a');
   });

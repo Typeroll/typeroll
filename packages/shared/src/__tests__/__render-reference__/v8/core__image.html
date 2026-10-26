@@ -1,4 +1,4 @@
-<figure data-block="image" data-fit="contain" data-aspect="auto" data-w="normal" data-align="center" data-caption-align="center" data-radius="none" style="--scale_percent:100;--focal_x:50;--focal_y:50" data-presentation="core%2Fimage">
+<figure data-block="image" data-fit="contain" data-aspect="auto" data-w="normal" data-no-upscale="false" data-align="center" data-caption-align="center" data-radius="none" style="--scale_percent:100;--focal_x:50;--focal_y:50" data-presentation="core%2Fimage">
   <span class="block-image-frame"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /></span>
   <figcaption class="block-image-caption"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></figcaption>
 </figure>
@@ -49,6 +49,7 @@
 [data-block="image"] .block-image-frame { display:block;overflow:hidden; }
 [data-block="image"] .block-image-link { display:block; }
 [data-block="image"] .block-image-link:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
+[data-block="image"][data-no-upscale="true"] .block-image-frame img { width:auto; max-width:100%; left:0; transform:none; }
 [data-block="image"] .block-image-frame img { width:calc(var(--scale_percent,100) * 1%);max-width:none;position:relative;left:calc(var(--focal_x,50) * 1%);transform:translateX(calc(var(--focal_x,50) * -1%));aspect-ratio:var(--image-aspect,auto);object-fit:var(--image-fit,contain);object-position:calc(var(--focal_x,50) * 1%) calc(var(--focal_y,50) * 1%); }
 [data-block="image"] img { margin:0; border-radius:0; object-fit:contain; display: block; width: 100%; height: auto; }
 [data-block="image"][data-radius="md"] img { border-radius: 0.5rem; }

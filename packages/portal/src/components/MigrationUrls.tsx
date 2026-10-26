@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { MigrationUrl } from '@typeroll/shared';
 
-type UrlStatus = 'migrated' | 'redirected' | 'excluded' | 'unhandled';
+type UrlStatus = 'migrated' | 'redirected' | 'excluded' | 'unhandled' | 'matched_draft';
 
 interface AnalyzedUrl extends MigrationUrl {
   status: UrlStatus;
@@ -14,6 +14,7 @@ interface Summary {
   redirected: number;
   excluded: number;
   unhandled: number;
+  matched_draft: number;
 }
 
 interface Props {
@@ -27,6 +28,8 @@ export default function MigrationUrls({ siteId, initial }: Props) {
   const [data, setData] = useState(initial);
   const [filter, setFilter] = useState<StatusFilter>('unhandled');
   const [search, setSearch] = useState('');
+  const [sourceOrigin, setSourceOrigin] = useState('');
+  const [discoveryMessage, setDiscoveryMessage] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
 
   // Refresh from server (re-runs the classifier against current pages + redirects).
@@ -84,19 +87,39 @@ export default function MigrationUrls({ siteId, initial }: Props) {
     }
   }
 
+  async function discoverSource() {
+    setBusy('discovery'); setDiscoveryMessage('Reading public WordPress URLs…');
+    try {
+      const response = await fetch(`/api/sites/${siteId}/migration-urls/discover`, {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source_origin:sourceOrigin})});
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error ?? 'Discovery failed.');
+      setData(result.coverage);
+      setDiscoveryMessage(`Added ${result.added} URLs. ${result.discovery.coverage} ${result.discovery.truncated ? 'The discovery limit was reached. ' : ''}${result.discovery.warnings.join(' ')}`);
+    } catch (error) { setDiscoveryMessage(error instanceof Error ? error.message : 'Discovery failed.'); }
+    finally { setBusy(null); }
+  }
+
   const s = data.summary;
 
   return (
     <div className="stack">
+      <details className="card discovery">
+        <summary>Discover public WordPress URLs</summary>
+        <p>Add public pages, posts, custom types and links from up to ten source pages. Keep your sitemap, historical redirects and export inventory too.</p>
+        <label>Source website <input type="url" value={sourceOrigin} placeholder="https://example.com" onChange={event => setSourceOrigin(event.target.value)} /></label>
+        <button type="button" className="btn" disabled={busy !== null || !sourceOrigin} onClick={() => void discoverSource()}>Discover URLs</button>
+        {discoveryMessage && <p role="status">{discoveryMessage}</p>}
+      </details>
       <div className="cards-row">
         <SummaryCard label="Total" value={s.total} muted />
         <SummaryCard label="Migrated" value={s.migrated} tone="success" onClick={() => setFilter('migrated')} active={filter === 'migrated'} />
         <SummaryCard label="Redirected" value={s.redirected} tone="info" onClick={() => setFilter('redirected')} active={filter === 'redirected'} />
         <SummaryCard label="Excluded" value={s.excluded} tone="muted" onClick={() => setFilter('excluded')} active={filter === 'excluded'} />
+        <SummaryCard label="Matched draft" value={s.matched_draft ?? 0} tone="danger" onClick={() => setFilter('matched_draft')} active={filter === 'matched_draft'} />
         <SummaryCard label="Unhandled" value={s.unhandled} tone="danger" onClick={() => setFilter('unhandled')} active={filter === 'unhandled'} />
       </div>
 
-      <div className="row" style={{ justifyContent: 'space-between', gap: 8 }}>
+      <div className="migration-filters">
         <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
           <FilterChip active={filter === 'all'} onClick={() => setFilter('all')}>All</FilterChip>
           <FilterChip active={filter === 'unhandled'} onClick={() => setFilter('unhandled')}>Unhandled</FilterChip>
@@ -104,19 +127,19 @@ export default function MigrationUrls({ siteId, initial }: Props) {
           <FilterChip active={filter === 'redirected'} onClick={() => setFilter('redirected')}>Redirected</FilterChip>
           <FilterChip active={filter === 'excluded'} onClick={() => setFilter('excluded')}>Excluded</FilterChip>
         </div>
-        <div className="row" style={{ gap: 8 }}>
+        <div className="migration-search">
           <input
             type="search"
             placeholder="Filter by path"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{ padding: '0.4rem 0.75rem', border: '1px solid var(--color-border)', borderRadius: 6, minWidth: 200 }}
+            style={{ padding: '0.4rem 0.75rem', border: '1px solid var(--color-border)', borderRadius: 6 }}
           />
           <button className="btn btn--secondary btn--sm" onClick={refresh}>Recompute</button>
         </div>
       </div>
 
-      <div className="card" style={{ padding: 0 }}>
+      <div className="card migration-table" role="region" aria-label="Migration URL inventory" tabIndex={0}>
         <table className="urls-table">
           <thead>
             <tr>
@@ -219,6 +242,14 @@ function StatusBadge({ status }: { status: UrlStatus }) {
 }
 
 const styles = `
+.discovery p { margin: 0.75rem 0; }
+.discovery label { display: grid; gap: 0.4rem; margin-bottom: 0.75rem; }
+.discovery input { width: 100%; min-width: 0; box-sizing: border-box; padding: 0.5rem; border: 1px solid var(--color-border); border-radius: 6px; }
+.migration-filters { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.75rem; }
+.migration-search { display: flex; gap: 0.5rem; flex: 1 1 18rem; min-width: 0; }
+.migration-search input { flex: 1; width: 0; min-width: 0; }
+.migration-table { padding: 0; max-width: 100%; overflow-x: auto; }
+
 .cards-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));

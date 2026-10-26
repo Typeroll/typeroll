@@ -33,6 +33,43 @@ and approve its review gate only with the user's consent. This skill is the
 "power-user" path: you do it locally, mix data sources freely, and the user
 reviews each step in their terminal.
 
+## Site tokens before block overrides
+
+Core 0.2.106 / template capabilities 0.54.0 adds palette names in all colour
+fields and named typography/spacing steps. Check the connected capability
+version; on older renderers use `var(--color-surface)` rather than a bare name.
+
+Set colours and font families in site settings, then use named styles and
+palette names in blocks. Do not write hex, rgb or font-family literals in block
+content. Prefer `primary`, `secondary`, `accent`, `background`, `surface`, `text`,
+`text_light`, and `on_primary`/`on_secondary`/`on_accent` for text on brand colours.
+Use `surface_hover` for a darker interactive surface (derived automatically
+unless explicitly configured). Existing semantic roles should be reused; a
+new visual shade is not automatically a new semantic role. For a derived shade
+use `color-mix(in srgb, var(--color-surface) 92%, var(--color-primary))`.
+For an additional role not in the native palette, define a named site style
+or a site CSS variable derived from existing palette variables, and document it.
+
+Choose `heading`, `body` or `mono` for fonts. Font families belong only in the
+site's `fonts` settings. Use type-size steps `xs`, `sm`, `md`, `lg`, `xl`, `2xl`,
+`3xl`; spacing `none`, `xs`, `sm`, `md`, `lg`, `xl`; line height `tight`, `snug`,
+`normal`, `relaxed`, `loose`. Presentation fields accept responsive maps of these
+names, for example `font_size_px: {mobile: "md", desktop: "lg"}`. Read the field
+schema: counts, widths and breakpoints are not spacing steps. Pixel values are
+explicit exceptions, not the default authoring method. Configure scales in
+`design_scales`, then reuse them in role styles and blocks.
+
+Record deliberate exceptions in `decisions.md`, with source/block, reason and
+review criteria (for example white text on a photograph). Run `lint_design_tokens`
+before launch and after major design changes. It warns, never blocks launch.
+Use the starter's `scripts/typeroll/color_tokens.py` for an exact-match dry run;
+review the plan before applying it in a dedicated Version. Equal hex values can
+mean different roles: never automatically choose between background and text.
+Verify a primary/surface change in a test Version across header, footer, cards,
+menus and buttons, then restore the test settings. Do not republish automatically.
+
+
+
 ## Preconditions
 
 **Run the readiness check FIRST — before touching any content:**
@@ -148,12 +185,28 @@ place. Do not preserve them as classed raw HTML in text blocks.
 
 For each source URL:
 
-a. Fetch from WP. Prefer the helper plugin's authenticated endpoint
-   (`/wp-json/typeroll/v1/...`) if available — it bypasses
-   `show_in_rest=false` and returns ACF + builder fields. Otherwise
-   fall back to `/wp-json/wp/v2/<post-type>?slug=<slug>`.
+a. Choose access based on missing evidence, not a mandatory plugin install:
 
-b. Clean the HTML. Strip Elementor / Gutenberg / Breakdance class
+   | Source requirement | Access path |
+   | --- | --- |
+   | Public Pages, posts, media and rendered builder content exposed in REST | Public paginated `/wp-json/wp/v2/pages`, `/posts`, `/media` and rendered HTML can suffice |
+   | SEO exposed in `yoast_head_json`, visible menus/backgrounds | Public REST + rendered HTML/CSS; verify actual coverage |
+   | Private/draft content, REST-hidden types, ACF/custom fields, exact menus | Authenticated helper/export when available and authorized |
+   | REST blocked by security policy | Owner-approved helper/export; do not bypass access controls |
+   | Authoritative old slugs or plugin redirects | Owner export/helper **if supported**; a public crawl only approximates them |
+
+   Do not ask the owner to install the helper when public sources cover the scope.
+   Inventory both Pages and posts (including sitemap-excluded public records),
+   crawl internal links and inspect redirects, menus and CSS background images.
+   Do not claim the helper exports a field without reading its current contract.
+   The helper is distributed through Typeroll's documented package; do not claim
+   WordPress.org availability. Listing it there is separate publication work.
+
+b. Clean the HTML. Parse HTML and discard comments before extracting text or
+   constructing blocks (comments may contain old phone-plugin metadata). Do not
+   use regex tag removal as a text parser. Resolve relative `../` links against
+   the source URL; preserve query strings and fragments. Report missing targets
+   instead of pointing everything at the home page. Strip Elementor / Gutenberg / Breakdance class
    soup. Drop empty `<div>` and `<span>` wrappers. Keep semantic tags,
    tables, iframes from known hosts (YouTube / Vimeo / Calendly).
    Remove every `<script>`: plugin and theme JavaScript is never copied.
@@ -358,3 +411,21 @@ placeholder settings for theme decoration, preserving real featured images and
 explicit `show_image: false`. Compare actual footer link height plus gap, wrapping,
 focus and column breakpoints; compact navigation density is an intentional option.
 Verify native preview and static output on the agreed viewport boundaries.
+
+
+## Before retiring the source
+
+Follow the starter's workflows/source-media.md. Archive unused and print originals
+privately with a verified SHA-256 manifest and a restore test; do not import the
+whole archive into CMS or assume ETag means MD5. ICC-convert CMYK/TIFF derivatives,
+keep originals, and review colour/framing before uploading. Archive completion
+and URL continuity are separate acceptance checks. Do not remove old hosting
+until the owner has approved retirement.
+
+Saving future hosts must not block normal publication on the current/temporary
+address. Publish and review intended changes there first. Shortly before changing
+DNS, explicitly prepare the last published snapshot for the future hosts with
+`prepare_publishing_domain_change`. Review frozen indexing settings and approve
+traffic separately. If newer content is published while the candidate waits,
+prepare again before cutover; do not overwrite it with an outdated snapshot. Respect preserve/renew choices for owner-supplied facts;
+"timeless" wording must not invent recurring events or erase preserved copy.

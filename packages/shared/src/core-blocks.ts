@@ -48,7 +48,7 @@ const section: BlockType = {
     pixels('max_width_px', 'Inner maximum width (px)', 240),
     pixels('content_gap_px', 'Space between blocks (px)', 0, 240),
     { name: 'padding_x', type: 'select', label: 'Horizontal padding', options: ['auto', 'none', 'sm', 'md', 'lg'], default: 'auto', responsive: true, responsive_css: { auto: '--section-px:var(--content-gutter,1.25rem);', none: '--section-px:0px;', sm: '--section-px:1rem;', md: '--section-px:2rem;', lg: '--section-px:3rem;' } },
-    { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['auto', 'compact', 'none', 'sm', 'md', 'lg', 'xl'], default: 'auto' },
+    { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['auto', 'compact', 'none', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true, responsive_css: Object.fromEntries(Object.entries({ auto:'var(--section-padding,3rem)', compact:'var(--header-padding,1rem)', none:'0px', sm:'2rem', md:'4rem', lg:'6rem', xl:'8rem' }).map(([key,value]) => [key,`padding-block:${value};`])) },
     { name: 'background', type: 'color', label: 'Background color' },
     backgroundGradientField,
     { name: 'text_color', type: 'color', label: 'Text color' },
@@ -135,6 +135,7 @@ const columns: BlockType = {
     },
     { name: 'gap', type: 'select', label: 'Gap', options: ['sm', 'md', 'lg'], default: 'md' },
     pixels('gap_px', 'Column gap (px)', 0, 240),
+    pixels('content_gap_px', 'Space between blocks in each column (px)', 0, 240),
     pixels('right_width_px', 'Right column width (px)', 80, 640),
     pixels('left_width_px', 'Left column width (px)', 80, 640),
     { name: 'stack_below_px', type: 'number', label: 'Custom stacking threshold (px)', min: 320, max: 1600 },
@@ -149,7 +150,7 @@ const columns: BlockType = {
   styles: `
 [data-block="columns"] { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
 /* Allow wide tables and other scrollable content to shrink inside a track. */
-[data-block="columns"] > .block-columns-col { min-width: 0; }
+[data-block="columns"] > .block-columns-col { min-width: 0; display:flex; flex-direction:column; gap:var(--content_gap_px,var(--block-gap,1.5rem)); }
 [data-block="columns"][data-ratio="2-1"] { grid-template-columns: 2fr 1fr; }
 [data-block="columns"][data-ratio="1-2"] { grid-template-columns: 1fr 2fr; }
 [data-block="columns"][data-ratio="3-1"] { grid-template-columns: 3fr 1fr; }
@@ -202,7 +203,7 @@ const prose: BlockType = {
     pixels('paragraph_spacing_px', 'Paragraph spacing (px)', 0, 160),
     { name: 'text_align', type: 'select', label: 'Text alignment', options: ['inherit', 'start', 'center', 'end', 'justify'], default: 'inherit', responsive: true },
     { name: 'font_weight', type: 'select', label: 'Text weight', options: ['inherit', '400', '500', '600', '700'], default: 'inherit', responsive: true },
-    { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading'], default: 'inherit' },
+    { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading', 'mono'], default: 'inherit' },
     { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
   ],
   template: `<div data-block="prose" data-w="{{max_width}}" data-font="{{font}}" style="--text_align:{{text_align}};--font_weight:{{font_weight}}">{{{html}}}</div>`,
@@ -216,6 +217,7 @@ const prose: BlockType = {
 [data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
 [data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
 [data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
+[data-block="prose"][data-font="mono"] { font-family:var(--font-mono,monospace); }
 [data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: var(--h1-size, clamp(1.75rem, 1rem + 3.5vw, 3.5rem)); line-height: var(--h1-leading, 1.15); }
 [data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: var(--h2-size, clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem)); line-height: var(--h2-leading, 1.2); }
 [data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: var(--h3-size, clamp(1.25rem, 0.75rem + 2vw, 1.75rem)); line-height: var(--h3-leading, 1.25); }
@@ -433,6 +435,7 @@ const image: BlockType = {
     { name: 'caption_align', type: 'select', label: 'Caption alignment', options: ['left', 'center', 'right'], default: 'center' },
     { name: 'align', type: 'select', label: 'Image alignment', options: ['left', 'center', 'right'], default: 'center' },
     { name: 'max_width', type: 'number', label: 'Maximum width (px)', min: 1 },
+    { name: 'never_upscale', type: 'boolean', label: 'Never enlarge beyond the original image', default: false },
     { name: 'original_width', type: 'number', label: 'Original width (px)', min: 1 },
     { name: 'original_height', type: 'number', label: 'Original height (px)', min: 1 },
     { name: 'mobile_src', type: 'image', label: 'Mobile image (optional)' },
@@ -447,7 +450,7 @@ const image: BlockType = {
     pixels('spacing_before_px', 'Space before (px)', 0, 480),
     pixels('spacing_after_px', 'Space after (px)', 0, 480),
   ],
-  template: `<figure data-block="image"{{{image_spacing_attrs}}} data-fit="{{fit}}" data-aspect="{{aspect_ratio}}" data-w="{{width}}" data-align="{{align}}" data-caption-align="{{caption_align}}" data-radius="{{radius}}" style="{{image_size_style}}">
+  template: `<figure data-block="image"{{{image_spacing_attrs}}} data-fit="{{fit}}" data-aspect="{{aspect_ratio}}" data-w="{{width}}" data-no-upscale="{{never_upscale}}" data-align="{{align}}" data-caption-align="{{caption_align}}" data-radius="{{radius}}" style="{{image_size_style}}">
   {{{image_markup}}}
   <figcaption class="block-image-caption">{{{image_caption_html}}}</figcaption>
 </figure>`,
@@ -470,6 +473,7 @@ const image: BlockType = {
 [data-block="image"] .block-image-frame { display:block;overflow:hidden; }
 [data-block="image"] .block-image-link { display:block; }
 [data-block="image"] .block-image-link:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
+[data-block="image"][data-no-upscale="true"] .block-image-frame img { width:auto; max-width:100%; left:0; transform:none; }
 [data-block="image"] .block-image-frame img { width:calc(var(--scale_percent,100) * 1%);max-width:none;position:relative;left:calc(var(--focal_x,50) * 1%);transform:translateX(calc(var(--focal_x,50) * -1%));aspect-ratio:var(--image-aspect,auto);object-fit:var(--image-fit,contain);object-position:calc(var(--focal_x,50) * 1%) calc(var(--focal_y,50) * 1%); }
 [data-block="image"] img { margin:0; border-radius:0; object-fit:contain; display: block; width: 100%; height: auto; }
 [data-block="image"][data-radius="md"] img { border-radius: 0.5rem; }
@@ -562,9 +566,9 @@ const templateContentSlot: BlockType = {
   schema: [
     ...articleHeadingFields,
     { name: 'max_width', type: 'select', label: 'Content width', options: ['full', 'narrow', 'normal', 'wide'], default: 'full' },
-    { name: 'font_size', type: 'number', label: 'Body text size (px)', min: 12, max: 32, placeholder: 'Block default' },
-    { name: 'line_height', type: 'number', label: 'Body line height', min: 1, max: 2.5, placeholder: 'Block default' },
-    { name: 'paragraph_spacing', type: 'number', label: 'Paragraph spacing (em)', min: 0, max: 3, placeholder: 'Block default' },
+    { name: 'font_size', type: 'number', css_unit: 'px', design_token: 'type_size', label: 'Body text size (px)', min: 12, max: 32, placeholder: 'Block default' },
+    { name: 'line_height', type: 'number', css_unit: 'number', design_token: 'leading', label: 'Body line height', min: 1, max: 2.5, placeholder: 'Block default' },
+    { name: 'paragraph_spacing', type: 'number', css_unit: 'number', design_token: 'space', label: 'Paragraph spacing (em)', min: 0, max: 3, placeholder: 'Block default' },
     { name: 'rhythm', type: 'select', label: 'Content spacing', options: ['default', 'article'], default: 'default' },
   ],
   template: `<!-- template_content_slot: this should be replaced during composition -->`,

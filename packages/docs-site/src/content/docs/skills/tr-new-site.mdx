@@ -70,3 +70,19 @@ starter files so your project can maintain its own instructions.
 ## Organization access
 
 When a Cloud write reports `organization_trial_ended` or `organization_access_ended`, use `read_organization_access` on the selected Site. Explain the deadline and recovery URL; keep reads and export available when permitted. Do not repeatedly retry or create another organization to bypass the lock. Self-hosted installations are unrestricted by default. A trial does not limit AI credits: the organization supplies its own provider key.
+
+## Layout defaults
+
+Use `core/navigation_menu` with desktop/mobile `core/navigation_links` slots for
+header drawers. Keep incomplete card rows left-aligned (`last_row: start`);
+center only if the owner explicitly requests it. Separate running footer text
+from the link grid and check their balance at intermediate desktop widths.
+Read the current `tr-header-footer` recipe and the starter's `workflows/design.md`.
+
+## Palette and scale consistency
+
+Configure colours and font families in site settings. Use palette names and
+named styles in blocks; document deliberate exceptions in `decisions.md`.
+Core 0.2.106 adds block palette names, named size/spacing steps and
+`lint_design_tokens`. Follow the [design-token guide](/docs/guides/design-tokens/)
+and the site starter’s `workflows/design.md`; on older Core use palette CSS variables.

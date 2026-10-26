@@ -154,6 +154,21 @@ describe('versions endpoints', () => {
 describe('POST /v1/.../deploy', () => {
   beforeEach(async () => { await resetDatastore(); });
 
+  it('requires explicit confirmation for unsaved content and never saves it', async () => {
+    const { token } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.workingCopy(ORG,SITE,'page:test',MAIN_VERSION_ID), {kind:'page',target_id:'test',fields:{title:'Unsaved title'},updated_at:'now'});
+    const route = import('../../pages/api/v1/sites/[siteId]/deploy');
+    const invoke = (body: unknown) => callRoute(route,'POST',`http://localhost/api/v1/sites/${SITE}/deploy`,{siteId:SITE},{headers:bearer(token),body});
+    const denied = await invoke({});
+    expect(denied.status).toBe(409);
+    expect(await denied.json()).toMatchObject({code:'unsaved_content',unsaved:[{kind:'page',id:'test'}]});
+    expect(await getStore().listDocs(paths.deploys(ORG,SITE))).toHaveLength(0);
+    const accepted = await invoke({allow_unsaved:true});
+    expect(accepted.status).toBe(202);
+    expect(await getStore().getDoc(paths.workingCopy(ORG,SITE,'page:test',MAIN_VERSION_ID))).toMatchObject({fields:{title:'Unsaved title'}});
+  });
+
   it('enqueues a job and returns a job_id', async () => {
     const { token } = await setup();
     const res = await callRoute(

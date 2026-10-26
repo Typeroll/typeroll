@@ -20,19 +20,22 @@ export async function prepareDomainTransition(orgId: string, siteId: string, inp
   if (site?.publishing_mode !== 'customer_git') throw new ConnectionError('This site does not use customer publishing.', 409);
   if (domains.revision !== input.revision) throw new ConnectionError('Domain settings changed. Reload before preparing.', 409, 'domain_revision_conflict');
   if (domains.state === 'distributing') throw new ConnectionError('The traffic switch is already in progress.', 409, 'domain_cutover_in_progress');
-  if (!target?.last_publication?.snapshot_job_id) throw new ConnectionError('Publish the site once before preparing a domain-only change. The first publication uses the hosts saved here.', 409, 'first_publication_required');
+  if (!target?.last_publication?.snapshot_job_id) throw new ConnectionError('Publish the site once before preparing a domain-only change. Normal publication uses the current or temporary address.', 409, 'first_publication_required');
   const candidateJob = jobs.find(job => job.id === domains.candidate?.job_id && job.status === 'running' && (job as any).git_publication?.publication_id === domains.candidate?.id);
-  if (candidateJob && !['live', 'failed'].includes(domains.state) && domains.candidate && domains.candidate.revision === domainPublicationRevision(domains) && domains.preparation && domains.desired.website_host) {
+  if (candidateJob && !['live', 'failed', 'outdated'].includes(domains.state) && !!domains.candidate?.source_publication_id && domains.candidate.source_publication_id === target.last_publication.publication_id && domains.candidate && domains.candidate.revision === domainPublicationRevision(domains) && domains.preparation && domains.desired.website_host) {
     const group = await siteHostingGroup(orgId, siteId);
     const redirects = await prepareRedirectHosts(orgId, group.id, { hosts: domains.desired.redirect_hosts ?? [], target: domains.desired.website_host, dnsMode: domains.dns_mode, configureTraffic: false });
     const changed = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
-      current => current.revision === domains.revision && current.candidate?.id === domains.candidate!.id && current.state !== 'distributing',
+      current => current.revision === domains.revision && current.candidate?.id === domains.candidate!.id && current.state !== 'distributing' && current.state !== 'outdated',
       { redirect_preparations: redirects.length ? redirects : null,
         state: redirects.some(item => redirectApprovalBlocker(item)) || (domains.preparation.validation_blocker && !validationWindowAllowed(domains.preparation)) || (domains.media_preparation && !domains.media_preparation.certificate_ready && domains.media_preparation.has_existing_traffic !== false) ? 'preparing' : 'ready_to_switch' });
     if (!changed) throw new ConnectionError('Domain settings changed. Reload before preparing.', 409, 'domain_revision_conflict');
     return { job_id: domains.candidate.job_id ?? null, already_running: false, reused_candidate: true, candidate_id: domains.candidate.id };
   }
-  const active = jobs.find(job => job.version_id === 'main' && ['queued', 'running'].includes(job.status));
+  const existing = domains.state !== 'outdated' && !!domains.candidate?.source_publication_id && domains.candidate.source_publication_id === target.last_publication.publication_id
+    ? jobs.find(job => job.id === domains.candidate?.job_id && ['queued', 'running'].includes(job.status)) : null;
+  if (existing) return { job_id: existing.id, already_running: true };
+  const active = jobs.find(job => job.version_id === 'main' && ['queued', 'running'].includes(job.status) && job.phase !== 'awaiting domain cutover approval');
   if (active) return { job_id: active.id, already_running: true };
   // A host Cloudflare cannot serve (apex outside an active zone, pending zone) fails here, not after a build.
   assertHostChecks(await siteHostChecks(orgId, siteId, domains));

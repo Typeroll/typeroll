@@ -36,8 +36,8 @@ const workspaceRoot = path.join(root, 'workspace-templates');
 async function readWorkspaceTemplates(relative = '') {
   for (const entry of (await fs.readdir(path.join(workspaceRoot, relative), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
     const name = path.posix.join(relative, entry.name);
-    if (entry.isDirectory()) await readWorkspaceTemplates(name);
-    else if (entry.isFile() && entry.name.endsWith('.md')) workspaceTemplates[name] = await fs.readFile(path.join(workspaceRoot, name), 'utf8');
+    if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== '__pycache__') await readWorkspaceTemplates(name);
+    else if (entry.isFile() && /\.(md|py|cjs|json)$/.test(entry.name)) workspaceTemplates[name] = await fs.readFile(path.join(workspaceRoot, name), 'utf8');
   }
 }
 await readWorkspaceTemplates();

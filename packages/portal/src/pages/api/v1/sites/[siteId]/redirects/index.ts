@@ -49,5 +49,5 @@ export const POST: APIRoute = async ({ request, params }) => {
     status_code,
     auto_generated: false,
   });
-  return apiResponse(ctx, { redirect: { id, from_path, to_path, status_code } }, 201, body);
+  return apiResponse(ctx, { redirect: { id, from_path, to_path, status_code }, warnings: check.warnings ?? [] }, 201, body);
 };

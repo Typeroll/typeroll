@@ -105,7 +105,7 @@ export const urlParityWorkflow: WorkflowDef = {
 
 function parseStatuses(raw: unknown): UrlStatus[] | undefined {
   if (typeof raw !== 'string' || !raw.trim()) return undefined;
-  const allowed: UrlStatus[] = ['migrated', 'redirected', 'excluded', 'unhandled'];
+  const allowed: UrlStatus[] = ['migrated', 'redirected', 'excluded', 'unhandled', 'matched_draft'];
   const picked = raw
     .split(',')
     .map((s) => s.trim())

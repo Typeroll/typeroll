@@ -99,7 +99,7 @@ test('native inspector edits and resets a gradient in the real page preview', as
     await page.getByRole('button',{name:'Structure',exact:true}).click();
     await page.getByRole('button',{name:'Edit Surface',exact:true}).click();
     await page.getByText('Appearance',{exact:true}).click();
-    await expect(page.getByLabel('Start color',{exact:true})).toHaveValue('#f8fbff');
+    await expect(page.getByLabel('Start color custom colour',{exact:true})).toHaveValue('#f8fbff');
     await page.getByLabel('Angle (degrees)',{exact:true}).fill('90');
     const surface = page.frameLocator('iframe[title="Preview"]').locator('[data-block-id="surface"]');
     await expect(surface).toHaveCSS('background-image',/90deg/);

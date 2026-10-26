@@ -610,6 +610,17 @@ describe('POST /api/v1/sites/{siteId}/pages/batch-read', () => {
 describe('POST /api/v1/sites/{siteId}/pages/batch-write', () => {
   beforeEach(async () => { await resetDatastore(); });
 
+  it('reports status-only patches as saved without committing existing content drafts', async () => {
+    const { token } = await setup();
+    await seedPage('home', {title:'Saved',status:'draft'});
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.workingCopy(ORG,SITE,'page:home',MAIN_VERSION_ID), {kind:'page',target_id:'home',fields:{title:'Unsaved'}});
+    const response = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/batch-write'),'POST',`http://localhost/api/v1/sites/${SITE}/pages/batch-write`,{siteId:SITE},{headers:bearer(token),body:[{page_id:'home',patch:{status:'published'}}]});
+    expect(response.status).toBe(200);
+    expect((await response.json()).results[0]).toMatchObject({saved:true,staged:[],applied_immediately:['status']});
+    expect(await getStore().getDoc(paths.workingCopy(ORG,SITE,'page:home',MAIN_VERSION_ID))).toMatchObject({fields:{title:'Unsaved'}});
+  });
+
   it('applies patches per-row, reports per-row outcomes', async () => {
     const { token } = await setup();
     await seedPage('home', { title: 'Home', html_content: '<p>a</p>' });
@@ -799,4 +810,35 @@ it('read_page exposes the saved parent and presentation needed by cloning', asyn
   const response = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'), 'GET', `http://localhost/api/v1/sites/${SITE}/pages/source`, { siteId: SITE, pageId: 'source' }, { headers: bearer(token) });
   expect(response.status).toBe(200);
   expect((await response.json()).page).toMatchObject({ parent: 'offers', path: '/offers/source', custom_css: '.offer{color:red}' });
+});
+
+
+describe('page SEO suffix persistence', () => {
+  beforeEach(async () => { await resetDatastore(); });
+  it('stages, saves and reads false, then true and an explicit clear', async () => {
+    const { token } = await setup();
+    await seedPage('home', { slug: '', append_seo_suffix: true });
+    const route = () => import('../../pages/api/v1/sites/[siteId]/pages/[pageId]');
+    const params = { siteId: SITE, pageId: 'home' };
+    const url = `http://localhost/api/v1/sites/${SITE}/pages/home`;
+    const { vstore } = await import('../../lib/version-store');
+    for (const value of [false, true, null]) {
+      const draft = await callRoute(route(), 'PATCH', url, params, {
+        headers: bearer(token), body: { append_seo_suffix: value },
+      });
+      expect(draft.status).toBe(200);
+      const draftBody = await draft.json();
+      expect(draftBody.staged_fields).toContain('append_seo_suffix');
+      expect(draftBody.page.has_unsaved_changes).toBe(true);
+      const saved = await callRoute(route(), 'PATCH', url, params, {
+        headers: bearer(token), body: { append_seo_suffix: value, save: true },
+      });
+      expect(saved.status).toBe(200);
+      expect((await saved.json()).saved).toBe(true);
+      const page = await vstore.page(ORG, SITE, MAIN_VERSION_ID, 'home');
+      expect(page?.append_seo_suffix).toBe(value);
+      const read = await callRoute(route(), 'GET', url, params, { headers: bearer(token) });
+      expect((await read.json()).page.append_seo_suffix).toBe(value);
+    }
+  });
 });

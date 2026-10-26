@@ -97,12 +97,15 @@ Provider references checked 2026-10-25:
 - https://developers.cloudflare.com/api/resources/ssl/
 
 
-## Delivery status — 2026-10-25
+## Delivery status — 2026-10-26
 
-Implemented on `codex/guided-domain-migration`, prepared as Core 0.2.102 / MCP
-0.45.78. Not released. This candidate includes the Site settings work from
-`ae7f60a` / PR #78 (its GitHub qualification run 40192169548 passed). Combining
-these changes does not authorize either public publication or Cloud deployment.
+Implemented on `codex/guided-domain-migration`, prepared as Core 0.2.107 / MCP
+0.45.81. The user authorized merging and deploying PRs #78–79 together.
+This candidate includes `ae7f60a` / PR #78 and integrates Core 0.2.106.
+Release and deployment remain pending the exact combined-source checks and
+Cloud staging qualification. Preserve ordinary publication at active/temporary
+origins; only an explicit late preparation uses future domains. Redirect-only
+changes cannot revive a candidate invalidated by newer published content.
 
 ### Implemented contracts
 

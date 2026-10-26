@@ -349,6 +349,7 @@ export interface SiteSettings {
   agent_instructions?: string;
   /** Public Extension settings follow the site version; secrets and grants remain site-wide. */
   extension_public_config?: Record<string, Record<string, unknown>>;
+  design_scales?: import('./design-tokens.js').DesignScales;
   site_name: string;
   /** Exact widths for authored block styles and visibility; null restores defaults. */
   responsive_breakpoints?: import('./breakpoints.js').ResponsiveBreakpoints | null;
@@ -371,6 +372,7 @@ export interface SiteSettings {
     accent: string;
     background: string;
     surface: string;
+    surface_hover?: string;
     text: string;
     text_light: string;
     /**
@@ -388,6 +390,7 @@ export interface SiteSettings {
     heading: string;
     body: string;
     size_base: number;
+    mono?: string;
     /**
      * Text rendering on `<body>`. `auto` is the browser default; `antialiased`
      * draws thinner text on macOS, which can suit light text on a dark
@@ -1020,6 +1023,8 @@ export interface FieldDefinition {
   responsive?: boolean;
   /** Bounded numeric presentation variable emitted by the block renderer. */
   css_unit?: 'px' | 'number';
+  /** Named site scale; numeric values remain explicit overrides. */
+  design_token?: import('./design-tokens.js').TokenScale;
   min?: number;
   max?: number;
   /** For type 'choices': which control markup the renderer derives. */

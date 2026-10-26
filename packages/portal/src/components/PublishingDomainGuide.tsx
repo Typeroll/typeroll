@@ -50,7 +50,7 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem' }}>
       <button type="button" className="btn" disabled={busy} onClick={() => void action('check')}>Refresh checks</button>
       {guide?.next_action === 'publish_first' && <a className="btn btn-primary" href={`/app/sites/${encodeURIComponent(siteId)}`}>Publish your site first</a>}
-      {guide?.next_action === 'prepare' && <button type="button" className="btn btn-primary" disabled={busy || guide.can_prepare === false} onClick={() => void action('prepare')}>Prepare verified candidate</button>}
+      {guide?.next_action === 'prepare' && <button type="button" className="btn btn-primary" disabled={busy || guide.can_prepare === false} onClick={() => void action('prepare')}>Prepare for domain switch</button>}
       {guide?.next_action === 'approve' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setReview(true)}>Review traffic switch</button>}
       {guide?.cutover && guide.cutover.state !== 'rolled_back' && <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Restore the DNS records saved before this traffic switch? Later external edits will be reported instead of overwritten.')) void action('rollback'); }}>Restore previous traffic</button>}
     </div>

@@ -1,3 +1,4 @@
+import { unsavedPublicationTargets } from '../../../../lib/deploy/unsaved';
 import { retryPublicationVerification } from '../../../../lib/publishing/verification-retry';
 import { ConnectionError } from '../../../../lib/publishing/connections';
 // Deploy entry point.
@@ -20,7 +21,7 @@ import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
 import { getDeployQueue } from '../../../../lib/deploy/queue';
-import { findActiveDeploy } from '../../../../lib/deploy/in-flight';
+import { findActiveDeploy, isDomainPreparation } from '../../../../lib/deploy/in-flight';
 import { paths } from '@typeroll/shared';
 import type { DeployEnvironment, DeployJob } from '@typeroll/shared';
 import { refreshDeploymentAvailability } from '../../../../lib/deploy/availability';
@@ -33,7 +34,7 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   if (!adminCheck.ok) return adminCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
 
-  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; retry_verification_job_id?: string };
+  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; allow_unsaved?: boolean; retry_verification_job_id?: string };
   if (body.retry_verification_job_id !== undefined) {
     try {
       if (typeof body.retry_verification_job_id !== 'string') return json({ error: 'Provide a deployment ID.' }, 400);
@@ -65,6 +66,13 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   } catch {
     // A site with no deploys yet has no collection. Not a reason to refuse.
   }
+
+
+  const unsaved = await unsavedPublicationTargets(owner_org_id, site.id, versionId);
+  if (unsaved.length && body.allow_unsaved !== true) return json({
+    code: 'unsaved_content', error: 'Pages or shared blocks have unsaved edits. Save or discard them, or explicitly publish the saved content only.',
+    unsaved, requires_confirmation: true,
+  }, 409);
 
   const jobId = await store.addDoc(paths.deploys(owner_org_id, site.id), {
     version_id: versionId,
@@ -113,8 +121,8 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const jobs = await Promise.all(sorted.map(job => refreshDeploymentAvailability(owner_org_id, site.id, job)));
   // Return a job that completed during this request too: the already-rendered
   // page may still have hidden links and must refresh once to show them.
-  const resumed = all.find(job => job.version_id === versionId && ['queued', 'running'].includes(job.status));
-  const latest = all.find(job => job.version_id === versionId);
+  const resumed = all.find(job => job.version_id === versionId && !isDomainPreparation(job) && ['queued', 'running'].includes(job.status));
+  const latest = all.find(job => job.version_id === versionId && !isDomainPreparation(job));
   const latestJob = latest ? jobs.find(job => job.id === latest.id) ?? await refreshDeploymentAvailability(owner_org_id, site.id, latest) : null;
   const activeJob = resumed ? jobs.find(job => job.id === resumed.id) ?? (resumed.id === latestJob?.id ? latestJob : await refreshDeploymentAvailability(owner_org_id, site.id, resumed)) : null;
   return json({ jobs, active_job: activeJob, latest_job: latestJob });

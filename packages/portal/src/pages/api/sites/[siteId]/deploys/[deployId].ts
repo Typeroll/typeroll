@@ -1,3 +1,4 @@
+import { publicationBuildProgress } from '../../../../../lib/builds/public-progress';
 import { refreshBuildFailure } from '../../../../../lib/builds/failure-status';
 import { attachBuildFailureLog } from '../../../../../lib/builds/failure-log';
 // Poll endpoint for a deploy job. The client hits this every couple of
@@ -21,5 +22,6 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   if (!job) return json({ error: 'Not found' }, 404);
   job = await refreshBuildFailure(owner_org_id, site.id, job);
   job = await attachBuildFailureLog(owner_org_id, site.id, job);
-  return json(await refreshDeploymentAvailability(owner_org_id, site.id, job));
+  job = await refreshDeploymentAvailability(owner_org_id, site.id, job);
+  return json({ ...job, build_progress: await publicationBuildProgress(owner_org_id, site.id, { ...job, id: deployId }) });
 };

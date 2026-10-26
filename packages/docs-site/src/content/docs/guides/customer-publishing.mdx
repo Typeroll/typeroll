@@ -471,7 +471,7 @@ images are not moved into GitHub.
 
 1. Save the future website and media addresses. This records intent and keeps
    the current website address active.
-2. Select **Prepare domain change from published content**. The candidate uses
+2. Shortly before changing DNS, select **Prepare for domain switch**. The candidate uses
    the last successful public snapshot, including its renderer, rather than
    newer saved CMS edits. Internal absolute links on the old website origin,
    canonicals, sitemap addresses and media references are retargeted.
@@ -759,6 +759,39 @@ A generated site repository is not a full CMS backup. It includes published
 public content, not drafts, unpublished versions, form delivery actions,
 private or secret Extension configuration, or image originals.
 
+## Future hosts and the publication destination
+
+**Core 0.2.106 / MCP 0.45.80 (pending release):** saving future domains does
+not change normal publication. `trigger_deploy` continues updating the active
+website and media addresses, or the Hosting Group's temporary address before
+the first publication. Future-host validation failures do not block this work.
+`next_publication` in domain reads/saves describes the current and future hosts.
+
+Prepare the domain switch deliberately, shortly before changing DNS:
+
+1. Finish your changes and publish normally. Verify the current/temporary site.
+2. Save the future website, media and redirect hosts (you may do this earlier).
+3. Choose **Prepare for domain switch**, or call
+   `prepare_publishing_domain_change` with the current domain revision. This
+   builds the **last successfully published snapshot** for those future hosts;
+   it does not include newer unpublished CMS edits or change website traffic.
+4. Review the candidate, indexing settings, certificates and DNS instructions.
+5. Approve **Switch website traffic** separately when ready.
+
+You can keep editing, previewing and publishing at the current address while a
+candidate waits for approval or domain validation. A newer successful publication
+makes the old candidate **outdated**. Prepare again before switching; Typeroll
+refuses to let an older snapshot replace newer published content. An ordinary
+build and a candidate share a publication lock while actively executing; waiting
+for human approval or domain validation does not retain that lock.
+
+The cutover panel shows the frozen candidate's `noindex` setting. Current CMS
+settings do not change that artifact. To correct it, save the intended indexing
+setting, publish normally, then prepare the domain switch again. Temporary hosts
+remain protected from indexing; that protection is removed in the future-host
+candidate only when the published content settings permit indexing. Candidates
+from older releases without a source-publication identity must be prepared again.
+
 ## API and MCP
 
 Site API keys need admin permission for domain writes. Organization settings
@@ -880,3 +913,21 @@ Core 0.2.22 checks the actual frozen build output before activation. See
 [Publication checks](../publication-validation/) for blocking defects, editorial
 warnings, engine updates and schema-mapping migration. Both Cloudflare and GitHub
 builds use the same gate; a failed check keeps the current live site intact.
+
+### Unsaved work and build progress
+
+From Core 0.2.103, a publication request with unsaved Pages or shared blocks
+returns `409 unsaved_content` before a job is queued. Save or discard the listed
+working copies first. Alternatively, explicitly confirm **publish saved content
+only** in the portal, or pass `allow_unsaved: true` to `trigger_deploy` / the deploy
+API. This never saves drafts or another editor's work. It applies to the selected
+version and also to dry runs, which validate saved content.
+
+Deployment status can include `build_progress`: the exact task's status, attempt,
+step and completed/total files. These counters are not an ETA or a whole-job
+percentage. Existing status polling reads progress; no additional scheduled job
+is started. A new attempt does not mean that completed media must be recopied.
+
+`get_preview_link` also returns `frame_url` for rendering QA without the portal
+wrapper. It uses the same signed expiry and sandbox. Keep the normal `url` for
+extension-host integration tests, which need the wrapper's message bridge.

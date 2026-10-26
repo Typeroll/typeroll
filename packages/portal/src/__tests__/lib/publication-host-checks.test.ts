@@ -122,3 +122,11 @@ describe('site domain API checks', () => {
     expect(response.host_checks?.blockers).toEqual([]);
   });
 });
+
+it('does not describe a main domain candidate as the destination of a test Version', async () => {
+  const { siteDomainsWithChecks } = await import('../../lib/publishing/host-checks');
+  mocks.cloudflare.mockRejectedValue(new Error('unavailable'));
+  const config = {revision:'r',active:{website_host:'old.example.com',media_host:null,media_path_prefix:''},desired:{website_host:'new.example.com',media_host:null,media_path_prefix:''},dns_mode:'external' as const,state:'declared' as const,media_aliases:[]};
+  expect((await siteDomainsWithChecks('org','site',config,'design-test')).next_publication).toBeNull();
+  expect((await siteDomainsWithChecks('org','site',config,'main')).next_publication).toMatchObject({revision:'r',updates_current_host:true});
+});

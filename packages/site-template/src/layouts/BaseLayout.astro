@@ -111,10 +111,11 @@ const analyticsBeacon = (apps?.apps?.analytics?.enabled
 const f = {
   heading: settings.fonts?.heading ?? 'Inter',
   body: settings.fonts?.body ?? 'Inter',
+  mono: settings.fonts?.mono,
 };
 const themeStyle = siteThemeCss(settings);
 
-const googleFontFamilies = webFontFamilies(f.heading, f.body);
+const googleFontFamilies = webFontFamilies(f.heading, f.body, f.mono);
 const googleFontUrl = googleFontFamilies.length
   ? `https://fonts.googleapis.com/css2?${googleFontFamilies
       .map((fam) => `family=${encodeURIComponent(fam)}:wght@400;500;600;700`)

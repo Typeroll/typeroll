@@ -1,3 +1,4 @@
+import { tokenScale, scaleValue, validColor, FONT_ROLES } from './design-tokens.js';
 // Field values whose type does not match the block type's schema.
 //
 // `active_font_weight: "600"` on core/tabs was stored, returned and built
@@ -21,13 +22,13 @@ import type { Block, BlockType, FieldDefinition } from './types.js';
 const NUMBER_TEXT = /^\s*-?(?:\d+(?:\.\d+)?|\.\d+)\s*$/;
 
 function coerceScalar(field: FieldDefinition, value: unknown): unknown {
+  if (/(?:^|_)(?:font|font_family)$/.test(field.name) && value && !(FONT_ROLES as readonly unknown[]).includes(value)) return '';
   if (field.type === 'number' && typeof value === 'string' && NUMBER_TEXT.test(value)) return Number(value);
   return value;
 }
 
 /** The value the renderer uses for a field: numeric text converted, everything else unchanged. */
 export function coerceFieldValue(field: FieldDefinition, value: unknown): unknown {
-  if (field.type !== 'number') return value;
   if (field.responsive && isResponsiveValue(value)) {
     const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
     for (const point of BREAKPOINT_ORDER) if (point in out) out[point] = coerceScalar(field, out[point]);
@@ -53,8 +54,14 @@ function describe(value: unknown): string {
 
 function scalarProblem(field: FieldDefinition, value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
+  if (/(?:^|_)(?:font|font_family)$/.test(field.name)) return (FONT_ROLES as readonly unknown[]).includes(value) ? null : 'heading, body, mono or inherit';
+  const scale = tokenScale(field);
+  if (scale && scaleValue(scale, value)) return null;
   const coerced = coerceScalar(field, value);
   switch (field.type) {
+    case 'color':
+      if (typeof value === 'string' && /^\{\{\s*[a-zA-Z_][\w.]*\s*\}\}$/.test(value)) return null;
+      return validColor(value) ? null : 'a palette name, palette CSS variable, color-mix or explicit CSS colour';
     case 'number':
       return typeof coerced === 'number' && Number.isFinite(coerced) ? null : 'a number';
     case 'boolean':
@@ -81,6 +88,10 @@ function fieldWarnings(
     if (!Object.hasOwn(data, field.name)) continue;
     const value = data[field.name];
     const at = `${path}.${field.name}`;
+    if (field.type === 'object' && field.fields?.length && value && typeof value === 'object' && !Array.isArray(value)) {
+      fieldWarnings(field.fields, value as Record<string, unknown>, at, blockId, out, depth + 1);
+      continue;
+    }
     if (field.type === 'array' && field.fields?.length) {
       if (!Array.isArray(value)) continue;
       value.forEach((item, index) => {
@@ -127,6 +138,24 @@ function partStylesWarnings(field: FieldDefinition, value: unknown, at: string, 
   }
 }
 
+/** Item overrides and static rows use the selected item block's real schema. */
+export function blockDataSchema(type: BlockType, data: Record<string, unknown>, registry: ReadonlyMap<string, BlockType>): FieldDefinition[] {
+  let effective = type, values = data;
+  const seen = new Set<string>();
+  while (effective.expand_to && !seen.has(effective.id)) {
+    seen.add(effective.id);
+    values = { ...effective.expand_to.defaults, ...values };
+    const next = registry.get(effective.expand_to.target);
+    if (!next) break;
+    effective = next;
+  }
+  if (effective.container !== 'repeater') return type.schema ?? [];
+  const item = registry.get(String(values.item_block ?? effective.schema?.find(f => f.name === 'item_block')?.default ?? ''));
+  if (!item) return type.schema ?? [];
+  return (type.schema ?? []).map(field => ['item_overrides','items'].includes(field.name)
+    ? { ...field, fields: item.schema } : field);
+}
+
 /** Type mismatches in one block's own `data` (not its children). */
 export function blockDataTypeWarnings(
   block: Pick<Block, 'type' | 'data'> & { id?: unknown },
@@ -137,7 +166,7 @@ export function blockDataTypeWarnings(
   if (!type?.schema || !block.data || typeof block.data !== 'object') return [];
   const out: FieldTypeWarning[] = [];
   const blockId = typeof block.id === 'string' && block.id ? block.id : undefined;
-  fieldWarnings(type.schema, block.data as Record<string, unknown>, `${path}.data`, blockId, out, 0);
+  fieldWarnings(blockDataSchema(type, block.data as Record<string, unknown>, registry), block.data as Record<string, unknown>, `${path}.data`, blockId, out, 0);
   return out;
 }
 

@@ -62,6 +62,14 @@ describe('independent Site settings sections', () => {
       expect(spy).toHaveBeenCalledTimes(2);
     } finally { spy.mockRestore(); }
   });
+  it('saves design tokens and fonts without changing other sections', async () => {
+    const before = await read();
+    expect((await post({ settings_section: 'design', 'colors.surface_hover': '#eeeeee', 'fonts.mono': 'Roboto Mono', 'design_scales.type_size.xs': '0.8rem' })).status).toBe(200);
+    const after = await read();
+    expect(after).toMatchObject({ design_scales: { type_size: { xs: '0.8rem' } }, colors: { surface_hover: '#eeeeee' }, fonts: { mono: 'Roboto Mono' }, agent_instructions: before!.agent_instructions, sitewide_noindex: true });
+    expect((await post({ settings_section: 'general', site_name: 'Renamed' })).status).toBe(200);
+    expect(await read()).toMatchObject({ design_scales: after!.design_scales, colors: after!.colors, fonts: after!.fonts });
+  });
   it('rejects an invalid scope before writing anything', async () => {
     const before = await read();
     expect((await post({ settings_section: 'invalid', site_name: 'Lost' })).status).toBe(400);

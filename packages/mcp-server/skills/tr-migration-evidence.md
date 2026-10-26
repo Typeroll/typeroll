@@ -134,7 +134,9 @@ not disguise the failure with tenant CSS.
 Validate shared Page references, item order, missing images and empty/unpublished
 references. Keep semantics separate from presentation: category emoji belongs
 to its shared Page field, not copied into every article or card excerpt.
-Validate actual field types, not just key names: number fields use JSON numbers
+Validate actual field types, not just key names. A presentation field whose schema declares
+`design_token` also accepts the named steps for that scale, including responsive maps
+on responsive fields (Core 0.2.106 / capabilities 0.54.0). Otherwise number fields use JSON numbers
 (`16`, `1.6`, `1`), not strings (`"16"`, `"1.6"`, `"1"`); booleans use `true`/
 `false`. Check responsive map values too. Read-back retention is not enough:
 measure the resulting font size, line height and paragraph spacing. If an
@@ -348,7 +350,7 @@ Organization-admin `onboard_publishing_domain_zone` can create a pending zone an
 review a DNS scan; copy records DNS only and verify the full inventory (especially
 mail and DKIM) before the human registrar step. Never infer completeness from a scan.
 
-Core 0.2.102 checks Pages capacity during dry-run and final upload:
+Core 0.2.107 checks Pages capacity during dry-run and final upload:
 2,000 static, 100 dynamic, 1,000 characters per line, with generated slash variants
 and hostname aliases included. `_redirects` has a bounded 10 MiB transport envelope;
 `_headers` keeps 128 KiB. Source preflight counts configured rules conservatively;

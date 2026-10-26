@@ -1,3 +1,5 @@
+import { readDesignTokenAudit } from './design-token-audit';
+import { redirectChainWarnings, type RedirectWarning } from './redirect-write';
 import { paths } from '@typeroll/shared';
 import type { DeployJob, Site, SiteApps } from '@typeroll/shared';
 import type { ReadWriteStore } from './datastore';
@@ -35,10 +37,12 @@ export interface MigrationSeoAcceptance {
 }
 
 export interface MigrationLaunchReport {
+  design_tokens: Awaited<ReturnType<typeof readDesignTokenAudit>>;
   generated_at: string;
   version_id: string;
   launch_ready: boolean;
   issues: Array<{ id: string; detail: string }>;
+  redirect_warnings: RedirectWarning[];
   inventory: {
     summary: Awaited<ReturnType<typeof analyzeCoverage>>['summary'];
     exclusions_without_reason: number;
@@ -82,18 +86,25 @@ export async function buildMigrationLaunchReport(args: {
     store.getDoc<StoredSiteParityEvidence>(paths.migrationVerification(orgId, siteId, versionId)),
     store.getDoc<MigrationSeoAcceptance>(paths.migrationSeoAcceptance(orgId, siteId, versionId)),
   ]);
+  const chainWarnings = redirectChainWarnings(await vstore.redirects(orgId, siteId, versionId));
   const scriptFindings = await loadScriptFindings(store, orgId, siteId, versionId);
   const issues: Array<{ id: string; detail: string }> = [];
+  for (const warning of chainWarnings.filter(entry => entry.code === 'redirect_loop')) issues.push({ id: warning.code, detail: `${warning.from_path} follows ${warning.via.join(' → ')} → ${warning.final_target}. Review the final target and shorten the chain.` });
   const exclusionsWithoutReason = urls.filter(
     (entry) => entry.status === 'excluded' && !entry.notes?.trim(),
   ).length;
   if (summary.total === 0) issues.push({ id: 'inventory_empty', detail: 'The migration inventory is empty.' });
+  if (summary.matched_draft > 0) issues.push({ id: 'inventory_matched_draft', detail: `${summary.matched_draft} inventory URL(s) match unpublished Pages; publish them before launch.` });
+  const draftSources = new Set(internalLinks.draft_sources ?? []);
+  const unpublishedLiveTargets = internalLinks.unpublished_targets?.filter(entry => !draftSources.has(entry.from)) ?? [];
+  const brokenLiveLinks = internalLinks.broken.filter(entry => !draftSources.has(entry.from));
+  if (unpublishedLiveTargets.length) issues.push({ id: 'unpublished_internal_targets', detail: `${unpublishedLiveTargets.length} link(s) target unpublished Pages.` });
   if (summary.unhandled > 0) issues.push({ id: 'inventory_unhandled', detail: `${summary.unhandled} inventory URL(s) are unhandled.` });
   if (exclusionsWithoutReason > 0) {
     issues.push({ id: 'exclusions_without_reason', detail: `${exclusionsWithoutReason} excluded URL(s) have no recorded reason.` });
   }
-  if (internalLinks.broken_links > 0) {
-    issues.push({ id: 'broken_internal_links', detail: `${internalLinks.broken_links} internal link(s) are broken.` });
+  if (brokenLiveLinks.length > 0) {
+    issues.push({ id: 'broken_internal_links', detail: `${brokenLiveLinks.length} internal link(s) are broken.` });
   }
   issues.push(...scriptAuditIssues(scriptFindings));
 
@@ -151,9 +162,11 @@ export async function buildMigrationLaunchReport(args: {
   }
 
   return {
+    design_tokens: await readDesignTokenAudit(orgId, siteId, versionId),
     generated_at: (args.now?.() ?? new Date()).toISOString(),
     version_id: versionId,
     launch_ready: issues.length === 0,
+    redirect_warnings: chainWarnings,
     issues,
     inventory: { summary, exclusions_without_reason: exclusionsWithoutReason },
     internal_links: internalLinks,

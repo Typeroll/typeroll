@@ -411,3 +411,23 @@ Use MCP for interactive agent work and the CLI for workspace setup/checks.
 For repeatable large imports and integration scripts, use the same authenticated
 REST API. The CLI also has Extension commands, but it is not a full site CRUD CLI.
 Both transports use the same CMS; changing transport does not make builds faster.
+
+## Repeatable migration QA tools
+
+MCP **0.45.79** adds optional Python and Playwright helpers under
+`scripts/typeroll/`. Availability depends on the installed MCP starter version;
+check `scripts/README.md` in your generated workspace. The GitHub template only
+syncs released versions. Existing projects use `init --update`; edited scripts
+and owner instructions are preserved for manual reconciliation.
+
+The tools check unsaved Pages/partials before deployment, migration URL chains
+and media after deployment, screenshots around breakpoints, whole-card targets,
+and preserved text against saved HTML or a WordPress REST record. They read the
+workspace binding, keep credentials outside files, and do not publish or switch
+DNS. Browser review still matters: automated output is not visual acceptance,
+and an unreachable URL is unverified rather than automatically broken.
+
+See the starter's `workflows/migration.md`, `workflows/design.md`,
+`qa/checklist.md` and `scripts/README.md` for the routines and commands.
+Keep platform findings in `qa/typeroll-platform-feedback.md`. Customer-specific
+conversion scripts are examples, not a universal automatic HTML-to-blocks pipeline.

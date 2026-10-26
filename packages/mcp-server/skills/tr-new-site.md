@@ -5,6 +5,42 @@ description: Use when the user wants to create a new Typeroll site from scratch,
 
 # Bootstrap a new Typeroll site
 
+## Site tokens before block overrides
+
+Core 0.2.106 / template capabilities 0.54.0 adds palette names in all colour
+fields and named typography/spacing steps. Check the connected capability
+version; on older renderers use `var(--color-surface)` rather than a bare name.
+
+Set colours and font families in site settings, then use named styles and
+palette names in blocks. Do not write hex, rgb or font-family literals in block
+content. Prefer `primary`, `secondary`, `accent`, `background`, `surface`, `text`,
+`text_light`, and `on_primary`/`on_secondary`/`on_accent` for text on brand colours.
+Use `surface_hover` for a darker interactive surface (derived automatically
+unless explicitly configured). Existing semantic roles should be reused; a
+new visual shade is not automatically a new semantic role. For a derived shade
+use `color-mix(in srgb, var(--color-surface) 92%, var(--color-primary))`.
+For an additional role not in the native palette, define a named site style
+or a site CSS variable derived from existing palette variables, and document it.
+
+Choose `heading`, `body` or `mono` for fonts. Font families belong only in the
+site's `fonts` settings. Use type-size steps `xs`, `sm`, `md`, `lg`, `xl`, `2xl`,
+`3xl`; spacing `none`, `xs`, `sm`, `md`, `lg`, `xl`; line height `tight`, `snug`,
+`normal`, `relaxed`, `loose`. Presentation fields accept responsive maps of these
+names, for example `font_size_px: {mobile: "md", desktop: "lg"}`. Read the field
+schema: counts, widths and breakpoints are not spacing steps. Pixel values are
+explicit exceptions, not the default authoring method. Configure scales in
+`design_scales`, then reuse them in role styles and blocks.
+
+Record deliberate exceptions in `decisions.md`, with source/block, reason and
+review criteria (for example white text on a photograph). Run `lint_design_tokens`
+before launch and after major design changes. It warns, never blocks launch.
+Use the starter's `scripts/typeroll/color_tokens.py` for an exact-match dry run;
+review the plan before applying it in a dedicated Version. Equal hex values can
+mean different roles: never automatically choose between background and text.
+Verify a primary/surface change in a test Version across header, footer, cards,
+menus and buttons, then restore the test settings. Do not republish automatically.
+
+
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
@@ -165,7 +201,7 @@ it there.
 ### 3. Header + footer partials
 
 **Start from the native preset — don't hand-roll navigation.** Read
-`tr-header-footer` and use its `template/site_logo` + `core/navigation`
+`tr-header-footer` and use its `template/site_logo` + `core/navigation_menu` with `core/navigation_links` slots
 composition. The server-rendered landmark, current-page state, no-JS links,
 mobile disclosure, focus treatment, and responsive behavior are Core
 contracts rather than tenant CSS/JavaScript.
@@ -202,7 +238,7 @@ on a block *inside* the section instead):
 
 ```json
 [
-  { "type": "core/section", "data": { "background": "#ffffff", "padding_y": "lg" }, "children": [
+  { "type": "core/section", "data": { "background": "surface", "padding_y": "lg" }, "children": [
     { "type": "core/media_card", "data": {
         "image": "MEDIA_URL", "image_alt": "…", "image_side": "right",
         "heading": "Huvudrubriken", "heading_level": "h2",
@@ -269,12 +305,10 @@ passing the whole tree inline (`block={ type: 'core/columns', slots:
 slot_index=0|1`. Requires template_capabilities_version ≥ 0.15.2 — on
 older sites use `core/grid` (children flow into columns) instead.
 
-Partial last rows (template_capabilities_version ≥ 0.16.5): when N equal
-cards don't divide by the grid's column count (5 cards, 3 cols), set
-`last_row: 'center'` on the `core/grid` — the orphan row auto-centers.
-NEVER invent a "wide" variant of one peer card to fill the hole, and
-don't hand-roll 6-column CSS tricks; both distort content to patch
-layout. On older sites, pick a column count that divides N.
+Partial last rows: keep `last_row: 'start'` on `core/grid`. Incomplete rows
+stay left-aligned, preserving the reading edge. Center only after an explicit
+owner design request, never as an automatic fix. Do not widen one peer card
+or invent six-column CSS to fill a gap.
 
 Icons (template_capabilities_version ≥ 0.16.0): `type: 'icon'` fields on
 `core/icon`, `core/icon_box`, and `core/step_card` render inline SVG when

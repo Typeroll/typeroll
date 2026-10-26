@@ -62,7 +62,7 @@ test('publishes the bounded fixture and waits for the fallback response header',
   assert.deepEqual(calls.slice(0, 3), [
     { name: 'get_site', args: {} },
     { name: 'update_site', args: { slug: 'e2e-core-site', domain: '' } },
-    { name: 'trigger_deploy', args: { environment: 'production' } },
+    { name: 'trigger_deploy', args: { environment: 'production', allow_unsaved: true } },
   ]);
   assert.equal(calls.filter((call) => call.name === 'get_deploy_status').length, 2);
   assert.equal(calls.filter((call) => call.name === 'check_site_indexing').length, 2);
@@ -102,3 +102,21 @@ test('fails closed when the deployed fallback never receives noindex', async () 
     },
   }), /did not become observable/);
 });
+
+for (const mismatch of ['site', 'origin']) {
+  test(`never publishes saved content when the fixture ${mismatch} differs`, async () => {
+    const calls = [];
+    await assert.rejects(runFallbackIndexingJourney({
+      portalUrl: 'https://cms.example.test', apiKey: 'secret',
+      expectedFallbackOrigin: 'https://e2e.sites.example.test',
+      fetchImpl: async (_url, init) => {
+        const { name } = JSON.parse(init.body).params;
+        calls.push(name);
+        if (name === 'get_site') return mcpResponse({ id: mismatch === 'site' ? 'customer-site' : 'e2e-core-site' });
+        if (name === 'update_site') return mcpResponse({ urls: { fallback: 'https://unrelated.example.test' } });
+        throw new Error(`Unexpected tool ${name}`);
+      },
+    }), mismatch === 'site' ? /bound to e2e-core-site/ : /unexpected fallback origin/);
+    assert.equal(calls.includes('trigger_deploy'), false);
+  });
+}

@@ -1,4 +1,4 @@
-<div data-block="video" data-source="youtube" style="--aspect_ratio:16:9"></div>
+<div data-block="video" data-source="youtube" style="--aspect_ratio:16:9" data-block-type="core/video"></div>
 
 /* css */
 /* blocks-runtime */
@@ -34,4 +34,8 @@
 [data-block="video"] iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: 0.5rem; }
 [data-block="video"] iframe[src=""] { display: none; }
 [data-block="video"]:empty { display: none; }
+[data-block="video"] .tr-video-facade { position:absolute;inset:0;width:100%;height:100%;border:0;border-radius:.5rem;overflow:hidden;background:#111;color:#fff;cursor:pointer;display:grid;place-items:center;font:inherit;text-decoration:none; }
+[data-block="video"] .tr-video-facade img { position:absolute;inset:0;width:100%;height:100%;object-fit:cover; }
+[data-block="video"] .tr-video-facade span { z-index:1;position:relative;padding:.75rem 1rem;background:#111;color:#fff;border-radius:.3rem; }
+[data-block="video"] .tr-video-facade:focus-visible { outline:3px solid currentColor;outline-offset:3px; }
 [data-block="video"] video { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0.5rem; background: #000; object-fit: contain; }

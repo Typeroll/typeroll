@@ -22,12 +22,13 @@ import type {
 } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 
-export type UrlStatus = 'migrated' | 'redirected' | 'excluded' | 'unhandled';
+export type UrlStatus = 'migrated' | 'redirected' | 'excluded' | 'unhandled' | 'matched_draft';
 
 export interface AnalyzedUrl extends MigrationUrl {
   status: UrlStatus;
   /** When status is migrated or redirected, where the URL resolves on the new site. */
   target?: string;
+  matched_page_id?: string;
 }
 
 export interface CoverageSummary {
@@ -36,6 +37,7 @@ export interface CoverageSummary {
   redirected: number;
   excluded: number;
   unhandled: number;
+  matched_draft: number;
 }
 
 // ─── Mutation: add a URL to the inventory (or merge sources) ─────────────
@@ -389,8 +391,14 @@ export async function analyzeCoverage(
   const types = new Map(collections.map(type => [type.id, type]));
   if (!types.has('page')) types.set('page', DEFAULT_CONTENT_TYPE);
   const pageByUrl = new Map<string, Page>();
+  const draftByUrl = new Map<string, Page>();
   for (const p of pages) {
-    if (p.status !== 'published' && p.status !== 'unlisted') continue;
+    if (p.status !== 'published' && p.status !== 'unlisted') {
+      const type = types.get(p.content_type ?? 'page');
+      const path = type ? contentPagePath(p, type) : null;
+      if (path) draftByUrl.set(normalizePath(path), p);
+      continue;
+    }
     const type = types.get(p.content_type ?? 'page');
     const resolvedUrl = type ? contentPagePath(p, type) : null;
     if (!resolvedUrl) continue;
@@ -440,7 +448,8 @@ export async function analyzeCoverage(
         status = 'redirected';
         target = hit;
       } else {
-        status = 'unhandled';
+        status = draftByUrl.has(path) ? 'matched_draft' : 'unhandled';
+        if (status === 'matched_draft') target = path;
       }
     }
     return {
@@ -450,6 +459,7 @@ export async function analyzeCoverage(
         : [observedPathFrom(entry.full_url) ?? entry.path],
       status,
       target,
+      ...(status === 'matched_draft' ? { matched_page_id: draftByUrl.get(path)!.id } : {}),
     };
   });
 
@@ -470,6 +480,7 @@ export async function analyzeCoverage(
     redirected: 0,
     excluded: 0,
     unhandled: 0,
+    matched_draft: 0,
   };
   for (const u of urls) {
     summary[u.status]++;
@@ -490,6 +501,7 @@ function matchPatternRule(rules: Redirect[], path: string): string | null {
 function statusRank(s: UrlStatus): number {
   switch (s) {
     case 'unhandled':  return 0;
+    case 'matched_draft': return 0;
     case 'redirected': return 1;
     case 'migrated':   return 2;
     case 'excluded':   return 3;

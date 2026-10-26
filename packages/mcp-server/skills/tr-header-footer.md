@@ -5,11 +5,10 @@ description: Build accessible native header and footer partials with the site lo
 
 # Native header and footer compositions
 
-Use block-mode partials for new work. Core 0.1.8 / capability contract 0.43.0
-ships `template/site_logo`, `core/navigation`, layout primitives, and a
-revision-safe partial mode operation. HTML partials remain supported for
-legacy markup, but generic navigation and responsive layout no longer require
-tenant HTML, CSS, or JavaScript.
+Use block-mode partials for new work. Prefer `get_composition_starter`
+for the current native header tree: `template/site_logo`, `core/navigation_menu`
+and `core/navigation_links`. Use the menu's dialog/drawer rather than an inline
+mobile expansion that moves the logo. Existing `core/navigation` remains supported.
 
 ## Preconditions
 
@@ -31,51 +30,106 @@ read it back. Localize both accessible labels and every link label.
 [
   {
     "type": "core/section",
-    "data": { "width": "wide", "padding_y": "sm" },
-    "children": [{
-      "type": "core/container",
-      "data": {
-        "direction": { "mobile": "column", "tablet": "row" },
-        "align_main": "space-between",
-        "align_cross": "center",
-        "gap": "md",
-        "width": "wide",
-        "padding_y": "none",
-        "padding_x": "none"
-      },
-      "children": [
-        { "type": "template/site_logo", "data": { "height": "md", "link_to_home": true } },
-        {
-          "type": "core/navigation",
-          "data": {
-            "aria_label": "Main navigation",
-            "menu_label": "Menu",
-            "links": [
-              { "label": "Home", "href": "/" },
-              { "label": "About", "href": "/about/" },
-              { "label": "Contact", "href": "/contact/" }
+    "data": {
+      "width": "wide",
+      "padding_y": "compact"
+    },
+    "children": [
+      {
+        "type": "core/container",
+        "data": {
+          "direction": "row",
+          "wrap": "nowrap",
+          "align_main": "space-between",
+          "align_cross": "center",
+          "width": "full"
+        },
+        "children": [
+          {
+            "type": "template/site_logo",
+            "data": {
+              "height": "md",
+              "link_to_home": true
+            }
+          },
+          {
+            "type": "core/navigation_menu",
+            "data": {
+              "aria_label": "Main navigation",
+              "menu_label": "Open menu",
+              "close_label": "Close menu",
+              "collapse_below": "1024"
+            },
+            "slots": [
+              [
+                {
+                  "type": "core/navigation_links",
+                  "data": {
+                    "direction": "row",
+                    "links": [
+                      {
+                        "label": "Home",
+                        "href": "/"
+                      },
+                      {
+                        "label": "About",
+                        "href": "/about/"
+                      },
+                      {
+                        "label": "Contact",
+                        "href": "/contact/"
+                      }
+                    ]
+                  }
+                }
+              ],
+              [
+                {
+                  "type": "core/navigation_links",
+                  "data": {
+                    "direction": "column",
+                    "links": [
+                      {
+                        "label": "Home",
+                        "href": "/"
+                      },
+                      {
+                        "label": "About",
+                        "href": "/about/"
+                      },
+                      {
+                        "label": "Contact",
+                        "href": "/contact/"
+                      }
+                    ]
+                  }
+                }
+              ]
             ]
           }
-        }
-      ]
-    }]
+        ]
+      }
+    ]
   }
 ]
 ```
 
-`core/navigation` emits a real `nav` and list in initial HTML, marks the
-matching page with `aria-current="page"`, and progressively enhances to a
-button-controlled mobile menu. Verify Tab and Shift-Tab order, Enter/Space,
-Escape returning focus to the disclosure, visible focus, long translated
-labels, and no horizontal overflow. Without JavaScript the links remain
-visible and usable.
+The first slot is desktop; the second is the optional mobile composition.
+The default is drawer below 1024 px and inline from 1024 px. For responsive
+link fields use matching `responsive_breakpoints` (tablet 768, laptop 1024,
+desktop 1280, wide 1536); do not independently hide all links at the menu boundary.
+Verify 1023/1024 px, Tab/Shift-Tab, Enter/Space, Escape returning focus,
+visible focus, long labels, no-JavaScript links and no horizontal overflow.
 
 ## Footer tree and consent
 
-Use the same tree for `footer`, normally with `padding_y: "lg"`, a small site
-logo, localized footer navigation, and optional contact/prose blocks. The
-footer navigation gets its own accessible label; it is not the main
-navigation landmark.
+Use an accessible footer navigation landmark and `core/navigation_links`, not
+a second header drawer. If the footer has running about text, give it a separate,
+wider column beside a nested link grid. An equal four-column grid is rarely a
+good fit for one dense paragraph and three short link lists. Start with
+`core/columns` ratio `1-2`, put flow containers inside the slots, and tune the
+gap and readable text width to the actual content. Stack on mobile. Inspect at
+390, 1024, 1280 and 1536 px; do not copy one site's pixel values blindly.
 
 Cookie consent is a site feature, not a footer widget. Configure it separately:
 

@@ -192,12 +192,18 @@ export default function PublishMenu({
     setDeployErr(null);
     setJob({ status: 'queued', phase: 'starting' });
     try {
-      const res = await fetch(`/api/sites/${siteId}/deploy`, {
+      let res = await fetch(`/api/sites/${siteId}/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ environment: publishingSetup?.mode === 'customer_git' ? 'production' : env }),
       });
-      const data = await res.json();
+      let data = await res.json();
+      if (!res.ok && data.code === 'unsaved_content') {
+        const targets = (data.unsaved ?? []).map((target: {kind:string;id:string}) => `${target.kind}: ${target.id}`).join('\n');
+        if (!confirm(`These edits are not saved:\n${targets}\n\nPublish saved content only? Unsaved edits will remain untouched.`)) { setJob(null); return; }
+        res = await fetch(`/api/sites/${siteId}/deploy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ environment: publishingSetup?.mode === 'customer_git' ? 'production' : env, allow_unsaved: true }) });
+        data = await res.json();
+      }
       if (!res.ok && data.code === 'publishing_setup_required') {
         await refreshSetup();
         setJob(null);
@@ -396,6 +402,7 @@ export default function PublishMenu({
               </div>)}
             </details>}
             {job?.render_report && <p role="status" className="pmenu__hint">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</p>}
+            {job?.build_progress && <p className="pmenu__hint" role="status">{job.build_progress.step.replaceAll('_', ' ')} — attempt {job.build_progress.attempt}{job.build_progress.total > 0 ? ` · ${job.build_progress.completed}/${job.build_progress.total} files` : ''}</p>}
             {job?.phase === 'distributing' && <p className="pmenu__hint" role="status">Distributing… Your site is being made publicly available. The link will appear automatically when ready.</p>}
             {changesLoading && <p className="pmenu__hint">Checking what changed…</p>}
             {changesError && <p role="alert" className="pmenu__hint pmenu__hint--error">{changesError}</p>}

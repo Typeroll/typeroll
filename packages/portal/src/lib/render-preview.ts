@@ -223,7 +223,7 @@ export async function renderPreview(
       ...pageContentValues(publicContentPage(page, contentType)),
       breadcrumbs,
     },
-    site: siteContext(settings as unknown as Record<string, unknown>),
+    site: { ...siteContext(settings as unknown as Record<string, unknown>), url: seoBase },
     // Paginating listings render their first slice in the preview; the
     // pager appears but its /page/N/ links only exist on the deployed
     // site (route generation is the SSG's job).
@@ -551,8 +551,9 @@ function buildHtml(args: {
   const f = {
     heading: settings.fonts?.heading ?? 'Inter',
     body: settings.fonts?.body ?? 'Inter',
+    mono: settings.fonts?.mono,
   };
-  const fontUrl = buildFontUrl(f.heading, f.body);
+  const fontUrl = buildFontUrl(f.heading, f.body, f.mono);
   const robots = pageRobots(page, settings, robotsBlocked);
 
   // Head CSS mirrors the published page (site-template BaseLayout): theme
@@ -655,8 +656,8 @@ function renderBanner(b: BannerArgs): string {
   </div>`;
 }
 
-function buildFontUrl(heading: string, body: string): string | null {
-  const fams = webFontFamilies(heading, body);
+function buildFontUrl(heading: string, body: string, mono?: string): string | null {
+  const fams = webFontFamilies(heading, body, mono);
   if (!fams.length) return null;
   return `https://fonts.googleapis.com/css2?${fams
     .map((fam) => `family=${encodeURIComponent(fam)}:wght@400;500;600;700`)

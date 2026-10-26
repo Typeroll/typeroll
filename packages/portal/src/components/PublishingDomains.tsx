@@ -17,10 +17,11 @@ type DomainData = {
   revision: string; default_domain?: string | null; dns_mode: 'automatic' | 'external'; verified_at?: string | null;
   desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string; redirect_hosts?: string[] };
   active?: { website_host: string | null; redirect_hosts?: string[] }; state?: string;
-  candidate?: { id: string } | null;
+  candidate?: { id: string; sitewide_noindex?: boolean; robots_blocked?: boolean } | null;
   preparation?: Preparation | null;
   media_preparation?: Preparation | null;
   redirect_preparations?: RedirectPreparation[] | null;
+  next_publication?: { message: string } | null;
   host_checks?: { blockers: HostCheckItem[]; warnings: HostCheckItem[] } | null;
 };
 
@@ -139,6 +140,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <ul>{hostBlockers.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul>
     </div>}
     {siteId && hostWarnings.length > 0 && <div className="muted"><strong>Check before preparing</strong><ul>{hostWarnings.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul></div>}
+    {siteId && data?.next_publication && <p role="status">{data.next_publication.message}</p>}
     {data?.preparation && <details className="stack"><summary>Detailed DNS and redirect instructions</summary>
       <h3>Domain verification</h3>
       {validationBlocker && <div role="alert" style={alertStyle}><strong>{windowRequired ? 'The switch has a short validation window' : 'Domain transition needs a DNS change outside Typeroll'}</strong><p>{validationBlocker.message}</p></div>}
@@ -169,6 +171,11 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
         {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME. A redirect host needs its proxied record and redirect rule; it does not serve pages.</p>}
       </details>
     </details>}
+    {data?.state === 'outdated' && <p role="alert">Newer content is live at the current address. Prepare for domain switch again to include it before changing DNS.</p>}
+    {data?.candidate && data.state === 'ready_to_switch' && <>
+      {data.candidate.sitewide_noindex === true && <p role="alert">This frozen candidate has noindex enabled. Switching traffic will not make it indexable. If search indexing is intended, do not switch this candidate: save the intended indexing setting, publish normally at the current address, then choose Prepare for domain switch again. The prepared candidate uses the last published settings.</p>}
+      {data.candidate.sitewide_noindex === undefined && <p>Indexing status is unavailable for this older candidate. Verify its actual robots output before switching traffic; current CMS settings do not change a frozen candidate.</p>}
+    </>}
     {!siteId && data && <OrganizationDomainSetup data={data} busy={busy || checking} onSetup={setupOrganization} feedback={feedbackLocation === 'setup' ? organizationFeedback : undefined} />}
     {data && <FormContainer open={siteId && !data.desired?.website_host ? true : undefined}>
     <summary>{siteId ? 'Edit website and media addresses' : 'Manual settings or external DNS'}</summary>

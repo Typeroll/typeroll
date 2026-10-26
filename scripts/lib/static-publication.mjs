@@ -160,17 +160,31 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     notes: projectStringArray(input.settings.seo_review.notes ?? [], 'seo_review.notes'),
     claims: (input.settings.seo_review.claims ?? []).map(rule => projectStrings(rule, ['phrase', 'guidance'])),
   };
-  settings.colors = projectStrings(input.settings?.colors, ['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light']);
+  settings.colors = projectStrings(input.settings?.colors, ['primary', 'secondary', 'accent', 'background', 'surface', 'surface_hover', 'text', 'text_light']);
   // Explicit text colours on theme colours: opaque hex only, as the renderer accepts (isOnColorValue).
   for (const token of ['on_primary', 'on_secondary', 'on_accent']) {
     const value = input.settings?.colors?.[token];
     if (typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim())) settings.colors[token] = value.trim();
   }
-  settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
+  settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body', 'mono']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
   // A rendered setting left out of this projection is stored, previewed and never published.
   if (['auto', 'antialiased'].includes(input.settings?.fonts?.smoothing)) settings.fonts.smoothing = input.settings.fonts.smoothing;
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
+  if (input.settings?.design_scales !== undefined) {
+    const scales = input.settings.design_scales;
+    if (!scales || typeof scales !== 'object' || Array.isArray(scales)) throw new Error('Invalid public design scales');
+    const steps = { type_size:['xs','sm','md','lg','xl','2xl','3xl'], space:['none','xs','sm','md','lg','xl'], leading:['tight','snug','normal','relaxed','loose'] };
+    settings.design_scales = {};
+    for (const [scale, values] of Object.entries(scales)) {
+      if (!Object.hasOwn(steps, scale) || !values || typeof values !== 'object' || Array.isArray(values)) throw new Error('Invalid public design scale');
+      if (Object.keys(values).some(step => !steps[scale].includes(step))) throw new Error('Invalid public design scale step');
+      settings.design_scales[scale] = projectStrings(values, steps[scale]);
+      for (const value of Object.values(settings.design_scales[scale])) {
+        if (!(scale === 'leading' ? /^(?:1(?:\.\d+)?|2(?:\.0+)?)$/ : /^(?:0|\d+(?:\.\d+)?(?:px|rem|em))$/).test(value)) throw new Error('Invalid public design scale value');
+      }
+    }
+  }
   // The site's style library: structured values, re-validated at render.
   if (input.settings?.styles !== undefined) {
     if (!Array.isArray(input.settings.styles)) throw new Error('Invalid public settings: styles');

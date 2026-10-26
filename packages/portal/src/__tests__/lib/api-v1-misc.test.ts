@@ -55,6 +55,26 @@ async function seedPage(id: string, doc: Record<string, unknown>): Promise<void>
 describe('settings endpoints', () => {
   beforeEach(async () => { await resetDatastore(); });
 
+  it('persists named scales and audits the authenticated site without writes', async () => {
+    const { token } = await setup();
+    const endpoint = import('../../pages/api/v1/sites/[siteId]/settings');
+    const response = await callRoute(endpoint, 'PATCH', `http://localhost/api/v1/sites/${SITE}/settings`, {siteId:SITE},
+      {headers:bearer(token),body:{design_scales:{space:{lg:'2rem'}},fonts:{mono:'Roboto Mono'},colors:{surface_hover:'#abcdef'}}});
+    expect(response.status).toBe(200);
+    const { vstore } = await import('../../lib/version-store');
+    expect(await vstore.settings(ORG,SITE,MAIN_VERSION_ID)).toMatchObject({design_scales:{space:{lg:'2rem'}},fonts:{mono:'Roboto Mono'}});
+    const bad = await callRoute(endpoint, 'PATCH', `http://localhost/api/v1/sites/${SITE}/settings`, {siteId:SITE},
+      {headers:bearer(token),body:{design_scales:{space:{lg:'2px;display:none'}}}});
+    expect(bad.status).toBe(400);
+    await seedPage('audit', {content_mode:'blocks',blocks:[{id:'text',type:'core/prose',data:{font_size_px:17}}]});
+    const auditEndpoint = import('../../pages/api/v1/sites/[siteId]/design-token-audit');
+    const audit = await callRoute(auditEndpoint,'GET',`http://localhost/api/v1/sites/${SITE}/design-token-audit`,{siteId:SITE},{headers:bearer(token)});
+    expect(audit.status).toBe(200);
+    expect(await audit.json()).toMatchObject({organization_id:ORG,site_id:SITE,version_id:'main',blocking:false,counts:{hardcoded_size:1}});
+    expect((await callRoute(auditEndpoint,'GET',`http://localhost/api/v1/sites/${SITE}/design-token-audit`,{siteId:SITE})).status).not.toBe(200);
+    expect((await callRoute(auditEndpoint,'GET','http://localhost/api/v1/sites/other/design-token-audit',{siteId:'other'},{headers:bearer(token)})).status).not.toBe(200);
+  });
+
   it('GET returns scripts_* and custom_css (API caller is trusted)', async () => {
     const { token } = await setup();
     const { vstore } = await import('../../lib/version-store');

@@ -126,7 +126,7 @@ function effectFor(name: string): ToolEffect {
     name.startsWith('batch_read_') ||
     name.startsWith('preview_') ||
     name.startsWith('search_') ||
-    name.startsWith('check_')
+    name.startsWith('check_') || name.startsWith('lint_')
   ) {
     return 'read';
   }

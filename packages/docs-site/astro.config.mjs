@@ -66,6 +66,7 @@ export default defineConfig({
             { label: 'Content types and fields', slug: 'tools/content-types' },
             { label: 'Global blocks and section starters', slug: 'tools/reusable-blocks' },
             { label: 'Named styles', slug: 'tools/styles' },
+            { label: 'Design tokens', slug: 'guides/design-tokens' },
             { label: 'Responsive settings and block reference', slug: 'tools/blocks' },
             { label: 'Media and images', slug: 'tools/media' },
           ],

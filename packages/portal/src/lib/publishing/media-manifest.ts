@@ -2,7 +2,7 @@ import { findReferences, replaceReferences } from '../../../../../scripts/fixtur
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
-import { getSiteDomains, getOrganizationDomains, markOrganizationMediaHostUsed, publicMediaPath } from './domain-config';
+import { getSiteDomains, getOrganizationDomains, markOrganizationMediaHostUsed, publicMediaPath, type DomainConfiguration } from './domain-config';
 import { siteMediaPrefix } from '../media-keys';
 
 /** Stable private media identities in serialized content, never signed URLs. */
@@ -28,11 +28,12 @@ export function replacePublicationReferences<T>(value: T, replacements: Map<stri
 }
 
 /** Image bytes and temporary credentials are excluded; Git contains identity, hashes and public routing only. */
-export async function publicationMediaManifest<T extends Record<string, any>>(orgId: string, siteId: string, content: T, websiteHost: string, previousPublication?: Record<string, any>, options: { deferReferences?: boolean } = {}) {
-  const [all, connection, domains, organization, prefix] = await Promise.all([
+export async function publicationMediaManifest<T extends Record<string, any>>(orgId: string, siteId: string, content: T, websiteHost: string, previousPublication?: Record<string, any>, options: { deferReferences?: boolean; domains?: DomainConfiguration } = {}) {
+  const [all, connection, storedDomains, organization, prefix] = await Promise.all([
     getStore().listDocs<Media>(paths.media(orgId, siteId)), getConnection(orgId, 'cloudflare'), getSiteDomains(orgId, siteId),
     getOrganizationDomains(orgId), siteMediaPrefix(orgId, siteId),
   ]);
+  const domains = options.domains ?? storedDomains;
   if (previousPublication?.media_manifest) {
     all.splice(0, all.length, ...previousPublication.media_manifest.entries.map((entry: any) => ({ ...entry,
       public_path: entry.public_path.slice(previousPublication.media_manifest.media_host === organization.media_host ? prefix.length + 1 : (previousPublication.media_manifest.media_path_prefix ?? '').length),
