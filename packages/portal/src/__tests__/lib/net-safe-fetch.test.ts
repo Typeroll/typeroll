@@ -101,6 +101,12 @@ describe('safeFetch over the pinned transport', () => {
         response.end();
         return;
       }
+      if (request.url === '/declared-large') {
+        response.writeHead(200, { 'content-type': 'application/pdf', 'content-length': String(5 * 1024 * 1024) });
+        if (request.method === 'HEAD') { response.end(); return; }
+        response.end('x'.repeat(5 * 1024 * 1024));
+        return;
+      }
       if (request.url === '/slow') { response.writeHead(200); response.write('a'); return; }
       response.writeHead(200, { 'content-type': 'text/plain' });
       response.end(`ok ${request.headers.host}`);
@@ -142,6 +148,15 @@ describe('safeFetch over the pinned transport', () => {
     await expect(large.text()).rejects.toThrow(/exceeds 16384 bytes/);
     const slow = await safeFetch(`${origin}/slow`, {}, { ...optIn, timeoutMs: 200 });
     await expect(slow.text()).rejects.toThrow();
+  });
+
+  it('reports the status of a large resource whose body is never read', async () => {
+    process.env[PRIVATE_NETWORK_FETCH_ENV] = '1';
+    const head = await safeFetch(`${origin}/declared-large`, { method: 'HEAD' }, { ...optIn, maxBytes: 1024 * 1024 });
+    expect(head.status).toBe(200);
+    const get = await safeFetch(`${origin}/declared-large`, {}, { ...optIn, maxBytes: 1024 * 1024 });
+    expect(get.status).toBe(200);
+    await expect(get.text()).rejects.toThrow(/exceeds 1048576 bytes/);
   });
 });
 

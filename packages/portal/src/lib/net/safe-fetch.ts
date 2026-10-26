@@ -196,11 +196,9 @@ function capBody(response: Response, maxBytes: number, label: string): ReadableS
 function finalResponse(response: Response, url: URL, redirected: boolean, maxBytes: number, label: string): Response {
   // Only stream-bodied responses are re-wrapped; a bare test double passes through.
   if (typeof response.headers?.get !== 'function' || (response.body != null && !(response.body instanceof ReadableStream))) return response;
-  const declared = Number(response.headers.get('content-length'));
-  if (Number.isFinite(declared) && declared > maxBytes) {
-    void response.body?.cancel().catch(() => {});
-    throw new OutboundRequestError('response_too_large', `${label} response exceeds ${maxBytes} bytes`);
-  }
+  // The cap applies to bytes actually read. A declared Content-Length alone
+  // is not refused: HEAD probes and callers that discard the body (link
+  // checks, webhooks) must still see the status of a large resource.
   const body = NULL_BODY_STATUSES.has(response.status) ? null : capBody(response, maxBytes, label);
   let wrapped: Response;
   try {
