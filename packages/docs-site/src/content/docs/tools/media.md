@@ -41,6 +41,47 @@ not be used to bypass the import prerequisite. For files already available at a
 public URL, use the URL-import endpoint below; the agent does not need to download
 and re-upload their bytes.
 
+## SVG files
+
+An SVG opened directly from the media host or the website is a document in which
+browsers can run script. Typeroll therefore stores SVG only in sanitized form:
+finalize, and every URL or WordPress import, rewrites the file as static vector
+graphics before it is stored or published. Files with the type `image/svg+xml`
+(or another XML type) or a filename ending in `.svg` are treated as SVG and are
+stored as `image/svg+xml`.
+
+- **Kept:** shapes, paths, text, groups, `<symbol>` and `<use>` with in-document
+  `#id` references, gradients, patterns, clip paths, masks, markers, common
+  filter primitives, `<title>` and `<desc>`, `<style>` and `style` CSS, animation
+  of presentation attributes, and raster images embedded as
+  `data:image/png|jpeg|gif|webp|avif;base64`.
+- **Removed:** scripts, event handler attributes, `<foreignObject>`, links (the
+  link's content stays), DOCTYPE and entity declarations, processing
+  instructions, comments, editor metadata, any `href` that is not an in-document
+  `#id`, CSS `url()` that does not point to an `#id`, `@import`, and animation of
+  links or event handlers.
+- **Rejected:** a file that is not a well-formed SVG document, such as HTML, XML
+  whose root is not `<svg>` or compressed `.svgz`, returns HTTP 400 with
+  `media_svg_invalid`. A truncated SVG returns 422 like other corrupted uploads.
+  Nothing is published; export the file again and upload it.
+
+The stored bytes differ from the uploaded bytes. For an SVG, finalize returns the
+`sha256` and `size_bytes` of the stored file together with `svg_sanitized: true`,
+`source_sha256` (the file you sent) and `removed` (the kinds of content that were
+removed). `expected_sha256` is still the hash of the file you sent, also on retries.
+
+Sites that use the server's platform storage instead of Organization storage
+stage SVG uploads in a private bucket, because every object in the public bucket
+is reachable as soon as it is written. The sanitized file appears at `cdn_url`
+after finalize. On a self-hosted server the private bucket is `R2_PRIVATE_BUCKET`;
+without it, SVG uploads return 503 with `svg_staging_unavailable`. SVGs stored in
+that public bucket earlier are sanitized
+in place by their next finalize, including the backfill that runs when a site is
+deployed; a file that cannot be sanitized is served only as a download.
+SVGs already stored in Organization or draft storage keep their bytes until they
+are uploaded again or re-sanitized by an administrator; publish the site again
+afterwards so its public copies change.
+
 ## `get_import_readiness`
 
 Available with Core 0.1.95 and MCP 0.44.68. Call before starting an import. Returns

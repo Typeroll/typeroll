@@ -11,10 +11,11 @@ import type { APIRoute } from 'astro';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../../../../../../lib/datastore';
 import { requireSiteAccess, requirePermission, json } from '../../../../../../lib/access';
-import { finalizeMedia } from '../../../../../../lib/media-finalize';
+import { finalizeMedia, MediaIntegrityError } from '../../../../../../lib/media-finalize';
 import { requestMediaMigration } from '../../../../../../lib/publishing/media-migration';
-import { finalizeStoredMedia } from '../../../../../../lib/publishing/media-storage';
+import { finalizeOrganizationMedia } from '../../../../../../lib/media/svg-media';
 import { connectionFailure } from '../../../../../../lib/publishing/http';
+import { ConnectionError } from '../../../../../../lib/publishing/connections';
 
 export const POST: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -25,7 +26,7 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
   const mediaId = params.mediaId;
   if (!mediaId) return json({ error: 'Missing mediaId' }, 400);
   if ((await getStore().getDoc<Media>(`${paths.media(owner_org_id, site.id)}/${mediaId}`))?.storage) {
-    try { return json({ ok: true, result: await finalizeStoredMedia(owner_org_id, site.id, mediaId) }); }
+    try { return json({ ok: true, result: await finalizeOrganizationMedia(owner_org_id, site.id, mediaId) }); }
     catch (error) { return connectionFailure(error); }
   }
 
@@ -45,6 +46,8 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
     await requestMediaMigration(owner_org_id);
     return json({ ok: true, result });
   } catch (e) {
+    if (e instanceof MediaIntegrityError) return json({ error: e.message }, 422);
+    if (e instanceof ConnectionError) return connectionFailure(e);
     return json(
       { error: `Finalize failed: ${e instanceof Error ? e.message : String(e)}` },
       500,

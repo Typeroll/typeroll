@@ -18,20 +18,24 @@ const PDF_SHA = createHash('sha256').update(PDF_BYTES).digest('hex');
 
 let storedBytes = PDF_BYTES;
 const sent: string[] = [];
+const copies: Array<Record<string, unknown>> = [];
 
 vi.mock('@aws-sdk/client-s3', () => {
   class GetObjectCommand { constructor(public input: unknown) {} }
   class CopyObjectCommand { constructor(public input: unknown) {} }
+  class PutObjectCommand { constructor(public input: unknown) {} }
+  class DeleteObjectCommand { constructor(public input: unknown) {} }
   class S3Client {
-    async send(cmd: { constructor: { name: string } }) {
+    async send(cmd: { constructor: { name: string }; input: Record<string, unknown> }) {
       sent.push(cmd.constructor.name);
+      if (cmd.constructor.name === 'CopyObjectCommand') copies.push(cmd.input);
       if (cmd.constructor.name === 'GetObjectCommand') {
-        return { Body: { transformToByteArray: async () => new Uint8Array(storedBytes) } };
+        return { Body: { transformToByteArray: async () => new Uint8Array(storedBytes) }, ETag: '"stored"' };
       }
-      return {};
+      return { ETag: '"written"' };
     }
   }
-  return { S3Client, GetObjectCommand, CopyObjectCommand };
+  return { S3Client, GetObjectCommand, CopyObjectCommand, PutObjectCommand, DeleteObjectCommand };
 });
 
 const CONFIG = {
@@ -53,6 +57,7 @@ describe('finalizeMedia integrity', () => {
     await resetDatastore();
     vi.resetModules();
     sent.length = 0;
+    copies.length = 0;
     storedBytes = PDF_BYTES;
   });
 
@@ -88,7 +93,9 @@ describe('finalizeMedia integrity', () => {
     storedBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0 L10');
     const { finalizeMedia, MediaIntegrityError } = await import('../../lib/media-finalize');
     await expect(finalizeMedia(ORG, SITE, 'm1', CONFIG)).rejects.toBeInstanceOf(MediaIntegrityError);
-    expect(sent).not.toContain('CopyObjectCommand');
+    // Never blessed with cache headers; the public object is only offered as a download.
+    expect(sent).not.toContain('PutObjectCommand');
+    expect(copies).toEqual([expect.objectContaining({ ContentType: 'application/octet-stream', ContentDisposition: 'attachment' })]);
   });
 });
 

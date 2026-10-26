@@ -19,6 +19,7 @@ import { paths } from '@typeroll/shared';
 import { usesPrivateMedia } from '../../../../../../lib/publishing/media-policy';
 import { createMediaUpload } from '../../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../../lib/publishing/http';
+import { platformSvgStaging, requiresSvgSanitization, SVG_MEDIA_TYPE } from '../../../../../../lib/media/svg-media';
 
 const MAX_SIZE = 25 * 1024 * 1024;
 
@@ -65,7 +66,14 @@ export const POST: APIRoute = async ({ request, params }) => {
     );
   }
 
-  const key = `${await siteMediaPrefix(ctx.orgId, ctx.siteId)}/${Date.now()}-${sanitize(filename)}`;
+  const prefix = await siteMediaPrefix(ctx.orgId, ctx.siteId);
+  const key = `${prefix}/${Date.now()}-${sanitize(filename)}`;
+  // Every key in the platform bucket is public: an SVG is PUT to private
+  // staging and only its sanitized bytes are published at `key` by finalize.
+  let staging: { bucket: string; key: string } | null = null;
+  if (requiresSvgSanitization({ mime_type: contentType, filename })) {
+    try { staging = platformSvgStaging(prefix, sanitize(filename)); } catch (error) { return connectionFailure(error); }
+  }
 
   const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
   const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
@@ -87,7 +95,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const uploadTtl = await organizationUploadTtl(ctx.orgId);
   const uploadUrl = await getSignedUrl(
     r2,
-    new PutObjectCommand({ Bucket: bucket, Key: key, ContentType: contentType }),
+    new PutObjectCommand({ Bucket: staging?.bucket ?? bucket, Key: staging?.key ?? key, ContentType: contentType }),
     { expiresIn: uploadTtl },
   );
   const cdnUrl = `${publicBase.replace(/\/$/, '')}/${key}`;
@@ -96,7 +104,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     filename,
     cdn_url: cdnUrl,
     r2_key: key,
-    mime_type: contentType,
+    mime_type: staging ? SVG_MEDIA_TYPE : contentType,
+    ...(staging ? { svg_staging_key: staging.key } : {}),
     size_bytes: size,
     alt_text: alt_text ?? undefined,
     uploaded_by: `api-key:${ctx.keyPrefix}`,
