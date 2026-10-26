@@ -176,7 +176,8 @@ client conversation after refreshing the connector catalog. Do not bypass schema
 validation, change domain settings or reconnect Cloudflare merely to refresh MCP.
 
 A media item's `public_path` can retain an old path such as
-`/wp-content/uploads/2024/photo.jpg`. The next publication uses the selected
+`/wp-content/uploads/2024/photo.jpg`; it must end in an extension that matches
+the file's type. The next publication uses the selected
 active host and paths; saved future hosts take effect only through explicit
 domain preparation and cutover. Existing organization media links and previously
 published aliases remain usable; changing a preferred host does not invalidate

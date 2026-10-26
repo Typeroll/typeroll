@@ -17,6 +17,7 @@ import { paths } from '@typeroll/shared';
 import { usesPrivateMedia } from '../../../../../lib/publishing/media-policy';
 import { createMediaUpload } from '../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../lib/publishing/http';
+import { assertMediaName } from '../../../../../lib/media/file-types';
 import { platformSvgStaging, requiresSvgSanitization, SVG_MEDIA_TYPE } from '../../../../../lib/media/svg-media';
 
 const MAX_SIZE = 25 * 1024 * 1024;
@@ -47,6 +48,8 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!contentType.startsWith('image/') && contentType !== 'application/pdf') {
     return json({ error: 'Unsupported content type' }, 415);
   }
+  // Static website hosts serve media by file extension: it must match the type.
+  try { assertMediaName(filename, contentType); } catch (error) { return connectionFailure(error); }
 
   const accountId = process.env.R2_ACCOUNT_ID;
   if (await usesPrivateMedia(owner_org_id, site)) {
@@ -146,5 +149,6 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
      *  to the original and generates AVIF/WebP responsive variants. Without
      *  it the image ships uncached and unoptimised. */
     finalizeUrl,
+    mediaId: justAdded?.id ?? null,
   });
 };

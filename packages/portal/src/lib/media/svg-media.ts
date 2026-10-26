@@ -19,8 +19,9 @@ import { ConnectionError } from '../publishing/connections';
 import { finalizeStoredMedia, storageClient } from '../publishing/media-storage';
 import type { TransferReceipt } from './remote-transfer';
 import { sanitizeSvg, SvgSanitizeError } from './svg-sanitize';
+import { requiresSvgSanitization, SVG_MEDIA_TYPE } from './file-types';
 
-export const SVG_MEDIA_TYPE = 'image/svg+xml';
+export { SVG_MEDIA_TYPE, isScriptableMediaType, requiresSvgSanitization } from './file-types';
 const MAX_BYTES = 25 * 1024 * 1024;
 
 export interface SvgSanitizedMarker {
@@ -35,17 +36,6 @@ export type SvgMedia = Media & {
   /** Platform storage only: private staging object awaiting finalize. */
   svg_staging_key?: string | null;
 };
-
-/** Browsers render image/svg+xml, and any other XML media type, as a document that can run script. */
-export function isScriptableMediaType(type: string | null | undefined): boolean {
-  const essence = (type ?? '').split(';')[0].trim().toLowerCase();
-  return essence === SVG_MEDIA_TYPE || essence.endsWith('+xml') || essence === 'text/xml' || essence === 'application/xml';
-}
-
-/** Static hosts choose Content-Type from the file extension, so an .svg name needs the same treatment as the SVG type. */
-export function requiresSvgSanitization(media: Pick<Media, 'mime_type' | 'filename'>): boolean {
-  return isScriptableMediaType(media.mime_type) || /\.(?:svgz?|xml|xht|xhtml)$/i.test(media.filename ?? '');
-}
 
 /** The upload is not an SVG this server can make inert. Finalize answers 400 and nothing is published. */
 export class SvgRejectedError extends ConnectionError {
@@ -198,13 +188,17 @@ export interface SvgResanitizeReport {
  * republished for the public copy to change. Platform-storage SVGs are
  * re-sanitized by the next finalize or deploy backfill instead (finalizeMedia).
  * Dry run unless `apply` is set. Rejected files are reported, never deleted.
+ * `mediaIds` limits the run to those records; publishing uses it for the
+ * referenced SVGs that carry no sanitized marker.
  */
-export async function resanitizeStoredSvgMedia(orgId: string, siteId: string, options: { apply?: boolean } = {}): Promise<SvgResanitizeReport> {
+export async function resanitizeStoredSvgMedia(orgId: string, siteId: string, options: { apply?: boolean; mediaIds?: string[] } = {}): Promise<SvgResanitizeReport> {
   const store = getStore();
   const report: SvgResanitizeReport = { scanned: 0, svg: 0, unchanged: 0, sanitized: [], rejected: [], skipped: [], mode: options.apply ? 'apply' : 'dry-run' };
   const { siteMediaPrefix } = await import('../media-keys');
   const prefix = await siteMediaPrefix(orgId, siteId);
+  const only = options.mediaIds ? new Set(options.mediaIds) : null;
   for (const media of await store.listDocs<SvgMedia>(paths.media(orgId, siteId))) {
+    if (only && !only.has(media.id)) continue;
     report.scanned++;
     if (!requiresSvgSanitization(media)) continue;
     report.svg++;
@@ -220,7 +214,17 @@ export async function resanitizeStoredSvgMedia(orgId: string, siteId: string, op
       let bytes: Buffer, removed: string[];
       try { ({ bytes, removed } = sanitizeSvg(raw)); }
       catch (error) { report.rejected.push({ media_id: media.id, error: error instanceof Error ? error.message : String(error) }); continue; }
-      if (bytes.equals(raw) && media.mime_type === SVG_MEDIA_TYPE) { report.unchanged++; continue; }
+      if (media.sha256 && sha256(raw) !== media.sha256) { report.rejected.push({ media_id: media.id, error: 'The stored file does not match its recorded hash.' }); continue; }
+      if (bytes.equals(raw) && media.mime_type === SVG_MEDIA_TYPE) {
+        // Already inert: record that, so publishing accepts it (lib/publishing/media-manifest.ts).
+        if (options.apply && media.svg_sanitized?.sha256 !== media.sha256) {
+          const marked = await store.compareAndUpdateDoc<SvgMedia>(`${paths.media(orgId, siteId)}/${media.id}`,
+            current => current.storage?.key === location.key && current.sha256 === media.sha256,
+            { svg_sanitized: { source_sha256: sha256(raw), sha256: sha256(raw), removed: [] } });
+          if (!marked) { report.skipped.push({ media_id: media.id, reason: 'changed concurrently: run again' }); continue; }
+        }
+        report.unchanged++; continue;
+      }
       const digest = sha256(bytes);
       if (options.apply) {
         await r2.send(new PutObjectCommand({ Bucket: location.bucket, Key: key(digest), Body: bytes, ContentType: SVG_MEDIA_TYPE, CacheControl: 'private, no-store' }),

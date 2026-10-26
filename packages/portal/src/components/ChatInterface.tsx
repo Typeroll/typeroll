@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Paperclip, X, Image as ImageIcon } from 'lucide-react';
 import { chatActionEditLink } from '../lib/chat-action-links';
+import { finalizeUpload } from '../lib/media/client-upload';
 
 interface PageSummary {
   id: string;
@@ -161,16 +162,9 @@ export default function ChatInterface({ siteId, pages, activePage, onActivePageM
       });
       if (!put.ok) throw new Error(`R2 upload failed (${put.status})`);
 
-      // Finalize: apply cache headers + generate AVIF/WebP variants.
-      // Best-effort — chat attachments still work without variants, but
-      // they ship the original PNG to every viewport without it.
-      if (presignData.finalizeUrl) {
-        try {
-          await fetch(presignData.finalizeUrl, { method: 'POST' });
-        } catch (e) {
-          console.warn('[chat-media-finalize]', e);
-        }
-      }
+      // Finalize verifies the file (and sanitizes SVG). A refused file is
+      // removed again and the attachment shows the reason.
+      await finalizeUpload(siteId, presignData);
 
       setPending((p) =>
         p.map((it) => (it.id === id ? { ...it, status: 'ready', cdn_url: presignData.cdnUrl } : it)),

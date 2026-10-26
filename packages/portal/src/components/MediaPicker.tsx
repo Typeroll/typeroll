@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { Media } from '@typeroll/shared';
+import { finalizeUpload } from '../lib/media/client-upload';
 
 interface Props {
   value: string;
@@ -44,15 +45,11 @@ export default function MediaPicker({ value, onChange, siteId, id, label = 'Imag
       });
       const data = await presign.json();
       if (!presign.ok) throw new Error(data.error ?? 'Upload failed');
-      await fetch(data.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
-      // Finalize: cache headers + AVIF/WebP variants. Best-effort.
-      if (data.finalizeUrl) {
-        try {
-          await fetch(data.finalizeUrl, { method: 'POST' });
-        } catch (e) {
-          console.warn('[media-finalize]', e);
-        }
-      }
+      const put = await fetch(data.uploadUrl, { method: 'PUT', body: file, headers: { 'Content-Type': file.type } });
+      if (!put.ok) throw new Error(`Upload failed (${put.status})`);
+      // Finalize verifies the file (and sanitizes SVG). A refused file is
+      // removed again and its reason shown instead of a broken image.
+      await finalizeUpload(siteId, data);
       onChange(data.cdnUrl);
       setOpen(false);
     } catch (e) {

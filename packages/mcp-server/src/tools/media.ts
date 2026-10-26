@@ -86,8 +86,8 @@ export const mediaTools: ToolDef[] = [
     description:
       'Mint a 5-min signed PUT URL for direct-to-R2 upload. After the upload completes, the CDN url is what you reference in <img src="…">. REQUIRED follow-up: call `finalize_media` after the PUT succeeds — without it the original ships with no Cache-Control (Lighthouse will flag it) and no responsive variants get generated. The response carries `finalize_url` as a reminder. This signed-PUT path is the INTEGRITY-SAFE way to upload bytes from disk or a generated asset — a direct `curl --data-binary @file` sends the bytes straight to R2 without transcribing them through the model, so it can\'t be corrupted the way a large `upload_media_inline` base64 blob can (ESPECIALLY use this, not inline, for SVG/logos). For a public source URL, `upload_media_from_url` is the one-call equivalent; reserve `upload_media_inline` for tiny payloads only.',
     inputSchema: {
-      filename: z.string().min(1),
-      content_type: z.string().min(1).describe('e.g. "image/png", "image/jpeg", "application/pdf"'),
+      filename: z.string().min(1).describe('Its extension must match content_type (e.g. logo.png with image/png); a mismatch is refused with media_extension_mismatch.'),
+      content_type: z.string().min(1).describe('e.g. "image/png", "image/jpeg", "application/pdf". SVGs are sanitized at finalize; an SVG that cannot be sanitized is refused.'),
       size: z.number().int().nonnegative().optional(),
       alt_text: z.string().optional(),
     },
@@ -206,7 +206,7 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'update_media',
-    description: 'Patch a media item\'s alt text, filename or public path. A public path change is applied at the next publication.',
+    description: 'Patch a media item\'s alt text, filename or public path. A new filename or public path must end in an extension matching the file\'s type (media_extension_mismatch otherwise). A public path change is applied at the next publication.',
     inputSchema: {
       media_id: z.string(),
       alt_text: z.string().optional(),

@@ -78,9 +78,68 @@ without it, SVG uploads return 503 with `svg_staging_unavailable`. SVGs stored i
 that public bucket earlier are sanitized
 in place by their next finalize, including the backfill that runs when a site is
 deployed; a file that cannot be sanitized is served only as a download.
-SVGs already stored in Organization or draft storage keep their bytes until they
-are uploaded again or re-sanitized by an administrator; publish the site again
-afterwards so its public copies change.
+SVGs that were stored in Organization or draft storage before sanitizing existed
+are sanitized when they move to Organization storage and, at the latest, when a
+publication references them: publishing stores a sanitized copy as a new
+original and publishes that. An SVG that cannot be sanitized stops publishing
+with HTTP 409 and `media_svg_unsanitized`, naming the file; upload a plain SVG
+and select it instead. Typeroll never publishes an SVG that was not sanitized.
+
+In the Media library, the media picker and chat attachments, a file that finalize
+refuses (for example `media_svg_invalid`) is removed again and the reason is
+shown, instead of leaving a broken item in the library.
+
+## File names and types
+
+When media is published on the website host, the static host chooses each file's
+`Content-Type` from its extension. A filename or `public_path` must therefore end
+in an extension that belongs to the file's type. Extensions are compared without
+regard to case.
+
+| Type                                       | Allowed extensions               |
+| ------------------------------------------ | -------------------------------- |
+| `image/jpeg`                               | `.jpg`, `.jpeg`, `.jpe`, `.jfif` |
+| `image/png`                                | `.png`                           |
+| `image/apng`                               | `.apng`, `.png`                  |
+| `image/gif`                                | `.gif`                           |
+| `image/webp`                               | `.webp`                          |
+| `image/avif`                               | `.avif`                          |
+| `image/svg+xml`                            | `.svg` (stored only sanitized)   |
+| `image/x-icon`, `image/vnd.microsoft.icon` | `.ico`                           |
+| `image/bmp`                                | `.bmp`                           |
+| `image/tiff`                               | `.tif`, `.tiff`                  |
+| `image/heic`, `image/heif`                 | `.heic`, `.heif`                 |
+| `image/jxl`                                | `.jxl`                           |
+| `application/pdf`                          | `.pdf`                           |
+
+Uploads accept images and PDFs of these types. Records from earlier imports can
+also be video (`.mp4`, `.m4v`, `.webm`, `.mov`), audio (`.mp3`, `.wav`, `.ogg`) or
+fonts (`.woff`, `.woff2`).
+
+- `upload-url`, `upload_media_*` and imports with an explicit `filename` return
+  HTTP 400 with `media_extension_mismatch` when the extension does not match
+  `content_type` (for example `photo.html` declared as `image/png`), and HTTP 415
+  with `media_type_unsupported` for other types. Nothing is created.
+- An import without `filename` takes the name from the source URL. If that name
+  has no matching extension, the type's extension is appended (`render.php`
+  imported as `image/png` is stored as `render.php.png`).
+- `PATCH /api/v1/sites/{siteId}/media/{mediaId}` (`update_media`) and the Media
+  library return HTTP 400 with `media_extension_mismatch` when a changed
+  `filename` or `public_path` does not match the stored type. Unchanged values
+  are accepted, so older records stay editable.
+- Publishing never serves a file under an extension that does not match its type.
+  An older record whose name or `public_path` does not match is published with
+  the type's extension appended, for example `/photo.html.png`, and its page
+  references are rewritten to that address. A record of any other type is
+  published as a download with `.bin` appended. Earlier publications' files
+  with mismatched names, or unsanitized SVGs, are not published again.
+
+Published websites send `X-Content-Type-Options: nosniff` for every file. Files
+ending in `.svg`, `.SVG`, `.svgz`, `.xhtml` or `.xht` also receive
+`Content-Security-Policy: sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'self' data:`,
+so an SVG opened directly cannot run script on the website's address. SVGs used
+in `<img>` or CSS display as before. PDFs are not sandboxed, so browsers keep
+showing them inline.
 
 ## `get_import_readiness`
 

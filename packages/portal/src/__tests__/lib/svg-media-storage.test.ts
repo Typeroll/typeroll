@@ -109,7 +109,9 @@ describe('organization storage uploads', () => {
 
   it('treats non-canonical SVG types and .svg names as SVG', async () => {
     for (const [type, name] of [['image/SVG+xml', 'a.svg'], ['image/x-icon+xml', 'b.bin'], ['image/png', 'c.SVG']]) {
-      const created = await upload(MALICIOUS, type, name);
+      // New uploads must name a matching extension; records created before that rule keep any combination.
+      const created = await upload(MALICIOUS, 'image/svg+xml', 'legacy.svg');
+      await getStore().updateDoc(`${paths.media('org', 'site')}/${created.mediaId}`, { mime_type: type, filename: name });
       await finalizeOrganizationMedia('org', 'site', created.mediaId);
       const saved = await mediaDoc(created.mediaId);
       expect(saved?.mime_type).toBe('image/svg+xml');

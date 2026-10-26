@@ -1,5 +1,7 @@
 // GET    /api/v1/sites/{siteId}/media/{mediaId}
-// PATCH  /api/v1/sites/{siteId}/media/{mediaId}   alt_text, filename
+// PATCH  /api/v1/sites/{siteId}/media/{mediaId}   alt_text, filename, public_path
+//        filename and public_path must end in an extension that matches the
+//        media type (lib/media/file-types.ts).
 // DELETE /api/v1/sites/{siteId}/media/{mediaId}
 //
 // DELETE removes the metadata doc but does NOT remove the underlying R2
@@ -12,6 +14,7 @@ import { getStore } from '../../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import { publicMediaPath } from '../../../../../../lib/publishing/domain-config';
 import { connectionFailure } from '../../../../../../lib/publishing/http';
+import { assertMediaNameUpdate } from '../../../../../../lib/media/file-types';
 import type { Media } from '@typeroll/shared';
 
 const WRITABLE: Array<keyof Media> = ['alt_text', 'filename', 'public_path'];
@@ -46,6 +49,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     try { update.public_path = update.public_path === null ? null : publicMediaPath(update.public_path); }
     catch (error) { return connectionFailure(error); }
   }
+  try { assertMediaNameUpdate(existing, update); } catch (error) { return connectionFailure(error); }
   await store.updateDoc(`${paths.media(ctx.orgId, ctx.siteId)}/${mediaId}`, update);
   const fresh = await store.getDoc<Media>(`${paths.media(ctx.orgId, ctx.siteId)}/${mediaId}`);
   return apiResponse(ctx, { media: fresh }, 200, body);

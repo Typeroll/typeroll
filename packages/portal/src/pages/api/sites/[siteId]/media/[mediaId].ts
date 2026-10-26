@@ -4,6 +4,7 @@ import { getStore } from '../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import { publicMediaPath } from '../../../../../lib/publishing/domain-config';
 import { connectionFailure } from '../../../../../lib/publishing/http';
+import { assertMediaNameUpdate } from '../../../../../lib/media/file-types';
 import type { Media } from '@typeroll/shared';
 import { deleteMediaObjects } from '../../../../../lib/media-deletion';
 
@@ -42,6 +43,7 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     try { update.public_path = update.public_path === null ? null : publicMediaPath(update.public_path); }
     catch (error) { return connectionFailure(error); }
   }
+  try { assertMediaNameUpdate(existing, update); } catch (error) { return connectionFailure(error); }
   await getStore().updateDoc(docPath, update);
   return json({ ok: true });
 };

@@ -7,6 +7,7 @@ import { createMediaUpload, finalizeTransferredMedia, storageClient } from '../p
 import { durableTransfer, mediaTransfers, transferReservation } from '../media/transfer';
 import { requiresSvgSanitization, sanitizeTransferredSvg, SvgRejectedError, SVG_MEDIA_TYPE } from '../media/svg-media';
 import { ConnectionError } from '../publishing/connections';
+import { allowedMediaExtensions, assertMediaName, withMediaExtension } from '../media/file-types';
 import type { WPMedia } from './client';
 
 export interface UploadedMedia {
@@ -81,14 +82,20 @@ export class WPMediaTransfer {
   /** Import a source URL with optional metadata from the public API or an agent. */
   async importUrl(sourceUrl: string, options: { filename?: string; contentType?: string; altText?: string } = {}): Promise<UploadedMedia> {
     await requireImportStorage(this.orgId);
-    const filename = sanitizeFilename(options.filename ?? filenameFromUrl(sourceUrl));
-    return this.transferPrivate(sourceUrl, filename, options.contentType ?? guessMimeType(filename), options.altText ?? '');
+    const derived = sanitizeFilename(options.filename ?? filenameFromUrl(sourceUrl));
+    const contentType = options.contentType ?? guessMimeType(derived);
+    // A chosen filename must match the type (createMediaUpload answers 400);
+    // a name taken from the source URL gets the type's extension instead.
+    const filename = options.filename === undefined ? derivedFilename(derived, contentType) : derived;
+    if (options.filename !== undefined) assertMediaName(filename, contentType);
+    return this.transferPrivate(sourceUrl, filename, contentType, options.altText ?? '');
   }
 
   async transfer(item: WPMedia): Promise<UploadedMedia> {
     await requireImportStorage(this.orgId);
-    const filename = sanitizeFilename(filenameFromUrl(item.source_url));
-    return this.transferPrivate(item.source_url, filename, item.mime_type ?? guessMimeType(filename), item.alt_text ?? '', item.media_details?.width, item.media_details?.height);
+    const derived = sanitizeFilename(filenameFromUrl(item.source_url));
+    const contentType = item.mime_type ?? guessMimeType(derived);
+    return this.transferPrivate(item.source_url, derivedFilename(derived, contentType), contentType, item.alt_text ?? '', item.media_details?.width, item.media_details?.height);
   }
 
   private async transferPrivate(oldUrl: string, filename: string, contentType: string, altText: string, width?: number, height?: number): Promise<UploadedMedia> {
@@ -144,6 +151,11 @@ function filenameFromUrl(url: string): string {
 
 function sanitizeFilename(s: string): string {
   return s.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'file';
+}
+
+/** Names taken from a source URL keep their extension only when it matches the type. Unsupported types are refused by createMediaUpload. */
+function derivedFilename(filename: string, contentType: string): string {
+  return allowedMediaExtensions(contentType).length ? withMediaExtension(filename, contentType) : filename;
 }
 
 function guessMimeType(filename: string): string {
