@@ -81,13 +81,15 @@ export default defineConfig({
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
+  // Server contracts use HTTP/session APIs and run once per target. Keep real
+  // login/logout and viewport assertions in every browser/viewport project.
   projects: target.isRemote ? [
     { name: 'chromium-desktop', use: { ...devices['Desktop Chrome'] } },
-    { name: 'chromium-mobile-390', use: { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } } },
-    { name: 'chromium-mobile-320', use: { ...devices['iPhone SE'], viewport: { width: 320, height: 568 } } },
+    { name: 'chromium-mobile-390', grepInvert: /@server/, use: { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } } },
+    { name: 'chromium-mobile-320', grepInvert: /@server/, use: { ...devices['iPhone SE'], viewport: { width: 320, height: 568 } } },
     ...(fullRemoteBrowsers ? [
-      { name: 'firefox-desktop', use: { ...devices['Desktop Firefox'] } },
-      { name: 'webkit-desktop', use: { ...devices['Desktop Safari'] } },
+      { name: 'firefox-desktop', grepInvert: /@server/, use: { ...devices['Desktop Firefox'] } },
+      { name: 'webkit-desktop', grepInvert: /@server/, use: { ...devices['Desktop Safari'] } },
     ] : []),
   ] : [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
