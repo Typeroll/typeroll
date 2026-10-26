@@ -61,7 +61,7 @@ describe('site access tools', () => {
     const s = await session([{ siteId: 'site', permission: 'write' }]);
     try {
       for (const name of ['revoke_api_key', 'list_site_shares', 'share_site', 'revoke_site_share']) {
-        const args = name === 'revoke_api_key' ? { key_id: 'abcdefabcdef' } : name === 'revoke_site_share' ? { share_id: 's' } : { org_id: 'o' };
+        const args = name === 'revoke_api_key' ? { key_id: 'abcdefabcdef' } : name === 'revoke_site_share' ? { share_id: 's' } : name === 'share_site' ? { org_slug: 'client', permission: 'read' } : {};
         const result = await s.call(name, { ...args, site_id: 'site' });
         expect(result.isError, name).toBe(true);
         expect(JSON.stringify(result.content)).toContain('requires admin permission');

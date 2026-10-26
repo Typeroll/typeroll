@@ -45,7 +45,7 @@ export const settingsTools: ToolDef[] = [
     name: 'update_site_settings',
     description:
       'Patch site settings, including responsive breakpoints for block layouts and visibility. Accepts everything the portal Settings form does. Requires admin permission on the site, as in the portal. Only the fields you pass change. ' +
-      'Pass fields at the TOP LEVEL of the object — do NOT wrap in a "settings" key. ' +
+      'Pass fields at the TOP LEVEL of the object — do NOT wrap in a "settings" or "patch" key. ' +
       'Example: {"site_name": "Acme", "colors": {"primary": "#ff0"}} not {"settings": {...}}. ' +
       'Nested objects (colors, fonts, contact, social) are shallow-merged into the existing value. ' +
       'Unknown top-level keys return a 400 error listing the valid fields. ' +
@@ -123,6 +123,7 @@ export const settingsTools: ToolDef[] = [
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { version, ...body } = args;
+      if (!Object.keys(body).some(key => body[key] !== undefined)) throw new Error('No settings supplied. Pass at least one setting at the top level, for example {tagline: "New tagline"}; do not wrap fields in patch or settings.');
       const res = await client.patch(siteId, 'settings', body, v(version));
       return ok(res);
     }),
