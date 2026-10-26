@@ -42,6 +42,21 @@ with a signed token, a honeypot, server-side validation, and rate limiting.
 Multi-step forms can save partial answers between steps. Submission data is not
 embedded in the static site build.
 
+Limits that apply to every submission:
+
+- the request body may be at most 64 KiB;
+- each answer must be text, a number, a boolean or a list of those, and text is
+  limited to 10,000 characters unless the field sets a higher `max`;
+- a solved proof of work counts for one accepted post;
+- an email action that sends to an address taken from the answers (for example
+  an autoresponder to `{{email}}`) reaches the same address at most three times
+  per Site per hour;
+- forms that belong to an app installation cannot be submitted directly.
+
+Self-hosted installs behind a reverse proxy must set `AUTH_TRUST_PROXY_HOPS`
+(Compose sets it to `1` behind Caddy); otherwise every visitor shares one rate
+limit.
+
 In previews (the editor, **Preview site**, preview links and page previews)
 forms validate and step through as published but send nothing; a "Preview –
 nothing is sent" notice marks them. See

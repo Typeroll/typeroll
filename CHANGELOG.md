@@ -1,5 +1,69 @@
 # Changelog
 
+## 0.2.111 / MCP 0.45.83 / WordPress helper 0.4.0 — Security hardening
+
+Rendering and portal isolation
+
+- Escape `<style>` text inside SVG and MathML when sanitizing, so sanitized
+  HTML can never carry markup there; ordinary page CSS is byte-identical.
+  Password inputs are removed from authored HTML.
+- Sandbox every HTML response from `/api/forms/submit`, the global block
+  preview and the editor canvases; portal pages can no longer be framed by
+  other sites. Page HTML is stored sanitized on every save path.
+
+Access control
+
+- Extension credentials: scopes are matched against the route below the site
+  id, credentials act with their scope's own permission instead of admin,
+  removing a scope takes effect on existing credentials, and credentials can
+  no longer take over or delete other forms or change scripts, robots or
+  `staging_url`. Private allow-lists use `org/site` entries; credentials see
+  only their own app guide.
+- Only admins of the owning Organization can mint site API keys, rotate
+  Extension credentials or manage shares. Site lifecycle changes refuse keys
+  minted through a share, and revoking a share revokes such keys. Listing key
+  metadata requires admin.
+- Organization API keys and invites require an owner or admin. Invites are
+  stored, single-use by default and revocable; earlier invite links stop
+  working.
+- Changing a Site's slug or domain requires admin. Fallback hostnames are
+  claimed globally, and a DNS record or custom domain held by another project
+  is never overwritten (`409 slug_unavailable`).
+- Logout revokes the user's refresh tokens. Preview links need write access and
+  chat settings changes need admin. Workflow pages no longer expose helper keys.
+
+Outbound requests
+
+- One guarded client for WordPress migration, preflight, URL verification,
+  link checks, sitemaps, webhooks and diagnostics: public addresses only
+  (including IPv4-mapped, NAT64 and 6to4 forms), connections pinned to the
+  validated address, every redirect re-validated, time and size bounded.
+  Migration only fetches item links on the source site. Self-hosted installs
+  can allow private migration sources with
+  `TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH=1`.
+- SMTP connectors accept public hosts on ports 25, 465, 587 and 2525 and report
+  generic errors.
+
+Forms and Analytics
+
+- Rate limits use the trusted proxy hop (`AUTH_TRUST_PROXY_HOPS`); proof of
+  work is single-use; bodies are bounded while read; answers must be
+  primitives within length limits; autoresponders to submitted addresses are
+  throttled; app-targeted forms refuse direct submissions. New Analytics
+  tokens use a separate signing key (`analytics-v2`; v1 still accepted).
+
+Packages, images and release
+
+- WordPress helper 0.4.0 exports only public post types, returns protected
+  posts without content, refuses underscore meta outside an allowlist, reduces
+  ACF user and post objects and accepts its key only in the header.
+- MCP 0.45.83 sends a workspace key only to the hosted portal or one matching
+  `TYPEROLL_API_URL`, and requires HTTPS except on loopback.
+- The Core image runs as `node`. Compose trusts one proxy hop and keeps
+  publishing and signing secrets out of the public forms service.
+- Release OSS reuses only the image digest recorded by Tests, grants each job
+  only its own permissions and pins actions by SHA.
+
 ## 0.2.107 / MCP 0.45.81 — Focused settings and guided domain migration
 
 - Split Site settings into seven linked sections with independent saves and retained unsaved inputs.
