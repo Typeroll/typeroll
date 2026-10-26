@@ -28,8 +28,39 @@ class Typeroll_Helper_Content {
 	);
 
 	/**
-	 * List every registered post type that has at least one published item.
-	 * Includes both built-in (post, page) and custom types.
+	 * Whether a post type may be exported: it must have public front-end
+	 * URLs (is_post_type_viewable) and must not be WP scaffolding. Private
+	 * plugin storage such as WooCommerce orders/coupons or form-submission
+	 * logs is registered as non-public and is never exposed.
+	 *
+	 * @param string $post_type
+	 * @return bool
+	 */
+	public static function is_exportable_type( $post_type ) {
+		if ( ! is_string( $post_type ) || in_array( $post_type, self::HIDDEN_TYPES, true ) ) return false;
+		$obj = get_post_type_object( $post_type );
+		if ( ! $obj ) return false;
+		return (bool) is_post_type_viewable( $obj );
+	}
+
+	/**
+	 * Whether a post may be exported: published and of an exportable type.
+	 *
+	 * @param WP_Post|null $post
+	 * @return bool
+	 */
+	public static function is_exportable_post( $post ) {
+		return $post && $post->post_status === 'publish' && self::is_exportable_type( $post->post_type );
+	}
+
+	/** Password-protected posts are exported without their body. */
+	public static function is_protected_post( $post ) {
+		return isset( $post->post_password ) && (string) $post->post_password !== '';
+	}
+
+	/**
+	 * List every exportable post type: built-in (post, page) and custom
+	 * types with public front-end URLs, whether or not they use show_in_rest.
 	 *
 	 * @return array
 	 */
@@ -37,7 +68,7 @@ class Typeroll_Helper_Content {
 		$out = array();
 		$all = get_post_types( array(), 'objects' );
 		foreach ( $all as $slug => $obj ) {
-			if ( in_array( $slug, self::HIDDEN_TYPES, true ) ) continue;
+			if ( ! self::is_exportable_type( $slug ) ) continue;
 			$count_published = (int) wp_count_posts( $slug )->publish;
 			$out[] = array(
 				'slug'          => $slug,
@@ -94,7 +125,7 @@ class Typeroll_Helper_Content {
 				'id' => (int) $term->term_id, 'name' => $term->name, 'slug' => $term->slug,
 				'link' => $link, 'parent' => (int) $term->parent, 'description' => $term->description,
 				'meta' => $meta,
-				'acf' => function_exists( 'get_fields' ) ? ( get_fields( $term ) ?: new stdClass() ) : new stdClass(),
+				'acf' => function_exists( 'get_fields' ) ? ( Typeroll_Helper_ACF::sanitize_value( get_fields( $term ) ) ?: new stdClass() ) : new stdClass(),
 			);
 		}
 		return array( 'items' => $items, 'total' => (int) $total, 'total_pages' => (int) ceil( $total / $per_page ) );
@@ -110,6 +141,9 @@ class Typeroll_Helper_Content {
 	 * @return array { items, total, total_pages }
 	 */
 	public static function list_items( $post_type, $page = 1, $per_page = 100 ) {
+		if ( ! self::is_exportable_type( $post_type ) ) {
+			return array( 'items' => array(), 'total' => 0, 'total_pages' => 0, 'page' => 1, 'per_page' => 0 );
+		}
 		$per_page = max( 1, min( 200, (int) $per_page ) );
 		$page     = max( 1, (int) $page );
 
@@ -148,7 +182,7 @@ class Typeroll_Helper_Content {
 	 */
 	public static function get_item( $id ) {
 		$post = get_post( (int) $id );
-		if ( ! $post || $post->post_status !== 'publish' ) return null;
+		if ( ! self::is_exportable_post( $post ) ) return null;
 		return self::describe_post( $post );
 	}
 
@@ -161,6 +195,13 @@ class Typeroll_Helper_Content {
 	public static function describe_post( $post ) {
 		// Title — apply the_title filter so plugins/themes can hook in.
 		$title = apply_filters( 'the_title', $post->post_title, $post->ID );
+
+		// Password-protected posts: the password gates the body, excerpt and
+		// custom data, so only public identity (title, URL, SEO, taxonomies)
+		// is exported. The migrator must not publish these as normal pages.
+		if ( self::is_protected_post( $post ) ) {
+			return self::describe_protected_post( $post, $title );
+		}
 
 		// Content — apply the_content so shortcodes / blocks / page-builders
 		// expand to their final HTML.
@@ -178,26 +219,7 @@ class Typeroll_Helper_Content {
 		}
 
 		// Taxonomies (categories, tags, custom).
-		$taxonomies = array();
-		$primary_terms = array();
-		$tax_names  = get_object_taxonomies( $post->post_type );
-		foreach ( $tax_names as $tax ) {
-			$primary = (int) get_post_meta( $post->ID, '_yoast_wpseo_primary_' . $tax, true );
-			if ( ! $primary ) $primary = (int) get_post_meta( $post->ID, 'rank_math_primary_' . $tax, true );
-			if ( $primary ) $primary_terms[ $tax ] = $primary;
-			$terms = wp_get_post_terms( $post->ID, $tax );
-			if ( is_wp_error( $terms ) ) continue;
-			$taxonomies[ $tax ] = array_map(
-				function( $t ) {
-					return array(
-						'id'   => (int) $t->term_id,
-						'name' => $t->name,
-						'slug' => $t->slug,
-					);
-				},
-				$terms
-			);
-		}
+		list( $taxonomies, $primary_terms ) = self::describe_taxonomies( $post );
 
 		// Custom post meta (skip underscore-prefixed internal keys, and skip
 		// the few keys WP itself manages — they're not content).
@@ -238,6 +260,7 @@ class Typeroll_Helper_Content {
 			'type'         => $post->post_type,
 			'slug'         => $post->post_name,
 			'status'       => $post->post_status,
+			'protected'    => false,
 			'title'        => array( 'rendered' => $title ),
 			'content'      => array(
 				'rendered' => $content_rendered,
@@ -258,6 +281,71 @@ class Typeroll_Helper_Content {
 			'seo'          => $seo,
 			'builder'      => $builder,
 		);
+	}
+
+	/**
+	 * Shape of a password-protected post: same keys as describe_post, with
+	 * empty content and custom data and `protected: true`.
+	 *
+	 * @param WP_Post $post
+	 * @param string  $title
+	 * @return array
+	 */
+	private static function describe_protected_post( $post, $title ) {
+		list( $taxonomies, $primary_terms ) = self::describe_taxonomies( $post );
+		return array(
+			'id'             => (int) $post->ID,
+			'type'           => $post->post_type,
+			'slug'           => $post->post_name,
+			'status'         => $post->post_status,
+			'protected'      => true,
+			'title'          => array( 'rendered' => $title ),
+			'content'        => array( 'rendered' => '', 'raw' => '' ),
+			'excerpt'        => array( 'rendered' => '' ),
+			'date'           => mysql_to_rfc3339( $post->post_date_gmt ) . 'Z',
+			'modified'       => mysql_to_rfc3339( $post->post_modified_gmt ) . 'Z',
+			'link'           => get_permalink( $post ),
+			'parent'         => (int) $post->post_parent,
+			'menu_order'     => (int) $post->menu_order,
+			'author'         => (int) $post->post_author,
+			'featured_image' => null,
+			'taxonomies'     => $taxonomies,
+			'primary_terms'  => (object) $primary_terms,
+			'meta'           => array(),
+			'acf'            => array(),
+			'seo'            => array(),
+			'builder'        => null,
+		);
+	}
+
+	/**
+	 * Assigned terms per taxonomy plus primary-term choices from Yoast or
+	 * Rank Math.
+	 *
+	 * @param WP_Post $post
+	 * @return array { 0: taxonomies, 1: primary_terms }
+	 */
+	private static function describe_taxonomies( $post ) {
+		$taxonomies    = array();
+		$primary_terms = array();
+		foreach ( get_object_taxonomies( $post->post_type ) as $tax ) {
+			$primary = (int) get_post_meta( $post->ID, '_yoast_wpseo_primary_' . $tax, true );
+			if ( ! $primary ) $primary = (int) get_post_meta( $post->ID, 'rank_math_primary_' . $tax, true );
+			if ( $primary ) $primary_terms[ $tax ] = $primary;
+			$terms = wp_get_post_terms( $post->ID, $tax );
+			if ( is_wp_error( $terms ) ) continue;
+			$taxonomies[ $tax ] = array_map(
+				function( $t ) {
+					return array(
+						'id'   => (int) $t->term_id,
+						'name' => $t->name,
+						'slug' => $t->slug,
+					);
+				},
+				$terms
+			);
+		}
+		return array( $taxonomies, $primary_terms );
 	}
 
 	private static function maybe_unserialize( $value ) {

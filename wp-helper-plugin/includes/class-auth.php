@@ -3,8 +3,9 @@
  * API-key authentication for the Typeroll REST namespace.
  *
  * The key is stored in wp_options under `typeroll_helper_api_key`.
- * Clients send it as either the `X-Typeroll-Key` header or a `key`
- * query parameter. Comparison uses hash_equals() to avoid timing leaks.
+ * Clients send it in the `X-Typeroll-Key` header. Query parameters are not
+ * accepted because URLs end up in access logs, proxies and browser history.
+ * Comparison uses hash_equals() to avoid timing leaks.
  */
 
 if ( ! defined( 'ABSPATH' ) ) exit;
@@ -51,17 +52,14 @@ class Typeroll_Helper_Auth {
 	 */
 	public static function check_request( $request ) {
 		$presented = $request->get_header( 'x-typeroll-key' );
-		if ( ! $presented ) {
-			$presented = $request->get_param( 'key' );
-		}
-		if ( ! $presented ) {
+		if ( ! is_string( $presented ) || $presented === '' ) {
 			return new WP_Error(
 				'typeroll_no_key',
-				'API key required. Pass via X-Typeroll-Key header or ?key= query.',
+				'API key required. Send it in the X-Typeroll-Key header.',
 				array( 'status' => 401 )
 			);
 		}
-		$expected = self::get_api_key();
+		$expected = (string) self::get_api_key();
 		// Both strings must be the same length for hash_equals to work safely.
 		if ( strlen( $presented ) !== strlen( $expected ) || ! hash_equals( $expected, $presented ) ) {
 			return new WP_Error(

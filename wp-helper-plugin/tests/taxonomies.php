@@ -13,6 +13,7 @@ function get_term_link( $term ) { return 'https://source.example/category/' . $t
 function get_term_meta( $id ) { return array( 'emoji' => array( '📦' ), '_internal' => array( 'hidden' ) ); }
 function get_fields( $term ) { return array( 'color' => '#123456' ); }
 function is_wp_error( $value ) { return false; }
+require __DIR__ . '/../includes/class-acf.php';
 require __DIR__ . '/../includes/class-content.php';
 $types = Typeroll_Helper_Content::list_taxonomies();
 if ( $types[0]['slug'] !== 'category' || $types[0]['types'] !== array( 'post' ) ) throw new Exception( 'Taxonomy mapping lost' );
