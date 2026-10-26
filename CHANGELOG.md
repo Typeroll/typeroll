@@ -40,8 +40,8 @@ Outbound requests
   Migration only fetches item links on the source site. Self-hosted installs
   can allow private migration sources with
   `TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH=1`.
-- SMTP connectors accept public hosts on ports 25, 465, 587 and 2525 and report
-  generic errors.
+- SMTP connectors accept public hosts on ports 25, 26, 465, 587, 2465, 2525 and
+  2587 and report generic errors.
 
 Forms and Analytics
 

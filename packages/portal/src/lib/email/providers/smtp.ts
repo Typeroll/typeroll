@@ -4,8 +4,12 @@ import type { SendResult } from '../types';
 import { OutboundRequestError, privateNetworkFetchAllowed, resolveOutboundAddresses, type OutboundPolicy } from '../../net/safe-fetch';
 import { isIpAddressLiteral, isLocalHostname } from '@typeroll/shared';
 
-/** Submission and relay ports only; other services must not be probed through SMTP settings. */
-export const SMTP_ALLOWED_PORTS = [25, 465, 587, 2525] as const;
+/**
+ * Submission and relay ports only; other services must not be probed through
+ * SMTP settings. 2465/2587 are Amazon SES's alternatives where 465/587 are
+ * blocked, and 26 is a common relay port on shared hosts.
+ */
+export const SMTP_ALLOWED_PORTS = [25, 26, 465, 587, 2465, 2525, 2587] as const;
 
 // Self-hosted operators with an intranet relay use the same opt-in as
 // migration (TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH=1).
@@ -37,8 +41,10 @@ export function validateSmtpSettings(values: Record<string, unknown>): string | 
  */
 export async function resolveSmtpHost(host: string): Promise<string> {
   try {
-    const [address] = await resolveOutboundAddresses(host.trim(), SMTP_POLICY);
-    return address!.address;
+    // Every answer is already public; prefer IPv4, which every relay serves
+    // and every runtime can reach.
+    const addresses = await resolveOutboundAddresses(host.trim(), SMTP_POLICY);
+    return (addresses.find((entry) => entry.family === 4) ?? addresses[0]!).address;
   } catch (error) {
     if (error instanceof OutboundRequestError && error.code === 'dns_failed') throw new SmtpConfigError('SMTP host could not be resolved');
     throw new SmtpConfigError('SMTP host must resolve to a public address');

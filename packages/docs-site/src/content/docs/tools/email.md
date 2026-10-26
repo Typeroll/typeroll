@@ -69,8 +69,8 @@ set_email_settings type="smtp" from="hello@acme.com" reply_to="support@acme.com"
 | SES      | `region`, `access_key_id` and `secret_access_key` (secrets), `configuration_set` |
 
 Validation is the same as in the portal: an unknown provider, a missing `from`
-or a missing required field returns `400`. An SMTP `port` must be 25, 465, 587
-or 2525, and `host` must resolve to a public address; private, loopback and
+or a missing required field returns `400`. An SMTP `port` must be 25, 26, 465,
+587, 2465, 2525 or 2587, and `host` must resolve to a public address; private, loopback and
 `.local`/`.internal` hosts are refused when saving and sending. A self-hosted
 server can allow a relay on its own network with
 `TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH=1` (see
