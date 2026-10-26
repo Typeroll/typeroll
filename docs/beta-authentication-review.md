@@ -83,6 +83,15 @@ matching release. The stdio package update only updates its embedded guide.
    policy on those numeric fields and claim cleanup is configured. Authorization
    expiration is checked independently of physical deletion. Budgets reuse one
    document per hashed identity/address; refresh tombstones persist until cleaned.
+   The sign-out denylist is different: `revoked_sessions` and `session_lineage`
+   documents carry a native timestamp `expires_at` (plus `expires_at_ms`, which
+   the portal checks on read). Enable Firestore TTL on `expires_at` for both
+   collection groups.
+6. Sign-out revokes only the browser's own Firebase sign-in (keyed by a hash of
+   `uid` and `auth_time`, with lineage entries for cookies re-minted by the
+   rolling refresh). It deliberately does not call `revokeRefreshTokens`, which
+   would end the person's other devices and every delegated OAuth/MCP key that
+   is checked against `tokensValidAfterTime`.
 
 ## Remaining boundaries
 

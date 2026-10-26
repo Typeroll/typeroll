@@ -374,6 +374,26 @@ Tell your users before upgrading. Mark an address as confirmed with the Admin
 SDK (`getAuth().updateUser(uid, { emailVerified: true })`) only when you know
 the person owns it.
 
+### Sign-out and session cookies
+
+A portal session is a Firebase session cookie that lasts up to 14 days and is
+renewed about once a day while the person is active. **Sign out** ends that
+browser's sign-in on the server, not only in the browser: a copy of the cookie,
+and any cookie renewed from it, stops working on its next request on every
+portal instance. The person's other browsers and devices stay signed in, and so
+do their MCP connections and API keys, because sign-out does not revoke the
+account's Firebase refresh tokens. To end every session of an account, revoke
+its refresh tokens or disable it in Firebase; that also ends its delegated MCP
+connections.
+
+Sign-out records are kept in the root Firestore collections `revoked_sessions`
+and `session_lineage`. Each document holds only a hash of the user ID and
+sign-in time and an expiry about 14 days ahead; the portal ignores expired
+records. Enable Firestore TTL on the native timestamp field `expires_at` for
+both collection groups so expired records are deleted; deletion is
+asynchronous. For a file-backed self-host store, remove expired documents
+periodically.
+
 ### GitHub sign-in (optional)
 
 **Continue with GitHub** appears only when `PUBLIC_FIREBASE_GITHUB_SIGNIN=true`.

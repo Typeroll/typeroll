@@ -58,8 +58,9 @@ describe('session reads', () => {
     expect(await getSession(cookieJar() as never)).toBeNull();
     const identity = await getSessionIdentity(cookieJar() as never);
     expect(identity).toMatchObject({ userId: 'person', email: 'person@example.test', emailVerified: false, orgId: undefined });
-    // Memberships are not resolved, remembered or selected for it.
-    expect(store.getDoc).not.toHaveBeenCalled();
+    // Memberships are not resolved, remembered or selected for it. Only the
+    // sign-out denylist is read.
+    expect((store.getDoc.mock.calls as unknown[][]).filter(([path]) => !String(path).startsWith('revoked_sessions/'))).toEqual([]);
     expect(store.listDocs).not.toHaveBeenCalled();
     expect(store.createDocIfMissing).not.toHaveBeenCalled();
   });
