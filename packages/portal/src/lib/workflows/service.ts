@@ -12,6 +12,7 @@ import { requireImportStorage } from '../media/import-policy';
 import { WorkflowEngine } from './engine';
 import { getWorkflowDef, workflows } from './registry';
 import type { WorkflowRecord } from './types';
+import { migrationSourcePolicy, parseOutboundUrl } from '../net/safe-fetch';
 
 export class WorkflowRequestError extends Error {
   constructor(message: string, public status = 400) { super(message); }
@@ -113,7 +114,15 @@ export async function startSiteWorkflow(input: {
   if (input.config !== undefined && (typeof input.config !== 'object' || input.config === null || Array.isArray(input.config))) {
     throw new WorkflowRequestError('config must be an object');
   }
-  if (def.type === 'migration') await requireImportStorage(input.orgId);
+  if (def.type === 'migration') {
+    const wpUrl = (input.config as Record<string, unknown> | undefined)?.wp_url;
+    if (typeof wpUrl !== 'string' || !wpUrl.trim()) throw new WorkflowRequestError('config.wp_url is required for a migration');
+    // Host names are re-checked against DNS on every source request.
+    try { parseOutboundUrl(wpUrl.trim(), migrationSourcePolicy()); } catch {
+      throw new WorkflowRequestError('config.wp_url must be an absolute public http(s) URL');
+    }
+    await requireImportStorage(input.orgId);
+  }
   const engine = new WorkflowEngine();
   const workflowId = await engine.create({
     orgId: input.orgId,

@@ -11,6 +11,9 @@
 
 import type { SiteSettings } from '@typeroll/shared';
 import { defaultSiteSettings } from '@typeroll/shared';
+import { migrationSourcePolicy, safeFetch } from '../net/safe-fetch';
+
+const GLOBALS_POLICY = migrationSourcePolicy({ label: 'WordPress URL', timeoutMs: 20_000, maxBytes: 5 * 1024 * 1024 });
 
 export type PartialColors = Partial<SiteSettings['colors']>;
 export type PartialFonts = Partial<SiteSettings['fonts']>;
@@ -29,9 +32,9 @@ export async function extractGlobals(baseUrl: string): Promise<PartialSettings> 
 
   // Try Gutenberg global styles first.
   try {
-    const res = await fetch(`${baseUrl}/wp-json/wp/v2/global-styles`, {
+    const res = await safeFetch(`${baseUrl}/wp-json/wp/v2/global-styles`, {
       headers: { 'User-Agent': 'Typeroll-Migrator/0.1' },
-    });
+    }, GLOBALS_POLICY);
     if (res.ok) {
       const gs = (await res.json()) as Array<{ styles?: ThemeJsonStyles }>;
       const styles = gs[0]?.styles;
@@ -43,9 +46,9 @@ export async function extractGlobals(baseUrl: string): Promise<PartialSettings> 
 
   // Try the active theme's theme.json directly.
   try {
-    const res = await fetch(`${baseUrl}/wp-json/wp/v2/themes`, {
+    const res = await safeFetch(`${baseUrl}/wp-json/wp/v2/themes`, {
       headers: { 'User-Agent': 'Typeroll-Migrator/0.1' },
-    });
+    }, GLOBALS_POLICY);
     if (res.ok) {
       const themes = (await res.json()) as Array<{ theme_supports?: { 'editor-color-palette'?: Array<{ slug: string; color: string }> } }>;
       const palette = themes[0]?.theme_supports?.['editor-color-palette'];
@@ -57,9 +60,9 @@ export async function extractGlobals(baseUrl: string): Promise<PartialSettings> 
 
   // Try Elementor kit.
   try {
-    const res = await fetch(`${baseUrl}/wp-json/elementor/v1/globals`, {
+    const res = await safeFetch(`${baseUrl}/wp-json/elementor/v1/globals`, {
       headers: { 'User-Agent': 'Typeroll-Migrator/0.1' },
-    });
+    }, GLOBALS_POLICY);
     if (res.ok) {
       const kit = (await res.json()) as ElementorGlobals;
       mergeFromElementor(collected, kit);
@@ -71,7 +74,7 @@ export async function extractGlobals(baseUrl: string): Promise<PartialSettings> 
   // As a last resort, sniff the homepage HTML for the dominant brand color.
   if (!collected.colors?.primary) {
     try {
-      const res = await fetch(`${baseUrl}/`, { headers: { 'User-Agent': 'Typeroll-Migrator/0.1' } });
+      const res = await safeFetch(`${baseUrl}/`, { headers: { 'User-Agent': 'Typeroll-Migrator/0.1' } }, GLOBALS_POLICY);
       if (res.ok) {
         const html = await res.text();
         const sniffed = sniffDominantColor(html);

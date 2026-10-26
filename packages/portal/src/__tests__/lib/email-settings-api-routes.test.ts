@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { paths } from '@typeroll/shared';
 import type { Site, SiteIntegrations } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
+import dns from 'node:dns/promises';
 
 const ORG = 'default';
 const SITE = 'mysite';
@@ -37,6 +38,7 @@ const cookies = { get: () => undefined } as never;
 const locals = {} as never;
 
 beforeEach(async () => {
+  vi.spyOn(dns, 'lookup').mockImplementation((async (host: string) => [{ address: host === 'relay.internal-only.test' ? '10.1.2.3' : '203.0.113.25', family: 4 }]) as never);
   makeTmpFixtures();
   await resetDatastore();
   auth.permission = 'admin';
@@ -46,7 +48,7 @@ beforeEach(async () => {
   const { getStore } = await import('../../lib/datastore');
   await getStore().setDoc(paths.site(ORG, SITE), { name: 'My <Site>', created_at: new Date().toISOString() } satisfies Partial<Site>);
 });
-afterEach(() => { delete process.env.EMAIL_SES_INBOUND_ROUTES; });
+afterEach(() => { delete process.env.EMAIL_SES_INBOUND_ROUTES; vi.restoreAllMocks(); });
 
 async function v1Email(method: 'GET' | 'PUT' | 'DELETE', body?: unknown): Promise<Response> {
   const mod = await import('../../pages/api/v1/sites/[siteId]/integrations/email');
@@ -101,6 +103,19 @@ describe('v1 email connector', () => {
     expect((await v1Email('PUT', { ...smtp, config: 'nope' })).status).toBe(400);
     delete process.env.INTEGRATIONS_SECRET_KEY;
     expect((await v1Email('PUT', smtp)).status).toBe(503);
+  });
+
+  it('refuses SMTP hosts that resolve to private addresses and non-SMTP ports', async () => {
+    const internal = await v1Email('PUT', { ...smtp, config: { ...smtp.config, host: 'relay.internal-only.test' } });
+    expect(internal.status).toBe(400);
+    expect((await internal.json()).error).toMatch(/public address/);
+    const literal = await v1Email('PUT', { ...smtp, config: { ...smtp.config, host: '169.254.169.254' } });
+    expect(literal.status).toBe(400);
+    const port = await v1Email('PUT', { ...smtp, config: { ...smtp.config, port: 6379 } });
+    expect(port.status).toBe(400);
+    expect((await port.json()).error).toMatch(/port must be one of/);
+    const { getStore } = await import('../../lib/datastore');
+    expect((await getStore().getDoc<SiteIntegrations>(paths.integrations(ORG, SITE)))?.email).toBeUndefined();
   });
 
   it('disconnects the connector', async () => {

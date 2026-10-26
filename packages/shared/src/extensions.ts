@@ -1,4 +1,14 @@
 import type { FieldDefinition, SharePermission } from './types.js';
+import { isPublicUrlHost } from './network-address.js';
+
+export {
+  classifyIpAddress,
+  isIpAddressLiteral,
+  isLocalHostname,
+  isPublicIpAddress,
+  isPublicUrlHost,
+  type IpAddressClass,
+} from './network-address.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
 export const EXTENSION_RUNTIME_VERSION = '0.44.0';
@@ -520,13 +530,7 @@ function validatePublicHttps(value: unknown, path: string, errors: string[]): st
     const url = new URL(raw);
     if (url.protocol !== 'https:') errors.push(`${path} must use HTTPS`);
     if (url.username || url.password) errors.push(`${path} must not contain credentials`);
-    const host = url.hostname.toLowerCase();
-    if (
-      host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') ||
-      host === '0.0.0.0' || host === '127.0.0.1' || host === '::1' ||
-      /^10\./.test(host) || /^192\.168\./.test(host) ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host) || /^169\.254\./.test(host)
-    ) errors.push(`${path} must use a public host`);
+    if (!isPublicUrlHost(url.hostname)) errors.push(`${path} must use a public host`);
   } catch {
     errors.push(`${path} must be an absolute URL`);
   }

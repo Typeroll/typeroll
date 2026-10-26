@@ -706,6 +706,28 @@ interface SpawnArgs {
   env: Record<string, string>;
 }
 
+/**
+ * Process environment for the site build. The build renders customer content
+ * and runs site-template code, so it inherits only what Node, npm and Astro
+ * need, never the portal's secrets (datastore, OAuth, provider and signing keys).
+ */
+const BUILD_ENV_ALLOWLIST = [
+  'PATH', 'HOME', 'USER', 'LOGNAME', 'SHELL', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'TZ',
+  'NODE_ENV', 'NODE_OPTIONS', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR',
+  'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy',
+  'npm_config_cache', 'npm_config_userconfig', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME',
+  'ASTRO_TELEMETRY_DISABLED', 'CI', 'SystemRoot', 'COMSPEC', 'PATHEXT', 'WINDIR',
+] as const;
+
+export function buildProcessEnv(source: NodeJS.ProcessEnv, extra: Record<string, string>): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const name of BUILD_ENV_ALLOWLIST) {
+    const value = source[name];
+    if (value !== undefined) env[name] = value;
+  }
+  return { ...env, ASTRO_TELEMETRY_DISABLED: env.ASTRO_TELEMETRY_DISABLED ?? '1', ...extra };
+}
+
 async function spawnAstroBuild(args: SpawnArgs): Promise<void> {
   // Defensive: pre-create the outDir so even a no-op astro build leaves
   // the directory in place for the _redirects/_headers writes that follow.
@@ -725,7 +747,7 @@ async function spawnAstroBuild(args: SpawnArgs): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn('npm', ['run', 'build', '--', '--outDir', args.outDir], {
       cwd: args.cwd,
-      env: { ...process.env, ...args.env },
+      env: buildProcessEnv(process.env, args.env),
       stdio: 'pipe',
     });
     let stderr = '';

@@ -8,6 +8,11 @@ import { paths , MAIN_VERSION_ID } from '@typeroll/shared';
 import { vstore } from '../version-store';
 import type { Page, Site } from '@typeroll/shared';
 import { type WorkflowDef } from './types';
+import { safeFetch, type OutboundPolicy } from '../net/safe-fetch';
+
+// Links are authored content: check only public http(s) destinations, with
+// every redirect hop re-validated and no response body read.
+const LINK_CHECK_POLICY: OutboundPolicy = { allowHttp: true, label: 'Link', timeoutMs: 10_000, maxBytes: 1024 * 1024 };
 
 interface BrokenLink {
   page_id: string;
@@ -60,11 +65,11 @@ export const linkCheckWorkflow: WorkflowDef = {
             if (i >= links.length) return;
             const link = links[i];
             try {
-              const res = await fetch(link.url, {
+              const res = await safeFetch(link.url, {
                 method: 'HEAD',
                 redirect: 'follow',
-                signal: AbortSignal.timeout(10_000),
-              });
+              }, LINK_CHECK_POLICY);
+              void res.body?.cancel().catch(() => {});
               if (!res.ok) {
                 broken.push({ page_id: link.page_id, page_title: link.page_title, url: link.url, status: res.status, text: link.text });
               }

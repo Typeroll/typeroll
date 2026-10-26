@@ -287,6 +287,14 @@ The Typeroll Helper Plugin gives the migration workflow access to:
 4. Go to **Settings → Typeroll Helper** and generate an API key
 5. Give the agent the site URL and configure the key through its secure credential mechanism. Keep the key out of shared prompts and documentation.
 
+Helper 0.4.0 and later accept the key only in the `X-Typeroll-Key` request
+header, never as a `?key=` URL parameter. The plugin exports published items of
+public post types only; orders, coupons, form submissions and other non-public
+plugin data are never exposed. Password-protected posts are listed with their
+title and URL but without content or custom fields, so recreate or restrict them
+deliberately rather than publishing them as ordinary pages. Deleting the plugin
+in WordPress removes its stored key.
+
 <Aside type="tip">
   The helper plugin is read-only — it never modifies your WordPress database or
   files.

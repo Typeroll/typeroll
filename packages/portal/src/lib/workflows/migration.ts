@@ -28,6 +28,7 @@ import { addInventoryUrl, addWordPressBareSlugGuess, analyzeCoverage, pathFromUr
 import { WPHelperClient, type HelperItem } from '../wp/helper-client';
 import { normalizeWordPressPlainText } from '../wp/plain-text';
 import { wordpressDate } from '../wp/dates';
+import { sameSourceSite } from '../net/safe-fetch';
 import { reviewGate, type WorkflowDef } from './types';
 
 // REST `content.rendered` shorter than this triggers the public-page fallback —
@@ -570,7 +571,11 @@ export const migrationWorkflow: WorkflowDef = {
 
           let rawHtml = item.content?.rendered ?? '';
 
-          if (rawHtml.replace(/<[^>]+>/g, '').trim().length < THIN_CONTENT_THRESHOLD) {
+          const thinContent = rawHtml.replace(/<[^>]+>/g, '').trim().length < THIN_CONTENT_THRESHOLD;
+          // item.link comes from the source's JSON: only render pages of the source site itself.
+          if (thinContent && !sameSourceSite(item.link, url)) {
+            ctx.log(`[${item.slug}] thin REST content; not fetching ${String(item.link).slice(0, 200)} because it is outside the source site.`);
+          } else if (thinContent) {
             const fetched = await fetchRendered(item.link);
             if (fetched) {
               const main = extractMainContent(fetched.html);

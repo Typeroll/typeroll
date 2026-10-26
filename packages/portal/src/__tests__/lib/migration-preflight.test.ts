@@ -4,7 +4,7 @@ import { connectionPath } from '../../lib/publishing/connections';
 // SILENT — the migration reports success and something is quietly wrong — so
 // the tests pin both the detection and the refusal to start.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { Form, Site, SiteVersion } from '@typeroll/shared';
@@ -240,6 +240,29 @@ describe('source-site probe', () => {
     const report = await runWithSource('not a url', fakeFetch({}));
     expect(report.ready).toBe(false);
     expect(check(report, 'source_reachable')?.fix).toContain('absolute URL');
+  });
+
+  it.each(['http://169.254.169.254', 'http://[::ffff:a9fe:a9fe]', 'http://10.0.0.5:8080', 'http://localhost:6379'])(
+    'refuses to probe the non-public source %s', async (sourceUrl) => {
+      const network = vi.fn(fakeFetch({}));
+      const report = await runWithSource(sourceUrl, network as typeof fetch);
+      expect(check(report, 'source_reachable')?.status).toBe('fail');
+      expect(network).not.toHaveBeenCalled();
+    },
+  );
+
+  it('re-checks redirects of the default probe transport', async () => {
+    const { runMigrationPreflight } = await import('../../lib/migration-preflight');
+    const network = vi.fn(async () => new Response(null, { status: 302, headers: { location: 'http://127.0.0.1:2375/version' } }));
+    vi.stubGlobal('fetch', network);
+    try {
+      const report = await runMigrationPreflight(ORG, SITE, MAIN_VERSION_ID, { sourceUrl: 'https://old.example.com' });
+      expect(check(report, 'source_reachable')?.status).toBe('fail');
+      expect(check(report, 'source_reachable')?.detail).toContain('public host');
+      expect(network).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('accepts a bare hostname and follows a path to its origin', async () => {

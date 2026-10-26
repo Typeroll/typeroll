@@ -9,6 +9,8 @@
 // with the depth capped at a reasonable level to defend against pathological
 // or malicious recursion.
 
+import { createSafeFetch, migrationSourcePolicy } from '../net/safe-fetch';
+
 const CANDIDATE_PATHS = [
   '/sitemap.xml',
   '/wp-sitemap.xml',
@@ -19,6 +21,13 @@ const CANDIDATE_PATHS = [
 
 const MAX_DEPTH = 4;
 const MAX_TOTAL_URLS = 50_000;
+/** Child sitemaps one read may request; a hostile index cannot fan out further. */
+const MAX_SITEMAPS = 500;
+
+// Default transport: guarded (public destinations, pinned connection) and
+// bounded to the 50 MB the sitemap protocol allows per file. fetchXml follows
+// redirects itself, so every hop is re-checked by this transport.
+const sitemapFetch = createSafeFetch(migrationSourcePolicy({ label: 'Sitemap URL', timeoutMs: 20_000, maxBytes: 50 * 1024 * 1024 }));
 
 export interface SitemapUrl {
   loc: string;
@@ -61,12 +70,13 @@ export async function readSitemap(
   sitemapUrl: string,
   opts: SitemapReadOptions = {},
 ): Promise<SitemapReadResult> {
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl ?? sitemapFetch;
   const maxDepth = opts.maxDepth ?? MAX_DEPTH;
   const maxUrls = opts.maxUrls ?? MAX_TOTAL_URLS;
   const errors: SitemapReadResult['errors'] = [];
   const seenSitemaps = new Set<string>();
   const byLocation = new Map<string, SitemapUrl>();
+  let sitemapLimitReached = false;
 
   let root: URL;
   try {
@@ -78,6 +88,7 @@ export async function readSitemap(
 
   const visit = async (url: string, depth: number): Promise<void> => {
     if (depth > maxDepth || byLocation.size >= maxUrls || seenSitemaps.has(url)) return;
+    if (seenSitemaps.size >= MAX_SITEMAPS) { sitemapLimitReached = true; return; }
     seenSitemaps.add(url);
     const loaded = await fetchXml(url, fetchImpl, opts.validateUrl);
     if (!loaded.ok) {
@@ -114,7 +125,7 @@ export async function readSitemap(
     urls: [...byLocation.values()],
     sitemaps_read: seenSitemaps.size,
     errors,
-    truncated: byLocation.size >= maxUrls,
+    truncated: byLocation.size >= maxUrls || sitemapLimitReached,
   };
 }
 
@@ -141,7 +152,7 @@ function extractEntries(xml: string): SitemapUrl[] {
 
 async function fetchXml(
   url: string,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = sitemapFetch,
   validateUrl?: (url: URL) => void | Promise<void>,
 ): Promise<{ ok: true; xml: string } | { ok: false; error: string }> {
   try {

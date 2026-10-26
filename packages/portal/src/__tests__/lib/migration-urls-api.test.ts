@@ -257,6 +257,16 @@ describe('v1 migration-urls/verify', () => {
     expect((await res.json()).error).toContain('target_origin');
   });
 
+  it.each([
+    { target_origin: 'http://169.254.169.254' },
+    { target_origin: 'http://[::ffff:7f00:1]:8080' },
+    { target_origin: 'https://new.example.com', source_origin: 'http://localhost:9200', check_source: true },
+  ])('refuses non-public origins before requesting anything: %o', async (body) => {
+    const res = await call(verifyRoute(), 'POST', `${BASE}/verify`, { siteId: SITE }, { token, body });
+    expect(res.status).toBe(400);
+    expect((await res.json()).error).toMatch(/public http\(s\) URL/);
+  });
+
   it('requires source_origin before it will check the old site', async () => {
     const res = await call(verifyRoute(), 'POST', `${BASE}/verify`, { siteId: SITE }, {
       token, body: { target_origin: 'https://new.example.com', check_source: true },

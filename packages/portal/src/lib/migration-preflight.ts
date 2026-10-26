@@ -30,6 +30,11 @@ import { usesPrivateMedia } from './publishing/media-policy';
 import { ConnectionError } from './publishing/connections';
 import { getHostingAdapter } from './hosting';
 import { publicUrlsFor } from './site-public-urls';
+import { createSafeFetch, migrationSourcePolicy, parseOutboundUrl } from './net/safe-fetch';
+
+// Default probe transport: the source and each redirect must be public (or an
+// opted-in self-hosted private network), with a bounded deadline and body.
+const preflightFetch = createSafeFetch(migrationSourcePolicy({ label: 'Source URL', timeoutMs: 10_000, maxBytes: 1024 * 1024 }));
 
 export type CheckSeverity = 'blocker' | 'warning';
 export type CheckStatus = 'ok' | 'fail';
@@ -207,7 +212,7 @@ export async function runMigrationPreflight(
   // Only when the caller says what it's migrating from. A readiness check on
   // a site that isn't importing anything shouldn't invent a source.
   if (opts.sourceUrl) {
-    checks.push(...await checkSource(opts.sourceUrl, opts.fetchImpl ?? fetch));
+    checks.push(...await checkSource(opts.sourceUrl, opts.fetchImpl ?? preflightFetch));
   }
 
   const blockers = checks.filter((c) => c.status === 'fail' && c.severity === 'blocker');
@@ -228,8 +233,7 @@ export async function runMigrationPreflight(
 async function checkSource(rawUrl: string, doFetch: typeof fetch): Promise<PreflightCheck[]> {
   let origin: string;
   try {
-    const u = new URL(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`);
-    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('bad protocol');
+    const u = parseOutboundUrl(rawUrl.startsWith('http') ? rawUrl : `https://${rawUrl}`, migrationSourcePolicy());
     origin = u.origin;
   } catch {
     return [{
@@ -237,8 +241,8 @@ async function checkSource(rawUrl: string, doFetch: typeof fetch): Promise<Prefl
       label: 'Source site',
       status: 'fail',
       severity: 'blocker',
-      detail: `"${rawUrl}" is not a usable URL.`,
-      fix: 'Pass the source site as an absolute URL, e.g. https://oldsite.com.',
+      detail: `"${rawUrl}" is not a usable public URL.`,
+      fix: 'Pass the source site as an absolute URL to a public host, e.g. https://oldsite.com.',
     }];
   }
 

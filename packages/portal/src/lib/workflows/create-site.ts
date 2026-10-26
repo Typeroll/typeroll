@@ -15,6 +15,7 @@ import { reserveSite } from '../site-create';
 import { WorkflowEngine } from './engine';
 import { migrationWorkflow } from './migration';
 import { sitePlanningWorkflow } from './site-planning';
+import { migrationSourcePolicy, parseOutboundUrl } from '../net/safe-fetch';
 
 export class SiteWorkflowInputError extends Error {}
 
@@ -29,9 +30,8 @@ export function parseSiteWorkflowRequest(kind: 'migration' | 'site_planning', in
   if (kind === 'migration') {
     const wp_url = text('wp_url');
     if (!name || !wp_url) throw new SiteWorkflowInputError('name and wp_url are required');
-    let url: URL;
-    try { url = new URL(wp_url); } catch { throw new SiteWorkflowInputError('wp_url must be an absolute http(s) URL'); }
-    if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new SiteWorkflowInputError('wp_url must be an absolute http(s) URL');
+    // Host names are re-checked against DNS on every source request.
+    try { parseOutboundUrl(wp_url, migrationSourcePolicy()); } catch { throw new SiteWorkflowInputError('wp_url must be an absolute public http(s) URL'); }
     const helper = text('helper_api_key');
     return { kind, name, wp_url, ...(helper ? { helper_api_key: helper } : {}) };
   }
