@@ -1,3 +1,4 @@
+import { confirmPublicationDestination } from './confirmPublicationDestination';
 import { usePublishingReadiness } from './usePublishingReadiness';
 import { PublishingRequirements } from './PublishingRequirements';
 /**
@@ -184,25 +185,34 @@ export default function PublishMenu({
   }, [open, siteId, docUpdatedAt, hasUnsaved]);
 
   async function deploy() {
-    if (busy || !(await refreshSetup())?.ready) return;
+    if (busy) return;
+    const currentSetup = await refreshSetup();
+    if (!currentSetup?.ready) return;
     const message = env === 'production'
       ? 'Deploy the saved site to production? Visitors see the new version when it finishes.'
       : 'Rebuild and deploy to the staging URL? Visitors won\'t see this.';
-    if (!confirm(message)) return;
+    let destination: { domain_candidate_revision?: string } | null;
+    try { destination = await confirmPublicationDestination(siteId, currentSetup.mode === 'customer_git', message); }
+    catch (error) { setDeployErr(error instanceof Error ? error.message : 'Could not check the publication destination.'); return; }
+    if (!destination) return;
     setDeployErr(null);
     setJob({ status: 'queued', phase: 'starting' });
     try {
-      let res = await fetch(`/api/sites/${siteId}/deploy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: publishingSetup?.mode === 'customer_git' ? 'production' : env }),
-      });
+      const body: { environment: string; allow_unsaved?: boolean; domain_candidate_revision?: string } = { environment: currentSetup.mode === 'customer_git' ? 'production' : env, ...destination };
+      const send = () => fetch(`/api/sites/${siteId}/deploy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      let res = await send();
       let data = await res.json();
-      if (!res.ok && data.code === 'unsaved_content') {
-        const targets = (data.unsaved ?? []).map((target: {kind:string;id:string}) => `${target.kind}: ${target.id}`).join('\n');
-        if (!confirm(`These edits are not saved:\n${targets}\n\nPublish saved content only? Unsaved edits will remain untouched.`)) { setJob(null); return; }
-        res = await fetch(`/api/sites/${siteId}/deploy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ environment: publishingSetup?.mode === 'customer_git' ? 'production' : env, allow_unsaved: true }) });
-        data = await res.json();
+      // Two independent decisions, each at most once. Never loop on a changed revision.
+      for (let step = 0; step < 2 && !res.ok; step++) {
+        if (data.code === 'domain_candidate_confirmation_required' && !body.domain_candidate_revision) {
+          if (!confirm(`${data.error}\n\nCurrent: ${data.current_host ?? 'test address'}\nFuture: ${data.future_host ?? 'Hosting Group address'}\n\nPrepare this candidate?`)) { setJob(null); return; }
+          body.domain_candidate_revision = data.revision;
+        } else if (data.code === 'unsaved_content' && !body.allow_unsaved) {
+          const targets = (data.unsaved ?? []).map((target: {kind:string;id:string}) => `${target.kind}: ${target.id}`).join('\n');
+          if (!confirm(`These edits are not saved:\n${targets}\n\nPublish saved content only? Unsaved edits will remain untouched.`)) { setJob(null); return; }
+          body.allow_unsaved = true;
+        } else break;
+        res = await send(); data = await res.json();
       }
       if (!res.ok && data.code === 'publishing_setup_required') {
         await refreshSetup();

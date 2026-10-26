@@ -1,3 +1,4 @@
+import { domainPublicationIntent } from './domain-publication-intent';
 import { getConnection, ConnectionError } from './connections';
 import { cloudflareClient } from './cloudflare-oauth';
 import { siteHostingGroup } from './hosting-groups';
@@ -131,14 +132,14 @@ export async function siteHostChecks(orgId: string, siteId: string, config: Doma
 }
 
 /** The saved domain settings with structured host checks, as returned by the UI, API and MCP. */
-export async function siteDomainsWithChecks(orgId: string, siteId: string, config: DomainConfiguration) {
+export async function siteDomainsWithChecks(orgId: string, siteId: string, config: DomainConfiguration, versionId = 'main') {
   let host_checks: HostChecks | null = null;
   try { host_checks = await siteHostChecks(orgId, siteId, config); }
   catch (error) {
     // Reading settings must keep working when Cloudflare is unreachable or a grant expired.
     console.warn(JSON.stringify({ event: 'publishing_host_checks_unavailable', org_id: orgId, site_id: siteId, code: error instanceof ConnectionError ? error.code : 'provider_unavailable' }));
   }
-  return { ...config, host_checks };
+  return { ...config, host_checks, next_publication: versionId === 'main' ? domainPublicationIntent(config) : null };
 }
 
 /** Stop before building a candidate that Cloudflare cannot serve. */

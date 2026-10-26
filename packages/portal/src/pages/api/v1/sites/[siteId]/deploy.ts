@@ -1,3 +1,4 @@
+import { readDomainPublicationIntent } from '../../../../../lib/publishing/domain-publication-intent';
 import { unsavedPublicationTargets } from '../../../../../lib/deploy/unsaved';
 import { retryPublicationVerification } from '../../../../../lib/publishing/verification-retry';
 import { ConnectionError } from '../../../../../lib/publishing/connections';
@@ -29,7 +30,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const body = (await request.json().catch(() => ({}))) as {
     environment?: DeployEnvironment;
     dry_run?: boolean;
-    allow_unsaved?: boolean; retry_verification_job_id?: string;
+    allow_unsaved?: boolean; domain_candidate_revision?: string; retry_verification_job_id?: string;
   };
   if (body.retry_verification_job_id !== undefined) {
     try {
@@ -47,6 +48,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
 
   const store = getStore();
+  const domainIntent = await readDomainPublicationIntent(ctx.orgId, ctx.siteId, ctx.versionId);
+  if (domainIntent && body.domain_candidate_revision !== domainIntent.revision) return privateJson(domainIntent, 409);
+
   const unsaved = await unsavedPublicationTargets(ctx.orgId, ctx.siteId, ctx.versionId);
   if (unsaved.length && body.allow_unsaved !== true) return privateJson({
     code: 'unsaved_content', error: 'Pages or shared blocks have unsaved edits. Save or discard them, or explicitly publish the saved content only.',
@@ -56,6 +60,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const jobId = await store.addDoc(paths.deploys(ctx.orgId, ctx.siteId), {
     version_id: ctx.versionId,
     environment,
+    ...(domainIntent ? { domain_candidate_revision: domainIntent.revision } : {}),
     status: 'queued',
     started_at: new Date().toISOString(),
     triggered_by: `api-key:${ctx.keyPrefix}`,

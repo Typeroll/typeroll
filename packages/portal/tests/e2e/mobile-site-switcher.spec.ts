@@ -21,20 +21,29 @@ for (const [width, height] of [[390, 664], [320, 480], [844, 390]]) {
     await page.getByRole('button', { name: 'Open navigation', exact: true }).click();
     await page.locator('.ws__trigger').filter({ hasText: 'All sites' }).click();
     const menu = page.getByRole('listbox', { name: 'Switch site' });
-    await expect(menu.getByRole('option')).toHaveCount(21);
+    // Other specs can create additional Sites in this organization. Assert our
+    // complete long-list fixture without depending on their count.
+    await expect(menu.getByRole('option').filter({hasText:/Scroll site \d{2}/})).toHaveCount(20);
+    const scrollBottom = (await page.locator('.app-sidebar__scroll').boundingBox())!;
+    const bottom = scrollBottom.y + scrollBottom.height;
     const last = menu.getByRole('option').last();
     const name = await last.locator('.ws__item-name').innerText();
     // Scroll as a user would. Locator.click/scrollIntoView alone would hide clipping bugs.
     await page.mouse.move(150, height / 2);
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       const rect = await last.boundingBox();
-      if (rect && rect.y >= 0 && rect.y + rect.height <= height) break;
-      await page.mouse.wheel(0, 240);
-      await page.waitForTimeout(60);
+      if (rect && rect.y >= scrollBottom.y + 8 && rect.y + rect.height <= bottom - 8) break;
+      // Small, directed wheel gestures avoid overshooting a row in landscape;
+      // WebKit can accumulate several wheel events before the next paint.
+      const delta = rect && rect.y < scrollBottom.y + 8
+        ? -Math.min(120, Math.ceil(scrollBottom.y + 8 - rect.y))
+        : Math.min(120, rect ? Math.ceil(rect.y + rect.height - bottom + 8) : 120);
+      await page.mouse.wheel(0, delta);
+      await page.waitForTimeout(120);
     }
     const rect = (await last.boundingBox())!;
     expect(rect.y).toBeGreaterThanOrEqual(0);
-    expect(rect.y + rect.height).toBeLessThanOrEqual(height);
+    expect(rect.y + rect.height).toBeLessThanOrEqual(bottom);
     await page.screenshot({ path: info.outputPath(`site-menu-${width}x${height}.png`) });
     await last.click();
     await expect(page).toHaveURL(/\/app\/sites\//);

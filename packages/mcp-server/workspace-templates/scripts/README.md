@@ -100,3 +100,12 @@ manual review rather than rewritten. API updates through the normal block tools
 can resolve these after choosing the semantic role. Run lint again and compare
 header, footer, navigation, cards and buttons at all breakpoints. Keep generated
 plans outside Git; they are version-specific review artifacts.
+
+## Local image preparation
+
+`prepare_image.py SOURCE OUTPUT.jpg` requires Pillow with ImageCms. It converts
+through the original ICC profile to sRGB and applies orientation, without
+uploading or changing CMS content. Missing CMYK profiles, transparency, multiple
+frames and existing output files stop with an error. `--assume-srgb` is only for
+reviewed unprofiled RGB/gray; `--source-profile FILE.icc` supplies the actual profile.
+See workflows/source-media.md for archive verification and original preservation.

@@ -415,3 +415,20 @@ spacing. Configure shared card placeholders and compact navigation settings;
 do not add fake featured images or shrink text to compensate for a tall link box.
 Verify a mixed row of real and missing thumbnails, wrapped footer links, and both
 preview and static output.
+
+## Preserve originals before retiring WordPress
+
+The starter's `workflows/source-media.md` separates unused-source archiving from
+CMS import. Inventory drafts, old attachments and print originals as well as
+published-page references. Agree a private destination, verify copied bytes and
+a restore, and retain a manifest before approving old-host retirement. An object
+ETag is not universally an MD5 checksum. Archiving does not preserve public URLs;
+verify those independently through the migration inventory.
+
+From MCP 0.45.80, `scripts/typeroll/prepare_image.py` provides optional local
+ICC-aware conversion to sRGB JPEG (Pillow/ImageCms required). It keeps the
+original untouched and does not upload or edit content. Missing CMYK profiles
+must be resolved instead of guessed; transparent or multi-page sources require
+a reviewed separate workflow. Compare colour and framing visually before using
+the derivative. Keep source files and reports in the starter's ignored private
+folders. See the generated script README for commands and limits.

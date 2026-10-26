@@ -411,3 +411,19 @@ placeholder settings for theme decoration, preserving real featured images and
 explicit `show_image: false`. Compare actual footer link height plus gap, wrapping,
 focus and column breakpoints; compact navigation density is an intentional option.
 Verify native preview and static output on the agreed viewport boundaries.
+
+
+## Before retiring the source
+
+Follow the starter's workflows/source-media.md. Archive unused and print originals
+privately with a verified SHA-256 manifest and a restore test; do not import the
+whole archive into CMS or assume ETag means MD5. ICC-convert CMYK/TIFF derivatives,
+keep originals, and review colour/framing before uploading. Archive completion
+and URL continuity are separate acceptance checks. Do not remove old hosting
+until the owner has approved retirement.
+
+Read publishing-domain intent before deploying saved changes. A future-domain
+candidate does not refresh the current test host. Review its frozen noindex
+setting and approve traffic separately. Use signed previews or a separate Version
+for ongoing review. Respect preserve/renew choices for owner-supplied facts;
+"timeless" wording must not invent recurring events or erase preserved copy.

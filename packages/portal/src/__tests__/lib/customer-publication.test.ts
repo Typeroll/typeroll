@@ -165,6 +165,7 @@ it('does not treat main plus staging as authorization to publish the live branch
 it('prepares a future domain on a separate branch while the current website remains active', async () => {
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await getStore().updateDoc(jobPath, { domain_candidate_revision: (await getSiteDomains('org', 'site')).revision });
   await executeCustomerPublication(args);
   const candidateBranch = mocks.push.mock.calls[0][1].branch;
   expect(candidateBranch).toMatch(/^version-domain-/);
@@ -276,6 +277,7 @@ it('clears preview identity under Firestore nested-merge semantics before promot
     await update(path, patch);
   });
   await update(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await getStore().updateDoc(jobPath, { domain_candidate_revision: (await getSiteDomains('org', 'site')).revision });
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
   await executeCustomerPublication(args);
@@ -399,6 +401,7 @@ it('does not fall back to per-site Git builds when shared engine setup is unfini
 it('keeps the candidate and existing traffic when the provider cannot prevalidate several records', async () => {
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await getStore().updateDoc(jobPath, { domain_candidate_revision: (await getSiteDomains('org', 'site')).revision });
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
   const provider = mocks.cloudflare.getMockImplementation()!;
@@ -418,6 +421,7 @@ it('switches one reviewed record only after the validation window is accepted, t
   const store = getStore();
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await store.updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await getStore().updateDoc(jobPath, { domain_candidate_revision: (await getSiteDomains('org', 'site')).revision });
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch);
   let validated = false;
@@ -616,6 +620,7 @@ it('freezes a www redirect host, switches it after approval with the apex and ve
     if (route.startsWith('/zones/zone/dns_records?name=moveria.se')) return [{ id: 'apex', name: 'moveria.se', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
     return provider(route, options);
   });
+  await getStore().updateDoc(jobPath, { domain_candidate_revision: (await getSiteDomains('org', 'site')).revision });
   await executeCustomerPublication(args);
   const frozen = JSON.parse(mocks.push.mock.calls[0][1].files['publication.json']);
   expect(frozen.reference_mapping.website_origins).toContain('https://www.moveria.se');
@@ -659,6 +664,7 @@ it('stops a redirect change with a conflicting zone rule before asking for appro
     if (route.startsWith('/zones/zone/dns_records?name=www.example.com')) return [{ id: 'dns', name: 'www.example.com', type: 'CNAME', content: `${project}.pages.dev`, proxied: true }];
     return provider(route, options);
   });
+  await getStore().updateDoc(jobPath, { domain_candidate_revision: (await getSiteDomains('org', 'site')).revision });
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
   expect(await executeCustomerPublication(args)).toBe('ran');
@@ -714,4 +720,31 @@ it.each(['cloudflare', 'github'] as const)('freezes derived output once before d
   expect(await store.getDoc(paths.deploy('org', 'site', failedArgs.jobId))).toMatchObject({ status: 'failed', failure: { code: 'publication_derivation_failed' }, error: expect.stringContaining('Mapped field is missing') });
   expect(await store.getDoc(paths.site('org', 'site'))).toEqual(before);
   expect(mocks.push).toHaveBeenCalledTimes(1); expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+});
+
+
+it('refuses an unconfirmed future-host build before freezing or pushing source', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await executeCustomerPublication(args);
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({status:'failed', failure:{code:'domain_candidate_confirmation_required'}});
+});
+
+it('rejects a confirmation for a domain revision that changed before the job ran', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await getStore().updateDoc(jobPath, { domain_candidate_revision:'old-revision' });
+  await executeCustomerPublication(args);
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({failure:{code:'domain_candidate_confirmation_required'}});
+});
+
+it('reports noindex from the frozen domain candidate even when CMS settings later change', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await getStore().updateDoc(jobPath, { domain_candidate_revision:(await getSiteDomains('org', 'site')).revision });
+  await getStore().updateDoc(paths.settings('org','site'), {sitewide_noindex:true});
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  await getStore().updateDoc(paths.settings('org','site'), {sitewide_noindex:false});
+  await executeCustomerPublication(args);
+  expect((await getSiteDomains('org','site')).candidate).toMatchObject({sitewide_noindex:true,robots_blocked:false});
 });

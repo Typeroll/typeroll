@@ -89,3 +89,16 @@ Remaining release work: qualify the pull request, obtain scoped publication
 approval, publish Core/MCP/docs, sync site-starter, pin and qualify Cloud staging,
 then promote the approved candidate and measure affected journeys in production.
 No existing customer content is automatically converted or republished.
+
+
+## Later Ulvön follow-up in the same unreleased candidate
+
+PR #83 also addresses F35: exact domain-revision confirmation before queueing and
+freezing a main saved-content candidate, current/future destination in both editor
+controls and API/MCP, and frozen noindex disclosure before cutover. It does not
+introduce parallel publications for current and future main hosts. See
+`../ulvon-migration-feedback.md` for the complete disposition of later wishlist
+items, source-media archive guidance, local ICC helper and release boundaries.
+The mobile drawer retains a separately visible sign-out/account area while its
+pickers and navigation scroll together; list tests do not assume no other Site
+fixtures exist in the same Organization.

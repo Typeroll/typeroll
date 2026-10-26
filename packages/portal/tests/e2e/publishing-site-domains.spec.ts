@@ -93,3 +93,22 @@ test('requires explicit acceptance of the validation window and shows the redire
   await expect(section.getByRole('status')).toContainText('Traffic switch approved');
   expect(approval).toEqual({ revision: 'r1', candidate_id: 'candidate', accept_validation_window: true });
 });
+
+test('explains future-host builds and warns about frozen noindex before cutover', async ({ page }, info) => {
+  await customerPublishingSite();
+  await page.route(endpoint, route => route.fulfill({json:{...base,state:'ready_to_switch',
+    next_publication:{error:'This build prepares a domain-switch candidate and does not update the current test address.'},
+    candidate:{id:'candidate',sitewide_noindex:true,robots_blocked:false},
+    preparation:{hostname:'example.com',certificate_ready:true,has_existing_traffic:false,requirements:[]},
+    host_checks:{blockers:[],warnings:[]}}}));
+  await authenticatePersona(page,'owner');
+  await page.goto(`/app/sites/${site}/settings`);
+  await expect(page.getByText(/does not update the current test address/)).toBeVisible();
+  await expect(page.getByRole('alert')).toContainText('This frozen candidate has noindex enabled');
+  await expect(page.getByRole('alert')).toContainText('A domain-only preparation reuses the old published settings');
+  await noHorizontalScroll(page);
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({width,height:900});
+    await page.locator('section').filter({has:page.getByRole('heading',{name:'Website and media addresses',exact:true})}).screenshot({path:info.outputPath(`domain-candidate-indexing-${width}.png`)});
+  }
+});

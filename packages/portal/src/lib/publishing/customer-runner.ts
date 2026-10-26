@@ -1,3 +1,4 @@
+import { domainPublicationIntent } from './domain-publication-intent';
 import { assertVerificationRetry } from './verification-retry';
 import { MEDIA_VARIANT_SLOTS, mediaVariantSuffix } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import { schedulePublication, waitForBuild, waitForPublicationCondition } from '../scheduling/continuation';
@@ -82,7 +83,7 @@ async function pendingRedirect(jobPath: string, publication: GitPublication, pre
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
+export type GitJob = DeployJob & { failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; domain_candidate_revision?: string; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -208,6 +209,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (!publication) {
       await store.updateDoc(jobPath, { status: 'running', phase: 'freezing source', execution_backend: 'customer_git' });
       if (job.publication_intent === 'domain_prepare' && job.domain_revision !== domains.revision) throw new ConnectionError('Domain settings changed. Prepare a new candidate.', 409);
+      const intent = args.versionId === 'main' ? domainPublicationIntent(domains) : null;
+      if (intent && job.publication_intent !== 'domain_prepare' && job.domain_candidate_revision !== domains.revision) throw new ConnectionError(intent.error, 409, intent.code);
       const priorPublication = job.source_publication ?? acquired.last_publication;
       const prior = priorPublication?.snapshot_job_id ? await readSnapshot({ ...args, jobId: priorPublication.snapshot_job_id }, priorPublication) : null;
       const contentCutoff = job.publication_intent === 'domain_prepare' ? priorPublication!.content_cutoff : new Date().toISOString();
@@ -513,7 +516,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       { media_preparation: mediaPreparation, state: (preparation.action === 'complete_validation' && !validationWindowAllowed(preparation)) || redirectBlockers.length ? 'preparing' : 'ready_to_switch', preparation,
         redirect_preparations: redirectPreparations.length ? redirectPreparations : null,
         candidate: { id: publication.publication_id, revision: publication.domain_revision, commit: publication.commit,
-        deployment_id: deployment.id, verified_at: new Date().toISOString(), job_id: args.jobId } });
+        deployment_id: deployment.id, sitewide_noindex: frozen.settings?.sitewide_noindex === true, robots_blocked: frozen.robots_blocked === true, verified_at: new Date().toISOString(), job_id: args.jobId } });
     if (publication.release_branch) {
       // Cloudflare cannot validate a single reviewed website record before it changes: the approval may accept that window.
       const windowCandidate = validationWindowAllowed(preparation);

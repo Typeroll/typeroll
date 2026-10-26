@@ -16,10 +16,11 @@ type DomainData = {
   revision: string; default_domain?: string | null; dns_mode: 'automatic' | 'external'; verified_at?: string | null;
   desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string; redirect_hosts?: string[] };
   active?: { website_host: string | null; redirect_hosts?: string[] }; state?: string;
-  candidate?: { id: string } | null;
+  candidate?: { id: string; sitewide_noindex?: boolean; robots_blocked?: boolean } | null;
   preparation?: Preparation | null;
   media_preparation?: Preparation | null;
   redirect_preparations?: RedirectPreparation[] | null;
+  next_publication?: { error: string } | null;
   host_checks?: { blockers: HostCheckItem[]; warnings: HostCheckItem[] } | null;
 };
 
@@ -176,6 +177,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <ul>{hostBlockers.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul>
     </div>}
     {siteId && hostWarnings.length > 0 && <div className="muted"><strong>Check before preparing</strong><ul>{hostWarnings.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul></div>}
+    {siteId && data?.next_publication && <p role="status">{data.next_publication.error}</p>}
     {siteId && data?.active && data.state !== 'live' && <button type="button" className="btn" disabled={busy || hostBlockers.length > 0} onClick={() => void prepare()}>Prepare domain change from published content</button>}
     {data?.preparation && <div className="stack">
       <h3>Domain verification</h3>
@@ -209,6 +211,8 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <button type="button" className="btn" disabled={busy || checking} onClick={() => void checkSiteDomain()}>{checking ? 'Checking…' : 'Refresh verification'}</button>
       {data.candidate && data.state === 'ready_to_switch' && <>
         <p>The prepared build uses the future website and media addresses. Switching traffic makes this build public.</p>
+        {data.candidate?.sitewide_noindex === true && <p role="alert">This frozen candidate has noindex enabled. Switching traffic will not make it indexable. If search indexing is intended, do not switch this candidate: change the site indexing setting and prepare a new saved-content candidate. A domain-only preparation reuses the old published settings.</p>}
+        {data.candidate && data.candidate.sitewide_noindex === undefined && <p>Indexing status is unavailable for this older candidate. Verify its actual robots output before switching traffic; current CMS settings do not change a frozen candidate.</p>}
         {windowRequired && <label className="field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
           <input type="checkbox" checked={acceptWindow} onChange={event => setAcceptWindow(event.target.checked)} style={{ width: 'auto', marginTop: '0.25rem' }} />
           <span>I am switching at a quiet time and accept that {data.preparation.hostname ?? 'the website'} does not answer until Cloudflare validates it.</span>

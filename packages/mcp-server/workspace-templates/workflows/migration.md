@@ -89,3 +89,43 @@ Follow workflows/design.md for palette/font roles and named scales. Run
 `lint_design_tokens` before launch and after major design changes. Review exact
 colour replacements with scripts/typeroll/color_tokens.py; record deliberate
 exceptions in decisions.md. Preserve text independently from design changes.
+
+## Source retirement, analytics and domain preparation
+
+Before old hosting is retired, follow workflows/source-media.md: preserve unused
+and print originals in a private archive with independently verified checksums.
+Only approved web assets enter the CMS. Use ICC-aware conversion for CMYK/TIFF.
+
+Enable Analytics through the authorized Typeroll API/MCP (`update_app` or the
+Organization analytics tools), then read back settings and verify the beacon and
+cookies on the actual artifact. Resolve missing provider scopes through the
+normal approval flow. A separately authorized provider-side setup with a supplied
+beacon token is an alternative, not a way to bypass Organization permissions.
+Never expose a provider API token as a public beacon token.
+
+Finish compiled test-host review before declaring future hosts when practical.
+From Core 0.2.106, differing future hosts require explicit
+`domain_candidate_revision` on `trigger_deploy`: this prepares saved content for
+cutover; it does not update the old test/live host. Read `next_publication` in
+`read_publishing_domains`. Use signed previews for ongoing review or a separate
+Version for a new compiled test address. Do not repeatedly start an already
+waiting job. `prepare_publishing_domain_change` moves the last successful public
+snapshot, not later saved CMS changes. Review the frozen candidate's noindex
+status: changing current settings cannot alter that candidate. If intentional
+public indexing is required, save the approved indexing setting before preparing
+the saved-content candidate. If the old candidate is still waiting, read the
+current revision and re-save the same reviewed hosts to supersede it without
+switching DNS; confirm the new revision for the new saved-content build.
+Platform protection still keeps temporary hosts
+noindex. Keep MX/SPF and unrelated DNS unchanged; review any validation window
+and obtain the already-defined traffic-switch authorization.
+
+## Owner-supplied facts and photos
+
+Record owner statements, source and confirmation date. Preserve approved copy
+under `text: preserve`; do not silently delete dates/prices or rewrite it into
+"timeless" language. Under `text: renew`, propose removing stale details or using
+recurring-event wording only when a source supports recurrence. Flag uncertain
+facts for review or keep new Pages in draft; missing evidence does not prove that
+an event stopped. Link to the actual organiser when relevant. Upload approved
+photos with SHA-256 verification and review focal points at mobile/desktop widths.

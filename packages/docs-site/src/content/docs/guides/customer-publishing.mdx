@@ -759,6 +759,33 @@ A generated site repository is not a full CMS backup. It includes published
 public content, not drafts, unpublished versions, form delivery actions,
 private or secret Extension configuration, or image originals.
 
+## Future hosts and the publication destination
+
+**Core 0.2.106 / MCP 0.45.80:** when saved future hosts differ from active hosts,
+`read_publishing_domains` and `set_publishing_domains` return `next_publication`.
+It names the current/future host and explains that a saved-content build prepares
+a domain candidate without updating the current live or test address.
+`trigger_deploy` requires explicit `domain_candidate_revision` confirmation for
+that revision; the portal asks the same question. A changed revision requires a
+new review. This confirmation does not approve the DNS/traffic switch.
+
+Finish compiled test-host review before declaring future hosts where practical.
+Use signed previews for further edits or a separate Version for another compiled
+test address. Parallel publication to the old and future main hosts is not
+provided by this change. Do not start duplicate jobs while a candidate awaits
+approval. A domain-only preparation uses the **last published snapshot**, including
+its indexing settings, rather than current saved CMS edits.
+
+The cutover panel warns when the frozen candidate has `noindex`. Current CMS
+settings do not change a frozen artifact. If an indexable launch is intended,
+do not approve an unintentionally noindex candidate: save the intended setting
+and prepare a new saved-content candidate. If an old candidate is waiting, read the
+current domain revision and save the same reviewed hosts again: this supersedes
+the old candidate without switching DNS. Then confirm the new revision when
+starting the saved-content build. Temporary-host protection remains
+separate and still blocks indexing on test addresses. Older candidates without
+indexing metadata must have their actual robots output checked before approval.
+
 ## API and MCP
 
 Site API keys need admin permission for domain writes. Organization settings

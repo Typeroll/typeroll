@@ -30,7 +30,7 @@ export interface DomainConfiguration {
   media_aliases: PublicationHosts[];
   dns_mode: 'automatic' | 'external';
   state: 'unconfigured' | 'declared' | 'preparing' | 'ready_to_switch' | 'distributing' | 'live' | 'failed';
-  candidate?: { id: string; revision: string; commit: string; deployment_id: string; verified_at: string; job_id?: string } | null;
+  candidate?: { id: string; revision: string; commit: string; deployment_id: string; verified_at: string; job_id?: string; sitewide_noindex?: boolean; robots_blocked?: boolean } | null;
   preparation?: import('./domain-provider').DomainPreparation | null;
   media_preparation?: import('./domain-provider').DomainPreparation | null;
   approved_media_preparation?: import('./domain-provider').DomainPreparation | null;
