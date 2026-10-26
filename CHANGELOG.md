@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.2.113 / MCP 0.45.84 — Security follow-ups
+
+Sessions
+
+- Signing out ends that browser's sign-in on the server: copies of the session
+  cookie, including copies refreshed by the rolling refresh, stop working. Other
+  devices and MCP connections stay signed in. Enable a Firestore TTL policy on
+  `expires_at` for `revoked_sessions` and `session_lineage`.
+
+Media
+
+- SVGs are parsed and rebuilt from an allowlist on upload, import, storage
+  migration and publish; an SVG that cannot be sanitized is refused
+  (`media_svg_invalid`, `media_svg_unsanitized`). Platform-storage SVG uploads
+  stay private until finalize.
+- A media file name or `public_path` must end in an extension that matches its
+  type (`media_extension_mismatch`, `415 media_type_unsupported`). Legacy
+  records with a mismatched name get the type's extension appended at publish
+  and page references are rewritten; old direct links to those files change.
+- Static `_headers` sandbox `*.svg` and `*.xhtml` responses.
+
+Forms
+
+- Webhooks get one attempt of at most 3 s during the visitor's request (at most
+  three webhooks); the rest retry in the background after about 1, 5, 30 and
+  120 minutes with the same event id. On the Extension actions endpoint a
+  queued retry counts as `ran`.
+- Submissions no longer store the visitor's IP address or user agent; legacy
+  values are hidden (IP from everyone, user agent from non-admins).
+- New opt-in `form_submission_retention_days` site setting (30–3650, off by
+  default) deletes completed submissions after the period. Enable a Firestore
+  TTL policy on `delete_at` for the `submissions` collection group.
+
+Extensions
+
+- Extension ids are reserved per developer Organization; registering an id held
+  by another returns `409`. `scripts/audit-extension-ids.mjs` reports and
+  backfills reservations (dry run by default).
+- Every installation token carries `developer_org_id`; providers should verify
+  it in addition to `aud`. A later release will move `aud` to a developer-scoped
+  value after an announced deprecation window.
+
 ## 0.2.112 — Non-root legacy Pages uploads
 
 - Run the legacy Cloudflare Pages upload (wrangler) beside the build output in
