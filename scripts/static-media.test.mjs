@@ -379,3 +379,53 @@ test('v1 completion and derivative caches cannot satisfy the full-width v2 recip
   assert.ok(publication.media[0].variants.every(v=>v.cdn_url.includes('.v2.')));
   assert.equal(stored.get(oldVariant).toString(),'old cache must not be read');
 },1,true,750));
+
+test('unchanged media retries a grant timeout locally without encoding or restarting the batch', async t => withMediaFixture(async ({ publication, root }) => {
+  await prepareMediaBatch(publication, root);
+  const originalFetch = globalThis.fetch; let grants = 0;
+  const notices = [];
+  t.mock.method(console, 'warn', line => notices.push(line));
+  globalThis.fetch = (url, options) => {
+    if (String(url).endsWith('/grant') && ++grants === 1) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+    return originalFetch(url, options);
+  };
+  t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('unchanged media must not be encoded'); });
+  const progress = await prepareMediaBatch(publication, root);
+  assert.equal(progress.cursor, 1); assert.equal(grants, 2);
+  assert.match(notices[0], /step=read_grant media="image-0" file="\/image-0.png"/);
+}, 1, true));
+
+test('a truncated cached variant body retries that object and keeps other prepared bytes', async t => withMediaFixture(async ({ publication, root, entries: [entry] }) => {
+  await prepareMediaBatch(publication, root, 0, { cacheOnly: true });
+  const originalFetch = globalThis.fetch; let reads = 0;
+  const key = `private/${publication.media_manifest.site_prefix}/prepared/v2/${entry.sha256}/w320.webp`;
+  globalThis.fetch = (url, options) => {
+    if (new URL(url).pathname.slice(1) === key && options?.method !== 'PUT' && ++reads === 1)
+      return Promise.resolve(new Response(new ReadableStream({ start(controller) { controller.error(new TypeError('terminated')); } })));
+    return originalFetch(url, options);
+  };
+  t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('cached variants must not be encoded'); });
+  await prepareMediaBatch(publication, root);
+  assert.equal(reads, 2);
+}, 1, true));
+
+test('access denial is not retried and reports a bounded file/operation locator without grant secrets', async t => withMediaFixture(async ({ publication, root }) => {
+  const originalFetch = globalThis.fetch; let reads = 0;
+  const failures = []; t.mock.method(console, 'error', line => failures.push(line));
+  globalThis.fetch = (url, options) => {
+    if (String(url).includes('/originals/')) { reads++; return Promise.resolve(new Response(null, { status: 403 })); }
+    return originalFetch(url, options);
+  };
+  await assert.rejects(() => prepareMediaBatch(publication, root), /HTTP 403/);
+  assert.equal(reads, 1);
+  assert.match(failures[0], /step=read_object media="image-0" file="\/image-0.png"/);
+  assert.doesNotMatch(failures.join(' '), /https:|cloudflarestorage|private\/|token=|Signature=/);
+}, 1, true));
+
+test('exhausted grant retries stop after three attempts with the same media identity', async t => withMediaFixture(async ({ publication, root }) => {
+  let attempts = 0; const failures = [];
+  t.mock.method(console, 'error', line => failures.push(line));
+  globalThis.fetch = async () => { attempts++; return new Response(null, { status: 503 }); };
+  await assert.rejects(() => prepareMediaBatch(publication, root), /media_transfer_interrupted/);
+  assert.equal(attempts, 3); assert.match(failures[0], /step=read_grant.*attempts=3/);
+}, 1, true));

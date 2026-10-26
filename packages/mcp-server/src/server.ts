@@ -379,7 +379,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
   }
   for (const tool of options.toolMode === 'compact' ? compactTools(catalog) : catalog) {
     register(tool.name, {
-      description: tool.description, inputSchema: z.object(tool.schema).meta({ additionalProperties: false }),
+      description: tool.description, inputSchema: z.object(tool.schema).strict(),
       annotations: { readOnlyHint: tool.effect === 'read', destructiveHint: tool.effect !== 'read', openWorldHint: true },
     } as any, tool.invoke);
   }

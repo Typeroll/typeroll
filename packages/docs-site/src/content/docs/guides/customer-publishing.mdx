@@ -955,3 +955,26 @@ is started. A new attempt does not mean that completed media must be recopied.
 `get_preview_link` also returns `frame_url` for rendering QA without the portal
 wrapper. It uses the same signed expiry and sandbox. Keep the normal `url` for
 extension-host integration tests, which need the wrapper's message bridge.
+
+## Media transfer retries and failure details
+
+From Core 0.2.109, the frozen customer build retries a temporary media transfer
+up to three attempts for the same operation. This includes fetching scoped access,
+reading completion/variant receipts, reading an interrupted response body and
+writing immutable assets. Completed variants and reusable publication assets are
+kept; a retry does not deliberately regenerate unchanged images. The coordinator's
+existing bounded checkpoint recovery still applies after local transfer attempts
+are exhausted.
+
+A final media error records its operation, media ID and file locator in build
+logs; the portal/MCP diagnostic includes the bounded locator beside the cause.
+Signed storage URLs and credentials are not included in these locators. A
+publication-wide access failure may have no individual media ID yet. Access
+denials, invalid receipts, changed hashes and image-encoding errors are not
+transient transfer failures and are not automatically retried locally.
+
+These changes apply to new publications frozen with this Core release. A job
+already frozen with an older release retains its original media code; retrying
+that exact snapshot does not upgrade it. If a failure remains after retries,
+report the deployment ID and diagnostic. A failed build does not activate a new
+live artifact.

@@ -42,6 +42,13 @@ Returns all current site settings.
 
 ## `update_site_settings`
 
+Pass settings at the top level, for example
+`{"site_id":"your-site","tagline":"Your new tagline"}`. Unlike `update_page`,
+this tool has no `patch` envelope. MCP rejects unknown top-level arguments
+(including `patch` or `settings`) and requests with no settings to change.
+An empty string is an intentional value, for example to clear the tagline.
+This validation applies to full and compact MCP connections.
+
 Updates site settings. Pass only the fields you want to change. It accepts every
 field the portal's **Settings** form does and, like that form, requires admin
 permission on the site: a site API key, an organization key for a site your

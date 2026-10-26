@@ -27,7 +27,7 @@ export function compactTools(catalog: CallableTool[]): CallableTool[] {
     }),
     local('describe_tool', 'Read one tool’s complete description, effect and JSON input schema before calling it.', { name: z.string().max(100) }, async args => {
       const tool = byName.get(String(args.name));
-      return tool ? ok({ name: tool.name, effect: tool.effect, description: tool.description, inputSchema: z.toJSONSchema(z.object(tool.schema).meta({ additionalProperties: false }), { target: 'draft-7', io: 'input' }) }) : fail(new Error('Unknown tool. Use search_tools.'));
+      return tool ? ok({ name: tool.name, effect: tool.effect, description: tool.description, inputSchema: z.toJSONSchema(z.object(tool.schema).strict(), { target: 'draft-7', io: 'input' }) }) : fail(new Error('Unknown tool. Use search_tools.'));
     }),
     ...(['read', 'write', 'admin'] as const).map(effect => ({
       name: `call_${effect}_tool`, effect,
@@ -36,7 +36,7 @@ export function compactTools(catalog: CallableTool[]): CallableTool[] {
       invoke: async (args: Record<string, unknown>) => {
         const tool = byName.get(String(args.name));
         if (!tool || tool.effect !== effect) return fail(new Error(`This endpoint accepts only ${effect} tools. Use describe_tool to check the required effect.`));
-        try { return await tool.invoke(z.object(tool.schema).parse(args.arguments)); }
+        try { return await tool.invoke(z.object(tool.schema).strict().parse(args.arguments)); }
         catch (error) { return fail(error); }
       },
     })),

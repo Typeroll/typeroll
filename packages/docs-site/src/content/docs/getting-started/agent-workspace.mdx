@@ -431,3 +431,20 @@ See the starter's `workflows/migration.md`, `workflows/design.md`,
 `qa/checklist.md` and `scripts/README.md` for the routines and commands.
 Keep platform findings in `qa/typeroll-platform-feedback.md`. Customer-specific
 conversion scripts are examples, not a universal automatic HTML-to-blocks pipeline.
+
+## Repository-only Page notes
+
+The starter includes `pages/README.md`, `workflows/page-notes.md` and
+`scripts/typeroll/page_notes.py`. Keep sources, review dates, internal decisions
+and dated change logs per stable Page ID in the workspace. Read the note before
+editing and update it afterward. At each editorial review, inspect the rendered
+Page and its external links. Archive notes for confirmed removed Pages under
+`pages/archived/`; retain their history.
+
+Run the helper from the workspace root with `--dry-run` first. It reads saved CMS
+content in batches and refreshes only generated facts and the review index.
+It never writes to the CMS, overwrites human sections, advances review dates or
+archives notes automatically. See the starter instructions for private credential
+injection and optional migration URL facts. Keep the workspace private when notes
+are private; these files must never enter public site output. Existing workspaces
+receive the files through the normal `init --update` flow, preserving local edits.

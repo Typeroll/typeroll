@@ -59,7 +59,8 @@ export function diagnosticCause(lines) {
   const thrown = content.filter(line => THROWN.test(line)).at(-1);
   const failures = content.filter(line => FAILURE.test(line));
   const pick = thrown ?? failures.filter(line => !GENERIC.test(line)).at(-1) ?? failures.at(-1);
-  return pick ? pick.slice(0, DIAGNOSTIC_CAUSE_LENGTH) : null;
+  const media = text.filter(line => line.startsWith('TYPEROLL_MEDIA_FAILURE ')).at(-1);
+  return pick ? (pick + (media && media !== pick ? ' · ' + media.slice('TYPEROLL_MEDIA_FAILURE '.length) : '')).slice(0, DIAGNOSTIC_CAUSE_LENGTH) : null;
 }
 
 /** A bounded, redacted account of a failed step: its cause and the last lines it printed. */

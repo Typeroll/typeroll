@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1] / 'packages/mcp-server/workspace-temp
 sys.path.insert(0, str(ROOT))
 import trlib
 import color_tokens
+import page_notes
 import check_url_parity as parity
 from check_assets import Assets
 from compare_text import tokens
@@ -19,6 +20,50 @@ CONFIG = {'portal': 'https://cms.example.test', 'organization_id': 'org', 'site_
 
 
 class QA(unittest.TestCase):
+    def test_page_notes_preserve_human_context_and_review_dates(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            pages = [{'id':'home', 'title':'Welcome', 'url':'/', 'status':'published'}]
+            preview = page_notes.refresh(root, CONFIG, pages, {}, dry_run=True)
+            self.assertIn('pages/home.md', preview['changed'])
+            self.assertFalse((root/'pages').exists())
+            page_notes.refresh(root, CONFIG, pages, {})
+            file = root/'pages/home.md'
+            human = file.read_text().replace('last_checked: ', 'last_checked: 2026-01-02').replace('next_review: ', 'next_review: 2027-04') + '\nOwner decision: preserve this exactly.\n'
+            file.write_text(human)
+            pages[0]['title'] = 'Changed title'
+            page_notes.refresh(root, CONFIG, pages, {'home':['https://example.test/']})
+            after = file.read_text()
+            self.assertEqual(after.split(page_notes.START)[0], human.split(page_notes.START)[0])
+            self.assertEqual(after.split(page_notes.END)[1], human.split(page_notes.END)[1])
+            self.assertIn('2027-04', (root/'pages/index.md').read_text())
+            self.assertIn('Changed title', after)
+            self.assertEqual(page_notes.refresh(root, CONFIG, pages, {'home':['https://example.test/']})['changed'], [])
+            orphaned = page_notes.refresh(root, CONFIG, [], {})
+            self.assertEqual(orphaned['notes_without_page'], ['home.md'])
+            self.assertTrue(file.exists())
+
+    def test_page_notes_fail_closed_on_scope_markers_and_paths(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            pages = [{'id':'home', 'title':'Home'}]
+            page_notes.refresh(root, CONFIG, pages, {})
+            file = root/'pages/home.md'
+            before = file.read_text()
+            with self.assertRaisesRegex(ValueError, 'scope differs'):
+                page_notes.refresh(root, {**CONFIG, 'site_id':'other'}, pages, {})
+            self.assertEqual(file.read_text(), before)
+            file.write_text(before.replace(page_notes.END, 'broken'))
+            with self.assertRaisesRegex(ValueError, 'markers'):
+                page_notes.refresh(root, CONFIG, pages, {})
+            self.assertNotIn('/', page_notes.filename('../escape'))
+            with self.assertRaises(ValueError): page_notes.filename('index')
+
+    def test_page_note_links_parse_html_and_omit_signed_queries(self):
+        links = page_notes.body_links({'html_content': "<a href='https://outside.test/info'>Info</a>"},
+            [{'data':{'link':'https://private.test/preview?token=secret', 'style_id':'not-a-link', 'href':'/local'}}])
+        self.assertEqual(links, ['/local', 'https://outside.test/info'])
+
     def test_colour_plan_refuses_main_and_stale_palettes_before_writes(self):
         plan = {'scope': {**CONFIG, 'version':'main'}, 'palette_hash':'a', 'replacements':[], 'counts_before':{}}
         with patch.object(color_tokens, 'snapshot', return_value=(plan, {})), patch.object(trlib, 'call') as call:

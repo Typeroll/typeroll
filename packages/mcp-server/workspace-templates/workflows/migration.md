@@ -127,3 +127,10 @@ recurring-event wording only when a source supports recurrence. Flag uncertain
 facts for review or keep new Pages in draft; missing evidence does not prove that
 an event stopped. Link to the actual organiser when relevant. Upload approved
 photos with SHA-256 verification and review focal points at mobile/desktop widths.
+
+## Internal Page notes
+
+Follow workflows/page-notes.md and pages/README.md. Create notes during migration,
+read before edits, update afterward, check external links at each editorial review,
+and archive notes for confirmed removed Pages under pages/archived/. Refreshing
+generated facts never counts as a completed review. Keep notes out of public output.
