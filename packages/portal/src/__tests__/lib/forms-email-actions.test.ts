@@ -7,6 +7,9 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { paths } from '@typeroll/shared';
 import type { Site, SiteIntegrations } from '@typeroll/shared';
 
+// Requests carry one forwarded hop, as behind the deployment's single trusted proxy.
+process.env.AUTH_TRUST_PROXY_HOPS = '1';
+
 const sendMock = vi.fn();
 vi.mock('../../lib/email', () => ({
   sendViaConnector: (...args: unknown[]) => sendMock(...args),
@@ -62,7 +65,7 @@ let requestNumber = 0;
 function submitReq(token: string, data: Record<string, string>): Request {
   return new Request('http://localhost/api/forms/submit', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-real-ip': `192.0.2.${++requestNumber}` },
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': `192.0.2.${++requestNumber}` },
     body: JSON.stringify({ token, data }),
   });
 }
@@ -170,4 +173,20 @@ it('expired trial refuses rather than silently accepting or storing a form submi
   expect(await response.json()).toMatchObject({ code: 'form_service_unavailable' });
   const { getStore } = await import('../../lib/datastore');
   expect(await getStore().listDocs(paths.submissions(ORG, SITE))).toHaveLength(0);
+});
+it('limits how often a submitted address receives the autoresponder, never the site owner', async () => {
+  await setup(); await seedFormWithEmailAction(); await seedConnector();
+  sendMock.mockReset(); sendMock.mockResolvedValue({ ok: true });
+  for (let i = 0; i < 5; i++) {
+    expect((await callSubmit(submitReq(await signedToken(), { email: 'Victim@Example.com', message: `spam ${i}` }))).status).toBe(200);
+  }
+  const recipients = sendMock.mock.calls.map((c) => (c[1] as { to: string }).to);
+  expect(recipients.filter((to) => to === 'admin@site.com')).toHaveLength(5);
+  expect(recipients.filter((to) => to.toLowerCase() === 'victim@example.com')).toHaveLength(3);
+});
+it('separates submitted recipient addresses from configured ones', async () => {
+  const { visitorChosenRecipients } = await import('../../lib/forms/actions');
+  expect(visitorChosenRecipients({ to: '{{email}}, Owner@Site.com' }, { to: 'a@x.com, b@y.com, owner@site.com' })).toEqual(['a@x.com', 'b@y.com']);
+  expect(visitorChosenRecipients({ to: 'owner@site.com', bcc: '{{{email}}}' }, { to: 'owner@site.com', bcc: 'a@x.com' })).toEqual(['a@x.com']);
+  expect(visitorChosenRecipients({ to: 'owner@site.com' }, { to: 'owner@site.com' })).toEqual([]);
 });

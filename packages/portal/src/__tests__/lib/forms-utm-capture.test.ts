@@ -7,6 +7,9 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { paths, renderFormHtml, buildCoreBlockRegistry, FORMS_RUNTIME_JS } from '@typeroll/shared';
 import type { Form } from '@typeroll/shared';
 
+// Requests carry one forwarded hop, as behind the deployment's single trusted proxy.
+process.env.AUTH_TRUST_PROXY_HOPS = '1';
+
 const ORG = 'orgone';
 const SITE = 'mysite';
 

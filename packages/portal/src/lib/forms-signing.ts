@@ -37,7 +37,20 @@ export function isFormsSigningConfigured(): boolean {
   return Boolean(s && s.length >= 32);
 }
 
+// Other token kinds signed with the same FORMS_HMAC_SECRET that share the
+// `a.b.c.signature` shape. Legacy analytics event tokens sign
+// `analytics-v1.<orgId>.<siteId>`, which is byte-identical to a form token
+// for an organization whose id is `analytics-v1`. Neither kind may ever be
+// accepted as the other, so that organization id is reserved here.
+const RESERVED_ORG_SEGMENTS = new Set(['analytics-v1']);
+
+/** True when a form token may be minted or accepted for this organization id. */
+export function formTokenOrgAllowed(orgId: string): boolean {
+  return !RESERVED_ORG_SEGMENTS.has(orgId);
+}
+
 export function signFormToken(orgId: string, siteId: string, formId: string): string {
+  if (!formTokenOrgAllowed(orgId)) throw new Error('This organization id cannot receive form tokens');
   const payload = `${orgId}${SEPARATOR}${siteId}${SEPARATOR}${formId}`;
   const sig = crypto.createHmac('sha256', getSecret()).update(payload).digest('base64url');
   return `${payload}${SEPARATOR}${sig}`;
@@ -64,7 +77,7 @@ export function formSubmitUrl(): string {
 
 export function formEmbedInfo(orgId: string, siteId: string, formId: string): FormEmbedInfo {
   return {
-    submit_token: isFormsSigningConfigured() ? signFormToken(orgId, siteId, formId) : null,
+    submit_token: isFormsSigningConfigured() && formTokenOrgAllowed(orgId) ? signFormToken(orgId, siteId, formId) : null,
     submit_url: formSubmitUrl(),
   };
 }
@@ -81,6 +94,7 @@ export function verifyFormToken(token: string): FormTokenParts | null {
   if (parts.length !== 4) return null;
   const [orgId, siteId, formId, sig] = parts;
   if (!orgId || !siteId || !formId || !sig) return null;
+  if (!formTokenOrgAllowed(orgId)) return null;
 
   let expected: string;
   try {
@@ -165,4 +179,57 @@ export function verifyPow(token: string, pow: string, bits = POW_BITS): boolean 
     break;
   }
   return zeros >= bits;
+}
+
+// A solved proof of work is single-use. verifyPow alone accepts the same
+// `_pow` for every submission in its 10–20 minute window, so one solved
+// nonce would buy the full per-IP budget for any number of posts. The
+// published runtime already computes a fresh nonce after every accepted
+// step, so recording each accepted nonce changes nothing for visitors.
+//
+// The record is per process, like the rate limiter: with several instances
+// a nonce can be reused at most once per instance. It is bounded; when full,
+// new proofs are not claimed and the post falls back to the strict budget.
+const POW_WINDOW_MS = 600_000;
+const MAX_CLAIMED_POW = 200_000;
+const claimedPow = new Map<string, number>();
+let lastPowSweep = 0;
+
+function powKey(token: string, pow: string): string {
+  return crypto.createHash('sha256').update(`${token}\n${pow}`).digest('base64url');
+}
+
+function sweepClaimedPow(now: number): void {
+  if (now - lastPowSweep < 60_000 && claimedPow.size < MAX_CLAIMED_POW) return;
+  lastPowSweep = now;
+  for (const [key, expiresAt] of claimedPow) if (expiresAt <= now) claimedPow.delete(key);
+}
+
+/**
+ * Verify a proof of work and claim it for one submission. False when it is
+ * invalid, stale or already claimed.
+ */
+export function claimPow(token: string, pow: string, bits = POW_BITS): boolean {
+  if (!verifyPow(token, pow, bits)) return false;
+  const now = Date.now();
+  sweepClaimedPow(now);
+  const key = powKey(token, pow);
+  const expiresAt = claimedPow.get(key);
+  if (expiresAt !== undefined && expiresAt > now) return false;
+  if (claimedPow.size >= MAX_CLAIMED_POW) return false;
+  // verifyPow accepts the current and previous bucket, so a nonce stays
+  // usable until the end of the bucket after its own.
+  const bucket = Number(pow.split('.')[0]);
+  claimedPow.set(key, (bucket + 2) * POW_WINDOW_MS);
+  return true;
+}
+
+/** Give back a claimed proof when its post changed nothing (a validation error), so the visitor can resend. */
+export function releasePow(token: string, pow: string): void {
+  claimedPow.delete(powKey(token, pow));
+}
+
+export function _resetClaimedPowForTests(): void {
+  claimedPow.clear();
+  lastPowSweep = 0;
 }

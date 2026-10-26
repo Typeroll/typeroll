@@ -22,6 +22,44 @@ import type { AppConfigField } from '../apps/types';
 import { getStore } from '../datastore';
 import { buildEmailMessage, emailFieldsFromForm } from '../email/render-email';
 import { sendViaConnector } from '../email';
+import type { EmailMessage } from '../email/types';
+import { rateLimit } from '../rate-limit';
+
+// Recipients a visitor chooses (`to: "{{email}}"` autoresponders) turn a
+// public form into a relay for the site's sender: anyone can make it mail
+// any address. Each visitor-chosen address gets a small per-site budget, and
+// one submission may name only a few of them.
+const VISITOR_RECIPIENT_LIMIT = 3;
+const VISITOR_RECIPIENT_WINDOW_MS = 60 * 60 * 1000;
+const MAX_VISITOR_RECIPIENTS = 3;
+
+/**
+ * Addresses in a built message that came from submitted values rather than
+ * from the action's own configuration (lower-cased, de-duplicated).
+ */
+export function visitorChosenRecipients(config: Partial<EmailActionConfig>, message: Pick<EmailMessage, 'to' | 'cc' | 'bcc'>): string[] {
+  const out = new Set<string>();
+  const pairs: Array<[string | undefined, string | undefined]> = [[config.to, message.to], [config.cc, message.cc], [config.bcc, message.bcc]];
+  for (const [template, resolved] of pairs) {
+    if (typeof template !== 'string' || !template.includes('{{') || !resolved) continue;
+    const configured = new Set(template.replace(/\{\{\{?[^}]*\}?\}\}/g, ',').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean));
+    for (const address of resolved.split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)) {
+      if (!configured.has(address)) out.add(address);
+    }
+  }
+  return [...out];
+}
+
+/** Whether an email to these visitor-chosen recipients may go out now; counts it against each address's budget. */
+function visitorRecipientsAllowed(orgId: string, siteId: string, recipients: string[]): boolean {
+  if (recipients.length > MAX_VISITOR_RECIPIENTS) return false;
+  let allowed = true;
+  for (const address of recipients) {
+    const result = rateLimit(`forms-email-recipient:${orgId}:${siteId}:${address}`, VISITOR_RECIPIENT_LIMIT, VISITOR_RECIPIENT_WINDOW_MS);
+    if (!result.allowed) allowed = false;
+  }
+  return allowed;
+}
 
 export interface ActionContext {
   orgId: string;
@@ -102,6 +140,11 @@ const CORE_ACTIONS: FormActionDef[] = [
       );
       if (error || !message) {
         console.error('[form action] email not built:', error);
+        return;
+      }
+      const visitorRecipients = visitorChosenRecipients(action.config as Partial<EmailActionConfig>, message);
+      if (visitorRecipients.length && !visitorRecipientsAllowed(ctx.orgId, ctx.siteId, visitorRecipients)) {
+        console.warn(`[form action] email skipped — submitted recipient address over its limit for site ${ctx.siteId}`);
         return;
       }
       await sendViaConnector(connector, message);

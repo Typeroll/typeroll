@@ -8,6 +8,9 @@ import { paths } from '@typeroll/shared';
 import type { Form, FormAction } from '@typeroll/shared';
 import { validateEmailActions } from '../../lib/forms-admin';
 
+// Requests carry one forwarded hop, as behind the deployment's single trusted proxy.
+process.env.AUTH_TRUST_PROXY_HOPS = '1';
+
 const ORG = 'orgone';
 const SITE = 'mysite';
 const HOUR = 3_600_000;
