@@ -152,7 +152,11 @@ typeroll extension promote 1.0.0
 ```
 
 The manifest defaults to `typeroll-extension.json`; use `--manifest` to select
-another file. Local validation is a fast preflight. The portal always performs
+another file. For a private Extension, `install` adds the site to the
+Extension's `allowed_site_ids`. A bare site id only matches a site of your own
+developer organization; to install on another organization's site, pass
+`--site <organization-id>/<site-id>`, which is written to the allow-list in
+that form. Local validation is a fast preflight. The portal always performs
 the complete schema, compatibility, origin and asset-hash validation.
 `extension configure` queues a production deploy by default; pass
 `--no-deploy` only when batching updates and deploy once afterwards.
@@ -192,8 +196,9 @@ the full reference + concrete operation recipes.
   `revoke_api_key`; revoking needs site admin) and organization API keys
   (`list_organization_api_keys`, `revoke_organization_api_key`),
   cross-organization sharing (`list_site_shares`, `share_site`,
-  `update_site_share`, `revoke_site_share`; site admin) and
-  `create_organization_invite` (editor invite link). A share never reaches
+  `update_site_share`, `revoke_site_share`; site admin) and editor invite
+  links (`create_organization_invite`, `list_organization_invites`,
+  `revoke_organization_invite`; organization key). A share never reaches
   further than the caller. New API keys are created only in the portal, so the
   secret never passes through an agent conversation.
 - **Portal AI assistant** — `read_organization_ai_settings`,

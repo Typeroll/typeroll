@@ -18,14 +18,18 @@ Access control
   removing a scope takes effect on existing credentials, and credentials can
   no longer take over or delete other forms or change scripts, robots or
   `staging_url`. Private allow-lists use `org/site` entries; credentials see
-  only their own app guide.
+  only their own app guide. The developer API refuses malformed
+  `allowed_site_ids` entries, and `extension install --site org/site` writes
+  the `org/site` form.
 - Only admins of the owning Organization can mint site API keys, rotate
   Extension credentials or manage shares. Site lifecycle changes refuse keys
   minted through a share, and revoking a share revokes such keys. Listing key
   metadata requires admin.
 - Organization API keys and invites require an owner or admin. Invites are
   stored, single-use by default and revocable; earlier invite links stop
-  working.
+  working. `/api/v1/organization/invites` accepts `max_uses` and `email`, lists
+  invites and revokes them (MCP `list_organization_invites`,
+  `revoke_organization_invite`).
 - Changing a Site's slug or domain requires admin. Fallback hostnames are
   claimed globally, and a DNS record or custom domain held by another project
   is never overwritten (`409 slug_unavailable`).
