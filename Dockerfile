@@ -79,6 +79,19 @@ ENV HOST=0.0.0.0
 # node_modules in place, not just the portal's dist.
 COPY --from=builder /repo /app
 
+# Run as the image's unprivileged `node` user. The application tree stays
+# root-owned and read-only to the process; only the caches the legacy
+# site-template `astro build` (Astro/Vite) and the legacy Pages upload
+# (wrangler) write at runtime are owned by `node`. Temporary build output
+# goes to the OS temp directory and npm/wrangler state to /home/node.
+RUN set -eux; \
+    mkdir -p /app/packages/site-template/.astro /app/packages/site-template/node_modules; \
+    chown -R node:node /app/packages/site-template/.astro /app/packages/site-template/node_modules; \
+    for dir in /app/node_modules /app/packages/portal/node_modules; do \
+      if [ -d "$dir" ]; then mkdir -p "$dir/.cache"; chown -R node:node "$dir/.cache"; fi; \
+    done
+USER node
+
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:' + process.env.PORT + '/api/healthz').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1))"

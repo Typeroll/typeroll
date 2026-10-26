@@ -220,6 +220,12 @@ secret values. Keep `TYPEROLL_BACKUP_KEY` in a second, off-host secret store;
 losing both the host and this key makes encrypted backups unrecoverable. The
 Compose profile explicitly removes this key from every Core container.
 
+Each Core role receives only the secrets it uses. The public Forms service
+keeps Firebase Admin, `FORMS_HMAC_SECRET` and `INTEGRATIONS_SECRET_KEY`; Compose
+blanks its Cloudflare token, R2 keys, preview and MCP OAuth signing keys and
+Extension signing key. The worker does not receive the preview or MCP OAuth
+signing keys. The Core image runs as the unprivileged `node` user.
+
 Bootstrap the portable data contract once before starting Core:
 
 ```bash
@@ -249,7 +255,19 @@ docker compose exec worker node -e "fetch('http://127.0.0.1:8080/api/readyz').th
 ```
 
 The Forms hostname exposes only Forms, Analytics, and diagnostic routes. The
-portable worker is not published through Caddy. Its Firestore queue is durable;
+portable worker is not published through Caddy.
+
+Caddy is the only client of the portal and Forms containers and appends one
+`X-Forwarded-For` hop, so Compose sets `AUTH_TRUST_PROXY_HOPS=1`. Sign-in, MCP
+OAuth and Forms rate limits then count each visitor separately instead of
+sharing one budget for every request. If you place another proxy or CDN in front
+of Caddy, configure Caddy's `trusted_proxies` for it and set
+`AUTH_TRUST_PROXY_HOPS=2` in `.env`. Never raise the value without that proxy:
+clients could then choose their own rate-limit address.
+
+The portal hostname sends `Content-Security-Policy: frame-ancestors 'self'` and
+`X-Frame-Options: SAMEORIGIN` unless a response sets its own policy, so other
+sites cannot frame the admin interface. Its Firestore queue is durable;
 do not replace `DEPLOY_QUEUE=firestore` with `in_process` in an internet-facing
 portable install.
 

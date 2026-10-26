@@ -11,6 +11,11 @@
 		X-Content-Type-Options nosniff
 		Referrer-Policy strict-origin-when-cross-origin
 	}
+	# Anti-framing for the admin portal. The portal frames its own previews,
+	# so same-origin framing stays allowed. Each `?` default applies on its
+	# own and never replaces a policy the portal sets on a response.
+	header ?Content-Security-Policy "frame-ancestors 'self'"
+	header ?X-Frame-Options SAMEORIGIN
 }
 
 {$TYPEROLL_FORMS_HOST} {

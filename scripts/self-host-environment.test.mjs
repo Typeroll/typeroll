@@ -165,6 +165,68 @@ test('the Compose profile uses one immutable image for every Core role', () => {
   assert.doesNotMatch(compose, /:latest\b/);
 });
 
+// One Compose service block, up to the next service key.
+function composeService(compose, name) {
+  const start = compose.indexOf(`\n  ${name}:\n`);
+  assert.ok(start >= 0, `service ${name} is missing`);
+  const rest = compose.slice(start + 1);
+  const end = rest.slice(1).search(/\n  [a-z][a-z-]*:\n|\n[a-z]/);
+  return end < 0 ? rest : rest.slice(0, end + 1);
+}
+
+test('Compose trusts exactly the Caddy hop for client addresses on public roles', () => {
+  const compose = fs.readFileSync(new URL('../compose.yaml', import.meta.url), 'utf8');
+  for (const role of ['portal', 'forms']) {
+    assert.match(composeService(compose, role), /\n      AUTH_TRUST_PROXY_HOPS: \$\{AUTH_TRUST_PROXY_HOPS:-1\}\n/, role);
+  }
+  assert.doesNotMatch(composeService(compose, 'worker'), /AUTH_TRUST_PROXY_HOPS/);
+});
+
+test('Compose withholds secrets a role never uses', () => {
+  const compose = fs.readFileSync(new URL('../compose.yaml', import.meta.url), 'utf8');
+  const blanked = (role) => [...composeService(compose, role).matchAll(/\n      ([A-Z0-9_]+): ""/g)].map((match) => match[1]).sort();
+  assert.deepEqual(blanked('forms'), [
+    'CLOUDFLARE_API_TOKEN', 'EXTENSION_SIGNING_PRIVATE_JWK', 'MCP_OAUTH_SIGNING_KEY',
+    'PREVIEW_HMAC_SECRET', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'TYPEROLL_BACKUP_KEY',
+  ]);
+  assert.deepEqual(blanked('worker'), ['MCP_OAUTH_SIGNING_KEY', 'PREVIEW_HMAC_SECRET', 'TYPEROLL_BACKUP_KEY']);
+  assert.deepEqual(blanked('portal'), ['TYPEROLL_BACKUP_KEY']);
+  // Forms keeps what its routes need.
+  for (const key of ['FORMS_HMAC_SECRET', 'INTEGRATIONS_SECRET_KEY', 'FIREBASE_SERVICE_ACCOUNT']) {
+    assert.doesNotMatch(composeService(compose, 'forms'), new RegExp(`${key}:`), key);
+  }
+});
+
+test('Caddy forbids cross-origin framing of the portal without overriding its own policies', () => {
+  const caddyfile = fs.readFileSync(new URL('../self-host/Caddyfile', import.meta.url), 'utf8');
+  const site = (host) => {
+    const start = caddyfile.indexOf(`{$${host}} {`);
+    assert.ok(start >= 0, host);
+    return caddyfile.slice(start, caddyfile.indexOf('\n}\n', start) + 2);
+  };
+  const portal = site('TYPEROLL_PORTAL_HOST');
+  assert.match(portal, /\n\theader \?Content-Security-Policy "frame-ancestors 'self'"\n/);
+  assert.match(portal, /\n\theader \?X-Frame-Options SAMEORIGIN\n/);
+  for (const block of [portal, site('TYPEROLL_FORMS_HOST')]) {
+    assert.match(block, /X-Content-Type-Options nosniff/);
+    assert.match(block, /Referrer-Policy strict-origin-when-cross-origin/);
+  }
+  assert.doesNotMatch(site('TYPEROLL_FORMS_HOST'), /frame-ancestors|X-Frame-Options/);
+});
+
+test('the Core image runs as an unprivileged user', () => {
+  const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
+  const runtime = dockerfile.slice(dockerfile.indexOf('FROM node:22-slim AS runtime'));
+  const users = [...runtime.matchAll(/^USER (\S+)$/gm)].map((match) => match[1]);
+  assert.deepEqual(users, ['node']);
+  const user = runtime.indexOf('\nUSER node\n');
+  assert.ok(user > runtime.indexOf('COPY --from=builder /repo /app'));
+  assert.ok(user < runtime.indexOf('\nCMD '));
+  assert.doesNotMatch(runtime.slice(user), /^RUN /m);
+  // The application tree itself is not handed to the runtime user.
+  assert.doesNotMatch(runtime, /--chown|chown -R node:node \/app(?:\s|;|$)/);
+});
+
 test('the doctor accepts a complete private environment file', () => {
   const { directory, envPath } = writeEnvironmentFile(validEnvironment(), 0o600);
   try {
