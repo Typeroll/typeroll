@@ -9,6 +9,7 @@ import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { getStore } from '../../../../../lib/datastore';
 import { siteLifecycleState } from '../../../../../lib/site-lifecycle';
 import {
+  FallbackHostnameUnavailableError,
   needsFallbackProvisioning,
   reprovisionFallbackSubdomain,
 } from '../../../../../lib/hosting/site-provisioning';
@@ -44,11 +45,14 @@ export const GET: APIRoute = async ({ request, params }) => {
  * Edit Site-level fields (separate from per-version settings). v1 allows
  * the agent to set name, slug, domain, language and ai_scripts_enabled
  * ("Allow AI to write block scripts", admin only — the same check as the
- * portal's Settings → Custom code toggle). slug is uniqueness-checked
- * across the org so two sites can't claim the same fallback URL. Changing
- * slug reprovisions the fallback DNS and Cloudflare Pages attachment. The
- * response reports `dns_note` on success or `dns_warning` when the slug was
- * saved but hosting reprovisioning needs operator attention.
+ * portal's Settings → Custom code toggle). slug and domain are admin only
+ * too: slug re-points the platform fallback hostname and domain becomes the
+ * canonical URL of every build. slug is uniqueness-checked across the org,
+ * and its fallback hostname is claimed platform-wide, so no site can take a
+ * fallback URL another site uses (409). Changing slug reprovisions the
+ * fallback DNS and Cloudflare Pages attachment. The response reports
+ * `dns_note` on success or `dns_warning` when the slug was saved but hosting
+ * reprovisioning needs operator attention.
  */
 export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -56,6 +60,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const body = (await request.json().catch(() => null)) as Partial<Site> | null;
   if (!body) return apiError('Invalid JSON body');
+
+  if ((body.slug !== undefined || body.domain !== undefined) && ctx.permission !== 'admin') {
+    return apiError('Insufficient permission (admin required to change slug or domain)', 403, ctx);
+  }
 
   const update: Record<string, unknown> = {};
   if (body.name !== undefined) {
@@ -134,6 +142,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
         reprovisioning.cname = result.cnameTarget;
       }
     } catch (e) {
+      // Another site holds this fallback hostname: refuse the slug instead
+      // of saving a slug whose URL serves someone else.
+      if (e instanceof FallbackHostnameUnavailableError) {
+        return apiError(`Slug "${String(update.slug)}" is not available: its fallback URL is already used by another site`, 409, ctx, { code: 'slug_unavailable' });
+      }
       reprovisioning.ok = false;
       reprovisioning.error = e instanceof Error ? e.message : String(e);
     }

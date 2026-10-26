@@ -53,9 +53,21 @@ describe('CloudflareApi', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('attachCustomDomain treats 409 (already attached) as success', async () => {
-    fetchMock.mockResolvedValueOnce(mockJson(409, { errors: [{ message: 'exists' }] }));
+  it('attachCustomDomain treats 409 as success when the domain is attached to the same project', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockJson(409, { errors: [{ message: 'exists' }] }))
+      .mockResolvedValueOnce(mockJson(200, { result: { name: 'foo.example.com', status: 'active' } }));
     await expect(api.attachCustomDomain('proj', 'foo.example.com')).resolves.toBeUndefined();
+    expect(fetchMock.mock.calls[1][0]).toBe('https://api.cloudflare.com/client/v4/accounts/acc/pages/projects/proj/domains/foo.example.com');
+  });
+
+  it('attachCustomDomain refuses a 409 for a domain another project holds', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockJson(409, { errors: [{ message: 'exists' }] }))
+      .mockResolvedValueOnce(mockJson(404, { errors: [{ message: 'not found' }] }));
+    await expect(api.attachCustomDomain('proj', 'foo.example.com')).rejects.toMatchObject({
+      name: 'CloudflareConflictError', code: 'domain_in_use',
+    });
   });
 
   it('attachCustomDomain throws on other errors', async () => {
@@ -94,9 +106,29 @@ describe('CloudflareApi', () => {
     });
   });
 
-  it('upsertDnsRecord updates an existing record', async () => {
+  it('upsertDnsRecord never overwrites a record that points somewhere else', async () => {
+    fetchMock.mockResolvedValueOnce(mockJson(200, { result: [{ id: 'rVictim', content: 'tr-victim.pages.dev' }] }));
+    await expect(api.upsertDnsRecord({
+      zoneId: 'z1',
+      type: 'CNAME',
+      name: 'foo.example.com',
+      content: 'tr-attacker.pages.dev',
+    })).rejects.toMatchObject({ name: 'CloudflareConflictError', code: 'dns_record_conflict' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('deleteDnsRecord with expectedContent leaves records that point elsewhere', async () => {
     fetchMock
-      .mockResolvedValueOnce(mockJson(200, { result: [{ id: 'rExisting' }] })) // list: 1 found
+      .mockResolvedValueOnce(mockJson(200, { result: [{ id: 'mine', content: 'tr-x.pages.dev.' }, { id: 'other', content: 'tr-y.pages.dev' }] }))
+      .mockResolvedValueOnce(mockJson(200, { result: { id: 'mine' } }));
+    await api.deleteDnsRecord('z1', 'foo.example.com', 'CNAME', 'tr-x.pages.dev');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toContain('/dns_records/mine');
+  });
+
+  it('upsertDnsRecord updates an existing record with the same target', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockJson(200, { result: [{ id: 'rExisting', content: 'TR-X.pages.dev.' }] })) // list: 1 found
       .mockResolvedValueOnce(mockJson(200, { result: { id: 'rExisting' } })); // PUT update
     await api.upsertDnsRecord({
       zoneId: 'z1',

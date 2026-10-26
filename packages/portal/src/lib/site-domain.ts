@@ -56,7 +56,7 @@
 
 import { paths, type Site } from '@typeroll/shared';
 import { getStore } from './datastore';
-import { CloudflareApi, pagesProjectNameForSite, type CustomDomainStatus } from './hosting/cloudflare-api';
+import { CloudflareApi, CloudflareConflictError, pagesProjectNameForSite, type CustomDomainStatus } from './hosting/cloudflare-api';
 import { classifyHostname, isValidHostname, normalizeHostname, pickCanonical } from './domain-pair';
 
 export class DomainServiceError extends Error {
@@ -236,7 +236,14 @@ export async function requestDomain(
 
   // Step 1+2: register canonical first. Any error from CF here aborts
   // before we touch the doc.
-  await cf.api.attachCustomDomain(cf.project, pick.canonical);
+  try {
+    await cf.api.attachCustomDomain(cf.project, pick.canonical);
+  } catch (e) {
+    if (e instanceof CloudflareConflictError) {
+      throw new DomainServiceError(`${pick.canonical} is already attached to another Cloudflare Pages project.`, 409);
+    }
+    throw e;
+  }
 
   // Step 3: register alias. Roll back canonical on failure so the user
   // doesn't end up with a half-registered pair (= the 522 trap on the
@@ -247,12 +254,15 @@ export async function requestDomain(
     } catch (e) {
       // Best-effort rollback. If this fails too we surface the original
       // alias error — at least the user has actionable info, and a
-      // subsequent retry will see the canonical already-attached as
-      // 409 (which attachCustomDomain treats as success — idempotent).
+      // subsequent retry sees the canonical already attached to this
+      // project, which attachCustomDomain treats as success.
       try {
         await cf.api.removeCustomDomain(cf.project, pick.canonical);
       } catch {
         /* swallow — original error is what the user needs to see */
+      }
+      if (e instanceof CloudflareConflictError) {
+        throw new DomainServiceError(`${pick.alias} is already attached to another Cloudflare Pages project.`, 409);
       }
       const reason = e instanceof Error ? e.message : String(e);
       throw new DomainServiceError(
