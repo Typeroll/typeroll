@@ -155,10 +155,10 @@ def walk(blocks):
             yield from walk(slot)
 
 
-def all_pages():
+def all_pages(full=False):
     cursor, seen = None, set()
     while True:
-        args = {'limit': 200, **({'cursor': cursor} if cursor else {})}
+        args = {'limit': 200, **({'full': True} if full else {}), **({'cursor': cursor} if cursor else {})}
         result = call('list_pages', args)
         yield from result['pages']
         cursor = result.get('next_cursor')

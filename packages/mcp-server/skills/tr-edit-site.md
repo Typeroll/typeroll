@@ -19,7 +19,11 @@ description: Edit or create Typeroll pages with a person’s usual AI assistant.
    content types, or `search_pages` for words in saved content. Ask the user to
    choose when several pages fit their description. A different host requires
    confirming a site switch and selecting a new context; never silently switch.
-4. Read the page and relevant Page template, block types and reusable sections.
+4. When a project repository is available, read its pages/<page-id>.md note and
+   relevant decisions before editing. Follow workflows/page-notes.md: update the
+   dated log afterward, check external links during reviews, and archive notes
+   for confirmed removed Pages. Do not store private notes in public CMS fields.
+   Read the page and relevant Page template, block types and reusable sections.
    Prefer existing native blocks and shared styles. Editors may create custom
    block types and shared Page templates when needed. Read `tr-custom-blocks`
    or `tr-page-template` only when that work is relevant. Before changing a
