@@ -134,12 +134,13 @@ describe('submit endpoint hardening', () => {
     expect(statuses).toEqual([200, 200, 200, 200, 200, 429]);
   });
 
-  it('stores the trusted hop as submitted_from_ip', async () => {
+  it('uses the client address for rate limiting only and never stores it', async () => {
     const token = await setup();
     const res = await post(jsonRequest({ token, data: { name: 'Ada' } }, '6.6.6.6, 203.0.113.44'));
     expect(res.status).toBe(200);
     const [saved] = await storedSubmissions();
-    expect(saved.submitted_from_ip).toBe('203.0.113.44');
+    expect(saved).not.toHaveProperty('submitted_from_ip');
+    expect(JSON.stringify(saved)).not.toContain('203.0.113.44');
   });
 
   it('accepts the same proof of work from different visitors of one form', async () => {

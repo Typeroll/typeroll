@@ -88,6 +88,22 @@ An empty string clears `default_og_image`, `twitter_handle` and `staging_url`;
 settings, so a branch cannot reroute it: it is written the same way whichever
 `version` you pass, and trailing slashes are dropped.
 
+### Form submission retention
+
+`form_submission_retention_days` (integer 30–3650, or `null`) sets how long
+completed form submissions are kept. It is off by default: `null` keeps them
+until someone deletes them. With a value, each completed submission is deleted
+that many days after it was completed, on every form of the site, including
+submissions received before you set it; those already older are deleted at once
+and cannot be restored. The response reports
+`form_submission_retention: { updated, deleted }`. Setting `null` again stops
+further deletion. Like `staging_url`, the value is stored on the site, not per
+version, and `read_site_settings` returns it with the other settings.
+
+Only a site administrator can change it. Extension credentials receive HTTP 403
+even with `content:write`. In the portal, set it under **Forms → Submission
+retention**. See [Forms privacy and retention](../../apps/forms/#privacy-and-retention).
+
 ### `organization` object
 
 Site-wide Organization structured data, emitted as JSON-LD on every page. The

@@ -123,12 +123,20 @@ Deletes a form. Any embed referencing it stops accepting submissions.
 `list_form_submissions` reads what visitors sent, newest first, up to 200 per
 page (pass `next_cursor` back as `cursor` for the next page).
 `read_form_submission` reads one entry. For admins, both also include each
-submission's webhook delivery status (`webhook_deliveries`: status, attempts,
+submission's webhook delivery status (`webhook_deliveries`: status
+(`pending` while a retry is scheduled, then `delivered` or `failed`), attempts,
 response status, last error), as the portal shows it. `delete_form_submission`
 removes a single entry (useful for clearing spam or a test submission) together
 with its webhook delivery records. `list_forms` includes each form's
 `submission_count`. Reading submissions works with read permission; deleting
 needs write permission.
+
+Submissions contain no visitor IP address or user agent. Entries saved before
+this change never return the IP address; only admins see their earlier
+`user_agent`, shortened to 256 characters. When the site sets
+`form_submission_retention_days`, completed submissions carry `expires_at`, and
+an expired submission is deleted rather than listed or read. See
+[Forms privacy and retention](../../apps/forms/#privacy-and-retention).
 
 ## Email notifications and webhooks
 
@@ -152,6 +160,17 @@ update_form form_id=contact patch={ actions: [
 | --------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `email`   | `to`, `subject`, `body` (required; `{{field}}` placeholders), `cc`, `bcc`, `reply_to`, `include_all`, `format` (`html` or `text`) |
 | `webhook` | `url` (https), `fields` (the field names sent), `secret` (signing secret; send the masked value to keep it)                       |
+
+A webhook receives a signed JSON `POST` with only the listed fields. Up to
+three webhooks of a submission get one attempt while the visitor's request is
+running, within three seconds in total; the visitor's confirmation waits no
+longer than that for webhooks and never depends on their outcome. Further webhooks, and attempts that
+time out or get HTTP 408, 429 or 5xx, are retried in the background about 1, 5,
+30 and 120 minutes later, five attempts in total, before the delivery is marked
+failed. Other 4xx responses fail at once. Every attempt carries the same event
+id (`Idempotency-Key`), so deduplicate on it. On a self-hosted installation the
+retries run on the same scheduler as scheduled publishing, so their timing
+follows its interval.
 
 `include_all` appends every submitted value to the email, one row per field
 in the order the fields appear in the form. Each row uses the field's label

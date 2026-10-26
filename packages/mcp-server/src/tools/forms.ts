@@ -176,7 +176,7 @@ export const formTools: ToolDef[] = [
   {
     name: 'list_form_submissions',
     description:
-      'List submissions received for a form, newest first, cursor-paginated (cap 200 per page). Admins also see each submission\'s webhook delivery status. Use this to help a customer triage inbound contact / lead submissions; read_form_submission reads one.',
+      'List submissions received for a form, newest first, cursor-paginated (cap 200 per page). Admins also see each submission\'s webhook delivery status. Visitor IP addresses are not stored or returned; completed submissions past the site\'s form_submission_retention_days (read_site_settings) are deleted and never listed. Use this to help a customer triage inbound contact / lead submissions; read_form_submission reads one.',
     inputSchema: {
       form_id: z.string(),
       limit: z.number().int().min(1).max(200).optional(),
@@ -195,7 +195,7 @@ export const formTools: ToolDef[] = [
   {
     name: 'read_form_submission',
     description:
-      'Read one submission of a form by id (from list_form_submissions): the submitted values, status (partial or complete), step and timestamps. Admins also see its webhook delivery status, as in the portal.',
+      'Read one submission of a form by id (from list_form_submissions): the submitted values, status (partial or complete), step and timestamps, with expires_at when the submission is due for deletion. Admins also see its webhook delivery status, as in the portal.',
     inputSchema: {
       form_id: z.string(),
       submission_id: z.string(),

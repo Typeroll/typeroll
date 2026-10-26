@@ -11,7 +11,9 @@
 //
 // `staging_url` is stored on the Site document, not in versioned settings, so
 // a branch cannot reroute it; it is written the same way whichever `?version=`
-// the request names.
+// the request names. So is `form_submission_retention_days` (opt-in deletion
+// of completed form submissions, lib/form-submissions), which only a site
+// administrator may change and which applies to existing submissions at once.
 //
 // An Extension installation credential with `content:write` may change the
 // presentational settings, but never the fields that run code on or change
@@ -24,6 +26,7 @@ import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { libraryProblems, libraryWarnings, readStyles } from '../../../../../lib/site-styles-store';
 import { customCssWarnings, customCssWriteError } from '../../../../../lib/custom-css-write';
 import { getStore } from '../../../../../lib/datastore';
+import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentionError } from '../../../../../lib/form-submissions';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
 import { designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, type SiteSettings } from '@typeroll/shared';
 
@@ -37,7 +40,7 @@ const TOP_LEVEL = new Set([
   'scripts_head', 'scripts_body_end', 'custom_css',
 ]);
 /** Fields stored on the Site document rather than in versioned settings. */
-const SITE_LEVEL = new Set(['staging_url']);
+const SITE_LEVEL = new Set(['staging_url', 'form_submission_retention_days']);
 /** Optional string fields where an empty string clears the value. */
 const CLEARABLE_STRINGS = ['default_og_image', 'twitter_handle'] as const;
 const NESTED = new Set(['colors', 'fonts', 'contact', 'social', 'cookie_consent']);
@@ -52,6 +55,8 @@ const NESTED = new Set(['colors', 'fonts', 'contact', 'social', 'cookie_consent'
 const INSTALLATION_REFUSED = new Set([
   'scripts_head', 'scripts_body_end', 'custom_css', 'robots_txt', 'sitewide_noindex', 'sitewide_nofollow',
   'staging_url', 'iframe_allowed_hosts', 'external_routes', 'render_version', 'agent_instructions',
+  // Deletes visitors' submissions; a data-retention decision for the site's administrators.
+  'form_submission_retention_days',
 ]);
 const INSTALLATION_REFUSED_CONSENT = new Set(['scripts_necessary', 'scripts_optional']);
 
@@ -76,7 +81,11 @@ export const GET: APIRoute = async ({ request, params }) => {
   const s = (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {};
   // Return all fields, including scripts_* and custom_css. An authenticated
   // API caller authoring CSS/JS needs to read back what they wrote.
-  return apiResponse(ctx, { settings: s, urls: publicUrlsFor(ctx.site), render: renderVersionStatus((s as SiteSettings).render_version) });
+  return apiResponse(ctx, {
+    settings: { ...s, form_submission_retention_days: siteSubmissionRetentionDays(ctx.site) },
+    urls: publicUrlsFor(ctx.site),
+    render: renderVersionStatus((s as SiteSettings).render_version),
+  });
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -116,6 +125,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
     stagingUrl = normalizeStagingUrl(String(body.staging_url ?? ''));
   }
+  const retentionDays = body.form_submission_retention_days as number | null | undefined;
+  if (retentionDays !== undefined) { const error = submissionRetentionError(retentionDays); if (error) return apiError(error, 400); }
   if (body.responsive_breakpoints !== undefined) { const error = responsiveBreakpointsError(body.responsive_breakpoints); if (error) return apiError(error, 400); }
   if (body.trailing_slash !== undefined && !['always', 'never', 'ignore'].includes(String(body.trailing_slash))) {
     return apiError('trailing_slash must be one of: always, never, ignore', 400);
@@ -196,7 +207,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       unknown_keys.push(k);
     }
   }
-  if (unknown_keys.length > 0 && Object.keys(update).length === 0 && stagingUrl === undefined) {
+  if (unknown_keys.length > 0 && Object.keys(update).length === 0 && stagingUrl === undefined && retentionDays === undefined) {
     // All keys were unknown — almost certainly a schema mistake (e.g. the
     // caller wrapped their fields in {"settings": {...}}). Return 400 so the
     // error is visible instead of silently saving nothing.
@@ -213,10 +224,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (stagingUrl !== undefined) {
     await getStore().updateDoc(paths.site(ctx.orgId, ctx.siteId), { staging_url: stagingUrl });
   }
+  const retention = retentionDays === undefined ? undefined : await setSubmissionRetention(ctx.orgId, ctx.siteId, retentionDays);
   const resp: Record<string, unknown> = {
     ok: true,
-    updated_fields: [...Object.keys(update), ...(stagingUrl !== undefined ? ['staging_url'] : [])],
+    updated_fields: [
+      ...Object.keys(update),
+      ...(stagingUrl !== undefined ? ['staging_url'] : []),
+      ...(retention ? ['form_submission_retention_days'] : []),
+    ],
   };
+  if (retention) resp.form_submission_retention = retention;
   const warnings: string[] = [];
   if (unknown_keys.length > 0) warnings.push(`Unrecognized keys were ignored: ${unknown_keys.join(', ')}`);
   // A palette or render version change can make existing styles unreadable

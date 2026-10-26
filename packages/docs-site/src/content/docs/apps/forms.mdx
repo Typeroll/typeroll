@@ -73,6 +73,47 @@ also run configured actions, such as sending an email notification. Email
 credentials are configured separately under the site's email settings and
 stored encrypted.
 
+## Privacy and retention
+
+A submission stores the answers, its status and step, and timestamps. The
+visitor's IP address and browser are used in memory for rate limiting only and
+are not stored. Submissions saved before this change may still hold them: API
+and MCP responses never return the IP address, and only site administrators see
+the earlier browser string, shortened to 256 characters.
+
+Completed submissions are kept until someone deletes them, unless the site opts
+into a retention period. A site administrator sets it under **Forms →
+Submission retention**, or with `form_submission_retention_days` (30–3650 days)
+in the [site settings](../../tools/settings/#form-submission-retention). With a
+period set:
+
+- each completed submission expires that many days after it was completed, on
+  every form of the site;
+- submissions that are already older are deleted when you save the period, and
+  the rest get an expiry date (`expires_at`);
+- an expired submission is never listed or returned, and reading the inbox
+  deletes the expired ones it finds;
+- clearing the period (empty, or `null`) keeps all remaining submissions again.
+
+Partial submissions keep the form's `partial_ttl_days`. Questionnaire
+responses that belong to an app installation are managed by that app.
+
+Each expiring submission also carries a native timestamp, `delete_at`, so the
+datastore can delete it without anyone opening the inbox. The operator of the
+Forms datastore enables this; on a self-hosted installation on Firestore,
+enable a TTL policy for the collection group `submissions` on the field
+`delete_at`, for example:
+
+```sh
+gcloud firestore fields ttls update delete_at \
+  --collection-group=submissions --enable-ttl
+```
+
+Firestore deletes expired documents asynchronously, usually within a day. With
+a file-backed store, or before the policy is enabled, expired submissions are
+hidden and deleted when the inbox is read. Webhook delivery records hold only
+delivery metadata, not answers.
+
 ## Agent and API surface
 
 Agents can create, read, update, list, and delete forms. They can also list and

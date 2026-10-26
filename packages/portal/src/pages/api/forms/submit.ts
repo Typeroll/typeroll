@@ -41,7 +41,8 @@ import { assertOrganizationAccess, OrganizationAccessError } from '../../../lib/
 import type { APIRoute } from 'astro';
 import { getStore } from '../../../lib/datastore';
 import { paths, safeFormRedirectUrl, FORM_PREVIEW_FIELD, formMessage } from '@typeroll/shared';
-import type { Form } from '@typeroll/shared';
+import type { Form, Site } from '@typeroll/shared';
+import { completedRetentionFields, siteSubmissionRetentionDays } from '../../../lib/form-submissions';
 import {
   verifyFormToken,
   isFormsSigningConfigured,
@@ -262,7 +263,7 @@ export const POST: APIRoute = async (context) => {
   if (!Array.isArray(form.steps) || form.steps.length === 0) {
     return respond(wantsHtml, { error: formMessage('no_steps', lang) }, 422, backUrl, lang);
   }
-  return handleStepsMode({ request, form, orgId, siteId, formId, data, ip, wantsHtml, wantsProtocol, backUrl, lang });
+  return handleStepsMode({ request, form, orgId, siteId, formId, data, wantsHtml, wantsProtocol, backUrl, lang });
 };
 
 /** True for forms that post to an installed app or Extension instead of the submissions collector. */
@@ -471,7 +472,6 @@ interface StepsCtx {
   siteId: string;
   formId: string;
   data: Record<string, unknown>;
-  ip: string;
   wantsHtml: boolean;
   wantsProtocol: boolean;
   backUrl: string | null;
@@ -568,6 +568,10 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
 
   const next = nextStep(form, current);
   const acceptedData = { ...((existing?.data as Record<string, unknown>) ?? {}), ...accepted };
+  // A completed submission is kept until deleted unless the site opted into
+  // a retention period (lib/form-submissions).
+  const completion = next ? null : completedRetentionFields(
+    siteSubmissionRetentionDays(await store.getDoc<Site>(paths.site(orgId, siteId))), now);
   if (state) {
     // Only one request may advance a continuation. In particular, completing
     // the final step and claiming its actions must be one atomic transition.
@@ -578,7 +582,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
         data: acceptedData,
         step: current.id,
         status: next ? 'partial' : 'complete',
-        ...(!next ? { expires_at: null } : {}),
+        ...(completion ?? {}),
         updated_at: now.toISOString(),
       },
     );
@@ -591,11 +595,10 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       data: acceptedData,
       status: next ? 'partial' : 'complete',
       step: current.id,
-      submitted_from_ip: ctx.ip,
-      user_agent: ctx.request.headers.get('user-agent') ?? null,
+      // No IP address or user agent: abuse limits use them in memory only.
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
-      expires_at: next ? new Date(now.getTime() + ttlDays * 86_400_000).toISOString() : null,
+      ...(completion ?? { expires_at: new Date(now.getTime() + ttlDays * 86_400_000).toISOString() }),
     });
   }
 

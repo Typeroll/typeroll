@@ -75,7 +75,18 @@ export interface ActionContext {
    * listing uses its labels). runFormActions fills it from the form it runs.
    */
   form?: Pick<Form, 'steps'>;
+  /**
+   * Shared by the webhook actions of one run: how many may still make their
+   * one attempt inside the request, and the time (epoch ms) by which those
+   * attempts must end. The rest are delivered in the background. runFormActions sets it.
+   */
+  syncWebhooks?: { remaining: number; deadline: number };
 }
+
+/** Webhooks of one run that may make their first attempt inside the request. */
+export const MAX_SYNC_WEBHOOKS = 3;
+/** Time after the run starts by which those attempts must end. */
+export const SYNC_WEBHOOK_BUDGET_MS = 3_000;
 
 export interface FormActionDef {
   /** `Form.actions[].type` this handles. Namespaced for app-provided ones. */
@@ -216,13 +227,21 @@ export function completionActions(form: Pick<Form, 'actions'>): FormAction[] {
  * already happened (a submission stored, a listing updated) before this runs,
  * and a bounced email must never turn that into an error the visitor sees.
  * One action failing also mustn't stop the next — they have different owners.
+ * A webhook whose first attempt fails transiently is retried in the
+ * background (lib/forms/webhook.ts) and counts as ran, not failed.
  */
 export async function runFormActions(
   form: Pick<Form, 'actions' | 'steps'>,
   ctx: ActionContext,
 ): Promise<{ ran: string[]; failed: string[] }> {
   const reg = await actionRegistry();
-  const actionCtx: ActionContext = form.steps && !ctx.form ? { ...ctx, form: { steps: form.steps } } : ctx;
+  // Webhooks get one short attempt each, for a bounded number of them, so a
+  // slow receiver or a form with many webhooks cannot hold the request.
+  const actionCtx: ActionContext = {
+    ...ctx,
+    ...(form.steps && !ctx.form ? { form: { steps: form.steps } } : {}),
+    syncWebhooks: ctx.syncWebhooks ?? { remaining: MAX_SYNC_WEBHOOKS, deadline: Date.now() + SYNC_WEBHOOK_BUDGET_MS },
+  };
   const ran: string[] = [];
   const failed: string[] = [];
   for (const action of completionActions(form)) {
