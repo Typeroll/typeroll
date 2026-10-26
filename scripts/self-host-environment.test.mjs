@@ -32,6 +32,7 @@ function validEnvironment() {
     R2_ACCESS_KEY_ID: 'r2-key',
     R2_SECRET_ACCESS_KEY: 'r2-secret',
     R2_BUCKET: 'typeroll-media',
+    R2_PRIVATE_BUCKET: 'typeroll-media-private',
     R2_PUBLIC_BASE_URL: 'https://media.example.test',
     CLOUDFLARE_ACCOUNT_ID: 'cloudflare-account',
     CLOUDFLARE_API_TOKEN: 'cloudflare-token',
@@ -69,6 +70,18 @@ test('accepts a complete immutable self-host environment', () => {
   const result = validateSelfHostEnvironment(validEnvironment());
   assert.equal(result.ok, true);
   assert.deepEqual(result.errors, []);
+});
+
+test('treats the private staging bucket as optional but never the public bucket', () => {
+  const env = validEnvironment();
+  assert.deepEqual(validateSelfHostEnvironment(env).warnings.filter((warning) => warning.startsWith('R2_PRIVATE_BUCKET')), []);
+  delete env.R2_PRIVATE_BUCKET;
+  let result = validateSelfHostEnvironment(env);
+  assert.equal(result.ok, true);
+  assert.ok(result.warnings.some((warning) => warning.startsWith('R2_PRIVATE_BUCKET: not set')));
+  result = validateSelfHostEnvironment({ ...env, R2_PRIVATE_BUCKET: env.R2_BUCKET });
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some((error) => error.startsWith('R2_PRIVATE_BUCKET: must be a different bucket')));
 });
 
 test('needs no AI key and warns that a leftover platform AI key is ignored', () => {

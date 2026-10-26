@@ -119,27 +119,43 @@ describe('routes that set media names', () => {
       params, cookies: { get: () => undefined }, locals: {} } as unknown as Parameters<APIRoute>[0]) as Promise<Response>;
   }
 
-  it.each([['cookie', 'contentType'], ['api', 'content_type']] as const)('refuses an upload whose filename does not match its type (%s)', async (surface, typeField) => {
+  it.each([['cookie', 'contentType'], ['api', 'content_type']] as const)('appends the type extension to an upload whose filename does not match (%s)', async (surface, typeField) => {
     const { token } = await createApiKey({ orgId: 'org', siteId: 'site', name: 'test', createdBy: 'test' });
     const route = surface === 'api' ? import('../../pages/api/v1/sites/[siteId]/media/upload-url') : import('../../pages/api/sites/[siteId]/media/upload-url');
-    for (const filename of ['x.html', 'x.svg', 'x.xml', 'payload.js']) {
+    for (const filename of ['x.html', 'x.svg', 'x.xml', 'payload.js', 'logo']) {
       const response = await call(route, 'POST', { filename, [typeField]: 'image/png', size: 3 }, { siteId: 'site' }, token);
-      expect(response.status, filename).toBe(400);
-      expect((await response.json()).code).toBe('media_extension_mismatch');
+      expect(response.status, filename).toBe(200);
+      const data = await response.json();
+      expect(data.filename ?? data.data?.filename, filename).toBe(`${filename}.png`);
     }
-    expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(0);
+    const stored = await getStore().listDocs<Media>(paths.media('org', 'site'));
+    expect(stored.map(item => item.filename).sort()).toEqual(['logo.png', 'payload.js.png', 'x.html.png', 'x.svg.png', 'x.xml.png']);
+    expect(stored.every(item => item.storage?.key.endsWith('.png'))).toBe(true);
     const accepted = await call(route, 'POST', { filename: 'Photo.PNG', [typeField]: 'image/png', size: 3 }, { siteId: 'site' }, token);
     expect(accepted.status).toBe(200);
+    expect((await getStore().listDocs<Media>(paths.media('org', 'site'))).some(item => item.filename === 'Photo.PNG')).toBe(true);
+    // A type that cannot be published is still refused, and nothing is created.
+    for (const type of ['image/x-unknown', 'text/html']) {
+      const refused = await call(route, 'POST', { filename: 'x.png', [typeField]: type, size: 3 }, { siteId: 'site' }, token);
+      expect(refused.status, type).toBe(415);
+    }
+    expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(6);
   });
 
-  it.each([['cookie', 'contentType'], ['api', 'content_type']] as const)('refuses the same mismatch on the platform storage path (%s)', async (surface, typeField) => {
+  it.each([['cookie', 'contentType'], ['api', 'content_type']] as const)('appends the extension on the platform storage path too (%s)', async (surface, typeField) => {
     const { token } = await createApiKey({ orgId: 'org', siteId: 'site', name: 'test', createdBy: 'test' });
     await getStore().updateDoc(paths.site('org', 'site'), { publishing_mode: null });
     await getStore().updateDoc(connectionPath('org', 'cloudflare'), { status: 'disconnected', media_ready: false, encrypted_credentials: null });
     const route = surface === 'api' ? import('../../pages/api/v1/sites/[siteId]/media/upload-url') : import('../../pages/api/sites/[siteId]/media/upload-url');
     const response = await call(route, 'POST', { filename: 'x.html', [typeField]: 'image/png', size: 3 }, { siteId: 'site' }, token);
-    expect(response.status).toBe(400);
-    expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(0);
+    expect(response.status).toBe(200);
+    const [record] = await getStore().listDocs<Media>(paths.media('org', 'site'));
+    expect(record).toMatchObject({ filename: 'x.html.png', mime_type: 'image/png', r2_key: expect.stringMatching(/-x\.html\.png$/) });
+    const data = await response.json();
+    expect(data.filename).toBe('x.html.png');
+    expect(new URL(data.upload_url ?? data.uploadUrl).pathname).toMatch(/\.png$/);
+    const refused = await call(route, 'POST', { filename: 'x.png', [typeField]: 'image/x-unknown', size: 3 }, { siteId: 'site' }, token);
+    expect(refused.status).toBe(415);
   });
 
   it.each(['cookie', 'api'] as const)('refuses renaming a filename or public_path to an executable extension (%s)', async surface => {
@@ -159,22 +175,26 @@ describe('routes that set media names', () => {
     expect(await getStore().getDoc<Media>(mediaPath('m1'))).toMatchObject({ filename: 'a.png', public_path: '/photos/a.png', alt_text: 'Alt' });
   });
 
-  it('refuses a chosen import filename that does not match and fixes a derived one', async () => {
+  it('appends the type extension to a chosen or derived import filename', async () => {
     vi.mocked(copyWithTransferService).mockReset().mockImplementation(async input => {
       const body = Buffer.from('png'), etag = '"worker"';
       objects.set(`${input.bucket}/${input.key}`, { body, etag });
       return { protocol: 1, id: 'synthetic', sha256: sha(body), size: body.length, etag };
     });
     const transfer = new WPMediaTransfer('org', 'site', getStore());
-    await expect(transfer.importUrl('https://source.example.com/a', { filename: 'x.html', contentType: 'image/png' })).rejects.toMatchObject({ code: 'media_extension_mismatch' });
-    expect(copyWithTransferService).not.toHaveBeenCalled();
+    const chosen = await transfer.importUrl('https://source.example.com/a', { filename: 'x.html', contentType: 'image/png' });
+    expect((await getStore().getDoc<Media>(mediaPath(chosen.mediaId)))?.filename).toBe('x.html.png');
     const imported = await transfer.importUrl('https://source.example.com/render.php', { contentType: 'image/png' });
     expect((await getStore().getDoc<Media>(mediaPath(imported.mediaId)))?.filename).toBe('render.php.png');
   });
 
-  it('createMediaUpload refuses mismatched names for every caller', async () => {
-    await expect(createMediaUpload('org', 'site', { filename: 'x.html', contentType: 'image/png', size: 3, actor: 'test' })).rejects.toMatchObject({ status: 400, code: 'media_extension_mismatch' });
-    await expect(createMediaUpload('org', 'site', { filename: 'x.svg', contentType: 'image/jpeg', size: 3, actor: 'test' })).rejects.toMatchObject({ code: 'media_extension_mismatch' });
+  it('createMediaUpload stores a matching name for every caller', async () => {
+    const html = await createMediaUpload('org', 'site', { filename: 'x.html', contentType: 'image/png', size: 3, actor: 'test' });
+    expect(html).toMatchObject({ filename: 'x.html.png', key: expect.stringMatching(/\/x\.html\.png$/) });
+    expect(await getStore().getDoc<Media>(mediaPath(html.mediaId))).toMatchObject({ filename: 'x.html.png', mime_type: 'image/png' });
+    expect((await createMediaUpload('org', 'site', { filename: 'x.svg', contentType: 'image/jpeg', size: 3, actor: 'test' })).filename).toBe('x.svg.jpg');
+    expect((await createMediaUpload('org', 'site', { filename: 'x.jpeg', contentType: 'image/jpeg', size: 3, actor: 'test' })).filename).toBe('x.jpeg');
+    await expect(createMediaUpload('org', 'site', { filename: 'x.png', contentType: 'image/x-unknown', size: 3, actor: 'test' })).rejects.toMatchObject({ status: 415 });
   });
 });
 
@@ -238,9 +258,38 @@ describe('publication media manifest', () => {
     expect((await getStore().getDoc<SvgMedia>(mediaPath('svg')))?.svg_sanitized?.sha256).toBe(entry.sha256);
   });
 
-  it('refuses to publish an SVG that cannot be sanitized', async () => {
-    const url = await seed('bad', { filename: 'bad.svg', mime_type: 'image/svg+xml' }, NOT_SVG);
-    await expect(publicationMediaManifest('org', 'site', { html: `<img src="${url}">` }, 'site.demos.example.com')).rejects.toMatchObject({ status: 409, code: 'media_svg_unsanitized' });
+  it('leaves out an SVG that cannot be sanitized, keeps publishing the rest and warns', async () => {
+    const bad = await seed('bad', { filename: 'bad.svg', mime_type: 'image/svg+xml' }, NOT_SVG);
+    const photo = await seed('photo', { filename: 'photo.png', mime_type: 'image/png' });
+    const result = await publicationMediaManifest('org', 'site', { html: `<img src="${bad}"><img src="${photo}">` }, 'site.demos.example.com');
+    expect(result.manifest!.entries.map(entry => entry.id)).toEqual(['photo']);
+    expect(result.sourceMedia.map(item => item.id)).toEqual(['photo']);
+    // No private address and no bytes of the excluded file reach the publication.
+    expect(result.content.html).toMatch(/^<img src=""><img src="https:\/\/site\.demos\.example\.com\/media\/[^"]+photo\.png">$/);
+    expect(result.warnings).toEqual([expect.stringMatching(/^Media bad \(bad\.svg\) was not published: the SVG could not be made safe/)]);
+    expect((await getStore().getDoc<SvgMedia>(mediaPath('bad')))?.svg_sanitized).toBeUndefined();
+  });
+
+  it('checks legacy SVGs in a dry run without writing records or objects', async () => {
+    const url = await seed('svg', { filename: 'logo.svg', mime_type: 'image/svg+xml' }, MALICIOUS);
+    const bad = await seed('bad', { filename: 'bad.svg', mime_type: 'image/svg+xml' }, NOT_SVG);
+    const before = await getStore().getDoc<SvgMedia>(mediaPath('svg'));
+    const result = await publicationMediaManifest('org', 'site', { html: `<img src="${url}"><img src="${bad}">` }, 'site.demos.example.com', undefined, { dryRun: true });
+    expect(result.manifest!.entries.map(entry => entry.id)).toEqual(['svg']);
+    expect(result.warnings).toHaveLength(1);
+    expect(await getStore().getDoc<SvgMedia>(mediaPath('svg'))).toEqual(before);
+    expect(vi.mocked(S3Client.prototype.send).mock.calls.some(([command]) => command instanceof PutObjectCommand)).toBe(false);
+  });
+
+  it('refuses a domain change of a publication with an unsanitized SVG and says how to fix it', async () => {
+    const url = await seed('svg', { filename: 'logo.svg', mime_type: 'image/svg+xml' }, MALICIOUS);
+    const first = await publicationMediaManifest('org', 'site', { html: `<img src="${url}">` }, 'site.demos.example.com');
+    // A publication made before sanitizing existed: the unsanitized bytes, without the flag.
+    const legacy = { ...first.manifest!, entries: first.manifest!.entries.map(({ svg_sanitized: _flag, ...entry }) => ({ ...entry, sha256: sha(MALICIOUS) })) };
+    await expect(publicationMediaManifest('org', 'site', first.content, 'site.demos.example.com', { site_url: 'https://site.demos.example.com', media_manifest: legacy }))
+      .rejects.toMatchObject({ status: 409, code: 'media_svg_unsanitized', message: expect.stringContaining('Publish the site once before changing domains') });
+    await expect(publicationMediaManifest('org', 'site', first.content, 'site.demos.example.com', { site_url: 'https://site.demos.example.com', media_manifest: first.manifest }))
+      .resolves.toMatchObject({ manifest: { entries: [expect.objectContaining({ id: 'svg', svg_sanitized: true })] } });
   });
 
   it('does not serve unsafe entries of older manifests again', () => {
@@ -301,6 +350,33 @@ describe('client finalize helper', () => {
     expect(error).toBeInstanceOf(MediaFinalizeError);
     expect(error).toMatchObject({ code: 'media_svg_invalid', removed: true, message: expect.stringContaining('The SVG was rejected') });
     expect(calls).toEqual([['POST', '/api/sites/site/media/m1/finalize'], ['DELETE', '/api/sites/site/media/m1']]);
+  });
+
+  it('keeps the record for errors that are not about the file', async () => {
+    for (const [status, code] of [[401, 'unauthorized'], [403, 'forbidden'], [400, 'invalid_request'], [409, 'media_storage_unavailable']] as const) {
+      const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ error: 'No.', code }), { status })) as unknown as typeof fetch;
+      await expect(finalizeUpload('site', { finalizeUrl: '/f', mediaId: 'm1' }, fetchImpl, async () => {})).rejects.toMatchObject({ removed: false, status });
+      expect(fetchImpl, String(status)).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it.each([[400, 'media_extension_mismatch'], [415, 'media_type_unsupported'], [422, 'media_svg_truncated'], [422, 'media_integrity_failed']] as const)('removes the record for a refused file (%s %s)', async (status, code) => {
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => init?.method === 'DELETE'
+      ? new Response('{}', { status: 200 }) : new Response(JSON.stringify({ error: 'Refused.', code }), { status })) as unknown as typeof fetch;
+    await expect(finalizeUpload('site', { finalizeUrl: '/f', mediaId: 'm1' }, fetchImpl, async () => {})).rejects.toMatchObject({ removed: true, status, code });
+  });
+
+  it('retries a revision conflict or rate limit instead of deleting the upload', async () => {
+    const sleep = vi.fn(async () => {});
+    const responses = [new Response(JSON.stringify({ error: 'Changed.', code: 'media_revision_conflict' }), { status: 409 }),
+      new Response(JSON.stringify({ error: 'Slow down.' }), { status: 429 }), new Response(JSON.stringify({ ok: true, result: { sha256: 'x' } }), { status: 200 })];
+    const fetchImpl = vi.fn(async () => responses.shift()!) as unknown as typeof fetch;
+    await expect(finalizeUpload('site', { finalizeUrl: '/f', mediaId: 'm1' }, fetchImpl, sleep)).resolves.toEqual({ sha256: 'x' });
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
+    const conflict = vi.fn(async () => new Response(JSON.stringify({ error: 'Changed.', code: 'media_revision_conflict' }), { status: 409 })) as unknown as typeof fetch;
+    await expect(finalizeUpload('site', { finalizeUrl: '/f', mediaId: 'm1' }, conflict, async () => {})).rejects.toMatchObject({ removed: false, status: 409 });
+    expect(vi.mocked(conflict).mock.calls.every(([, init]) => init?.method === 'POST')).toBe(true);
   });
 
   it('keeps the record on a server error but still reports it', async () => {

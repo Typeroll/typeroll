@@ -8,6 +8,8 @@ interface UploadUrlResponse {
   cdn_url: string;
   key: string;
   media_id: string;
+  /** Stored filename; the type's extension is appended when it was missing. */
+  filename?: string;
   expires_in: number;
 }
 
@@ -86,7 +88,7 @@ export const mediaTools: ToolDef[] = [
     description:
       'Mint a 5-min signed PUT URL for direct-to-R2 upload. After the upload completes, the CDN url is what you reference in <img src="…">. REQUIRED follow-up: call `finalize_media` after the PUT succeeds — without it the original ships with no Cache-Control (Lighthouse will flag it) and no responsive variants get generated. The response carries `finalize_url` as a reminder. This signed-PUT path is the INTEGRITY-SAFE way to upload bytes from disk or a generated asset — a direct `curl --data-binary @file` sends the bytes straight to R2 without transcribing them through the model, so it can\'t be corrupted the way a large `upload_media_inline` base64 blob can (ESPECIALLY use this, not inline, for SVG/logos). For a public source URL, `upload_media_from_url` is the one-call equivalent; reserve `upload_media_inline` for tiny payloads only.',
     inputSchema: {
-      filename: z.string().min(1).describe('Its extension must match content_type (e.g. logo.png with image/png); a mismatch is refused with media_extension_mismatch.'),
+      filename: z.string().min(1).describe('Should end in an extension of content_type (e.g. logo.png with image/png). When the extension is missing or belongs to another type, the type\'s extension is appended (logo → logo.png, photo.html → photo.html.png); the response returns the stored filename. Unsupported types answer 415.'),
       content_type: z.string().min(1).describe('e.g. "image/png", "image/jpeg", "application/pdf". SVGs are sanitized at finalize; an SVG that cannot be sanitized is refused.'),
       size: z.number().int().nonnegative().optional(),
       alt_text: z.string().optional(),
@@ -102,7 +104,7 @@ export const mediaTools: ToolDef[] = [
       'Fetch an image (or PDF) from any public URL and push it to the site\'s media library in one call. The MCP server downloads the source from verified public HTTP(S) destinations; private addresses and unsafe redirects are refused. Integrity-safe: the bytes are streamed, never transcribed as base64 through the model, so (unlike a large `upload_media_inline` payload) they can\'t be silently corrupted in transit. Returns { media_id, cdn_url, filename }.',
     inputSchema: {
       source_url: z.string().url().describe('Public URL to download the image from.'),
-      filename: z.string().optional().describe('Override the filename used on R2. Defaults to the last path segment of source_url.'),
+      filename: z.string().optional().describe('Override the filename used on R2. Defaults to the last path segment of source_url. When its extension does not match the content type, the type\'s extension is appended; the response returns the stored filename.'),
       content_type: z.string().optional().describe('Override the inferred content type (e.g. when source_url has no extension).'),
       alt_text: z.string().optional(),
     },
@@ -152,7 +154,7 @@ export const mediaTools: ToolDef[] = [
     description:
       'Upload an image (or PDF) from base64-encoded bytes. ⚠️ Use ONLY for tiny payloads (a few KB). The base64 string crosses the model/tool boundary as text, where a larger blob can be SILENTLY CORRUPTED in transit — a few mutated chars yield a broken-but-valid-looking file that uploads with no error and the right size, and only fails when rendered (this has bitten a ~12KB logo SVG: half the wordmark vanished). For anything non-trivial, and ALWAYS for SVG/logos or assets you generated, prefer create_upload_url + a direct curl --data-binary PUT of the file bytes (bytes never transcribed → verified byte-identical), or upload_media_from_url (bytes fetched from a URL). After uploading any generated asset, VERIFY it (render it, or byte-diff against the source) before referencing it. Returns { media_id, cdn_url, filename }.',
     inputSchema: {
-      filename: z.string().min(1),
+      filename: z.string().min(1).describe('When its extension does not match content_type, the type\'s extension is appended; the response returns the stored filename.'),
       content_type: z.string().min(1).describe('e.g. "image/png", "image/jpeg", "application/pdf"'),
       data_base64: z.string().min(1).describe('The file bytes, base64-encoded (without a data: URL prefix).'),
       alt_text: z.string().optional(),
@@ -196,7 +198,7 @@ export const mediaTools: ToolDef[] = [
       return ok({
         media_id: mint.media_id,
         cdn_url: mint.cdn_url,
-        filename: args.filename,
+        filename: mint.filename ?? args.filename,
         content_type: args.content_type,
         size_bytes: buf.byteLength,
         finalize: finalizeResult,
@@ -206,7 +208,7 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'update_media',
-    description: 'Patch a media item\'s alt text, filename or public path. A new filename or public path must end in an extension matching the file\'s type (media_extension_mismatch otherwise). A public path change is applied at the next publication.',
+    description: 'Patch a media item\'s alt text, filename or public path. A rename must be correct: a new filename or public path must end in an extension matching the file\'s type, and nothing is appended (400 media_extension_mismatch otherwise). A public path change is applied at the next publication.',
     inputSchema: {
       media_id: z.string(),
       alt_text: z.string().optional(),

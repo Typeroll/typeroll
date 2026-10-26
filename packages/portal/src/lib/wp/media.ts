@@ -7,7 +7,7 @@ import { createMediaUpload, finalizeTransferredMedia, storageClient } from '../p
 import { durableTransfer, mediaTransfers, transferReservation } from '../media/transfer';
 import { requiresSvgSanitization, sanitizeTransferredSvg, SvgRejectedError, SVG_MEDIA_TYPE } from '../media/svg-media';
 import { ConnectionError } from '../publishing/connections';
-import { allowedMediaExtensions, assertMediaName, withMediaExtension } from '../media/file-types';
+import { allowedMediaExtensions, withMediaExtension } from '../media/file-types';
 import type { WPMedia } from './client';
 
 export interface UploadedMedia {
@@ -84,10 +84,9 @@ export class WPMediaTransfer {
     await requireImportStorage(this.orgId);
     const derived = sanitizeFilename(options.filename ?? filenameFromUrl(sourceUrl));
     const contentType = options.contentType ?? guessMimeType(derived);
-    // A chosen filename must match the type (createMediaUpload answers 400);
-    // a name taken from the source URL gets the type's extension instead.
-    const filename = options.filename === undefined ? derivedFilename(derived, contentType) : derived;
-    if (options.filename !== undefined) assertMediaName(filename, contentType);
+    // A name without the type's extension gets it appended, whether chosen or
+    // taken from the source URL; createMediaUpload answers 415 for other types.
+    const filename = derivedFilename(derived, contentType);
     return this.transferPrivate(sourceUrl, filename, contentType, options.altText ?? '');
   }
 
@@ -153,7 +152,7 @@ function sanitizeFilename(s: string): string {
   return s.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'file';
 }
 
-/** Names taken from a source URL keep their extension only when it matches the type. Unsupported types are refused by createMediaUpload. */
+/** Names keep their extension only when it matches the type; otherwise the type's extension is appended. Unsupported types are refused by createMediaUpload. */
 function derivedFilename(filename: string, contentType: string): string {
   return allowedMediaExtensions(contentType).length ? withMediaExtension(filename, contentType) : filename;
 }

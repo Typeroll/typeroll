@@ -97,8 +97,36 @@ describe('sign-out revocation', () => {
     const response = await signOut(browser);
     expect(response.status).toBe(302);
     expect(browser.value()).toBeUndefined();
-    expect(await getSession(stolenCopy as never)).toBeNull();
-    expect(await getSessionIdentity(stolenCopy as never)).toBeNull();
+    // Each request has its own cookies object (Astro), so the next request re-checks.
+    const nextRequest = jar(stolenCopy.value());
+    expect(await getSession(nextRequest as never)).toBeNull();
+    expect(await getSessionIdentity(nextRequest as never)).toBeNull();
+  });
+
+  it('verifies the cookie and reads the denylist once per request', async () => {
+    const request = jar(`cookie:user-1:${T0}`);
+    const reads = vi.spyOn(state.docs, 'get');
+    for (let i = 0; i < 3; i++) {
+      expect(await getSession(request as never)).toMatchObject({ userId: 'user-1' });
+      expect(await getSessionIdentity(request as never)).toMatchObject({ userId: 'user-1' });
+    }
+    expect(auth.verifySessionCookie).toHaveBeenCalledTimes(1);
+    expect(reads.mock.calls.filter(([path]) => String(path).startsWith('revoked_sessions/'))).toHaveLength(1);
+    // A new request checks again and sees a sign-out made in between.
+    await revokeSignIn(signInKey({ uid: 'user-1', auth_time: T0 })!);
+    expect(await getSession(jar(`cookie:user-1:${T0}`) as never)).toBeNull();
+    expect(auth.verifySessionCookie).toHaveBeenCalledTimes(2);
+    // Signing out within a request applies to later reads in that request.
+    const own = jar(`cookie:user-1:${T0 + 600}`);
+    expect(await getSession(own as never)).not.toBeNull();
+    expect(await revokeCurrentSession(own as never)).toBe(true);
+    expect(await getSession(own as never)).toBeNull();
+    // A cookie replaced during the request is verified again.
+    const replaced = jar(`cookie:user-2:${T0}`);
+    expect(await getSession(replaced as never)).toMatchObject({ userId: 'user-2' });
+    replaced.set('typeroll_session', `cookie:user-3:${T0}`);
+    expect(await getSession(replaced as never)).toMatchObject({ userId: 'user-3' });
+    reads.mockRestore();
   });
 
   it('refuses to re-mint a signed-out cookie', async () => {
@@ -131,10 +159,11 @@ describe('sign-out revocation', () => {
 
     await signOut(browser);
 
-    for (const cookies of [copyAfterRefresh, attackerRefreshed, jar(`cookie:user-1:${T0}`)]) {
-      expect(await getSession(cookies as never)).toBeNull();
+    // Later requests, each with its own cookies object.
+    for (const value of [copyAfterRefresh.value(), attackerRefreshed.value(), `cookie:user-1:${T0}`]) {
+      expect(await getSession(jar(value) as never)).toBeNull();
     }
-    await expect(refreshSessionForUser(attackerRefreshed as never, 'user-1', 'synthetic-api-key')).rejects.toThrow('signed out');
+    await expect(refreshSessionForUser(jar(attackerRefreshed.value()) as never, 'user-1', 'synthetic-api-key')).rejects.toThrow('signed out');
   });
 
   it('keeps the same person\'s other sign-ins and other people signed in', async () => {

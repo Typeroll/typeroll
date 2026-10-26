@@ -58,7 +58,7 @@ export function replacePublicationReferences<T>(value: T, replacements: Map<stri
 }
 
 /** Image bytes and temporary credentials are excluded; Git contains identity, hashes and public routing only. */
-export async function publicationMediaManifest<T extends Record<string, any>>(orgId: string, siteId: string, content: T, websiteHost: string, previousPublication?: Record<string, any>, options: { deferReferences?: boolean; domains?: DomainConfiguration } = {}) {
+export async function publicationMediaManifest<T extends Record<string, any>>(orgId: string, siteId: string, content: T, websiteHost: string, previousPublication?: Record<string, any>, options: { deferReferences?: boolean; domains?: DomainConfiguration; dryRun?: boolean } = {}) {
   const [all, connection, storedDomains, organization, prefix] = await Promise.all([
     getStore().listDocs<Media>(paths.media(orgId, siteId)), getConnection(orgId, 'cloudflare'), getSiteDomains(orgId, siteId),
     getOrganizationDomains(orgId), siteMediaPrefix(orgId, siteId),
@@ -96,23 +96,40 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   }
   // SVG stored before sanitizing existed is sanitized now, before anything is
   // published. (A passive type under an .svg name is renamed below instead.)
+  // A dry run checks the same files in memory and writes nothing.
   const unsanitized = fromPrevious ? [] : media.filter(item => isScriptableMediaType(item.mime_type) && !sanitizedSvg(stored.get(item.id), item.sha256));
+  const rejected = new Map<string, string>();
   if (unsanitized.length) {
     const { resanitizeStoredSvgMedia } = await import('../media/svg-media');
-    const report = await resanitizeStoredSvgMedia(orgId, siteId, { apply: true, mediaIds: unsanitized.map(item => item.id) });
-    for (const item of unsanitized) {
-      const fresh = await getStore().getDoc<MarkedMedia>(`${paths.media(orgId, siteId)}/${item.id}`);
-      if (fresh) { stored.set(item.id, fresh); media.splice(media.indexOf(item), 1, fresh); }
+    const report = await resanitizeStoredSvgMedia(orgId, siteId, { apply: !options.dryRun, mediaIds: unsanitized.map(item => item.id) });
+    for (const entry of report.rejected) rejected.set(entry.media_id, entry.error);
+    for (const entry of report.skipped) rejected.set(entry.media_id, entry.reason);
+    if (options.dryRun) {
+      // Nothing was written: a file the sanitizer accepts counts as publishable.
+      for (const item of unsanitized) if (!rejected.has(item.id)) stored.set(item.id, { ...item, svg_sanitized: { sha256: item.sha256 } });
+    } else {
+      for (const item of unsanitized) {
+        const fresh = await getStore().getDoc<MarkedMedia>(`${paths.media(orgId, siteId)}/${item.id}`);
+        if (fresh) { stored.set(item.id, fresh); media.splice(media.indexOf(item), 1, fresh); }
+      }
     }
-    if (report.rejected.length) console.warn(`[media-manifest] ${report.rejected.length} SVG file(s) could not be sanitized for site ${siteId}`);
   }
+  // Media that cannot be published safely is left out of this publication.
+  const excluded = new Set<string>();
   for (const item of media) {
     if (!isScriptableMediaType(item.mime_type) || sanitizedSvg(stored.get(item.id), item.sha256)) continue;
     // Entries of a frozen publication carry the flag this builder recorded.
     if (fromPrevious && (item as { svg_sanitized?: unknown }).svg_sanitized === true) continue;
-    throw new ConnectionError(fromPrevious
-      ? `Cannot publish: this publication contains the SVG ${item.filename}, stored before SVG files were sanitized. Publish the site again, then retry.`
-      : `Cannot publish: the SVG ${item.filename} could not be made safe. Export it again as a plain SVG, upload it, and select the new file.`, 409, 'media_svg_unsanitized');
+    // A domain change rebuilds the last publication exactly, so it cannot drop a file.
+    if (fromPrevious) throw new ConnectionError(`Cannot prepare the domain change: the last publication contains the SVG ${item.filename}, stored before SVG files were sanitized. Publish the site once before changing domains, then prepare the domain change again.`, 409, 'media_svg_unsanitized');
+    excluded.add(item.id);
+    const reason = rejected.get(item.id);
+    warnings.push(`Media ${item.id} (${item.filename}) was not published: the SVG could not be made safe${reason ? ` (${reason.replace(/\.$/, '')})` : ''}. References to it were left empty. Export it again as a plain SVG, upload it and select the new file.`);
+  }
+  for (const item of media.filter(candidate => excluded.has(candidate.id))) {
+    // Never publish a private Typeroll address; an empty reference renders as no file.
+    for (const url of references(item)) replacements.set(url, '');
+    media.splice(media.indexOf(item), 1);
   }
   const entries = media.map(item => {
     if (!item.storage) throw new ConnectionError('Media storage changed during publishing. Deploy again.', 409, 'media_migration_pending');
@@ -143,7 +160,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
       cdn_url: url, variants: [], source_key: item.storage.key, sha256: item.sha256, size_bytes: item.size_bytes,
       public_key: publicKey, public_path: publicPath, aliases, ...(svg ? { svg_sanitized: true } : {}) };
   });
-  for (const warning of warnings) console.warn(`[media-manifest] ${warning}`);
+  for (const warning of warnings) console.warn(`[media-manifest] site ${siteId}: ${warning}`);
   for (const [alias, previousTarget] of previousPublication?.reference_mapping?.media ?? []) {
     const nextTarget = replacements.get(previousTarget);
     if (nextTarget) replacements.set(alias, nextTarget);

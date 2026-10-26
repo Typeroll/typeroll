@@ -35,6 +35,12 @@ export type SvgMedia = Media & {
   svg_sanitized?: SvgSanitizedMarker;
   /** Platform storage only: private staging object awaiting finalize. */
   svg_staging_key?: string | null;
+  /**
+   * Platform storage only: the public object could not be sanitized. When
+   * `quarantined`, it is served as a download; otherwise it showed no script
+   * content and was left unchanged. Deploys report it as a warning.
+   */
+  svg_unsanitized?: { sha256: string; reason: string; quarantined: boolean; checked_at: string } | null;
 };
 
 /** The upload is not an SVG this server can make inert. Finalize answers 400 and nothing is published. */

@@ -206,6 +206,12 @@ becomes outdated: prepare again before switching traffic. The candidate contains
 the last published content and indexing settings, not unpublished CMS changes.
 See [publication destination](../../guides/customer-publishing/#future-hosts-and-the-publication-destination).
 
+Because the candidate rebuilds the last publication exactly, preparation stops
+with HTTP 409 and `media_svg_unsanitized` when that publication still contains
+an SVG stored before Typeroll sanitized SVG files (Core 0.2.113). Publish the
+site once at the current address, which stores and publishes a sanitized copy,
+then prepare the domain change again.
+
 When a host already serves another website, Cloudflare Pages validates it only
 after its record points at Pages. Typeroll then asks you to accept a short
 **validation window**: the host does not answer until Cloudflare finishes, and

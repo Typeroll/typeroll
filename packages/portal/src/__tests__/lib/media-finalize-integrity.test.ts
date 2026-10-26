@@ -93,7 +93,19 @@ describe('finalizeMedia integrity', () => {
     storedBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0 L10');
     const { finalizeMedia, MediaIntegrityError } = await import('../../lib/media-finalize');
     await expect(finalizeMedia(ORG, SITE, 'm1', CONFIG)).rejects.toBeInstanceOf(MediaIntegrityError);
-    // Never blessed with cache headers; the public object is only offered as a download.
+    // Never blessed with cache headers. Nothing in it can run, so the public
+    // object is left as it is and the record says why.
+    expect(sent).not.toContain('PutObjectCommand');
+    expect(copies).toEqual([]);
+    const { getStore } = await import('../../lib/datastore');
+    expect((await getStore().getDoc<any>(`${paths.media(ORG, SITE)}/m1`))?.svg_unsanitized).toMatchObject({ quarantined: false });
+  });
+
+  it('offers a truncated SVG with script content only as a download', async () => {
+    await seedMedia('image/svg+xml');
+    storedBytes = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script><path d="M0 0 L10');
+    const { finalizeMedia, MediaIntegrityError } = await import('../../lib/media-finalize');
+    await expect(finalizeMedia(ORG, SITE, 'm1', CONFIG)).rejects.toBeInstanceOf(MediaIntegrityError);
     expect(sent).not.toContain('PutObjectCommand');
     expect(copies).toEqual([expect.objectContaining({ ContentType: 'application/octet-stream', ContentDisposition: 'attachment' })]);
   });

@@ -81,6 +81,19 @@ are not stored. Submissions saved before this change may still hold them: API
 and MCP responses never return the IP address, and only site administrators see
 the earlier browser string, shortened to 256 characters.
 
+To remove those earlier values from the datastore, a self-hosted operator on
+Firestore can run `scripts/scrub-submission-network-data.mjs` from the Core
+repository with credentials for the project. It deletes only the fields
+`submitted_from_ip` and `user_agent` from documents in the `submissions`
+collection group, in batches, and prints counts. It is a dry run unless you
+pass `--apply --confirm-project` with the same project ID:
+
+```sh
+node scripts/scrub-submission-network-data.mjs --project PROJECT_ID
+node scripts/scrub-submission-network-data.mjs --project PROJECT_ID \
+  --apply --confirm-project PROJECT_ID
+```
+
 Completed submissions are kept until someone deletes them, unless the site opts
 into a retention period. A site administrator sets it under **Forms →
 Submission retention**, or with `form_submission_retention_days` (30–3650 days)

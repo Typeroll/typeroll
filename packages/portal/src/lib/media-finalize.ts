@@ -25,8 +25,10 @@
 // SVG is the exception to "same bytes": an SVG opened directly is a document
 // in the media origin, so finalize publishes only sanitized bytes
 // (lib/media/svg-media.ts). New platform-storage SVG uploads are staged in the
-// private bucket by upload-url; older in-place SVGs are rewritten here, and
-// one that cannot be sanitized is quarantined as a download.
+// private bucket by upload-url; older in-place SVGs are rewritten here once.
+// One that cannot be sanitized is quarantined as a download only when its
+// bytes could run script (svgLooksScriptable); otherwise it is left as it is
+// and the record carries `svg_unsanitized` so deploys warn about it.
 //
 // Idempotent: calling twice on the same media is a no-op the second time
 // for both halves (CacheControl is already set; variants array is
@@ -83,6 +85,29 @@ export class MediaIntegrityError extends Error {}
 export function svgLooksComplete(bytes: Buffer): boolean {
   const text = bytes.toString('utf8').trimEnd();
   return /<svg[\s>]/i.test(text) && /<\/svg\s*>$/i.test(text);
+}
+
+/**
+ * Conservative check for an SVG the sanitizer refused: true when the bytes
+ * could make a browser run script or load other documents if the object is
+ * opened directly. Anything that is not plain UTF-8 text counts as scriptable.
+ */
+export function svgLooksScriptable(bytes: Buffer): boolean {
+  if (bytes.includes(0) || (bytes[0] === 0xfe && bytes[1] === 0xff) || (bytes[0] === 0xff && bytes[1] === 0xfe)) return true;
+  const raw = bytes.toString('utf8');
+  if (/<\?xml[^>]*encoding\s*=\s*["']?(?!utf-?8|us-ascii)/i.test(raw)) return true;
+  // Character references can spell any of the patterns below.
+  const text = raw.replace(/&#x([0-9a-f]+);?/gi, (_, hex) => String.fromCodePoint(Math.min(parseInt(hex, 16), 0x10ffff)))
+    .replace(/&#(\d+);?/g, (_, dec) => String.fromCodePoint(Math.min(Number(dec), 0x10ffff)));
+  return [
+    /<\s*(?:[a-z0-9_-]+:)?(?:script|handler|listener|foreignObject|iframe|frame|embed|object|base|meta|link)\b/i,
+    /[\s"'/]on[a-z]+\s*=/i,
+    /j\s*a\s*v\s*a\s*s\s*c\s*r\s*i\s*p\s*t\s*:|vbscript\s*:|data\s*:\s*(?:text\/html|application\/(?:xhtml|xml)|image\/svg)/i,
+    /<!ENTITY|<\?xml-stylesheet|@import/i,
+    // Any href that is not an in-document #id, and animation of href.
+    /(?:^|[\s"'])(?:[a-z0-9_-]+:)?href\s*=\s*(?!["']?\s*#)/i,
+    /attributeName\s*=\s*["']?\s*(?:[a-z0-9_-]+:)?(?:href|on[a-z]+)/i,
+  ].some(pattern => pattern.test(text));
 }
 
 /**
@@ -231,17 +256,33 @@ async function finalizePlatformSvg(
   } catch (error) {
     const code = error instanceof ConnectionError ? error.code : undefined;
     if (!staged && (code === 'media_svg_invalid' || code === 'media_svg_truncated')) {
-      // Never leave a public object that browsers could run: keep the bytes for
-      // the owner, but serve them only as a download.
-      await r2.send(new CopyObjectCommand({
-        Bucket: config.bucket, Key: media.r2_key, CopySource: `${config.bucket}/${media.r2_key}`, MetadataDirective: 'REPLACE',
-        ContentType: 'application/octet-stream', ContentDisposition: 'attachment', CacheControl: 'no-store',
-      }));
+      // A public object the sanitizer refused. Quarantine it as a download only
+      // when browsers could run it, so a harmless legacy logo keeps working.
+      const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+      const object = await r2.send(new GetObjectCommand({ Bucket: config.bucket, Key: media.r2_key }));
+      const raw = Buffer.from(await (object.Body as { transformToByteArray(): Promise<Uint8Array> }).transformToByteArray());
+      const quarantined = svgLooksScriptable(raw);
+      if (quarantined) {
+        await r2.send(new CopyObjectCommand({
+          Bucket: config.bucket, Key: media.r2_key, CopySource: `${config.bucket}/${media.r2_key}`, MetadataDirective: 'REPLACE',
+          ContentType: 'application/octet-stream', ContentDisposition: 'attachment', CacheControl: 'no-store',
+        }));
+      }
+      const { createHash } = await import('node:crypto');
+      await getStore().updateDoc(`${paths.media(orgId, siteId)}/${mediaId}`, {
+        svg_unsanitized: { sha256: createHash('sha256').update(raw).digest('hex'), reason: (error as Error).message, quarantined, checked_at: new Date().toISOString() },
+      });
+      console.warn(`[media-finalize] SVG media ${mediaId} of site ${siteId} could not be sanitized; ${quarantined ? 'served only as a download' : 'left unchanged: no script content found'}`);
     }
     if (error instanceof ConnectionError && (code === 'media_integrity_failed' || code === 'media_svg_truncated')) {
       throw new MediaIntegrityError(error.message);
     }
     throw error;
+  }
+  if (!result.changed && !staged && marker?.sha256 === result.sha256 && !media.svg_unsanitized) {
+    // Rewritten and recorded earlier: nothing to change.
+    return { cache_headers_applied: true, variants_generated: false, variant_count: 0, sha256: result.sha256, size_bytes: result.size,
+      svg_sanitized: true, source_sha256: marker.source_sha256, removed: marker.removed };
   }
   if (!result.changed && !staged) {
     // Already sanitized: apply the immutable cache headers like any other original.
@@ -255,7 +296,7 @@ async function finalizePlatformSvg(
     : { source_sha256: result.source_sha256, sha256: result.sha256, removed: result.removed };
   const store = getStore();
   await store.updateDoc(`${paths.media(orgId, siteId)}/${mediaId}`, {
-    mime_type: svg.SVG_MEDIA_TYPE, size_bytes: result.size, svg_sanitized: value, svg_staging_key: null,
+    mime_type: svg.SVG_MEDIA_TYPE, size_bytes: result.size, svg_sanitized: value, svg_staging_key: null, svg_unsanitized: null,
   });
   if (staged) {
     await r2.send(new DeleteObjectCommand({ Bucket: stagingBucket!, Key: staged })).catch(() => {

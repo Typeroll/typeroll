@@ -17,7 +17,7 @@ import { paths } from '@typeroll/shared';
 import { usesPrivateMedia } from '../../../../../lib/publishing/media-policy';
 import { createMediaUpload } from '../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../lib/publishing/http';
-import { assertMediaName } from '../../../../../lib/media/file-types';
+import { withMediaExtension } from '../../../../../lib/media/file-types';
 import { platformSvgStaging, requiresSvgSanitization, SVG_MEDIA_TYPE } from '../../../../../lib/media/svg-media';
 
 const MAX_SIZE = 25 * 1024 * 1024;
@@ -33,13 +33,13 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!writeCheck.ok) return writeCheck.response;
   const { session, site, owner_org_id } = guard.value;
 
-  const { filename, contentType, size } = (await request.json()) as {
+  const { filename: requested, contentType, size } = (await request.json()) as {
     filename: string;
     contentType: string;
     size?: number;
   };
 
-  if (!filename || !contentType) {
+  if (!requested || !contentType) {
     return json({ error: 'filename and contentType are required' }, 400);
   }
   if (size && size > MAX_SIZE) {
@@ -48,8 +48,10 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!contentType.startsWith('image/') && contentType !== 'application/pdf') {
     return json({ error: 'Unsupported content type' }, 415);
   }
-  // Static website hosts serve media by file extension: it must match the type.
-  try { assertMediaName(filename, contentType); } catch (error) { return connectionFailure(error); }
+  // Static website hosts serve media by file extension: a name without the
+  // type's extension gets it appended (415 for a type that cannot be published).
+  let filename: string;
+  try { filename = withMediaExtension(String(requested), contentType); } catch (error) { return connectionFailure(error); }
 
   const accountId = process.env.R2_ACCOUNT_ID;
   if (await usesPrivateMedia(owner_org_id, site)) {
@@ -150,5 +152,6 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
      *  it the image ships uncached and unoptimised. */
     finalizeUrl,
     mediaId: justAdded?.id ?? null,
+    filename,
   });
 };

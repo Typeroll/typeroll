@@ -120,20 +120,49 @@ export async function getSessionIdentity(cookies: AstroCookies): Promise<Session
   }
 
   try {
-    const { getAuth } = await import('firebase-admin/auth');
-    const app = await getFirebaseAdminApp();
-
-    // A failed revocation lookup must never restore access for disabled,
-    // deleted or revoked users. The outer catch rejects the session.
-    const decoded = await getAuth(app).verifySessionCookie(raw, true);
-    // Signed out on this browser or another copy of the same sign-in
-    // (lib/session-revocation.ts). A failed lookup rejects the session too.
-    const key = signInKey(decoded);
-    if (key && await isSignInRevoked(key)) return null;
+    const decoded = await verifiedSessionClaims(cookies, raw);
+    if (!decoded) return null;
     return await identityFromClaims(cookies, decoded, typeof decoded.exp === 'number' ? decoded.exp * 1000 : undefined);
   } catch {
     return null;
   }
+}
+
+type VerifiedClaims = IdentityClaims & { exp?: number };
+
+/**
+ * Verified claims of a Firebase session cookie, memoized per request.
+ *
+ * Middleware, guards and the page or route all read the session; Firebase
+ * verification (with its revocation check) and the sign-out denylist read
+ * run once per request. Astro creates one cookies object per request and
+ * shares it between middleware and the page, so the memo lives exactly as
+ * long as the request and is never shared across requests. It is keyed by
+ * the cookie value, so a cookie set or deleted during the request is
+ * verified again; revokeCurrentSession() clears it.
+ */
+const verifiedSessions = new WeakMap<object, Map<string, Promise<VerifiedClaims | null>>>();
+
+function verifiedSessionClaims(cookies: AstroCookies, raw: string): Promise<VerifiedClaims | null> {
+  let byValue = verifiedSessions.get(cookies);
+  if (!byValue) { byValue = new Map(); verifiedSessions.set(cookies, byValue); }
+  let verified = byValue.get(raw);
+  if (!verified) {
+    verified = (async () => {
+      const { getAuth } = await import('firebase-admin/auth');
+      const app = await getFirebaseAdminApp();
+      // A failed revocation lookup must never restore access for disabled,
+      // deleted or revoked users: every error rejects the session.
+      const decoded = await getAuth(app).verifySessionCookie(raw, true);
+      // Signed out on this browser or another copy of the same sign-in
+      // (lib/session-revocation.ts). A failed lookup rejects the session too.
+      const key = signInKey(decoded);
+      if (key && await isSignInRevoked(key)) return null;
+      return decoded as VerifiedClaims;
+    })().catch(() => null);
+    byValue.set(raw, verified);
+  }
+  return verified;
 }
 
 async function confirmedIdentity(cookies: AstroCookies, session: Session): Promise<SessionIdentity> {
@@ -241,7 +270,10 @@ export async function revokeCurrentSession(cookies: AstroCookies): Promise<boole
   }
   const key = signInKey(decoded);
   if (!key) return false;
+  // Later reads in this request must see the revocation.
+  verifiedSessions.delete(cookies);
   await revokeSignIn(key);
+  verifiedSessions.delete(cookies);
   return true;
 }
 

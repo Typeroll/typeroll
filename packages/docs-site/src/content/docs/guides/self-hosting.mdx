@@ -101,6 +101,18 @@ configuration, and Secret Manager bindings. It also records that the artifact
 is copied by digest without a rebuild and explicitly forbids VM, managed
 instance group, reverse proxy, and long-running-worker resources.
 
+`R2_PRIVATE_BUCKET` is optional. It names a second R2 bucket in the same
+account with public access disabled; the R2 access key must be able to read
+and write both buckets. Uploads made before an Organization
+connects its own storage, and every SVG upload on sites that use the server's
+platform bucket (`R2_BUCKET`), are staged there, because every object in the
+public bucket is reachable as soon as it is written; SVGs are published only
+after they are sanitized. Without it, those uploads return HTTP 503
+(`draft_storage_unavailable` or `svg_staging_unavailable`). When the config
+names a secret for it, the plan binds it to the portal only. In the Compose
+fallback, set `R2_PRIVATE_BUCKET` in `.env`; `npm run self-host:check` warns
+when it is missing and rejects the public bucket's name.
+
 Every required Secret Manager resource must have an enabled `latest` version
 before deployment. Keep the actual secret values in your secret-management
 workflow; do not add them to `self-host.gcp.json` or Git.

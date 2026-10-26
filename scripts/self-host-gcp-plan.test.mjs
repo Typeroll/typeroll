@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { buildGcpSelfHostPlan, REQUIRED_GCP_APIS, REQUIRED_SECRET_ENV, validateGcpSelfHostConfig } from './lib/self-host-gcp-plan.mjs';
+import { buildGcpSelfHostPlan, OPTIONAL_SECRET_ENV, REQUIRED_GCP_APIS, REQUIRED_SECRET_ENV, validateGcpSelfHostConfig } from './lib/self-host-gcp-plan.mjs';
 
 const digest = `sha256:${'a'.repeat(64)}`;
 
@@ -101,4 +101,26 @@ test('keeps runtime identities least-privileged and separated by service', () =>
     plan.service_agents.map((agent) => agent.project_roles[0]),
     ['roles/cloudtasks.serviceAgent', 'roles/cloudscheduler.serviceAgent'],
   );
+});
+
+test('binds the optional private media bucket to the portal only when configured', () => {
+  assert.deepEqual(OPTIONAL_SECRET_ENV, ['R2_PRIVATE_BUCKET']);
+  const without = buildGcpSelfHostPlan(config());
+  assert.equal(without.cloud_run.portal.secrets.some((binding) => binding.env === 'R2_PRIVATE_BUCKET'), false);
+  const input = config();
+  input.secrets.R2_PRIVATE_BUCKET = 'typeroll-r2-private-bucket';
+  const plan = buildGcpSelfHostPlan(input);
+  assert.deepEqual(plan.cloud_run.portal.secrets.find((binding) => binding.env === 'R2_PRIVATE_BUCKET'), { env: 'R2_PRIVATE_BUCKET', secret: 'typeroll-r2-private-bucket', version: 'latest' });
+  assert.ok(plan.secrets.some((secret) => secret.env === 'R2_PRIVATE_BUCKET'));
+  assert.ok(plan.service_accounts.find((account) => account.purpose === 'portal-runtime').secret_access.includes('typeroll-r2-private-bucket'));
+  assert.equal(plan.cloud_run.forms.secrets.some((binding) => binding.env === 'R2_PRIVATE_BUCKET'), false);
+  input.secrets.R2_PRIVATE_BUCKET = 'not a name!';
+  assert.ok(validateGcpSelfHostConfig(input).errors.some((error) => error.startsWith('secrets.R2_PRIVATE_BUCKET:')));
+});
+
+test('the example config is valid apart from its placeholders and names the private bucket', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const example = JSON.parse(await readFile(new URL('../config/self-host-gcp.example.json', import.meta.url), 'utf8'));
+  assert.equal(example.secrets.R2_PRIVATE_BUCKET, 'typeroll-r2-private-bucket');
+  assert.equal(validateGcpSelfHostConfig(example).errors.some((error) => error.startsWith('secrets.')), false);
 });

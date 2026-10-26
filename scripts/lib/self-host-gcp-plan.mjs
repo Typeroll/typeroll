@@ -35,6 +35,15 @@ export const REQUIRED_SECRET_ENV = Object.freeze([
   'R2_SECRET_ACCESS_KEY',
 ]);
 
+/**
+ * Bound to the portal only when the config names a secret for it.
+ * R2_PRIVATE_BUCKET is a bucket without public access for draft uploads and
+ * SVG upload staging; without it those uploads answer 503.
+ */
+export const OPTIONAL_SECRET_ENV = Object.freeze([
+  'R2_PRIVATE_BUCKET',
+]);
+
 const RESOURCE_KEYS = Object.freeze([
   'artifact_repository',
   'portal_service',
@@ -109,7 +118,20 @@ export function validateGcpSelfHostConfig(config) {
     }
   }
 
+  for (const envName of OPTIONAL_SECRET_ENV) {
+    if (config.secrets?.[envName] === undefined) continue;
+    const secretName = stringAt(config.secrets, envName);
+    if (!SECRET_NAME.test(secretName) || placeholder(secretName)) {
+      errors.push(`secrets.${envName}: invalid Secret Manager name; remove it to leave the variable unset`);
+    }
+  }
+
   return { ok: errors.length === 0, errors };
+}
+
+/** Required secrets plus the optional ones this config names. */
+function portalSecretEnv(secrets) {
+  return [...REQUIRED_SECRET_ENV, ...OPTIONAL_SECRET_ENV.filter((envName) => secrets?.[envName] !== undefined)];
 }
 
 function serviceAccount(id, projectId) {
@@ -152,7 +174,7 @@ export function buildGcpSelfHostPlan(config) {
         purpose: 'portal-runtime',
         email: portalServiceAccount,
         project_roles: ['roles/cloudtasks.enqueuer', 'roles/datastore.user', 'roles/firebaseauth.admin'],
-        secret_access: REQUIRED_SECRET_ENV.map((envName) => secrets[envName]),
+        secret_access: portalSecretEnv(secrets).map((envName) => secrets[envName]),
         self_roles: [],
       },
       {
@@ -190,7 +212,7 @@ export function buildGcpSelfHostPlan(config) {
         reason: 'portal creates Cloud Tasks that mint OIDC tokens as the internal invoker',
       },
     ],
-    secrets: REQUIRED_SECRET_ENV.map((envName) => ({ env: envName, secret: secrets[envName], required_version: 'latest' })),
+    secrets: portalSecretEnv(secrets).map((envName) => ({ env: envName, secret: secrets[envName], required_version: 'latest' })),
     cloud_run: {
       portal: {
         service: resources.portal_service,
@@ -219,7 +241,7 @@ export function buildGcpSelfHostPlan(config) {
           DEPLOY_WORKER_URL: '$PORTAL_RUN_URL/api/internal/deploy-worker',
           TYPEROLL_IMAGE_DIGEST: config.image_digest,
         },
-        secrets: secretBindings(secrets, REQUIRED_SECRET_ENV),
+        secrets: secretBindings(secrets, portalSecretEnv(secrets)),
       },
       forms: {
         service: resources.forms_service,

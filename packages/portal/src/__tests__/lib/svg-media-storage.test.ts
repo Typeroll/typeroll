@@ -14,7 +14,8 @@ import { connectionPath, sealCredentials } from '../../lib/publishing/connection
 import { createMediaUpload } from '../../lib/publishing/media-storage';
 import { copyWithTransferService } from '../../lib/media/remote-transfer';
 import { finalizeOrganizationMedia, resanitizeStoredSvgMedia, type SvgMedia } from '../../lib/media/svg-media';
-import { finalizeMedia, MediaIntegrityError } from '../../lib/media-finalize';
+import { finalizeMedia, MediaIntegrityError, svgLooksScriptable } from '../../lib/media-finalize';
+import { backfillMediaVariants } from '../../lib/deploy/runner';
 import { WPMediaTransfer } from '../../lib/wp/media';
 
 const account = 'a'.repeat(32);
@@ -245,6 +246,58 @@ describe('platform storage', () => {
     objects.set('legacy-public/media/abcdefghij/1-logo.svg', { body: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)'), etag: '"cut"' });
     await expect(finalizeMedia('org', 'site', 'm1', config)).rejects.toBeInstanceOf(MediaIntegrityError);
     expect(objects.get('legacy-public/media/abcdefghij/1-logo.svg')).toMatchObject({ contentType: 'application/octet-stream', disposition: 'attachment' });
+    expect((await mediaDoc('m1'))?.svg_unsanitized).toMatchObject({ quarantined: true, sha256: expect.stringMatching(/^[a-f0-9]{64}$/) });
+  });
+
+  it('leaves a refused public file without script content as it is and records why', async () => {
+    await seed({});
+    // Not an SVG document, so the sanitizer refuses it, but nothing in it can run.
+    const harmless = Buffer.from('<html><body><p>Logo</p></body></html>');
+    objects.set('legacy-public/media/abcdefghij/1-logo.svg', { body: harmless, etag: '"old"', contentType: 'image/svg+xml' });
+    await expect(finalizeMedia('org', 'site', 'm1', config)).rejects.toMatchObject({ code: 'media_svg_invalid' });
+    expect(objects.get('legacy-public/media/abcdefghij/1-logo.svg')).toMatchObject({ body: harmless, contentType: 'image/svg+xml', etag: '"old"' });
+    expect((await mediaDoc('m1'))?.svg_unsanitized).toMatchObject({ quarantined: false, sha256: sha(harmless) });
+  });
+
+  it.each([
+    ['script', '<svg><script>alert(1)</script>'], ['handler', '<svg onload="x()">'], ['javascript URL', '<a href="javascript:alert(1)">'],
+    ['encoded javascript URL', '<a href="&#106;avascript:alert(1)">'], ['foreignObject', '<svg><foreignObject>'], ['entity', '<!DOCTYPE svg [<!ENTITY a "b">]>'],
+    ['stylesheet', '<?xml-stylesheet href="x.xsl"?>'], ['external href', '<use href="https://example.com/a.svg#x"/>'], ['UTF-16', '\ufeff<svg>'],
+  ])('treats a refused file with %s as scriptable', (_name, text) => {
+    expect(svgLooksScriptable(Buffer.from(text, _name === 'UTF-16' ? 'utf16le' : 'utf8'))).toBe(true);
+  });
+  it('does not treat plain markup or in-document references as scriptable', () => {
+    expect(svgLooksScriptable(Buffer.from('<html><body><p>Logo</p><svg><use href="#a"/><rect fill="url(#g)"/></svg></body></html>'))).toBe(false);
+  });
+
+  it('rewrites a legacy SVG once and skips it on later deploys', async () => {
+    await seed({});
+    objects.set('legacy-public/media/abcdefghij/1-logo.svg', { body: MALICIOUS, etag: '"old"' });
+    expect(await backfillMediaVariants('org', 'site', { buildOnly: true })).toEqual([]);
+    expect(objects.get('legacy-public/media/abcdefghij/1-logo.svg')!.body.equals(MALICIOUS)).toBe(true);
+    expect((await mediaDoc('m1'))?.svg_sanitized).toBeUndefined();
+    await backfillMediaVariants('org', 'site');
+    const rewritten = objects.get('legacy-public/media/abcdefghij/1-logo.svg')!;
+    expectInert(rewritten.body);
+    vi.mocked(S3Client.prototype.send).mockClear();
+    const updated = (await mediaDoc('m1'))!;
+    await backfillMediaVariants('org', 'site');
+    expect(S3Client.prototype.send).not.toHaveBeenCalled();
+    expect(await mediaDoc('m1')).toEqual(updated);
+    // finalize itself does not write again when the object already holds the recorded bytes.
+    await finalizeMedia('org', 'site', 'm1', config);
+    expect(vi.mocked(S3Client.prototype.send).mock.calls.map(([command]) => command.constructor.name)).toEqual(['GetObjectCommand']);
+    expect(objects.get('legacy-public/media/abcdefghij/1-logo.svg')!.etag).toBe(rewritten.etag);
+  });
+
+  it('reports an SVG that could not be sanitized on every deploy without retrying it', async () => {
+    await seed({});
+    objects.set('legacy-public/media/abcdefghij/1-logo.svg', { body: NOT_SVG, etag: '"old"' });
+    const first = await backfillMediaVariants('org', 'site');
+    expect(first).toEqual([expect.stringContaining('SVG media m1 (logo.svg) could not be sanitized and is served only as a download')]);
+    vi.mocked(S3Client.prototype.send).mockClear();
+    expect(await backfillMediaVariants('org', 'site')).toEqual(first);
+    expect(S3Client.prototype.send).not.toHaveBeenCalled();
   });
 });
 

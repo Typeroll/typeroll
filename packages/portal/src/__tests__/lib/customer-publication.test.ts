@@ -31,6 +31,8 @@ vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completed
 vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload, finalizeDirectUpload: mocks.direct }));
 vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify, verifyCustomerCandidate: mocks.candidateVerification, saveCustomerVerification: mocks.verificationPlan }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
+const resanitize = vi.hoisted(() => vi.fn());
+vi.mock('../../lib/media/svg-media', async original => ({ ...await original<object>(), resanitizeStoredSvgMedia: resanitize }));
 const redirectProbe = vi.hoisted(() => vi.fn(async () => ({ ok: true, status: 301, location: null as string | null })));
 vi.mock('../../lib/publishing/redirect-hosts', async original => ({ ...await original<object>(), verifyRedirectHost: redirectProbe }));
 const prefix = createHash('sha256').update('org\0site').digest('hex').slice(0, 16);
@@ -555,6 +557,32 @@ it('captures media impact from the same records used in the frozen media manifes
   expect(list.mock.calls.filter(([path]) => path === paths.media('org', 'site'))).toHaveLength(2);
 });
 
+
+it('publishes without an SVG that cannot be made safe and reports it on the job', async () => {
+  const store = getStore();
+  await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
+  const privateUrl = 'https://cms.example.com/api/sites/site/media/logo/content';
+  await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: `<img src="${privateUrl}"><img src="https://media.example.com/photo.png">` });
+  const storage = (key: string) => ({ provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'originals', key });
+  await store.setDoc(`${paths.media('org', 'site')}/logo`, { filename: 'logo.svg', mime_type: 'image/svg+xml', cdn_url: privateUrl, sha256: 'd'.repeat(64), size_bytes: 12, storage: storage('logo.svg') });
+  await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12, storage: storage('photo.png') });
+  const domains = await getSiteDomains('org', 'site');
+  await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', media_host: 'media.example.com', media_path_prefix: '', dns_mode: 'automatic' });
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'www.example.com', media_host: 'media.example.com', media_path_prefix: '' } });
+  resanitize.mockResolvedValue({ scanned: 1, svg: 1, unchanged: 0, sanitized: [], rejected: [{ media_id: 'logo', error: 'Not an SVG document.' }], skipped: [], mode: 'dry-run' });
+  await executeCustomerPublication({ ...args, dryRun: true });
+  // A dry run never writes media records.
+  expect(resanitize).toHaveBeenCalledWith('org', 'site', { apply: false, mediaIds: ['logo'] });
+  const job = await store.getDoc<any>(jobPath);
+  expect(job).toMatchObject({ status: 'succeeded', dry_run: true });
+  expect(job.warnings).toEqual([expect.stringContaining('Media logo (logo.svg) was not published')]);
+  const frozen = mocks.source.mock.calls[0][0];
+  expect(frozen.media_manifest.entries.map((entry: any) => entry.id)).toEqual(['photo']);
+  // The builder resolves the reference to nothing instead of a private address.
+  const resolved = resolvePublicationReferences(frozen);
+  expect(JSON.stringify(resolved.pages)).not.toContain('/api/sites/site/media/logo/content');
+  expect(JSON.stringify(resolved.pages)).toContain('<img src=\\"\\">');
+});
 
 it('keeps direct publication waiting for customer verification, then runs only bounded coordinator probes', async () => {
   await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
