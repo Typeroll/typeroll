@@ -49,7 +49,6 @@ this tool has no `patch` envelope. MCP rejects unknown top-level arguments
 An empty string is an intentional value, for example to clear the tagline.
 This validation applies to full and compact MCP connections.
 
-
 Updates site settings. Pass only the fields you want to change. It accepts every
 field the portal's **Settings** form does and, like that form, requires admin
 permission on the site: a site API key, an organization key for a site your

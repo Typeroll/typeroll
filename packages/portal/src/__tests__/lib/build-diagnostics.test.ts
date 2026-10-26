@@ -91,3 +91,10 @@ it('classifies real timeout exceptions without retrying cancellation or integrit
   expect(mediaFailureCode('media', 'build_failed', { cause: 'AbortError: This operation was aborted', lines: [] })).toBe('build_failed');
   expect(mediaFailureCode('media', 'build_failed', { cause: 'Error: Invalid media completion receipt', lines: ['TimeoutError: The operation was aborted due to timeout'] })).toBe('build_failed');
 });
+
+ it('keeps the media operation and file beside the readable cause', () => {
+  const diagnostic = buildDiagnostic('TYPEROLL_MEDIA_FAILURE step=read_object media="photo" file="/photo.webp" attempts=3\nError: media_transfer_interrupted');
+  expect(diagnostic.cause).toContain('media_transfer_interrupted');
+  expect(diagnostic.cause).toContain('step=read_object');
+  expect(diagnostic.cause).toContain('file="/photo.webp"');
+ });
