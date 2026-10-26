@@ -34,8 +34,7 @@ async function setup(form: Omit<Form, 'id'> = FORM) {
   const { getStore } = await import('../../lib/datastore');
   await getStore().setDoc(paths.site(ORG, SITE), { name: 'S', created_at: new Date().toISOString() });
   await getStore().setDoc(`${paths.forms(ORG, SITE)}/lead`, form);
-  const { signFormToken, _resetClaimedPowForTests } = await import('../../lib/forms-signing');
-  _resetClaimedPowForTests();
+  const { signFormToken } = await import('../../lib/forms-signing');
   return signFormToken(ORG, SITE, 'lead');
 }
 
@@ -143,28 +142,17 @@ describe('submit endpoint hardening', () => {
     expect(saved.submitted_from_ip).toBe('203.0.113.44');
   });
 
-  it('accepts a solved proof of work once; a replay gets the no-proof budget', async () => {
+  it('accepts the same proof of work from different visitors of one form', async () => {
+    // Published runtimes compute the same nonce for every visitor of a form,
+    // so a proof must stay valid for more than one post.
     const token = await setup();
     const pow = solvePow(token);
-    const ip = '203.0.113.77';
     const statuses: number[] = [];
-    // One accepted post with the proof, then five without (RATE_LIMIT_NO_POW), then refused.
     for (let i = 0; i < 7; i++) {
-      const res = await post(jsonRequest({ token, data: { name: `Ada ${i}`, _pow: pow } }, ip));
+      const res = await post(jsonRequest({ token, data: { name: `Ada ${i}`, _pow: pow } }, '203.0.113.77'));
       statuses.push(res.status);
     }
-    expect(statuses).toEqual([200, 200, 200, 200, 200, 200, 429]);
-  });
-
-  it('gives a claimed proof back when the post is refused for its answers', async () => {
-    const token = await setup();
-    const { claimPow } = await import('../../lib/forms-signing');
-    const pow = solvePow(token);
-    const invalid = await post(jsonRequest({ token, data: { name: '', _pow: pow } }));
-    expect(invalid.status).toBe(400);
-    // Still claimable: the refused post changed nothing.
-    expect(claimPow(token, pow)).toBe(true);
-    expect(claimPow(token, pow)).toBe(false);
+    expect(statuses.every((status) => status === 200)).toBe(true);
   });
 
   it('refuses non-primitive and oversized answers before storage', async () => {

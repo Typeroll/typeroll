@@ -77,18 +77,13 @@ describe('single-use proof of work', () => {
     }
   }
 
-  it('claims a valid proof once, and again only after release', async () => {
-    const { claimPow, releasePow, verifyPow, _resetClaimedPowForTests } = await import('../../lib/forms-signing');
-    _resetClaimedPowForTests();
+  it('accepts a valid proof for repeated posts and rejects garbage', async () => {
+    const { verifyPow } = await import('../../lib/forms-signing');
     const token = signFormToken('org', 'site', 'form');
     const pow = solve(token, 8);
     expect(verifyPow(token, pow, 8)).toBe(true);
-    expect(claimPow(token, pow, 8)).toBe(true);
-    expect(claimPow(token, pow, 8)).toBe(false);
-    // The same nonce is not a proof for another form.
-    expect(claimPow(signFormToken('org', 'site', 'other'), pow, 8)).toBe(verifyPow(signFormToken('org', 'site', 'other'), pow, 8));
-    releasePow(token, pow);
-    expect(claimPow(token, pow, 8)).toBe(true);
-    expect(claimPow(token, 'garbage', 8)).toBe(false);
+    expect(verifyPow(token, pow, 8)).toBe(true);
+    expect(verifyPow(token, 'garbage', 8)).toBe(false);
   });
+
 });

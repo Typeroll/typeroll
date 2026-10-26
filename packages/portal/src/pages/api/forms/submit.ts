@@ -45,8 +45,7 @@ import type { Form } from '@typeroll/shared';
 import {
   verifyFormToken,
   isFormsSigningConfigured,
-  claimPow,
-  releasePow,
+  verifyPow,
   signFormState,
   verifyFormState,
 } from '../../../lib/forms-signing';
@@ -216,11 +215,11 @@ export const POST: APIRoute = async (context) => {
   // 2b. Proof-of-work + per-form ceiling. A valid `_pow` (computed by the
   // forms runtime in the background) buys the normal budget; without it
   // the per-IP budget shrinks hard. Verification is a single hash.
-  // Each solved proof buys one accepted post (claimPow); a replayed one
-  // counts as no proof at all.
+  // The published runtimes search nonces deterministically per token and
+  // bucket, so every visitor of a form computes the same proof: it cannot be
+  // single-use without a runtime that randomizes its starting nonce.
   const pow = typeof data._pow === 'string' ? data._pow : null;
-  const hasPow = pow !== null && claimPow(token, pow);
-  const releaseClaimedPow = hasPow ? () => releasePow(token!, pow!) : () => {};
+  const hasPow = pow !== null && verifyPow(token, pow);
   if (!hasPow) {
     const strict = rateLimit(`forms-nopow:${ip}`, RATE_LIMIT_NO_POW, RATE_LIMIT_WINDOW_MS);
     if (!strict.allowed) {
@@ -229,7 +228,6 @@ export const POST: APIRoute = async (context) => {
   }
   const perForm = rateLimit(`forms-form:${orgId}:${formId}`, RATE_LIMIT_PER_FORM, RATE_LIMIT_WINDOW_MS);
   if (!perForm.allowed) {
-    releaseClaimedPow();
     return respond(wantsHtml, { error: formMessage('form_busy', lang) }, 429, backUrl, lang);
   }
 
@@ -264,11 +262,7 @@ export const POST: APIRoute = async (context) => {
   if (!Array.isArray(form.steps) || form.steps.length === 0) {
     return respond(wantsHtml, { error: formMessage('no_steps', lang) }, 422, backUrl, lang);
   }
-  const response = await handleStepsMode({ request, form, orgId, siteId, formId, data, ip, wantsHtml, wantsProtocol, backUrl, lang });
-  // Every refusal in the steps pipeline happens before anything is stored,
-  // so the visitor may resend with the same proof after fixing the answer.
-  if (response.status >= 400) releaseClaimedPow();
-  return response;
+  return handleStepsMode({ request, form, orgId, siteId, formId, data, ip, wantsHtml, wantsProtocol, backUrl, lang });
 };
 
 /** True for forms that post to an installed app or Extension instead of the submissions collector. */
