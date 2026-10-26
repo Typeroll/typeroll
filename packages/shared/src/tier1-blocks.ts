@@ -950,7 +950,7 @@ const postCard: BlockType = {
     { name: 'hover_border_color', type: 'color', label: 'Interactive card border' },
     { name: 'hover_color', type: 'color', label: 'Interactive card text' },
     pixels('border_width_px', 'Card border width (px)', 0, 20),
-    { name: 'title_font', type: 'select', label: 'Title font', options: ['heading', 'body', 'inherit'], default: 'heading' },
+    { name: 'title_font', type: 'select', label: 'Title font', options: ['heading', 'body', 'mono', 'inherit'], default: 'heading' },
     pixels('body_padding_x_px', 'Panel horizontal padding (px)', 0, 100),
     pixels('body_padding_y_px', 'Panel vertical padding (px)', 0, 100),
     pixels('body_padding_px', 'Panel padding (px)', 0, 100),
@@ -998,6 +998,7 @@ const postCard: BlockType = {
 </article>`,
   styles: `
 [data-block="post_card"] { display: flex; flex-direction:var(--card-direction,column); gap:0.75rem; border:var(--border_width_px,0px) solid var(--card-border-color,transparent);min-width:0; position:relative; }
+[data-block="post_card"][data-title-font="mono"] .block-postcard-title { font-family:var(--font-mono,monospace); }
 [data-block="post_card"][data-appearance="card"] { background:var(--card-bg,var(--color-background,#fff)); border-radius:var(--radius_px,0.5rem); overflow:hidden; box-shadow:0 2px 8px rgb(0 0 0 / 12%); gap:0; }
 [data-block="post_card"][data-appearance="card"] .block-postcard-image { display:block; margin:0; border-radius:0; }
 [data-block="post_card"][data-appearance="card"] .block-postcard-body { padding:var(--body_padding_y_px,var(--body_padding_px,var(--card-padding,1rem))) var(--body_padding_x_px,var(--body_padding_px,var(--card-padding,1rem))); }

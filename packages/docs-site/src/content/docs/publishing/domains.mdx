@@ -101,15 +101,20 @@ validation, change domain settings or reconnect Cloudflare merely to refresh MCP
 
 A media item's `public_path` can retain an old path such as
 `/wp-content/uploads/2024/photo.jpg`. The next publication uses the selected
-preferred host and paths. Existing organization media links and previously
+active host and paths; saved future hosts take effect only through explicit
+domain preparation and cutover. Existing organization media links and previously
 published aliases remain usable; changing a preferred host does not invalidate
 them. Referenced media is included in static output, not committed as images to GitHub.
 
 ## Prepare before switching traffic
 
+**Core 0.2.106 / MCP 0.45.80 (pending release):** saving future domains does not
+change normal publication. Keep editing and publishing on the active or temporary
+address. Publish your intended content there before preparing the domain switch.
+
 1. Save the future hosts. This records the intended addresses while the current
    public website remains active.
-2. Select **Prepare domain change from published content**. The candidate uses
+2. Shortly before changing DNS, select **Prepare for domain switch**. The candidate uses
    the last successful publication, not newer saved CMS edits. The build updates
    internal absolute links, canonicals, sitemap URLs and media references.
 3. Follow **Domain verification**, applying the returned validation records if
@@ -117,6 +122,12 @@ them. Referenced media is included in static output, not committed as images to 
 4. When allowed, select **Switch website traffic**, or apply the reviewed DNS
    change through your provider or AI agent.
 5. Wait for Typeroll to verify the actual public address.
+
+Waiting for domain validation or cutover approval does not lock normal
+publication. If newer content is published at the current address, the candidate
+becomes outdated: prepare again before switching traffic. The candidate contains
+the last published content and indexing settings, not unpublished CMS changes.
+See [publication destination](../../guides/customer-publishing/#future-hosts-and-the-publication-destination).
 
 When a host already serves another website, Cloudflare Pages validates it only
 after its record points at Pages. Typeroll then asks you to accept a short

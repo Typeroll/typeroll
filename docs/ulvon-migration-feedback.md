@@ -1,5 +1,12 @@
 # Ulvon migration feedback: disposition and follow-up
 
+> Current follow-up (2026-10-26): Cloud's main lock pins Core 0.2.104 / MCP
+> 0.45.79 / capabilities 0.53.0. Historical “pending production” notes below
+> describe earlier gates. PR #83 prepares Core 0.2.106 / MCP 0.45.80 /
+> capabilities 0.54.0; it has not been released or deployed. See the final
+> section for F33–F35 and the later wishlist additions.
+
+
 Source: bootingbots/ulvon-meta, main, `qa/typeroll-starter-wishlist.md`,
 `qa/typeroll-platform-feedback.md` and `scripts/typeroll/`, read 2026-10-25 at source commit `71ee0c8fcb6d5eff8ba2f14ae4c012c833198437`.
 The source wishlist mentions an older feature branch; this review uses main as
@@ -184,3 +191,82 @@ It also found public URL discovery hidden by the Migration page's empty-state
 branch. Core 0.2.104 always mounts the discovery component. Browser regressions
 cover an empty inventory, discovery input, result display and mobile overflow
 at 390/1440px. Production remains pending a qualified follow-up release.
+
+
+## Later wishlist review, 2026-10-26
+
+Sources: `bootingbots/ulvon-meta` main `45cfdb4d9046085634a4610b2e1f813237bb3cdb`,
+`qa/typeroll-starter-wishlist.md`, `qa/typeroll-platform-feedback.md` and the
+referenced scripts. `launch-prep` ends at F34; main/domain-prep also include F35.
+This follow-up changes reusable product code and canonical starter templates,
+not Ulvön content, DNS, production artifacts or its source repository.
+
+| Finding | Outcome in the unreleased Core 0.2.106 / MCP 0.45.80 candidate |
+| --- | --- |
+| F33 | Mobile drawer/site list scrolls within the dynamic viewport. Chromium, Firefox and WebKit coverage is in PR #83. A site search field is not included. |
+| F34 / design-token proposal | Palette names, named scales, site font roles, editor controls, lint and exact-match dry-run conversion are in PR #83; see `plans/site-design-tokens.md`. Existing CSS variable expressions remain valid. No customer data is converted automatically. |
+| F35 | Saving future domains is inert for normal publication: builds continue on active/temporary website and media hosts. Only explicit **Prepare for domain switch** / `prepare_publishing_domain_change` retargets the last published snapshot, shortly before DNS changes. Waiting candidates do not lock normal publication. A newer successful publication invalidates the candidate; approval and the worker both reject stale snapshots. Frozen indexing metadata is visible before cutover. |
+
+This supersedes the earlier unreleased confirmation experiment. No
+`domain_candidate_revision` parameter is needed on `trigger_deploy`. Finish and
+publish intended content on the current address, explicitly prepare shortly
+before cutover, review the candidate, and approve traffic separately. Keeping
+future domains saved must not force editors into preview-only work. If a newer
+normal publication makes a candidate outdated, prepare again; do not clear and
+re-save the future hosts just to continue editing. To change an unintentionally
+noindex candidate, publish the corrected setting normally, then prepare again.
+Temporary-host indexing protection remains separate from the authored setting.
+
+### New reusable routines
+
+- `workflows/source-media.md`: explicitly approved private archive before retiring
+  an old CMS; complete inventory limits, resumable bounded transfer requirements,
+  private manifest, checksums/read-back and a restore check. ETag is not a portable
+  MD5 guarantee. We do not distribute the source `archive_media.py`: it contains
+  account/bucket assumptions and verification is insufficient for a generic
+  deletion/retirement workflow. No automatic archive uploader or deletion is added.
+- `scripts/typeroll/prepare_image.py`: local ICC-aware conversion to a new sRGB
+  JPEG with source/output SHA-256. Requires Pillow/ImageCms; never uploads or
+  changes Pages. Rejects missing CMYK profiles, unreviewed unprofiled RGB, broken
+  profiles, transparency, multi-frame files and output overwrites. Handles EXIF
+  orientation; strips public EXIF/GPS. The source `press_tiffs.py` actually uploads
+  preconverted JPEGs and edits a site-specific press Page; that part is not copied.
+- Analytics: API/MCP first with the correct site and organization permission;
+  external Cloudflare API setup only with separately authorized provider access.
+  It is not a workaround for missing Typeroll organization permissions.
+- Owner facts/photos: preserve versus renew stays explicit. Flag dated or
+  unverifiable details for review, not automatic deletion. Do not invent recurring
+  events or silently rewrite preserved text. Keep unsupported future events in
+  draft when agreed; record provenance, verify uploads and review focal points.
+- Domain sequence: explain fallback `robots_blocked` versus authored noindex,
+  frozen candidates, validation windows, unchanged MX/SPF and separate cutover
+  approval. Setting authored noindex false does not remove fallback protection.
+
+Updated canonical files: `workflows/migration.md`, `workflows/source-media.md`,
+`qa/checklist.md`, `scripts/README.md`, `scripts/typeroll/prepare_image.py`,
+`tr-migrate-wp` and the public migration/publishing guides. The earlier token work
+also updates `tr-new-site`, `tr-brand`, `tr-starter-design`, design guidance and
+`color_tokens.py`. `site-starter` sync waits for the verified MCP release so it
+cannot claim an older source lock for new generated files.
+
+### Follow-up verification and remaining release work
+
+The final full local release gate passed: 254 infrastructure, 281 MCP,
+3,106 portal, 1,633 shared tests, typechecks, builds, static publication smoke
+and release-artifact checks. Targeted tests cover current/stale/missing domain revision, API queue rejection, runner Git-push
+protection, frozen noindex, non-main Versions and MCP schema forwarding.
+The 23-case affected browser suite passes, including the long site list in
+Chromium/Firefox/WebKit, a short viewport with visible sign-out, organization
+switching, editor flows, and domain controls at 320/390/1440px. Screenshots were
+inspected. This also fixes the prior PR CI test assumption that the fixture
+Organization contains no Sites created by other browser scenarios. Five optional Pillow fixture tests
+cover ICC conversion (including an actual CMYK profile), orientation, metadata,
+invalid input and non-overwrite behavior (`scripts/starter-image-fixtures.py`).
+These local results do not stand in for Cloud staging or a customer publication.
+
+Remaining: PR CI/review, exact release authorization, Core/MCP/docs publication,
+verified starter sync, Cloud staging qualification and approved production
+promotion. Existing sites need their own authorized rebuild and acceptance.
+F16 must additionally be saved again with the intended boolean if the old server
+lost it; no automatic SEO-title rewrite is performed. Do not remove Ulvön's
+working CSS/token workarounds merely because a portal version advanced.

@@ -31,6 +31,10 @@ export function isExternalDeploy(job: Pick<DeployJob, 'execution_backend'>): boo
   return job.execution_backend === 'customer_git' || job.execution_backend === 'organization_cloudflare' || job.execution_backend === 'organization_github';
 }
 
+export function isDomainPreparation(job: { status?: string; publication_intent?: string; git_publication?: { release_branch?: unknown } }): boolean {
+  return job.publication_intent === 'domain_prepare' || Boolean(job.git_publication?.release_branch);
+}
+
 const ACTIVE_STATUSES: ReadonlySet<DeployJob['status']> = new Set(['queued', 'running']);
 
 /**
@@ -45,7 +49,7 @@ export function findActiveDeploy(
   now: number = Date.now(),
 ): DeployJob | null {
   const active = jobs
-    .filter((j) => ACTIVE_STATUSES.has(j.status) && !isStale(j, now))
+    .filter((j) => ACTIVE_STATUSES.has(j.status) && !isDomainPreparation(j) && !isStale(j, now))
     .sort((a, b) => (Date.parse(b.started_at) || 0) - (Date.parse(a.started_at) || 0));
   return active[0] ?? null;
 }

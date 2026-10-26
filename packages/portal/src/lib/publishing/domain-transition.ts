@@ -15,8 +15,11 @@ export async function prepareDomainTransition(orgId: string, siteId: string, inp
   ]);
   if (site?.publishing_mode !== 'customer_git') throw new ConnectionError('This site does not use customer publishing.', 409);
   if (domains.revision !== input.revision) throw new ConnectionError('Domain settings changed. Reload before preparing.', 409, 'domain_revision_conflict');
-  if (!target?.last_publication?.snapshot_job_id) throw new ConnectionError('Publish the site once before preparing a domain-only change. The first publication uses the hosts saved here.', 409, 'first_publication_required');
-  const active = jobs.find(job => job.version_id === 'main' && ['queued', 'running'].includes(job.status));
+  if (!target?.last_publication?.snapshot_job_id) throw new ConnectionError('Publish the site once before preparing a domain-only change. Normal publication uses the current or temporary address.', 409, 'first_publication_required');
+  const existing = domains.state !== 'outdated' && domains.candidate?.source_publication_id === target.last_publication.publication_id
+    ? jobs.find(job => job.id === domains.candidate?.job_id && ['queued', 'running'].includes(job.status)) : null;
+  if (existing) return { job_id: existing.id, already_running: true };
+  const active = jobs.find(job => job.version_id === 'main' && ['queued', 'running'].includes(job.status) && job.phase !== 'awaiting domain cutover approval');
   if (active) return { job_id: active.id, already_running: true };
   // A host Cloudflare cannot serve (apex outside an active zone, pending zone) fails here, not after a build.
   assertHostChecks(await siteHostChecks(orgId, siteId, domains));

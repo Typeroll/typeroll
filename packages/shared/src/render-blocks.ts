@@ -1,3 +1,4 @@
+import { colorCss, tokenScale, scaleValue } from './design-tokens.js';
 import { queryDerivedSource, type DerivedQuery } from './derived-source.js';
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
@@ -1042,6 +1043,8 @@ export function composePageWithTemplate(
         ] as const;
         const declarations = typography.flatMap(([field, min, max, unit, property]) => {
           const value = b.data?.[field];
+          const token = scaleValue(field === 'font_size' ? 'type_size' : field === 'line_height' ? 'leading' : 'space', value);
+          if (token) return [`${property}:${token}`];
           return typeof value === 'number' && Number.isFinite(value) && value >= min && value <= max
             ? [`${property}:${value}${unit}`] : [];
         });
@@ -1166,6 +1169,7 @@ function resolveFieldBindings(blockType: BlockType, data: Record<string, unknown
     } else {
       data[field.name] = resolved == null ? '' : typeof resolved === 'object' ? (typeof (resolved as { href?: unknown }).href === 'string' ? (resolved as { href: string }).href : '') : String(resolved);
     }
+    if (field.type === 'color' && typeof data[field.name] === 'string') data[field.name] = colorCss(data[field.name] as string);
   }
 }
 
@@ -1761,6 +1765,9 @@ interface ResponsiveCompileResult {
 }
 
 function numericPresentationValue(field: FieldDefinition, raw: unknown): string | undefined {
+  const scale = tokenScale(field);
+  const token = scale && scaleValue(scale, raw);
+  if (token) return token;
   if (field.type !== 'number' || !['px', 'number'].includes(field.css_unit ?? '') ||
       !/^[a-z][a-z0-9_]*$/.test(field.name) || typeof raw !== 'number' || !Number.isFinite(raw)) return undefined;
   const value = Math.min(field.max ?? 10000, Math.max(field.min ?? 0, raw));
@@ -1782,6 +1789,19 @@ function compileResponsiveData(
   for (const field of blockType.schema ?? []) {
     if (data[field.name] !== undefined) data[field.name] = coerceFieldValue(field, data[field.name]);
   }
+  const resolveColors = (fields: FieldDefinition[], values: Record<string, unknown>): void => {
+    for (const field of fields) {
+      const raw = values[field.name];
+      if (field.type === 'color') {
+        if (typeof raw === 'string') values[field.name] = BINDING.test(raw) ? raw : colorCss(raw);
+        else if (field.responsive && isResponsiveValue(raw)) values[field.name] = Object.fromEntries(Object.entries(raw as object).map(([bp, val]) => [bp, typeof val === 'string' ? colorCss(val) : '']));
+      } else if (field.fields) {
+        if (Array.isArray(raw)) values[field.name] = raw.map(item => { if (!item || typeof item !== 'object') return item; const copy = { ...item }; resolveColors(field.fields!, copy); return copy; });
+        else if (raw && typeof raw === 'object') { const copy = { ...raw } as Record<string, unknown>; resolveColors(field.fields, copy); values[field.name] = copy; }
+      }
+    }
+  };
+  resolveColors(blockType.schema ?? [], data);
   const flatData: Record<string, unknown> = { ...data };
   const cssVars: Partial<Record<Breakpoint, Record<string, string>>> = {};
   const mappedCss: Partial<Record<Breakpoint, string>> = {};

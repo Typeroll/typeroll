@@ -82,3 +82,48 @@ Page/partial block writes update working copies; check `saved` and use
 `commit_working_copy` with `target: {kind: "page"|"partial", id: "..."}`.
 Page templates save immediately and do not have working copies. REST read envelopes and
 MCP tool text are different layers; `call.py` returns the decoded tool result.
+
+## Design token check
+
+Follow workflows/design.md for palette/font roles and named scales. Run
+`lint_design_tokens` before launch and after major design changes. Review exact
+colour replacements with scripts/typeroll/color_tokens.py; record deliberate
+exceptions in decisions.md. Preserve text independently from design changes.
+
+## Source retirement, analytics and domain preparation
+
+Before old hosting is retired, follow workflows/source-media.md: preserve unused
+and print originals in a private archive with independently verified checksums.
+Only approved web assets enter the CMS. Use ICC-aware conversion for CMYK/TIFF.
+
+Enable Analytics through the authorized Typeroll API/MCP (`update_app` or the
+Organization analytics tools), then read back settings and verify the beacon and
+cookies on the actual artifact. Resolve missing provider scopes through the
+normal approval flow. A separately authorized provider-side setup with a supplied
+beacon token is an alternative, not a way to bypass Organization permissions.
+Never expose a provider API token as a public beacon token.
+
+From Core 0.2.106, saving future hosts does not redirect normal publication.
+Keep using `trigger_deploy` to update and review the current/temporary address.
+Read `next_publication` in `read_publishing_domains` for the destination.
+Shortly before DNS changes, deliberately call `prepare_publishing_domain_change`
+with the current revision. It prepares the last successful public snapshot,
+not later unpublished CMS edits. Review its frozen indexing settings and DNS
+requirements, then approve traffic separately. If another normal publication
+succeeds while the candidate waits, prepare again: an outdated snapshot cannot
+replace newer published content. There is no need to clear saved future hosts.
+To correct candidate indexing, save the intended setting, publish normally, and
+prepare again. Temporary-host protection keeps the review address noindex even
+when the published authored setting permits indexing on the future host.
+Keep MX/SPF and unrelated DNS unchanged; review any validation window and obtain
+the already-defined traffic-switch authorization.
+
+## Owner-supplied facts and photos
+
+Record owner statements, source and confirmation date. Preserve approved copy
+under `text: preserve`; do not silently delete dates/prices or rewrite it into
+"timeless" language. Under `text: renew`, propose removing stale details or using
+recurring-event wording only when a source supports recurrence. Flag uncertain
+facts for review or keep new Pages in draft; missing evidence does not prove that
+an event stopped. Link to the actual organiser when relevant. Upload approved
+photos with SHA-256 verification and review focal points at mobile/desktop widths.

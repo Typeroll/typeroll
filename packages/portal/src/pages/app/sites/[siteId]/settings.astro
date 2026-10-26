@@ -3,7 +3,7 @@ import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
+import { TOKEN_SCALES, defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, paths, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
 import OnColorFields from '../../../../components/OnColorFields';
 import type { Site, SiteSettings } from '@typeroll/shared';
@@ -136,11 +136,26 @@ const domainBlocksArchiving =
           </div>
         ))}
       </div>
+      <div class="field">
+        <label>Surface hover (optional)</label>
+        <input name="colors.surface_hover" value={settings.colors.surface_hover ?? ''} placeholder="Automatic: darker surface" />
+        <p class="muted text-sm">Leave empty for a shade derived from surface and text. Use a hex colour to override it.</p>
+      </div>
       <OnColorFields client:load colors={settings.colors} renderVersion={resolveRenderVersion(settings.render_version)} />
     </div>
 
     <div class="card stack">
       <h2 style="font-size: 1.125rem;">Typography</h2>
+      <details>
+        <summary>Named typography and spacing scales</summary>
+        <p>Blocks can use these step names instead of fixed pixels. Empty fields use the default shown. Changes apply to every block using that step.</p>
+        {Object.entries(TOKEN_SCALES).map(([scale, steps]) => <fieldset>
+          <legend>{scale.replace('_', ' ')}</legend>
+          {Object.entries(steps).map(([step, fallback]) => <div class="field">
+            <label>{step}</label><input name={`design_scales.${scale}.${step}`} value={settings.design_scales?.[scale as keyof typeof TOKEN_SCALES]?.[step] ?? ''} placeholder={fallback} />
+          </div>)}
+        </fieldset>)}
+      </details>
       <details>
         <summary>Responsive block widths</summary>
         <p>Viewport width where each block editing range starts. Use increasing widths. These control authored responsive fields and block visibility; menu collapse and other explicit component thresholds remain separate.</p>
@@ -161,6 +176,7 @@ const domainBlocksArchiving =
         <label>Base font size (px)</label>
         <input name="fonts.size_base" type="number" min="12" max="24" value={settings.fonts.size_base} />
       </div>
+      <div class="field"><label>Monospace font</label><input list="font-families" name="fonts.mono" value={settings.fonts.mono ?? ''} placeholder="System monospace" /></div>
       <div class="field">
         <label for="fonts-smoothing">Font smoothing</label>
         <select id="fonts-smoothing" name="fonts.smoothing">

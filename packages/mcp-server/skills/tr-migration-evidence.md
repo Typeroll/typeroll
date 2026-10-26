@@ -134,7 +134,9 @@ not disguise the failure with tenant CSS.
 Validate shared Page references, item order, missing images and empty/unpublished
 references. Keep semantics separate from presentation: category emoji belongs
 to its shared Page field, not copied into every article or card excerpt.
-Validate actual field types, not just key names: number fields use JSON numbers
+Validate actual field types, not just key names. A presentation field whose schema declares
+`design_token` also accepts the named steps for that scale, including responsive maps
+on responsive fields (Core 0.2.106 / capabilities 0.54.0). Otherwise number fields use JSON numbers
 (`16`, `1.6`, `1`), not strings (`"16"`, `"1.6"`, `"1"`); booleans use `true`/
 `false`. Check responsive map values too. Read-back retention is not enough:
 measure the resulting font size, line height and paragraph spacing. If an

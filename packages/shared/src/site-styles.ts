@@ -34,14 +34,8 @@ export type StyleTarget = typeof STYLE_TARGETS[number];
 export const STYLE_BREAKPOINTS = ['tablet', 'laptop', 'desktop', 'wide'] as const;
 export type StyleBreakpoint = typeof STYLE_BREAKPOINTS[number];
 
-export const PALETTE_TOKENS = ['primary', 'secondary', 'accent', 'background', 'surface', 'text', 'text_light'] as const;
-/**
- * Text colours on a palette colour. Each is the site's explicit
- * `colors.on_*` when set, else near-black or white, whichever reads better
- * (see `onColorValue`).
- */
-export const ON_COLOR_TOKENS = ['on_primary', 'on_secondary', 'on_accent'] as const;
-export const COLOR_TOKENS = [...PALETTE_TOKENS, ...ON_COLOR_TOKENS] as const;
+export { PALETTE_TOKENS, ON_COLOR_TOKENS, COLOR_TOKENS } from './design-tokens.js';
+import { PALETTE_TOKENS, ON_COLOR_TOKENS, COLOR_TOKENS, colorCss, validColor, scaleCss, scaleValue, spacingCss } from './design-tokens.js';
 
 export interface StyleBorder {
   width?: string;
@@ -116,13 +110,10 @@ export const MAX_STYLE_PARTS = 32;
 const LENGTH = /^(?:0|-?(?:\d+|\d*\.\d+)(?:px|rem|em|%|vw|vh|ch))$/;
 const CLAMP = /^(?:clamp|min|max)\([0-9a-z.%+\-*/,\s()]+\)$/;
 const NUMBER = /^(?:\d+|\d*\.\d+)$/;
-const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
-const FUNCTIONAL_COLOR = /^(?:rgb|rgba|hsl|hsla)\(\s*[0-9.%\s,/]+\)$/i;
 
 const isLength = (value: unknown): value is string => typeof value === 'string' && (LENGTH.test(value.trim()) || CLAMP.test(value.trim()));
-const isColor = (value: unknown): value is string => typeof value === 'string' && (
-  (COLOR_TOKENS as readonly string[]).includes(value) || HEX.test(value) || FUNCTIONAL_COLOR.test(value) || ['transparent', 'inherit', 'currentColor'].includes(value));
-const isSpacing = (value: unknown): value is string => typeof value === 'string' && value.trim().split(/\s+/).length <= 4 && value.trim().split(/\s+/).every(part => isLength(part));
+const isColor = validColor;
+const isSpacing = (value: unknown): value is string => typeof value === 'string' && value.trim().split(/\s+/).length <= 4 && value.trim().split(/\s+/).every(part => (isLength(part) || !!scaleValue('space', part)));
 
 /** Every style property, in the order generated CSS writes them. */
 export const STYLE_PROP_KEYS = ['font', 'size', 'weight', 'line_height', 'letter_spacing', 'transform', 'italic', 'color', 'background', 'align', 'decoration', 'space_before', 'space_after', 'padding', 'max_width', 'radius', 'border', 'opacity', 'shadow', 'gap'] as const;
@@ -138,9 +129,9 @@ function propsErrors(props: unknown, where: string): string[] {
     if (p[key] !== undefined && !ok(p[key])) errors.push(`${where}.${key} must be ${expected}`);
   };
   check('font', v => ['heading', 'body', 'mono', 'inherit'].includes(v as string), 'heading, body, mono or inherit');
-  check('size', isLength, 'a CSS length (px, rem, em, %, vw, ch) or clamp()');
+  check('size', v => isLength(v) || !!scaleValue('type_size', v), 'a CSS length (px, rem, em, %, vw, ch) or clamp()');
   check('weight', v => Number.isInteger(v) && (v as number) >= 100 && (v as number) <= 900 && (v as number) % 100 === 0, '100–900 in steps of 100');
-  check('line_height', v => typeof v === 'string' && (NUMBER.test(v) || isLength(v)), 'a number such as "1.5" or a length');
+  check('line_height', v => typeof v === 'string' && (NUMBER.test(v) || isLength(v) || !!scaleValue('leading', v)), 'a number such as "1.5" or a length');
   check('letter_spacing', v => v === 'normal' || isLength(v), 'a length such as "0.08em" or "normal"');
   check('transform', v => ['none', 'uppercase', 'lowercase', 'capitalize'].includes(v as string), 'none, uppercase, lowercase or capitalize');
   check('italic', v => typeof v === 'boolean', 'true or false');
@@ -148,7 +139,7 @@ function propsErrors(props: unknown, where: string): string[] {
   check('background', isColor, `a colour token (${COLOR_TOKENS.join(', ')}) or a hex/rgb/hsl colour`);
   check('align', v => ['left', 'center', 'right', 'start', 'end', 'justify'].includes(v as string), 'left, center, right, start, end or justify');
   check('decoration', v => ['none', 'underline'].includes(v as string), 'none or underline');
-  for (const key of ['space_before', 'space_after', 'max_width', 'radius']) check(key, isLength, 'a CSS length');
+  for (const key of ['space_before', 'space_after', 'max_width', 'radius']) check(key, v => isLength(v) || (['space_before', 'space_after'].includes(key) && !!scaleValue('space', v)), 'a CSS length or spacing step');
   check('padding', isSpacing, 'one to four CSS lengths');
   check('opacity', v => typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 1, 'a number from 0 to 1');
   check('shadow', v => typeof v === 'string' && Object.hasOwn(STYLE_SHADOWS, v), `one of ${Object.keys(STYLE_SHADOWS).join(', ')}`);
@@ -464,17 +455,17 @@ export function onColorWarnings(colors: SiteColors, renderVersion = 1): string[]
 
 // ── CSS generation ──────────────────────────────────────────────────────
 
-const colorCss = (value: string) => (COLOR_TOKENS as readonly string[]).includes(value) ? `var(--color-${value.replace(/_/g, '-')})` : value;
+
 const fontCss = (value: NonNullable<StyleProps['font']>) => value === 'inherit' ? 'inherit'
-  : value === 'mono' ? "ui-monospace, 'SF Mono', Menlo, Consolas, monospace"
+  : value === 'mono' ? "var(--font-mono, ui-monospace), monospace"
   : `var(--font-${value}), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
 
 function declarations(p: StyleProps): string[] {
   const out: string[] = [];
   if (p.font) out.push(`font-family:${fontCss(p.font)}`);
-  if (p.size) out.push(`font-size:${p.size}`);
+  if (p.size) out.push(`font-size:${scaleCss('type_size', p.size)}`);
   if (p.weight) out.push(`font-weight:${p.weight}`);
-  if (p.line_height) out.push(`line-height:${p.line_height}`);
+  if (p.line_height) out.push(`line-height:${scaleCss('leading', p.line_height)}`);
   if (p.letter_spacing) out.push(`letter-spacing:${p.letter_spacing}`);
   if (p.transform) out.push(`text-transform:${p.transform}`);
   if (p.italic !== undefined) out.push(`font-style:${p.italic ? 'italic' : 'normal'}`);
@@ -482,9 +473,9 @@ function declarations(p: StyleProps): string[] {
   if (p.background) out.push(`background-color:${colorCss(p.background)}`);
   if (p.align) out.push(`text-align:${p.align}`);
   if (p.decoration) out.push(`text-decoration:${p.decoration}`, ...(p.decoration === 'underline' ? ['text-underline-offset:.15em'] : []));
-  if (p.space_before) out.push(`margin-block-start:${p.space_before}`);
-  if (p.space_after) out.push(`margin-block-end:${p.space_after}`);
-  if (p.padding) out.push(`padding:${p.padding}`);
+  if (p.space_before) out.push(`margin-block-start:${scaleCss('space', p.space_before)}`);
+  if (p.space_after) out.push(`margin-block-end:${scaleCss('space', p.space_after)}`);
+  if (p.padding) out.push(`padding:${spacingCss(p.padding)}`);
   if (p.max_width) out.push(`max-width:${p.max_width}`);
   if (p.radius) out.push(`border-radius:${p.radius}`);
   if (p.border) {
@@ -495,7 +486,7 @@ function declarations(p: StyleProps): string[] {
   }
   if (p.opacity !== undefined) out.push(`opacity:${p.opacity}`);
   if (p.shadow) out.push(`box-shadow:${STYLE_SHADOWS[p.shadow]}`);
-  if (p.gap) out.push(`gap:${p.gap}`);
+  if (p.gap) out.push(`gap:${spacingCss(p.gap)}`);
   return out;
 }
 
@@ -503,8 +494,8 @@ function declarations(p: StyleProps): string[] {
 function roleVariables(role: StyleElementRole, p: StyleProps): string[] {
   const out: string[] = [];
   if (role === 'body') {
-    if (p.size) out.push(`--body-size:${p.size}`);
-    if (p.line_height) out.push(`--body-leading:${p.line_height}`, `--body-leading-text:${p.line_height}`);
+    if (p.size) out.push(`--body-size:${scaleCss('type_size', p.size)}`);
+    if (p.line_height) out.push(`--body-leading:${scaleCss('leading', p.line_height)}`, `--body-leading-text:${scaleCss('leading', p.line_height)}`);
     if (p.color) out.push(`--body-color:${colorCss(p.color)}`);
     if (p.font) out.push(`--body-font:${fontCss(p.font)}`);
     return out;
@@ -515,9 +506,9 @@ function roleVariables(role: StyleElementRole, p: StyleProps): string[] {
     if (p.weight) out.push(`--link-weight:${p.weight}`);
     return out;
   }
-  if (p.size) out.push(`--type-${role}:${p.size}`, `--${role}-size:${p.size}`);
+  if (p.size) out.push(`--type-${role}:${scaleCss('type_size', p.size)}`, `--${role}-size:${scaleCss('type_size', p.size)}`);
   if (p.weight) out.push(`--${role}-weight:${p.weight}`);
-  if (p.line_height) out.push(`--${role}-leading:${p.line_height}`);
+  if (p.line_height) out.push(`--${role}-leading:${scaleCss('leading', p.line_height)}`);
   if (p.letter_spacing) out.push(`--${role}-tracking:${p.letter_spacing}`);
   if (p.transform) out.push(`--${role}-transform:${p.transform}`);
   if (p.italic !== undefined) out.push(`--${role}-style:${p.italic ? 'italic' : 'normal'}`);

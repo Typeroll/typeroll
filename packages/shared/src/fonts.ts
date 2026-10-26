@@ -1,3 +1,4 @@
+import { designScalesCss, validColor, type DesignScales } from './design-tokens.js';
 import { resolveRenderVersion } from './render-version.js';
 /** The reserved system family never triggers a network font request. */
 export const SYSTEM_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -40,7 +41,7 @@ export function fontSmoothingCss(smoothing: unknown, renderVersion: number): str
  * values fall back so older settings documents never emit "undefined" CSS.
  * Published pages and preview emit the same block.
  */
-export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'> & { render_version?: unknown }): string {
+export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'> & { render_version?: unknown; design_scales?: DesignScales }): string {
   const colors = settings.colors ?? ({} as Partial<import('./types.js').SiteSettings['colors']>);
   const fonts = settings.fonts ?? ({} as Partial<import('./types.js').SiteSettings['fonts']>);
   return `:root{
@@ -49,17 +50,20 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
   --color-accent:${colors.accent};
   --color-background:${colors.background};
   --color-surface:${colors.surface ?? '#f8fafc'};
+  --color-surface-hover:${colors.surface_hover && validColor(colors.surface_hover) ? colors.surface_hover : 'color-mix(in srgb,var(--color-surface) 92%,var(--color-text))'};
   --color-text:${colors.text};
   --color-text-light:${colors.text_light ?? '#64748b'};
   --font-heading:${fontFamilyCss(fonts.heading ?? 'Inter')};
   --font-body:${fontFamilyCss(fonts.body ?? 'Inter')};
+  --font-mono:${fonts.mono ? fontFamilyCss(fonts.mono) : 'ui-monospace'};
+  ${designScalesCss(settings.design_scales)}
   --font-size-base:${fonts.size_base ?? 16}px;
 }${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
 }
 
 /** Webfont families a site loads from Google Fonts (system families excluded). */
-export function webFontFamilies(heading: string, body: string): string[] {
-  return Array.from(new Set([heading, body].filter(value => value && !isSystemFont(value))));
+export function webFontFamilies(heading: string, body: string, mono?: string): string[] {
+  return Array.from(new Set([heading, body, mono].filter((value): value is string => !!value && !isSystemFont(value))));
 }
 
 /**

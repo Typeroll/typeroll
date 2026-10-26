@@ -33,3 +33,20 @@ indexing have distinct effects but do not require repeated approval if covered.
 - [ ] Test click-to-load video with keyboard; no provider request before activation.
 - [ ] Review matched drafts, unpublished targets and redirect chains before launch.
 - [ ] Explicitly save working copies, or obtain approval to publish saved content only.
+
+## Design tokens (Core 0.2.106+)
+
+- [ ] Run `lint_design_tokens` before launch and after major design changes.
+- [ ] Review hardcoded colours, fonts and sizes; record justified exceptions in decisions.md.
+- [ ] Dry-run colour migration; do not infer semantic roles from equal hex values.
+- [ ] Change primary and surface in a test Version: header, footer, cards, menus and buttons follow without block edits at mobile/tablet/desktop widths. Restore the test settings.
+- [ ] Report actual versus simulated before/after counts separately; do not claim a migration was applied from a dry run.
+
+- [ ] Before source retirement, review workflows/source-media.md: unused originals,
+  print files, private archive manifest, verified copies and a restore test.
+- [ ] Review ICC-converted derivatives visually; preserve originals separately.
+- [ ] Verify Analytics configuration and actual beacon/cookie behavior after build.
+- [ ] Read domain publication intent before deployment; distinguish test-host
+  updates, future-host candidates and explicit traffic approval.
+- [ ] Inspect the frozen candidate's noindex/robots output, not only current CMS settings.
+- [ ] Review owner facts and dates against the chosen preserve/renew text policy.

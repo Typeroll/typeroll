@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.106 / MCP 0.45.80 — Site design tokens and migration safeguards (unreleased)
+
+- Make the expanded mobile site selector scroll with the drawer (F33, from PR #82).
+- Resolve palette names in block colour fields in static output and preview;
+  preserve stored names and report unknown colours as `field_type_mismatch`.
+- Add configurable typography, spacing and line-height scales, responsive step
+  values, palette-first editor controls and a site-owned mono font role.
+- Add read-only `lint_design_tokens`, non-blocking launch findings and a starter
+  dry-run migration for exact, unambiguous scalar hex matches in a test Version.
+- Keep normal publication on the active/temporary host after future domains are
+  saved. Prepare the last published snapshot for a domain switch only on explicit
+  request; release waiting candidates from the publication lock, reject outdated
+  cutovers and disclose frozen indexing settings in UI/API/MCP (F35).
+- Add local ICC-aware original-to-sRGB image preparation and source-media
+  archival guidance; never delete originals or automatically retire hosting.
+- Update public docs, design/migration recipes and generated starter guidance.
+- Capability contract 0.54.0 invalidates old output dependencies. Render reference
+  updates add previously unused scale/hover/mono variables and opt-in mono rules;
+  existing numeric values and existing font choices retain their output.
+
+
 ## Core 0.2.103 / MCP 0.45.79 (prepared)
 
 - Complete reusable migration feedback: native responsive slot/section/hero

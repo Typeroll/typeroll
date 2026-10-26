@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRenderPlan } from '../packages/site-template/src/lib/publication-render-cache.mjs';
 import { projectStaticPublication, createStaticPublicationProject, sealPublicationProject } from './lib/static-publication.mjs';
 
 function input() {
@@ -191,8 +192,9 @@ const FULL_SETTINGS = {
   site_name: 'Site', tagline: 'Tagline', logo: '/logo.png', favicon: '/favicon.ico', apple_touch_icon: '/apple.png', icon_192: '/icon-192.png',
   responsive_breakpoints: { tablet: 600, laptop: 1000, desktop: 1300, wide: 1600 },
   trailing_slash: 'never', iframe_allowed_hosts: ['www.youtube.com'],
-  colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', text: '#000000', text_light: '#555555', on_primary: '#ffffff', on_secondary: '#fff', on_accent: '#111827' },
-  fonts: { heading: 'Inter', body: 'Inter', size_base: 17, smoothing: 'antialiased' },
+  colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', surface_hover:'#dddddd', text: '#000000', text_light: '#555555', on_primary: '#ffffff', on_secondary: '#fff', on_accent: '#111827' },
+  design_scales: { type_size:{xl:'1.5rem'}, space:{md:'1rem'}, leading:{normal:'1.5'} },
+  fonts: { heading: 'Inter', body: 'Inter', mono:'Roboto Mono', size_base: 17, smoothing: 'antialiased' },
   contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
   social: { facebook: 'https://example.invalid/f', instagram: 'https://example.invalid/i', linkedin: 'https://example.invalid/l', x: 'https://example.invalid/x', youtube: 'https://example.invalid/y' },
   scripts_head: '<meta name="a">', scripts_body_end: '<meta name="b">', custom_css: 'body{}', render_version: 6,
@@ -467,4 +469,16 @@ test('frozen publication preserves declared external ownership and rejects inval
   assert.deepEqual(publication.settings.external_routes, value.settings.external_routes);
   value.settings.external_routes = [{ path: '/docs/*', owner: 'Docs' }];
   assert.throws(() => projectStaticPublication(value, identity), /external_routes/);
+});
+
+test('design tokens survive frozen publication and invalidate its identity when settings change', () => {
+  const value = input(); value.settings = structuredClone(FULL_SETTINGS);
+  const before = projectStaticPublication(value, identity);
+  assert.deepEqual(before.settings.design_scales, FULL_SETTINGS.design_scales);
+  assert.equal(before.settings.fonts.mono,'Roboto Mono');
+  assert.equal(before.settings.colors.surface_hover,'#dddddd');
+  value.settings.design_scales.space.md = '2rem';
+  assert.notEqual(createRenderPlan(projectStaticPublication(value, identity), {files:{}}).globalKey, createRenderPlan(before, {files:{}}).globalKey);
+  value.settings.design_scales.space.md = '2px;display:none';
+  assert.throws(() => projectStaticPublication(value, identity), /Invalid public design scale value/);
 });

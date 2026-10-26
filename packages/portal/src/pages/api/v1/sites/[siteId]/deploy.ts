@@ -47,6 +47,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
 
   const store = getStore();
+
   const unsaved = await unsavedPublicationTargets(ctx.orgId, ctx.siteId, ctx.versionId);
   if (unsaved.length && body.allow_unsaved !== true) return privateJson({
     code: 'unsaved_content', error: 'Pages or shared blocks have unsaved edits. Save or discard them, or explicitly publish the saved content only.',

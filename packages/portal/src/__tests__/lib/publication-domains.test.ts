@@ -60,7 +60,8 @@ it('requires a matching verified candidate and certificate before approving exis
   const { getStore } = await import('../../lib/datastore');
   const { getSiteDomains, approveDomainCutover, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
   const initial = await getSiteDomains('org', 'site');
-  const candidate = { id: 'publication', revision: initial.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString() };
+  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'baseline' } });
+  const candidate = { source_publication_id: 'baseline', id: 'publication', revision: initial.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString() };
   const preparation = { hostname: 'www.example.com', provider_status: 'pending', certificate_ready: false, requirements: [], dns_fingerprint: 'fingerprint', action: 'complete_validation', has_existing_traffic: true };
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { candidate, preparation });
   await expect(approveDomainCutover('org', 'site', { revision: initial.revision, candidate_id: 'stale' })).rejects.toThrow('changed');
@@ -78,7 +79,8 @@ it('approves redirect hosts only with their prepared rule and certificate, and f
   const { getSiteDomains, saveSiteDomains, approveDomainCutover, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
   const initial = await getSiteDomains('org', 'site');
   const saved = await saveSiteDomains('org', 'site', { revision: initial.revision, website_host: 'moveria.se', redirect_hosts: ['www.moveria.se'], dns_mode: 'automatic' });
-  const candidate = { id: 'publication', revision: saved.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString() };
+  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'baseline' } });
+  const candidate = { source_publication_id: 'baseline', id: 'publication', revision: saved.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString() };
   const preparation = { hostname: 'moveria.se', provider_status: 'active', certificate_ready: true, requirements: [], dns_fingerprint: 'apex', action: 'approve_cutover', has_existing_traffic: true };
   const redirect = { hostname: 'www.moveria.se', target_host: 'moveria.se', provider_status: 'redirect', certificate_ready: true, edge_certificate: 'active', requirements: [], dns_fingerprint: 'www', zone_id: 'zone', zone_name: 'moveria.se',
     action: 'approve_cutover', has_existing_traffic: true, blocker: { code: 'redirect_rule_required', message: 'Create a Single Redirect rule' },
