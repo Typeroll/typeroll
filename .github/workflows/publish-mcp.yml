@@ -21,12 +21,8 @@ on:
         type: string
         required: false
 
-permissions:
-  contents: write
-  packages: write
-  id-token: write
-  attestations: write
-  actions: read
+# No default grant: each job requests only what its own steps need.
+permissions: {}
 
 concurrency:
   group: release-oss
@@ -42,6 +38,9 @@ jobs:
        github.event.workflow_run.head_branch == 'main' &&
        github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     outputs:
       tests_run_id: ${{ steps.qualified.outputs.run_id }}
       source_sha: ${{ steps.plan.outputs.source_sha }}
@@ -53,11 +52,11 @@ jobs:
       mcp_tag: ${{ steps.plan.outputs.mcp_tag }}
       publish_mcp: ${{ steps.plan.outputs.publish_mcp }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.23.1'
           cache: npm
@@ -69,7 +68,7 @@ jobs:
           SOURCE_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
           EVENT_RUN_ID: ${{ github.event.workflow_run.id }}
         run: node scripts/qualified-docs.mjs
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ steps.qualified.outputs.run_id }}
@@ -107,14 +106,18 @@ jobs:
     name: Publish immutable Core
     needs: plan
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      actions: read
     outputs:
       image_digest: ${{ steps.digest.outputs.image_digest }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.source_sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.23.1'
           cache: npm
@@ -123,20 +126,54 @@ jobs:
       # The exact source SHA has already passed the complete release-candidate
       # workflow. This job proves the release-specific image contract instead
       # of repeating the same source gate.
-      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b
+      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
         with:
           version: v0.22.0
-      - uses: docker/login-action@v4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # Main Tests record the digest they built for this exact source in their
+      # own run. Only that digest is reused: any workflow that can write
+      # packages could move the sha- tag or forge labels, but not this record.
+      # A missing record or any download error builds as before.
+      - name: Download prebuilt image record
+        id: download_record
+        if: needs.plan.outputs.publish_core == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ needs.plan.outputs.tests_run_id }}
+          name: core-image-${{ needs.plan.outputs.source_sha }}
+          path: temp/core-image
+      - name: Resolve prebuilt image record
+        id: recorded
+        if: needs.plan.outputs.publish_core == 'true'
+        env:
+          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
+          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          RECORD=temp/core-image/core-image.json
+          if [ ! -f "$RECORD" ]; then
+            echo 'The main Tests run recorded no prebuilt Core image for this source.'
+            exit 0
+          fi
+          DIGEST=$(jq -r 'select(.source_sha == env.SOURCE_SHA and .core_tag == env.CORE_TAG) | .image_digest // empty' "$RECORD")
+          if [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::The prebuilt image record does not name $SOURCE_SHA/$CORE_TAG; building instead."
+          fi
       - name: Inspect existing Core release
         id: registry
         if: needs.plan.outputs.publish_core == 'true'
         env:
           CORE_TAG: ${{ needs.plan.outputs.core_tag }}
           SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          RECORDED_DIGEST: ${{ steps.recorded.outputs.image_digest }}
         run: |
           set -euo pipefail
           IMAGE="ghcr.io/typeroll/typeroll:$CORE_TAG"
@@ -150,6 +187,12 @@ jobs:
               echo "::error::$IMAGE already exists at $RESULT from ${REVISION:-an unknown commit}, not $SOURCE_SHA."
               exit 1
             fi
+            # With a recorded prebuilt image, an interrupted release can only
+            # have tagged that exact digest.
+            if [ -n "$RECORDED_DIGEST" ] && [ "$RESULT" != "$RECORDED_DIGEST" ]; then
+              echo "::error::$IMAGE points at $RESULT, not the digest $RECORDED_DIGEST recorded by main Tests."
+              exit 1
+            fi
             echo 'exists=true' >> "$GITHUB_OUTPUT"
             echo "image_digest=$RESULT" >> "$GITHUB_OUTPUT"
           elif grep -Eqi 'manifest unknown|manifest_unknown|name unknown|name_unknown|not found|404' <<<"$RESULT"; then
@@ -158,30 +201,31 @@ jobs:
             echo "::error::Could not safely determine whether $IMAGE exists: $RESULT"
             exit 1
           fi
-      # Main Tests prebuild sha-SOURCE with the shared build definition. Only an
-      # image labelled with this exact source and release is reused; any other
-      # answer, including a registry error, builds as before.
+      # Main Tests prebuild the image with the shared build definition. Only the
+      # exact digest recorded by that run is reused, and only while its labels
+      # name this source and release; any other answer, including a registry
+      # error, builds as before.
       - name: Inspect prebuilt Core image
         id: prebuilt
         if: needs.plan.outputs.publish_core == 'true' && steps.registry.outputs.exists != 'true'
         env:
           CORE_TAG: ${{ needs.plan.outputs.core_tag }}
           SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          RECORDED_DIGEST: ${{ steps.recorded.outputs.image_digest }}
         run: |
           set -euo pipefail
-          IMAGE="ghcr.io/typeroll/typeroll:sha-$SOURCE_SHA"
-          DIGEST=$(crane digest "$IMAGE" 2>/dev/null || true)
-          if [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            LABELS=$(crane config "$IMAGE@$DIGEST" 2>/dev/null || true)
+          if [[ "$RECORDED_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
+            IMAGE="ghcr.io/typeroll/typeroll@$RECORDED_DIGEST"
+            LABELS=$(crane config "$IMAGE" 2>/dev/null || true)
             REVISION=$(jq -r '.config.Labels["org.opencontainers.image.revision"] // empty' <<<"$LABELS" 2>/dev/null || true)
             VERSION=$(jq -r '.config.Labels["org.opencontainers.image.version"] // empty' <<<"$LABELS" 2>/dev/null || true)
             if [ "$REVISION" = "$SOURCE_SHA" ] && [ "$VERSION" = "$CORE_TAG" ]; then
-              echo "Reusing $IMAGE at $DIGEST."
+              echo "Reusing $IMAGE recorded by main Tests."
               echo 'exists=true' >> "$GITHUB_OUTPUT"
-              echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
+              echo "image_digest=$RECORDED_DIGEST" >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::warning::$IMAGE at $DIGEST is labelled ${REVISION:-unknown}/${VERSION:-unknown}, not $SOURCE_SHA/$CORE_TAG; building instead."
+            echo "::warning::$IMAGE is labelled ${REVISION:-unknown}/${VERSION:-unknown}, not $SOURCE_SHA/$CORE_TAG; building instead."
           fi
           echo 'exists=false' >> "$GITHUB_OUTPUT"
       - name: Build and publish immutable image
@@ -274,12 +318,15 @@ jobs:
     name: Publish MCP package
     needs: plan
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.source_sha }}
           fetch-depth: 0
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.23.1'
           registry-url: https://registry.npmjs.org
@@ -349,15 +396,18 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
     needs: plan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.source_sha }}
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.23.1'
           cache: npm
-      - uses: actions/download-artifact@v8
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           github-token: ${{ github.token }}
           run-id: ${{ needs.plan.outputs.tests_run_id }}
@@ -370,11 +420,22 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DOCS_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
         run: node packages/docs-site/scripts/deployment-token-info.mjs
+      # The deployer comes from the same lockfile as customer static uploads,
+      # with integrity-checked transitive dependencies and no install scripts.
+      - name: Install locked documentation deployer
+        run: |
+          set -euo pipefail
+          DEPLOYER="$RUNNER_TEMP/docs-deployer"
+          mkdir -p "$DEPLOYER"
+          cp packages/portal/src/lib/builds/uploader-package.json "$DEPLOYER/package.json"
+          cp packages/portal/src/lib/builds/uploader-lock.json "$DEPLOYER/package-lock.json"
+          npm ci --prefix "$DEPLOYER" --ignore-scripts --no-audit --no-fund
+          echo "WRANGLER=$DEPLOYER/node_modules/.bin/wrangler" >> "$GITHUB_ENV"
       - name: Publish static documentation at typeroll.com/docs
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_DOCS_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
-        run: npx wrangler@4.127.1 deploy --config packages/docs-site/wrangler.jsonc
+        run: '"$WRANGLER" deploy --config packages/docs-site/wrangler.jsonc'
       - name: Verify published documentation
         run: node packages/docs-site/scripts/verify-live-docs.mjs --source-sha "${{ needs.plan.outputs.source_sha }}"
 
@@ -383,11 +444,13 @@ jobs:
     if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true
     needs: [plan, core, mcp, docs]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.plan.outputs.source_sha }}
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.23.1'
       - name: Build Cloud-consumable release manifest
@@ -396,7 +459,7 @@ jobs:
           --manifest oss-upstream.lock.json
           --source-sha "${{ needs.plan.outputs.core_source_sha }}"
           --image-digest "${{ needs.core.outputs.image_digest }}"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oss-release-${{ needs.plan.outputs.source_sha }}
           path: oss-upstream.lock.json
