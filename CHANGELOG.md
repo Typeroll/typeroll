@@ -29,8 +29,7 @@ Access control
 - Changing a Site's slug or domain requires admin. Fallback hostnames are
   claimed globally, and a DNS record or custom domain held by another project
   is never overwritten (`409 slug_unavailable`).
-- Logout revokes the user's refresh tokens. Preview links need write access and
-  chat settings changes need admin. Workflow pages no longer expose helper keys.
+- Preview links need write access and chat settings changes need admin. Workflow pages no longer expose helper keys.
 
 Outbound requests
 
