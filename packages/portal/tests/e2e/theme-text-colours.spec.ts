@@ -13,7 +13,7 @@ test('text on a theme colour shows both measures and saves a chosen colour', asy
   writeFileSync(settingsFile, JSON.stringify({ ...settings, render_version: 7, colors: { ...settings.colors, secondary: '#00a19c' } }));
   try {
     await page.setViewportSize({ width: 1280, height: 1000 });
-    await gotoReady(page, '/app/sites/default/settings');
+    await gotoReady(page, '/app/sites/default/settings?section=design');
     const mode = page.getByLabel('Text on secondary', { exact: true });
     await expect(mode.locator('option:checked')).toHaveText('Automatic (#111827)');
     const field = page.locator('.field').filter({ has: mode });
@@ -29,17 +29,17 @@ test('text on a theme colour shows both measures and saves a chosen colour', asy
     await page.locator('input[name="colors.secondary"]').fill('#00a19c');
     await page.locator('.card').filter({ has: mode }).screenshot({ path: info.outputPath('colors-card.png') });
 
-    await page.getByRole('button', { name: 'Save settings' }).click();
-    await page.waitForURL(/\/app\/sites\/default\/settings$/);
+    await page.getByRole('button', { name: 'Save Design' }).click();
+    await expect(page.locator('#settings-save-status')).toContainText('Saved.');
     const saved = JSON.parse(readFileSync(settingsFile, 'utf8'));
     expect(saved.colors.on_secondary).toBe('#ffffff');
     expect(saved.colors.secondary).toBe('#00a19c');
     expect(saved.colors).not.toHaveProperty('on_primary');
 
-    await gotoReady(page, '/app/sites/default/settings');
+    await gotoReady(page, '/app/sites/default/settings?section=design');
     await page.getByLabel('Text on secondary', { exact: true }).selectOption('auto');
-    await page.getByRole('button', { name: 'Save settings' }).click();
-    await page.waitForURL(/\/app\/sites\/default\/settings$/);
+    await page.getByRole('button', { name: 'Save Design' }).click();
+    await expect(page.locator('#settings-save-status')).toContainText('Saved.');
     expect(JSON.parse(readFileSync(settingsFile, 'utf8')).colors).not.toHaveProperty('on_secondary');
   } finally {
     writeFileSync(settingsFile, original);

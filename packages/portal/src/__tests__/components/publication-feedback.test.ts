@@ -21,16 +21,17 @@ it('shows the observed publication failure when a user returns to the page list'
 });
 it('keeps DNS instructions collapsed and confirms the observed domain blocker on refresh', async () => {
   const data = { revision: 'one', dns_mode: 'automatic', state: 'preparing', active: { website_host: 'old.example.com' }, desired: { website_host: 'www.example.com', media_host: null, media_path_prefix: '' }, preparation: { certificate_ready: false, has_existing_traffic: true, validation_blocker: { code: 'domain_prevalidation_unavailable', message: 'Keep the existing DNS records.' }, requirements: [{ phase: 'traffic', type: 'CNAME', name: 'www.example.com', content: 'project.pages.dev', status: 'required' }] } };
-  const request = vi.fn(async () => Response.json(data)); vi.stubGlobal('fetch', request);
+  const request = vi.fn(async (url: string) => Response.json(url.endsWith('/domain-guide') ? { ...data, checks: [{ id: 'certificate', status: 'action_required', message: 'Keep the existing DNS records.' }], current_phase: 'Waiting for validation', next_action: 'prepare', can_prepare: false, traffic_live: false } : data)); vi.stubGlobal('fetch', request);
   const container = await mount(createElement(PublishingDomains, { siteId: 'synthetic' }));
   expect(container.querySelector('[role="alert"]')?.textContent).toContain('Keep the existing DNS records');
   expect(container.querySelector('details')?.open).toBe(false);
   expect(container.querySelector('dl')?.textContent).toContain('TypeCNAME');
   expect(container.querySelector('table')).toBeNull();
-  const refresh = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Refresh verification')!;
+  const refresh = Array.from(container.querySelectorAll('button')).find(button => button.textContent === 'Refresh checks')!;
   await act(async () => refresh.click());
-  expect(container.querySelector('[role="status"]')?.textContent).toContain('Checked: Cloudflare can validate the website host only after its record changes.');
-  expect(request.mock.calls).toHaveLength(2);
+  expect(container.textContent).toContain('Checks refreshed. Review the current status below.');
+  expect(container.textContent).toContain('Traffic has not been confirmed live');
+  expect(request.mock.calls).toHaveLength(3);
 });
 
 it('does not show a distributing notice when there is no publication in progress', async () => {

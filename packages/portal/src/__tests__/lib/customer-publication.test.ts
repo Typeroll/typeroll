@@ -80,7 +80,7 @@ async function prepareFromCurrentPublication() {
   await executeCustomerPublication(baselineArgs);
   const target=await getStore().getDoc<any>(`${paths.site('org','site')}/publishing_targets/main`);
   expect(target.last_publication,JSON.stringify(await getStore().getDoc(paths.deploy('org','site','baseline')))).toBeTruthy();
-  await getStore().updateDoc(jobPath,{publication_intent:'domain_prepare',domain_revision:(await getSiteDomains('org','site')).revision,source_publication:target.last_publication});
+  await getStore().updateDoc(jobPath,{publication_intent:'domain_prepare',domain_revision:((await getSiteDomains('org','site')).publication_revision ?? (await getSiteDomains('org','site')).revision),source_publication:target.last_publication});
   mocks.push.mockClear(); mocks.cloudflare.mockClear(); mocks.deployment=null; mocks.probe.mockResolvedValue(false);
 }
 
@@ -229,11 +229,13 @@ it('a domain-only preparation reuses the public snapshot and does not publish la
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<h1>Unpublished edit</h1>' });
   const domains = await getSiteDomains('org', 'site');
   const next = await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'new.example.com', dns_mode: 'external' });
+  vi.stubEnv('TYPEROLL_SOURCE_SHA', 'c'.repeat(40));
   const nextArgs = { ...args, jobId: 'domain-job' };
   await getStore().setDoc(paths.deploy('org', 'site', nextArgs.jobId), { status: 'queued', publication_intent: 'domain_prepare', domain_revision: next.revision, source_publication: previous });
   mocks.deployment = null;
   expect(await executeCustomerPublication(nextArgs)).toBe('waiting');
   const source = resolvePublicationReferences(JSON.parse(mocks.push.mock.calls.at(-1)![1].files['publication.json']));
+  expect(source.core_commit).toBe('c'.repeat(40));
   expect(source.pages[0].html_content).toContain('https://new.example.com/about?from=home#team');
   expect(source.pages[0].canonical_url).toBe('https://new.example.com/');
   expect(JSON.stringify(source)).not.toContain('Unpublished edit');
@@ -301,6 +303,41 @@ it('clears preview identity under Firestore nested-merge semantics before promot
   expect(mocks.push).toHaveBeenCalledTimes(2);
   expect(mocks.push.mock.calls[1][1].branch).toBe('main');
   expect(mocks.push.mock.calls[1][1].files).toEqual(mocks.push.mock.calls[0][1].files);
+});
+
+it('promotes the verified artifact without dispatching a second shared build', async () => {
+  const store = getStore();
+  await prepareFromCurrentPublication();
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}`) return { name: project, production_branch: 'main' };
+    return provider(route, options);
+  });
+  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  mocks.enqueue.mockResolvedValue({ key: 'same-task' }); mocks.built.mockResolvedValue(null);
+  mocks.verify.mockResolvedValue(true); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  const frozen = (await store.getDoc<any>(jobPath)).git_publication;
+  complete(frozen.branch);
+  const preview = mocks.deployment; mocks.deployment = null;
+  mocks.built.mockResolvedValue({ task: {}, files: { 'index.html': Buffer.from('verified candidate') } });
+  mocks.upload.mockImplementation(async (_client, target) => {
+    const deployment = { ...preview, id: target.branch === 'main' ? 'promoted' : 'deployment', environment: target.branch === 'main' ? 'production' : 'preview', deployment_trigger: { metadata: { commit_hash: target.commit, branch: target.branch } } };
+    mocks.deployment = deployment; return deployment;
+  });
+  await executeCustomerPublication(args);
+  expect((await store.getDoc<any>(jobPath)).phase).toBe('awaiting domain cutover approval');
+  const domains = await getSiteDomains('org', 'site');
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: domains.revision, approved_preparation: domains.preparation });
+  await executeCustomerPublication(args);
+  expect((await store.getDoc<any>(jobPath)).git_publication.build_task_key).toBe('same-task');
+  mocks.deployment = null;
+  await executeCustomerPublication(args);
+  expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+  expect(mocks.upload).toHaveBeenCalledTimes(2);
+  expect(mocks.upload.mock.calls[0][2]).toEqual(mocks.upload.mock.calls[1][2]);
+  expect((await store.getDoc<any>(jobPath)).status).toBe('succeeded');
 });
 
 it('freezes the Hosting Group and hosting account independently from the organization connection', async () => {
@@ -429,7 +466,7 @@ it('keeps the candidate and existing traffic when the provider cannot prevalidat
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
 });
 
-it('switches one reviewed record only after the validation window is accepted, then waits for Cloudflare validation', async () => {
+it.each(['live', 'timeout', 'manual rollback'])('switches one reviewed record after acceptance and handles %s under the publication lease', async (outcome) => {
   const store = getStore();
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await store.updateDoc(siteDomainConfigPath('org', 'site'), { active });
@@ -442,7 +479,7 @@ it('switches one reviewed record only after the validation window is accepted, t
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => {
     if (route.includes('/domains/')) return validated ? { status: 'active' } : { status: 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
-    if (route === '/zones/zone/dns_records/existing' && options?.method === 'PATCH') { records.splice(0, 1, { id: 'existing', ...options.body }); return {}; }
+    if (route === '/zones/zone/dns_records/existing' && ['PATCH', 'PUT'].includes(options?.method)) { records.splice(0, 1, { id: 'existing', ...options.body }); return {}; }
     if (route.includes('/dns_records') && !options?.method) return records;
     return provider(route, options);
   });
@@ -462,10 +499,26 @@ it('switches one reviewed record only after the validation window is accepted, t
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(records[0]).toMatchObject({ type: 'CNAME', content: `${project}.pages.dev`, proxied: true });
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'waiting for Cloudflare to validate www.example.com after the approved switch',
-    verification_message: expect.stringContaining('restore A www.example.com 192.0.2.10 (DNS only)') });
+    verification_message: expect.stringContaining('Previous destination: A www.example.com 192.0.2.10 (DNS only)') });
+  if (outcome === 'timeout') {
+    await store.updateDoc(`${paths.site('org', 'site')}/domain_cutovers/${prepared.candidate!.id}`, { deadline_at: Date.now() - 1 });
+    await executeCustomerPublication(args);
+    expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_cutover_timeout' } });
+    expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10', proxied: false });
+    expect(await getSiteDomains('org', 'site')).toMatchObject({ active, rollback_status: 'rolled_back' });
+    return;
+  }
   validated = true;
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com', verification_message: null });
+  if (outcome === 'manual rollback') {
+    await store.updateDoc(siteDomainConfigPath('org', 'site'), { rollback_requested: true, state: 'distributing' });
+    await store.updateDoc(jobPath, { status: 'running', phase: 'restoring previous domain traffic' });
+    await executeCustomerPublication(args);
+    expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', phase: 'previous traffic restored' });
+    expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10', proxied: false });
+    expect(await getSiteDomains('org', 'site')).toMatchObject({ active, rollback_status: 'rolled_back' });
+  }
 });
 
 it('explains the observed verification failure when the observation window expires', async () => {
@@ -794,7 +847,7 @@ it('keeps normal publication usable while a candidate awaits approval and reject
   const prepared=await getSiteDomains('org','site');
   expect(prepared.state).toBe('ready_to_switch');
   const {prepareDomainTransition} = await import('../../lib/publishing/domain-transition');
-  expect(await prepareDomainTransition('org','site',{revision:prepared.revision})).toEqual({job_id:args.jobId,already_running:true});
+  expect(await prepareDomainTransition('org','site',{revision:prepared.revision})).toMatchObject({job_id:args.jobId,reused_candidate:true});
   expect((await store.getDoc<any>(`${paths.site('org','site')}/publishing_targets/main`)).job_id).toBeNull();
   await store.updateDoc(paths.page('org','site','home'),{html_content:'<h1>New current content</h1>'});
   const next={...args,jobId:'current-update'};

@@ -19,8 +19,8 @@ export interface DomainPreparation {
   previous_records?: Array<{ id: string; type: string; name: string; content: string; proxied?: boolean; ttl?: number }>;
 }
 
-export function trafficFingerprint(records: Array<{ id: string; type: string; content: string; proxied?: boolean }>) {
-  return digest(JSON.stringify(records.map(({ id, type, content, proxied }) => ({ id, type, content, proxied })).sort((a, b) => a.id.localeCompare(b.id))));
+export function trafficFingerprint(records: Array<{ id: string; type: string; content: string; proxied?: boolean; [key: string]: any }>) {
+  return digest(JSON.stringify(records.map(({ id, type, content, proxied, ttl, comment, tags, settings }) => ({ id, type, content, proxied, ttl, comment: comment ?? '', tags: [...tags ?? []].sort(), settings: Object.fromEntries(Object.entries(settings ?? {}).sort(([a], [b]) => a.localeCompare(b))) })).sort((a, b) => a.id.localeCompare(b.id))));
 }
 
 export interface ZoneSummary { id: string; name: string; status: string; name_servers?: string[]; activated_on?: string }

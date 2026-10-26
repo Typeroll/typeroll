@@ -91,7 +91,7 @@ test('page lists honor exact site widths for both columns and item presentation'
 });
 
 test('site settings and page metadata expose the new native controls', async ({page}) => {
-  await page.goto('/app/sites/default/settings');
+  await page.goto('/app/sites/default/settings?section=design');
   await page.getByText('Responsive block widths', {exact:true}).click();
   const input = page.getByLabel('tablet starts at (px)');
   await expect(input).toHaveValue('640');

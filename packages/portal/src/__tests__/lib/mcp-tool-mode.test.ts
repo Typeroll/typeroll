@@ -70,3 +70,19 @@ it('advertises and forwards the domain cutover fields through hosted full and co
     expect(put).toHaveBeenCalledTimes(1);
   } finally { put.mockRestore(); post.mockRestore(); }
 });
+
+it('exposes the guided move and guarded onboarding through the hosted transport', async () => {
+  const full = await (await list('full')).json();
+  const guide = full.result.tools.find((tool: any) => tool.name === 'guide_publishing_domain_change');
+  expect(guide.inputSchema.properties.action.enum).toContain('rollback');
+  expect(guide.inputSchema.properties.redirect_hosts.maxItems).toBe(4);
+  expect(guide.inputSchema.properties.validation_timeout_minutes.maximum).toBe(45);
+  expect(full.result.tools.find((tool: any) => tool.name === 'onboard_publishing_domain_zone').inputSchema.properties.confirm_inventory.type).toBe('boolean');
+  const post = vi.spyOn(TyperollClient.prototype, 'post').mockResolvedValue({ state: 'checked' });
+  try {
+    const args = { action: 'preview', revision: 'revision', website_host: 'www.example.com', media_host: null, redirect_hosts: ['example.com'], dns_mode: 'automatic' };
+    const response = await (await list('full', true, 'tools/call', { name: 'guide_publishing_domain_change', arguments: args })).json();
+    expect(response.result.isError).not.toBe(true);
+    expect(post).toHaveBeenCalledWith('site', 'publishing/domain-guide', args);
+  } finally { post.mockRestore(); }
+});

@@ -7,6 +7,35 @@ These tools wrap `/api/v1/sites/{siteId}/settings`, read and patch the same docu
 The same API key works over REST; see
 [calling the same operations over REST](../overview/#calling-the-same-operations-over-rest).
 
+## Find settings in the portal
+
+The section navigation below is available from Core 0.2.101.
+
+Open your Site → **Settings**, then choose a section. On mobile, use the
+**Settings section** selector.
+
+| Section      | What you can change                                                                              |
+| ------------ | ------------------------------------------------------------------------------------------------ |
+| General      | Site name, tagline, logo and icons                                                               |
+| Design       | Colors, typography, responsive widths, image sizes and render version                            |
+| SEO          | Search visibility, title suffix, sharing metadata, structured data, paths and publication checks |
+| Publishing   | Hosting Group, website/media domains and preview address                                         |
+| Integrations | Core modules, email, owner review and cookie consent                                             |
+| Access & AI  | Sharing, API keys, site instructions and AI script permission                                    |
+| Advanced     | Custom scripts, iframe hosts, archiving and content export                                       |
+
+Switching sections keeps your unsaved form edits while you stay on this page.
+**Save** saves only the selected section and confirms the result inline. Save
+each edited section before leaving or reloading. Settings are tied to the
+selected Site version unless a field is explicitly site-wide, such as the
+preview address. Publish to apply changes to the public site.
+
+Domains, rendering upgrades and access controls have their own actions. Saving
+general settings does not change the live domain or publish the website.
+Organization connections are separate: **Publishing → Open Publishing** takes
+an Organization owner/admin to shared GitHub, Cloudflare and media settings.
+REST/MCP callers still use the same settings tools and submit only changed fields.
+
 ## `read_site_settings`
 
 Returns all current site settings.
@@ -310,7 +339,7 @@ deploy. Sites created before render versions existed render with version 1.
 
 ## Site-specific responsive widths (Core 0.2.28)
 
-The five names stay the same, but their widths can be set in **Site settings →
+The five names stay the same, but their widths can be set in **Site settings → Design →
 Typography → Responsive block widths**, or through `update_site_settings`:
 
 ```json

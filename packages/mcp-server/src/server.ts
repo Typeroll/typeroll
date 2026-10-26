@@ -63,7 +63,9 @@ const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
 function effectFor(name: string): ToolEffect {
   if (name === 'page_completeness' || name === 'resolve_page_url') return 'read';
   if (
-    name === 'retry_deploy_verification'
+    name === 'guide_publishing_domain_change'
+    || name === 'onboard_publishing_domain_zone'
+    || name === 'retry_deploy_verification'
     || name === 'list_apps'
     || name === 'read_app'
     || name === 'update_app'

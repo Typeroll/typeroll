@@ -31,68 +31,80 @@ async function noHorizontalScroll(page: Page) {
   }
 }
 
-test('shows pending-zone blockers before preparation and saves redirect hosts', async ({ page }, info) => {
+const guideBase = { title: 'Move site to example.com', revision: 'r1', state: 'declared', traffic_live: false, current_phase: 'declared', next_action: 'prepare', can_prepare: false, checks: [{ id: 'zone', status: 'action_required', message: 'example.com is pending. Review DNS and update nameservers at your registrar.' }], switch_summary: { interruption: 'Cloudflare must validate the host after the switch.', rollback: 'Previous DNS will be restored if verification fails.', validation_timeout_minutes: 15 } };
+const guideEndpoint = `**/api/sites/${site}/publishing/domain-guide`;
+
+test('shows blockers, saves redirect hosts without rebuilding and renders at desktop and mobile widths', async ({ page }, info) => {
   await customerPublishingSite();
   let saved: Record<string, unknown> | null = null;
-  const blockers = [
-    { code: 'zone_not_active', severity: 'blocking', host: 'example.com', message: 'example.com is in the Cloudflare account, but its status is pending, not active.' },
-    { code: 'zone_not_active', severity: 'blocking', host: 'www.example.com', message: 'www.example.com needs the same active zone.' },
-  ];
+  let current = { ...base };
   await page.route(endpoint, async route => {
     if (route.request().method() === 'PUT') {
       saved = route.request().postDataJSON();
-      return route.fulfill({ json: { ...base, revision: 'r2', desired: { ...base.desired, redirect_hosts: ['old.example.com', 'www.example.com'] }, host_checks: { blockers: [], warnings: [] } } });
+      current = { ...base, revision: 'r2', desired: { ...base.desired, redirect_hosts: ['old.example.com', 'www.example.com'] } };
     }
-    await route.fulfill({ json: { ...base, host_checks: { blockers, warnings: [] } } });
+    await route.fulfill({ json: current });
   });
+  await page.route(guideEndpoint, route => route.fulfill({ json: route.request().method() === 'POST' ? { confirmation_required: false, candidate_preserved: true } : { ...guideBase, revision: current.revision, can_prepare: current.revision === 'r2' } }));
   await authenticatePersona(page, 'owner');
-  await page.goto(`/app/sites/${site}/settings`);
-  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Website and media addresses', exact: true }) });
-  await expect(section.getByRole('alert')).toContainText('Resolve before preparing the domain change');
-  await expect(section.getByRole('alert')).toContainText('status is pending');
-  await expect(section.getByRole('button', { name: 'Prepare for domain switch' })).toBeDisabled();
-  await expect(section.getByLabel('Redirect hosts')).toHaveValue('www.example.com');
-  await noHorizontalScroll(page);
-  await page.screenshot({ path: info.outputPath('site-domain-blockers.png'), fullPage: true });
-  await section.getByLabel('Redirect hosts').fill('www.example.com, old.example.com');
-  await section.getByRole('button', { name: 'Save domain settings' }).click();
-  await expect(section.getByText(/Future addresses saved/)).toBeVisible();
+  await page.goto(`/app/sites/${site}/settings?section=publishing`);
+  await expect(page.getByRole('button', { name: 'Prepare for domain switch' })).toBeDisabled();
+  await expect(page.getByText('example.com is pending.', { exact: false })).toBeVisible();
+  await page.getByText('Edit website and media addresses', { exact: true }).click();
+  await page.getByLabel('Redirect hosts', { exact: true }).fill('www.example.com, old.example.com');
+  await page.getByRole('button', { name: 'Save domain settings' }).click();
+  await expect(page.getByText('Future addresses saved.', { exact: false })).toBeVisible();
   expect(saved).toMatchObject({ revision: 'r1', website_host: 'example.com', redirect_hosts: 'www.example.com, old.example.com' });
-  await expect(section.getByLabel('Redirect hosts')).toHaveValue('old.example.com, www.example.com');
-  await expect(section.getByRole('alert')).toHaveCount(0);
-  await expect(section.getByRole('button', { name: 'Prepare for domain switch' })).toBeEnabled();
+  await expect(page.getByLabel('Redirect hosts', { exact: true })).toHaveValue('old.example.com, www.example.com');
+  await expect(page.getByRole('button', { name: 'Prepare for domain switch' })).toBeEnabled();
+  await page.getByText('Edit website and media addresses', { exact: true }).click();
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: info.outputPath(`domain-guide-${width}.png`), fullPage: true, animations: 'disabled' });
+  }
 });
 
-test('requires explicit acceptance of the validation window and shows the redirect rule', async ({ page }, info) => {
+test('requires explicit approval of the validation window and never describes queued switching as live', async ({ page }) => {
   await customerPublishingSite();
   let approval: Record<string, unknown> | null = null;
-  const prepared = { ...base, state: 'ready_to_switch', candidate: { id: 'candidate' },
-    preparation: { hostname: 'example.com', certificate_ready: false, has_existing_traffic: true, requirements: [{ phase: 'traffic', type: 'CNAME', name: 'example.com', content: 'typeroll-synthetic.pages.dev', status: 'required' }],
-      validation_blocker: { code: 'domain_prevalidation_unavailable', resolution: 'accept_validation_window', message: 'Cloudflare Pages validates example.com only after its record points at Pages. To roll back, restore A example.com 192.0.2.10 (DNS only).' } },
-    redirect_preparations: [{ hostname: 'www.example.com', target_host: 'example.com', action: 'approve_cutover', zone_id: 'zone', certificate_ready: true, has_existing_traffic: true, blocker: null,
-      requirements: [{ phase: 'traffic', type: 'A', name: 'www.example.com', content: '192.0.2.1', status: 'required' }],
-      rule: { zone_name: 'example.com', expression: 'http.host eq "www.example.com"', target_url_expression: 'concat("https://example.com", http.request.uri.path)', status: 'configured', managed: true } }],
-    host_checks: { blockers: [], warnings: [] } };
-  await page.route(endpoint, route => route.fulfill({ json: prepared }));
-  await page.route(`**/api/sites/${site}/publishing/cutover`, async route => {
-    approval = route.request().postDataJSON();
-    await route.fulfill({ json: { ...prepared, state: 'distributing' } });
+  let current = { ...guideBase, state: 'ready_to_switch', next_action: 'approve', current_phase: 'awaiting domain cutover approval', candidate: { id: 'candidate' }, preparation: { validation_blocker: { resolution: 'accept_validation_window' } }, checks: [{ id: 'candidate', status: 'ready', message: 'Candidate verified.' }] };
+  await page.route(endpoint, route => route.fulfill({ json: base }));
+  await page.route(guideEndpoint, async route => {
+    if (route.request().method() === 'POST') {
+      approval = route.request().postDataJSON();
+      current = { ...current, state: 'distributing', next_action: 'wait', current_phase: 'verifying public traffic' };
+    }
+    await route.fulfill({ json: current });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto(`/app/sites/${site}/settings`);
-  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Website and media addresses', exact: true }) });
-  await expect(section.getByRole('alert')).toContainText('The switch has a short validation window');
-  await expect(section).toContainText('Redirect from www.example.com to example.com is ready to switch with the website');
-  await section.getByText('DNS records and instructions', { exact: true }).click();
-  await expect(section.getByText('http.host eq "www.example.com"', { exact: true })).toBeVisible();
-  const button = section.getByRole('button', { name: 'Switch website traffic' });
+  await page.goto(`/app/sites/${site}/settings?section=publishing`);
+  await page.getByRole('button', { name: 'Review traffic switch' }).click();
+  const button = page.getByRole('button', { name: 'Approve and switch traffic' });
   await expect(button).toBeDisabled();
-  await noHorizontalScroll(page);
-  await page.screenshot({ path: info.outputPath('site-domain-validation-window.png'), fullPage: true });
-  await section.getByLabel(/accept that example.com does not answer/).check();
+  await page.getByLabel('I accept that the website may be unavailable until Cloudflare validates it.').check();
   await button.click();
-  await expect(section.getByText(/Traffic switch approved/)).toBeVisible();
-  expect(approval).toEqual({ revision: 'r1', candidate_id: 'candidate', accept_validation_window: true });
+  await expect(page.getByText('Switch approved.', { exact: false })).toBeVisible();
+  await expect(page.getByText('Live and verified', { exact: true })).toHaveCount(0);
+  await expect(page.getByText('verifying public traffic', { exact: false })).toBeVisible();
+  expect(approval).toEqual({ action: 'approve', revision: 'r1', candidate_id: 'candidate', accept_validation_window: true, validation_timeout_minutes: 15 });
+});
+
+test('cancelling a rebuild confirmation keeps the saved settings and candidate', async ({ page }) => {
+  await customerPublishingSite();
+  let saves = 0;
+  await page.route(endpoint, route => { if (route.request().method() === 'PUT') saves++; return route.fulfill({ json: base }); });
+  await page.route(guideEndpoint, route => route.fulfill({ json: route.request().method() === 'POST' ? { confirmation_required: true, message: 'These addresses require a new verified candidate.' } : guideBase }));
+  await authenticatePersona(page, 'owner');
+  await page.goto(`/app/sites/${site}/settings?section=publishing`);
+  await page.getByText('Edit website and media addresses', { exact: true }).click();
+  await page.getByLabel('Website host', { exact: true }).fill('new.example.com');
+  page.once('dialog', dialog => dialog.dismiss());
+  await page.getByRole('button', { name: 'Save domain settings' }).click();
+  await expect(page.getByRole('button', { name: 'Save domain settings' })).toBeEnabled();
+  expect(saves).toBe(0);
+  await expect(page.getByLabel('Website host', { exact: true })).toHaveValue('new.example.com');
 });
 
 test('explains future-host builds and warns about frozen noindex before cutover', async ({ page }, info) => {
@@ -102,8 +114,9 @@ test('explains future-host builds and warns about frozen noindex before cutover'
     candidate:{id:'candidate',sitewide_noindex:true,robots_blocked:false},
     preparation:{hostname:'example.com',certificate_ready:true,has_existing_traffic:false,requirements:[]},
     host_checks:{blockers:[],warnings:[]}}}));
+  await page.route(guideEndpoint, route => route.fulfill({json:{...guideBase,state:'ready_to_switch',next_action:'approve',can_prepare:true}}));
   await authenticatePersona(page,'owner');
-  await page.goto(`/app/sites/${site}/settings`);
+  await page.goto(`/app/sites/${site}/settings?section=publishing`);
   await expect(page.getByText(/Normal publication continues at the current test address/)).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('This frozen candidate has noindex enabled');
   await expect(page.getByRole('alert')).toContainText('The prepared candidate uses the last published settings');
@@ -124,23 +137,26 @@ test('only prepares the future-host snapshot after an explicit click and explain
     host_checks: { blockers: [], warnings: [] },
     ...(state === 'outdated' ? { candidate: { id: 'older' }, preparation: { hostname: 'example.com', certificate_ready: true, requirements: [] } } : {}),
   } }));
-  await page.route(`**/api/sites/${site}/publishing/prepare`, route => {
-    calls++;
-    expect(route.request().postDataJSON()).toEqual({ revision: 'r1' });
-    return route.fulfill({ json: { job_id: 'candidate', already_running: false } });
+  await page.route(guideEndpoint, route => {
+    if (route.request().method() === 'POST') {
+      calls++;
+      expect(route.request().postDataJSON()).toEqual({ action: 'prepare', revision: 'r1' });
+      return route.fulfill({ json: { job_id: 'candidate', already_running: false } });
+    }
+    return route.fulfill({ json: { ...guideBase, state, can_prepare: true } });
   });
   await authenticatePersona(page, 'owner');
-  await page.goto(`/app/sites/${site}/settings`);
+  await page.goto(`/app/sites/${site}/settings?section=publishing`);
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Website and media addresses', exact: true }) });
   await expect(section.getByText(/Normal publication continues/)).toBeVisible();
   expect(calls).toBe(0);
   await section.getByRole('button', { name: 'Prepare for domain switch' }).click();
-  await expect(section.getByText(/Preparing the last published content/)).toBeVisible();
+  await expect(section.getByText(/Preparation started or resumed/)).toBeVisible();
   expect(calls).toBe(1);
   state = 'outdated';
   await page.reload();
   await expect(section.getByRole('alert')).toContainText('Newer content is live at the current address');
-  await expect(section.getByRole('button', { name: 'Switch website traffic' })).toHaveCount(0);
+  await expect(section.getByRole('button', { name: 'Review traffic switch' })).toHaveCount(0);
   await expect(section.getByRole('button', { name: 'Prepare for domain switch' })).toBeEnabled();
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 900 });

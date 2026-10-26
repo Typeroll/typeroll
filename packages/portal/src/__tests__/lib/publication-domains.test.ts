@@ -171,3 +171,73 @@ it('rejects a stale publication reservation after an unused hostname was replace
   await saveOrganizationDomains('org', { revision: saved.revision, media_host: 'new.example.com', dns_mode: 'external' });
   await expect(markOrganizationMediaHostUsed('org', saved)).rejects.toMatchObject({ code: 'domain_revision_conflict' });
 });
+
+it('retains a verified candidate when redirect hosts change, but revokes the old traffic approval', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { getSiteDomains, saveSiteDomains, domainPublicationRevision, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
+  const initial = await getSiteDomains('org', 'site');
+  const saved = await saveSiteDomains('org', 'site', { revision: initial.revision, website_host: 'example.com', dns_mode: 'automatic' });
+  const candidate = { source_publication_id: 'baseline', id: 'publication', revision: saved.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString(), job_id: 'job' };
+  const preparation = { hostname: 'example.com', provider_status: 'active', certificate_ready: true, requirements: [], dns_fingerprint: 'before', action: 'approve_cutover', has_existing_traffic: true };
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { candidate, preparation, state: 'ready_to_switch', cutover_approved_revision: saved.revision, approved_preparation: preparation });
+  const added = await saveSiteDomains('org', 'site', { revision: saved.revision, website_host: 'example.com', redirect_hosts: ['www.example.com'], dns_mode: 'automatic' });
+  expect(added.revision).not.toBe(saved.revision);
+  expect(domainPublicationRevision(added)).toBe(saved.revision);
+  expect(added).toMatchObject({ candidate, preparation, state: 'preparing', approved_preparation: null, cutover_approved_revision: null, redirect_preparations: null });
+  const removed = await saveSiteDomains('org', 'site', { revision: added.revision, website_host: 'example.com', dns_mode: 'automatic' });
+  expect(removed.candidate).toEqual(candidate);
+  expect(domainPublicationRevision(removed)).toBe(saved.revision);
+  const unchanged = await saveSiteDomains('org', 'site', { revision: removed.revision, website_host: 'example.com', dns_mode: 'automatic' });
+  expect(unchanged).toEqual(removed);
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { state: 'distributing' });
+  await expect(saveSiteDomains('org', 'site', { revision: removed.revision, website_host: 'example.com', redirect_hosts: ['www.example.com'], dns_mode: 'automatic' })).rejects.toMatchObject({ code: 'domain_cutover_in_progress' });
+});
+
+it('refreshes redirect requirements on an existing candidate without queuing a new publication', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { paths } = await import('@typeroll/shared');
+  const { getSiteDomains, saveSiteDomains, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
+  const { prepareDomainTransition } = await import('../../lib/publishing/domain-transition');
+  const store = getStore();
+  await store.setDoc(paths.site('org', 'site'), { name: 'Site', publishing_mode: 'customer_git' });
+  await store.setDoc(`${paths.site('org', 'site')}/publishing_targets/main`, { last_publication: { publication_id: 'baseline', snapshot_job_id: 'old' } });
+  const initial = await getSiteDomains('org', 'site');
+  const saved = await saveSiteDomains('org', 'site', { revision: initial.revision, website_host: 'example.com', redirect_hosts: ['www.example.com'], dns_mode: 'external' });
+  const candidate = { source_publication_id: 'baseline', id: 'publication', revision: saved.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString(), job_id: 'job' };
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { state: 'ready_to_switch', candidate,
+    preparation: { hostname: 'example.com', provider_status: 'active', certificate_ready: true, requirements: [], dns_fingerprint: 'before', action: 'approve_cutover', has_existing_traffic: true } });
+  await store.setDoc(paths.deploy('org', 'site', 'job'), { status: 'running', version_id: 'main', phase: 'awaiting domain cutover approval', git_publication: { publication_id: 'publication' } });
+  const removed = await saveSiteDomains('org', 'site', { revision: saved.revision, website_host: 'example.com', dns_mode: 'external' });
+  expect(await prepareDomainTransition('org', 'site', { revision: removed.revision })).toEqual({ job_id: 'job', already_running: false, reused_candidate: true, candidate_id: 'publication' });
+  expect((await store.listDocs(paths.deploys('org', 'site'))).map(job => job.id)).toEqual(['job']);
+  expect(await getSiteDomains('org', 'site')).toMatchObject({ state: 'ready_to_switch', candidate });
+});
+
+it('requires explicit confirmation before replacing a verified content candidate', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { getSiteDomains, saveSiteDomains, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
+  const { domainChangeImpact } = await import('../../lib/publishing/domain-impact');
+  const initial = await getSiteDomains('org', 'site');
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { state: 'ready_to_switch', candidate: { id: 'verified', revision: initial.revision }, desired: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  const input = { revision: initial.revision, website_host: 'new.example.com', media_host: null, dns_mode: 'automatic' };
+  expect(await domainChangeImpact('org', 'site', input)).toMatchObject({ confirmation_required: true, estimate_seconds: null });
+  await expect(saveSiteDomains('org', 'site', input)).rejects.toMatchObject({ code: 'domain_rebuild_confirmation_required' });
+  expect((await getSiteDomains('org', 'site')).candidate?.id).toBe('verified');
+  expect(await saveSiteDomains('org', 'site', { ...input, confirm_rebuild: true })).toMatchObject({ state: 'declared', candidate: null });
+});
+
+ it('does not revive an outdated candidate after a redirect-only change', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { getSiteDomains, saveSiteDomains, approveDomainCutover, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
+  const initial = await getSiteDomains('org', 'site');
+  const saved = await saveSiteDomains('org', 'site', { revision: initial.revision, website_host: 'example.com', dns_mode: 'automatic' });
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { state: 'outdated', candidate: { id: 'older', revision: saved.revision, source_publication_id: 'old' } });
+  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'new' } });
+  const updated = await saveSiteDomains('org', 'site', { revision: saved.revision, website_host: 'example.com', redirect_hosts: ['www.example.com'], dns_mode: 'automatic' });
+  expect(updated.state).toBe('outdated');
+  await expect(approveDomainCutover('org', 'site', { revision: updated.revision, candidate_id: 'older' })).rejects.toMatchObject({ code: 'domain_candidate_outdated' });
+});

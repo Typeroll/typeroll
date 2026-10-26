@@ -373,3 +373,17 @@ it.each(['complete', 'fail'])('accepts a valid SEO report larger than the admin 
   expect((await request(action, claim.token, input)).status).toBe(200);
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: action === 'complete' ? 'completed' : 'failed', seo_report: { warning_count: 20 } });
 });
+
+it('recovers a TimeoutError reported by an installed engine and preserves the media checkpoint', async () => {
+  const { key } = await prepare('publication', 100);
+  const first = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  await request('media-checkpoint', first.token, { key, lease_id: first.lease_id, cursor: 25 });
+  const claim = await (await request('claim', runnerToken, { protocol: 1, diagnostics: true })).json();
+  const failure = { key, lease_id: claim.lease_id, stage: 'media', code: 'build_failed', diagnostic: { cause: 'TimeoutError: The operation was aborted due to timeout', lines: [] } };
+  expect((await request('fail', claim.token, failure)).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'queued', media_cursor: 25, error_code: 'media_media_transfer_interrupted' });
+  const next = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect(next).toMatchObject({ key, media_cursor: 25, identity: claim.identity });
+  expect(next.lease_id).not.toBe(claim.lease_id);
+  expect((await request('fail', claim.token, failure)).status).toBe(409);
+});

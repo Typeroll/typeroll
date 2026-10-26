@@ -3,7 +3,7 @@ title: Email Tools
 description: Connect, test and disconnect the site's email provider for form notifications, and turn incoming email forwarding on or off, through MCP or the API.
 ---
 
-These tools manage the same settings as **Settings → Email & notifications** in the portal: the
+These tools manage the same settings as **Settings → Integrations → Email & notifications** in the portal: the
 outgoing email provider that form notifications send through, and forwarding
 for incoming email. They need **admin permission** on the site, just like the
 portal page. An owned site's API key and a site-scoped key are admin; a shared

@@ -333,7 +333,7 @@ test('owners can find GitHub and Cloudflare directly from navigation and site se
     await expect(page.getByRole('heading', { name: 'Publishing', exact: true })).toBeVisible();
     await expect(page.getByText('GitHub and Cloudflare connections for', { exact: false })).toContainText('Typeroll E2E Core');
   }
-  for (const route of ['/app/settings', '/app/sites/e2e-core-site/settings']) {
+  for (const route of ['/app/settings', '/app/sites/e2e-core-site/settings?section=publishing']) {
     await page.goto(route);
     await page.getByRole('link', { name: 'Open Publishing', exact: true }).click();
     await expect(page).toHaveURL(/\/app\/settings\/publishing$/);

@@ -90,3 +90,19 @@ export function navigationContext(type, pageId, compute) {
   const read = () => recordNavigation(pageId, value ??= compute());
   return { ...type, get previous() { return read().previous; }, get next() { return read().next; } };
 }
+
+/** Refresh dependency receipts only after complete normalized render-input equality is proven. */
+export function refreshDependencies(dependencies, resolvers, from, to, replace) {
+  return dependencies.map(original => {
+    const entry = replace(original, from, to);
+    if (entry.kind === 'query') {
+      const result = resolvers.query(entry.config);
+      return { ...entry, members: digest(result.map(item => item.id)), reads: Object.fromEntries(Object.keys(entry.reads).map(index => [index, digest(result[index])])) };
+    }
+    if (entry.kind === 'derived') return { ...entry, hash: digest(resolvers.derived(entry.config)) };
+    if (entry.kind === 'media') return { ...entry, hash: digest(resolvers.media.byUrl.get(entry.url) ?? null) };
+    if (entry.kind === 'backlinks') return { ...entry, hash: digest(resolvers.backlinks[entry.id] ?? null) };
+    if (entry.kind === 'navigation') return { ...entry, hash: digest(resolvers.navigation(entry.id)) };
+    throw new Error('Unknown cached dependency');
+  });
+}

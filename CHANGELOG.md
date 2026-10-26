@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.107 / MCP 0.45.81 — Focused settings and guided domain migration
+
+- Split Site settings into seven linked sections with independent saves and retained unsaved inputs.
+- Add a shared UI/API/MCP domain checklist, explicit DNS inventory review, bounded validation and journaled traffic rollback.
+- Preserve verified candidates when only redirect hosts change; reuse compatible origin-only output and promote the same artifact without a second build.
+- Retry transient media preparation failures in the same frozen job. Share Pages redirect limits between preflight and upload.
+- Retain explicit late domain preparation: normal publication keeps using the active or temporary address, and newer content invalidates an older candidate.
+- Keep design tokens editable in the Design section without resetting unrelated settings.
+
 ## 0.2.106 / MCP 0.45.80 — Site design tokens and migration safeguards (unreleased)
 
 - Make the expanded mobile site selector scroll with the drawer (F33, from PR #82).
