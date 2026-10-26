@@ -227,3 +227,16 @@ The rule of thumb: write a test that reproduces the bug, watch it fail, then fix
 - **`render-preview.ts` + `site-template/components/SEOHead.astro`.** Easier to cover via e2e (one spec that loads a preview and asserts on the HTML).
 
 Pick something off this list when you next touch the area — adding the test is the right time, not "later".
+
+## Permanent-target qualification cost
+
+`target-contract.spec.ts` marks ten HTTP/session/datastore contracts with
+`@server`. They run once per permanent target in `chromium-desktop`, keeping
+all five permission personas, API/MCP/Extension contracts and deep revision
+save/restore. Those checks do not exercise browser rendering.
+The actual browser password login/logout and shell viewport checks still run
+in Chromium desktop, 390px, 320px, Firefox and WebKit. The full remote plan
+therefore has 20 executions instead of 60, with all 12 distinct contracts intact.
+`remote-contract-plan.test.mjs` checks the real Playwright discovery output.
+Do not add `@server` to tests that depend on DOM, browser APIs or viewport behavior.
+Mutable journeys on the shared permanent site remain sequential.

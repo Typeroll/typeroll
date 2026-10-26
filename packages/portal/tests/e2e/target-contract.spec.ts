@@ -13,7 +13,7 @@ function e2eApiHeaders(): Record<string, string> {
   return { Authorization: `Bearer ${key}` };
 }
 
-test('target reports live, ready, and immutable release identity', async ({ request }) => {
+test('target reports live, ready, and immutable release identity', { tag: '@server' }, async ({ request }) => {
   const [health, ready, version, formsReady] = await Promise.all([
     request.get('/api/healthz'),
     request.get('/api/readyz'),
@@ -44,7 +44,7 @@ const accessCases: Array<{
 ];
 
 for (const scenario of accessCases) {
-  test(`${scenario.persona} has the expected Core permission boundary`, async ({ page }) => {
+  test(`${scenario.persona} has the expected Core permission boundary`, { tag: '@server' }, async ({ page }) => {
     await authenticatePersona(page, scenario.persona);
     const read = await page.request.get(`/api/sites/${SITE_ID}/pages/home`);
     expect(read.status()).toBe(scenario.read);
@@ -94,7 +94,7 @@ test('remote password login and logout use the real browser flow', async ({ page
   await expect(page).not.toHaveURL(/\/app(?:\/|$)/);
 });
 
-test('seeded key reaches public API, Apps, and Extensions without leaking secrets', async ({ request }) => {
+test('seeded key reaches public API, Apps, and Extensions without leaking secrets', { tag: '@server' }, async ({ request }) => {
   test.skip(targetKind === 'local', 'The permanent API key belongs only to remote E2E targets');
   const headers = e2eApiHeaders();
   const [sitesResponse, pagesResponse, appsResponse, extensionsResponse] = await Promise.all([
@@ -117,7 +117,7 @@ test('seeded key reaches public API, Apps, and Extensions without leaking secret
   expect(JSON.stringify({ apps, extensions })).not.toMatch(/secret_config_enc|private_config/);
 });
 
-test('hosted MCP initializes with the seeded site key', async ({ request }) => {
+test('hosted MCP initializes with the seeded site key', { tag: '@server' }, async ({ request }) => {
   test.skip(targetKind === 'local', 'The permanent API key belongs only to remote E2E targets');
   const response = await request.post('/api/mcp', {
     headers: {
@@ -172,7 +172,7 @@ test('hosted MCP initializes with the seeded site key', async ({ request }) => {
   expect(Array.isArray(result.result?.content)).toBe(true);
 });
 
-test('Extension issuer discovery and JWKS match the target origin', async ({ request }) => {
+test('Extension issuer discovery and JWKS match the target origin', { tag: '@server' }, async ({ request }) => {
   const [discoveryResponse, jwksResponse] = await Promise.all([
     request.get('/.well-known/typeroll-extension-issuer'),
     request.get('/.well-known/jwks.json'),
@@ -212,7 +212,7 @@ test('authenticated Core shell fits the target viewport', async ({ page }, testI
   });
 });
 
-test('deep block Pages save and restore through the real target datastore', async ({ page }, testInfo) => {
+test('deep block Pages save and restore through the real target datastore', { tag: '@server' }, async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
   const headers = { Origin: portalOrigin };
   const title = `Deep history ${testInfo.project.name} ${Date.now()}`;
