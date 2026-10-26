@@ -419,6 +419,28 @@ Use `page_ids` or `content_type`, to split a large
 repair into reviewable batches. `diff_limit` defaults to 500 and is capped at
 2,000; `truncated` and `additional_diffs` make omitted diffs explicit.
 
+## Public verification diagnostics (Core 0.2.108)
+
+`GET /sites/{siteId}/deploys/{jobId}` and MCP `get_deploy_status` expose the
+saved job's `static_probe` when public distribution verification fails. Alongside
+`checked_at`, `origin`, `route`, expected/actual status, reason and `cf_ray`, the
+candidate adds `final_path`, `redirect_chain`, `response_headers`, and optional
+`body_sample: {sha256, bytes, scope}`. No input schema changes are required.
+
+Redirect paths omit query/fragment/userinfo, and cross-origin destinations are
+not recorded or fetched. Response headers are a parsed allowlist: media type,
+recognized cache directives/status, numeric age/content length, a valid
+publication digest, and the Cloudflare challenge flag. Cookies and arbitrary
+provider headers are excluded. The sample hashes at most the first 4 KiB and
+records `complete`, `prefix` or `partial`; no body text is stored. A transport
+chunk can exceed the hash cap: its full received size still counts toward the
+existing coordinator byte budget. Content mismatches use the original stream,
+without an additional HTTP request. Successful 404 checks do not read the body.
+
+The evidence does not weaken status/content verification. Continue observing the
+same job; a local polling timeout must not create a replacement publication.
+Available from Core 0.2.108; earlier installations do not expose these fields.
+
 ## Publication impact
 
 ```http

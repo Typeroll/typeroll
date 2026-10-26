@@ -6,7 +6,7 @@ export function staticControlsHash(controls: Record<string, string>): string;
 export function changedStaticChecks(current: VerificationCheck[], previous?: VerificationCheck[], reuse?: boolean): VerificationCheck[];
 export function publicStaticChecks(checks: VerificationCheck[], current?: VerificationCheck[]): VerificationCheck[];
 export function selectStaticProbes(checks: VerificationCheck[], changed?: VerificationCheck[]): VerificationCheck[];
-export function verifyResponseBody(response: Response, check: VerificationCheck, limit?: number, observe?: (bytes: number) => void): Promise<boolean>;
+export function verifyResponseBody(response: Response, check: VerificationCheck, limit?: number, observe?: (bytes: number) => void, diagnostics?: { chunk?: (bytes: Uint8Array) => void; complete?: () => void }): Promise<boolean>;
 export function verifyCandidateCheck(origin: string, check: VerificationCheck, options?: { fetchImpl?: typeof fetch; signal?: AbortSignal; observe?: (bytes: number) => void }): Promise<boolean>;
 export function verifyCandidateBatch(plan: { origin: string; checks: VerificationCheck[] }, cursor: number, options?: { fetchImpl?: typeof fetch; signal?: AbortSignal; observe?: (bytes: number) => void }): Promise<{ cursor: number; total: number }>;
 

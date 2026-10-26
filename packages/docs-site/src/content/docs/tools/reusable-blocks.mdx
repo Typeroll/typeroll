@@ -17,6 +17,21 @@ There are two ways to reuse blocks, and they behave differently on purpose:
 Both use [named styles](../styles/) rather than raw HTML, so a reused section
 still follows the site's look.
 
+## Ask an agent to set up reusable sections
+
+A connected [AI agent](../../getting-started/mcp-server/) can inspect an existing
+section and turn it into a global block or save it as a block template. This is
+a useful way to build the reusable design without manually assembling every
+block. Specify whether later changes should update every use or whether each
+Page should have its own editable copy.
+
+For example: "Make this contact strip a global block so its content stays the
+same wherever we use it. Save the feature section as a block template so editors
+can adapt each inserted copy. Show me the affected Pages before deployment."
+
+Review the result in the editor. The MCP/API reference below lists the tools;
+the following sections also explain how to perform the same tasks manually.
+
 ## Global blocks
 
 A global block is one shared source. Header and footer are global blocks that

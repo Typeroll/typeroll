@@ -907,6 +907,30 @@ then retry publishing. A status refresh does not start a replacement build. Brie
 the exact static files are publicly available; the live link remains hidden
 until verification succeeds.
 
+### Diagnose a distribution mismatch
+
+The deployment-status response includes `verification_message` and `static_probe`
+when a public file still has the wrong status or content. Check the observation's
+`checked_at`, route, expected/actual status and Cloudflare `cf_ray` before assuming
+the displayed result is old. A matching publication marker alone does not prove
+that every removed page already returns 404.
+
+**From Core 0.2.108:** failed probes additionally
+report `final_path`, a same-origin `redirect_chain`, selected `response_headers`
+and `body_sample`. The sample contains a SHA-256 fingerprint of at most the first
+4 KiB and its byte count, never response text. `scope` distinguishes a complete
+body, a bounded prefix and an interrupted partial sample. Compare fingerprints
+only with the same byte count and scope. Query parameters, fragments, cookies
+and arbitrary response headers are excluded. A diagnostic fingerprint is evidence
+for troubleshooting, not a replacement for the artifact's full content check.
+
+Different responses from different hosting locations are evidence to investigate;
+they do not by themselves establish a provider bug. Keep the same deployment ID
+while investigating. A local observer timing out does not cancel the server job
+or authorize another publication. If server verification eventually times out,
+use **Retry verification** only after resolving the reported problem; it retains
+the same frozen build.
+
 ## Validate before activation
 
 Core 0.2.22 checks the actual frozen build output before activation. See

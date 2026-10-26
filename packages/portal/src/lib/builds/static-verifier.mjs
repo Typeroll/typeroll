@@ -68,15 +68,17 @@ export function selectStaticProbes(checks, changed = checks) {
 }
 
 /** Hash chunks as they arrive. Only robots.txt needs a small buffer for Cloudflare's managed prefix. */
-export async function verifyResponseBody(response, check, limit = 25 * 1024 * 1024, observe = () => {}) {
+export async function verifyResponseBody(response, check, limit = 25 * 1024 * 1024, observe = () => {}, diagnostics = {}) {
   if (!response.body) return false;
   const hash = createHash('sha256'), robots = []; let size = 0;
   for await (const chunk of response.body) {
+    diagnostics.chunk?.(chunk);
     size += chunk.length; observe(chunk.length);
     if (size > limit) return false;
     hash.update(chunk);
     if (check.route === '/robots.txt' && size <= PROBE_FILE_BYTES) robots.push(Buffer.from(chunk));
   }
+  diagnostics.complete?.();
   if (hash.digest('hex') === check.sha256) return true;
   if (check.route !== '/robots.txt' || size > PROBE_FILE_BYTES) return false;
   const bytes = Buffer.concat(robots), begin = bytes.indexOf('\n# BEGIN Cloudflare Managed content\n');
