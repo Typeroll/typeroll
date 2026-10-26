@@ -107,3 +107,19 @@ it('keeps full and compact schemas aligned after the validator upgrade', async (
   const cutover = tools.find(tool => tool.name === 'approve_publishing_domain_cutover')!.inputSchema;
   expect(cutover.properties?.accept_validation_window).toMatchObject({ type: 'boolean' });
 });
+
+for (const mode of ['compact', 'full'] as const) it(`rejects unknown settings arguments and empty writes in ${mode} MCP`, async () => {
+  const { client, calls } = await connect(mode, { fixedSiteId: undefined, allowedSites: [{ siteId: 'site', permission: 'admin' }] });
+  const call = (args: Record<string, unknown>) => client.callTool(mode === 'compact'
+    ? { name: 'call_admin_tool', arguments: { name: 'update_site_settings', arguments: args } }
+    : { name: 'update_site_settings', arguments: args });
+  for (const args of [{ patch: { tagline: 'Ignored' } }, { settings: { tagline: 'Ignored' } },
+    { tagline: 'Valid', taglin: 'Typo' }, {}, { version: 'redesign' }]) {
+    const result = await call({ site_id: 'site', ...args });
+    expect(result.isError).toBe(true);
+  }
+  expect(calls).toEqual([]);
+  expect((await call({ site_id: 'site', tagline: '', version: 'redesign' })).isError).not.toBe(true);
+  expect(JSON.parse(calls[0].body!)).toEqual({ tagline: '' });
+  expect(calls[0].url).toContain('/settings?version=redesign');
+});
