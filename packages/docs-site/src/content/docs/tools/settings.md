@@ -171,8 +171,49 @@ together with the automatic alternative.
 | ----------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `heading`   | `"Inter"` | Heading font family (Google Fonts name)                                                                                                                                                                                 |
 | `body`      | `"Inter"` | Body font family                                                                                                                                                                                                        |
-| `size_base` | `16`      | Base font size in px                                                                                                                                                                                                    |
+| `size_base` | `16`      | Base font size in px, from 12 to 24                                                                                                                                                                                     |
 | `smoothing` | unset     | `auto` (browser default) or `antialiased`. Unset is `auto` from render version 6 and `antialiased` before it. `antialiased` draws thinner text on macOS and can suit light text on a dark background; `null` clears it. |
+
+### `typography` and `design_scales`
+
+Available in Core 0.2.114 / MCP 0.45.85. Render version 10 provides fluid defaults.
+In **Site settings → Design**, preview your saved role styles and unsaved scale
+controls at 375, 768 and 1280px before saving.
+
+| Setting                    | Default | Range / purpose                                 |
+| -------------------------- | ------- | ----------------------------------------------- |
+| `typography.ratio_mobile`  | `1.2`   | 1.1–1.5; narrow-screen heading scale            |
+| `typography.ratio_desktop` | `1.25`  | 1.1–1.5; wide-screen heading scale              |
+| `typography.rhythm`        | `1`     | 0.5–2; spacing and proportional heading margins |
+| `typography.line_length`   | `65`    | 40–90 characters; prose measure                 |
+
+Set these fields at the top level of `update_site_settings` alongside `fonts`.
+`design_scales.type_size`, `.space` and `.leading` customize named steps.
+A length step accepts a length, a bounded `clamp`, or a responsive map:
+
+```json
+{
+  "typography": {
+    "ratio_mobile": 1.2,
+    "ratio_desktop": 1.25,
+    "rhythm": 1,
+    "line_length": 65
+  },
+  "design_scales": {
+    "space": {
+      "lg": {
+        "mobile": "1.5rem",
+        "desktop": "clamp(1.5rem, 1rem + 1vw, 2.5rem)"
+      }
+    }
+  }
+}
+```
+
+Role styles must refer to steps such as `2xl` and `lg` to follow the scale.
+Existing fixed sizes and explicit part styles keep their precedence. Upgrading
+a render version does not overwrite saved styles. See [Design tokens](../../guides/design-tokens/)
+for the step names, accepted syntax and migration procedure.
 
 ### `contact` object
 
@@ -369,6 +410,7 @@ deploy. Sites created before render versions existed render with version 1.
 | 7       | Video, ratings and carousels: `core/video` embeds YouTube (no-cookie) and Vimeo addresses and plays video files with poster, autoplay, loop, muted, controls and lazy loading; a hero plays a video file as a muted background with a pause button; a testimonial rating shows as stars; carousels get previous/next buttons, dots and optional autoplay with pause. Nothing moves for visitors who prefer reduced motion. See [Blocks](../blocks/#video-hero-video-and-ratings-render-version-7). |
 | 8       | Text on primary, secondary and accent (buttons, badges, tabs, call-to-action sections) is black or white by APCA instead of the WCAG 2 ratio. On mid-dark saturated colours such as teal, green or medium blue, near-black text becomes white, which reads better: white on `#00a19c` is APCA Lc 63.9 against Lc 44 for `#111827`. A text colour chosen in `colors.on_*` applies on every version and does not change. See [Text on theme colours](#text-on-theme-colours).                        |
 | 9       | A container with a shadow (`shadow: "subtle"` or `"header"`) is raised above the blocks after it (`position: relative; z-index: 10`), so the next block's background or image no longer covers the shadow, and menus that open from a shadowed header land above the next block. A sticky container keeps z-index 100. The container becomes the containing block of its absolutely positioned content. The header shadow is `0 2px 6px` instead of `0 2px 5px`. See [Blocks](../blocks/).         |
+| 10      | Fluid typography and spacing scales, proportional editorial heading margins, no role margin on component titles or opening headings, and a configurable prose measure.                                                                                                                                                                                                                                                                                                                             |
 
 ## Site-specific responsive widths (Core 0.2.28)
 

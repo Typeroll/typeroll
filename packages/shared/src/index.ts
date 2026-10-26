@@ -74,5 +74,5 @@ export * from './derived-source.js';
 
 export * from './pages-redirects.js';
 export * from './pages-redirect-limits.mjs';
-export { TOKEN_SCALES, FONT_ROLES, tokenScale, scaleValue, scaleCss, spacingCss, validColor, colorCss, designScalesCss, designScalesError, type TokenScale, type DesignScales } from './design-tokens.js';
+export { TOKEN_SCALES, FONT_ROLES, tokenScale, scaleValue, scaleCss, spacingCss, validColor, colorCss, designScalesCss, designScalesError, resolvedDesignScales, responsiveDesignScalesCss, typographyError, TYPOGRAPHY_DEFAULTS, type TypographySettings, type TokenScale, type DesignScales } from './design-tokens.js';
 export * from './design-token-audit.js';

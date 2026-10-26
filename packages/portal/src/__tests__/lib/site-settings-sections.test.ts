@@ -76,3 +76,14 @@ describe('independent Site settings sections', () => {
     expect(await read()).toEqual(before);
   });
 });
+
+it('round-trips responsive scales and typography without changing another section', async () => {
+  const result=await post({settings_section:'design','design_scales.type_size.xs':'','design_scales.type_size.3xl':'clamp(2rem, 1rem + 2vw, 3rem)','design_scales.space.lg':'{"mobile":"1rem","desktop":"2rem"}','typography.ratio_mobile':'1.2','typography.ratio_desktop':'1.25','typography.rhythm':'1.2','typography.line_length':'68'});
+  expect(result.status).toBe(200);
+  expect(await read()).toMatchObject({site_name:'Original',typography:{rhythm:1.2,line_length:68},design_scales:{space:{lg:{mobile:'1rem',desktop:'2rem'}}}});
+});
+it('rejects malformed responsive JSON before saving',async()=>{
+  const before=await read();
+  expect((await post({settings_section:'design','design_scales.type_size.xs':'{broken'})).status).toBe(400);
+  expect(await read()).toEqual(before);
+});

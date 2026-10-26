@@ -12,3 +12,8 @@ it('accepts named scale settings in the connected MCP schema', () => {
   const tool = settingsTools.find(t => t.name === 'update_site_settings')!;
   expect(z.object(tool.inputSchema!).safeParse({design_scales:{space:{md:'1rem'}}}).success).toBe(true);
 });
+it('exposes responsive scale and fluid controls to hosted and stdio clients',()=>{
+ const schema=z.object(settingsTools.find(t=>t.name==='update_site_settings')!.inputSchema!);
+ expect(schema.safeParse({typography:{ratio_mobile:1.2,rhythm:1.1},design_scales:{type_size:{'3xl':{mobile:'2rem',desktop:'3rem'}}}}).success).toBe(true);
+ expect(schema.safeParse({design_scales:{space:{lg:{phone:'1rem'}}}}).success).toBe(false);
+});

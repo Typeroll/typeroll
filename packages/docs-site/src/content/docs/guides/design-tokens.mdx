@@ -107,3 +107,57 @@ After migration, change primary and surface in a test Version and inspect header
 footer, cards, menus and buttons at mobile, tablet and desktop widths without
 editing their blocks. Restore the test palette. Report dry-run counts separately
 from applied changes, then publish only after the normal approval and checks.
+
+## Fluid typography and component rhythm
+
+Core 0.2.114 / MCP 0.45.85 / capabilities 0.55.0 adds responsive scales.
+Check the connected versions before using this contract. New sites use render
+version 10. For an existing site, test a Version first; upgrading rendering
+and replacing existing roles are separate, deliberate choices.
+
+Use `fonts.size_base` (default 16), `typography.ratio_mobile` (1.2),
+`typography.ratio_desktop` (1.25), `typography.rhythm` (1), and
+`typography.line_length` (65 ch). Set the controls once, then use named type,
+spacing and line-height steps. `apply_standard_styles` uses those steps;
+`overwrite: true` resets existing roles, so review their current values first.
+Explicit sizes and breakpoint overrides still win and are not silently migrated.
+
+Heading role margins belong to editorial flow. Component titles use their own
+padding/gap, and opening headings in containers/sections add no top margin.
+Use role-linked `core/heading` size `auto` or `theme`; explicit hero sizes remain
+deliberate exceptions. Do not compensate with per-card negative margins.
+Compare 375, 768 and 1280px in Site settings → Design and in a full site preview.
+After a rendering upgrade/rebuild, recheck cards, boxed headings, leading text
+and webfonts. Boxes should get their outer air from padding. Keep exceptions
+in decisions.md, and run lint_design_tokens before launch.
+
+### Responsive step overrides
+
+```json
+{
+  "typography": {
+    "ratio_mobile": 1.2,
+    "ratio_desktop": 1.25,
+    "rhythm": 1,
+    "line_length": 65
+  },
+  "design_scales": {
+    "type_size": { "3xl": "clamp(2rem, 1rem + 3vw, 3.5rem)" },
+    "space": { "xl": { "mobile": "2rem", "tablet": "3rem", "desktop": "4rem" } }
+  }
+}
+```
+
+Supported map keys are mobile, tablet, laptop, desktop and wide, using the
+site's breakpoint widths. Missing lower map entries keep the platform default;
+subsequent widths inherit the latest override. A step accepts nonnegative
+px/rem/em lengths or `clamp(min, length + vw, max)` (minus is also supported).
+Line-height steps accept unitless values from 1 to 2, including maps. Unknown
+keys and unsafe CSS are refused. `design_scales` and `typography` each replace
+their complete settings object: read, modify, then write to preserve other overrides.
+
+Fluid default endpoints are 360px and 1280px. rem bounds respect root font
+size, including browser text-size preferences. Prose defaults to the configured
+line length; explicit block widths remain authoritative. The preview uses
+saved role styles with unsaved controls and disables font downloads for
+isolation. Always check the full site with its actual webfonts before publishing.

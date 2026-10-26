@@ -584,15 +584,31 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
   const defaultRoles = new Set<string>();
   const rootByBp = new Map<string, string[]>();
   const rules: string[] = [];
+  if (renderVersion >= 10) rules.push(
+    ':is([data-block="container"],[data-block="semantic-container"])[data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]){margin-block:var(--heading_before_px,0px) var(--heading_after_px,0px)}',
+    ':where([data-block="container"],[data-block="semantic-container"],.block-section-inner) > :is(h1,h2,h3,h4,h5,h6):first-child, :where([data-block="container"],[data-block="semantic-container"],.block-section-inner) > :is([data-block="heading"],[data-block="rich_heading"],[data-block="prose"]):first-child :is(h1,h2,h3,h4,h5,h6):first-child{margin-block-start:0}',
+    '[data-block]:not(:where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"],[data-block="container"],[data-block="semantic-container"],[data-block="section"],[data-block="template_content_slot"])) :where(h1,h2,h3,h4,h5,h6){margin-block:0}',
+  );
   const media = (bp: StyleBreakpoint) => `@media (min-width:${opts.breakpoints[bp]}px)`;
   const pushRoot = (key: string, decls: string[]) => { if (decls.length) rootByBp.set(key, [...(rootByBp.get(key) ?? []), ...decls]); };
   for (const style of styles) {
     const role = style.role as StyleElementRole | undefined;
     if (role && (STYLE_ELEMENT_ROLES as readonly string[]).includes(role)) {
-      const spacing = (props: StyleProps) => /^h[1-6]$/.test(role) ? [props.space_before ? `margin-block-start:${props.space_before}` : '', props.space_after ? `margin-block-end:${props.space_after}` : ''].filter(Boolean).join(';') : '';
+      const spacing = (props: StyleProps) => /^h[1-6]$/.test(role) ? [props.space_before ? `margin-block-start:${scaleCss('space', props.space_before)}` : '', props.space_after ? `margin-block-end:${scaleCss('space', props.space_after)}` : ''].filter(Boolean).join(';') : '';
       const selector = `${role}:not(#\\#)`;
-      if (spacing(style.base)) rules.push(`${selector}{${spacing(style.base)}}`);
-      for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp] && spacing(style.at[bp]!)) rules.push(`${media(bp)}{${selector}{${spacing(style.at[bp]!)}}}`);
+      // Role rhythm belongs to editorial flow, not to component-owned titles.
+      const rhythmSelector = renderVersion >= 10
+        ? `:where([data-block="heading"], [data-block="prose"], .page-content) ${selector}:not(:where([data-block]:not([data-block="heading"]):not([data-block="prose"]):not([data-block="container"]):not([data-block="semantic-container"]):not([data-block="rich_heading"]):not([data-block="section"]):not([data-block="template_content_slot"]) *))`
+        : selector;
+      const opening = ':where([data-block="container"], [data-block="semantic-container"], .block-section-inner) > :where(h1,h2,h3,h4,h5,h6):first-child, :where([data-block="container"], [data-block="semantic-container"], .block-section-inner) > :where([data-block="heading"], [data-block="rich_heading"], [data-block="prose"]):first-child :where(h1,h2,h3,h4,h5,h6):first-child';
+      const rhythm = (value: string) => /^\d+(?:\.\d+)?em$/.test(value) ? `calc(${value} * var(--type-rhythm,1))` : scaleCss('space',value);
+      const emitSpacing = (props: StyleProps) => {
+        if (renderVersion < 10) return spacing(props) ? `${selector}{${spacing(props)}}` : '';
+        if (!/^h[1-6]$/.test(role)) return '';
+        return [props.space_before ? `${rhythmSelector}:not(:where(${opening})){margin-block-start:${rhythm(props.space_before)}}` : '', props.space_after ? `${rhythmSelector}{margin-block-end:${rhythm(props.space_after)}}` : ''].join('');
+      };
+      if (emitSpacing(style.base)) rules.push(emitSpacing(style.base));
+      for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp] && emitSpacing(style.at[bp]!)) rules.push(`${media(bp)}{${emitSpacing(style.at[bp]!)}}`);
       pushRoot('base', roleVariables(role, style.base));
       for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp]) pushRoot(bp, roleVariables(role, style.at[bp]!));
       continue;
@@ -632,21 +648,16 @@ export function stylesForTarget(styles: readonly SiteStyle[] | undefined, target
  * background.
  */
 export const STANDARD_STYLES: readonly SiteStyle[] = [
-  { id: 'body', name: 'Body text', role: 'body', targets: [], base: { size: '1rem', line_height: '1.6', color: 'text' }, at: { desktop: { size: '1.0625rem', line_height: '1.65' } } },
-  { id: 'h1', name: 'Heading 1', role: 'h1', targets: [], base: { size: '2rem', weight: 700, line_height: '1.15', letter_spacing: '-0.02em' }, at: { tablet: { size: '2.5rem' }, desktop: { size: '3rem', line_height: '1.1' } } },
-  { id: 'h2', name: 'Heading 2', role: 'h2', targets: [], base: { size: '1.5rem', weight: 700, line_height: '1.2', letter_spacing: '-0.01em' }, at: { tablet: { size: '1.875rem' }, desktop: { size: '2.25rem', line_height: '1.15' } } },
-  { id: 'h3', name: 'Heading 3', role: 'h3', targets: [], base: { size: '1.25rem', weight: 600, line_height: '1.3' }, at: { tablet: { size: '1.375rem' }, desktop: { size: '1.5rem' } } },
-  { id: 'h4', name: 'Heading 4', role: 'h4', targets: [], base: { size: '1.125rem', weight: 600, line_height: '1.35' }, at: { desktop: { size: '1.25rem' } } },
-  { id: 'h5', name: 'Heading 5', role: 'h5', targets: [], base: { size: '1rem', weight: 600, line_height: '1.4' } },
-  { id: 'h6', name: 'Heading 6', role: 'h6', targets: [], base: { size: '0.875rem', weight: 600, line_height: '1.4', letter_spacing: '0.04em', transform: 'uppercase' } },
+  { id: 'body', name: 'Body text', role: 'body', targets: [], base: { size: 'md', line_height: 'relaxed', color: 'text' } },
+  ...(['3xl','2xl','xl','lg','md','sm'] as const).map((size, i): SiteStyle => ({ id: `h${i+1}`, name: `Heading ${i+1}`, role: `h${i+1}` as StyleElementRole, targets: [], base: { size, weight: i < 2 ? 700 : 600, line_height: i < 2 ? 'tight' : 'snug', space_before: '1em', space_after: '0.5em' } })),
   { id: 'link', name: 'Link', role: 'link', targets: [], base: { color: 'primary', decoration: 'underline' } },
-  { id: 'lead', name: 'Lead', role: 'lead', targets: ['text'], description: 'Introductory paragraph under a page or section heading.', base: { size: '1.125rem', line_height: '1.55' }, at: { tablet: { size: '1.25rem' }, desktop: { size: '1.3125rem', line_height: '1.5' } } },
-  { id: 'eyebrow', name: 'Eyebrow', role: 'eyebrow', targets: ['text', 'heading'], description: 'Short label above a heading.', base: { size: '0.8125rem', weight: 700, line_height: '1.3', letter_spacing: '0.12em', transform: 'uppercase', color: 'primary', space_after: '0.75rem' } },
-  { id: 'small', name: 'Small text', role: 'small', targets: ['text', 'list'], description: 'Notes, captions and fine print.', base: { size: '0.875rem', line_height: '1.5', color: 'text_light' } },
-  { id: 'quote', name: 'Quote', role: 'quote', targets: ['text'], description: 'Pull quote or testimonial.', base: { size: '1.25rem', line_height: '1.5', italic: true, padding: '0 0 0 1rem', border: { width: '3px', style: 'solid', color: 'primary', sides: 'left' } }, at: { desktop: { size: '1.375rem' } } },
+  { id: 'lead', name: 'Lead', role: 'lead', targets: ['text'], description: 'Introductory paragraph.', base: { size: 'lg', line_height: 'normal' } },
+  { id: 'eyebrow', name: 'Eyebrow', role: 'eyebrow', targets: ['text', 'heading'], base: { size: 'sm', weight: 700, line_height: 'snug', letter_spacing: '0.12em', transform: 'uppercase', color: 'primary', space_after: 'sm' } },
+  { id: 'small', name: 'Small text', role: 'small', targets: ['text', 'list'], base: { size: 'sm', line_height: 'normal', color: 'text_light' } },
+  { id: 'quote', name: 'Quote', role: 'quote', targets: ['text'], base: { size: 'lg', line_height: 'normal', italic: true, padding: 'none none none md', border: { width: '3px', style: 'solid', color: 'primary', sides: 'left' } } },
   { id: 'button', name: 'Button', role: 'button', targets: ['button'], description: 'Primary call to action.', base: { background: 'primary', color: 'on_primary', weight: 600, padding: '0.75rem 1.25rem', radius: '0.5rem', decoration: 'none' } },
   { id: 'button-secondary', name: 'Secondary button', role: 'button_secondary', targets: ['button'], description: 'Secondary action next to a primary button.', base: { background: 'transparent', color: 'primary', weight: 600, padding: '0.6875rem 1.1875rem', radius: '0.5rem', decoration: 'none', border: { width: '1px', style: 'solid', color: 'primary' } } },
-  { id: 'section', name: 'Section', role: 'section', targets: ['container'], description: 'Vertical rhythm for a page section.', base: { padding: '3rem 0' }, at: { tablet: { padding: '4rem 0' }, desktop: { padding: '6rem 0' } } },
+  { id: 'section', name: 'Section', role: 'section', targets: ['container'], description: 'Vertical rhythm for a page section.', base: { padding: 'xl lg' } },
 ];
 
 /** The style library a newly created site starts with. */

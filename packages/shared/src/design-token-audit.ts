@@ -31,8 +31,9 @@ function rgb(value: string): number[] | null {
   const match = hex.match(/^rgb\(\s*(\d+)\s*[, ]\s*(\d+)\s*[, ]\s*(\d+)\s*\)$/);
   return match && match.slice(1).every(n => +n <= 255) ? match.slice(1).map(Number) : null;
 }
-function lengthPx(value: string | number, base: number): number | null {
+function lengthPx(value: unknown, base: number): number | null {
   if (typeof value === 'number') return value;
+  if (typeof value !== 'string') return null;
   const m = value.match(/^(\d+(?:\.\d+)?)(px|rem|em)?$/);
   return m ? +m[1] * (m[2] === 'rem' || m[2] === 'em' ? base : 1) : null;
 }

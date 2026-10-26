@@ -1,3 +1,6 @@
+import { designScalesError, typographyError } from './design-scale-validation.mjs';
+export { designScalesError, typographyError, scaleLength } from './design-scale-validation.mjs';
+import { BREAKPOINT_ORDER, resolveBreakpointWidths, type ResponsiveValue, type BreakpointWidths } from './breakpoints.js';
 import type { FieldDefinition } from './types.js';
 
 export const PALETTE_TOKENS = ['primary', 'secondary', 'accent', 'background', 'surface', 'surface_hover', 'text', 'text_light'] as const;
@@ -10,7 +13,7 @@ export const TOKEN_SCALES = {
   leading: { tight: '1.1', snug: '1.3', normal: '1.5', relaxed: '1.65', loose: '1.8' },
 } as const;
 export type TokenScale = keyof typeof TOKEN_SCALES;
-export type DesignScales = Partial<Record<TokenScale, Record<string, string>>>;
+export type DesignScales = Partial<Record<TokenScale, Record<string, ResponsiveValue<string>>>>;
 
 export function tokenScale(field: FieldDefinition): TokenScale | undefined {
   if (field.design_token) return field.design_token;
@@ -61,20 +64,41 @@ export function colorCss(value: string): string {
   return (COLOR_TOKENS as readonly string[]).includes(value)
     ? `var(--color-${value.replace(/_/g, '-')})` : validColor(value) ? value : '';
 }
-export function designScalesError(value: unknown): string | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return 'design_scales must be an object';
-  for (const [scale, steps] of Object.entries(value)) {
-    if (!Object.hasOwn(TOKEN_SCALES, scale)) return `Unknown design scale: ${scale}`;
-    if (!steps || typeof steps !== 'object' || Array.isArray(steps)) return `design_scales.${scale} must be an object`;
-    for (const [step, val] of Object.entries(steps)) {
-      if (!Object.hasOwn(TOKEN_SCALES[scale as TokenScale], step)) return `Unknown ${scale} step: ${step}`;
-      if (typeof val !== 'string' || !(scale === 'leading' ? /^(?:1(?:\.\d+)?|2(?:\.0+)?)$/ : /^(?:0|\d+(?:\.\d+)?(?:px|rem|em))$/).test(val)) return `design_scales.${scale}.${step} must be ${scale === 'leading' ? 'a line height from 1 to 2' : 'a nonnegative px/rem/em length'}`;
-    }
-  }
-  return null;
+export interface TypographySettings { ratio_mobile?: number; ratio_desktop?: number; rhythm?: number; line_length?: number }
+export const TYPOGRAPHY_DEFAULTS = { ratio_mobile: 1.2, ratio_desktop: 1.25, rhythm: 1, line_length: 65 } as const;
+const number = (value: number) => Number(value.toFixed(5));
+/** Fluid endpoints at 360/1280px. rem bounds preserve reader font preferences. */
+function fluid(min: number, max: number, base: number): string {
+  if (min === max) return `${number(min)}rem`;
+  const slope = (max - min) * base / 920;
+  return `clamp(${number(Math.min(min,max))}rem, ${number(min - slope * 360 / base)}rem ${slope >= 0 ? '+' : '-'} ${number(Math.abs(slope) * 100)}vw, ${number(Math.max(min,max))}rem)`;
 }
-export function designScalesCss(scales?: DesignScales): string {
-  // Validate even persisted values; invalid old/imported settings cannot inject CSS.
+export function resolvedDesignScales(scales?: DesignScales, typography?: TypographySettings, fluidDefaults = false, base = 16): DesignScales {
+  const t = { ...TYPOGRAPHY_DEFAULTS, ...(!typographyError(typography) ? typography : {}) };
+  const defaults: DesignScales = structuredClone(TOKEN_SCALES);
+  if (fluidDefaults) {
+    const powers: Record<string,number> = { xs:-2, sm:-1, md:0, lg:1, xl:2, '2xl':3, '3xl':5 };
+    defaults.type_size = Object.fromEntries(Object.entries(powers).map(([step,power]) => [step,fluid(t.ratio_mobile ** power, t.ratio_desktop ** power, base)]));
+    defaults.space = Object.fromEntries(Object.entries({ none:0, xs:0.25, sm:0.5, md:1, lg:1.5, xl:3 }).map(([step,n]) => [step, fluid(n * t.rhythm, n * t.rhythm * (n >= 1 ? 1.5 : 1), base)]));
+  }
   const overrides = scales && !designScalesError(scales) ? scales : {};
-  return Object.entries(TOKEN_SCALES).flatMap(([scale, defaults]) => Object.entries({ ...defaults, ...overrides[scale as TokenScale] }).map(([step, value]) => `--${scale.replace('_', '-')}-${step}:${value};`)).join('');
+  return Object.fromEntries(Object.entries(defaults).map(([key, steps]) => [key, Object.fromEntries(
+    Object.entries({ ...steps, ...overrides[key as TokenScale] }).map(([step, value]) => [step,
+      typeof value === 'string' ? value : { mobile: steps[step], ...value },
+    ]),
+  )]));
+}
+/** Root declarations only; media queries are emitted outside :root. */
+export function designScalesCss(scales?: DesignScales): string {
+  return Object.entries(resolvedDesignScales(scales)).flatMap(([scale, steps]) => Object.entries(steps).flatMap(([step, value]) => {
+    const scalar = typeof value === 'string' ? value : value.mobile ?? TOKEN_SCALES[scale as TokenScale][step as never];
+    return scalar ? [`--${scale.replace('_', '-')}-${step}:${scalar};`] : [];
+  })).join('');
+}
+export function responsiveDesignScalesCss(scales: DesignScales, widths: BreakpointWidths = resolveBreakpointWidths()): string {
+  if (designScalesError(scales)) return '';
+  return BREAKPOINT_ORDER.filter(bp => bp !== 'mobile').map(bp => {
+    const declarations = Object.entries(scales).flatMap(([scale, steps]) => Object.entries(steps).flatMap(([step, value]) => typeof value !== 'string' && value[bp] ? [`--${scale.replace('_', '-')}-${step}:${value[bp]};`] : []));
+    return declarations.length ? `@media(min-width:${widths[bp]}px){:root{${declarations.join('')}}}` : '';
+  }).join('');
 }

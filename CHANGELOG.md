@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.114 (candidate)
+
+- Add fluid type/spacing defaults with mobile and desktop ratios, rhythm and
+  prose line length. Named scales accept responsive maps and safe clamp values.
+- Add a sandboxed three-width typography preview in Site settings → Design.
+- Render version 10 scopes heading margins to editorial flow and removes top
+  role margins from opening boxed headings. Component padding/gaps own titles.
+  Existing render versions stay unchanged; preview cards/boxes before upgrading
+  and rebuilding. Standard styles now use named steps; saved roles are preserved.
+- Report unclaimed build steps separately, revoke expired queued steps without
+  replacement execution, and distinguish waiting for another publication from
+  a worker outage. Classify GitHub 422 failures without exposing provider data.
+- MCP 0.45.85 exposes responsive scales and typography; updated design/migration
+  recipes and starter QA check heading spacing at three widths.
+
+
 ## 0.2.113 / MCP 0.45.84 — Security follow-ups
 
 Sessions

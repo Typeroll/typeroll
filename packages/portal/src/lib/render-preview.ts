@@ -22,7 +22,7 @@ import type {
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
-  CONTENT_WELL_CSS, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS,
+  contentWellCss, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -574,7 +574,7 @@ ${settings.favicon ? `<link rel="icon" href="${escapeAttr(settings.favicon)}" />
 ${settings.apple_touch_icon ? `<link rel="apple-touch-icon" sizes="180x180" href="${escapeAttr(settings.apple_touch_icon)}" />` : ''}
 ${settings.icon_192 ? `<link rel="icon" type="image/png" sizes="192x192" href="${escapeAttr(settings.icon_192)}" />` : ''}
 <style>${siteThemeCss(settings)}</style>
-<style>${CONTENT_WELL_CSS}</style>
+<style>${contentWellCss(resolveRenderVersion(settings.render_version))}</style>
 ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>${
       // The async-CSS pattern flips rel from preload to stylesheet in an
       // inline onload handler. The editor canvas serves `script-src 'none'`,

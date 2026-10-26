@@ -3,8 +3,9 @@ import { SITE_SETTINGS_SECTIONS, isSiteSettingsSection } from '../../../../lib/s
 import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
-import { TOKEN_SCALES, defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
+import { TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
+import TypographyPreview from '../../../../components/TypographyPreview';
 import OnColorFields from '../../../../components/OnColorFields';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
@@ -23,6 +24,8 @@ const sectionInfo = SITE_SETTINGS_SECTIONS.find(item => item.id === section)!;
 const membership = session.orgId === orgId ? await organizationMembership(session.userId, orgId) : null;
 const canManagePublishing = membership?.role === 'owner' || membership?.role === 'admin';
 
+const scaleInput = (value: unknown): string => value && typeof value === 'object' ? JSON.stringify(value) : typeof value === 'string' ? value : '';
+const typographyLabels: Record<string,string> = {ratio_mobile:'Phone scale ratio',ratio_desktop:'Desktop scale ratio',rhythm:'Spacing rhythm',line_length:'Maximum prose line length (ch)'};
 const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
 const archived = isArchivedSite(site);
 const render = renderVersionStatus(settings.render_version);
@@ -144,13 +147,19 @@ const domainBlocksArchiving =
         <input id="setting-image_sizes_default" name="image_sizes_default" value={settings.image_sizes_default ?? ''} placeholder="(max-width: 640px) 360px, 560px" />
         <p class="muted text-sm">Site-wide <code>sizes</code> for responsive images, telling the browser how wide images actually render so it picks the smallest sufficient variant. A page can override this, and a per-image <code>sizes</code> attribute wins over both. Leave blank for the generic <code>(max-width: 768px) 100vw, 800px</code> default.</p>
       </div>
+      <p>Base size below controls all rem-based sizes. Render version 10 adds fluid defaults; explicit role and step overrides keep their values.</p>
+      {Object.entries(TYPOGRAPHY_DEFAULTS).map(([key, fallback]) => <div class="field">
+        <label for={`typography-${key}`}>{typographyLabels[key]}</label>
+        <input id={`typography-${key}`} name={`typography.${key}`} type="number" min={key === 'line_length' ? 40 : key === 'rhythm' ? 0.5 : 1.1} max={key === 'line_length' ? 90 : key === 'rhythm' ? 2 : 1.5} step={key === 'line_length' ? 1 : 0.01} required value={settings.typography?.[key as keyof typeof TYPOGRAPHY_DEFAULTS] ?? fallback} />
+      </div>)}
+      <TypographyPreview settings={settings} client:load />
       <details>
         <summary>Named typography and spacing scales</summary>
-        <p>Blocks can use these step names instead of fixed pixels. Empty fields use the default shown. Changes apply to every block using that step.</p>
+        <p>Blocks can use these step names instead of fixed pixels. Empty fields use platform defaults (fluid on render version 10). Enter a length, clamp(1.5rem, 1rem + 2vw, 3rem), or a JSON map such as <code>{'{"mobile":"1rem","desktop":"2rem"}'}</code>. Changes apply to every block using that step.</p>
         {Object.entries(TOKEN_SCALES).map(([scale, steps]) => <fieldset>
           <legend>{scale.replace('_', ' ')}</legend>
           {Object.entries(steps).map(([step, fallback]) => <div class="field">
-            <label>{step}</label><input name={`design_scales.${scale}.${step}`} value={settings.design_scales?.[scale as keyof typeof TOKEN_SCALES]?.[step] ?? ''} placeholder={fallback} />
+            <label>{step}</label><input name={`design_scales.${scale}.${step}`} value={scaleInput(settings.design_scales?.[scale as keyof typeof TOKEN_SCALES]?.[step])} placeholder={fallback} />
           </div>)}
         </fieldset>)}
       </details>

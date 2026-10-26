@@ -9,6 +9,7 @@
  * intended output, update the reference with `vitest -u` and note it in the
  * changelog. See docs/plans/design-system-and-render-versions.md.
  */
+import { LEGACY_STANDARD_STYLES } from './fixtures/legacy-standard-styles.js';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -18,7 +19,7 @@ import {
   renderBlocks,
   collectBlockAssets,
   BLOCKS_RUNTIME_CSS,
-  CONTENT_WELL_CSS,
+  contentWellCss,
   FORM_SHELL_CSS,
   WEBFONT_FALLBACK_CSS,
   RENDER_VERSIONS,
@@ -99,9 +100,9 @@ const SATURATED_COLORS = { ...defaultSiteSettings.colors, primary: '#3b82f6', se
 function themeColorCss(version: number): string {
   const breakpoints = resolveBreakpointWidths(undefined);
   return [
-    ['siteStylesCss (standard styles, default palette)', siteStylesCss(newSiteStyles(), { breakpoints, colors: defaultSiteSettings.colors, renderVersion: version })],
+    ['siteStylesCss (standard styles, default palette)', siteStylesCss(version < 10 ? LEGACY_STANDARD_STYLES : newSiteStyles(), { breakpoints, colors: defaultSiteSettings.colors, renderVersion: version })],
     ['siteStylesCss (no styles, saturated palette)', siteStylesCss([], { breakpoints, colors: SATURATED_COLORS, renderVersion: version })],
-    ['siteStylesCss (standard styles, saturated palette)', siteStylesCss(newSiteStyles(), { breakpoints, colors: SATURATED_COLORS, renderVersion: version })],
+    ['siteStylesCss (standard styles, saturated palette)', siteStylesCss(version < 10 ? LEGACY_STANDARD_STYLES : newSiteStyles(), { breakpoints, colors: SATURATED_COLORS, renderVersion: version })],
   ].map(([name, value]) => `/* ${name} */\n${value}`).join('\n\n') + '\n';
 }
 
@@ -110,7 +111,7 @@ for (const { version } of RENDER_VERSIONS) {
     it('keeps the shared platform CSS', async () => {
       const css = [
         ['BLOCKS_RUNTIME_CSS', BLOCKS_RUNTIME_CSS],
-        ['CONTENT_WELL_CSS', CONTENT_WELL_CSS],
+        ['CONTENT_WELL_CSS', contentWellCss(version)],
         ['FORM_SHELL_CSS', FORM_SHELL_CSS],
         ['WEBFONT_FALLBACK_CSS', WEBFONT_FALLBACK_CSS],
         // Head CSS that depends on the render version (font smoothing from v6).

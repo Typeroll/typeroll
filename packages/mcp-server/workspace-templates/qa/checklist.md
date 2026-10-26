@@ -57,3 +57,9 @@ Follow workflows/page-notes.md and pages/README.md. Create notes during migratio
 read before edits, update afterward, check external links at each editorial review,
 and archive notes for confirmed removed Pages under pages/archived/. Refreshing
 generated facts never counts as a completed review. Keep notes out of public output.
+
+- After a Core rendering upgrade, compare typography and spacing at 375, 768
+  and 1280px. Opening headings in cards, boxes and sections must not add the
+  editorial heading's top margin. Check actual fonts as well as the Site settings
+  scale preview. Run `node scripts/typeroll/check_heading_spacing.cjs <origin>`
+  and review deliberate exceptions in decisions.md.

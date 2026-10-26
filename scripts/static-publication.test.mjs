@@ -193,6 +193,7 @@ const FULL_SETTINGS = {
   responsive_breakpoints: { tablet: 600, laptop: 1000, desktop: 1300, wide: 1600 },
   trailing_slash: 'never', iframe_allowed_hosts: ['www.youtube.com'],
   colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', surface_hover:'#dddddd', text: '#000000', text_light: '#555555', on_primary: '#ffffff', on_secondary: '#fff', on_accent: '#111827' },
+  typography: {ratio_mobile:1.2,ratio_desktop:1.25,rhythm:1.1,line_length:70},
   design_scales: { type_size:{xl:'1.5rem'}, space:{md:'1rem'}, leading:{normal:'1.5'} },
   fonts: { heading: 'Inter', body: 'Inter', mono:'Roboto Mono', size_base: 17, smoothing: 'antialiased' },
   contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
@@ -475,10 +476,11 @@ test('design tokens survive frozen publication and invalidate its identity when 
   const value = input(); value.settings = structuredClone(FULL_SETTINGS);
   const before = projectStaticPublication(value, identity);
   assert.deepEqual(before.settings.design_scales, FULL_SETTINGS.design_scales);
+  assert.deepEqual(before.settings.typography, FULL_SETTINGS.typography);
   assert.equal(before.settings.fonts.mono,'Roboto Mono');
   assert.equal(before.settings.colors.surface_hover,'#dddddd');
-  value.settings.design_scales.space.md = '2rem';
+  value.settings.design_scales.space.md = {mobile:'1rem',desktop:'clamp(2rem, 1rem + 2vw, 3rem)'};
   assert.notEqual(createRenderPlan(projectStaticPublication(value, identity), {files:{}}).globalKey, createRenderPlan(before, {files:{}}).globalKey);
   value.settings.design_scales.space.md = '2px;display:none';
-  assert.throws(() => projectStaticPublication(value, identity), /Invalid public design scale value/);
+  assert.throws(() => projectStaticPublication(value, identity), /Invalid public design_scales/);
 });

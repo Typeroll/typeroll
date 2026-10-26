@@ -173,8 +173,8 @@ describe('siteStylesCss', () => {
 
   it('emits element roles as variables and class styles as boosted classes per breakpoint', () => {
     const css = siteStylesCss([...STANDARD_STYLES.filter(s => s.role === 'h2'), eyebrow], opts);
-    expect(css).toContain('--type-h2:1.5rem');
-    expect(css).toMatch(/@media \(min-width:1280px\)\{:root\{[^}]*--type-h2:2.25rem/);
+    expect(css).toContain('--type-h2:var(--type-size-2xl)');
+    expect(css).not.toMatch(/--type-h2:[0-9]/);
     expect(css).toContain('.s-eyebrow:not(#\\#){font-size:0.8rem;font-weight:700;text-transform:uppercase;color:var(--color-primary)}');
     expect(css).toContain('@media (min-width:1280px){.s-eyebrow:not(#\\#){font-size:0.9rem}}');
     expect(css).toContain('--color-on-primary:#ffffff');

@@ -113,3 +113,26 @@ uses the same color-mix() recipe as the header.
   match what's already there.
 - Choosing a new palette or fonts is brand work (the MCP recipe `tr-brand`),
   not this reference.
+
+## Fluid typography and component rhythm
+
+Core 0.2.114 / MCP 0.45.85 / capabilities 0.55.0 adds responsive scales.
+Check the connected versions before using this contract. New sites use render
+version 10. For an existing site, test a Version first; upgrading rendering
+and replacing existing roles are separate, deliberate choices.
+
+Use `fonts.size_base` (default 16), `typography.ratio_mobile` (1.2),
+`typography.ratio_desktop` (1.25), `typography.rhythm` (1), and
+`typography.line_length` (65 ch). Set the controls once, then use named type,
+spacing and line-height steps. `apply_standard_styles` uses those steps;
+`overwrite: true` resets existing roles, so review their current values first.
+Explicit sizes and breakpoint overrides still win and are not silently migrated.
+
+Heading role margins belong to editorial flow. Component titles use their own
+padding/gap, and opening headings in containers/sections add no top margin.
+Use role-linked `core/heading` size `auto` or `theme`; explicit hero sizes remain
+deliberate exceptions. Do not compensate with per-card negative margins.
+Compare 375, 768 and 1280px in Site settings → Design and in a full site preview.
+After a rendering upgrade/rebuild, recheck cards, boxed headings, leading text
+and webfonts. Boxes should get their outer air from padding. Keep exceptions
+in decisions.md, and run lint_design_tokens before launch.

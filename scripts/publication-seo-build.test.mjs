@@ -13,7 +13,7 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
   const page = (id, extra = {}) => ({ id, title: id, slug: id, status: 'published', content_mode: 'html', html_content: `<h1>${id}</h1>`, ...extra });
   for (const slash of ['always', 'never']) {
     const input = {
-      site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', trailing_slash: slash, colors: {surface:'#f8fafc'}, fonts: {mono:'Roboto Mono'}, design_scales:{space:{lg:'2rem'}}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
+      site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', render_version: 10, typography:{ratio_mobile:1.2,ratio_desktop:1.3,rhythm:1.2,line_length:68}, trailing_slash: slash, colors: {surface:'#f8fafc'}, fonts: {mono:'Roboto Mono'}, design_scales:{space:{lg:{mobile:'2rem',desktop:'clamp(2rem, 1rem + 2vw, 4rem)'}}}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
       pages: [page('home', { slug: '', html_content: '<h1>Home</h1><a href="/states/">States</a><a href="https://example.test/docs/">Documentation</a><img alt="" src="/decorative.svg">' }), page('companies'),
         page('abc', { content_type: 'supplier', fields: { company: 'ABC', city: 'Town' } }),
         page('nested', { content_type: 'supplier', slug: 'nested/profile' }), page('explicit', { path: '/special/nested/' }),
@@ -50,6 +50,10 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     assert.ok(!schemas.some(schema => Object.keys(schema).some(key => key.includes('.'))));
     const tokenHtml = await fs.readFile(path.join(destination, 'dist/tokens/index.html'),'utf8');
     assert.match(tokenHtml,/--space-lg:2rem/);
+    assert.match(tokenHtml,/--space-lg:clamp\(2rem, 1rem \+ 2vw, 4rem\)/);
+    assert.match(tokenHtml,/--type-size-3xl:clamp\(/);
+    assert.match(tokenHtml,/--measure-prose:68ch/);
+    assert.match(tokenHtml,/--type-h2:var\(--type-size-2xl\)/);
     assert.match(tokenHtml,/--gap_px:var\(--space-lg\)/);
     assert.match(tokenHtml,/background:var\(--color-surface\)/);
     assert.match(tokenHtml,/--font-mono:[^;]*Roboto Mono/);
@@ -79,6 +83,15 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     const render = JSON.parse(await fs.readFile(path.join(destination, '.publication-work/render-report.json'), 'utf8'));
     assert.equal(render.reused, input.pages.length);
     assert.equal(second.report.artifact_tree_sha256, first.report.artifact_tree_sha256);
+    // Site-wide rhythm changes invalidate previously rendered pages as well.
+    const settingsPath = path.join(destination, 'publication.json');
+    const frozenSettings = JSON.parse(await fs.readFile(settingsPath, 'utf8'));
+    frozenSettings.settings.typography.rhythm = 1.4;
+    await fs.writeFile(settingsPath, JSON.stringify(frozenSettings));
+    const changedRhythm = await run();
+    assert.equal(changedRhythm.result.status, 0, changedRhythm.result.stderr);
+    assert.equal(JSON.parse(await fs.readFile(path.join(destination, '.publication-work/render-report.json'), 'utf8')).reused, 0);
+    assert.match(await fs.readFile(path.join(destination, 'dist/tokens/index.html'), 'utf8'), /--type-rhythm:1.4/);
     // Previous renderer cache format and validator code cannot inherit a pass.
     const cachePath = path.join(destination, '.publication-cache.json');
     const cache = JSON.parse(await fs.readFile(cachePath, 'utf8'));
