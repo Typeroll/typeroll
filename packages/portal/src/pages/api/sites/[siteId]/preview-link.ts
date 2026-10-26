@@ -2,16 +2,20 @@
 //
 // Portal (session) counterpart of POST /api/v1/sites/{siteId}/preview-link,
 // used to preview a render-version upgrade before saving it. The link is a
-// normal signed, expiring preview link for the active site version.
+// normal signed, expiring preview link for the active site version. It shows
+// unpublished content to anyone who holds it, so minting one needs write
+// permission on the site; read-only members preview inside the portal.
 
 import type { APIRoute } from 'astro';
-import { requireSiteAccess, json } from '../../../../lib/access';
+import { requireSiteAccess, requirePermission, json } from '../../../../lib/access';
 import { signPreviewTicket, isPreviewSigningConfigured } from '../../../../lib/preview-signing';
 import { isRenderVersion, LATEST_RENDER_VERSION } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
+  const write = requirePermission(guard.value, 'write');
+  if (!write.ok) return write.response;
   if (!isPreviewSigningConfigured()) return json({ error: 'Preview links are not configured on this server' }, 503);
   const { site, versionId, owner_org_id } = guard.value;
   const body = (await request.json().catch(() => ({}))) as { path?: unknown; render_version?: unknown };

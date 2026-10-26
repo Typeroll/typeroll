@@ -829,6 +829,16 @@ describe('update_site_settings whitelist', () => {
     await resetDatastore();
   });
 
+  it('needs admin permission on the site', async () => {
+    const { ctx, runTool } = await setup();
+    const out = await runTool('update_site_settings', { site_name: 'Hijacked', colors: { primary: '#000' } }, { ...ctx, permission: 'write' });
+    expect((out.result as { error?: string }).error).toMatch(/admin permission/);
+    expect(out.action).toBeUndefined();
+    const { vstore } = await import('../../lib/version-store');
+    const settings = (await vstore.settings(ORG, SITE, MAIN_VERSION_ID)) as unknown as Record<string, unknown> | null;
+    expect(settings?.site_name).not.toBe('Hijacked');
+  });
+
   it('round-trips default_meta_description but still drops scriptable surfaces', async () => {
     const { ctx, runTool } = await setup();
 

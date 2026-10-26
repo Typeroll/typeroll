@@ -7,6 +7,7 @@ import type { Site } from '@typeroll/shared';
 import type { WorkflowRecord } from '../../../../../lib/workflows/types';
 import { workflows as registry } from '../../../../../lib/workflows/registry';
 import { loadSiteContext } from '../../../../../lib/access';
+import { workflowSummary } from '../../../../../lib/workflows/service';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -22,6 +23,11 @@ if (!wf || wf.site_id !== siteId) return Astro.redirect(`/app/sites/${siteId}/wo
 
 const def = registry[wf.type];
 const stepNames = def?.steps.map((s) => ({ name: s.name, label: s.label })) ?? [];
+// Props of a client:load island are serialized into the page HTML. Send the
+// same masked projection the polling endpoint returns: the raw record holds
+// credential config (the WordPress helper key) and internal step state that
+// read-only viewers must not receive.
+const initial = workflowSummary(wf) as unknown as WorkflowRecord;
 ---
 <AppLayout title={`Workflow — ${site.name}`} siteId={siteId}>
   <div class="app-header">
@@ -36,7 +42,7 @@ const stepNames = def?.steps.map((s) => ({ name: s.name, label: s.label })) ?? [
     client:load
     siteId={siteId}
     workflowId={workflowId}
-    initial={wf}
+    initial={initial}
     stepNames={stepNames}
   />
 </AppLayout>
