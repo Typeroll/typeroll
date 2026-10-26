@@ -1,6 +1,6 @@
 ---
 title: Create your own block type
-description: Make an editable callout from built-in blocks, validate and preview it, then reuse it across a site with the portal, MCP or REST.
+description: Ask an AI agent to create an editable block type, validate and preview it, then review and reuse it in the editor. Includes MCP, REST and portal steps.
 ---
 
 Use a custom block type when a design recurs and editors should fill in fields
@@ -24,7 +24,42 @@ link, named-style and responsive behavior. Use a **template** type with your own
 HTML when built-in pieces cannot express the markup you need. A template block
 type is unrelated to a full [Page template](../page-templates/).
 
-## Create it in the portal
+## Recommended: ask your AI agent
+
+Creating custom block types is a good task to delegate to an AI agent connected
+to Typeroll through [MCP](../../getting-started/mcp-server/). Describe the design,
+which fields people should edit and how it should behave on mobile. The agent
+can inspect existing blocks and starters, define the fields, build the composition
+or markup, and validate and preview it with Typeroll's tools. You do not need to
+write the JSON, HTML or CSS yourself.
+
+For example:
+
+```text
+Create a reusable advice callout for this Site and Version. Give editors a
+heading and advice text to fill in. Use our existing colors and spacing,
+and compose it from built-in blocks if possible. Check whether a suitable type
+already exists before creating one. Validate the definition, preview it with
+short and long text, and place an example on a draft Page for me to review.
+Do not deploy the site.
+```
+
+The agent uses your current Site permissions. From Core 0.2.78, write/editor
+access is enough to create or change a block type; administrator access is not
+required. Read-only access cannot save changes.
+The optional [tr-custom-blocks recipe](../../skills/tr-custom-blocks/) guides this
+workflow. With compact MCP discovery, ask the agent to discover the relevant
+tools as needed. A local repository or development server is not required.
+
+Review the result in the editor, test its fields and inspect narrow and wide
+previews. Once the type is available, editors can add instances and change their
+content without asking an agent or editing code. Have an administrator review
+any custom script and test interactions before publication.
+
+The definition and tool sequence below are references for your agent or for
+manual API work; you do not need to enter them by hand.
+
+## Alternative: create it in the portal
 
 1. Select the Site and open **Blocks**. Create a block type and choose a starter
    such as an icon list, feature cards or numbered steps.
