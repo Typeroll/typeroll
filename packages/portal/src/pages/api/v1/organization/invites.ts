@@ -30,7 +30,7 @@ export const POST: APIRoute = async ({ request }) => {
     try { body = JSON.parse(text); } catch { return apiError('Invalid JSON body. Expected { ttl_days? }.', 400, ctx); }
   }
   const ttlDays = parseInviteTtlDays(body);
-  const { inviteUrl, expiresAt } = createInviteUrl(ctx.tokenOrgId, ttlDays);
+  const { inviteUrl, expiresAt } = await createInviteUrl(ctx.tokenOrgId, ttlDays, { id: `api_key:${ctx.keyPrefix}` });
   const response = apiResponse(ctx, {
     invite_url: inviteUrl,
     expires_at: expiresAt,

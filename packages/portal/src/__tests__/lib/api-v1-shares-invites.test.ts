@@ -100,7 +100,7 @@ describe('organization invites through the public API', () => {
     expect(res.json).toMatchObject({ ttl_days: 30, role: 'editor' });
     expect(res.json.invite_url).toMatch(/^https:\/\/portal\.test\/onboarding\?invite=/);
     const { extractTokenFromInput, verifyInviteToken } = await import('../../lib/invite');
-    expect(verifyInviteToken(extractTokenFromInput(res.json.invite_url))).toEqual({ orgId: ORG });
+    expect(verifyInviteToken(extractTokenFromInput(res.json.invite_url))).toMatchObject({ orgId: ORG });
   });
 
   it('defaults the lifetime when no body is sent', async () => {

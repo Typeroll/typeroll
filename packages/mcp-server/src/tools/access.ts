@@ -72,7 +72,7 @@ export const accessTools: ToolDef[] = [
   {
     name: 'create_organization_invite',
     noSite: true,
-    description: 'Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins as an editor; the link works until expires_at (ttl_days 1–30, default 7) and cannot be revoked early. Send it only to the person the user named.',
+    description: 'Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins as an editor; the link is single use, works until expires_at (ttl_days 1–30, default 7), and an Organization owner or admin can revoke it in the portal. Send it only to the person the user named.',
     inputSchema: { ttl_days: z.number().int().min(1).max(30).optional() },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('organization/invites', args))),
   },

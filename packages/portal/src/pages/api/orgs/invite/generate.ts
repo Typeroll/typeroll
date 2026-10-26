@@ -1,34 +1,49 @@
 // POST /api/orgs/invite/generate
 //
-// Generates a signed invite URL that another user can redeem at /onboarding
-// to join the caller's org. Requires a full session (user must already be
-// in an org — only existing members can invite others). The public-API
+// Creates an invite link that another person can redeem at /onboarding to
+// join the caller's organization as an editor. Organization owners and admins
+// only, whether or not the organization enforces member roles. The invite is
+// stored server-side (list and revoke at /api/orgs/invite). The public-API
 // equivalent is POST /api/v1/organization/invites.
 //
-// Body: { ttlDays?: number }  (default 7, max 30)
-// Returns: { inviteUrl: string }
+// Body: { ttlDays?: number, max_uses?: number, email?: string }
+//   ttlDays  default 7, max 30
+//   max_uses default 1 (single use), max 50
+//   email    only a person signed in with this address can redeem it
+// Returns: { inviteUrl, inviteId, expiresAt, maxUses, email }
 
 import type { APIRoute } from 'astro';
-import { json, requireFullSession } from '../../../../lib/access';
-import { createInviteUrl, parseInviteTtlDays } from '../../../../lib/invite';
+import { json, requireOrganizationOwnerOrAdmin } from '../../../../lib/access';
+import { createInvite, InviteRequestError, parseInviteOptions } from '../../../../lib/invite';
 import { isFormsSigningConfigured } from '../../../../lib/forms-signing';
 
+const INVITE_REFUSAL = 'Only organization owners and admins can invite people.';
+
 export const POST: APIRoute = async ({ request, cookies }) => {
-  const guard = await requireFullSession(cookies);
+  const guard = await requireOrganizationOwnerOrAdmin(cookies, INVITE_REFUSAL);
   if (!guard.ok) return guard.response;
   const session = guard.value;
-
-  // Only full (org-having) members can generate invites.
-  if (!session.orgId) {
-    return json({ error: 'You must belong to an organization to generate an invite.' }, 403);
-  }
 
   if (!isFormsSigningConfigured()) {
     return json({ error: 'FORMS_HMAC_SECRET is not configured on this server.' }, 500);
   }
 
   // Body is optional — defaults are fine.
-  const ttlDays = parseInviteTtlDays(await request.json().catch(() => ({})));
-  const { inviteUrl } = createInviteUrl(session.orgId, ttlDays);
-  return json({ inviteUrl });
+  let options: ReturnType<typeof parseInviteOptions>;
+  try {
+    options = parseInviteOptions(await request.json().catch(() => ({})));
+  } catch (error) {
+    if (error instanceof InviteRequestError) return json({ error: error.message }, 400);
+    throw error;
+  }
+  const invite = await createInvite({
+    orgId: session.orgId,
+    ttlDays: options.ttlDays,
+    maxUses: options.maxUses,
+    email: options.email,
+    createdBy: { id: session.userId, email: session.email },
+  });
+  const response = json(invite);
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
 };

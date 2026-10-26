@@ -86,7 +86,7 @@ it('cannot list, create, switch or join an Organization, or accept an invitation
   expect((await call(createOrg, { request: post('/api/orgs/create', { name: 'Spam Org' }) })).status).toBe(401);
   expect(await getStore().getDoc(paths.org('spam-org'))).toBeNull();
   expect((await call(switchOrg, { request: post('/api/orgs/switch', { orgId: 'e2e-core' }) })).status).toBe(401);
-  expect((await call(joinOrg, { request: post('/api/orgs/invite/join', { token: generateInviteToken('invited') }) })).status).toBe(401);
+  expect((await call(joinOrg, { request: post('/api/orgs/invite/join', { token: generateInviteToken('invited', 'AAAAAAAAAAAAAAAAAAAAAA') }) })).status).toBe(401);
   expect(await getStore().getDoc(`${paths.members('invited')}/${OWNER}`)).toBeNull();
   expect(cookies.set).not.toHaveBeenCalled();
 });
