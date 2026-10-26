@@ -216,8 +216,11 @@ Content-Type: application/json
 ```
 
 The access token is a five-minute ES256 JWT. Validate `iss`, `aud`, `sub`,
-`org_id`, `site_id`, `installation_id`, `permission`, `scopes`, `jti`, `iat`
-and `exp` against the issuer's discovery/JWKS. Never expose the Extension
+`developer_org_id`, `org_id`, `site_id`, `installation_id`, `permission`,
+`scopes`, `jti`, `iat` and `exp` against the issuer's discovery/JWKS.
+`developer_org_id` must equal your own developer Organization: Extension ids
+are reserved per developer from Core 0.2.113, but `aud` alone does not prove
+the token was minted for your Extension. Never expose the Extension
 client secret in the browser.
 
 Self-hosted portals publish discovery and JWKS on their own canonical

@@ -5,6 +5,11 @@ const port = Number(process.env.PORT || 8787);
 const clientId = process.env.TYPEROLL_CLIENT_ID || '';
 const clientSecret = process.env.TYPEROLL_CLIENT_SECRET || '';
 const extensionId = 'se.typeroll.example.quote-generator';
+// Your developer Organization id (shown when you read the Extension in the
+// developer API). Typeroll puts it in every installation token as
+// `developer_org_id`; checking it rejects tokens minted for another
+// developer's Extension that uses the same id.
+const developerOrgId = process.env.TYPEROLL_DEVELOPER_ORG_ID || '';
 const eventSecret = process.env.TYPEROLL_EVENT_SECRET || '';
 const trustedIssuers = new Map();
 const deliveredEvents = new Set();
@@ -39,6 +44,7 @@ function verifyJwt(token, jwks, expected = {}) {
     const jwk = jwks.keys.find((key) => key.kid === header.kid);
     if (!jwk || header.alg !== 'ES256') return null;
     if (expected.audience && claims.aud !== expected.audience) return null;
+    if (developerOrgId && claims.developer_org_id !== developerOrgId) return null;
     if (expected.issuer && claims.iss !== expected.issuer) return null;
     if (expected.nonce && claims.nonce !== expected.nonce) return null;
     if (expected.tokenUse && claims.token_use !== expected.tokenUse) return null;

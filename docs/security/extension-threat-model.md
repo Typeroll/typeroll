@@ -30,11 +30,26 @@ an external provider.
   limited and independently rotatable. Automatic release selection never
   expands the installation's approved scope set.
 - Launch codes are random, expire after 60 seconds and are consumed with an
-  atomic compare-and-update. Delegated JWTs bind issuer, audience, user,
-  organization, site, installation, scopes, `jti`, issue time and expiry.
+  atomic compare-and-update. Delegated JWTs bind issuer, audience, developer
+  organization, user, organization, site, installation, scopes, `jti`, issue
+  time and expiry.
 - Public Extension tokens are short-lived ES256 JWTs bound to issuer,
-  audience, organization, site, installation and requesting site origin. They
-  prove installation identity but are not user authorization.
+  audience, developer organization, organization, site, installation and
+  requesting site origin. They prove installation identity but are not user
+  authorization.
+- Extension ids are reserved host-wide at `extension_ids/{extension_id}`. The
+  reservation is created atomically (create-if-missing) when an Extension is
+  registered, and a registration of an id held by another developer
+  organization, or published in the catalog by one, is refused with 409. An
+  existing registration without a reservation claims it on its next create,
+  update or publish. When another organization already holds it, the
+  existing registration and its installations keep working; only new
+  registrations of that id are refused.
+- Every token issued for an installation (delegated admin and portal admin
+  tokens, public Extension and preview tokens, documentation, build
+  derivation and installation assertions, and issuer pairing assertions)
+  carries `developer_org_id`, the developer organization of the installed
+  Extension. Signing refuses a token without it.
 - Customer URL context is declaration-only, length/pattern checked and held in
   per-mount closures. `consume` removes it from browser history after all
   components capture their values. It is not an authentication guarantee;
@@ -49,7 +64,8 @@ an external provider.
 ## Provider responsibilities
 
 Providers configure CORS for installed customer origins, validate every JWT
-claim, maintain a strict trusted issuer set, isolate tenants/installations,
+claim (including `developer_org_id` against their own developer organization
+id, not only `iss` and `aud`), maintain a strict trusted issuer set, isolate tenants/installations,
 protect customer tokens from replay and enumeration, authorize each business
 action, retain/delete personal data as declared, and operate their own
 availability, mail and incident response. Typeroll never proxies the request.
@@ -62,6 +78,22 @@ availability, mail and incident response. Typeroll never proxies the request.
   excludes it from new tokens, admin launch, and builds, then uses another
   compatible release if one exists. A new deploy removes the revoked bytes.
   Providers must also honor lifecycle revocation promptly.
+- Extension id audience collision. `aud` is the bare Extension id, and
+  Extensions are stored per developer organization. Before reservations, a
+  second developer organization could register an id another organization
+  already used (for example `com.victim.app`), install it, and obtain tokens
+  from the same issuer with the victim's audience. A provider that checks
+  only `iss` and `aud` accepts them. Reservations stop new collisions, but
+  ids registered by several organizations before reservations remain valid,
+  and a new registration can still take an id whose only prior registrations
+  have neither a reservation nor a public catalog entry. Operators close that
+  window by running `scripts/audit-extension-ids.mjs` (dry run by default;
+  `--apply --confirm-project` reserves ids with a single owner) and resolve
+  contested ids it reports manually. Providers close it independently by
+  requiring `developer_org_id`. Changing `aud` would break every deployed
+  provider, so the audience stays the bare id for now; a later protocol
+  version is planned to use `typeroll:ext:{developer_org_id}:{extension_id}`
+  after an announced deprecation window in which both forms are accepted.
 - The in-process rate limiter is per portal process. Horizontally scaled
   installations should replace it with a shared limiter.
 - A recipient URL may leak through the recipient's browser, extensions or

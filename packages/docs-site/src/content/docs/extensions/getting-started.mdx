@@ -22,6 +22,16 @@ In Typeroll, open **Developer → Extensions**, register a lowercase namespaced
 Extension ID, and copy the client secret when the Extension uses admin SSO.
 The secret is shown once and must remain server-side.
 
+An Extension ID belongs to one developer Organization on a Typeroll host;
+registering an ID that another Organization holds is refused with 409. Note
+the `developer_org_id` of your Extension (returned on registration and by
+`read_developer_extension`): your provider backend must check that every
+Typeroll token it accepts carries this value in its `developer_org_id` claim
+as well as your Extension ID in `aud`. See
+[Bind every token to your developer organization](../backend/#bind-every-token-to-your-developer-organization).
+If you build from the Extension starter, add this check to its provider token
+verification.
+
 ## Development workflow
 
 1. Add `typeroll-extension.json` to the repository root.

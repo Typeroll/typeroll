@@ -111,6 +111,18 @@ export function extensionIssuerDiscovery(): Record<string, unknown> {
   };
 }
 
+/**
+ * Every token issued for an installation names the developer organization of
+ * its Extension. `aud` is the Extension id, which is not unique across
+ * developer organizations for registrations made before id reservations, so
+ * providers must also check this claim. Refuse to sign without it rather than
+ * issue a token a provider cannot bind to its own organization.
+ */
+function requireDeveloperOrgId(value: string | undefined): string {
+  if (typeof value !== 'string' || !value) throw new ExtensionAuthError('Extension installation has no developer organization', 500);
+  return value;
+}
+
 export interface DelegatedExtensionClaims {
   token_use?: 'portal_admin';
   page_id?: string;
@@ -121,6 +133,11 @@ export interface DelegatedExtensionClaims {
   org_id: string;
   site_id: string;
   installation_id: string;
+  /**
+   * Developer organization that registered the Extension. Providers compare it
+   * with their own developer organization id in addition to `aud`.
+   */
+  developer_org_id: string;
   permission: SharePermission;
   scopes: ExtensionScope[];
   jti: string;
@@ -136,6 +153,8 @@ export interface PublicExtensionClaims {
   org_id: string;
   site_id: string;
   installation_id: string;
+  /** Developer organization that registered the Extension; see DelegatedExtensionClaims. */
+  developer_org_id: string;
   origin: string;
   /** Present only on isolated previews. Providers must enforce preview_routes. */
   preview?: true;
@@ -165,6 +184,7 @@ export function signPublicExtensionToken(args: {
     org_id: args.installation.owner_org_id,
     site_id: args.installation.site_id,
     installation_id: args.installation.id,
+    developer_org_id: requireDeveloperOrgId(args.installation.developer_org_id),
     origin: args.origin,
     ...(args.previewRoutes ? { preview: true as const, preview_routes: args.previewRoutes } : {}),
     jti: crypto.randomUUID(),
@@ -214,6 +234,7 @@ export function signDelegatedExtensionToken(
   claims: Omit<DelegatedExtensionClaims, 'iss' | 'iat' | 'exp' | 'jti'>,
   now = new Date(),
 ): { token: string; claims: DelegatedExtensionClaims } {
+  requireDeveloperOrgId(claims.developer_org_id);
   const { privateKey, kid } = signingKey();
   const issuedAt = Math.floor(now.getTime() / 1000);
   const complete: DelegatedExtensionClaims = {
@@ -284,6 +305,7 @@ export function signInstallationAssertion(args: {
     org_id: args.installation.owner_org_id,
     site_id: args.installation.site_id,
     installation_id: args.installation.id,
+    developer_org_id: requireDeveloperOrgId(args.installation.developer_org_id),
     scopes: args.scopes,
     correlation_id: args.correlationId,
     jti: crypto.randomUUID(),
@@ -313,6 +335,7 @@ export function signIssuerPairingAssertion(args: {
     org_id: args.installation.owner_org_id,
     site_id: args.installation.site_id,
     installation_id: args.installation.id,
+    developer_org_id: requireDeveloperOrgId(args.installation.developer_org_id),
     nonce: args.nonce,
     jti: crypto.randomUUID(),
     iat: issuedAt,
@@ -408,6 +431,7 @@ export async function exchangeExtensionLaunchCode(args: {
     org_id: grant!.owner_org_id,
     site_id: grant!.site_id,
     installation_id: grant!.installation_id,
+    developer_org_id: installation!.developer_org_id,
     permission: grant!.permission,
     scopes: grant!.scopes,
   }, now);

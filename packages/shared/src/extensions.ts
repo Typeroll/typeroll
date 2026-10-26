@@ -289,6 +289,18 @@ export interface Extension {
   updated_at: string;
 }
 
+/**
+ * Root record at `extension_ids/{extension_id}`: the developer organization
+ * that holds an Extension id across the whole host. Extension tokens carry the
+ * id as their audience, so another organization must not register it.
+ */
+export interface ExtensionIdReservation {
+  id: string;
+  extension_id: string;
+  developer_org_id: string;
+  created_at: string;
+}
+
 export interface ExtensionVersion {
   id: string;
   extension_id: string;
