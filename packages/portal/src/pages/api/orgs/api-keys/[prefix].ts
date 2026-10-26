@@ -3,14 +3,14 @@
 // hard-revokes the lookup index entry so the key stops authing immediately.
 
 import type { APIRoute } from 'astro';
-import { requireFullSession, requireOrgAdmin, json } from '../../../../lib/access';
+import { requireOrganizationOwnerOrAdmin, json } from '../../../../lib/access';
 import { revokeApiKey } from '../../../../lib/api-keys';
 
+const ORG_API_KEY_REFUSAL = 'Only organization owners and admins can manage organization API keys.';
+
 export const DELETE: APIRoute = async ({ cookies, params }) => {
-  const guard = await requireFullSession(cookies);
+  const guard = await requireOrganizationOwnerOrAdmin(cookies, ORG_API_KEY_REFUSAL);
   if (!guard.ok) return guard.response;
-  const adminCheck = await requireOrgAdmin(guard.value);
-  if (!adminCheck.ok) return adminCheck.response;
   const session = guard.value;
   const { prefix } = params;
   if (!prefix) return json({ error: 'Missing prefix' }, 400);

@@ -13,6 +13,14 @@ describe('documentation access boundary', () => {
     expect(documentation).not.toHaveBeenCalled();
     guard.mockResolvedValueOnce({ ok: true, value: { orgId: 'owner', siteId: 'authorized', permission: 'read' } });
     expect((await GET({ request, params: { siteId: 'requested' } } as never)).status).toBe(200);
-    expect(documentation).toHaveBeenCalledWith('owner', 'authorized');
+    expect(documentation).toHaveBeenCalledWith('owner', 'authorized', { installationId: undefined });
+  });
+
+  it('limits an installation credential to its own installation guide', async () => {
+    const request = new Request('https://cms.example/api/v1/sites/s/apps/documentation');
+    guard.mockResolvedValueOnce({ ok: true, value: { orgId: 'owner', siteId: 's', permission: 'read',
+      extensionIdentity: { installationId: 'inst_1', scopes: ['content:read'] } } });
+    expect((await GET({ request, params: { siteId: 's' } } as never)).status).toBe(200);
+    expect(documentation).toHaveBeenLastCalledWith('owner', 's', { installationId: 'inst_1' });
   });
 });

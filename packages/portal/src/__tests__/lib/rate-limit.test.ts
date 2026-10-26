@@ -39,3 +39,23 @@ describe('rateLimit', () => {
     expect(rateLimit('b', 1, 60_000).allowed).toBe(true);
   });
 });
+
+describe('clientIp', () => {
+  afterEach(() => { delete process.env.AUTH_TRUST_PROXY_HOPS; });
+
+  it('ignores the client-chosen leftmost X-Forwarded-For entry and X-Real-IP', async () => {
+    const { clientIp } = await import('../../lib/rate-limit');
+    const headers = new Headers({ 'x-forwarded-for': '1.1.1.1, 203.0.113.5', 'x-real-ip': '2.2.2.2' });
+    process.env.AUTH_TRUST_PROXY_HOPS = '1';
+    expect(clientIp(headers, '10.0.0.1')).toBe('203.0.113.5');
+    process.env.AUTH_TRUST_PROXY_HOPS = '2';
+    expect(clientIp(headers, '10.0.0.1')).toBe('1.1.1.1');
+  });
+
+  it('uses the socket address when no proxy hops are trusted', async () => {
+    const { clientIp } = await import('../../lib/rate-limit');
+    const headers = new Headers({ 'x-forwarded-for': '1.1.1.1', 'x-real-ip': '2.2.2.2' });
+    expect(clientIp(headers, '192.0.2.8')).toBe('192.0.2.8');
+    expect(clientIp(headers)).toBe('unknown');
+  });
+});

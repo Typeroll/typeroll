@@ -103,6 +103,7 @@ function effectFor(name: string): ToolEffect {
     || name === 'revoke_site_share'
     || name === 'revoke_organization_api_key'
     || name === 'create_organization_invite'
+    || name === 'revoke_organization_invite'
     || name === 'set_organization_ai_key'
     || name === 'remove_organization_ai_key'
     || name === 'set_organization_ai_site_access'

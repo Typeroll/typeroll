@@ -13,6 +13,7 @@ import PublishMenu, { PAGE_STATUS_OPTIONS } from './PublishMenu';
 import ChatInterface from './ChatInterface';
 import ContentModeSwitcher from './ContentModeSwitcher';
 import TemplatePicker from './TemplatePicker';
+import { EDITOR_CANVAS_FRAME_SANDBOX, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
 
 // Inline parser — keeps this file client-bundleable (the server-side
 // partials-usage module imports vstore, which can't run in the browser).
@@ -59,15 +60,15 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
     if (window.matchMedia('(max-width: 1000px)').matches) setDevice('mobile');
   }, []);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const canvasId = useMemo(
-    () => `html-${siteId}-${page.id}-editorbridge`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 128),
-    [siteId, page.id],
-  );
+  const canvasId = useEditorCanvasId('html');
   const canvasScrollRef = useRef(0);
   const restoreCanvasScrollRef = useRef<number | null>(null);
-  const postCanvas = (command: Record<string, unknown>) => iframeRef.current?.contentWindow?.postMessage({
-    channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, ...command,
-  }, '*');
+  const postCanvas = (command: Record<string, unknown>): void => {
+    if (!canvasId) return;
+    iframeRef.current?.contentWindow?.postMessage({
+      channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, ...command,
+    }, '*');
+  };
   function reloadPreview(): void {
     const ifr = iframeRef.current;
     if (!ifr) return;
@@ -85,9 +86,8 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
   useEffect(() => setOrigin(window.location.origin), []);
   useEffect(() => {
     const receive = (event: MessageEvent) => {
-      if (event.source !== iframeRef.current?.contentWindow) return;
-      const data = event.data as Record<string, unknown> | null;
-      if (!data || data.channel !== 'typeroll.editor-canvas' || data.version !== 1 || data.canvas_id !== canvasId) return;
+      if (!isEditorCanvasMessage(event, iframeRef.current, canvasId)) return;
+      const data = event.data;
       if (data.type === 'scroll' && typeof data.scroll_y === 'number' && Number.isFinite(data.scroll_y)) canvasScrollRef.current = data.scroll_y;
       if (data.type === 'ready' && restoreCanvasScrollRef.current !== null) {
         postCanvas({ action: 'scroll', scroll_y: restoreCanvasScrollRef.current });
@@ -578,12 +578,13 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
             </a>
           </div>
           <div className="editor__preview-frame">
-            <iframe
+            {canvasId && <iframe
               ref={iframeRef}
               src={previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&canvas=${encodeURIComponent(canvasId)}`}
+              sandbox={EDITOR_CANVAS_FRAME_SANDBOX}
               style={{ width: deviceWidths[device] }}
               title="Page preview"
-            />
+            />}
           </div>
         </section>
       </div>

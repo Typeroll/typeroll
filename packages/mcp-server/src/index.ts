@@ -21,6 +21,7 @@ import { resolveSiteId } from './resolve-site-id.js';
 import { buildServer } from './server.js';
 import { VERSION } from './version.js';
 import { runExtensionCli } from './extension-cli.js';
+import { apiUrlProblem } from './api-url.js';
 import { doctor, readWorkspace, workspaceClient, verifyWorkspaceBinding } from './workspace.js';
 
 function bail(message: string): never {
@@ -78,6 +79,8 @@ async function main(): Promise<void> {
   const apiUrl = process.env.TYPEROLL_API_URL?.trim();
   const apiKey = process.env.TYPEROLL_API_KEY?.trim();
   if (!apiUrl) bail('TYPEROLL_API_URL is not set. Point it at your Typeroll portal (e.g. https://app.typeroll.com).');
+  const apiUrlError = apiUrlProblem(apiUrl);
+  if (apiUrlError) bail(apiUrlError);
   if (!apiKey) bail('TYPEROLL_API_KEY is not set. Create a key in /app/sites/{siteId}/settings/api-keys and copy it once.');
   if (!apiKey.startsWith('typeroll_live_')) {
     bail('TYPEROLL_API_KEY does not look like a Typeroll key (expected typeroll_live_... prefix).');

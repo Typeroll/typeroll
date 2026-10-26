@@ -1,6 +1,6 @@
 // Site slug + fallback URL derivation.
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
@@ -287,3 +287,93 @@ describe('PATCH /v1/sites/{id}', () => {
     expect(body.domain).toBeUndefined();
   });
 });
+
+// slug re-points the platform fallback hostname and domain becomes every
+// build's canonical URL: both need site admin, as in the portal settings.
+describe('PATCH /v1/sites/{id} — slug and domain need admin', () => {
+  const OWNER_ORG = 'ownerorg';
+  const SHARED = 'shared-site';
+
+  async function writeShareKey(): Promise<string> {
+    await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.site(OWNER_ORG, SHARED), { name: 'Shared', slug: 'shared', created_at: new Date().toISOString() });
+    await getStore().setDoc(paths.version(OWNER_ORG, SHARED, MAIN_VERSION_ID), {
+      name: 'Main', kind: 'main', created_at: new Date().toISOString(), robots_blocked: false,
+    } satisfies Partial<SiteVersion>);
+    const { writeShare } = await import('../../lib/shares');
+    await writeShare({
+      id: 'share-w', site_id: SHARED, owner_org_id: OWNER_ORG, shared_with_org_id: ORG,
+      permission: 'write', created_at: Date.now(), created_by: 'owner@example.com',
+    });
+    const { createApiKey } = await import('../../lib/api-keys');
+    return (await createApiKey({ orgId: ORG, siteId: null, name: 'org', createdBy: 'a' })).token;
+  }
+
+  beforeEach(async () => { await resetDatastore(); });
+
+  it.each([{ slug: 'victim-label' }, { domain: 'www.victim.example' }])('refuses %o from a write-level caller', async (body) => {
+    const token = await writeShareKey();
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/index'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SHARED}`,
+      { siteId: SHARED },
+      { headers: bearer(token), body },
+    );
+    expect(res.status).toBe(403);
+    const { getStore } = await import('../../lib/datastore');
+    const site = await getStore().getDoc<Site>(paths.site(OWNER_ORG, SHARED));
+    expect(site?.slug).toBe('shared');
+    expect(site?.domain).toBeUndefined();
+  });
+
+  it('still lets a write-level caller rename the site', async () => {
+    const token = await writeShareKey();
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/index'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SHARED}`,
+      { siteId: SHARED },
+      { headers: bearer(token), body: { name: 'Renamed' } },
+    );
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('PATCH /v1/sites/{id} — fallback hostname held by another organization', () => {
+  const env = { ...process.env };
+  afterEach(() => {
+    for (const key of ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'SITES_BASE_DOMAIN'] as const) {
+      if (env[key] === undefined) delete process.env[key];
+      else process.env[key] = env[key];
+    }
+    vi.unstubAllGlobals();
+  });
+
+  it('answers 409 and keeps the slug when the hostname is claimed by a site in another organization', async () => {
+    const { token } = await setup({ slug: 'mine' });
+    process.env.CLOUDFLARE_ACCOUNT_ID = 'acct';
+    process.env.CLOUDFLARE_API_TOKEN = 'tok';
+    process.env.SITES_BASE_DOMAIN = 'sites.typeroll.app';
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 500 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { claimFallbackHostname } = await import('../../lib/hosting/fallback-hostnames');
+    await claimFallbackHostname('victim.sites.typeroll.app', { orgId: 'victim-org', siteId: 'shop' });
+
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/index'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}`,
+      { siteId: SITE },
+      { headers: bearer(token), body: { slug: 'victim' } },
+    );
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ code: 'slug_unavailable' });
+    // Refused before any Cloudflare call: no domain attach, no DNS write.
+    expect(fetchMock).not.toHaveBeenCalled();
+    const { getStore } = await import('../../lib/datastore');
+    expect((await getStore().getDoc<Site>(paths.site(ORG, SITE)))?.slug).toBe('mine');
+  });
+});
+

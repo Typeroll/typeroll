@@ -13,7 +13,8 @@ npx playwright install chromium
 Run the commands below from the **workspace root**. Inject TYPEROLL_API_KEY through
 your private credential manager. Never put it in a file or command argument.
 trlib.py reads portal, organization_id, site_id and version from typeroll.json,
-checks the connected Site/Organization, discovers the live tool schema, and
+sends the key only to https://app.typeroll.com or to a portal you confirm by
+setting TYPEROLL_API_URL to the same origin privately, checks the connected Site/Organization, discovers the live tool schema, and
 passes the Version where supported. It refuses unversioned operations on a
 non-main binding; use the explicit interactive API workflow for organization or
 shared media operations instead. It is a small hosted MCP helper for API keys,

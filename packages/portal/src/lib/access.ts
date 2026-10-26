@@ -245,6 +245,22 @@ export function requirePermission(
 }
 
 /**
+ * requirePermission for actions only the owning organization may take, however
+ * privileged a cross-org share is: sharing the site further, and minting
+ * credentials (site API keys, Extension installation credentials). Credentials
+ * are stored under the owner and would otherwise outlive the share that let
+ * the recipient create them.
+ */
+export function requireOwnerPermission(
+  ctx: SiteContext,
+  required: SharePermission,
+  refusal = 'Only the owning organization can do this',
+): GuardResult<SiteContext> {
+  if (!ctx.is_owner) return { ok: false, response: json({ error: refusal }, 403) };
+  return requirePermission(ctx, required);
+}
+
+/**
  * Gate for changing the lifecycle itself. Separate from requirePermission
  * because that one refuses every write on an archived site, which would make
  * restoring impossible.

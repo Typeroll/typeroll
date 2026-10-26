@@ -1,11 +1,13 @@
 import type { APIRoute } from 'astro';
-import { json, requirePermission, requireSiteAccess } from '../../../../../../lib/access';
+import { json, requireOwnerPermission, requireSiteAccess } from '../../../../../../lib/access';
 import { ExtensionAuthError, rotateInstallationCredential } from '../../../../../../lib/extensions/auth';
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const admin = requirePermission(guard.value, 'admin');
+  // The credential is stored under the owner and outlives any share, so a
+  // share recipient cannot mint one.
+  const admin = requireOwnerPermission(guard.value, 'admin', 'Only the owning organization can issue Extension credentials');
   if (!admin.ok) return admin.response;
   if (!params.installationId) return json({ error: 'Missing installationId' }, 400);
   const body = await request.json().catch(() => ({})) as { grace_seconds?: number };

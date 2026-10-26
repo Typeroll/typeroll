@@ -29,13 +29,15 @@ export const OPTIONS: APIRoute = async ({ request, params }) => {
   }
 };
 
-export const POST: APIRoute = async ({ request, params }) => {
+export const POST: APIRoute = async ({ request, params, clientAddress }) => {
   const parsed = ids(params);
   if (!parsed) return errorResponse(new PublicExtensionTokenError('Missing identifier', 400));
   let cors: Record<string, string> = {};
   try {
     cors = await publicExtensionCors({ request, ...parsed });
-    const result = await issuePublicExtensionToken({ request, ...parsed });
+    let socketAddress: string | undefined;
+    try { socketAddress = clientAddress; } catch { socketAddress = undefined; }
+    const result = await issuePublicExtensionToken({ request, clientAddress: socketAddress, ...parsed });
     return new Response(JSON.stringify({ token: result.token, token_type: 'Typeroll-Extension', expires_in: result.expires_in }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...result.cors },

@@ -16,7 +16,13 @@ Most production WP sites don't have all of that set up. This plugin sidesteps th
 
 ## Endpoints
 
-All authenticated via `X-Typeroll-Key` header or `?key=` query parameter.
+All authenticated via the `X-Typeroll-Key` header. The key is not accepted as a
+query parameter. Content routes expose only published items of public post types
+(`is_post_type_viewable`); non-public plugin storage such as WooCommerce orders,
+coupons or form submissions is never exported. Password-protected items are
+returned with `protected: true` and empty content, excerpt, meta, ACF and
+builder data. ACF user, post and term objects are reduced to IDs, names and
+public links.
 
 | Endpoint | Purpose |
 |---|---|
@@ -32,10 +38,11 @@ All authenticated via `X-Typeroll-Key` header or `?key=` query parameter.
 | `GET /wp-json/typeroll/v1/urls` | Public post, term and other source URLs for migration discovery. |
 | `GET /wp-json/typeroll/v1/redirects` | Redirect rules detected from supported redirect plugins. |
 | `GET /wp-json/typeroll/v1/seo` | Site-level SEO settings detected from supported SEO plugins. |
-| `GET /wp-json/typeroll/v1/postmeta/{id}/{key}` | Read one post-meta key when a builder stores data outside normalized item fields. |
+| `GET /wp-json/typeroll/v1/postmeta/{id}/{key}` | Read one post-meta key of a published, unprotected item when a builder stores data outside normalized item fields. Underscore-prefixed keys are refused except `_thumbnail_id`, `_wp_page_template` and Elementor/Breakdance data. |
 
 These routes use the same authenticated, read-only access as the item routes.
-Prefer the `X-Typeroll-Key` header so the key is not placed in URL logs.
+
+Deleting the plugin in WordPress removes the stored API key (`uninstall.php`).
 
 ## Import storage prerequisite
 
@@ -60,7 +67,7 @@ The plugin is just PHP — no build step. To package it as a WP-installable zip:
 
 ```bash
 cd wp-helper-plugin
-zip -r ../typeroll-helper-0.3.2.zip . -x "*.git*" -x "*.DS_Store"
+zip -r ../typeroll-helper-0.4.0.zip . -x "*.git*" -x "*.DS_Store"
 ```
 
 ## Repo layout
@@ -75,6 +82,8 @@ wp-helper-plugin/
 │   ├── class-media.php      Attachment → portable description
 │   ├── class-rest-api.php   Route registration
 │   └── class-settings.php   Admin page (Settings → Typeroll)
+├── tests/                   Plain-PHP adapter tests (`php tests/<file>.php`)
+├── uninstall.php            Removes the API key when the plugin is deleted
 ├── readme.txt               WordPress.org-style readme
 ├── README.md                This file
 └── LICENSE                  GPL v2 (WP plugins must be GPL-compatible)

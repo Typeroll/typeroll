@@ -1,7 +1,7 @@
 import { limitAuthRequest } from '../../../../lib/auth-request';
 import type { APIRoute } from 'astro';
 import { json, requireSession } from '../../../../lib/access';
-import { verifyInviteToken, extractTokenFromInput } from '../../../../lib/invite';
+import { verifyInviteToken, extractTokenFromInput, redeemInvite } from '../../../../lib/invite';
 import { getStore } from '../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { Organization, Member } from '@typeroll/shared';
@@ -27,6 +27,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // Accept both bare token strings and full invite URLs.
   const token = extractTokenFromInput(rawToken);
 
+  // Signature first, then the stored invite: revoked, expired, used up or
+  // bound to another email address is refused. One use is consumed
+  // atomically; an existing member or a retry by the same person uses none.
   const verified = verifyInviteToken(token);
   if (!verified) {
     return json({ error: 'Invalid or expired invite token.' }, 400);
@@ -41,15 +44,21 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json({ error: 'The organization this invite belongs to no longer exists.' }, 404);
   }
 
-  // Preserve the original role when an invite is redeemed more than once.
-  const now = new Date().toISOString();
-  await store.createDocIfMissing(`${paths.members(orgId)}/${session.userId}`, {
+  // An existing member keeps their role and spends no use.
+  const memberPath = `${paths.members(orgId)}/${session.userId}`;
+  const member: Omit<Member, 'id'> = {
     email: session.email,
     role: 'editor',
     firebase_uid: session.userId,
-    display_name: session.displayName,
-    joined_at: now,
-  } satisfies Omit<Member, 'id'>);
+    ...(session.displayName ? { display_name: session.displayName } : {}),
+    joined_at: new Date().toISOString(),
+  };
+  const redeemed = await redeemInvite(token, { userId: session.userId, email: session.email }, {
+    alreadyMember: !!await store.getDoc<Member>(memberPath),
+    memberPath,
+    member,
+  });
+  if (!redeemed.ok) return json({ error: redeemed.error }, redeemed.status);
 
   if (session.orgId) await rememberOrganization(session.userId, session.orgId);
   await rememberOrganization(session.userId, orgId);

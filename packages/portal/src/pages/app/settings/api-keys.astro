@@ -2,6 +2,7 @@
 import AppLayout from '../../../layouts/AppLayout.astro';
 import { getSession } from '../../../lib/auth';
 import { listApiKeys } from '../../../lib/api-keys';
+import { requireOrganizationOwnerOrAdmin } from '../../../lib/access';
 import OrgApiKeyManager from '../../../components/OrgApiKeyManager.tsx';
 
 const session = await getSession(Astro.cookies);
@@ -9,7 +10,11 @@ if (!session) return Astro.redirect('/login');
 const orgId = session.orgId;
 if (!orgId) return Astro.redirect('/onboarding');
 
-const keys = await listApiKeys(orgId, null);
+// Organization keys act with organization-wide authority, so only owners and
+// admins may see or manage them, matching /api/orgs/api-keys.
+const guard = await requireOrganizationOwnerOrAdmin(Astro.cookies, 'Only Organization owners and admins can manage organization API keys.');
+const canManage = guard.ok;
+const keys = canManage ? await listApiKeys(orgId, null) : [];
 const summaries = keys.map((k) => ({
   id: k.id,
   name: k.name,
@@ -29,7 +34,9 @@ const summaries = keys.map((k) => ({
   </div>
 
   <div style="max-width: 760px;">
-    <OrgApiKeyManager client:load initialKeys={summaries} />
+    {canManage
+      ? <OrgApiKeyManager client:load initialKeys={summaries} />
+      : <p class="muted">Only Organization owners and admins can manage organization API keys.</p>}
   </div>
 
   <p class="text-sm muted" style="margin-top: 1.5rem;">

@@ -37,7 +37,20 @@ export function isFormsSigningConfigured(): boolean {
   return Boolean(s && s.length >= 32);
 }
 
+// Other token kinds signed with the same FORMS_HMAC_SECRET that share the
+// `a.b.c.signature` shape. Legacy analytics event tokens sign
+// `analytics-v1.<orgId>.<siteId>`, which is byte-identical to a form token
+// for an organization whose id is `analytics-v1`. Neither kind may ever be
+// accepted as the other, so that organization id is reserved here.
+const RESERVED_ORG_SEGMENTS = new Set(['analytics-v1']);
+
+/** True when a form token may be minted or accepted for this organization id. */
+export function formTokenOrgAllowed(orgId: string): boolean {
+  return !RESERVED_ORG_SEGMENTS.has(orgId);
+}
+
 export function signFormToken(orgId: string, siteId: string, formId: string): string {
+  if (!formTokenOrgAllowed(orgId)) throw new Error('This organization id cannot receive form tokens');
   const payload = `${orgId}${SEPARATOR}${siteId}${SEPARATOR}${formId}`;
   const sig = crypto.createHmac('sha256', getSecret()).update(payload).digest('base64url');
   return `${payload}${SEPARATOR}${sig}`;
@@ -64,7 +77,7 @@ export function formSubmitUrl(): string {
 
 export function formEmbedInfo(orgId: string, siteId: string, formId: string): FormEmbedInfo {
   return {
-    submit_token: isFormsSigningConfigured() ? signFormToken(orgId, siteId, formId) : null,
+    submit_token: isFormsSigningConfigured() && formTokenOrgAllowed(orgId) ? signFormToken(orgId, siteId, formId) : null,
     submit_url: formSubmitUrl(),
   };
 }
@@ -81,6 +94,7 @@ export function verifyFormToken(token: string): FormTokenParts | null {
   if (parts.length !== 4) return null;
   const [orgId, siteId, formId, sig] = parts;
   if (!orgId || !siteId || !formId || !sig) return null;
+  if (!formTokenOrgAllowed(orgId)) return null;
 
   let expected: string;
   try {

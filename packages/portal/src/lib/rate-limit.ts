@@ -8,6 +8,8 @@
 // window expires the count resets. Periodic GC sweeps expired entries so
 // memory doesn't grow unbounded under attack.
 
+import { authClientAddress } from './auth-request';
+
 interface Bucket {
   count: number;
   resetAt: number;
@@ -50,12 +52,16 @@ export function rateLimit(key: string, limit: number, windowMs: number): RateLim
   return { allowed: true, remaining: limit - bucket.count, resetAt: bucket.resetAt };
 }
 
-/** Get the caller's IP from common reverse-proxy headers, falling back to the request URL host. */
-export function clientIp(headers: Headers): string {
-  const forwarded = headers.get('x-forwarded-for');
-  if (forwarded) {
-    // First entry is the original client; subsequent are intermediate proxies.
-    return forwarded.split(',')[0].trim();
-  }
-  return headers.get('x-real-ip') ?? 'unknown';
+/**
+ * The caller's address for rate limiting and audit records.
+ *
+ * The leftmost X-Forwarded-For entry (and X-Real-IP) is whatever the client
+ * sent, so trusting it lets every request pick a fresh rate-limit bucket.
+ * This uses the deployment's trusted proxy hop count (AUTH_TRUST_PROXY_HOPS,
+ * see authClientAddress): the address the outermost trusted proxy appended.
+ * Without configured hops it falls back to the adapter's socket address,
+ * which behind an unconfigured proxy is shared by all visitors.
+ */
+export function clientIp(headers: Headers, socketAddress?: string): string {
+  return authClientAddress({ headers } as Request, socketAddress || 'unknown');
 }

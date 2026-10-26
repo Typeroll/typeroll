@@ -9,6 +9,7 @@
 // to whatever REST gave us.
 
 import { isScraperConfigured, Scraper } from './scraper';
+import { migrationSourcePolicy, safeFetch } from '../net/safe-fetch';
 
 export interface FetchedPage {
   url: string;
@@ -18,6 +19,7 @@ export interface FetchedPage {
 
 const FETCH_TIMEOUT_MS = 15_000;
 const MIN_HTML_LENGTH = 500;
+const MAX_HTML_BYTES = 10 * 1024 * 1024;
 const BOT_BLOCK_HINTS = [
   'cf-browser-verification',
   'Just a moment...',
@@ -48,7 +50,8 @@ export async function fetchRendered(url: string): Promise<FetchedPage | null> {
 
 async function tryDirectFetch(url: string): Promise<FetchedPage | null> {
   try {
-    const res = await fetch(url, {
+    // Guarded: public destinations only (each redirect re-checked), bounded body.
+    const res = await safeFetch(url, {
       headers: {
         // Use a common browser UA — many sites return a stripped page to
         // bare-bones user agents.
@@ -58,8 +61,7 @@ async function tryDirectFetch(url: string): Promise<FetchedPage | null> {
         'Accept-Language': 'en-US,en;q=0.9',
       },
       redirect: 'follow',
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
+    }, migrationSourcePolicy({ label: 'Page URL', timeoutMs: FETCH_TIMEOUT_MS, maxBytes: MAX_HTML_BYTES }));
     if (!res.ok) return null;
     const html = await res.text();
     if (html.length < MIN_HTML_LENGTH) return null;

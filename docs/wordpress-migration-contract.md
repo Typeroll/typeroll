@@ -31,6 +31,11 @@ MCP recipes load on demand and use this same independent-choice contract.
 2. Inventory source URLs and discover post types. Fail on inaccessible type or
    taxonomy endpoints rather than quietly dropping data. Helper 0.3.2 adds
    authenticated, paginated shared-term extraction; standard REST is supported.
+   Helper 0.4.0 accepts its key only in the `X-Typeroll-Key` header and exports
+   only published items of public post types. Password-protected items carry
+   `protected: true` with empty content, excerpt, meta, ACF and builder data;
+   they must not be imported as ordinary public Pages. ACF user, post and term
+   objects arrive as IDs, names and public links.
 3. Infer custom fields across imported records, preserve the actual REST base,
    and reject conflicting field shapes for explicit mapping.
 4. Import each public taxonomy as a Content type. Import its terms as Pages,
@@ -106,7 +111,8 @@ become references. Preserve a rollback copy before applying a reviewed repair.
 ## Evidence
 
 Run focused workflow, taxonomy, media preservation and launch-report tests; the
-shared renderer tests; `php wp-helper-plugin/tests/taxonomies.php`; browser
+shared renderer tests; `php wp-helper-plugin/tests/taxonomies.php` and
+`php wp-helper-plugin/tests/security.php`; browser
 `article-layout.spec.ts`; then `node scripts/oss-release-check.mjs`.
 The regression tests must reject the previous workflow/renderer. Production
 cutover also requires source-specific screenshots and live integration checks.

@@ -88,12 +88,25 @@ release.
 
 Both callers use `.github/actions/core-image`, so labels, the
 `TYPEROLL_SOURCE_SHA` build argument, platform, BuildKit cache, SBOM and
-provenance cannot drift. When `core-vX.Y.Z` does not exist yet, the release job
-reuses `sha-SOURCE_SHA` only if its `org.opencontainers.image.revision` label is
-the source SHA and its `org.opencontainers.image.version` label is the release
-tag. It verifies the container contract for that digest, points the release
-image tag at the same digest with `crane tag`, and the manifest records it. A
-missing image, other labels or any registry error builds exactly as before.
+provenance cannot drift. The prebuild job records the digest it pushed as the
+`core-image-SOURCE_SHA` artifact of that `Tests` run. When `core-vX.Y.Z` does
+not exist yet, the release job downloads that record from the qualified main
+`Tests` run and reuses only `ghcr.io/typeroll/typeroll@DIGEST`, never whatever
+`sha-SOURCE_SHA` currently points at: any workflow with `packages: write` can
+move a tag or forge labels, but cannot change another run's artifact. The image
+at that digest must still carry the source SHA and release tag labels. The job
+verifies the container contract for that digest, points the release image tag at
+the same digest with `crane tag`, and the manifest records it. A missing record,
+other labels or any registry error builds exactly as before. When a record
+exists, an existing `core-vX.Y.Z` image must point at the recorded digest.
+
+`publish-mcp.yml` has no default token permissions; each job requests only what
+its steps use (`contents: write` only for the Core and MCP tag pushes,
+`packages: write` only for Core, `id-token: write` only for npm Trusted
+Publishing). External actions are pinned to full commit SHAs with the release
+tag in a comment; update the SHA and the comment together. The documentation
+deployer is installed from the same `uploader-lock.json` as customer static
+uploads, with `npm ci --ignore-scripts`.
 
 A manual workflow dispatch is dry-run-only by default; a real
 manual release also requires `RELEASE_TYPEROLL_OSS`. The npm trusted publisher

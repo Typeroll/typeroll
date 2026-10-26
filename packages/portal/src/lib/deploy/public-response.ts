@@ -1,8 +1,13 @@
 import { Agent, fetch as pinnedFetch } from 'undici';
 import net from 'node:net';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
+import { createSafeFetch } from '../net/safe-fetch';
 
 interface Options { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination }
+// The early check classifies a missing host for the public DNS fallback below;
+// the guarded fetch then connects only to an address it validated itself.
+// Redirects are returned to the caller, which keeps them on the same origin.
+const publicationFetch = createSafeFetch({ label: 'Publication URL', maxRedirects: 0, timeoutMs: 15_000, maxBytes: 32 * 1024 * 1024 });
 const missingDns = (error: unknown) => {
   const value = error as { code?: string; cause?: { code?: string } };
   return (value?.cause?.code ?? value?.code) === 'ENOTFOUND';
@@ -33,7 +38,7 @@ export async function publicationResponse(url: URL, init: RequestInit, options: 
   try {
     try {
       await (options.validate ?? assertPublicDestination)(url);
-      response = await (options.fetchImpl ?? fetch)(url, { ...init, redirect: 'manual' });
+      response = await (options.fetchImpl ?? publicationFetch)(url, { ...init, redirect: 'manual' });
     } catch (error) {
       if (!missingDns(error) || options.fetchImpl || options.validate) throw error;
       const resolver = new URL('https://cloudflare-dns.com/dns-query');

@@ -12,6 +12,14 @@ x-core-service: &core-service
   networks:
     - typeroll
 
+# Every Core role reads the same .env file. Secrets a role never uses are
+# blanked in its `environment`, which takes precedence over env_file, so the
+# internet-facing forms service and the worker hold only what they need.
+# Caddy is the only client of portal and forms and appends exactly one
+# X-Forwarded-For hop, so AUTH_TRUST_PROXY_HOPS=1 gives sign-in, MCP OAuth
+# and Forms rate limits the visitor's address instead of Caddy's. Raise it
+# only when another trusted proxy (such as a CDN) sits in front of Caddy and
+# Caddy is configured to trust it.
 services:
   portal:
     <<: *core-service
@@ -19,6 +27,7 @@ services:
       NODE_ENV: production
       TYPEROLL_BACKUP_KEY: ""
       SERVICE_ROLE: portal
+      AUTH_TRUST_PROXY_HOPS: ${AUTH_TRUST_PROXY_HOPS:-1}
       DEPLOY_QUEUE: firestore
       PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}
       FORMS_PUBLIC_URL: https://${TYPEROLL_FORMS_HOST:?Set TYPEROLL_FORMS_HOST in .env}
@@ -30,7 +39,16 @@ services:
     environment:
       NODE_ENV: production
       TYPEROLL_BACKUP_KEY: ""
+      # Forms needs Firebase Admin, FORMS_HMAC_SECRET and
+      # INTEGRATIONS_SECRET_KEY (email connectors, webhook secrets) only.
+      CLOUDFLARE_API_TOKEN: ""
+      R2_ACCESS_KEY_ID: ""
+      R2_SECRET_ACCESS_KEY: ""
+      PREVIEW_HMAC_SECRET: ""
+      MCP_OAUTH_SIGNING_KEY: ""
+      EXTENSION_SIGNING_PRIVATE_JWK: ""
       SERVICE_ROLE: forms
+      AUTH_TRUST_PROXY_HOPS: ${AUTH_TRUST_PROXY_HOPS:-1}
       DEPLOY_QUEUE: firestore
       PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}
       FORMS_PUBLIC_URL: https://${TYPEROLL_FORMS_HOST:?Set TYPEROLL_FORMS_HOST in .env}
@@ -42,6 +60,10 @@ services:
     environment:
       NODE_ENV: production
       TYPEROLL_BACKUP_KEY: ""
+      # Publishing needs storage, hosting, Forms and Extension signing, but
+      # never mints preview links or MCP OAuth tokens.
+      PREVIEW_HMAC_SECRET: ""
+      MCP_OAUTH_SIGNING_KEY: ""
       SERVICE_ROLE: worker
       DEPLOY_QUEUE: firestore
       PORTAL_PUBLIC_URL: https://${TYPEROLL_PORTAL_HOST:?Set TYPEROLL_PORTAL_HOST in .env}

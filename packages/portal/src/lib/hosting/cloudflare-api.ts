@@ -77,13 +77,26 @@ export class CloudflareApi {
 
   /** Attach a custom domain (e.g. customer's apex domain) to a project.
    *  After this call, the customer still has to make their DNS resolve
-   *  to <project>.pages.dev for the domain to actually serve. */
+   *  to <project>.pages.dev for the domain to actually serve.
+   *
+   *  Idempotent for the same project only: a 409 counts as success when
+   *  the domain is already attached to `project`. A 409 for a domain that
+   *  another Pages project holds throws CloudflareConflictError — treating
+   *  it as success would report a hostname as ours while it serves someone
+   *  else's site. */
   async attachCustomDomain(project: string, domain: string): Promise<void> {
     const res = await this.fetch(`/accounts/${this.cfg.accountId}/pages/projects/${project}/domains`, {
       method: 'POST',
       body: JSON.stringify({ name: domain }),
     });
-    if (res.ok || res.status === 409) return; // 409 = already attached
+    if (res.ok) return;
+    if (res.status === 409) {
+      if (await this.getCustomDomainStatus(project, domain)) return; // already attached here
+      throw new CloudflareConflictError(
+        'domain_in_use',
+        `${domain} is already attached to another Cloudflare Pages project.`,
+      );
+    }
     throw await error('attachCustomDomain', res);
   }
 
@@ -152,8 +165,22 @@ export class CloudflareApi {
     return zone.id;
   }
 
+  /** DNS records with this exact name and type (content normalized to
+   *  lowercase without a trailing dot). */
+  async findDnsRecords(zoneId: string, type: string, name: string): Promise<Array<{ id: string; content: string }>> {
+    const list = await this.fetch(
+      `/zones/${zoneId}/dns_records?type=${type}&name=${encodeURIComponent(name)}`,
+    );
+    if (!list.ok) throw await error('findDnsRecords', list);
+    const records = ((await list.json()) as { result: Array<{ id: string; content?: string }> }).result;
+    return records.map((r) => ({ id: r.id, content: normalizeDnsContent(r.content) }));
+  }
+
   /** Create or update a DNS record. Idempotent — if a record with the
-   *  same name+type exists, it's updated. */
+   *  same name+type and the same content exists, it's updated in place.
+   *  An existing record whose content differs is never overwritten: that
+   *  record routes the hostname somewhere else (another site's Pages
+   *  project), so this throws CloudflareConflictError instead. */
   async upsertDnsRecord(args: {
     zoneId: string;
     type: 'CNAME' | 'A' | 'TXT';
@@ -167,7 +194,13 @@ export class CloudflareApi {
       `/zones/${args.zoneId}/dns_records?type=${args.type}&name=${encodeURIComponent(args.name)}`,
     );
     if (!list.ok) throw await error('upsertDnsRecord:list', list);
-    const found = ((await list.json()) as { result: Array<{ id: string }> }).result[0];
+    const found = ((await list.json()) as { result: Array<{ id: string; content?: string }> }).result[0];
+    if (found && normalizeDnsContent(found.content) !== normalizeDnsContent(args.content)) {
+      throw new CloudflareConflictError(
+        'dns_record_conflict',
+        `A ${args.type} record for ${args.name} already points somewhere else; refusing to overwrite it.`,
+      );
+    }
 
     const body = JSON.stringify({
       type: args.type,
@@ -192,12 +225,16 @@ export class CloudflareApi {
     }
   }
 
-  async deleteDnsRecord(zoneId: string, name: string, type: string): Promise<void> {
+  /** Delete records by name and type. With `expectedContent`, only records
+   *  pointing there are deleted, so a caller can never remove a record that
+   *  routes the hostname to someone else. */
+  async deleteDnsRecord(zoneId: string, name: string, type: string, expectedContent?: string): Promise<void> {
     const list = await this.fetch(
       `/zones/${zoneId}/dns_records?type=${type}&name=${encodeURIComponent(name)}`,
     );
     if (!list.ok) throw await error('deleteDnsRecord:list', list);
-    const records = ((await list.json()) as { result: Array<{ id: string }> }).result;
+    const records = ((await list.json()) as { result: Array<{ id: string; content?: string }> }).result
+      .filter((r) => expectedContent === undefined || normalizeDnsContent(r.content) === normalizeDnsContent(expectedContent));
     for (const r of records) {
       const res = await this.fetch(`/zones/${zoneId}/dns_records/${r.id}`, { method: 'DELETE' });
       if (!res.ok) throw await error('deleteDnsRecord:delete', res);
@@ -216,6 +253,19 @@ export class CloudflareApi {
       },
     });
   }
+}
+
+/** A hostname or DNS record that belongs to something else. Never retried
+ *  or overwritten: the caller picks another hostname or reports a conflict. */
+export class CloudflareConflictError extends Error {
+  constructor(readonly code: 'domain_in_use' | 'dns_record_conflict', message: string) {
+    super(message);
+    this.name = 'CloudflareConflictError';
+  }
+}
+
+function normalizeDnsContent(content: string | undefined): string {
+  return (content ?? '').trim().toLowerCase().replace(/\.$/, '');
 }
 
 async function error(op: string, res: Response): Promise<Error> {

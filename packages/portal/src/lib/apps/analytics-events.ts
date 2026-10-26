@@ -3,14 +3,34 @@ import { paths } from "@typeroll/shared";
 import type { AnalyticsEvent } from "@typeroll/shared";
 import type { ReadWriteStore } from "../datastore";
 
-const PREFIX = "analytics-v1";
+// Event tokens share FORMS_HMAC_SECRET with form submission tokens. A v1
+// token signs `analytics-v1.<orgId>.<siteId>` with the secret itself, which
+// is byte-identical to a form token for an organization whose id is
+// `analytics-v1` (see formTokenOrgAllowed). v2 tokens are signed with a key
+// derived for this purpose only, so no other token kind can verify as one.
+// v1 stays accepted for sites built before v2; a rebuild switches them.
+const PREFIX = "analytics-v2";
+const LEGACY_PREFIX = "analytics-v1";
 const SEPARATOR = ".";
+const KEY_PURPOSE = "typeroll/analytics-event-token/v2";
 
 function secret(): string {
   const value = process.env.FORMS_HMAC_SECRET;
   if (!value || value.length < 32)
     throw new Error("FORMS_HMAC_SECRET is not configured");
   return value;
+}
+
+function signingKey(prefix: string): Buffer | string {
+  if (prefix === LEGACY_PREFIX) return secret();
+  return crypto.createHmac("sha256", secret()).update(KEY_PURPOSE).digest();
+}
+
+function signature(prefix: string, orgId: string, siteId: string): string {
+  return crypto
+    .createHmac("sha256", signingKey(prefix))
+    .update(`${prefix}${SEPARATOR}${orgId}${SEPARATOR}${siteId}`)
+    .digest("base64url");
 }
 
 export function isAnalyticsEventSigningConfigured(): boolean {
@@ -20,12 +40,7 @@ export function isAnalyticsEventSigningConfigured(): boolean {
 }
 
 export function signAnalyticsEventToken(orgId: string, siteId: string): string {
-  const payload = `${PREFIX}${SEPARATOR}${orgId}${SEPARATOR}${siteId}`;
-  const signature = crypto
-    .createHmac("sha256", secret())
-    .update(payload)
-    .digest("base64url");
-  return `${payload}${SEPARATOR}${signature}`;
+  return `${PREFIX}${SEPARATOR}${orgId}${SEPARATOR}${siteId}${SEPARATOR}${signature(PREFIX, orgId, siteId)}`;
 }
 
 export function verifyAnalyticsEventToken(
@@ -33,19 +48,16 @@ export function verifyAnalyticsEventToken(
 ): { orgId: string; siteId: string } | null {
   if (typeof token !== "string") return null;
   const parts = token.split(SEPARATOR);
-  if (parts.length !== 4 || parts[0] !== PREFIX) return null;
-  const [, orgId, siteId, signature] = parts;
-  if (!orgId || !siteId || !signature) return null;
+  if (parts.length !== 4 || (parts[0] !== PREFIX && parts[0] !== LEGACY_PREFIX)) return null;
+  const [prefix, orgId, siteId, actual] = parts;
+  if (!orgId || !siteId || !actual) return null;
   let expected: string;
   try {
-    expected = crypto
-      .createHmac("sha256", secret())
-      .update(`${PREFIX}${SEPARATOR}${orgId}${SEPARATOR}${siteId}`)
-      .digest("base64url");
+    expected = signature(prefix, orgId, siteId);
   } catch {
     return null;
   }
-  const actualBuffer = Buffer.from(signature);
+  const actualBuffer = Buffer.from(actual);
   const expectedBuffer = Buffer.from(expected);
   if (actualBuffer.length !== expectedBuffer.length) return null;
   if (!crypto.timingSafeEqual(actualBuffer, expectedBuffer)) return null;

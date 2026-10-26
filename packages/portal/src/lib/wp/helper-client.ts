@@ -12,6 +12,11 @@ import type { WPTaxonomy, WPTerm } from './client';
 // is absent or the key is wrong, the migrator falls back to the standard
 // WPClient against /wp-json/wp/v2/.
 
+import { migrationSourcePolicy, safeFetch } from '../net/safe-fetch';
+import { WP_MAX_COLLECTION_BYTES, WP_MAX_PAGES } from './client';
+
+const HELPER_POLICY = migrationSourcePolicy({ label: 'Helper URL', timeoutMs: 60_000, maxBytes: 32 * 1024 * 1024 });
+
 export interface HelperInfo {
   name: string;
   description: string;
@@ -55,6 +60,8 @@ export interface HelperItem {
   type: string;
   slug: string;
   status: string;
+  /** Password-protected in WordPress (helper 0.4.0+): content and custom data are empty. */
+  protected?: boolean;
   title: { rendered: string };
   content: { rendered: string; raw: string };
   excerpt: { rendered: string };
@@ -224,10 +231,9 @@ export class WPHelperClient {
   // ─── Internals ─────────────────────────────────────────────────────────
 
   private async get<T>(path: string): Promise<T> {
-    const res = await fetch(`${this.base}${path}`, {
+    const res = await safeFetch(`${this.base}${path}`, {
       headers: { 'X-Typeroll-Key': this.apiKey, Accept: 'application/json' },
-      signal: AbortSignal.timeout(30_000),
-    });
+    }, { ...HELPER_POLICY, timeoutMs: 30_000 });
     if (!res.ok) {
       throw new Error(`Helper ${path} → ${res.status} ${res.statusText}`);
     }
@@ -237,19 +243,23 @@ export class WPHelperClient {
   private async paginate<T>(path: string): Promise<T[]> {
     const out: T[] = [];
     let page = 1;
+    let bytes = 0;
     while (true) {
-      const res = await fetch(`${this.base}${path}?page=${page}&per_page=100`, {
+      const res = await safeFetch(`${this.base}${path}?page=${page}&per_page=100`, {
         headers: { 'X-Typeroll-Key': this.apiKey, Accept: 'application/json' },
-        signal: AbortSignal.timeout(60_000),
-      });
+      }, HELPER_POLICY);
       if (!res.ok) {
         throw new Error(`Helper ${path} page ${page} → ${res.status}`);
       }
-      const items = (await res.json()) as T[];
+      const text = await res.text();
+      bytes += text.length;
+      if (bytes > WP_MAX_COLLECTION_BYTES) throw new Error(`WordPress collection exceeds ${WP_MAX_COLLECTION_BYTES} bytes; import it in smaller parts.`);
+      const items = JSON.parse(text) as T[];
       if (!Array.isArray(items)) throw new Error(`Invalid WordPress page ${page}: expected an array.`);
       out.push(...items);
       const totalPages = Number(res.headers.get('X-WP-TotalPages') ?? '1');
       if (!Number.isSafeInteger(totalPages) || totalPages < 1) throw new Error(`Invalid WordPress pagination on page ${page}.`);
+      if (totalPages > WP_MAX_PAGES) throw new Error(`WordPress declares ${totalPages} pages; the importer reads at most ${WP_MAX_PAGES} pages per collection.`);
       if (items.length === 0 && page < totalPages) throw new Error(`Incomplete WordPress export: page ${page} is empty before the declared last page ${totalPages}. Retry after the source is stable.`);
       if (page >= totalPages) break;
       page++;

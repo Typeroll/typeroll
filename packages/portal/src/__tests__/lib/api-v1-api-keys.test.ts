@@ -86,12 +86,13 @@ describe('site-scoped key management', () => {
     expect((await call('org', 'GET', token, {})).status).toBe(403);
   });
 
-  it('requires admin on a shared-in site to revoke', async () => {
+  it('requires admin on a shared-in site to list or revoke', async () => {
     await share(SITE, 'write');
     const partner = await key(OTHER, null);
     const target = await key(ORG, SITE);
     const prefix = target.split('_')[2]!;
-    expect((await call('site', 'GET', partner, { siteId: SITE })).status).toBe(200);
+    // Key metadata names creators and last-used addresses: admins only.
+    expect((await call('site', 'GET', partner, { siteId: SITE })).status).toBe(403);
     expect((await call('site-key', 'DELETE', partner, { siteId: SITE, prefix })).status).toBe(403);
   });
 

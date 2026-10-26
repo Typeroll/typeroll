@@ -1,3 +1,5 @@
+import { createSafeFetch, migrationSourcePolicy } from '../net/safe-fetch';
+
 // Pull every same-origin <a href> from an HTML fragment.
 //
 // Used by the URL inventory's coverage analyzer to find old-site links that
@@ -43,6 +45,9 @@ export function extractInternalLinks(html: string, sourceOrigin: string): string
   return Array.from(out);
 }
 
+// Default transport for resolving source links: guarded, redirects re-checked per hop.
+const sourceRedirectFetch = createSafeFetch(migrationSourcePolicy({ label: 'Source link', timeoutMs: 15_000, maxBytes: 1024 * 1024 }));
+
 export interface SourceRedirectResolverOptions {
   fetchImpl?: typeof fetch;
   cache?: Map<string, Promise<string>>;
@@ -60,7 +65,7 @@ export async function resolveSourceRedirectsInHtml(
   if (!html || !sourceOrigin) return html;
   const origin = new URL(sourceOrigin).origin;
   const cache = opts.cache ?? new Map<string, Promise<string>>();
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl ?? sourceRedirectFetch;
   const matches = [...html.matchAll(/<a\b[^>]*\bhref=("([^"]*)"|'([^']*)')/giu)];
   const replacements = new Map<string, string>();
 

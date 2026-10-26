@@ -1,6 +1,7 @@
 <?php
 /**
- * Routes under /wp-json/typeroll/v1/* — all auth'd via X-Typeroll-Key.
+ * Routes under /wp-json/typeroll/v1/* — all auth'd via the X-Typeroll-Key header.
+ * Content routes expose only published posts of public post types.
  *
  *   GET /info                         site metadata, ACF presence, key check
  *   GET /post-types                   every type the migrator might want
@@ -10,7 +11,7 @@
  *   GET /menus                        navigation menus and items
  *   GET /urls                         every public-facing permalink
  *   GET /redirects                    existing redirects from common WP plugins
- *   GET /postmeta/{id}/{key}          raw read of a specific postmeta field
+ *   GET /postmeta/{id}/{key}          one public postmeta field of a published post
  *   GET /seo                          site-wide SEO settings (active plugin)
  */
 
@@ -19,6 +20,21 @@ if ( ! defined( 'ABSPATH' ) ) exit;
 class Typeroll_Helper_Rest_API {
 
 	const NAMESPACE_V1 = 'typeroll/v1';
+
+	/**
+	 * Underscore-prefixed (protected) meta keys that hold page content or
+	 * presentation and may be read through /postmeta. Everything else with a
+	 * leading underscore is plugin-internal and may be private (for example
+	 * WooCommerce billing data), so it is refused.
+	 */
+	const POSTMETA_PROTECTED_ALLOWLIST = array(
+		'_thumbnail_id',
+		'_wp_page_template',
+		'_elementor_data',
+		'_elementor_page_settings',
+		'_elementor_version',
+		'_breakdance_data',
+	);
 
 	public static function register_routes() {
 		$auth = array( 'Typeroll_Helper_Auth', 'check_request' );
@@ -94,10 +110,11 @@ class Typeroll_Helper_Rest_API {
 			'callback'            => array( __CLASS__, 'route_seo' ),
 		) );
 
-		// Escape hatch: read any postmeta field. Useful when an oddly-stored
-		// custom field (e.g. a page builder's serialized blob) doesn't surface
-		// through the normalized /items endpoint. The key is restricted to a
-		// safe charset to keep the route shape predictable.
+		// Escape hatch: read one postmeta field of an exported post. Useful
+		// when an oddly-stored custom field (e.g. a page builder's serialized
+		// blob) doesn't surface through the normalized /items endpoint. Only
+		// public (non-underscore) keys and a small allowlist of content keys
+		// are readable; see POSTMETA_PROTECTED_ALLOWLIST.
 		register_rest_route( self::NAMESPACE_V1, '/postmeta/(?P<id>\d+)/(?P<key>[A-Za-z0-9_\-]+)', array(
 			'methods'             => 'GET',
 			'permission_callback' => $auth,
@@ -139,7 +156,7 @@ class Typeroll_Helper_Rest_API {
 
 	public static function route_items( $request ) {
 		$type = $request['type'];
-		if ( ! post_type_exists( $type ) ) {
+		if ( ! Typeroll_Helper_Content::is_exportable_type( $type ) ) {
 			return new WP_Error( 'typeroll_unknown_type', "Unknown post type: $type", array( 'status' => 404 ) );
 		}
 		$page     = (int) $request->get_param( 'page' );
@@ -226,8 +243,11 @@ class Typeroll_Helper_Rest_API {
 		$post_id  = (int) $request['id'];
 		$meta_key = (string) $request['key'];
 		$post     = get_post( $post_id );
-		if ( ! $post ) {
+		if ( ! Typeroll_Helper_Content::is_exportable_post( $post ) || Typeroll_Helper_Content::is_protected_post( $post ) ) {
 			return new WP_Error( 'typeroll_not_found', 'Post not found', array( 'status' => 404 ) );
+		}
+		if ( ! self::is_readable_meta_key( $meta_key ) ) {
+			return new WP_Error( 'typeroll_meta_not_exported', 'This meta key is not exported.', array( 'status' => 403 ) );
 		}
 		$value = get_post_meta( $post_id, $meta_key, true );
 		// If the value parses cleanly as JSON, surface that too for convenience.
@@ -243,6 +263,16 @@ class Typeroll_Helper_Rest_API {
 			'value_decoded' => $decoded,
 			'value_type'    => gettype( $value ),
 		) );
+	}
+
+	/**
+	 * @param string $meta_key
+	 * @return bool
+	 */
+	public static function is_readable_meta_key( $meta_key ) {
+		if ( ! is_string( $meta_key ) || $meta_key === '' ) return false;
+		if ( strpos( $meta_key, '_' ) !== 0 ) return true;
+		return in_array( $meta_key, self::POSTMETA_PROTECTED_ALLOWLIST, true );
 	}
 
 	public static function route_menus( $request ) {

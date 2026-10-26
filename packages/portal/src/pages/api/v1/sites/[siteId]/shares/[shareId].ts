@@ -2,13 +2,15 @@
 // DELETE /api/v1/sites/{siteId}/shares/{shareId} — revoke the share. The
 //        canonical record keeps revoked_at for audit; access ends immediately.
 //
-// Admin on the site, as in the settings UI (/api/sites/{siteId}/shares/{shareId}).
+// Admin in the owning organization, as in the settings UI
+// (/api/sites/{siteId}/shares/{shareId}).
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { apiError, apiResponse, isApiSiteOwner, requireApiKey } from '../../../../../../lib/api-auth';
 import { parseShareUpdate, revokeShare, updateShare } from '../../../../../../lib/shares';
 
 const ADMIN_REQUIRED = 'Managing site sharing requires admin permission on the site.';
+const OWNER_REQUIRED = 'Only the owning organization can change who this site is shared with.';
 const SHARE_ID = /^[A-Za-z0-9_-]{1,128}$/;
 
 export const PATCH: APIRoute = async ({ request, params }) => {
@@ -16,6 +18,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   if (ctx.permission !== 'admin') return apiError(ADMIN_REQUIRED, 403, ctx);
+  if (!isApiSiteOwner(ctx)) return apiError(OWNER_REQUIRED, 403, ctx);
   if (!params.shareId || !SHARE_ID.test(params.shareId)) return apiError('Share not found', 404, ctx);
 
   let body: unknown;
@@ -32,6 +35,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   if (ctx.permission !== 'admin') return apiError(ADMIN_REQUIRED, 403, ctx);
+  if (!isApiSiteOwner(ctx)) return apiError(OWNER_REQUIRED, 403, ctx);
   if (!params.shareId || !SHARE_ID.test(params.shareId)) return apiError('Share not found', 404, ctx);
   const result = await revokeShare(ctx.orgId, ctx.siteId, params.shareId);
   if (!result) return apiError('Share not found', 404, ctx);

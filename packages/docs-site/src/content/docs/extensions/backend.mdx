@@ -99,7 +99,11 @@ already processed. Delivery retries network failures, 408, 429, and 5xx.
 Server-to-server calls into Typeroll use an installation credential, not an
 admin launch token. Send it as Bearer along with the owner organization and
 installation headers required by the site API. Store the secret outside source
-control and rotate it from the Extension installation settings.
+control and rotate it from the Extension installation settings. Only the
+Organization that owns the Site issues credentials; an Organization the Site
+is shared with cannot. A credential carries the scopes granted when it was
+issued, limited on every request to the installation's current grant (see
+[available scopes](../manifest/#available-scopes)).
 
 See the [manifest reference](../manifest/) for the declared surfaces.
 
@@ -126,6 +130,15 @@ An administrator can bind an existing or new Form using
 a declared POST route. Both API and MCP support this target. Preserve the
 form's steps, actions and styling when changing its destination.
 
+With `forms:write` an installation can bind only to itself, and only a Form it
+creates or an unbound Form without configured actions; binding a Form the site
+administrator gave email or webhook actions is the administrator's decision. A
+Form bound to another installation cannot be changed or deleted by it. An
+installation may delete a Form bound to itself, but never with
+`delete_submissions=true`: erasing submitted data needs a site administrator.
+A component's `form_bindings` never receive a Core submit token for a Form bound
+to an app installation.
+
 ## Authenticated product guides (Core 0.2.9)
 
 Declare `documentation.access: "installation"` and a HTTPS guide URL on the
@@ -138,6 +151,8 @@ Return `Cache-Control: private,no-store`; reject unauthorized, expired,
 disabled, cross-site and wrong-version requests.
 
 Authorized users and agents discover these guides with `read_app_documentation`.
+An installation credential reading `/apps/documentation` with `content:read`
+receives only its own installation's entry, never another provider's guide.
 Core limits the document to 256 KiB and reports unavailable guides explicitly.
 No private guide text belongs in a public manifest or build asset.
 

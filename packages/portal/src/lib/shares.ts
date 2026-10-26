@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import type { Organization, Site, SiteShare, SharePermission } from '@typeroll/shared';
 import { getStore } from './datastore';
+import { revokeSiteKeysMintedByOrg } from './api-keys';
 
 export const SHARE_PERMISSIONS: SharePermission[] = ['read', 'write', 'admin'];
 
@@ -120,6 +121,11 @@ export async function revokeShare(
   const now = Date.now();
   await store.updateDoc(paths.share(ownerOrgId, siteId, shareId), { revoked_at: now });
   await store.deleteDoc(paths.sharesWithOrgEntry(canonical.shared_with_org_id, shareId));
+  // Access through the share ends here, including site keys its recipient
+  // minted while it held admin (possible before minting became owner-only).
+  if (canonical.permission === 'admin') {
+    await revokeSiteKeysMintedByOrg(ownerOrgId, siteId, canonical.shared_with_org_id);
+  }
   return { ...canonical, revoked_at: now };
 }
 
@@ -146,6 +152,11 @@ export async function updateShare(
     paths.sharesWithOrgEntry(canonical.shared_with_org_id, shareId),
     update,
   );
+  // A site key is full admin. Lowering the share below admin also ends the
+  // keys its recipient minted while it held admin.
+  if (canonical.permission === 'admin' && patch.permission !== undefined && patch.permission !== 'admin') {
+    await revokeSiteKeysMintedByOrg(ownerOrgId, siteId, canonical.shared_with_org_id);
+  }
   return {
     ...canonical,
     permission: patch.permission ?? canonical.permission,
@@ -213,6 +224,27 @@ export async function hydrateSharedSites(
     const site = await getStore().getDoc<Site>(paths.site(share.owner_org_id, share.site_id));
     if (!site) continue;
     out.push({ share, site });
+  }
+  return out;
+}
+
+/**
+ * hydrateSharedSites for authorization decisions: each flat-index entry is
+ * only the discovery hop, and the share it points at is re-read from the
+ * owner's canonical record. An entry whose canonical record is missing,
+ * revoked or names another site, owner or recipient grants nothing, and the
+ * returned permission is the canonical one, never the index copy.
+ */
+export async function hydrateCanonicalSharedSites(
+  orgId: string,
+): Promise<Array<{ share: SiteShare; site: Site & { id: string } }>> {
+  const out: Array<{ share: SiteShare; site: Site & { id: string } }> = [];
+  for (const { share, site } of await hydrateSharedSites(orgId)) {
+    const canonical = await getStore().getDoc<SiteShare>(paths.share(share.owner_org_id, share.site_id, share.id));
+    if (!canonical || canonical.revoked_at || canonical.owner_org_id !== share.owner_org_id
+      || canonical.site_id !== share.site_id || canonical.shared_with_org_id !== orgId
+      || !SHARE_PERMISSIONS.includes(canonical.permission)) continue;
+    out.push({ share: { ...canonical, id: share.id }, site });
   }
   return out;
 }

@@ -3,6 +3,18 @@
 // All endpoints under /wp-json/wp/v2/* are public on most sites, so we use
 // unauthenticated GETs for the read-only migration flow. Pagination is
 // followed automatically via the X-WP-TotalPages header.
+//
+// Every request goes through the guarded outbound transport: the source and
+// each redirect must be a public address, and each response is time- and
+// size-bounded. A source cannot declare unbounded pagination.
+
+import { migrationSourcePolicy, safeFetch, type OutboundPolicy } from '../net/safe-fetch';
+
+/** Upper bound on pages read from one collection (100 items each). */
+export const WP_MAX_PAGES = 1000;
+/** Upper bound on the bytes read from one paginated collection. */
+export const WP_MAX_COLLECTION_BYTES = 256 * 1024 * 1024;
+const WP_REQUEST_POLICY: OutboundPolicy = migrationSourcePolicy({ label: 'WordPress URL', timeoutMs: 60_000, maxBytes: 32 * 1024 * 1024 });
 
 export interface WPPage {
   id: number;
@@ -114,10 +126,10 @@ export class WPClient {
 
   private async fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       ...init,
       headers: { 'User-Agent': 'Typeroll-Migrator/0.1', ...(init?.headers ?? {}) },
-    });
+    }, WP_REQUEST_POLICY);
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${url}`);
     return (await res.json()) as T;
   }
@@ -223,7 +235,7 @@ export class WPClient {
 
   /** Download a remote asset as a Buffer (for media). */
   async download(url: string): Promise<{ data: Buffer; contentType: string }> {
-    const res = await fetch(url);
+    const res = await safeFetch(url, {}, { ...WP_REQUEST_POLICY, label: 'Download URL' });
     if (!res.ok) throw new Error(`Download failed: ${res.status} ${url}`);
     const buf = Buffer.from(await res.arrayBuffer());
     return { data: buf, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
@@ -233,18 +245,22 @@ export class WPClient {
     const sep = path.includes('?') ? '&' : '?';
     const out: T[] = [];
     let page = 1;
+    let bytes = 0;
     while (true) {
       const url = `${this.baseUrl}${path}${sep}page=${page}`;
-      const res = await fetch(url, {
+      const res = await safeFetch(url, {
         headers: { 'User-Agent': 'Typeroll-Migrator/0.1' },
-        signal: AbortSignal.timeout(60_000),
-      });
+      }, WP_REQUEST_POLICY);
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${url}`);
-      const items = (await res.json()) as T[];
+      const text = await res.text();
+      bytes += text.length;
+      if (bytes > WP_MAX_COLLECTION_BYTES) throw new Error(`WordPress collection exceeds ${WP_MAX_COLLECTION_BYTES} bytes; import it in smaller parts or with the helper plugin.`);
+      const items = JSON.parse(text) as T[];
       if (!Array.isArray(items)) throw new Error(`Invalid WordPress page ${page}: expected an array.`);
       out.push(...items);
       const totalPages = Number(res.headers.get('X-WP-TotalPages') ?? '1');
       if (!Number.isSafeInteger(totalPages) || totalPages < 1) throw new Error(`Invalid WordPress pagination on page ${page}.`);
+      if (totalPages > WP_MAX_PAGES) throw new Error(`WordPress declares ${totalPages} pages; the importer reads at most ${WP_MAX_PAGES} pages per collection.`);
       if (items.length === 0 && page < totalPages) throw new Error(`Incomplete WordPress export: page ${page} is empty before the declared last page ${totalPages}. Retry after the source is stable.`);
       if (page >= totalPages) break;
       page++;

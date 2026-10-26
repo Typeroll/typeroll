@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { BlockChange } from '@typeroll/shared';
+import { EDITOR_CANVAS_FRAME_SANDBOX, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
 
 interface Props {
   siteId: string;
@@ -50,24 +51,29 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose, cha
     return () => { cancelled = true; };
   }, [siteId, pageId, changesUrl]);
 
-  const leftCanvasId = `review-${siteId}-${pageId}-saved`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 128);
-  const rightCanvasId = `review-${siteId}-${pageId}-draft`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 128);
+  const leftCanvasId = useEditorCanvasId('review-saved');
+  const rightCanvasId = useEditorCanvasId('review-draft');
 
   // Scroll sync through the opaque-origin bridge. A mirrored scroll produces
   // its own event, so expected values suppress the echo.
   useEffect(() => {
     let expectedLeft: number | null = null;
     let expectedRight: number | null = null;
-    const send = (frame: HTMLIFrameElement | null, canvasId: string, y: number) => frame?.contentWindow?.postMessage({
-      channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, action: 'scroll', scroll_y: y,
-    }, '*');
+    const send = (frame: HTMLIFrameElement | null, canvasId: string | null, y: number): void => {
+      if (!canvasId) return;
+      frame?.contentWindow?.postMessage({
+        channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, action: 'scroll', scroll_y: y,
+      }, '*');
+    };
     const receive = (event: MessageEvent) => {
-      const data = event.data as Record<string, unknown> | null;
-      if (!data || data.channel !== 'typeroll.editor-canvas' || data.version !== 1 || data.type !== 'scroll' || typeof data.scroll_y !== 'number') return;
-      if (event.source === leftRef.current?.contentWindow && data.canvas_id === leftCanvasId) {
+      const fromLeft = isEditorCanvasMessage(event, leftRef.current, leftCanvasId);
+      if (!fromLeft && !isEditorCanvasMessage(event, rightRef.current, rightCanvasId)) return;
+      const data = event.data as Record<string, unknown>;
+      if (data.type !== 'scroll' || typeof data.scroll_y !== 'number') return;
+      if (fromLeft) {
         if (expectedLeft !== null && Math.abs(expectedLeft - data.scroll_y) < 1) { expectedLeft = null; return; }
         expectedRight = data.scroll_y; send(rightRef.current, rightCanvasId, data.scroll_y);
-      } else if (event.source === rightRef.current?.contentWindow && data.canvas_id === rightCanvasId) {
+      } else {
         if (expectedRight !== null && Math.abs(expectedRight - data.scroll_y) < 1) { expectedRight = null; return; }
         expectedLeft = data.scroll_y; send(leftRef.current, leftCanvasId, data.scroll_y);
       }
@@ -82,8 +88,7 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose, cha
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  const savedUrl = previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&saved=1&canvas=${encodeURIComponent(leftCanvasId)}`;
-  const draftUrl = previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&canvas=${encodeURIComponent(rightCanvasId)}`;
+  const frameUrl = (query: string, canvasId: string) => previewUrl + (previewUrl.includes('?') ? '&' : '?') + `${query}&canvas=${encodeURIComponent(canvasId)}`;
   const changes = summary?.block_changes ?? [];
 
   return (
@@ -112,11 +117,11 @@ export default function ReviewChanges({ siteId, pageId, previewUrl, onClose, cha
       <div className="review-changes__panes" style={panes}>
         <div style={pane}>
           <div style={paneLabel}>Saved</div>
-          <iframe ref={leftRef} src={savedUrl} title="Saved version" style={frame} />
+          {leftCanvasId && <iframe ref={leftRef} src={frameUrl('embed=1&saved=1', leftCanvasId)} sandbox={EDITOR_CANVAS_FRAME_SANDBOX} title="Saved version" style={frame} />}
         </div>
         <div style={pane}>
           <div style={{ ...paneLabel, color: '#fbbf24' }}>Utkast (osparat)</div>
-          <iframe ref={rightRef} src={draftUrl} title="Utkast" style={frame} />
+          {rightCanvasId && <iframe ref={rightRef} src={frameUrl('embed=1', rightCanvasId)} sandbox={EDITOR_CANVAS_FRAME_SANDBOX} title="Utkast" style={frame} />}
         </div>
       </div>
       <style>{`

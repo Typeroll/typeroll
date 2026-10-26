@@ -1,4 +1,4 @@
-// Manage a single existing share — admin-only.
+// Manage a single existing share — admins of the owning organization only.
 //
 // PATCH  — change permission level and/or label.
 // DELETE — revoke (soft-deletes canonical, hard-deletes index entry).
@@ -6,13 +6,15 @@
 // The public-API equivalent is /api/v1/sites/{siteId}/shares/{shareId}.
 
 import type { APIRoute } from 'astro';
-import { requireSiteAccess, requirePermission, json } from '../../../../../lib/access';
+import { requireSiteAccess, requireOwnerPermission, json } from '../../../../../lib/access';
 import { parseShareUpdate, revokeShare, updateShare } from '../../../../../lib/shares';
+
+const OWNER_REQUIRED = 'Only the owning organization can change who this site is shared with';
 
 export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
+  const adminCheck = requireOwnerPermission(guard.value, 'admin', OWNER_REQUIRED);
   if (!adminCheck.ok) return adminCheck.response;
   const { site, owner_org_id } = guard.value;
   const { shareId } = params;
@@ -29,7 +31,7 @@ export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
 export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
+  const adminCheck = requireOwnerPermission(guard.value, 'admin', OWNER_REQUIRED);
   if (!adminCheck.ok) return adminCheck.response;
   const { site, owner_org_id } = guard.value;
   const { shareId } = params;

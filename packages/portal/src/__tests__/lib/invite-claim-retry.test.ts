@@ -5,21 +5,24 @@ vi.mock('../../lib/auth', () => ({
   getSession: async () => ({ userId: 'test-user', email: 'test@example.invalid', orgId: 'original' }),
 }));
 import { getStore } from '../../lib/datastore';
-import { generateInviteToken } from '../../lib/invite';
+import { createInvite } from '../../lib/invite';
 import { POST } from '../../pages/api/orgs/invite/join';
 const cookies = { set: vi.fn(), delete: vi.fn() };
+let token = '';
 beforeEach(async () => {
   vi.clearAllMocks();
+  vi.stubEnv('FORMS_HMAC_SECRET', 'synthetic-invite-signing-secret-32-characters');
   makeTmpFixtures();
   await resetDatastore();
   await getStore().setDoc(paths.org('test-org'), { name: 'Test' });
   await getStore().setDoc(paths.org('original'), { name: 'Original' });
   await getStore().setDoc(`${paths.members('original')}/test-user`, { role: 'owner' });
+  token = new URL((await createInvite({ orgId: 'test-org', ttlDays: 7, createdBy: { id: 'admin' } })).inviteUrl, 'https://portal.test').searchParams.get('invite')!;
 });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 async function join() {
   return await POST({ cookies, request: new Request('https://portal.test/api/orgs/invite/join', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: generateInviteToken('test-org') }),
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token }),
   }) } as never) as Response;
 }
 it('allows an existing member to join another organization and retry safely', async () => {

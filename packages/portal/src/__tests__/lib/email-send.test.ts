@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EmailConnector } from '@typeroll/shared';
+import dns from 'node:dns/promises';
 
 const sendMailMock = vi.fn();
 vi.mock('nodemailer', () => ({
@@ -17,6 +18,7 @@ describe('sendViaConnector', () => {
     process.env.INTEGRATIONS_SECRET_KEY = KEY;
     sendMailMock.mockReset();
     sendMailMock.mockResolvedValue({ messageId: 'smtp-1' });
+    vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: '203.0.113.25', family: 4 }] as never);
   });
   afterEach(() => {
     delete process.env.INTEGRATIONS_SECRET_KEY;
@@ -89,6 +91,36 @@ describe('sendViaConnector', () => {
     const call = sendMailMock.mock.calls[0]![0];
     expect(call.from).toBe('Default <d@b.com>');
     expect(call.replyTo).toBe('reply@b.com');
+  });
+
+  it('pins SMTP to the validated public address and verifies TLS against the host name', async () => {
+    const nodemailer = (await import('nodemailer')).default as unknown as { createTransport: ReturnType<typeof vi.fn> };
+    const connector: EmailConnector = { type: 'smtp', from: 'a@b.com', config: { host: 'smtp.x.com', port: 587, secure: false, user: '', password_enc: '' } };
+    await sendViaConnector(connector, msg);
+    expect(nodemailer.createTransport).toHaveBeenLastCalledWith(expect.objectContaining({ host: '203.0.113.25', servername: 'smtp.x.com', port: 587 }));
+  });
+
+  it.each([
+    ['an internal host name', { host: 'smtp.x.com' }, '10.0.0.5', /public address/],
+    ['a mapped metadata address', { host: 'smtp.x.com' }, '::ffff:a9fe:a9fe', /public address/],
+    ['a loopback literal', { host: '127.0.0.1' }, '203.0.113.25', /public address/],
+    ['a non-SMTP port', { host: 'smtp.x.com', port: 6379 }, '203.0.113.25', /port must be one of/],
+  ])('refuses %s without connecting', async (_label, config, resolved, error) => {
+    vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: resolved, family: resolved.includes(':') ? 6 : 4 }] as never);
+    const connector: EmailConnector = { type: 'smtp', from: 'a@b.com', config: { port: 587, secure: false, user: '', password_enc: '', ...config } };
+    const res = await sendViaConnector(connector, msg);
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(error);
+    expect(sendMailMock).not.toHaveBeenCalled();
+  });
+
+  it('returns a fixed message instead of the SMTP server reply', async () => {
+    sendMailMock.mockRejectedValue(Object.assign(new Error('Invalid greeting. response=SSH-2.0-OpenSSH_9.6 internal-db-01'), { code: 'EPROTOCOL' }));
+    const connector: EmailConnector = { type: 'smtp', from: 'a@b.com', config: { host: 'smtp.x.com', port: 25, secure: false, user: '', password_enc: '' } };
+    const res = await sendViaConnector(connector, msg);
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe('Could not connect to the SMTP server; check the host, port and TLS setting');
+    expect(res.error).not.toContain('OpenSSH');
   });
 
   it('refuses a message with no body', async () => {

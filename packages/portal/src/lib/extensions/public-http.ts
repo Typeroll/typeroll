@@ -1,24 +1,16 @@
 import dns from 'node:dns/promises';
-import net from 'node:net';
+import { isIpAddressLiteral, isLocalHostname, isPublicIpAddress } from '@typeroll/shared';
 
+// Shared with the manifest validator and the frozen publication runner, which
+// copies this file verbatim; keep its imports to Node built-ins and
+// @typeroll/shared. Portal requests that should also pin the connection to the
+// validated address use lib/net/safe-fetch.
 function isPrivateAddress(address: string): boolean {
-  if (net.isIPv4(address)) {
-    const [a, b] = address.split('.').map(Number);
-    return a === 0 || a === 10 || a === 127 ||
-      (a === 100 && b! >= 64 && b! <= 127) ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b! >= 16 && b! <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      a! >= 224;
-  }
-  if (net.isIPv6(address)) {
-    const normalized = address.toLowerCase();
-    return normalized === '::' || normalized === '::1' ||
-      normalized.startsWith('fc') || normalized.startsWith('fd') ||
-      /^fe[89ab]/.test(normalized) || normalized.startsWith('::ffff:127.');
-  }
-  return true;
+  return !isPublicIpAddress(address);
+}
+
+function bareHost(hostname: string): string {
+  return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname;
 }
 
 export function parsePublicHttpsUrl(raw: string, label = 'URL'): URL {
@@ -28,15 +20,18 @@ export function parsePublicHttpsUrl(raw: string, label = 'URL'): URL {
   if (url.username || url.password) throw new Error(`${label} must not contain credentials`);
   if (url.hash) throw new Error(`${label} must not contain a fragment`);
   const host = url.hostname.toLowerCase();
-  if (host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local')) {
-    throw new Error(`${label} must use a public host`);
-  }
-  if (net.isIP(host) && isPrivateAddress(host)) throw new Error(`${label} must use a public host`);
+  if (isLocalHostname(host)) throw new Error(`${label} must use a public host`);
+  if (isIpAddressLiteral(host) && isPrivateAddress(bareHost(host))) throw new Error(`${label} must use a public host`);
   return url;
 }
 
 export async function assertPublicDestination(url: URL): Promise<void> {
-  if (net.isIP(url.hostname)) return;
+  const host = bareHost(url.hostname);
+  if (isIpAddressLiteral(host)) {
+    // Redirect targets reach this check without parsePublicHttpsUrl; literals are never exempt.
+    if (isPrivateAddress(host)) throw new Error('Destination resolved to a non-public address');
+    return;
+  }
   const addresses = await dns.lookup(url.hostname, { all: true, verbatim: true });
   if (addresses.length === 0 || addresses.some((entry) => isPrivateAddress(entry.address))) {
     throw new Error('Destination resolved to a non-public address');

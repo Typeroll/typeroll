@@ -1,12 +1,16 @@
 import { Parser } from 'htmlparser2';
 import { fetchPublicAsset, parsePublicHttpsUrl } from '../extensions/public-http';
+import { createSafeFetch } from '../net/safe-fetch';
+
+// Pins each request to the address that passed the public-destination check.
+const inventoryFetch = createSafeFetch({ label: 'Source URL', timeoutMs: 15_000, maxBytes: 2_000_000 });
 
 /** Bounded, read-only discovery. Public REST cannot prove private types or old-slug completeness. */
 export async function discoverPublicWordPress(origin: string, options: {
   crawlPages?: number; maxRequests?: number; read?: (url: string) => Promise<string>;
 } = {}) {
   const base = parsePublicHttpsUrl(origin).origin;
-  const read = options.read ?? (async url => new TextDecoder().decode(await fetchPublicAsset(url, 2_000_000, fetch, { 'User-Agent':'Typeroll-Migration-Inventory/1.0' })));
+  const read = options.read ?? (async url => new TextDecoder().decode(await fetchPublicAsset(url, 2_000_000, inventoryFetch, { 'User-Agent':'Typeroll-Migration-Inventory/1.0' })));
   const limit = Math.min(50, Math.max(1, options.maxRequests ?? 30));
   const deadline = Date.now() + 45_000;
   let requests = 0, truncated = false;

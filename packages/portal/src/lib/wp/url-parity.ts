@@ -1,4 +1,5 @@
 import { publicationResponse } from '../deploy/public-response';
+import { safeFetch as guardedFetch } from '../net/safe-fetch';
 // Pre-cutover URL parity check.
 //
 // `analyzeCoverage` answers "does the DATA say this URL is handled?" — it
@@ -426,9 +427,18 @@ async function safeFetch(
       method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeoutMs),
       headers: { 'user-agent': 'Typeroll-URL-Parity/1.0' },
     };
-    if (doFetch === publicationFetch && url.startsWith('https://')) {
-      const checked = await publicationResponse(new URL(url), init);
-      try { return { ok: true, response: checked.response }; } finally { await checked.close(); }
+    if (doFetch === publicationFetch) {
+      if (url.startsWith('https://')) {
+        const checked = await publicationResponse(new URL(url), init);
+        try { return { ok: true, response: checked.response }; } finally { await checked.close(); }
+      }
+      // Plain-http origins (often the old WordPress source) get the same
+      // public-destination guard; 'follow' re-checks every redirect hop.
+      const res = await guardedFetch(url, { ...init, redirect }, {
+        allowHttp: true, privateNetwork: 'self_hosted_opt_in', label: 'Parity URL', timeoutMs, maxBytes: 1024 * 1024,
+      });
+      void res.body?.cancel?.().catch(() => {});
+      return { ok: true, response: res };
     }
     const res = await doFetch(url, {
       method: 'GET',

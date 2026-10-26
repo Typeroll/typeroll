@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { apiUrlProblem } from './api-url.js';
 
 type Json = Record<string, unknown>;
 
@@ -78,10 +79,40 @@ export function extensionMetadataUpdate(
   return update;
 }
 
+/** One id segment, by the same rule the portal applies to allowed_site_ids. */
+function isIdSegment(value: string): boolean {
+  return value.length >= 1 && value.length <= 128 && value !== '.' && value !== '..' && !/[/\\\s\x00-\x1f\x7f]/.test(value);
+}
+
+export interface InstallSite {
+  /** The site id within its organization, as used in /api/v1/sites/{siteId}. */
+  siteId: string;
+  /** The owning organization when given as `org/site`, otherwise null. */
+  ownerOrgId: string | null;
+  /** The entry written to a private Extension's allowed_site_ids. */
+  allowEntry: string;
+}
+
+/**
+ * Parse `install --site`. `org/site` names a site of any organization and is
+ * written to allowed_site_ids in that form; a bare site id only ever matches
+ * a site of the developer organization itself.
+ */
+export function parseInstallSite(value: string): InstallSite {
+  const parts = value.split('/');
+  if (parts.length === 1 && isIdSegment(value)) return { siteId: value, ownerOrgId: null, allowEntry: value };
+  if (parts.length === 2 && isIdSegment(parts[0]!) && isIdSegment(parts[1]!)) {
+    return { siteId: parts[1]!, ownerOrgId: parts[0]!, allowEntry: value };
+  }
+  throw new Error('--site must be <site-id> or <organization-id>/<site-id>');
+}
+
 async function api(path: string, init: RequestInit = {}, allowed: number[] = []): Promise<{ status: number; data: Json }> {
   const baseUrl = process.env.TYPEROLL_API_URL?.trim().replace(/\/$/, '');
   const apiKey = process.env.TYPEROLL_API_KEY?.trim();
   if (!baseUrl || !apiKey) throw new Error('TYPEROLL_API_URL and TYPEROLL_API_KEY are required');
+  const apiUrlError = apiUrlProblem(baseUrl);
+  if (apiUrlError) throw new Error(apiUrlError);
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${apiKey}`);
   if (init.body) headers.set('Content-Type', 'application/json');
@@ -95,7 +126,7 @@ function help(): void {
   console.error('Usage:');
   console.error('  typeroll extension validate [manifest]');
   console.error('  typeroll extension push --draft [--manifest path]');
-  console.error('  typeroll extension install --site <site-id> [--manifest path] [--config config.json]');
+  console.error('  typeroll extension install --site <site-id | organization-id/site-id> [--manifest path] [--config config.json]');
   console.error('  typeroll extension configure --site <site-id> --installation <installation-id> --config config.json [--no-deploy]');
   console.error('  typeroll extension promote <version> [--manifest path]');
 }
@@ -182,23 +213,33 @@ export async function runExtensionCli(args: string[]): Promise<number> {
       return 0;
     }
     if (command === 'install') {
-      const siteId = option(args, '--site');
-      if (!siteId) throw new Error('install requires --site <site-id>');
+      const siteOption = option(args, '--site');
+      if (!siteOption) throw new Error('install requires --site <site-id> or --site <organization-id>/<site-id>');
+      const site = parseInstallSite(siteOption);
       const configPath = option(args, '--config');
       const config = configPath ? await readJson(configPath) : {};
       const permissions = Array.isArray(manifest.permissions) ? manifest.permissions as Json[] : [];
       if (manifest.distribution === 'private') {
+        if (!site.ownerOrgId) {
+          console.error(
+            `Note: allowed_site_ids entry "${site.allowEntry}" only allows a site of your developer organization. `
+            + 'To allow a site of another organization, pass --site <organization-id>/<site-id>.',
+          );
+        }
         const current = await api(`/api/developer/extensions/${encodeURIComponent(extensionId)}`);
         const registered = current.data.extension as Json | undefined;
         const allowed = Array.isArray(registered?.allowed_site_ids) ? registered.allowed_site_ids.map(String) : [];
-        if (!allowed.includes(siteId)) {
+        if (!allowed.includes(site.allowEntry)) {
           await api(`/api/developer/extensions/${encodeURIComponent(extensionId)}`, {
-            method: 'PATCH', body: JSON.stringify({ allowed_site_ids: [...allowed, siteId] }),
+            method: 'PATCH', body: JSON.stringify({ allowed_site_ids: [...allowed, site.allowEntry] }),
           });
         }
       }
-      const installed = await api(`/api/v1/sites/${encodeURIComponent(siteId)}/extensions`, {
+      // With `org/site`, declare the owner so the server refuses to resolve the
+      // id to a different organization's site of the same name.
+      const installed = await api(`/api/v1/sites/${encodeURIComponent(site.siteId)}/extensions`, {
         method: 'POST',
+        headers: site.ownerOrgId ? { 'Typeroll-Organization': site.ownerOrgId } : undefined,
         body: JSON.stringify({
           extension_id: extensionId,
           version: manifest.version,

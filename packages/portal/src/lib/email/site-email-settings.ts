@@ -16,6 +16,7 @@ import { providerDescriptors, sendViaConnector } from './index';
 import { buildConnector, maskConnector } from './connector-config';
 import { DeliveryError } from './delivery';
 import { setInboundRoute, siteInboundRoutes } from './inbound';
+import { resolveSmtpHost, SmtpConfigError } from './providers/smtp';
 
 /** A refusal with the HTTP status every surface reports it with. */
 export class EmailSettingsError extends Error {
@@ -68,6 +69,12 @@ export async function saveEmailSettings(orgId: string, siteId: string, body: Ema
     throw new EmailSettingsError(error instanceof Error ? error.message : 'Failed to encrypt secret', 500);
   }
   if (typeof connector === 'string') throw new EmailSettingsError(connector, 400);
+  if (connector.type === 'smtp') {
+    // Refuse internal relays up front; sending re-resolves and pins the address.
+    try { await resolveSmtpHost(String(connector.config.host ?? '')); } catch (error) {
+      throw new EmailSettingsError(error instanceof SmtpConfigError ? error.message : 'SMTP host is not allowed', 400);
+    }
+  }
   await store.setDoc(path, {
     ...(existing ?? {}),
     email: connector,
@@ -102,11 +109,12 @@ export async function sendTestEmail(orgId: string, site: { id: string; name: str
       html: `<p>This is a test email from your Typeroll site <strong>${escapeHtml(site.name)}</strong>.</p><p>If you received it, your email connector is working.</p>`,
       text: `Test email from your Typeroll site ${site.name}. If you received it, your email connector is working.`,
     });
+    // Provider errors are fixed, classified messages (no raw transport text).
     if (!res.ok) throw new EmailSettingsError(res.error ?? 'Send failed', 502);
     return { ok: true as const, id: res.id };
   } catch (error) {
     if (error instanceof EmailSettingsError) throw error;
-    throw new EmailSettingsError(error instanceof Error ? error.message : 'Send failed', 502);
+    throw new EmailSettingsError('Send failed', 502);
   }
 }
 

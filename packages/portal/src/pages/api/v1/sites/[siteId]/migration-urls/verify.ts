@@ -14,6 +14,7 @@ import { getStore } from '../../../../../../lib/datastore';
 import { runSiteParityCheck } from '../../../../../../lib/wp/url-parity';
 import type { ParityVerdict } from '../../../../../../lib/wp/url-parity';
 import type { UrlStatus } from '../../../../../../lib/wp/url-inventory';
+import { migrationSourcePolicy, parseOutboundUrl } from '../../../../../../lib/net/safe-fetch';
 
 const STATUSES: UrlStatus[] = ['migrated', 'redirected', 'excluded', 'unhandled', 'matched_draft'];
 const DEFAULT_LIMIT = 150;
@@ -41,10 +42,10 @@ export const POST: APIRoute = async ({ request, params }) => {
   };
 
   if (body.target_origin && !isHttpUrl(body.target_origin)) {
-    return apiError('target_origin must be an absolute http(s) URL');
+    return apiError('target_origin must be an absolute public http(s) URL');
   }
   if (body.source_origin && !isHttpUrl(body.source_origin)) {
-    return apiError('source_origin must be an absolute http(s) URL');
+    return apiError('source_origin must be an absolute public http(s) URL');
   }
   if (body.check_source && !body.source_origin) {
     return apiError('check_source requires source_origin');
@@ -116,10 +117,12 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
 };
 
+/** Absolute http(s) URL whose host is not local or a non-public IP literal.
+ * Host names are re-checked against DNS on every request. */
 function isHttpUrl(s: string): boolean {
   try {
-    const u = new URL(s);
-    return u.protocol === 'https:' || u.protocol === 'http:';
+    parseOutboundUrl(s, migrationSourcePolicy());
+    return true;
   } catch {
     return false;
   }

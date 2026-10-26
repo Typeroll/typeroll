@@ -4,6 +4,7 @@ import { json } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
 import { createExtension, ExtensionRegistryError } from '../../../../lib/extensions/registry';
 import { requireDeveloperAccess } from '../../../../lib/extensions/developer-access';
+import { parseAllowedSiteIds } from '../../../../lib/extensions/allowed-site-ids';
 
 export const GET: APIRoute = async ({ request, cookies }) => {
   const access = await requireDeveloperAccess(request, cookies);
@@ -26,7 +27,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
       distribution: body.distribution as Extension['distribution'] | undefined,
       trustedOrigins: Array.isArray(body.trusted_origins) ? body.trusted_origins.map(String) : [],
       allowedOrgIds: Array.isArray(body.allowed_org_ids) ? body.allowed_org_ids.map(String) : undefined,
-      allowedSiteIds: Array.isArray(body.allowed_site_ids) ? body.allowed_site_ids.map(String) : undefined,
+      allowedSiteIds: parseAllowedSiteIds(body.allowed_site_ids),
     });
     return json(result, 201);
   } catch (error) {

@@ -6,6 +6,7 @@ import { vstore } from '../../../../../lib/version-store';
 import { snapshotRevision } from '../../../../../lib/revisions';
 import { getStore } from '../../../../../lib/datastore';
 import { buildMediaLookup, transformBodyForSeo, lintBodyForSeo } from '../../../../../lib/seo-transform';
+import { sanitizeBody } from '../../../../../lib/sanitize';
 import { pageUrlFromDoc } from '../../../../../lib/page-paths';
 import {
   isLivePageStatus,
@@ -98,7 +99,10 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
       existing.image_sizes_default ||
       settings?.image_sizes_default ||
       undefined;
-    const transformed = transformBodyForSeo(update.html_content, lookup, {
+    // Store sanitized HTML, as page creation and working-copy commits do;
+    // rendering sanitizes again, but nothing should read raw stored HTML.
+    const clean = sanitizeBody(update.html_content, settings?.iframe_allowed_hosts);
+    const transformed = transformBodyForSeo(clean, lookup, {
       cfImageOrigin: process.env.CF_IMAGE_ORIGIN || undefined,
       defaultSizes,
     });

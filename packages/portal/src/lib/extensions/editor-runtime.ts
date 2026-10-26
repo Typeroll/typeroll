@@ -1,7 +1,7 @@
 import { buildExtensionRuntimeScript, type ExtensionRuntimeSnapshot } from '@typeroll/shared';
 import { assertExtensionAssetDigest, MAX_EXTENSION_SCRIPT_BYTES, MAX_EXTENSION_STYLE_BYTES } from './assets';
 import { fetchPublicAsset } from './public-http';
-import { buildExtensionPreviewSnapshot } from './preview-runtime';
+import { buildExtensionPreviewSnapshot, extensionAssetFetch } from './preview-runtime';
 
 interface EditorAsset {
   script_base64?: string;
@@ -29,11 +29,11 @@ export async function buildExtensionEditorRuntimeScript(
       const key = `${installation.installation_id}:${component.id}`;
       const entry = component.entry as { script_url: string; script_sha256: string; style_url?: string; style_sha256?: string };
       try {
-        const script = await fetchPublicAsset(entry.script_url, MAX_EXTENSION_SCRIPT_BYTES);
+        const script = await fetchPublicAsset(entry.script_url, MAX_EXTENSION_SCRIPT_BYTES, extensionAssetFetch);
         assertExtensionAssetDigest(script, entry.script_sha256, `${component.id} script`);
         let style: Uint8Array | undefined;
         if (entry.style_url) {
-          style = await fetchPublicAsset(entry.style_url, MAX_EXTENSION_STYLE_BYTES);
+          style = await fetchPublicAsset(entry.style_url, MAX_EXTENSION_STYLE_BYTES, extensionAssetFetch);
           assertExtensionAssetDigest(style, String(entry.style_sha256 ?? ''), `${component.id} style`);
         }
         assets[key] = {

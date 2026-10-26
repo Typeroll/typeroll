@@ -40,10 +40,23 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const body = (await request.json().catch(() => null)) as Partial<Form> | null;
   if (!body) return apiError('Invalid JSON body');
 
+  // An installation changes only forms that are its own or nobody's. A form
+  // bound to another installation belongs to that provider.
+  const caller = ctx.extensionIdentity?.installationId;
+  if (caller && existing.target && existing.target.installation_id !== caller) {
+    return apiError('A provider may change only its own forms', 403);
+  }
   const update: Partial<Form> = {};
   if (body.target !== undefined) {
     if (ctx.permission !== 'admin') return apiError('Admin permission required', 403);
-    if (ctx.extensionIdentity && body.target?.installation_id !== ctx.extensionIdentity.installationId) return apiError('A provider may bind only its own forms', 403);
+    if (caller && body.target?.installation_id !== caller) return apiError('A provider may bind only its own forms', 403);
+    // Taking over an existing site form would let the provider run the
+    // owner's configured email and webhook actions (forms:execute) with data
+    // of its choosing. A provider binds a form it creates, or an unbound
+    // form without actions; an administrator binds any other form.
+    if (caller && !existing.target && (existing.actions?.length ?? 0) > 0) {
+      return apiError('A provider may not bind a form that has actions configured by the site administrator', 403);
+    }
     if (!validInstallationFormTarget(body.target)) return apiError('Invalid form target');
     try { await resolveAppFormEndpoint({ target: body.target }, { orgId: ctx.orgId, siteId: ctx.siteId, portalUrl: extensionIssuer() }); }
     catch { return apiError('The target must be a declared endpoint on an enabled installation'); }
@@ -103,13 +116,22 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const formId = params.formId;
   if (!formId) return apiError('Missing formId');
   const store = getStore();
-  const existing = await store.getDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
+  const existing = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
   if (!existing) return apiError('Not found', 404);
   // Existing submissions stay — they're a record of customer interactions
   // that survive a form being retired. Pass ?delete_submissions=true to
   // also drop them (with their webhook delivery records, as in the portal).
   const url = new URL(request.url);
-  if (url.searchParams.get('delete_submissions') === 'true') {
+  const deleteSubmissions = url.searchParams.get('delete_submissions') === 'true';
+  // An installation may retire only a form bound to itself, and never erase
+  // submitted data: deleting submissions is the site administrator's call.
+  if (ctx.extensionIdentity) {
+    if (existing.target?.installation_id !== ctx.extensionIdentity.installationId) {
+      return apiError('A provider may delete only its own forms', 403);
+    }
+    if (deleteSubmissions) return apiError('Deleting form submissions requires a site administrator', 403);
+  }
+  if (deleteSubmissions) {
     await deleteAllFormSubmissions(ctx.orgId, ctx.siteId, formId);
   }
   await store.deleteDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);

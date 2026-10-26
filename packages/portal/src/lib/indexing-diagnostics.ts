@@ -1,6 +1,12 @@
 import type { Site, SiteSettings } from '@typeroll/shared';
 import { publicUrlsFor } from './site-public-urls';
 import { assertPublicDestination } from './extensions/public-http';
+import { createSafeFetch, parseOutboundUrl } from './net/safe-fetch';
+
+// Default transport: public HTTPS only, pinned to the validated address, no
+// redirect following (probeTarget follows and validates hops itself) and a
+// bounded body.
+const diagnosticsFetch = createSafeFetch({ label: 'Indexing diagnostic URL', maxRedirects: 0, timeoutMs: 15_000, maxBytes: 2 * 1024 * 1024 });
 
 export type IndexingTargetKind = 'fallback' | 'production';
 
@@ -82,7 +88,7 @@ async function probeTarget(
   target: IndexingTarget,
   opts: SiteIndexingDiagnosticOptions,
 ): Promise<IndexingTargetDiagnostic> {
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const fetchImpl = opts.fetchImpl ?? diagnosticsFetch;
   const validate = opts.validateDestination ?? assertPublicDestination;
   const timeoutMs = opts.timeoutMs ?? 10_000;
   const root = new URL('/', ensureTrailingSlash(target.origin));
@@ -181,6 +187,8 @@ async function safeFetch(
       if (current.protocol !== 'https:' || current.username || current.password) {
         throw new Error('Indexing diagnostics only follow public HTTPS URLs without credentials.');
       }
+      // Every hop, IP literals included, must be a public HTTPS destination.
+      try { parseOutboundUrl(current); } catch { throw new Error('Indexing diagnostics only follow public HTTPS URLs without credentials.'); }
       await validateDestination(current);
       const response = await fetchImpl(current, {
         method,

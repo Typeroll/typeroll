@@ -12,6 +12,10 @@
 // `staging_url` is stored on the Site document, not in versioned settings, so
 // a branch cannot reroute it; it is written the same way whichever `?version=`
 // the request names.
+//
+// An Extension installation credential with `content:write` may change the
+// presentational settings, but never the fields that run code on or change
+// the indexing and origins of every published page: see INSTALLATION_REFUSED.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
@@ -37,6 +41,29 @@ const SITE_LEVEL = new Set(['staging_url']);
 /** Optional string fields where an empty string clears the value. */
 const CLEARABLE_STRINGS = ['default_og_image', 'twitter_handle'] as const;
 const NESTED = new Set(['colors', 'fonts', 'contact', 'social', 'cookie_consent']);
+/**
+ * Settings an Extension installation credential may not change, whatever
+ * scopes it holds. Scripts and CSS run on every published page; robots and
+ * noindex decide whether the site is indexed; `staging_url` is an origin other
+ * installations' tokens are bound to; iframe hosts and agent instructions
+ * widen what the site embeds and what agents are told. These stay with the
+ * site administrator.
+ */
+const INSTALLATION_REFUSED = new Set([
+  'scripts_head', 'scripts_body_end', 'custom_css', 'robots_txt', 'sitewide_noindex', 'sitewide_nofollow',
+  'staging_url', 'iframe_allowed_hosts', 'external_routes', 'render_version', 'agent_instructions',
+]);
+const INSTALLATION_REFUSED_CONSENT = new Set(['scripts_necessary', 'scripts_optional']);
+
+function installationRefusedFields(body: Record<string, unknown>): string[] {
+  const refused = Object.keys(body).filter((key) => INSTALLATION_REFUSED.has(key));
+  const consent = body.cookie_consent;
+  if (consent && typeof consent === 'object' && !Array.isArray(consent)) {
+    for (const key of Object.keys(consent)) if (INSTALLATION_REFUSED_CONSENT.has(key)) refused.push(`cookie_consent.${key}`);
+  }
+  return refused;
+}
+
 const COOKIE_CONSENT_FIELDS = new Set([
   'enabled', 'text', 'privacy_policy_url', 'scripts_necessary',
   'scripts_optional', 'reload_after_consent',
@@ -57,9 +84,17 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   // Same role as the portal Settings form, render-version and custom-CSS routes.
-  if (ctx.permission !== 'admin') return apiError('Insufficient permission (admin required)', 403, ctx);
+  // An installation credential reaches this route only with `content:write`
+  // and is limited to the presentational fields below.
+  if (ctx.permission !== 'admin' && !ctx.extensionIdentity) return apiError('Insufficient permission (admin required)', 403, ctx);
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON body');
+  if (ctx.extensionIdentity) {
+    const refused = installationRefusedFields(body);
+    if (refused.length > 0) {
+      return apiError(`These settings require a site administrator and cannot be changed with an Extension credential: ${refused.join(', ')}`, 403, ctx);
+    }
+  }
   if (body.agent_instructions !== undefined && (typeof body.agent_instructions !== 'string' || body.agent_instructions.length > 12000)) return apiError('agent_instructions must be text up to 12000 characters', 400);
   for (const key of CLEARABLE_STRINGS) {
     if (body[key] === undefined) continue;

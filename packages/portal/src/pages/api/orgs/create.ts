@@ -47,7 +47,11 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   // Build a unique slug. List existing orgs to collect taken slugs.
   // In practice the list will be short (per org there's one doc) but we
   // avoid a separate "slug exists?" query by doing this once.
-  const baseSlug = slugifyOrgName(name);
+  // Some prefixes are signed-token namespaces (see analytics-events.ts), so an
+  // organization must never be given one as its id.
+  const RESERVED_ORG_IDS = new Set(['analytics-v1', 'analytics-v2']);
+  const slugged = slugifyOrgName(name);
+  const baseSlug = RESERVED_ORG_IDS.has(slugged) ? `${slugged}-org` : slugged;
   if (!baseSlug) return json({ error: 'Organization name produced an empty slug; please use alphanumeric characters.' }, 400);
 
   // Check if the base slug is already taken by reading that org doc directly.

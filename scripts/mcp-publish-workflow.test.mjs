@@ -119,15 +119,23 @@ test('an interrupted Core publication can recover only from the same source comm
   assert.match(workflow, /EXISTING_DIGEST: \$\{\{ steps\.registry\.outputs\.image_digest \}\}/);
 });
 
-test('a prebuilt Core image is reused only for the exact source and release, after the same contract check', () => {
+test('a prebuilt Core image is reused only at the digest recorded by main Tests, after the same contract check', () => {
   const core = jobSource(workflow, 'core');
-  const steps = ['Inspect existing Core release', 'Inspect prebuilt Core image', 'Build and publish immutable image',
+  const steps = ['Download prebuilt image record', 'Resolve prebuilt image record', 'Inspect existing Core release', 'Inspect prebuilt Core image', 'Build and publish immutable image',
     'Resolve release digest', 'Verify published image contract', 'Tag verified prebuilt image', 'Create verified Core tag']
     .map(name => core.indexOf(`- name: ${name}\n`));
   assert.ok(steps.every((index, position) => index > 0 && (position === 0 || index > steps[position - 1])), String(steps));
   assert.match(core, /Inspect prebuilt Core image\n        id: prebuilt\n        if: needs\.plan\.outputs\.publish_core == 'true' && steps\.registry\.outputs\.exists != 'true'/);
-  assert.match(core, /IMAGE="ghcr\.io\/typeroll\/typeroll:sha-\$SOURCE_SHA"/);
+  // The record comes only from the qualified main Tests run of this exact source.
+  assert.match(core, /Download prebuilt image record[\s\S]*?continue-on-error: true[\s\S]*?run-id: \$\{\{ needs\.plan\.outputs\.tests_run_id \}\}\n\s+name: core-image-\$\{\{ needs\.plan\.outputs\.source_sha \}\}/);
+  assert.match(core, /select\(\.source_sha == env\.SOURCE_SHA and \.core_tag == env\.CORE_TAG\) \| \.image_digest/);
+  // A mutable tag is never resolved for reuse; only the recorded digest is.
+  assert.doesNotMatch(core, /typeroll:sha-\$SOURCE_SHA|crane digest "\$IMAGE" 2>\/dev\/null/);
+  assert.match(core, /IMAGE="ghcr\.io\/typeroll\/typeroll@\$RECORDED_DIGEST"/);
+  assert.match(core, /echo "image_digest=\$RECORDED_DIGEST" >> "\$GITHUB_OUTPUT"/);
   assert.match(core, /if \[ "\$REVISION" = "\$SOURCE_SHA" \] && \[ "\$VERSION" = "\$CORE_TAG" \]; then/);
+  // An existing release tag must match the recorded digest when one exists.
+  assert.match(core, /\[ -n "\$RECORDED_DIGEST" \] && \[ "\$RESULT" != "\$RECORDED_DIGEST" \]/);
   assert.match(core, /steps\.registry\.outputs\.exists != 'true' &&\s+steps\.prebuilt\.outputs\.exists != 'true'\n\s+uses: \.\/\.github\/actions\/core-image/);
   assert.match(core, /PREBUILT_DIGEST: \$\{\{ steps\.prebuilt\.outputs\.image_digest \}\}/);
   assert.match(core, /crane tag "ghcr\.io\/typeroll\/typeroll@\$IMAGE_DIGEST" "\$CORE_TAG"/);
@@ -154,6 +162,9 @@ test('main Tests prebuild only the sha- image of a planned Core release, with th
   assert.match(image, /github\.event_name == 'push' &&\s+github\.ref == 'refs\/heads\/main' &&\s+github\.repository == 'Typeroll\/typeroll' &&\s+needs\.plan\.outputs\.publish_core == 'true'/);
   assert.match(image, /permissions:\n      contents: read\n      packages: write\n/);
   assert.match(image, /source_sha: \$\{\{ github\.sha \}\}\n\s+core_tag: \$\{\{ needs\.plan\.outputs\.core_tag \}\}\n\s+tags: ghcr\.io\/typeroll\/typeroll:sha-\$\{\{ github\.sha \}\}\n/);
+  // The built digest is recorded in this run for Release OSS to pin.
+  assert.match(image, /IMAGE_DIGEST: \$\{\{ steps\.image\.outputs\.digest \}\}/);
+  assert.match(image, /name: core-image-\$\{\{ github\.sha \}\}\n\s+path: temp\/core-image\n\s+if-no-files-found: error/);
   assert.doesNotMatch(image, /core-v|git tag|crane/);
   // The workflow default stays read-only; no other job can write packages.
   assert.match(testWorkflow, /^permissions:\n  contents: read\n  actions: read\n\njobs:/m);
@@ -173,4 +184,38 @@ test('every Core image build uses the one shared build definition', () => {
   assert.match(action, /org\.opencontainers\.image\.version=\$\{\{ inputs\.core_tag \}\}/);
   assert.match(action, /TYPEROLL_SOURCE_SHA=\$\{\{ inputs\.source_sha \}\}/);
   assert.match(action, /platforms: linux\/amd64\n\s+cache-from: type=gha,scope=core\n\s+cache-to: type=gha,scope=core,mode=max\n\s+sbom: true\n\s+provenance: mode=max/);
+});
+
+test('the release train has no default token grant and each job requests only its own permissions', () => {
+  assert.match(workflow, /^permissions: \{\}\n/m);
+  const permissions = name => {
+    const block = jobSource(workflow, name).match(/\n    permissions:\n((?:      [a-z-]+: (?:read|write)\n)+)/);
+    assert.ok(block, `job ${name} must declare permissions`);
+    return Object.fromEntries(block[1].trim().split('\n').map(line => line.trim().split(': ')));
+  };
+  assert.deepEqual(permissions('plan'), { contents: 'read', actions: 'read' });
+  assert.deepEqual(permissions('core'), { contents: 'write', packages: 'write', actions: 'read' });
+  assert.deepEqual(permissions('mcp'), { contents: 'write', 'id-token': 'write' });
+  assert.deepEqual(permissions('docs'), { contents: 'read', actions: 'read' });
+  assert.deepEqual(permissions('manifest'), { contents: 'read' });
+  assert.equal(workflow.match(/id-token: write/g).length, 1);
+  assert.doesNotMatch(workflow, /attestations: write/);
+});
+
+test('every external action is pinned to a full commit SHA', () => {
+  const action = readFileSync(new URL('../.github/actions/core-image/action.yml', import.meta.url), 'utf8');
+  for (const source of [workflow, testWorkflow, action]) {
+    for (const [, reference] of source.matchAll(/uses: ([^\s]+)/g)) {
+      if (reference.startsWith('./')) continue;
+      assert.match(reference, /^[\w.-]+\/[\w.-]+@[a-f0-9]{40}$/, reference);
+    }
+  }
+});
+
+test('documentation deploys with the locked uploader dependencies and no install scripts', () => {
+  const docs = jobSource(workflow, 'docs');
+  assert.doesNotMatch(workflow, /npx wrangler/);
+  assert.match(docs, /cp packages\/portal\/src\/lib\/builds\/uploader-lock\.json "\$DEPLOYER\/package-lock\.json"/);
+  assert.match(docs, /npm ci --prefix "\$DEPLOYER" --ignore-scripts/);
+  assert.match(docs, /"\$WRANGLER" deploy --config packages\/docs-site\/wrangler\.jsonc/);
 });

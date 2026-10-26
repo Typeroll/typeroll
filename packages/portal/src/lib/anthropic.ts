@@ -624,7 +624,7 @@ const tools: Anthropic.Tool[] = [
   {
     name: 'update_site_settings',
     description:
-      'Patch site settings. Only include the fields you want to change. Nested fields (colors, fonts, contact, social) are merged shallowly — provide whole nested objects only when replacing everything in them.',
+      'Patch site settings. Needs admin permission on the site, as in the portal settings. Only include the fields you want to change. Nested fields (colors, fonts, contact, social) are merged shallowly — provide whole nested objects only when replacing everything in them.',
     input_schema: {
       type: 'object',
       properties: {
@@ -965,7 +965,7 @@ Hard rules either way:
 
 ## Site settings
 
-Settings include name, tagline, logo, favicon, apple_touch_icon (180×180 PNG for home-screen bookmarks), colors (primary/secondary/accent/background/surface/text/text_light), fonts (heading/body — Google Font family names), contact info, social links, head/body scripts, custom CSS, the SEO title suffix, and the default meta description (default_meta_description — the site-wide fallback <meta name="description"> when a page has no seo_description; the tagline is the last resort). Use update_site_settings to change any of these. When the brand assets include icon files, set favicon AND apple_touch_icon as part of initial setup — don't leave them empty.
+Settings include name, tagline, logo, favicon, apple_touch_icon (180×180 PNG for home-screen bookmarks), colors (primary/secondary/accent/background/surface/text/text_light), fonts (heading/body — Google Font family names), contact info, social links, head/body scripts, custom CSS, the SEO title suffix, and the default meta description (default_meta_description — the site-wide fallback <meta name="description"> when a page has no seo_description; the tagline is the last resort). Use update_site_settings to change any of these; it needs admin permission on the site, so for anyone else suggest asking a site admin. When the brand assets include icon files, set favicon AND apple_touch_icon as part of initial setup — don't leave them empty.
 
 When the user asks to change brand colors, fonts, or contact info — that's site settings, not a page edit.
 
@@ -1881,6 +1881,12 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
     }
 
     case 'update_site_settings': {
+      // Site settings (name, logo, brand colors, fonts, contact) are admin
+      // only in the portal and the public API; the chat acts for the person
+      // and must not let an editor route around that.
+      if (ctx.permission !== 'admin') {
+        return { result: { error: 'Changing site settings needs admin permission on the site. Ask a site admin to change them in Settings.' } };
+      }
       // Explicit whitelist. Scripts and custom CSS are deliberately NOT
       // updatable from the chat — they're scriptable surfaces and require
       // user action in /app/sites/{id}/settings.

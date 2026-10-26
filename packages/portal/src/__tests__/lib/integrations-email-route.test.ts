@@ -1,7 +1,8 @@
 // The admin email-connector route encrypts secrets, masks them on read, and
 // gates on admin permission. Cookie-auth dev session lands in org 'default'.
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import dns from 'node:dns/promises';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { paths } from '@typeroll/shared';
 import type { Site, SiteIntegrations } from '@typeroll/shared';
@@ -38,7 +39,11 @@ async function callGet(): Promise<Response> {
 }
 
 describe('integrations/email admin route', () => {
-  beforeEach(async () => { await setup(); });
+  beforeEach(async () => {
+    vi.restoreAllMocks();
+    vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: '203.0.113.25', family: 4 }] as never);
+    await setup();
+  });
 
   it('encrypts the SMTP password and masks it on read', async () => {
     const put = await callPut({

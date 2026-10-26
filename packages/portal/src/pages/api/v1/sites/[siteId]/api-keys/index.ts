@@ -1,8 +1,9 @@
 // GET  /api/v1/sites/{siteId}/api-keys — list the site's API keys (metadata only).
 // POST /api/v1/sites/{siteId}/api-keys — refused: keys are created in the portal.
 //
-// Any caller that reaches the site may list, as in the settings UI. Revoke
-// with DELETE /api/v1/sites/{siteId}/api-keys/{prefix}.
+// Admin on the site may list, as in the settings UI: the metadata names who
+// created each key and where it was last used. Revoke with
+// DELETE /api/v1/sites/{siteId}/api-keys/{prefix}.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
@@ -12,6 +13,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.permission !== 'admin' || ctx.extensionIdentity) return apiError('Managing API keys requires admin permission on the site.', 403, ctx);
   const keys = await listApiKeys(ctx.orgId, ctx.siteId);
   return apiResponse(ctx, { keys: keys.map(apiKeySummary) });
 };

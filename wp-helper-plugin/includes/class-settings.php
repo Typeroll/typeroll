@@ -42,7 +42,7 @@ class Typeroll_Helper_Settings {
 	public static function render() {
 		if ( ! current_user_can( 'manage_options' ) ) return;
 		$api_key  = Typeroll_Helper_Auth::get_api_key();
-		$rest_url = esc_url( rest_url( 'typeroll/v1/info' ) );
+		$rest_url = rest_url( 'typeroll/v1/info' );
 		?>
 		<div class="wrap">
 			<h1>Typeroll Migration Helper</h1>
@@ -78,10 +78,8 @@ class Typeroll_Helper_Settings {
 				<tr>
 					<th scope="row">Health check</th>
 					<td>
-						<a href="<?php echo esc_url( add_query_arg( 'key', $api_key, $rest_url ) ); ?>" target="_blank" rel="noopener">
-							<?php echo esc_html( $rest_url ); ?>
-						</a>
-						<p class="description">Should return your site name, WP version, and whether ACF is detected.</p>
+						<code>curl -H "X-Typeroll-Key: YOUR_API_KEY" <?php echo esc_html( $rest_url ); ?></code>
+						<p class="description">Run this with your API key. It should return your site name, WP version, and whether ACF is detected. The key is accepted only in the <code>X-Typeroll-Key</code> header, never in the URL.</p>
 					</td>
 				</tr>
 			</table>
@@ -96,9 +94,10 @@ class Typeroll_Helper_Settings {
 
 			<h2>What the migrator reads</h2>
 			<ul>
-				<li>All published pages and posts.</li>
-				<li>All custom post types — including those <em>not</em> exposed via the standard <code>show_in_rest</code>.</li>
-				<li>ACF field values and field-group schemas (when ACF is installed).</li>
+				<li>Published pages and posts.</li>
+				<li>Published items of public custom post types — including those <em>not</em> exposed via the standard <code>show_in_rest</code>. Non-public types (for example orders, coupons or form submissions) are never exposed.</li>
+				<li>Password-protected items: title, URL and taxonomies only. Their content and custom fields are not exported.</li>
+				<li>ACF field values and field-group schemas (when ACF is installed). User and post references are reduced to IDs, names and public links.</li>
 				<li>Native post meta (excluding underscore-prefixed internal keys).</li>
 				<li>Featured images, full URLs, alt text, and all generated sizes.</li>
 				<li>Taxonomies (categories, tags, custom).</li>

@@ -1084,8 +1084,12 @@ choice; never ask for it as a prerequisite for your own work.
   `list_site_shares`. Site admin. Confirm the recipient first: a share gives
   every member of that Organization access.
 - **A person joining your Organization:** `create_organization_invite` returns
-  a link; the person signs in and joins as an editor. Creating Organizations,
-  switching Organization and redeeming invites remain signed-in portal actions.
+  a link; the person signs in and joins as an editor. It is single use unless
+  you set `max_uses` (up to 50), and `email` binds it to one address.
+  `list_organization_invites` shows each invite's state without its link, and
+  `revoke_organization_invite` stops a link immediately. Organization key.
+  Creating Organizations, switching Organization and redeeming invites remain
+  signed-in portal actions.
 
 ### "Turn on the portal's AI assistant" (and why you don't need it)
 
@@ -1298,7 +1302,7 @@ preview.
 | **Discovery** | `get_site`, `create_site`, `create_site_and_migrate`, `create_site_and_plan` (org-scoped key only — see below), `update_site` (incl. `ai_scripts_enabled`, admin), `list_versions`, `read_site_settings` |
 | **Site lifecycle** | `archive_site`, `restore_site`, `purge_site_media` (archived sites only, irreversible). Owner-organization admin, as in the portal. |
 | **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent) |
-| **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite` (organization key), `read_organization_ai_settings`, `set_organization_ai_key`, `remove_organization_ai_key`, `set_organization_ai_site_access` (the portal AI chat's own key and Sites; organization key) |
+| **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite`, `list_organization_invites`, `revoke_organization_invite` (organization key), `read_organization_ai_settings`, `set_organization_ai_key`, `remove_organization_ai_key`, `set_organization_ai_site_access` (the portal AI chat's own key and Sites; organization key) |
 | **Organization publishing** | `read_organization_publishing_connections`, `diagnose_organization_github_connection`, `diagnose_organization_cloudflare_connection`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |
 | **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics in the account that hosts the site; a non-ok `status` carries a `reason` with the next step. Conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |
 | **Pages — reads** | `list_pages`, `read_page`, `batch_read_pages` |

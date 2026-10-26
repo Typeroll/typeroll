@@ -22,6 +22,8 @@ let cfDomainAttached: boolean;
 // Used by the "rollback on alias failure" pair test to simulate a CF
 // error mid-pair without needing a separate vi.mock.
 let cfAttachFailsForHost: string | null;
+// When set, attachCustomDomain reports that another project holds the host.
+let cfAttachConflictForHost: string | null;
 
 vi.mock('../../lib/hosting/cloudflare-api', async () => {
   const actual = await vi.importActual<typeof import('../../lib/hosting/cloudflare-api')>(
@@ -32,6 +34,9 @@ vi.mock('../../lib/hosting/cloudflare-api', async () => {
     async attachCustomDomain(...args: unknown[]): Promise<void> {
       cfCalls.push({ method: 'attachCustomDomain', args });
       const host = args[1] as string;
+      if (cfAttachConflictForHost && host === cfAttachConflictForHost) {
+        throw new actual.CloudflareConflictError('domain_in_use', `${host} is attached to another project`);
+      }
       if (cfAttachFailsForHost && host === cfAttachFailsForHost) {
         throw new Error(`fake CF error: ${host} already in use`);
       }
@@ -66,6 +71,7 @@ async function setup(siteOver: Partial<Site> = {}): Promise<void> {
   cfDomainStatus = 'pending';
   cfDomainAttached = false;
   cfAttachFailsForHost = null;
+  cfAttachConflictForHost = null;
   const { getStore } = await import('../../lib/datastore');
   await getStore().setDoc(paths.site(ORG, SITE), {
     name: 'My Site',
@@ -136,6 +142,13 @@ describe('requestDomain', () => {
     expect(second.status).toBe('pending');
     // First call attached once. Second call short-circuited — total = 1.
     expect(cfCalls.filter((c) => c.method === 'attachCustomDomain').length).toBe(1);
+  });
+
+  it('returns 409 when another Pages project already holds the hostname', async () => {
+    cfAttachConflictForHost = 'shop.example.com';
+    const { requestDomain } = await import('../../lib/site-domain');
+    await expect(requestDomain(ORG, SITE, 'shop.example.com')).rejects.toMatchObject({ status: 409 });
+    expect((await readSite()).domain).toBeUndefined();
   });
 
   it('returns 503 when Cloudflare is not configured', async () => {

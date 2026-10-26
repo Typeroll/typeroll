@@ -169,15 +169,15 @@ export const developerExtensionTools: ToolDef[] = [
   },
   {
     name: 'update_developer_extension', noSite: true,
-    description: 'Update an Extension\'s name, status (active/suspended), distribution (only while every release is a draft), trusted origins or private allow-lists. Requires an organization API key.',
+    description: 'Update an Extension\'s name, status (active/suspended), distribution (only while every release is a draft), trusted origins or private allow-lists. Each list replaces the saved one: allowed_org_ids allows every Site of those Organizations; allowed_site_ids entries are "<organization-id>/<site-id>" for a Site of another Organization, while a bare site id only matches a Site of your own developer Organization. Requires an organization API key.',
     inputSchema: {
       extension_id: z.string().min(1),
       name: z.string().optional(),
       status: z.enum(['active', 'suspended']).optional(),
       distribution: z.enum(['private', 'unlisted', 'public']).optional(),
       trusted_origins: z.array(z.string()).optional(),
-      allowed_org_ids: z.array(z.string()).optional(),
-      allowed_site_ids: z.array(z.string()).optional(),
+      allowed_org_ids: z.array(z.string()).optional().describe('Organization ids whose every Site may install this private Extension. Replaces the saved list.'),
+      allowed_site_ids: z.array(z.string().max(257)).max(500).optional().describe('Sites that may install this private Extension, replacing the saved list: "<organization-id>/<site-id>" for another Organization\'s Site, or a bare site id for a Site of your own developer Organization.'),
     },
     handler: withErrorBoundary(async (args, { client }) => {
       const { extension_id, ...patch } = args;

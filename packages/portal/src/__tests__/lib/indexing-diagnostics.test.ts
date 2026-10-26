@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import dns from 'node:dns/promises';
 import type { Site } from '@typeroll/shared';
 import {
   blocksAllCrawlers,
@@ -106,6 +107,30 @@ describe('indexing diagnostics', () => {
     expect(visited).toContain('internal.example.test');
     expect(report.issues.join(' ')).toContain('non-public address');
   });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(['https://169.254.169.254/latest/meta-data/', 'https://[::ffff:a9fe:a9fe]/latest/meta-data/', 'https://127.0.0.1/', 'https://[64:ff9b::7f00:1]/'])(
+    'never follows a redirect to the IP literal %s with the default validator',
+    async (location) => {
+      vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: '8.8.8.8', family: 4 }] as never);
+      const fetched: string[] = [];
+      const report = await diagnoseSiteIndexing(
+        { ...site, domain: undefined, domain_status: undefined },
+        { site_name: 'Demo' } as never,
+        {
+          fetchImpl: (async (input: string | URL | Request) => {
+            const url = new URL(input instanceof Request ? input.url : input.toString());
+            fetched.push(url.hostname);
+            if (url.hostname === 'demo.sites.example.test') return new Response(null, { status: 302, headers: { location } });
+            return new Response('metadata secret', { status: 200 });
+          }) as typeof fetch,
+        },
+      );
+      expect(fetched.every((host) => host === 'demo.sites.example.test')).toBe(true);
+      expect(report.ready).toBe(false);
+    },
+  );
 });
 
 

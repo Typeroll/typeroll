@@ -16,7 +16,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   // Archived sites refuse writes; this one exists only for archived sites.
   const guard = await requireApiKey(request, params.siteId, { allowArchivedWrites: true });
   if (!guard.ok) return guard.response;
-  const allowed = requireApiSiteLifecycleChange(guard.value);
+  const allowed = await requireApiSiteLifecycleChange(guard.value);
   if (!allowed.ok) return allowed.response;
   const ctx = allowed.value;
 

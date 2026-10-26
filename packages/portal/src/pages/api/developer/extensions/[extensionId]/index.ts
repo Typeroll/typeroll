@@ -4,6 +4,7 @@ import { json } from '../../../../../lib/access';
 import { getStore } from '../../../../../lib/datastore';
 import { ExtensionRegistryError, normalizeExtensionTrustedOrigins, updateExtensionDistribution } from '../../../../../lib/extensions/registry';
 import { requireDeveloperAccess } from '../../../../../lib/extensions/developer-access';
+import { parseAllowedSiteIds } from '../../../../../lib/extensions/allowed-site-ids';
 
 async function guard(request: Request, cookies: Parameters<typeof requireDeveloperAccess>[1], extensionId: string | undefined) {
   const access = await requireDeveloperAccess(request, cookies);
@@ -36,8 +37,9 @@ export const PATCH: APIRoute = async ({ request, cookies, params }) => {
   if (body.name !== undefined) update.name = String(body.name).trim();
   if (body.status === 'active' || body.status === 'suspended') update.status = body.status;
   if (Array.isArray(body.allowed_org_ids)) update.allowed_org_ids = body.allowed_org_ids.map(String);
-  if (Array.isArray(body.allowed_site_ids)) update.allowed_site_ids = body.allowed_site_ids.map(String);
   try {
+    const allowedSiteIds = parseAllowedSiteIds(body.allowed_site_ids);
+    if (allowedSiteIds) update.allowed_site_ids = allowedSiteIds;
     if (Array.isArray(body.trusted_origins)) {
       update.trusted_origins = normalizeExtensionTrustedOrigins(body.trusted_origins.map(String));
     }

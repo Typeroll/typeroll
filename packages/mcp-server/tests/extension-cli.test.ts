@@ -2,7 +2,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { extensionMetadataUpdate, runExtensionCli, validateExtensionManifestShape } from '../src/extension-cli';
+import { extensionMetadataUpdate, parseInstallSite, runExtensionCli, validateExtensionManifestShape } from '../src/extension-cli';
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -153,5 +153,71 @@ describe('Extension CLI preflight', () => {
     expect(errorLog).toHaveBeenCalledWith(expect.stringContaining(
       'The saved configuration still requires a deploy.',
     ));
+  });
+});
+
+describe('Extension CLI install on a private allow-list', () => {
+  const manifest = {
+    schema_version: 3,
+    id: 'se.vendor.quote-generator',
+    name: 'Quote Generator',
+    version: '1.0.0',
+    runtime_compatibility: '>=0.38.0 <1.0.0',
+    distribution: 'private',
+    developer: { name: 'Vendor' },
+    permissions: [{ scope: 'content:read' }],
+  };
+
+  async function install(site: string, allowed: string[] = []) {
+    const directory = await mkdtemp(join(tmpdir(), 'typeroll-extension-cli-'));
+    const manifestPath = join(directory, 'typeroll-extension.json');
+    await writeFile(manifestPath, JSON.stringify(manifest));
+    process.env.TYPEROLL_API_URL = 'https://app.example.com';
+    process.env.TYPEROLL_API_KEY = 'typeroll_live_test';
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({ extension: { allowed_site_ids: allowed } }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ extension: {} }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ installation: { id: 'inst_1' } }), { status: 201 }));
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const code = await runExtensionCli(['install', '--site', site, '--manifest', manifestPath]);
+      return { code, fetchMock, errorLog };
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
+  it('parses bare and organization-qualified sites and refuses anything else', () => {
+    expect(parseInstallSite('site-1')).toEqual({ siteId: 'site-1', ownerOrgId: null, allowEntry: 'site-1' });
+    expect(parseInstallSite('client-org/site-1')).toEqual({ siteId: 'site-1', ownerOrgId: 'client-org', allowEntry: 'client-org/site-1' });
+    for (const value of ['', 'a/b/c', '/site', 'org/', '../site', 'org/..', 'has space']) {
+      expect(() => parseInstallSite(value), value).toThrow('--site must be');
+    }
+  });
+
+  it('writes org/site to allowed_site_ids and declares the owner when installing', async () => {
+    const { code, fetchMock, errorLog } = await install('client-org/site-1', ['own-site']);
+    expect(code).toBe(0);
+    expect(fetchMock.mock.calls[1]?.[0]).toBe('https://app.example.com/api/developer/extensions/se.vendor.quote-generator');
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ allowed_site_ids: ['own-site', 'client-org/site-1'] });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('https://app.example.com/api/v1/sites/site-1/extensions');
+    expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get('Typeroll-Organization')).toBe('client-org');
+    expect(errorLog).not.toHaveBeenCalledWith(expect.stringContaining('only allows a site of your developer organization'));
+  });
+
+  it('keeps a bare id for the developer organization and explains how to allow another one', async () => {
+    const { code, fetchMock, errorLog } = await install('site-1');
+    expect(code).toBe(0);
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({ allowed_site_ids: ['site-1'] });
+    expect(fetchMock.mock.calls[2]?.[0]).toBe('https://app.example.com/api/v1/sites/site-1/extensions');
+    expect(new Headers(fetchMock.mock.calls[2]?.[1]?.headers).get('Typeroll-Organization')).toBeNull();
+    expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('--site <organization-id>/<site-id>'));
+  });
+
+  it('refuses a malformed --site before calling the API', async () => {
+    const { code, fetchMock } = await install('a/b/c');
+    expect(code).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

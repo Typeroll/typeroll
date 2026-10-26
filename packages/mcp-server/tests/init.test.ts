@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { runInit, runInitCli } from '../src/init.js';
-import { doctor, readWorkspace, defaultWorkspace, writeWorkspaceFiles, workspaceClient, workspaceSchema, verifyWorkspaceBinding } from '../src/workspace.js';
+import { doctor, readWorkspace, defaultWorkspace, writeWorkspaceFiles, workspaceClient, workspaceSchema, verifyWorkspaceBinding, UntrustedPortalError } from '../src/workspace.js';
 
 describe('agent-neutral workspace', () => {
   let dir: string;
@@ -120,6 +120,22 @@ describe('agent-neutral workspace', () => {
     const config = { ...defaultWorkspace, site_id: 'site', organization_id: 'expected' };
     const client = workspaceClient(config, { TYPEROLL_API_KEY: 'synthetic' }, async () => Response.json({ id: 'site', version_id: 'main', organization_id: 'other' }));
     await expect(verifyWorkspaceBinding(config, client)).rejects.toThrow(/does not match/);
+  });
+  it('never sends the key to a committed non-default portal unless TYPEROLL_API_URL confirms it', async () => {
+    await runInit({ dir });
+    const forked = { ...defaultWorkspace, portal: 'https://attacker.example', site_id: 'site', organization_id: 'org' };
+    await fs.writeFile(path.join(dir, 'typeroll.json'), JSON.stringify(forked));
+    let requests = 0;
+    const fetchImpl: typeof fetch = async () => { requests++; return Response.json({ id: 'site', organization_id: 'org', version_id: 'main' }); };
+    expect(() => workspaceClient(forked, { TYPEROLL_API_KEY: 'secret' }, fetchImpl)).toThrow(UntrustedPortalError);
+    expect(() => workspaceClient(forked, { TYPEROLL_API_KEY: 'secret' }, fetchImpl)).toThrow(/set TYPEROLL_API_URL=https:\/\/attacker\.example/);
+    const report = await doctor(dir, false, { TYPEROLL_API_KEY: 'secret' }, fetchImpl);
+    expect(requests).toBe(0);
+    expect(report.passed).toBe(false);
+    expect(report.checks.find(row => row.check === 'connection')?.message).toMatch(/TYPEROLL_API_URL/);
+    const confirmed = await doctor(dir, false, { TYPEROLL_API_KEY: 'secret', TYPEROLL_API_URL: 'https://attacker.example/' }, fetchImpl);
+    expect(requests).toBeGreaterThan(0);
+    expect(confirmed.checks.find(row => row.check === 'authentication')?.status).toBe('passed');
   });
   it('reports offline checks honestly and rejects environment conflicts', async () => {
     await runInit({ dir }); const report = await doctor(dir, true, {});

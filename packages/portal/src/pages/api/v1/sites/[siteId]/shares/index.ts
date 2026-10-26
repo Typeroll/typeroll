@@ -4,14 +4,16 @@
 //      organization. Body: { org_id? | org_slug?, permission?: 'read' | 'write' | 'admin', label? }.
 //
 // Admin on the site for both, exactly as the settings UI
-// (/api/sites/{siteId}/shares). A grant never exceeds `admin`, which an admin
-// caller already holds, so a key cannot hand out more than it has.
+// (/api/sites/{siteId}/shares). Granting is reserved to the owning
+// organization: a caller that reaches the site through a share cannot pass it
+// on, and an Extension installation credential never manages sharing.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { apiError, apiResponse, isApiSiteOwner, requireApiKey } from '../../../../../../lib/api-auth';
 import { createSiteShare, listSharesForSite } from '../../../../../../lib/shares';
 
 const ADMIN_REQUIRED = 'Managing site sharing requires admin permission on the site.';
+const OWNER_REQUIRED = 'Only the owning organization can share this site.';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -26,6 +28,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   if (ctx.permission !== 'admin') return apiError(ADMIN_REQUIRED, 403, ctx);
+  if (!isApiSiteOwner(ctx)) return apiError(OWNER_REQUIRED, 403, ctx);
 
   let body: unknown;
   try { body = await request.json(); } catch { return apiError('Invalid JSON body. Expected { org_id | org_slug, permission?, label? }.', 400, ctx); }

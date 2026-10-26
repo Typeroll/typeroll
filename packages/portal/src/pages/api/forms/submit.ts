@@ -64,6 +64,7 @@ import {
 import { formStepBodyHtml, formStepPath, resolveRenderVersion } from '@typeroll/shared';
 import type { BlockType, FormStep } from '@typeroll/shared';
 import { sanitizeBody } from '../../../lib/sanitize';
+import { BodyTooLargeError, parseFormBody, parseJsonBody, readBoundedBody } from '../../../lib/forms/request-body';
 
 const RATE_LIMIT_PER_IP = 30;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
@@ -74,6 +75,25 @@ const RATE_LIMIT_NO_POW = 5;
 const RATE_LIMIT_PER_FORM = 120;
 const MAX_BODY_BYTES = 64 * 1024;
 const MIN_STEP_INTERVAL_MS = 1500;
+// One answer's ceiling when its field declares no `max`; a checkbox group's
+// list is capped separately. Only primitives (and lists of them for
+// repeated keys) are answers; objects never reach validation or storage.
+const MAX_ANSWER_CHARS = 10_000;
+const MAX_ANSWER_ITEMS = 200;
+
+// The confirmation and error pages show customer-authored rich text
+// (success_message) on whichever origin received the POST, which may be the
+// portal itself. Sandbox them as an opaque origin without scripts, so even
+// markup that slips past the sanitizer can neither run nor reach cookies or
+// same-origin APIs. User-activated top-level navigation keeps the back link
+// working.
+const HTML_PAGE_HEADERS = {
+  'Content-Security-Policy':
+    "sandbox allow-top-navigation-by-user-activation allow-popups; default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'no-referrer',
+  'Cache-Control': 'no-store',
+};
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -84,8 +104,11 @@ const corsHeaders = {
 
 export const OPTIONS: APIRoute = () => new Response(null, { status: 204, headers: corsHeaders });
 
-export const POST: APIRoute = async ({ request }) => {
-  const ip = clientIp(request.headers);
+export const POST: APIRoute = async (context) => {
+  const { request } = context;
+  let socketAddress: string | undefined;
+  try { socketAddress = context.clientAddress; } catch { /* adapter without a socket address */ }
+  const ip = clientIp(request.headers, socketAddress);
   // Until the token names the site, the visitor's own language stands in.
   let lang = requestLanguage(request.headers.get('accept-language'));
 
@@ -115,10 +138,22 @@ export const POST: APIRoute = async ({ request }) => {
 
   // Parse either shape into the same { token, data } pair.
 
+  // The size limit applies to the bytes read, not to the declared length:
+  // a chunked body has no Content-Length at all.
+  let raw: Uint8Array<ArrayBuffer>;
+  try {
+    raw = await readBoundedBody(request, MAX_BODY_BYTES);
+  } catch (e) {
+    if (e instanceof BodyTooLargeError) {
+      return new Response(JSON.stringify({ error: formMessage('payload_too_large', lang) }), { status: 413, headers: corsHeaders });
+    }
+    raw = new Uint8Array(0);
+  }
+
   let token: string | undefined;
   let data: Record<string, unknown> | undefined;
   if (wantsHtml) {
-    const fd = await request.formData().catch(() => null);
+    const fd = await parseFormBody(raw, contentType);
     if (fd) {
       token = String(fd.get('_token') ?? '') || undefined;
       const collected: Record<string, unknown> = {};
@@ -136,12 +171,14 @@ export const POST: APIRoute = async ({ request }) => {
       data = collected;
     }
   } else {
-    const body = (await request.json().catch(() => null)) as {
-      token?: string;
-      data?: Record<string, unknown>;
+    const body = parseJsonBody(raw) as {
+      token?: unknown;
+      data?: unknown;
     } | null;
-    token = body?.token;
-    data = body?.data;
+    token = typeof body?.token === 'string' ? body.token : undefined;
+    data = body?.data && typeof body.data === 'object' && !Array.isArray(body.data)
+      ? body.data as Record<string, unknown>
+      : undefined;
   }
   // Forms rendered in a portal preview carry the preview marker and never a
   // token; their runtime simulates submission and sends nothing. Refuse the
@@ -178,7 +215,11 @@ export const POST: APIRoute = async ({ request }) => {
   // 2b. Proof-of-work + per-form ceiling. A valid `_pow` (computed by the
   // forms runtime in the background) buys the normal budget; without it
   // the per-IP budget shrinks hard. Verification is a single hash.
-  const hasPow = typeof data._pow === 'string' && verifyPow(token, data._pow);
+  // The published runtimes search nonces deterministically per token and
+  // bucket, so every visitor of a form computes the same proof: it cannot be
+  // single-use without a runtime that randomizes its starting nonce.
+  const pow = typeof data._pow === 'string' ? data._pow : null;
+  const hasPow = pow !== null && verifyPow(token, pow);
   if (!hasPow) {
     const strict = rateLimit(`forms-nopow:${ip}`, RATE_LIMIT_NO_POW, RATE_LIMIT_WINDOW_MS);
     if (!strict.allowed) {
@@ -212,11 +253,46 @@ export const POST: APIRoute = async ({ request }) => {
   //    not a legacy shape.
   const form = await store.getDoc<Form>(`${paths.forms(orgId, siteId)}/${formId}`);
   if (!form) return respond(wantsHtml, { error: formMessage('form_not_found', lang) }, 404, backUrl, lang);
+  // A form with an app or Extension target is an operation that app owns:
+  // it posts to the app's endpoint and has no submission token of its own.
+  // A token minted for it anyway must not store submissions or run actions.
+  if (isAppTargetedForm(form)) {
+    return respond(wantsHtml, { error: formMessage('form_not_found', lang) }, 404, backUrl, lang);
+  }
   if (!Array.isArray(form.steps) || form.steps.length === 0) {
     return respond(wantsHtml, { error: formMessage('no_steps', lang) }, 422, backUrl, lang);
   }
   return handleStepsMode({ request, form, orgId, siteId, formId, data, ip, wantsHtml, wantsProtocol, backUrl, lang });
 };
+
+/** True for forms that post to an installed app or Extension instead of the submissions collector. */
+export function isAppTargetedForm(form: Pick<Form, 'target'>): boolean {
+  const target = form.target as Record<string, unknown> | undefined | null;
+  return Boolean(target && typeof target === 'object' && (target.installation_id || target.app));
+}
+
+/**
+ * Shape check for one posted answer before it is normalized, validated or
+ * stored: a primitive, or a list of primitives (repeated keys, checkbox
+ * groups), within the length ceilings. Returns a field error code.
+ */
+export function answerShapeError(field: { type?: string; max?: number }, value: unknown): 'pattern' | 'max' | null {
+  // A shorter declared `max` is enforced (after trimming) by validateFieldValues.
+  const limit = field.type !== 'number' && typeof field.max === 'number' && Number.isFinite(field.max)
+    ? Math.max(field.max, MAX_ANSWER_CHARS) : MAX_ANSWER_CHARS;
+  const one = (v: unknown): 'pattern' | 'max' | null => {
+    if (v === null || typeof v === 'boolean') return null;
+    if (typeof v === 'number') return Number.isFinite(v) ? null : 'pattern';
+    if (typeof v === 'string') return v.length > limit ? 'max' : null;
+    return 'pattern';
+  };
+  if (Array.isArray(value)) {
+    if (value.length > MAX_ANSWER_ITEMS) return 'max';
+    for (const item of value) { const error = one(item); if (error) return error; }
+    return null;
+  }
+  return one(value);
+}
 
 // Post-submission actions now dispatch through the shared registry in
 // lib/forms/actions.ts, so a form can combine core actions with ones an app
@@ -367,7 +443,7 @@ function htmlPage(
 </html>`;
   return new Response(html, {
     status,
-    headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders, ...extra },
+    headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders, ...extra, ...HTML_PAGE_HEADERS },
   });
 }
 
@@ -437,8 +513,13 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   for (const [k, v] of Object.entries(data)) {
     if (!k.startsWith('_')) userData[k] = v;
   }
-  Object.assign(userData, normalizeFormAnswers(fields, userData));
-  const fieldErrors = validateFieldValues(fields, userData);
+  const shapeErrors = fields.flatMap((f) => {
+    if (!Object.hasOwn(userData, f.name)) return [];
+    const code = answerShapeError(f, userData[f.name]);
+    return code ? [{ field: f.name, code }] : [];
+  });
+  if (!shapeErrors.length) Object.assign(userData, normalizeFormAnswers(fields, userData));
+  const fieldErrors = shapeErrors.length ? shapeErrors : validateFieldValues(fields, userData);
   if (fieldErrors.length) {
     const errors = fieldErrors.map((e) => {
       const label = fields.find((f) => f.name === e.field)?.label ?? e.field;

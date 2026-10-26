@@ -45,6 +45,10 @@ export function buildConnector(
     }
   }
 
+  // Optional provider hook for checks the field schema cannot express (e.g. SMTP ports).
+  const invalid = (provider as { validateConfig?: (values: Record<string, unknown>) => string | null }).validateConfig?.(config);
+  if (invalid) return invalid;
+
   const connector: EmailConnector = { type, from: from.trim(), config };
   if (replyTo && replyTo.trim()) connector.reply_to = replyTo.trim();
   return connector;

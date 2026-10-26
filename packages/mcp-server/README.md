@@ -107,7 +107,8 @@ log.
    ```
 
    For a self-hosted portal, point `TYPEROLL_API_URL` at it (e.g.
-   `https://cms.example.com`).
+   `https://cms.example.com`). The stdio server and the `typeroll extension`
+   CLI require HTTPS, except on loopback hosts.
 
    For an optional agent-neutral workspace, run
    `npx @typeroll/mcp-server init ./my-site`. It creates project instructions,
@@ -131,7 +132,7 @@ log.
 
 | Var                | Required  | Description                                                                                                                                              |
 | ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TYPEROLL_API_URL` | yes       | Base URL of your Typeroll portal.                                                                                                                        |
+| `TYPEROLL_API_URL` | yes       | Base URL of your Typeroll portal. Must use HTTPS; plain HTTP is accepted only for `localhost`, `127.0.0.1` or `[::1]`.                                   |
 | `TYPEROLL_API_KEY` | yes       | A `typeroll_live_…` bearer token.                                                                                                                        |
 | `TYPEROLL_SITE_ID` | sometimes | Pin to a specific site. Required when the key can access multiple sites; each stdio process targets one site. A single accessible site is auto-detected. |
 
@@ -151,7 +152,11 @@ typeroll extension promote 1.0.0
 ```
 
 The manifest defaults to `typeroll-extension.json`; use `--manifest` to select
-another file. Local validation is a fast preflight. The portal always performs
+another file. For a private Extension, `install` adds the site to the
+Extension's `allowed_site_ids`. A bare site id only matches a site of your own
+developer organization; to install on another organization's site, pass
+`--site <organization-id>/<site-id>`, which is written to the allow-list in
+that form. Local validation is a fast preflight. The portal always performs
 the complete schema, compatibility, origin and asset-hash validation.
 `extension configure` queues a production deploy by default; pass
 `--no-deploy` only when batching updates and deploy once afterwards.
@@ -191,8 +196,9 @@ the full reference + concrete operation recipes.
   `revoke_api_key`; revoking needs site admin) and organization API keys
   (`list_organization_api_keys`, `revoke_organization_api_key`),
   cross-organization sharing (`list_site_shares`, `share_site`,
-  `update_site_share`, `revoke_site_share`; site admin) and
-  `create_organization_invite` (editor invite link). A share never reaches
+  `update_site_share`, `revoke_site_share`; site admin) and editor invite
+  links (`create_organization_invite`, `list_organization_invites`,
+  `revoke_organization_invite`; organization key). A share never reaches
   further than the caller. New API keys are created only in the portal, so the
   secret never passes through an agent conversation.
 - **Portal AI assistant** — `read_organization_ai_settings`,
@@ -407,7 +413,9 @@ Use `read_app_documentation` to discover instructions for the selected site’s 
 MCP 0.45.23 introduces an agent-neutral `typeroll init` workspace, optional
 client adapters, safe hash-based `init --update`, and read-only `typeroll doctor`.
 Use `workspace-mcp` to bind local calls to `typeroll.json`; no credentials are
-stored there. Recipes are optional rather than automatically injected.
+stored there. Because `typeroll.json` is committed, its `portal` receives the
+API key only when it is `https://app.typeroll.com` or matches a privately set
+`TYPEROLL_API_URL`. Recipes are optional rather than automatically injected.
 
 Compact mode exposes five discovery/execution tools instead of every schema.
 Choose `?tools=compact` on the hosted endpoint (Core 0.2.27+), `tool_mode` in the

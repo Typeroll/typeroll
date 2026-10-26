@@ -31,6 +31,28 @@ def workspace():
     raise ValueError('Run from a workspace containing typeroll.json')
 
 
+OFFICIAL_PORTAL = 'https://app.typeroll.com'
+
+
+def trusted_portal(config):
+    """Return the portal origin that may receive the API key.
+
+    typeroll.json is committed, so its portal alone is trusted only when it is
+    the hosted portal. Another origin must be confirmed by TYPEROLL_API_URL.
+    """
+    portal = config['portal'].rstrip('/')
+    confirmed = (os.environ.get('TYPEROLL_API_URL') or '').strip().rstrip('/')
+    if confirmed:
+        if confirmed != portal:
+            raise ValueError('TYPEROLL_API_URL conflicts with typeroll.json')
+        return portal
+    if portal != OFFICIAL_PORTAL:
+        raise ValueError(f'typeroll.json names the portal {portal}. The API key is sent only to '
+                         f'{OFFICIAL_PORTAL} unless you confirm another portal: set '
+                         f'TYPEROLL_API_URL={portal} in your private environment')
+    return portal
+
+
 class Client:
     def __init__(self, config=None):
         self.config = config or workspace()
@@ -51,6 +73,8 @@ class Client:
         key = os.environ.get('TYPEROLL_API_KEY')
         if not key:
             raise ValueError('Inject TYPEROLL_API_KEY privately before running')
+        if trusted_portal(self.config) + '/api/mcp?tools=full' != self.url:
+            raise ValueError('Workspace portal changed after the client was created')
         headers = {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json',
                    'Accept': 'application/json, text/event-stream'}
         if self.session:

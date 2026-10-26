@@ -31,6 +31,8 @@ it('prefetches through the frozen extension validator and supports its offline r
   const source = path.resolve('src/lib/extensions');
   const target = path.join(root, 'scripts/source/extensions'); await fs.mkdir(target, {recursive:true});
   for (const name of ['assets.ts', 'public-http.ts']) await fs.copyFile(path.join(source, name), path.join(target, name));
+  // The frozen publication vendors packages/shared/src (scripts/lib/static-publication.mjs).
+  await fs.cp(path.resolve('../shared/src'), path.join(root, 'packages/shared/src'), { recursive: true, filter: (file) => !file.includes('__tests__') });
   const script = 'export default 42;', style = '.test{color:green}';
   const snapshot = {installations:[{components:[{id:'example',render_mode:'bundled_component',local_script_url:'/_extensions/app.js',local_style_url:'/_extensions/app.css',entry:{script_url:'https://extension.example.invalid/app.js',script_sha256:sha256(script),style_url:'https://extension.example.invalid/app.css',style_sha256:sha256(style)}}]}]};
   await fs.writeFile(path.join(root, 'publication.json'), JSON.stringify({extensions:snapshot}));

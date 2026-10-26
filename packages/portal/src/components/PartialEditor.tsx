@@ -15,6 +15,11 @@ interface Props {
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 
+/** Standalone document for the sandboxed partial preview frame. */
+export function partialPreviewDocument(html: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>body{margin:1rem;font-family:system-ui,-apple-system,sans-serif}</style></head><body>${html}</body></html>`;
+}
+
 export default function PartialEditor({ siteId, partial, workingCopy, lastDeployedAt }: Props) {
   const [draft, setDraft] = useState<PartialDoc>(
     { ...partial, ...(workingCopy?.fields ?? {}) } as PartialDoc,
@@ -211,7 +216,15 @@ export default function PartialEditor({ siteId, partial, workingCopy, lastDeploy
             </p>
           </div>
         ) : (
-          <div style={{ border: '1px solid var(--color-border)', borderRadius: 6, padding: '1rem', background: 'white' }} dangerouslySetInnerHTML={{ __html: draft.html_content ?? '' }} />
+          <iframe
+            title="Partial preview"
+            // Draft HTML is authored by anyone with write access. An empty
+            // sandbox gives it an opaque origin with no scripts, forms or
+            // navigation of the portal.
+            sandbox=""
+            srcDoc={partialPreviewDocument(draft.html_content ?? '')}
+            style={{ display: 'block', width: '100%', height: '60vh', minHeight: 320, border: '1px solid var(--color-border)', borderRadius: 6, background: 'white' }}
+          />
         )}
       </div>
 

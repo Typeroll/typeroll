@@ -4,11 +4,17 @@
 // equivalent is /api/v1/organization/api-keys.
 
 import type { APIRoute } from 'astro';
-import { requireFullSession, requireOrgAdmin, json } from '../../../../lib/access';
+import { requireOrganizationOwnerOrAdmin, json } from '../../../../lib/access';
 import { apiKeySummary, createApiKey, createdApiKeyResponse, listApiKeys, parseApiKeyName } from '../../../../lib/api-keys';
 
+/** Organization owners and admins only, whether or not the organization
+ *  enforces member roles. An org-scoped key acts as admin over every owned
+ *  and shared-in site and over organization connections, so an editor who
+ *  could mint one would bypass every role check. */
+const ORG_API_KEY_REFUSAL = 'Only organization owners and admins can manage organization API keys.';
+
 export const GET: APIRoute = async ({ cookies }) => {
-  const guard = await requireFullSession(cookies);
+  const guard = await requireOrganizationOwnerOrAdmin(cookies, ORG_API_KEY_REFUSAL);
   if (!guard.ok) return guard.response;
   const session = guard.value;
   const keys = await listApiKeys(session.orgId, null);
@@ -16,13 +22,8 @@ export const GET: APIRoute = async ({ cookies }) => {
 };
 
 export const POST: APIRoute = async ({ request, cookies }) => {
-  const guard = await requireFullSession(cookies);
+  const guard = await requireOrganizationOwnerOrAdmin(cookies, ORG_API_KEY_REFUSAL);
   if (!guard.ok) return guard.response;
-  // Minting an org-scoped key grants admin over every owned + shared-in
-  // site, so it must not be reachable below org-admin — otherwise it's a
-  // clean bypass of the site-level role check.
-  const adminCheck = await requireOrgAdmin(guard.value);
-  if (!adminCheck.ok) return adminCheck.response;
   const session = guard.value;
 
   const parsed = parseApiKeyName(await request.json().catch(() => ({})));

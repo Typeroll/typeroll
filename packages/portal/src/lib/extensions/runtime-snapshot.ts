@@ -4,6 +4,7 @@ import {
   paths,
   type ExtensionInstallation,
   type ExtensionRuntimeSnapshot,
+  type Form,
   type PublicExtensionComponent,
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -26,6 +27,18 @@ export async function buildExtensionRuntimeSnapshot(
   const store = getStore();
   const installations = await store.listDocs<ExtensionInstallation>(paths.extensionInstallations(orgId, siteId));
   const publicInstallations: ExtensionRuntimeSnapshot['installations'] = [];
+  // A Core submit token is the public capability to post to a form. A form
+  // bound to an app installation (`target`) receives its submissions at that
+  // provider's endpoint, never through Core, so no manifest binding may obtain
+  // a Core token for it — including one declared by a different Extension.
+  const appBoundForms = new Map<string, boolean>();
+  const isAppBoundForm = async (formId: string): Promise<boolean> => {
+    if (!appBoundForms.has(formId)) {
+      const form = await store.getDoc<Form>(`${paths.forms(orgId, siteId)}/${formId}`);
+      appBoundForms.set(formId, Boolean(form?.target));
+    }
+    return appBoundForms.get(formId)!;
+  };
   for (const installation of installations) {
     if (installation.status !== 'enabled') continue;
     const version = (await resolveExtensionVersion(installation)).version;
@@ -43,10 +56,18 @@ export async function buildExtensionRuntimeSnapshot(
     const config = buildExtensionConfig(version.manifest.config_schema, {}, effective);
     if (typeof config === 'string') throw new Error('An enabled Extension has invalid configuration for its published release');
     const handoffGranted = installation.granted_scopes.includes('page_handoff:read');
+    const submittableForms = new Set<string>();
+    if (installation.granted_scopes.includes('forms:submit')) {
+      for (const component of version.manifest.frontend?.components ?? []) {
+        for (const binding of component.form_bindings ?? []) {
+          if (!await isAppBoundForm(binding.form_id)) submittableForms.add(binding.form_id);
+        }
+      }
+    }
     const components: PublicExtensionComponent[] = (version.manifest.frontend?.components ?? []).map(({ page_handoff, ...component }) => {
       const base = assetBase(installation.extension_id, version.version, component.id);
       const resolvedFormBindings = Object.fromEntries(
-        (installation.granted_scopes.includes('forms:submit') ? component.form_bindings ?? [] : []).map((binding) => {
+        (component.form_bindings ?? []).filter((binding) => submittableForms.has(binding.form_id)).map((binding) => {
           const embed = formEmbedInfo(orgId, siteId, binding.form_id);
           return [binding.id, {
             ...binding,
