@@ -12,10 +12,10 @@ import { DEFAULT_IFRAME_ALLOWED_HOSTS, normalizeIframeAllowedHosts } from '@type
 const allowedTags = [
   ...sanitizeHtml.defaults.allowedTags,
   // <style> blocks are kept — multi-page sites need authored CSS for
-  // responsiveness, hover states, theming. stripCssExploits() below
-  // scrubs the legacy code-execution / remote-load constructs from the
-  // style content as a defense-in-depth pass.
-  'style',
+  // responsiveness, hover states, theming — but are deliberately NOT listed
+  // here: sanitizeBody() renames them to a per-call placeholder so their text
+  // is escaped (see guardStyleText()). stripCssExploits() below scrubs the
+  // legacy code-execution / remote-load constructs from the style content.
   // <x-include name="..."> survives sanitization at save time so the
   // partial reference reaches the build's expandIncludes step intact.
   'x-include',
@@ -193,10 +193,11 @@ const options: IOptions = {
   allowedSchemesByTag: {
     img: ['http', 'https', 'data'],
   },
+  // URL-valued attributes (href, src, action, formaction, xlink:href, …) are
+  // scheme-checked by sanitize-html's default allowedSchemesAppliedToAttributes;
+  // sanitize-security.test.ts locks that in for form actions and SVG <use>.
   // Forbid every event-handler attribute by leaving them out of allowedAttributes.
   // sanitize-html also strips <script>, <object>, <embed> by default.
-  // <style> is opted into explicitly via allowVulnerableTags.
-  allowVulnerableTags: true,
   // Authoring references such as <x-form /> must not absorb following HTML.
   parser: { lowerCaseAttributeNames: true, recognizeSelfClosing: true },
   transformTags: {
@@ -205,7 +206,67 @@ const options: IOptions = {
       return { tagName, attribs };
     },
   },
+  // Published pages are static and never handle credentials. A password field
+  // in authored HTML can only collect a visitor's password for someone else.
+  exclusiveFilter: (frame) => frame.tag === 'input'
+    && String(frame.attribs.type ?? '').trim().toLowerCase() === 'password',
 };
+
+// Raw-text guard for <style> (mutation-XSS, security finding K1).
+//
+// sanitize-html re-emits the text of an allowed <style> verbatim. That text
+// is not inert everywhere: inside <svg>/<math> (foreign content) a browser
+// parses <style> content as markup and decodes entities, while htmlparser2
+// either decodes entities itself or, at integration points that are later
+// discarded (<foreignObject>, <mi>, …), passes raw markup through. Either way
+// `<svg><style>&lt;img src=x onerror=…&gt;</style></svg>` used to come out as a
+// live <img onerror>, with one more entity level surviving each extra pass.
+//
+// sanitizeBody therefore renames <style> to an unguessable placeholder tag.
+// sanitize-html then treats its text like any other text and escapes it, and
+// the textFilter below decides per text node:
+//   - outside any <svg>/<math> ancestor, htmlparser2 and the browser both read
+//     the content as raw text that ends at the first `</style`. The escaping is
+//     undone exactly, so ordinary page CSS is byte-for-byte unchanged.
+//   - with an <svg>/<math> ancestor the text stays escaped, so it contains no
+//     `<` and can never open a tag. Browsers decode the entities in foreign
+//     <style>, so SVG CSS such as `.a > .b` keeps its meaning.
+// The placeholder is renamed back to <style> afterwards. Its random name
+// cannot appear in raw CSS, so the rename cannot be steered by content.
+const ESCAPED_TEXT_ENTITY_RE = /&(amp|lt|gt);/g;
+const ESCAPED_TEXT_CHARS: Record<string, string> = { amp: '&', lt: '<', gt: '>' };
+
+function isForeignContentRoot(name: string): boolean {
+  return name === 'svg' || name === 'math';
+}
+
+function guardStyleText(): Pick<IOptions, 'transformTags' | 'onOpenTag' | 'onCloseTag' | 'textFilter'> & { placeholder: string } {
+  const placeholder = `tr-style-${globalThis.crypto.randomUUID().replace(/-/g, '')}`;
+  const openElements: string[] = [];
+  return {
+    placeholder,
+    transformTags: {
+      ...options.transformTags,
+      style: (_tagName, attribs) => ({ tagName: placeholder, attribs }),
+    },
+    onOpenTag: (name) => {
+      openElements.push(name);
+    },
+    onCloseTag: (name) => {
+      const index = openElements.lastIndexOf(name);
+      if (index !== -1) openElements.length = index;
+    },
+    textFilter: (text, tagName) => {
+      if (tagName !== 'style' || openElements.some(isForeignContentRoot)) return text;
+      // sanitize-html (decodeEntities: true) escapes exactly &, < and >.
+      return text.replace(ESCAPED_TEXT_ENTITY_RE, (_m, name: string) => ESCAPED_TEXT_CHARS[name]);
+    },
+  };
+}
+
+function restoreStyleTags(html: string, placeholder: string): string {
+  return html.split(`<${placeholder}`).join('<style').split(`</${placeholder}>`).join('</style>');
+}
 
 /**
  * Scrub CSS constructs that can execute code or pull external resources.
@@ -244,15 +305,17 @@ function restoreMarkers(html: string): string {
 export function sanitizeBody(html: string, iframeAllowedHosts: string[] = []): string {
   const customHosts = normalizeIframeAllowedHosts(iframeAllowedHosts).hosts;
   const protectedHtml = protectMarkers(html);
-  const cleaned = stripCssExploits(sanitizeHtml(protectedHtml, {
+  const { placeholder, ...styleGuard } = guardStyleText();
+  const cleaned = stripCssExploits(restoreStyleTags(sanitizeHtml(protectedHtml, {
     ...options,
+    ...styleGuard,
     allowedIframeHostnames: [...DEFAULT_IFRAME_ALLOWED_HOSTS, ...customHosts],
-    allowedTags: [...allowedTags, 'tr-marker'],
+    allowedTags: [...allowedTags, 'tr-marker', placeholder],
     allowedAttributes: {
       ...options.allowedAttributes,
       'tr-marker': ['data-tr'],
     },
-  }));
+  }), placeholder));
   return restoreSvgAttrCase(restoreMarkers(cleaned));
 }
 
