@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
@@ -50,6 +51,34 @@ function recoveredTransfers(count) {
   healthyTransfers += count;
   if (healthyTransfers >= 16) { transferConcurrency = Math.min(16, transferConcurrency + 1); healthyTransfers = 0; }
 }
+// Context is per file, including concurrent batches; never log signed storage URLs.
+const mediaContext = new AsyncLocalStorage();
+const diagnosticValue = value => JSON.stringify(String(value ?? 'publication').split(/[?#]/)[0].replace(/[\x00-\x1f\x7f]/g, '').slice(0, 140));
+function operationLabel(step, key) {
+  const entry = mediaContext.getStore();
+  return `step=${step} media=${diagnosticValue(entry?.id)} file=${diagnosticValue(entry?.public_path)} object=${diagnosticValue(key?.split('/').at(-1))}`;
+}
+const transient = (cause, delay = 0) => Object.assign(new Error('media_transfer_interrupted'), { transient: true, delay, cause });
+async function mediaOperation(step, key, operation) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try { return await operation(); }
+    catch (error) {
+      if (error.transient && attempt < 3) {
+        transferConcurrency = Math.max(1, Math.floor(transferConcurrency / 2)); healthyTransfers = 0;
+        console.warn(`TYPEROLL_MEDIA_RETRY ${operationLabel(step, key)} attempt=${attempt} next=${attempt + 1}`);
+        await new Promise(resolve => setTimeout(resolve, Math.max(250 * 2 ** (attempt - 1), Math.min(error.delay || 0, 30000))));
+        continue;
+      }
+      // A fixed locator is printed separately from the cause, which the executor
+      // redacts. Preserve the original error code for the coordinator's retry policy.
+      error.mediaDiagnostic = `TYPEROLL_MEDIA_FAILURE ${operationLabel(step, key)} attempts=${attempt}`;
+      console.error(error.mediaDiagnostic);
+      throw error;
+    }
+  }
+}
+const responseBytes = response => response.mediaBytes !== undefined ? response.mediaBytes : boundedBytes(response.body);
+
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
 /** Runs on the customer's build machine. No original or generated image is committed to Git. */
@@ -68,13 +97,9 @@ export async function prepareMedia(publication, root, options = {}) {
   if (credentials.grant_url) {
     const location = new URL(credentials.grant_url);
     if (location.protocol !== 'https:' || location.hostname !== `${manifest.account_id}.r2.cloudflarestorage.com`) throw new Error('Unexpected media grant origin');
-    const response = await fetch(location, { redirect: 'error', signal: AbortSignal.timeout(30000) }).catch(() => { throw new Error('media_transfer_interrupted'); });
-    if (response.status === 429 || response.status >= 500) { await response.body?.cancel(); throw new Error('media_transfer_interrupted'); }
-    if (!response.ok) { await response.body?.cancel(); throw new Error('Media build access expired. Redeploy from Typeroll.'); }
-    const bytes = await boundedBytes(response.body, 32 * 1024 * 1024).catch(error => {
-      if (error.message === 'Media response is too large') throw error;
-      throw new Error('media_transfer_interrupted');
-    });
+    const response = await request(location, {}, 'read_grant', 32 * 1024 * 1024);
+    if (!response.ok) throw new Error('Media build access expired. Redeploy from Typeroll.');
+    const bytes = await responseBytes(response);
     if (hash(bytes) !== credentials.sha256) throw new Error('Media grants failed integrity verification');
     grants = JSON.parse(bytes.toString());
     if (grants.publication_id !== publication.publication_id || grants.expires_at <= Date.now()) throw new Error('Media grants do not match this publication or have expired');
@@ -85,62 +110,76 @@ export async function prepareMedia(publication, root, options = {}) {
   if (credentials.account_id !== manifest.account_id || credentials.original_bucket !== manifest.original_bucket || credentials.public_bucket !== manifest.public_bucket) throw new Error('Media build access belongs to another publication target');
   options.access.credentials = credentials;
   const client = access => new S3Client({ region: 'auto', endpoint: `https://${manifest.account_id}.r2.cloudflarestorage.com`, credentials: access,
-    forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' });
+    maxAttempts: 1, forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' });
   const source = grants ? null : client(credentials.original);
   const target = grants ? null : client(credentials.public);
-  async function request(url, options = {}) {
+  async function request(url, options = {}, step = options.method === 'PUT' ? 'write_object' : 'read_object', limit = 25 * 1024 * 1024) {
     if (!url) throw new Error('This object is outside the publication grant');
     const location = new URL(url);
     if (location.protocol !== 'https:' || location.hostname !== `${manifest.account_id}.r2.cloudflarestorage.com`) throw new Error('Unexpected media storage origin');
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const response = await fetch(location, { ...options, redirect: 'error', signal: AbortSignal.timeout(30000) });
-        if (response.status === 429 || response.status >= 500) {
-          const value = response.headers.get('retry-after');
-          const delay = value ? (Number.isFinite(Number(value)) ? Number(value) * 1000 : Date.parse(value) - Date.now()) : 0;
-          await response.body?.cancel();
-          if (delay > 0) await new Promise(resolve => setTimeout(resolve, Math.min(delay, 30000)));
-          throw new Error('media_transfer_interrupted');
-        }
-        return response;
-      } catch {
-        transferConcurrency = Math.max(1, Math.floor(transferConcurrency / 2)); healthyTransfers = 0;
-        if (attempt === 2) throw new Error('media_transfer_interrupted');
-        await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt));
+    return mediaOperation(step, location.pathname, async () => {
+      let response;
+      try { response = await fetch(location, { ...options, redirect: 'error', signal: AbortSignal.timeout(30000) }); }
+      catch (error) { throw transient(error); }
+      if (response.status === 429 || response.status >= 500) {
+        const value = response.headers.get('retry-after');
+        const delay = value ? (Number.isFinite(Number(value)) ? Number(value) * 1000 : Date.parse(value) - Date.now()) : 0;
+        await response.body?.cancel();
+        throw transient(undefined, delay);
       }
-    }
+      if (!response.ok && !(options.method !== 'PUT' && response.status === 404) && !(options.method === 'PUT' && response.status === 412)) {
+        await response.body?.cancel();
+        throw new Error(`Media storage rejected access (HTTP ${response.status}). Check or renew publication access.`);
+      }
+      if (options.method !== 'PUT' && response.ok) {
+        try { response.mediaBytes = await boundedBytes(response.body, limit); }
+        catch (error) {
+          if (error.message === 'Media response is too large') throw error;
+          throw transient(error);
+        }
+      }
+      return response;
+    });
+  }
+  async function sdkOperation(step, key, operation) {
+    return mediaOperation(step, key, async () => {
+      try { return await operation(); }
+      catch (error) {
+        const status = error?.$metadata?.httpStatusCode;
+        if (status === 429 || status >= 500 || ['TimeoutError', 'NetworkingError'].includes(error.name) ||
+            ['ECONNRESET', 'ETIMEDOUT', 'EPIPE', 'EAI_AGAIN'].includes(error.code)) throw transient(error);
+        throw error;
+      }
+    });
   }
   async function read(bucket, key, original = false) {
     if (grants) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        const response = await request(original ? grants.originals[key] : grants.objects[key]?.get);
-        if (response.status === 404) { await response.body?.cancel(); return null; }
-        if (!response.ok) { await response.body?.cancel(); throw new Error('Could not read media. Check or renew publication access.'); }
-        try { return await boundedBytes(response.body); }
-        catch (error) {
-          if (error.message === 'Media response is too large') throw error;
-          if (attempt === 2) throw new Error('media_transfer_interrupted');
-          await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt));
-        }
-      }
+      const response = await request(original ? grants.originals[key] : grants.objects[key]?.get);
+      if (response.status === 404) { await response.body?.cancel(); return null; }
+      return responseBytes(response);
     }
-    try { const result = await (original ? source : target).send(new GetObjectCommand({ Bucket: bucket, Key: key })); return await boundedBytes(result.Body); }
-    catch (error) { if (error?.$metadata?.httpStatusCode === 404) return null; throw new Error('Could not read media. Check or renew publication access.'); }
+    return sdkOperation('read_object', key, async () => {
+      try {
+        const result = await (original ? source : target).send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        return await boundedBytes(result.Body);
+      } catch (error) { if (error?.$metadata?.httpStatusCode === 404) return null; throw error; }
+    });
   }
   async function write(key, bytes, contentType) {
     if (grants) {
       const grant = grants.objects[key];
       const response = await request(grant?.put, { method: 'PUT', headers: grant?.headers, body: bytes });
       await response.body?.cancel();
-      if (!response.ok && response.status !== 412) throw new Error('Could not upload a publication asset');
     } else {
-      try { await target.send(new PutObjectCommand({ Bucket: manifest.public_bucket, Key: key, Body: bytes, ContentType: contentType, CacheControl: cache, IfNoneMatch: '*' })); }
-      catch (error) { if (error?.$metadata?.httpStatusCode !== 412) throw new Error('Could not upload a publication asset'); }
+      await sdkOperation('write_object', key, async () => {
+        try { await target.send(new PutObjectCommand({ Bucket: manifest.public_bucket, Key: key, Body: bytes, ContentType: contentType, CacheControl: cache, IfNoneMatch: '*' })); }
+        catch (error) { if (error?.$metadata?.httpStatusCode !== 412) throw error; }
+      });
     }
   }
   const sameHostFiles = [];
   try {
-    const prepareEntry = async entry => {
+    const processEntry = async entry => {
       if (!entry.source_key.startsWith(`private/${manifest.site_prefix}/originals/`) || !entry.public_key.startsWith(`${manifest.site_prefix}/`)) throw new Error('Media entry escaped its site namespace');
       const completionKey = mediaReceiptKey(manifest, entry);
       const canComplete = !options.cacheOnly && (!grants || Boolean(grants.objects[completionKey]));
@@ -210,7 +249,7 @@ export async function prepareMedia(publication, root, options = {}) {
       if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
       for (const alias of options.cacheOnly || options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
       if (imageTypes.has(entry.mime_type)) {
-        const metadata = await sharp(bytes).metadata();
+        const metadata = await mediaOperation('inspect_image', entry.public_key, () => sharp(bytes).metadata());
         media.width = metadata.width; media.height = metadata.height; media.variants = [];
         for (const { width, slot } of mediaVariantCandidates(metadata.width)) {
           for (const format of ['webp', 'avif']) {
@@ -236,15 +275,15 @@ export async function prepareMedia(publication, root, options = {}) {
             const cachedGrant = grants?.prepared?.[preparedKey], cachedReceiptGrant = grants?.prepared?.[preparedKey + '.receipt.json'];
             let cachedReceipt;
             if (!options.materializeOnly && cachedReceiptGrant) {
-              const response = await request(cachedReceiptGrant.get);
+              const response = await request(cachedReceiptGrant.get, {}, 'read_variant_receipt', 8192);
               if (response.ok) {
-                cachedReceipt = JSON.parse((await boundedBytes(response.body, 8192)).toString());
+                cachedReceipt = JSON.parse((await responseBytes(response)).toString());
                 if (cachedReceipt.source_sha256 === entry.sha256 && knownRecipe(cachedReceipt.recipe_sha256) && cachedReceipt.width === width && cachedReceipt.format === format) {
                   // A public variant may already be verified. Read its private
                   // receipt too, so warm builds do not repeat conditional PUTs.
                   if (!variant) {
                     const cached = await request(cachedGrant.get);
-                    if (cached.ok) { variant = await boundedBytes(cached.body); variantRecipe = cachedReceipt.recipe_sha256; }
+                    if (cached.ok) { variant = await responseBytes(cached); variantRecipe = cachedReceipt.recipe_sha256; }
                     else { await cached.body?.cancel(); if (cached.status !== 404) throw new Error('media_transfer_interrupted'); }
                   }
                   if (variant && (hash(variant) !== cachedReceipt.sha256 || variant.length !== cachedReceipt.size_bytes)) throw new Error('Prepared media failed byte verification');
@@ -252,13 +291,13 @@ export async function prepareMedia(publication, root, options = {}) {
               } else { await response.body?.cancel(); if (response.status !== 404) throw new Error('media_transfer_interrupted'); }
             }
             if (!variant && options.materializeOnly) throw new Error('Prepared media is unavailable. Redeploy to prepare the missing variant.');
-            if (!variant) variant = await encode(() => sharp(bytes).resize({ width, withoutEnlargement: true })[format]({ quality: recipe.quality[format] }).toBuffer());
+            if (!variant) variant = await mediaOperation('encode_variant', key, () => encode(() => sharp(bytes).resize({ width, withoutEnlargement: true })[format]({ quality: recipe.quality[format] }).toBuffer()));
             if (!options.materializeOnly && !cachedReceipt && cachedGrant && cachedReceiptGrant) {
               const saved = await request(cachedGrant.put, { method: 'PUT', headers: cachedGrant.headers, body: variant });
               await saved.body?.cancel();
               if (!saved.ok && saved.status !== 412) throw new Error('media_transfer_interrupted');
               const verified = await request(cachedGrant.get);
-              if (!verified.ok || hash(await boundedBytes(verified.body)) !== hash(variant)) throw new Error('Prepared media failed byte verification');
+              if (!verified.ok || hash(await responseBytes(verified)) !== hash(variant)) throw new Error('Prepared media failed byte verification');
               const body = JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: variantRecipe, width, format, sha256: hash(variant), size_bytes: variant.length });
               const savedReceipt = await request(cachedReceiptGrant.put, { method: 'PUT', headers: cachedReceiptGrant.headers, body });
               await savedReceipt.body?.cancel();
@@ -282,13 +321,25 @@ export async function prepareMedia(publication, root, options = {}) {
         await store(receipt, completionKey, 'application/json', '', false);
       }
     };
+    const prepareEntry = async entry => {
+      try { return await processEntry(entry); }
+      catch (error) {
+        error.mediaDiagnostic ??= `TYPEROLL_MEDIA_FAILURE ${operationLabel('prepare_media', entry.public_key)} attempts=1`;
+        console.error(error.mediaDiagnostic);
+        throw error;
+      }
+    };
     // Bounded parallel reads keep final materialization from becoming another
     // library-wide timeout. Drain the group before closing clients on failure.
     for (let offset = 0; offset < manifest.entries.length;) {
       const count = options.prepareOnly ? 1 : mediaTransferGroupSize(manifest.entries, offset);
-      const results = await Promise.allSettled(manifest.entries.slice(offset, offset + count).map(prepareEntry));
+      const results = await Promise.allSettled(manifest.entries.slice(offset, offset + count).map(entry => mediaContext.run(entry, () => prepareEntry(entry))));
       const failure = results.find(result => result.status === 'rejected');
-      if (failure) throw failure.reason;
+      if (failure) {
+        // Match the locator to the chosen cause, not the last concurrent failure.
+        if (failure.reason.mediaDiagnostic) console.error(failure.reason.mediaDiagnostic);
+        throw failure.reason;
+      }
       offset += count; recoveredTransfers(count);
     }
   } finally { source?.destroy(); target?.destroy(); }
@@ -308,11 +359,15 @@ export async function prepareMediaBatch(publication, root, cursor = 0, { maxEntr
     const group = entries.slice(next, next + size);
     const results = await Promise.allSettled(group.map(async ({ manifest, entry }) => {
       const prepared = { ...publication, retained_media_manifests: [], media_manifest: { ...manifest, entries: [entry] }, media: [{ ...entry }] };
-      const output = await prepareMedia(prepared, root, { prepareOnly: !materialize, materializeOnly: materialize, cacheOnly, access, reusableFiles });
+      const output = await mediaContext.run(entry, () => prepareMedia(prepared, root, { prepareOnly: !materialize, materializeOnly: materialize, cacheOnly, access, reusableFiles }));
       if (materialize) { files.push(...output); if (manifest === publication.media_manifest) media.push(...prepared.media); }
     }));
     const failure = results.find(result => result.status === 'rejected');
-    if (failure) throw failure.reason;
+    if (failure) {
+      // Concurrent failures may finish in a different order from the selected cause.
+      if (failure.reason.mediaDiagnostic) console.error(failure.reason.mediaDiagnostic);
+      throw failure.reason;
+    }
     next += group.length;
   }
   return { cursor: next, total: entries.length, ...(materialize ? { files, media } : {}) };
