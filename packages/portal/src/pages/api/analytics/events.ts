@@ -13,6 +13,7 @@ import {
   verifyAnalyticsEventToken,
 } from "../../../lib/apps/analytics-events";
 import { clientIp, rateLimit } from "../../../lib/rate-limit";
+import { BodyTooLargeError, readBoundedBody } from "../../../lib/forms/request-body";
 
 const MAX_BODY_BYTES = 8 * 1024;
 const MAX_VALUE_LENGTH = 1024;
@@ -73,17 +74,25 @@ function allowedOrigin(request: Request, site: Site & { id: string }): boolean {
   );
 }
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, clientAddress }) => {
   const length = Number(request.headers.get("content-length") ?? 0);
   if (length > MAX_BODY_BYTES) return response(413);
 
-  const ip = clientIp(request.headers);
+  let socketAddress: string | undefined;
+  try { socketAddress = clientAddress; } catch { socketAddress = undefined; }
+  const ip = clientIp(request.headers, socketAddress);
   const ipLimit = rateLimit(`analytics-events-ip:${ip}`, 120, 60_000);
   if (!ipLimit.allowed) return response(429);
 
-  const raw = await request.text().catch(() => "");
-  if (!raw || new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES)
+  // Content-Length is optional (chunked bodies), so bound the bytes read.
+  let raw = "";
+  try {
+    raw = new TextDecoder().decode(await readBoundedBody(request, MAX_BODY_BYTES));
+  } catch (error) {
+    if (error instanceof BodyTooLargeError) return response(413);
     return response(400);
+  }
+  if (!raw) return response(400);
   let body: {
     token?: string;
     event?: {

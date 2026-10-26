@@ -25,6 +25,11 @@ it('creates another organization with enforced roles and preserves the original 
   expect(await getStore().getDoc(`${paths.members('second-client')}/${session.userId}`)).toMatchObject({ role: 'owner' });
   expect(await getStore().listDocs('user_organizations/existing-member/organizations')).toHaveLength(2);
 });
+it('never gives an organization a reserved signed-token namespace as its id', async () => {
+  const response = await createOrg(request({ name: 'Analytics v1' })) as Response;
+  expect(await response.json()).toMatchObject({ ok: true, orgId: 'analytics-v1-org' });
+  expect(await getStore().getDoc(paths.org('analytics-v1'))).toBeNull();
+});
 it('does not overwrite a slug reserved by a concurrent creator', async () => {
   const store = getStore();
   const original = store.compareAndReplaceDoc.bind(store);

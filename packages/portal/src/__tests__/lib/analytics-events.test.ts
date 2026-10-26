@@ -87,6 +87,26 @@ describe("first-party Analytics events", () => {
     expect(Date.parse(rows[0].expires_at)).toBeGreaterThan(Date.now());
   });
 
+  it("refuses an oversized body that declares no Content-Length", async () => {
+    const { POST } = await import("../../pages/api/analytics/events");
+    const chunk = new TextEncoder().encode("x".repeat(16 * 1024));
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < 8; i++) controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+    const request = new Request("https://forms.typeroll.com/api/analytics/events", {
+      method: "POST",
+      headers: { "content-type": "text/plain;charset=UTF-8", origin: "https://www.example.com" },
+      body,
+      duplex: "half",
+    } as RequestInit);
+    expect(request.headers.get("content-length")).toBeNull();
+    const response = (await POST({ request } as never)) as Response;
+    expect(response.status).toBe(413);
+  });
+
   it("rejects forged tokens, foreign origins, and undeclared events", async () => {
     const token = await setup();
     const event = {

@@ -62,13 +62,15 @@ export async function publicExtensionCors(args: {
 
 export async function issuePublicExtensionToken(args: {
   request: Request;
+  /** Socket address of the caller, used when no trusted proxy hop applies. */
+  clientAddress?: string;
   orgId: string;
   siteId: string;
   installationId: string;
 }): Promise<{ token: string; expires_in: number; cors: Record<string, string> }> {
   const cors = await publicExtensionCors(args);
   const limit = rateLimit(
-    `extension-public-token:${args.siteId}:${args.installationId}:${clientIp(args.request.headers)}`,
+    `extension-public-token:${args.siteId}:${args.installationId}:${clientIp(args.request.headers, args.clientAddress)}`,
     60,
     60_000,
   );
