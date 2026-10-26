@@ -83,3 +83,20 @@ Network checks retry only a bounded read. All reports, screenshots and source
 exports stay under ignored qa/reports/ or sources/private/. Do not commit signed
 URLs, personal data or customer assets. Adapt scripts deliberately and run tests
 before applying broad changes. The workspace updater preserves your edits.
+
+## Palette migration (Core 0.2.106 / MCP 0.45.80+)
+
+`color_tokens.py --plan /tmp/design-token-plan.json` runs the read-only
+`lint_design_tokens` audit and lists unambiguous direct block hex replacements.
+Review the plan and remove deliberate exceptions. `--apply /tmp/design-token-plan.json`
+requires the same site/palette and a dedicated non-main Version without existing
+working copies. Pause other editing in that Version during the run: ordinary
+field writes do not provide a site-wide transaction. The script refuses stale
+values, never retries uncertain writes, and never publishes. On an interruption,
+inspect working copies before saving or resuming. Templates save immediately.
+
+Ambiguous colours, nested/responsive colour maps and custom CSS are reported for
+manual review rather than rewritten. API updates through the normal block tools
+can resolve these after choosing the semantic role. Run lint again and compare
+header, footer, navigation, cards and buttons at all breakpoints. Keep generated
+plans outside Git; they are version-specific review artifacts.

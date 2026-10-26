@@ -15,3 +15,10 @@ Do not publish, change DNS or send messages without explicit approval.
 
 The CMS owns current content and settings. The repository owns the brief, rules,
 decisions and evidence. Load recipes when needed, not the whole manual.
+
+## Design token check
+
+Follow workflows/design.md for palette/font roles and named scales. Run
+`lint_design_tokens` before launch and after major design changes. Review exact
+colour replacements with scripts/typeroll/color_tokens.py; record deliberate
+exceptions in decisions.md. Preserve text independently from design changes.

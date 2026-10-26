@@ -10,6 +10,7 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[1] / 'packages/mcp-server/workspace-templates/scripts/typeroll'
 sys.path.insert(0, str(ROOT))
 import trlib
+import color_tokens
 import check_url_parity as parity
 from check_assets import Assets
 from compare_text import tokens
@@ -18,6 +19,34 @@ CONFIG = {'portal': 'https://cms.example.test', 'organization_id': 'org', 'site_
 
 
 class QA(unittest.TestCase):
+    def test_colour_plan_refuses_main_and_stale_palettes_before_writes(self):
+        plan = {'scope': {**CONFIG, 'version':'main'}, 'palette_hash':'a', 'replacements':[], 'counts_before':{}}
+        with patch.object(color_tokens, 'snapshot', return_value=(plan, {})), patch.object(trlib, 'call') as call:
+            with self.assertRaisesRegex(ValueError, 'dedicated test Version'): color_tokens.apply_plan(plan)
+            call.assert_not_called()
+        current = {**plan, 'scope':CONFIG, 'palette_hash':'b'}
+        with patch.object(color_tokens, 'snapshot', return_value=(current, {})), patch.object(trlib, 'call') as call:
+            with self.assertRaisesRegex(ValueError, 'palette changed'): color_tokens.apply_plan({**plan, 'scope':CONFIG})
+            call.assert_not_called()
+
+    def test_colour_plan_preserves_unrelated_fields_and_saves_without_publishing(self):
+        row = {'target':{'kind':'page','id':'home'},'block_id':'hero','field':'background','before':'#123456','after':'primary'}
+        plan = {'scope':CONFIG,'palette_hash':'same','replacements':[row],'counts_before':{'hardcoded_color':1}}
+        calls = []
+        def call(name, args=None):
+            calls.append((name,args))
+            if name == 'read_working_copy': return {'working_copy':None}
+            if name == 'get_page_blocks': return {'blocks':[{'id':'hero','data':{'background':'#123456','title':'Untouched'}}]}
+            if name == 'lint_design_tokens': return {'counts':{'hardcoded_color':0}}
+            return {}
+        with patch.object(color_tokens, 'snapshot', return_value=(plan, {})), patch.object(trlib, 'call', side_effect=call), patch('builtins.print'):
+            color_tokens.apply_plan(plan)
+        self.assertEqual([n for n,a in calls], ['read_working_copy','get_page_blocks','update_block','commit_working_copy','lint_design_tokens'])
+        self.assertEqual(calls[2][1]['data'], {'background':'primary'})
+        with patch.object(color_tokens, 'snapshot', return_value=(plan, {})), patch.object(trlib, 'call', return_value={'working_copy':{'title':'Human draft'}}) as call:
+            with self.assertRaisesRegex(ValueError, 'unsaved draft'): color_tokens.apply_plan(plan)
+            self.assertEqual(call.call_count,1)
+
     def client(self):
         client = trlib.Client(CONFIG)
         client.tools = {

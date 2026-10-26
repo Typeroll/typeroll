@@ -82,3 +82,10 @@ Page/partial block writes update working copies; check `saved` and use
 `commit_working_copy` with `target: {kind: "page"|"partial", id: "..."}`.
 Page templates save immediately and do not have working copies. REST read envelopes and
 MCP tool text are different layers; `call.py` returns the decoded tool result.
+
+## Design token check
+
+Follow workflows/design.md for palette/font roles and named scales. Run
+`lint_design_tokens` before launch and after major design changes. Review exact
+colour replacements with scripts/typeroll/color_tokens.py; record deliberate
+exceptions in decisions.md. Preserve text independently from design changes.

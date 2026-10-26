@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS } from '@typeroll/shared';
+import { TOKEN_SCALES, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 
@@ -131,6 +131,24 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   if (smoothing === 'auto' || smoothing === 'antialiased') fonts.smoothing = smoothing;
   else if (smoothing === '') delete fonts.smoothing;
 
+  if (form.has('colors.surface_hover')) {
+    const hover = String(form.get('colors.surface_hover') ?? '').trim();
+    if (hover && !/^#[a-fA-F0-9]{3}(?:[a-fA-F0-9]{3})?$/.test(hover)) return new Response('Surface hover must be a hex colour or empty for automatic.', { status: 400 });
+    if (hover) colors.surface_hover = hover; else delete colors.surface_hover;
+  }
+  if (form.has('fonts.mono')) {
+    const mono = String(form.get('fonts.mono') ?? '').trim();
+    if (mono) fonts.mono = mono; else delete fonts.mono;
+  }
+  if (form.has('design_scales.type_size.xs')) {
+    const scales = Object.fromEntries(Object.entries(TOKEN_SCALES).map(([scale, steps]) => [scale, Object.fromEntries(Object.keys(steps).flatMap(step => {
+      const value = String(form.get(`design_scales.${scale}.${step}`) ?? '').trim();
+      return value ? [[step, value]] : [];
+    }))]));
+    const error = designScalesError(scales);
+    if (error) return new Response(error, { status: 400 });
+    next.design_scales = scales;
+  }
   await store.setDoc(paths.settings(owner_org_id, site.id, versionId), next as unknown as Record<string, unknown>);
 
   // Staging URL lives on the Site doc, not in versioned settings (so a

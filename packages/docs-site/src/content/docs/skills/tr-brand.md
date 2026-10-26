@@ -110,3 +110,11 @@ Headings scale from this base using Typeroll's built-in fluid type scale.
 4. Iterates based on your feedback
 
 You can ask for adjustments naturally: "make the accent more orange", "use a heavier serif for headings", "the background feels too cold".
+
+## Palette and scale consistency
+
+Configure colours and font families in site settings. Use palette names and
+named styles in blocks; document deliberate exceptions in `decisions.md`.
+Core 0.2.106 adds block palette names, named size/spacing steps and
+`lint_design_tokens`. Follow the [design-token guide](/docs/guides/design-tokens/)
+and the site starter’s `workflows/design.md`; on older Core use palette CSS variables.

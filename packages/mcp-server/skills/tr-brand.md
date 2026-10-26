@@ -5,6 +5,42 @@ description: Use when the user asks to create a brand identity, design system, o
 
 # Design a brand identity for a Typeroll site
 
+## Site tokens before block overrides
+
+Core 0.2.106 / template capabilities 0.54.0 adds palette names in all colour
+fields and named typography/spacing steps. Check the connected capability
+version; on older renderers use `var(--color-surface)` rather than a bare name.
+
+Set colours and font families in site settings, then use named styles and
+palette names in blocks. Do not write hex, rgb or font-family literals in block
+content. Prefer `primary`, `secondary`, `accent`, `background`, `surface`, `text`,
+`text_light`, and `on_primary`/`on_secondary`/`on_accent` for text on brand colours.
+Use `surface_hover` for a darker interactive surface (derived automatically
+unless explicitly configured). Existing semantic roles should be reused; a
+new visual shade is not automatically a new semantic role. For a derived shade
+use `color-mix(in srgb, var(--color-surface) 92%, var(--color-primary))`.
+For an additional role not in the native palette, define a named site style
+or a site CSS variable derived from existing palette variables, and document it.
+
+Choose `heading`, `body` or `mono` for fonts. Font families belong only in the
+site's `fonts` settings. Use type-size steps `xs`, `sm`, `md`, `lg`, `xl`, `2xl`,
+`3xl`; spacing `none`, `xs`, `sm`, `md`, `lg`, `xl`; line height `tight`, `snug`,
+`normal`, `relaxed`, `loose`. Presentation fields accept responsive maps of these
+names, for example `font_size_px: {mobile: "md", desktop: "lg"}`. Read the field
+schema: counts, widths and breakpoints are not spacing steps. Pixel values are
+explicit exceptions, not the default authoring method. Configure scales in
+`design_scales`, then reuse them in role styles and blocks.
+
+Record deliberate exceptions in `decisions.md`, with source/block, reason and
+review criteria (for example white text on a photograph). Run `lint_design_tokens`
+before launch and after major design changes. It warns, never blocks launch.
+Use the starter's `scripts/typeroll/color_tokens.py` for an exact-match dry run;
+review the plan before applying it in a dedicated Version. Equal hex values can
+mean different roles: never automatically choose between background and text.
+Verify a primary/surface change in a test Version across header, footer, cards,
+menus and buttons, then restore the test settings. Do not republish automatically.
+
+
 > **The buffer model (draft writes).** Every content write in this recipe
 > (pages, blocks and partials) lands in an unsaved per-doc
 > DRAFT — deploys and plain previews only see SAVED content. For recipe-style
@@ -39,7 +75,7 @@ typeface categories, and layout density.
 
 ## Step 2 — Build the palette
 
-A Typeroll site uses 7 color tokens:
+The site palette uses semantic colour roles (hex values belong here in settings):
 
 | Token | Role | Design rule |
 |---|---|---|
@@ -49,7 +85,7 @@ A Typeroll site uses 7 color tokens:
 | `background` | Page background. | Near-white for light themes, near-black for dark. |
 | `surface` | Cards, input boxes, code blocks. | Slightly off from `background`. |
 | `text` | Body copy. | ≥4.5:1 contrast ratio on `background`. |
-| `text_light` | Secondary labels, captions, placeholders. | ≥3:1 on `background`. |
+| `text_light` | Secondary labels, captions, placeholders. | ≥4.5:1 on `background`. |
 
 Text on `primary`, `secondary` and `accent` (buttons, badges, tabs,
 call-to-action sections, the `on_*` style tokens) is black or white
@@ -230,19 +266,19 @@ must apply the negative-margin escape:
   margin-left: calc(50% - 50vw);
   margin-right: calc(50% - 50vw);
   width: 100vw;
-  padding: 74px 0;
+  padding-block: var(--space-xl);
 }
-.my-page .section.alt { background: #fff }
+.my-page .section.alt { background: var(--color-surface) }
 ```
 
-The first section (hero) also wants `margin-top: -32px` to cancel `.page-content`'s top padding. Do NOT wrap the page in `overflow-x: clip` — it cancels the bleed.
+For an HTML-mode hero, inspect the actual `.page-content` top padding before compensating for it. Reuse its variable when available; otherwise document a measured override in `decisions.md`. Do not assume a scale step equals the shell padding. Do NOT wrap the page in `overflow-x: clip` — it cancels the bleed.
 
 ### Cards sit directly on the section bg — never on a matching bg
 
 A card with a white bg inside a white-bg section creates a redundant "white plate on white" effect. Two enforcement rules:
 
-1. Cards on the default page bg (`var(--color-background)`) can use `background: #fff` + border. ✓
-2. Cards on `.section.alt` (which has `background: #fff`) must drop their own bg:
+1. Cards on the default page bg (`var(--color-background)`) can use `background: var(--color-surface)` + border. ✓
+2. Cards on `.section.alt` (which has `background: var(--color-surface)`) must drop their own bg:
    - **Single-card section** (one card in a section): drop all chrome (bg, border, accent line). Just content; the section's bg is the only context.
    - **Grid cards** (multiple side-by-side): keep border for grid separation, drop bg. The card becomes a transparent container with a hairline outline.
 

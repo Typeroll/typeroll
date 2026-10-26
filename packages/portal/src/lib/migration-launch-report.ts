@@ -1,3 +1,4 @@
+import { readDesignTokenAudit } from './design-token-audit';
 import { redirectChainWarnings, type RedirectWarning } from './redirect-write';
 import { paths } from '@typeroll/shared';
 import type { DeployJob, Site, SiteApps } from '@typeroll/shared';
@@ -36,6 +37,7 @@ export interface MigrationSeoAcceptance {
 }
 
 export interface MigrationLaunchReport {
+  design_tokens: Awaited<ReturnType<typeof readDesignTokenAudit>>;
   generated_at: string;
   version_id: string;
   launch_ready: boolean;
@@ -160,6 +162,7 @@ export async function buildMigrationLaunchReport(args: {
   }
 
   return {
+    design_tokens: await readDesignTokenAudit(orgId, siteId, versionId),
     generated_at: (args.now?.() ?? new Date()).toISOString(),
     version_id: versionId,
     launch_ready: issues.length === 0,

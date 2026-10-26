@@ -203,7 +203,7 @@ const prose: BlockType = {
     pixels('paragraph_spacing_px', 'Paragraph spacing (px)', 0, 160),
     { name: 'text_align', type: 'select', label: 'Text alignment', options: ['inherit', 'start', 'center', 'end', 'justify'], default: 'inherit', responsive: true },
     { name: 'font_weight', type: 'select', label: 'Text weight', options: ['inherit', '400', '500', '600', '700'], default: 'inherit', responsive: true },
-    { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading'], default: 'inherit' },
+    { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading', 'mono'], default: 'inherit' },
     { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
   ],
   template: `<div data-block="prose" data-w="{{max_width}}" data-font="{{font}}" style="--text_align:{{text_align}};--font_weight:{{font_weight}}">{{{html}}}</div>`,
@@ -217,6 +217,7 @@ const prose: BlockType = {
 [data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
 [data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
 [data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
+[data-block="prose"][data-font="mono"] { font-family:var(--font-mono,monospace); }
 [data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: var(--h1-size, clamp(1.75rem, 1rem + 3.5vw, 3.5rem)); line-height: var(--h1-leading, 1.15); }
 [data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: var(--h2-size, clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem)); line-height: var(--h2-leading, 1.2); }
 [data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: var(--h3-size, clamp(1.25rem, 0.75rem + 2vw, 1.75rem)); line-height: var(--h3-leading, 1.25); }
@@ -565,9 +566,9 @@ const templateContentSlot: BlockType = {
   schema: [
     ...articleHeadingFields,
     { name: 'max_width', type: 'select', label: 'Content width', options: ['full', 'narrow', 'normal', 'wide'], default: 'full' },
-    { name: 'font_size', type: 'number', label: 'Body text size (px)', min: 12, max: 32, placeholder: 'Block default' },
-    { name: 'line_height', type: 'number', label: 'Body line height', min: 1, max: 2.5, placeholder: 'Block default' },
-    { name: 'paragraph_spacing', type: 'number', label: 'Paragraph spacing (em)', min: 0, max: 3, placeholder: 'Block default' },
+    { name: 'font_size', type: 'number', css_unit: 'px', design_token: 'type_size', label: 'Body text size (px)', min: 12, max: 32, placeholder: 'Block default' },
+    { name: 'line_height', type: 'number', css_unit: 'number', design_token: 'leading', label: 'Body line height', min: 1, max: 2.5, placeholder: 'Block default' },
+    { name: 'paragraph_spacing', type: 'number', css_unit: 'number', design_token: 'space', label: 'Paragraph spacing (em)', min: 0, max: 3, placeholder: 'Block default' },
     { name: 'rhythm', type: 'select', label: 'Content spacing', options: ['default', 'article'], default: 'default' },
   ],
   template: `<!-- template_content_slot: this should be replaced during composition -->`,

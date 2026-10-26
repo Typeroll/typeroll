@@ -1,0 +1,109 @@
+---
+title: Design tokens
+description: Set colours, fonts and scales once, reuse them in blocks, and audit deliberate exceptions.
+---
+
+**Availability:** prepared for Core 0.2.106, template capabilities 0.54.0 and
+MCP 0.45.80. These features are not in Core 0.2.104. Check your connected
+portal and rebuild a static site after upgrading; older published files do not
+change when the portal is upgraded.
+
+## Start with site settings
+
+Open **Site settings → Colors** to set the palette. In **Typography**, choose
+font families and expand **Named typography and spacing scales** to adjust the
+steps. Use **Styles** to apply these steps to body text, heading roles and
+reusable component styles. An AI agent can do the same through
+`update_site_settings` and the style tools.
+
+| Role                                      | Use                                                                       |
+| ----------------------------------------- | ------------------------------------------------------------------------- |
+| `primary`                                 | Main brand colour, links and primary actions                              |
+| `secondary`                               | Supporting brand surfaces                                                 |
+| `accent`                                  | Occasional emphasis                                                       |
+| `background`                              | Page canvas                                                               |
+| `surface`                                 | Cards and panels                                                          |
+| `surface_hover`                           | Interactive surface; a darker derived shade unless overridden             |
+| `text`                                    | Body copy                                                                 |
+| `text_light`                              | Muted copy, still with readable contrast                                  |
+| `on_primary`, `on_secondary`, `on_accent` | Text on the corresponding brand colour; automatic contrast-aware defaults |
+
+A starting light palette is primary `#2563eb`, secondary `#1e293b`, accent
+`#f59e0b`, background `#ffffff`, surface `#f8fafc`, text `#0f172a`, and
+text_light `#64748b`. These values belong in **settings**, not copied into blocks.
+Choose the role by meaning, not by which colour happens to look identical today.
+
+The block editor shows palette choices first. **Custom colour (exception)** is
+an explicit choice; it does not track palette changes. Record exceptions in
+your starter workspace's `decisions.md`, for example white text on a photograph.
+Use a named style for a new component role, or a site CSS variable derived from
+existing palette variables for a new shade. Avoid inventing unsupported bare
+palette names. A derived shade can use
+`color-mix(in srgb, var(--color-surface) 92%, var(--color-primary))`.
+
+## Typography and spacing
+
+| Scale       | Steps                                         |
+| ----------- | --------------------------------------------- |
+| `type_size` | `xs`, `sm`, `md`, `lg`, `xl`, `2xl`, `3xl`    |
+| `space`     | `none`, `xs`, `sm`, `md`, `lg`, `xl`          |
+| `leading`   | `tight`, `snug`, `normal`, `relaxed`, `loose` |
+
+Presentation fields keep their existing API names for compatibility. For example:
+
+```json
+{
+  "type": "core/prose",
+  "data": {
+    "html": "<p>Editable text</p>",
+    "font_size_px": { "mobile": "md", "desktop": "lg" },
+    "line_height": "relaxed",
+    "font": "body"
+  }
+}
+```
+
+`gap_px: "lg"` uses the spacing scale. Numbers remain explicit overrides;
+counts, breakpoints and image dimensions are not automatically scale values.
+Read the block schema's `design_token` metadata before using steps in a custom
+field. Font choices are `heading`, `body`, `mono` or inherited; family names
+belong only in `settings.fonts`. Configure the numeric scale once in
+`settings.design_scales`, then use step names in role styles and block fields.
+Palette names remain names in storage and become CSS variables at rendering.
+Unknown colour values produce `field_type_mismatch` warnings with field paths.
+
+## Audit and migrate an existing design
+
+Run `lint_design_tokens` for saved content in the selected Version. It checks
+Pages, partials, page templates, custom block types, styles and custom CSS and
+returns source paths, counts and suggested tokens. The migration launch report
+includes the same **non-blocking** findings. Unsaved drafts are not included.
+CSS checking is heuristic: it cannot prove that dynamically constructed CSS or
+third-party styles follow the palette. Suggestions require visual review.
+
+The [site starter](https://github.com/Typeroll/site-starter) contains
+`scripts/typeroll/color_tokens.py`. Run a dry run first:
+
+```sh
+python3 scripts/typeroll/color_tokens.py --plan /tmp/design-token-plan.json
+```
+
+Review the plan and remove deliberate exceptions. Exact, unambiguous hex matches
+in direct block fields can be applied in a dedicated non-main Version:
+
+```sh
+python3 scripts/typeroll/color_tokens.py --apply /tmp/design-token-plan.json
+```
+
+Stop other editing in that Version during this operation. It checks scope,
+palette and current values, refuses existing unsaved drafts, and does not retry
+uncertain writes or publish. Templates save immediately; Pages and partials are
+saved through their normal working-copy flow. If interrupted, inspect the drafts
+before continuing. There is no site-wide transaction.
+
+Ambiguous roles, nested/responsive colour values and custom CSS need manual
+review. Equal hex values do not establish that two elements should share a role.
+After migration, change primary and surface in a test Version and inspect header,
+footer, cards, menus and buttons at mobile, tablet and desktop widths without
+editing their blocks. Restore the test palette. Report dry-run counts separately
+from applied changes, then publish only after the normal approval and checks.
