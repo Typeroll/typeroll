@@ -1,3 +1,4 @@
+import { refreshBuildFailure } from '../builds/failure-status';
 import { journaledDomainProvider, armDomainCutover, recordDomainCutover, readDomainCutover, completeDomainCutover, rollbackDomainCutover } from './domain-cutover-journal';
 import { domainPublicationRevision } from './domain-config';
 import { assertVerificationRetry } from './verification-retry';
@@ -19,7 +20,7 @@ import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
-import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError, ProviderTransportError } from './providers.mjs';
+import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError, githubFailureHint, ProviderTransportError } from './providers.mjs';
 import { getSiteDomains, activePublicationDomains, samePublicationHosts, sameRedirectHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { prepareRedirectHosts, redirectApprovalBlocker, ensureApprovedRedirectRule, applyRedirectTraffic, verifyRedirectHost, type RedirectPreparation } from './redirect-hosts';
 import { resolvePublicationVersion } from './publication-version';
@@ -103,14 +104,20 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   await store.createDocIfMissing(targetPath, { job_id: null, lease_id: null, lease_until: 0 });
   const previousOwner = await store.getDoc<Target>(targetPath);
   if (previousOwner?.job_id && previousOwner.job_id !== args.jobId && previousOwner.lease_until < Date.now()) {
-    const ownerJob = await store.getDoc<DeployJob>(paths.deploy(args.orgId, args.siteId, previousOwner.job_id));
+    let ownerJob = await store.getDoc<DeployJob>(paths.deploy(args.orgId, args.siteId, previousOwner.job_id));
+    if (ownerJob) ownerJob = await refreshBuildFailure(args.orgId, args.siteId, ownerJob);
     if (!ownerJob || ['succeeded', 'failed'].includes(ownerJob.status) || ownerJob.phase === 'awaiting domain cutover approval') await store.compareAndUpdateDoc<Target>(targetPath,
       target => target.job_id === previousOwner.job_id && target.lease_until < Date.now(), { job_id: null });
   }
   const acquired = await store.compareAndUpdateDoc<Target>(targetPath,
     target => (!target.job_id || target.job_id === args.jobId) && target.lease_until < Date.now(),
     { job_id: args.jobId, lease_id: lease, lease_until: Date.now() + 300_000 });
-  if (!acquired) return 'deferred';
+  if (!acquired) {
+    const owner = await store.getDoc<Target>(targetPath);
+    if (owner?.job_id && owner.job_id !== args.jobId) await store.updateDoc(jobPath, { waiting_for_job_id: owner.job_id, phase: 'waiting for the previous publication' });
+    return 'deferred';
+  }
+  if (job.waiting_for_job_id) await store.updateDoc(jobPath, { waiting_for_job_id: null });
   let leaseLost = false;
   let renewal: Promise<void> = Promise.resolve();
   const assertLease = () => {
@@ -678,7 +685,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const failure = { stage: failedJob?.phase ?? 'connecting publishing accounts',
       code: error instanceof DerivationError ? 'publication_derivation_failed' : error instanceof ProviderTransportError ? error.code : error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
       ...(error instanceof DerivationError ? { provider: error.provider } : {}),
-      ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes } : {}),
+      ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes, provider_reason: error.reason } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
     console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
@@ -686,7 +693,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       ? projectCreationMessage(error, failedJob?.git_publication)
       : error instanceof DerivationError ? `An app could not prepare publication data (${error.provider}). ${error.message} The live site has not changed.`
       : error instanceof ConnectionError ? error.message : error instanceof ProviderError
-      ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. Open Publishing to check the connection and retry.`
+      ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. ${githubFailureHint(error) || 'Open Publishing to check the connection and retry.'}`
       : `Publishing stopped during ${failure.stage}. Retry the deployment. If it fails again, contact support with deployment ${args.jobId}.`;
     let rollbackMessage = '';
     if (failedJob?.git_publication) {

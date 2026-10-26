@@ -8,7 +8,7 @@ import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { dispatchCloudflareBuild } from './cloudflare';
 import { dispatchGithubBuild, githubBuildClient, readGithubDispatch } from './github';
 import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256, decodeArtifact, type BuildIdentity } from './contract.mjs';
-import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, type BuildTask } from './queue';
+import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, queuedBuildExpired, expireQueuedBuild, type BuildTask } from './queue';
 import { readEngineConfiguration, buildInputPath, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
 
@@ -79,8 +79,9 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
 }
 
 export async function completedBuild(org: string, key: string) {
-  const task = await getStore().getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);
+  let task = await getStore().getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);
   if (!task) throw new ConnectionError('The frozen build was not found.', 409);
+  if (queuedBuildExpired(task)) { await expireQueuedBuild(getStore(), org, key); task = (await getStore().getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`))!; }
   if (['failed', 'cancelled'].includes(task.status)) {
     if (task.seo_report && !task.seo_report.passed) {
       const issue = task.seo_report.errors[0];

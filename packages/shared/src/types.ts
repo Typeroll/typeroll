@@ -1803,6 +1803,8 @@ export interface BuildDiagnostic {
 }
 
 export interface DeployJob {
+  /** A publication queued behind the same site/version; never a worker outage. */
+  waiting_for_job_id?: string | null;
   /** Actual HTML work reported by the frozen publication renderer, not an estimate. */
   seo_report?: { version: number; publication_id: string; artifact_sha256?: string; artifact_tree_sha256: string; source_sha256: string; configuration_sha256: string; checked_pages: number; passed: boolean; error_count: number; warning_count: number; errors: Array<{ code: string; url: string; source: { file: string; line: number; field?: string; block_id?: string; page_id?: string }; message: string; remediation: string }>; warnings: Array<{ code: string; url: string; source: { file: string; line: number; field?: string; block_id?: string; page_id?: string }; message: string; remediation: string }> };
   render_report?: { format: 1; mode: 'full' | 'partial'; rendered: number; reused: number; total: number; removed: number; reason: string };

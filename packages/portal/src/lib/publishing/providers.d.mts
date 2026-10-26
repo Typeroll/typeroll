@@ -3,7 +3,7 @@ export function createProviderClient(provider: 'GitHub' | 'Cloudflare', token: s
 export function githubInstallationClient(config: { appId: string; installationId: string; privateKey: string; owner: string; accountId?: string; accountType?: 'Organization' | 'User' }, fetchImpl?: typeof fetch): Promise<ProviderClient>;
 export function githubAppClient(config: { appId: string; privateKey: string }, fetchImpl?: typeof fetch): ProviderClient;
 export function assertInstallation(installation: any, config: { appId: string; installationId: string; owner: string; accountId?: string; accountType?: 'Organization' | 'User' }): void;
-export class ProviderError extends Error { constructor(provider: string, status: number, codes?: number[], details?: { retryAfter?: number | null; ssoUrl?: string | null; rateLimited?: boolean }); provider: string; status: number; codes: number[]; retryAfter: number | null; ssoUrl: string | null; rateLimited: boolean; }
+export class ProviderError extends Error { constructor(provider: string, status: number, codes?: number[], details?: { retryAfter?: number | null; ssoUrl?: string | null; rateLimited?: boolean; reason?: string | null }); provider: string; status: number; codes: number[]; retryAfter: number | null; ssoUrl: string | null; rateLimited: boolean; reason: string | null; }
 export function githubSsoUrl(value: unknown): string | null;
 export function digest(value: string | Uint8Array): string;
 export function publishTree(client: ProviderClient, options: { owner: string; repo: string; branch?: string; files: Record<string, string>; message: string }): Promise<{ commit: string; changed: boolean; branch: string }>;
@@ -17,3 +17,5 @@ export function setPagesBuildMediaAccess(provider: ProviderClient, projectRoot: 
 export function ensureGithubMainBranch(client: ProviderClient, options: { owner: string; repo: string; repository: any }): Promise<any>;
 
 export class ProviderTransportError extends Error { constructor(provider: string); provider: string; code: 'provider_transport_unavailable'; }
+
+export function githubFailureHint(error: ProviderError): string;

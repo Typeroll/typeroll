@@ -10,6 +10,7 @@ export interface BuildTask {
   provider_dispatch_id?: string;
   status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   created_at: number;
+  queued_at?: number;
   completed_at?: number;
   deadline: number;
   attempt: number;
@@ -34,6 +35,15 @@ export const buildTaskKey = (identity: BuildIdentity) => sha256(`${identity.site
 export function equalToken(token: string, expected: string | null) {
   return typeof token === 'string' && token.length <= 512 && expected !== null && /^[a-f0-9]{64}$/.test(expected) && timingSafeEqual(Buffer.from(sha256(token), 'hex'), Buffer.from(expected, 'hex'));
 }
+export const BUILD_QUEUE_WAIT_MS = 15 * 60_000;
+export function queuedBuildExpired(task: BuildTask, now = Date.now()): boolean {
+  return task.status === 'queued' && Number.isFinite(task.queued_at ?? task.created_at) && now >= Math.min(task.deadline, (task.queued_at ?? task.created_at) + BUILD_QUEUE_WAIT_MS);
+}
+/** Revoke an unclaimed task, never start a replacement or interrupt a live lease. */
+export async function expireQueuedBuild(store: ReadWriteStore, org: string, key: string, now = Date.now()) {
+  await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, task => queuedBuildExpired(task, now),
+    { status: 'failed', token_hash: null, lease_id: null, lease_until: 0, error_code: 'build_queue_timeout', completed_at: now });
+}
 const LEASE_MS = 90_000;
 export const MAX_ATTEMPTS = 3;
 export const MEDIA_BUILD_DEADLINE_MS = 6 * 60 * 60_000;
@@ -47,7 +57,7 @@ export class OrganizationBuildQueue {
     if (!Number.isSafeInteger(mediaTotal) || mediaTotal < 0 || mediaTotal > (purpose === 'static_verification' ? 40000 : 20000)) throw new ConnectionError('Invalid media preparation size.', 400);
     assertBuildIdentity(identity);
     const key = purpose === 'static_verification' ? sha256(`${buildTaskKey(identity)}\0verification\0${identity.source_sha256}`) : buildTaskKey(identity), path = `${buildTasksPath(identity.org_id)}/${key}`;
-    const task: BuildTask = { identity, engine_revision: engineRevision, status: 'queued', created_at: this.clock(), deadline: this.clock() + (mediaTotal ? MEDIA_BUILD_DEADLINE_MS : 45 * 60_000),
+    const task: BuildTask = { identity, engine_revision: engineRevision, status: 'queued', created_at: this.clock(), queued_at: this.clock(), deadline: this.clock() + (mediaTotal ? MEDIA_BUILD_DEADLINE_MS : 45 * 60_000),
       media_total: mediaTotal, media_cursor: 0, media_batches: 0,
       attempt: 0, lease_id: null, lease_until: 0, token_hash: null, artifact_sha256: null, artifact_key: null, error_code: null };
     await this.store.createDocIfMissing(path, task);
@@ -71,6 +81,7 @@ export class OrganizationBuildQueue {
     for (const task of pending.sort((a, b) => (priority.get(a.id) ?? 0) - (priority.get(b.id) ?? 0) || a.created_at - b.created_at)) {
       if (!['queued', 'running'].includes(task.status) || task.engine_revision !== engineRevision || task.lease_until > this.clock() || (expected && task.provider_dispatch_id === expected.dispatch_id)) continue;
       const path = `${buildTasksPath(org)}/${task.id}`;
+      if (queuedBuildExpired(task, this.clock())) { await expireQueuedBuild(this.store, org, task.id, this.clock()); continue; }
       if (task.status === 'running' || task.deadline <= this.clock() || task.attempt >= buildAttemptLimit(task)) {
         await this.store.compareAndUpdateDoc<BuildTask>(path, current => ['queued', 'running'].includes(current.status) && current.lease_until <= this.clock(),
           { status: 'failed', token_hash: null, error_code: task.status === 'running' ? 'build_connection_lost' : 'build_timeout', completed_at: this.clock() });
@@ -78,7 +89,7 @@ export class OrganizationBuildQueue {
       }
       const token = randomBytes(32).toString('base64url'), lease = randomUUID(), now = this.clock();
       const won = await this.store.compareAndUpdateDoc<BuildTask>(path, current => current.engine_revision === engineRevision &&
-        current.status === 'queued' && current.lease_until <= now && current.deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
+        current.status === 'queued' && !queuedBuildExpired(current, now) && current.lease_until <= now && current.deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
         { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1, ...(expected ? { provider_dispatch_id: expected.dispatch_id } : {}) });
       if (won) return { key: task.id, identity: task.identity, lease_id: lease, token, expires_at: now + LEASE_MS, deadline: task.deadline, media_cursor: task.media_cursor ?? 0, media_total: task.media_total ?? 0 };
     }
@@ -106,7 +117,7 @@ export class OrganizationBuildQueue {
     const won = await this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, current =>
       current.status === 'running' && current.identity.org_id === org && current.lease_id === lease && current.deadline > this.clock() &&
       current.lease_until > this.clock() && equalToken(token, current.token_hash) && current.media_cursor === task.media_cursor,
-      { ...(retainLease ? { lease_until: this.clock() + LEASE_MS } : { status: 'queued' as const, token_hash: null, lease_id: null, lease_until: 0 }),
+      { ...(retainLease ? { lease_until: this.clock() + LEASE_MS } : { status: 'queued' as const, queued_at: this.clock(), token_hash: null, lease_id: null, lease_until: 0 }),
         media_cursor: cursor, media_checkpoint_attempt: task.attempt - (retainLease ? 1 : 0), media_batches: (task.media_batches ?? 0) + (retainLease ? 0 : 1), error_code: null, error_detail: null });
     if (!won) throw rejected();
   }

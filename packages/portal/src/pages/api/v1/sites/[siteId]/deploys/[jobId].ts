@@ -47,7 +47,7 @@ export const GET: APIRoute = async ({ request, params }) => {
     ? Math.floor((Date.now() - queuedAt) / 1000)
     : null;
 
-  if (doc.status === 'queued' && queuedFor !== null && queuedFor > QUEUE_TIMEOUT_SECONDS) {
+  if (doc.status === 'queued' && !doc.waiting_for_job_id && queuedFor !== null && queuedFor > QUEUE_TIMEOUT_SECONDS) {
     const finishedAt = new Date().toISOString();
     const patch: Partial<DeployJob> = {
       status: 'failed',
@@ -55,7 +55,7 @@ export const GET: APIRoute = async ({ request, params }) => {
       error: `Cloud Tasks worker didn't pick up the job within ${QUEUE_TIMEOUT_SECONDS}s. The queue or worker auth is likely misconfigured. Re-trigger the deploy after checking the deploy-worker route.`,
       finished_at: finishedAt,
     };
-    await store.compareAndUpdateDoc<DeployJob>(jobPath, current => current.status === 'queued' && current.started_at === doc!.started_at, patch as Record<string, unknown>);
+    await store.compareAndUpdateDoc<DeployJob>(jobPath, current => current.status === 'queued' && !current.waiting_for_job_id && current.started_at === doc!.started_at, patch as Record<string, unknown>);
     doc = (await store.getDoc<DeployJob>(jobPath)) ?? doc;
   }
 
@@ -64,10 +64,12 @@ export const GET: APIRoute = async ({ request, params }) => {
     job: doc,
     build_progress: await publicationBuildProgress(ctx.orgId, ctx.siteId, { ...doc, id: jobId }),
     queued_for_seconds: queuedFor,
+    waiting_for_job_id: doc.waiting_for_job_id ?? null,
+    supersedes_previous: false,
     // Hint for agents polling: stop after this many seconds in queued
     // — at that point we'll auto-flip to failed anyway, so a poll
     // afterwards returns the terminal state.
-    queue_timeout_seconds: QUEUE_TIMEOUT_SECONDS,
+    queue_timeout_seconds: doc.waiting_for_job_id ? null : QUEUE_TIMEOUT_SECONDS,
     // When the job deploy_url is null (main-branch deploy), the site's
     // public URL is still available here so agents know where to look.
     site_urls: siteUrls,

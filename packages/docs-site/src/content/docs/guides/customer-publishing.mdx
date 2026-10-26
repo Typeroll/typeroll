@@ -979,3 +979,16 @@ already frozen with an older release retains its original media code; retrying
 that exact snapshot does not upgrade it. If a failure remains after retries,
 report the deployment ID and diagnostic. A failed build does not activate a new
 live artifact.
+
+### A queued build that does not start
+
+Core 0.2.114 distinguishes `waiting_for_runner` from `preparing_media` in
+build progress. An unclaimed step expires after 15 minutes, including a
+media continuation waiting for its next runner; completed media is retained.
+The deadline is enforced when the runner claims it or its status is inspected.
+Expiration revokes the task; it does not schedule a duplicate build or imply
+that Cloudflare cancelled its underlying process. A healthy active lease is
+not timed out because the overall media job is old. Check Publishing → Builds,
+then retry after the terminal error. A new publication does not automatically
+replace an active one. GitHub 422 errors include a safe classified reason
+when available, never the raw provider response.
