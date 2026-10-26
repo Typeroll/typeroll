@@ -56,6 +56,10 @@ export class CloudflarePagesAdapter implements HostingAdapter {
           '--commit-dirty=true',
         ],
         {
+          // wrangler writes .wrangler/tmp under its working directory. Run it
+          // beside the build output in the OS temp directory: the image runs
+          // as an unprivileged user and the application tree is read-only.
+          cwd: path.dirname(path.resolve(buildDir)),
           env: {
             ...process.env,
             CLOUDFLARE_ACCOUNT_ID: this.cfg.accountId,

@@ -89,6 +89,29 @@ describe('CloudflarePagesAdapter branch handling', () => {
     expect(branchFlag).toBe('--branch=pricing-refresh');
   });
 
+  it('runs wrangler beside the build output, not in the read-only app tree', async () => {
+    const calls: SpawnArgs[] = [];
+    vi.resetModules();
+    setupSpawnMock(calls);
+
+    const { CloudflarePagesAdapter } = await import('../../lib/hosting/cloudflare-pages');
+    const adapter = new CloudflarePagesAdapter({
+      accountId: 'a', apiToken: 't', projectName: 'demo',
+    });
+    const os = await import('node:os');
+    const path = await import('node:path');
+    const fs = await import('node:fs');
+    const build = fs.mkdtempSync(path.join(os.tmpdir(), 'tr-pages-cwd-'));
+    const dist = path.join(build, 'dist');
+    fs.mkdirSync(dist);
+    try {
+      await adapter.deploy(dist, { environment: 'staging', siteId: 'demo' });
+      expect(calls[0].cwd).toBe(build);
+    } finally {
+      fs.rmSync(build, { recursive: true, force: true });
+    }
+  });
+
   it('falls back to environment when branchName is not set', async () => {
     const calls: SpawnArgs[] = [];
     vi.resetModules();

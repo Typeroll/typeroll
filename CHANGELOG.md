@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.112 — Non-root legacy Pages uploads
+
+- Run the legacy Cloudflare Pages upload (wrangler) beside the build output in
+  the OS temp directory. Since 0.2.111 the image runs as `node`, and wrangler's
+  `.wrangler/tmp` under the read-only application tree failed with a permission
+  error.
+
 ## 0.2.111 / MCP 0.45.83 / WordPress helper 0.4.0 — Security hardening
 
 Rendering and portal isolation
