@@ -109,3 +109,10 @@ uploading or changing CMS content. Missing CMYK profiles, transparency, multiple
 frames and existing output files stop with an error. `--assume-srgb` is only for
 reviewed unprofiled RGB/gray; `--source-profile FILE.icc` supplies the actual profile.
 See workflows/source-media.md for archive verification and original preservation.
+
+## Internal Page notes
+
+`page_notes.py --dry-run` previews local note creation/fact refresh and index updates.
+Omit --dry-run to write local files; --migration-inventory adds recorded redirect
+sources. It never writes to the CMS, marks a Page reviewed or deletes notes. Read
+pages/README.md and workflows/page-notes.md before first use.

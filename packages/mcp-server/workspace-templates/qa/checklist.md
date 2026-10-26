@@ -50,3 +50,10 @@ indexing have distinct effects but do not require repeated approval if covered.
   updates, future-host candidates and explicit traffic approval.
 - [ ] Inspect the frozen candidate's noindex/robots output, not only current CMS settings.
 - [ ] Review owner facts and dates against the chosen preserve/renew text policy.
+
+## Internal Page notes
+
+Follow workflows/page-notes.md and pages/README.md. Create notes during migration,
+read before edits, update afterward, check external links at each editorial review,
+and archive notes for confirmed removed Pages under pages/archived/. Refreshing
+generated facts never counts as a completed review. Keep notes out of public output.
