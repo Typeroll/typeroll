@@ -60,6 +60,8 @@ export interface HelperItem {
   type: string;
   slug: string;
   status: string;
+  /** Password-protected in WordPress (helper 0.4.0+): content and custom data are empty. */
+  protected?: boolean;
   title: { rendered: string };
   content: { rendered: string; raw: string };
   excerpt: { rendered: string };

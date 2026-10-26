@@ -296,7 +296,7 @@ export const migrationWorkflow: WorkflowDef = {
           );
           ctx.log(`Helper plugin: ${types.length} custom post type(s) with published items.`);
           for (const type of types) {
-            const items = await helper.listItems(type.slug);
+            const items = (await helper.listItems(type.slug)).filter(item => !isPasswordProtected(item));
             if (!items.length) continue;
             await registerContentType(ctx, type.slug, type.name, type.rest_base || type.slug, items.map(helperToWP) as WPItem[], created);
           }
@@ -308,7 +308,7 @@ export const migrationWorkflow: WorkflowDef = {
           for (const type of types) {
             let items: WPItem[];
             try {
-              items = await client.listItemsOfType(type.rest_base);
+              items = (await client.listItemsOfType(type.rest_base)).filter(item => !isPasswordProtected(item));
             } catch (e) {
               throw new Error(`Could not read content type "${type.slug}": ${e instanceof Error ? e.message : e}`);
             }
@@ -364,21 +364,32 @@ export const migrationWorkflow: WorkflowDef = {
 
         const customRefs = (ctx.state.content_types_created ?? []) as StoredContentTypeRef[];
 
+        // A password-protected item arrives without its body. Importing it
+        // would publish an empty page or the source's password form, so it is
+        // left out and listed for review.
+        const protectedSkipped: Array<{ source_type: string; id: number; url: string }> = [];
+        const importable = <T extends ProtectableItem>(sourceType: string, items: T[]): T[] => items.filter((item) => {
+          if (!isPasswordProtected(item)) return true;
+          protectedSkipped.push({ source_type: sourceType, id: item.id, url: item.link });
+          ctx.log(`[${item.slug}] Password-protected in WordPress; not imported. Recreate it or add a redirect for ${String(item.link).slice(0, 200)} before launch.`);
+          return false;
+        });
+
         if (helperActive && helperKey) {
           const helper = new WPHelperClient(url, helperKey);
-          for (const i of await helper.listItems('page')) pages.push(helperToWP(i));
-          for (const i of await helper.listItems('post')) posts.push(helperToWP(i));
+          for (const i of importable('page', await helper.listItems('page'))) pages.push(helperToWP(i));
+          for (const i of importable('post', await helper.listItems('post'))) posts.push(helperToWP(i));
           for (const ref of customRefs) {
-            const items = await helper.listItems(ref.source_slug);
+            const items = importable(ref.source_slug, await helper.listItems(ref.source_slug));
             for (const i of items) customItems.push({ ref, item: helperToWP(i) as unknown as WPItem });
           }
         } else {
           const client = new WPClient(url);
-          pages.push(...(await client.listPages()));
-          posts.push(...(await client.listPosts()));
+          pages.push(...importable('page', await client.listPages()));
+          posts.push(...importable('post', await client.listPosts()));
           for (const ref of customRefs) {
             try {
-              const items = await client.listItemsOfType(ref.source_rest_base);
+              const items = importable(ref.source_slug, await client.listItemsOfType(ref.source_rest_base));
               for (const i of items) customItems.push({ ref, item: i });
             } catch (e) {
               throw new Error(`Failed to list ${ref.source_slug}: ${e instanceof Error ? e.message : e}`);
@@ -682,10 +693,10 @@ export const migrationWorkflow: WorkflowDef = {
         for (const { item, sourceType, targetType } of entries) await importAndSave(item, sourceType, targetType);
 
         ctx.log(
-          `Import complete. Existing pages preserved: ${skippedExisting}, shared terms: ${taxonomyPlan.pages.length}, images moved: ${imagesMoved}. Review desktop/mobile layout and integrations before publishing.`
+          `Import complete. Existing pages preserved: ${skippedExisting}, password-protected items skipped: ${protectedSkipped.length}, shared terms: ${taxonomyPlan.pages.length}, images moved: ${imagesMoved}. Review desktop/mobile layout and integrations before publishing.`
         );
         return {
-          state: { slug_map: { ...Object.fromEntries(taxonomyPlan.pages.map(page => [page.old_wp_url!, page.path!])), ...slugMap }, imported_count: done, images_moved: imagesMoved, shared_terms: taxonomyPlan.pages.length, skipped_existing: skippedExisting, conversion_review: conversionReview },
+          state: { slug_map: { ...Object.fromEntries(taxonomyPlan.pages.map(page => [page.old_wp_url!, page.path!])), ...slugMap }, imported_count: done, images_moved: imagesMoved, shared_terms: taxonomyPlan.pages.length, skipped_existing: skippedExisting, conversion_review: conversionReview, protected_skipped: protectedSkipped },
         };
       },
     },
@@ -844,6 +855,14 @@ async function registerContentType(
     name: def.name,
     item_field: 'body',
   });
+}
+
+type ProtectableItem = { id: number; slug: string; link: string };
+
+/** Helper 0.4.0+ marks password-protected items; WordPress REST marks their content. */
+function isPasswordProtected(item: object): boolean {
+  const value = item as { protected?: unknown; content?: { protected?: unknown } | null };
+  return value.protected === true || value.content?.protected === true;
 }
 
 /** Coerce a helper-plugin item into the WPPage shape the rest of the code uses. */
