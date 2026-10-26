@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { apiUrlProblem } from './api-url.js';
 
 type Json = Record<string, unknown>;
 
@@ -82,6 +83,8 @@ async function api(path: string, init: RequestInit = {}, allowed: number[] = [])
   const baseUrl = process.env.TYPEROLL_API_URL?.trim().replace(/\/$/, '');
   const apiKey = process.env.TYPEROLL_API_KEY?.trim();
   if (!baseUrl || !apiKey) throw new Error('TYPEROLL_API_URL and TYPEROLL_API_KEY are required');
+  const apiUrlError = apiUrlProblem(baseUrl);
+  if (apiUrlError) throw new Error(apiUrlError);
   const headers = new Headers(init.headers);
   headers.set('Authorization', `Bearer ${apiKey}`);
   if (init.body) headers.set('Content-Type', 'application/json');

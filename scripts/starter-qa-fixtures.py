@@ -128,6 +128,24 @@ class QA(unittest.TestCase):
         self.assertEqual(trlib.decode_rpc('{"id":3,"result":{}}', 3)['result'], {})
         with self.assertRaises(ValueError): trlib.decode_rpc('{"id":4,"result":{}}', 3)
 
+    def test_key_goes_only_to_official_or_confirmed_portal(self):
+        client = trlib.Client(CONFIG)
+        sent = []
+        client.opener = type('Opener', (), {'open': lambda self, request, timeout: sent.append(request) or (_ for _ in ()).throw(RuntimeError('network'))})()
+        env = {'TYPEROLL_API_KEY': 'synthetic'}
+        with patch.dict(trlib.os.environ, env, clear=True):
+            with self.assertRaisesRegex(ValueError, 'TYPEROLL_API_URL=https://cms.example.test'): client.rpc('tools/list', {})
+        with patch.dict(trlib.os.environ, {**env, 'TYPEROLL_API_URL': 'https://other.example.test'}, clear=True):
+            with self.assertRaisesRegex(ValueError, 'conflicts'): client.rpc('tools/list', {})
+        self.assertEqual(sent, [])
+        with patch.dict(trlib.os.environ, {**env, 'TYPEROLL_API_URL': 'https://cms.example.test/'}, clear=True):
+            with self.assertRaisesRegex(RuntimeError, 'network'): client.rpc('tools/list', {})
+        official = trlib.Client({**CONFIG, 'portal': 'https://app.typeroll.com'})
+        official.opener = client.opener
+        with patch.dict(trlib.os.environ, env, clear=True):
+            with self.assertRaisesRegex(RuntimeError, 'network'): official.rpc('tools/list', {})
+        self.assertEqual([request.full_url for request in sent], ['https://cms.example.test/api/mcp?tools=full', 'https://app.typeroll.com/api/mcp?tools=full'])
+
     def test_cursor_pages(self):
         with patch.object(trlib, 'call', side_effect=[{'pages':[{'id':'a'}],'next_cursor':'next'},{'pages':[{'id':'b'}]}]) as call:
             self.assertEqual([x['id'] for x in trlib.all_pages()], ['a','b'])

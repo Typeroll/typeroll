@@ -107,7 +107,8 @@ log.
    ```
 
    For a self-hosted portal, point `TYPEROLL_API_URL` at it (e.g.
-   `https://cms.example.com`).
+   `https://cms.example.com`). The stdio server and the `typeroll extension`
+   CLI require HTTPS, except on loopback hosts.
 
    For an optional agent-neutral workspace, run
    `npx @typeroll/mcp-server init ./my-site`. It creates project instructions,
@@ -131,7 +132,7 @@ log.
 
 | Var                | Required  | Description                                                                                                                                              |
 | ------------------ | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TYPEROLL_API_URL` | yes       | Base URL of your Typeroll portal.                                                                                                                        |
+| `TYPEROLL_API_URL` | yes       | Base URL of your Typeroll portal. Must use HTTPS; plain HTTP is accepted only for `localhost`, `127.0.0.1` or `[::1]`.                                   |
 | `TYPEROLL_API_KEY` | yes       | A `typeroll_live_…` bearer token.                                                                                                                        |
 | `TYPEROLL_SITE_ID` | sometimes | Pin to a specific site. Required when the key can access multiple sites; each stdio process targets one site. A single accessible site is auto-detected. |
 
@@ -407,7 +408,9 @@ Use `read_app_documentation` to discover instructions for the selected site’s 
 MCP 0.45.23 introduces an agent-neutral `typeroll init` workspace, optional
 client adapters, safe hash-based `init --update`, and read-only `typeroll doctor`.
 Use `workspace-mcp` to bind local calls to `typeroll.json`; no credentials are
-stored there. Recipes are optional rather than automatically injected.
+stored there. Because `typeroll.json` is committed, its `portal` receives the
+API key only when it is `https://app.typeroll.com` or matches a privately set
+`TYPEROLL_API_URL`. Recipes are optional rather than automatically injected.
 
 Compact mode exposes five discovery/execution tools instead of every schema.
 Choose `?tools=compact` on the hosted endpoint (Core 0.2.27+), `tool_mode` in the

@@ -297,6 +297,13 @@ key and does not read `.env` automatically. If the client supports its own secre
 store, use it. Conflicting `TYPEROLL_API_URL` or `TYPEROLL_SITE_ID` environment
 values are rejected rather than silently switching to another Site.
 
+`typeroll.json` is committed, so from MCP 0.45.83 its `portal` alone is trusted
+only when it is the hosted portal `https://app.typeroll.com`. For a self-hosted or other portal, also
+set `TYPEROLL_API_URL` to the same origin in your private client settings or
+environment. Without it, `workspace-mcp`, `doctor` and the Python helpers in
+`scripts/typeroll/` refuse to send the API key, so a changed `portal` in a pull
+request cannot redirect your credential.
+
 An unbound `workspace-mcp` process allows discovery and site creation only.
 After creation, fill the IDs in `typeroll.json` and reconnect before editing.
 For clients without an adapter, launch:

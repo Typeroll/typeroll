@@ -5,13 +5,13 @@ import { z } from 'zod';
 import { VERSION } from './version.js';
 import { BUNDLED_WORKSPACE_TEMPLATES } from './bundled-content.js';
 import { ApiError, TyperollClient } from './client.js';
+import { isSecureApiUrl } from './api-url.js';
 
 export const workspaceSchema = z.object({
   schema_version: z.literal(1),
   portal: z.string().url().refine(value => {
     const url = new URL(value);
-    return !url.username && !url.password && !url.search && !url.hash && url.pathname === '/' &&
-      (url.protocol === 'https:' || (url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)));
+    return !url.username && !url.password && !url.search && !url.hash && url.pathname === '/' && isSecureApiUrl(url);
   }, 'Use an HTTPS portal origin (HTTP is allowed only on loopback).'),
   organization_id: z.string().min(1).nullable(), site_id: z.string().min(1).nullable(),
   version: z.string().min(1), tool_mode: z.enum(['compact', 'full']),
@@ -176,9 +176,32 @@ export async function writeWorkspaceFiles(dir: string, templates: Record<string,
   return results;
 }
 
+/** The hosted Typeroll Cloud portal: the only origin trusted from typeroll.json alone. */
+export const OFFICIAL_PORTAL_ORIGIN = 'https://app.typeroll.com';
+
+/** Raised before any credential is sent when the committed portal is not confirmed by the environment. */
+export class UntrustedPortalError extends Error {}
+
+/**
+ * typeroll.json is committed and can be changed by anyone who can open a pull
+ * request, so its portal alone never receives the injected API key. Another
+ * origin must be confirmed through the private TYPEROLL_API_URL setting.
+ */
+export function assertTrustedPortal(config: Workspace, env: NodeJS.ProcessEnv) {
+  const portal = config.portal.replace(/\/$/, '');
+  const confirmed = env.TYPEROLL_API_URL?.trim().replace(/\/$/, '');
+  if (confirmed) {
+    if (confirmed !== portal) throw new Error('TYPEROLL_API_URL conflicts with typeroll.json.');
+    return;
+  }
+  if (portal !== OFFICIAL_PORTAL_ORIGIN) {
+    throw new UntrustedPortalError(`typeroll.json names the portal ${portal}. The API key is sent only to ${OFFICIAL_PORTAL_ORIGIN} unless you confirm another portal: set TYPEROLL_API_URL=${portal} in your private client settings or environment.`);
+  }
+}
+
 export function workspaceClient(config: Workspace, env: NodeJS.ProcessEnv, fetchImpl?: typeof fetch) {
   if (!env.TYPEROLL_API_KEY) throw new Error('Inject TYPEROLL_API_KEY through private client settings or the environment.');
-  if (env.TYPEROLL_API_URL && env.TYPEROLL_API_URL.replace(/\/$/, '') !== config.portal.replace(/\/$/, '')) throw new Error('TYPEROLL_API_URL conflicts with typeroll.json.');
+  assertTrustedPortal(config, env);
   if (env.TYPEROLL_SITE_ID && env.TYPEROLL_SITE_ID !== config.site_id) throw new Error('TYPEROLL_SITE_ID conflicts with typeroll.json.');
   return new TyperollClient({ baseUrl: config.portal, apiKey: env.TYPEROLL_API_KEY, defaultVersion: config.version, fetchImpl });
 }
@@ -212,7 +235,7 @@ export async function doctor(dir: string, offline: boolean, env: NodeJS.ProcessE
       }
       checks.push({ check: 'writes_and_publishing', status: 'not_checked', message: 'Read-only doctor. No edits, media transfer, app activation or publication was attempted; check publishing/import readiness for those tasks.' });
     } catch (error) {
-      checks.push({ check: 'connection', status: 'required', message: error instanceof ApiError ? `Portal HTTP ${error.status}. Check credential scope, portal and Site/Version.` : 'Could not verify the connection. Check injected credentials, matching environment, network and Site/Version.' });
+      checks.push({ check: 'connection', status: 'required', message: error instanceof ApiError ? `Portal HTTP ${error.status}. Check credential scope, portal and Site/Version.` : error instanceof UntrustedPortalError ? error.message : 'Could not verify the connection. Check injected credentials, matching environment, network and Site/Version.' });
     }
   }
   return { passed: !checks.some(check => check.status === 'required'), generator_version: VERSION, checks };
