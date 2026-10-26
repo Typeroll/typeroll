@@ -123,7 +123,7 @@ Organization routes need an organization-scoped key; a site-scoped key gets
 | Resource | Routes |
 |---|---|
 | Organization API keys | `GET /organization/api-keys`, `DELETE /organization/api-keys/{keyId}` (keys are created in the portal) |
-| Invites | `POST /organization/invites` |
+| Invites | `GET/POST /organization/invites`, `DELETE /organization/invites/{inviteId}` |
 | Analytics across Sites | `GET/POST /organization/analytics` (every active Site with Analytics on or off and its setup; `POST { sites: [{ site_id, enabled }] }` changes only those Sites, at most 50, with one result each) |
 | Built-in AI assistant | `GET /organization/ai`, `PUT/DELETE /organization/ai/key`, `PUT /organization/ai/site-access` (the Organization's own Anthropic key, never returned, and the Sites that show the portal AI chat) |
 | Publishing connections | `GET /publishing/connections`, `GET /publishing/github-diagnosis`, `GET /publishing/cloudflare-diagnosis`, `POST /publishing/connections/cloudflare`, `DELETE /publishing/connections/{provider}` |
@@ -550,8 +550,11 @@ further than the caller. Nothing here returns a new secret.
   (`read`, `write` default, `admin`) and `label`; one active share per
   Organization (`409` otherwise). All share routes need site admin.
 - **Invites.** `POST /organization/invites` takes optional `ttl_days` (1–30,
-  default 7) and returns `{ invite_url, expires_at, ttl_days, role: "editor" }`.
-  Redemption requires the invited person to sign in. Self-hosted portals need
+  default 7), `max_uses` (1–50, default 1) and `email` (only that address may
+  join) and returns `{ id, invite_url, expires_at, ttl_days, max_uses, email,
+  role: "editor" }`. `GET` lists invites without their links; `DELETE
+  …/{inviteId}` revokes one. Redemption requires the invited person to sign in;
+  links from before 0.2.111 no longer work. Self-hosted portals need
   `FORMS_HMAC_SECRET`; without it the route returns `503`.
 - **Workflows.** `POST /workflows` takes `{ type, config? }` and returns `202
   { workflow_id }`; the run continues in the background. `rebuild_deploy` needs

@@ -89,6 +89,7 @@ describe('organization access tools', () => {
     try {
       const { tools } = await s.client.listTools();
       for (const name of ['list_organization_api_keys', 'revoke_organization_api_key', 'create_organization_invite',
+        'list_organization_invites', 'revoke_organization_invite',
         'create_site_and_migrate', 'create_site_and_plan', 'read_organization_publishing_connections',
         'disconnect_organization_publishing_provider', 'connect_organization_cloudflare', 'prepare_organization_media_storage', 'save_organization_media_access']) {
         const tool = tools.find(t => t.name === name);
@@ -98,10 +99,41 @@ describe('organization access tools', () => {
       await s.call('list_organization_api_keys');
       await s.call('revoke_organization_api_key', { key_id: 'abcdefabcdef' });
       await s.call('create_organization_invite', { ttl_days: 14 });
+      await s.call('create_organization_invite', { ttl_days: 3, max_uses: 5, email: 'person@example.test' });
+      await s.call('list_organization_invites');
+      await s.call('revoke_organization_invite', { invite_id: 'AbCdEf0123456789_-xy' });
       expect(s.calls.map(c => `${c.method} ${c.url.replace('https://example.test/api/v1/', '')}`)).toEqual([
         'GET organization/api-keys', 'DELETE organization/api-keys/abcdefabcdef', 'POST organization/invites',
+        'POST organization/invites', 'GET organization/invites', 'DELETE organization/invites/AbCdEf0123456789_-xy',
       ]);
       expect(s.calls[2]!.body).toEqual({ ttl_days: 14 });
+      expect(s.calls[3]!.body).toEqual({ ttl_days: 3, max_uses: 5, email: 'person@example.test' });
+    } finally { await s.close(); }
+  });
+
+  it('validates invite options and ids before any request', async () => {
+    const s = await session();
+    try {
+      for (const [name, args] of [
+        ['create_organization_invite', { max_uses: 0 }],
+        ['create_organization_invite', { max_uses: 51 }],
+        ['create_organization_invite', { email: 'not-an-email' }],
+        ['revoke_organization_invite', { invite_id: '../api-keys/abcdefabcdef' }],
+        ['revoke_organization_invite', { invite_id: 'short' }],
+      ] as const) {
+        expect((await s.call(name, args)).isError, `${name} ${JSON.stringify(args)}`).toBe(true);
+      }
+      expect(s.calls).toHaveLength(0);
+    } finally { await s.close(); }
+  });
+
+  it('describes invites as revocable through MCP or the API, not a portal screen', async () => {
+    const s = await session();
+    try {
+      const { tools } = await s.client.listTools();
+      const create = tools.find(t => t.name === 'create_organization_invite')!.description!;
+      expect(create).toContain('revoke_organization_invite');
+      expect(create).not.toMatch(/revoke it in the portal/i);
     } finally { await s.close(); }
   });
 

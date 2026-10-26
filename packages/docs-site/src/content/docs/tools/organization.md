@@ -72,21 +72,29 @@ access for the recipient and its keys immediately; the record stays listed with
 ## Invite people to the Organization
 
 `create_organization_invite` (`POST /api/v1/organization/invites`, body
-`{ "ttl_days": 14 }`) returns a signed `invite_url` and its `expires_at`. The
-lifetime is 1–30 days, 7 by default. The invited person opens the link, signs
-in and joins as an **editor**, the same role as a portal invite. Through the API
-this needs an organization key.
+`{ "ttl_days": 14, "max_uses": 3, "email": "person@example.com" }`, every field
+optional) returns the invite `id`, a signed `invite_url` and its `expires_at`.
+The lifetime is 1–30 days, 7 by default. `max_uses` (1–50, default 1) lets
+several people use one link, and `email` accepts only a person signed in with
+that address. The invited person opens the link, signs in and joins as an
+**editor**, the same role as a portal invite.
 
-Every invite is stored by the portal and is **single use**: once someone joins
-with it, the link stops working, and a person who was removed from the
-Organization cannot use the same link to come back. Someone who is already a
-member can open it without using it up. In the portal, organization owners and
-admins create invites (`POST /api/orgs/invite/generate`, optional `ttlDays`,
-`max_uses` from 1 to 50 for a link several people may use, and `email` to
-accept only a person signed in with that address). They list them with
-`GET /api/orgs/invite` (state, uses, expiry and creator, never the link) and
-revoke one with `DELETE /api/orgs/invite/{invite_id}`; a revoked link stops
-working immediately, and people who already joined keep their membership.
+`list_organization_invites` (`GET /api/v1/organization/invites`) lists the
+invites, newest first, with their `id`, `state` (`active`, `used`, `expired` or
+`revoked`), `email`, `created_by`, `created_at`, `expires_at`, `max_uses`,
+`used_count` and `revoked_at`, never the link. `revoke_organization_invite`
+(`DELETE /api/v1/organization/invites/{invite_id}`) stops a link immediately;
+people who already joined keep their membership. All three need an organization
+key; a site-scoped key gets `403`.
+
+Every invite is stored by the portal and is **single use** unless `max_uses`
+says otherwise: once it is used up, the link stops working, and a person who
+was removed from the Organization cannot use the same link to come back.
+Someone who is already a member can open it without using it up. In the
+portal, organization owners and admins create invites
+(`POST /api/orgs/invite/generate`, with the same options and `ttlDays` for the
+lifetime), list them with `GET /api/orgs/invite` and revoke one with
+`DELETE /api/orgs/invite/{invite_id}`.
 
 Invite links created before stored invites were introduced are no longer
 accepted, because they could not be revoked. Create a new invite instead.

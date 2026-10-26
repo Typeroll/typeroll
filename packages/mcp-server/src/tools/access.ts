@@ -8,6 +8,7 @@ import { z } from 'zod';
 import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 const keyId = z.string().regex(/^[a-f0-9]{12}$/).describe('Key id (the 12-hex prefix) from list_api_keys / list_organization_api_keys.');
+const inviteId = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/).describe('Invite id from create_organization_invite or list_organization_invites.');
 
 export const accessTools: ToolDef[] = [
   {
@@ -72,9 +73,27 @@ export const accessTools: ToolDef[] = [
   {
     name: 'create_organization_invite',
     noSite: true,
-    description: 'Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins as an editor; the link is single use, works until expires_at (ttl_days 1–30, default 7), and an Organization owner or admin can revoke it in the portal. Send it only to the person the user named.',
-    inputSchema: { ttl_days: z.number().int().min(1).max(30).optional() },
+    description: 'Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins as an editor. The link works until expires_at (ttl_days 1–30, default 7) for max_uses people (1–50, default 1: single use); with email set, only a person signed in with that address can redeem it. Returns the invite id; list_organization_invites shows its state and revoke_organization_invite (or DELETE /api/v1/organization/invites/{id}) stops the link immediately. Send the link only to the person the user named.',
+    inputSchema: {
+      ttl_days: z.number().int().min(1).max(30).optional(),
+      max_uses: z.number().int().min(1).max(50).optional().describe('How many people may redeem the link. Default 1 (single use).'),
+      email: z.string().email().max(320).optional().describe('Bind the invite to this email address: only a person signed in with it can redeem the link.'),
+    },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('organization/invites', args))),
+  },
+  {
+    name: 'list_organization_invites',
+    noSite: true,
+    description: 'List the Organization\'s invites, newest first, without their links: id, state (active | used | expired | revoked), role, email (when bound), created_by, created_at, expires_at, max_uses, used_count and revoked_at. Requires an organization API key; site-scoped keys get 403.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('organization/invites'))),
+  },
+  {
+    name: 'revoke_organization_invite',
+    noSite: true,
+    description: 'Revoke an Organization invite by id (from create_organization_invite or list_organization_invites). Its link stops working immediately; people who already joined keep their membership. Requires an organization API key.',
+    inputSchema: { invite_id: inviteId },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootDelete(`organization/invites/${encodeURIComponent(args.invite_id)}`))),
   },
   {
     name: 'read_organization_ai_settings',

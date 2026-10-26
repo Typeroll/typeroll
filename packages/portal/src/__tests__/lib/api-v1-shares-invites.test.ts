@@ -30,12 +30,14 @@ async function key(orgId: string, siteId: string | null): Promise<string> {
   return (await createApiKey({ orgId, siteId, name: 'seed', createdBy: 'person@example.test' })).token;
 }
 
-async function call(route: 'shares' | 'share' | 'invites', method: string, token: string | null, params: Record<string, string>, body?: unknown) {
+async function call(route: 'shares' | 'share' | 'invites' | 'invite', method: string, token: string | null, params: Record<string, string>, body?: unknown) {
   const mod = (route === 'shares'
     ? await import('../../pages/api/v1/sites/[siteId]/shares/index')
     : route === 'share'
       ? await import('../../pages/api/v1/sites/[siteId]/shares/[shareId]')
-      : await import('../../pages/api/v1/organization/invites')) as Record<string, APIRoute>;
+      : route === 'invites'
+        ? await import('../../pages/api/v1/organization/invites')
+        : await import('../../pages/api/v1/organization/invites/[inviteId]')) as Record<string, APIRoute>;
   const headers: Record<string, string> = { 'content-type': 'application/json' };
   if (token) headers.authorization = `Bearer ${token}`;
   const res = await mod[method]!({
@@ -116,5 +118,83 @@ describe('organization invites through the public API', () => {
     expect((await call('invites', 'POST', await key(ORG, SITE), {}, {})).status).toBe(403);
     vi.stubEnv('FORMS_HMAC_SECRET', '');
     expect((await call('invites', 'POST', await key(ORG, null), {}, {})).status).toBe(503);
+  });
+
+  it('accepts max_uses and email like the portal and stores them on the record', async () => {
+    vi.stubEnv('FORMS_HMAC_SECRET', 'synthetic-invite-signing-secret-32-characters');
+    const token = await key(ORG, null);
+    const res = await call('invites', 'POST', token, {}, { max_uses: 5, email: ' Person@Example.test ' });
+    expect(res.status).toBe(201);
+    expect(res.json).toMatchObject({ max_uses: 5, email: 'person@example.test', role: 'editor' });
+    expect(res.json.id).toMatch(/^[A-Za-z0-9_-]{16,64}$/);
+    const { getStore } = await import('../../lib/datastore');
+    const { invitePaths } = await import('../../lib/invite');
+    expect(await getStore().getDoc(invitePaths.invite(ORG, res.json.id))).toMatchObject({
+      max_uses: 5, used_count: 0, email: 'person@example.test', created_by: expect.stringMatching(/^api_key:/),
+    });
+
+    const single = await call('invites', 'POST', token, {}, {});
+    expect(single.json).toMatchObject({ max_uses: 1, email: null });
+  });
+
+  it('rejects out-of-range max_uses and malformed email', async () => {
+    vi.stubEnv('FORMS_HMAC_SECRET', 'synthetic-invite-signing-secret-32-characters');
+    const token = await key(ORG, null);
+    for (const body of [{ max_uses: 0 }, { max_uses: 51 }, { max_uses: 2.5 }, { max_uses: '3' }, { email: 'not-an-email' }, { email: 7 }]) {
+      expect((await call('invites', 'POST', token, {}, body)).status).toBe(400);
+    }
+    const { getStore } = await import('../../lib/datastore');
+    expect(await getStore().listDocs('organizations/' + ORG + '/invites')).toHaveLength(0);
+  });
+
+  it('lists invites without their links and revokes them', async () => {
+    vi.stubEnv('FORMS_HMAC_SECRET', 'synthetic-invite-signing-secret-32-characters');
+    const token = await key(ORG, null);
+    const created = await call('invites', 'POST', token, {}, { max_uses: 3 });
+    const inviteUrl = created.json.invite_url as string;
+
+    const listed = await call('invites', 'GET', token, {});
+    expect(listed.status).toBe(200);
+    expect(listed.json.invites).toEqual([expect.objectContaining({
+      id: created.json.id, state: 'active', max_uses: 3, used_count: 0, email: null, role: 'editor',
+    })]);
+    const serialized = JSON.stringify(listed.json);
+    const { extractTokenFromInput } = await import('../../lib/invite');
+    expect(serialized).not.toContain(extractTokenFromInput(inviteUrl));
+    expect(serialized).not.toContain('invite_url');
+    expect(serialized).not.toContain('used_by');
+
+    const revoked = await call('invite', 'DELETE', token, { inviteId: created.json.id });
+    expect(revoked.status).toBe(200);
+    expect((await call('invites', 'GET', token, {})).json.invites[0]).toMatchObject({ id: created.json.id, state: 'revoked' });
+
+    const { redeemInvite } = await import('../../lib/invite');
+    const redeemed = await redeemInvite(extractTokenFromInput(inviteUrl), { userId: 'u-new', email: 'new@example.test' }, {
+      alreadyMember: false, memberPath: `organizations/${ORG}/members/u-new`, member: { role: 'editor' },
+    });
+    expect(redeemed.ok).toBe(false);
+  });
+
+  it('only revokes invites of the key organization and refuses malformed ids', async () => {
+    vi.stubEnv('FORMS_HMAC_SECRET', 'synthetic-invite-signing-secret-32-characters');
+    const created = await call('invites', 'POST', await key(ORG, null), {}, {});
+    const partner = await key(PARTNER, null);
+    expect((await call('invite', 'DELETE', partner, { inviteId: created.json.id })).status).toBe(404);
+    expect((await call('invites', 'GET', partner, {})).json.invites).toEqual([]);
+    expect((await call('invite', 'DELETE', await key(ORG, null), { inviteId: '../x' })).status).toBe(404);
+    expect((await call('invite', 'DELETE', await key(ORG, null), { inviteId: 'a'.repeat(22) })).status).toBe(404);
+
+    const { getStore } = await import('../../lib/datastore');
+    const { invitePaths } = await import('../../lib/invite');
+    expect(await getStore().getDoc(invitePaths.invite(ORG, created.json.id))).toMatchObject({ revoked_at: null });
+  });
+
+  it('refuses site-scoped keys for listing and revoking', async () => {
+    vi.stubEnv('FORMS_HMAC_SECRET', 'synthetic-invite-signing-secret-32-characters');
+    const created = await call('invites', 'POST', await key(ORG, null), {}, {});
+    const siteKey = await key(ORG, SITE);
+    expect((await call('invites', 'GET', siteKey, {})).status).toBe(403);
+    expect((await call('invite', 'DELETE', siteKey, { inviteId: created.json.id })).status).toBe(403);
+    expect((await call('invites', 'GET', null, {})).status).toBe(401);
   });
 });
