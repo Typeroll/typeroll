@@ -7,10 +7,13 @@ import {
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { decryptSecret } from '../secret-crypto';
+import { createSafeFetch } from '../net/safe-fetch';
 import { assertPublicDestination, parsePublicHttpsUrl } from './public-http';
 import { resolveExtensionVersion } from './resolution';
 
 const MAX_ATTEMPTS = 3;
+// Connects only to the address it validated; a webhook may not redirect.
+const eventWebhookFetch = createSafeFetch({ label: 'Extension event webhook URL', maxRedirects: 0, timeoutMs: 8_000, maxBytes: 64 * 1024 });
 
 export async function deliverExtensionLifecycleEvent(args: {
   installation: ExtensionInstallation;
@@ -71,7 +74,7 @@ export async function deliverExtensionLifecycleEvent(args: {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 8_000);
     try {
-      const response = await (args.fetchImpl ?? fetch)(url, {
+      const response = await (args.fetchImpl ?? eventWebhookFetch)(url, {
         method: 'POST',
         redirect: 'manual',
         signal: controller.signal,

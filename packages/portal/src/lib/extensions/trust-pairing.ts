@@ -6,9 +6,13 @@ import {
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { extensionIssuer, extensionJwks, signIssuerPairingAssertion } from './auth';
+import { createSafeFetch } from '../net/safe-fetch';
 import { assertPublicDestination, parsePublicHttpsUrl } from './public-http';
 import { ExtensionRegistryError, recordExtensionAudit } from './registry';
 import { resolveExtensionVersion } from './resolution';
+
+// Connects only to the address it validated, never follows a redirect and bounds the JSON reply.
+const pairingFetch = createSafeFetch({ label: 'Extension pairing URL', maxRedirects: 0, timeoutMs: 8_000, maxBytes: 64 * 1024 });
 
 function hash(value: string): string {
   return crypto.createHash('sha256').update(value).digest('hex');
@@ -53,7 +57,7 @@ export async function pairExtensionIssuer(args: {
   const timeout = setTimeout(() => controller.abort(), 8_000);
   let response: Response;
   try {
-    response = await (args.fetchImpl ?? fetch)(pairingUrl, {
+    response = await (args.fetchImpl ?? pairingFetch)(pairingUrl, {
       method: 'POST',
       redirect: 'manual',
       signal: controller.signal,

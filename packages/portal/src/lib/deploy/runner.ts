@@ -218,8 +218,11 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   // asset namespace. Runtime code never imports the mutable provider URL.
   if (extensionSnapshot.installations.length > 0) {
     await phase('vendoring extension assets');
-    const { vendorExtensionAssets } = await import('../extensions/assets');
-    const vendored = await vendorExtensionAssets(buildDir, extensionSnapshot);
+    const { MAX_EXTENSION_SCRIPT_BYTES, vendorExtensionAssets } = await import('../extensions/assets');
+    const { createSafeFetch } = await import('../net/safe-fetch');
+    const vendored = await vendorExtensionAssets(buildDir, extensionSnapshot, createSafeFetch({
+      label: 'Asset URL', maxRedirects: 0, timeoutMs: 15_000, maxBytes: MAX_EXTENSION_SCRIPT_BYTES,
+    }));
     console.log(`[deploy] extensions: vendored ${vendored.files} files (${vendored.bytes} bytes)`);
   }
 

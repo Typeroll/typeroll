@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { json } from '../../../../../../../lib/access';
-import { verifyExtensionAssets } from '../../../../../../../lib/extensions/assets';
+import { MAX_EXTENSION_SCRIPT_BYTES, verifyExtensionAssets } from '../../../../../../../lib/extensions/assets';
+import { createSafeFetch } from '../../../../../../../lib/net/safe-fetch';
 import { ExtensionRegistryError, publishExtensionVersion } from '../../../../../../../lib/extensions/registry';
 import { requireDeveloperAccess } from '../../../../../../../lib/extensions/developer-access';
 
@@ -13,7 +14,7 @@ export const POST: APIRoute = async ({ request, cookies, params }) => {
       developerOrgId: access.orgId,
       extensionId: params.extensionId,
       version: params.version,
-      verifyAssets: verifyExtensionAssets,
+      verifyAssets: (manifest) => verifyExtensionAssets(manifest, createSafeFetch({ label: 'Asset URL', maxRedirects: 0, timeoutMs: 15_000, maxBytes: MAX_EXTENSION_SCRIPT_BYTES })),
     }) });
   } catch (error) {
     if (error instanceof ExtensionRegistryError) return json({ error: error.message }, error.status);

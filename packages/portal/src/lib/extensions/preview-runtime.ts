@@ -7,6 +7,7 @@ import {
   type ExtensionRuntimeSnapshot,
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
+import { createSafeFetch } from '../net/safe-fetch';
 import {
   assertExtensionAssetDigest,
   MAX_EXTENSION_SCRIPT_BYTES,
@@ -15,6 +16,18 @@ import {
 import { signPublicExtensionToken } from './auth';
 import { fetchPublicAsset } from './public-http';
 import { buildExtensionRuntimeSnapshot } from './runtime-snapshot';
+
+/**
+ * Provider bundle reads for previews and the editor. fetchPublicAsset refuses
+ * redirects and enforces each asset's limit; this pins the connection to the
+ * address that was validated.
+ */
+export const extensionAssetFetch = createSafeFetch({
+  label: 'Asset URL',
+  maxRedirects: 0,
+  timeoutMs: 10_000,
+  maxBytes: Math.max(MAX_EXTENSION_SCRIPT_BYTES, MAX_EXTENSION_STYLE_BYTES),
+});
 
 function dataUrl(mime: string, bytes: Uint8Array): string {
   return `data:${mime};base64,${Buffer.from(bytes).toString('base64')}`;
@@ -127,11 +140,11 @@ export async function buildExtensionPreviewRuntimeScript(
         style_sha256?: string;
       };
       try {
-        const script = await fetchPublicAsset(entry.script_url, MAX_EXTENSION_SCRIPT_BYTES);
+        const script = await fetchPublicAsset(entry.script_url, MAX_EXTENSION_SCRIPT_BYTES, extensionAssetFetch);
         assertExtensionAssetDigest(script, entry.script_sha256, `${component.id} script`);
         component.local_script_url = dataUrl('text/javascript', script);
         if (entry.style_url) {
-          const style = await fetchPublicAsset(entry.style_url, MAX_EXTENSION_STYLE_BYTES);
+          const style = await fetchPublicAsset(entry.style_url, MAX_EXTENSION_STYLE_BYTES, extensionAssetFetch);
           assertExtensionAssetDigest(style, String(entry.style_sha256 ?? ''), `${component.id} style`);
           component.local_style_url = dataUrl('text/css', style);
         }

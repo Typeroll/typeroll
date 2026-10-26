@@ -2,6 +2,22 @@ import crypto from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { paths, type ExtensionManifest, type ExtensionRuntimeSnapshot } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
+
+// Records which outbound requests go through the guarded client, then performs them unchanged.
+const guardedRequests = vi.hoisted(() => [] as Array<{ url: string; policy: Record<string, unknown> }>);
+vi.mock('../../lib/net/safe-fetch', async (load) => {
+  const actual = await load<typeof import('../../lib/net/safe-fetch')>();
+  return {
+    ...actual,
+    createSafeFetch: (policy: Parameters<typeof actual.createSafeFetch>[0]) => {
+      const guarded = actual.createSafeFetch(policy);
+      return ((input: RequestInfo | URL, init?: RequestInit) => {
+        guardedRequests.push({ url: String(input), policy: { ...policy } });
+        return guarded(input, init);
+      }) as typeof fetch;
+    },
+  };
+});
 import {
   createExtension,
   installExtension,
@@ -15,7 +31,7 @@ import {
   uninstallExtension,
 } from '../../lib/extensions/registry';
 import { buildExtensionRuntimeSnapshot } from '../../lib/extensions/runtime-snapshot';
-import { prepareExtensionPreviewSnapshot } from '../../lib/extensions/preview-runtime';
+import { extensionAssetFetch, prepareExtensionPreviewSnapshot } from '../../lib/extensions/preview-runtime';
 import { buildExtensionEditorRuntimeScript } from '../../lib/extensions/editor-runtime';
 import {
   exchangeExtensionLaunchCode,
@@ -266,6 +282,7 @@ describe('Extension control plane', () => {
     const { renderPreview } = await import('../../lib/render-preview');
     let html: string | null;
     let editorScript: string;
+    let assetCalls: unknown[][] = [];
     try {
       html = await renderPreview(OWNER_ORG, SITE, 'quote', 'main', { allowScripts: true });
       editorScript = await buildExtensionEditorRuntimeScript(
@@ -275,8 +292,13 @@ describe('Extension control plane', () => {
         'canvas-test-editorbridge',
       );
     } finally {
+      assetCalls = [...assetSpy.mock.calls];
       assetSpy.mockRestore();
     }
+    // Preview and editor asset reads connect through the guarded client.
+    // Preview and editor asset reads connect through the guarded client.
+    expect(assetCalls.length).toBeGreaterThanOrEqual(2);
+    for (const call of assetCalls) expect(call).toEqual(['https://93.184.216.34/quote.js', expect.any(Number), extensionAssetFetch]);
     expect(html).toContain('data-extension-runtime="1"');
     expect(html).toContain('data:text/javascript;base64,');
     expect(html).toContain('preview_token');
@@ -1120,6 +1142,32 @@ describe('Extension assets and direct provider API', () => {
     });
     const paired = await pairExtensionIssuer({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'admin', fetchImpl: fakeFetch as typeof fetch });
     expect(paired).toMatchObject({ status: 'trusted', issuer: 'https://admin.customer.example' });
+  });
+
+  it('pairs and delivers events through the guarded client without following redirects', async () => {
+    const { installation } = await registeredInstallation();
+    const { getStore } = await import('../../lib/datastore');
+    const versionPath = paths.extensionVersion(DEV_ORG, installation.extension_id, installation.version);
+    const version = await getStore().getDoc<any>(versionPath);
+    await getStore().updateDoc(versionPath, { manifest: { ...version.manifest,
+      auth: { pairing_url: 'https://93.184.216.34/pair' },
+      events: { subscriptions: ['extension.updated'], webhook_url: 'https://93.184.216.34/events', secret_config_key: 'api_secret' } } });
+    const network = vi.fn(async (url: URL | RequestInfo, init?: RequestInit) => {
+      if (String(url).endsWith('/events')) return new Response(null, { status: 204 });
+      const input = JSON.parse(String(init?.body));
+      return Response.json({ trusted: true, issuer: input.issuer, nonce: input.nonce, jwks_fingerprint: input.jwks_fingerprint });
+    });
+    vi.stubGlobal('fetch', network);
+    guardedRequests.length = 0;
+    try {
+      await pairExtensionIssuer({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installation.id, actorId: 'admin' });
+      await deliverExtensionLifecycleEvent({ installation, eventType: 'extension.updated' });
+    } finally { vi.unstubAllGlobals(); }
+    expect(network).toHaveBeenCalledTimes(2);
+    expect(guardedRequests).toEqual([
+      { url: 'https://93.184.216.34/pair', policy: expect.objectContaining({ maxRedirects: 0 }) },
+      { url: 'https://93.184.216.34/events', policy: expect.objectContaining({ maxRedirects: 0 }) },
+    ]);
   });
 
   it('shows whether the current Typeroll issuer is already trusted in site settings', async () => {

@@ -5,7 +5,8 @@ import { findZone, inactiveZoneMessage, applyPreparedTraffic, trafficFingerprint
 import { coveredByUniversalSsl } from './host-checks';
 import { assertTrafficNotOwnedByOtherOrganization } from './cloudflare-account-claims';
 import { hostingDns } from './hosting-dns';
-import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
+import { parsePublicHttpsUrl } from '../extensions/public-http';
+import { createSafeFetch } from '../net/safe-fetch';
 
 // A redirect host never reaches Cloudflare Pages. Pages serves the same static
 // files on every custom domain and its _redirects file cannot match a hostname,
@@ -18,6 +19,8 @@ type Provider = (route: string, options?: { method?: string; body?: unknown; mis
 /** Cloudflare's documented placeholder address for a proxied, redirect-only hostname. */
 export const REDIRECT_PLACEHOLDER_ADDRESS = '192.0.2.1';
 export const REDIRECT_PHASE = 'http_request_dynamic_redirect';
+// Reads the redirect itself (redirect: 'manual'), connecting only to the address it validated.
+const redirectCheckFetch = createSafeFetch({ label: 'Redirect host', maxRedirects: 0, timeoutMs: 10_000, maxBytes: 64 * 1024 });
 
 export interface RedirectRuleSpec {
   zone_name: string | null;
@@ -223,11 +226,12 @@ export async function applyRedirectTraffic(provider: Provider, approved: Redirec
 }
 
 /** The redirect works when the public host answers 301 with the same path and query on the website host. */
-export async function verifyRedirectHost(host: string, target: string, check: string, fetchImpl: typeof fetch = fetch): Promise<{ ok: boolean; status: number | null; location: string | null }> {
+export async function verifyRedirectHost(host: string, target: string, check: string, fetchImpl: typeof fetch = redirectCheckFetch): Promise<{ ok: boolean; status: number | null; location: string | null }> {
   const path = `/.well-known/typeroll/publication.json?typeroll_redirect_check=${encodeURIComponent(check)}`;
   try {
-    const url = parsePublicHttpsUrl(`https://${host}${path}`); await assertPublicDestination(url);
+    const url = parsePublicHttpsUrl(`https://${host}${path}`);
     const response = await fetchImpl(url, { redirect: 'manual', signal: AbortSignal.timeout(10_000), headers: { 'Cache-Control': 'no-cache' } });
+    void response.body?.cancel().catch(() => {});
     const location = response.headers.get('location');
     return { ok: response.status === 301 && location === `https://${target}${path}`, status: response.status, location };
   } catch { return { ok: false, status: null, location: null }; }

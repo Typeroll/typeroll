@@ -265,6 +265,17 @@ of Caddy, configure Caddy's `trusted_proxies` for it and set
 `AUTH_TRUST_PROXY_HOPS=2` in `.env`. Never raise the value without that proxy:
 clients could then choose their own rate-limit address.
 
+Outbound requests whose address a user or remote content chooses, such as
+WordPress sources, webhooks, Extension endpoints and SMTP servers, only connect
+to public addresses. To migrate an intranet WordPress or send through a mail
+relay on your own network, set `TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH=1` in
+`.env`. It applies only to migration sources and SMTP, allowing private,
+loopback and CGNAT addresses and `.local`/`.internal` names. Link-local
+addresses, including cloud metadata endpoints, stay blocked. Every portal user
+who can start a migration or save SMTP settings can then reach that network, so
+set it only when you trust all of them. Typeroll Cloud does not offer this
+setting.
+
 The portal hostname sends `Content-Security-Policy: frame-ancestors 'self'` and
 `X-Frame-Options: SAMEORIGIN` unless a response sets its own policy, so other
 sites cannot frame the admin interface. Its Firestore queue is durable;

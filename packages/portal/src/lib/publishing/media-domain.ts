@@ -3,7 +3,10 @@ import { getConnection, ConnectionError } from './connections';
 import { cloudflareClient } from './cloudflare-oauth';
 import { findPublishingZone } from './domain-provider';
 import { getOrganizationDomains } from './domain-config';
-import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
+import { parsePublicHttpsUrl } from '../extensions/public-http';
+import { safeFetch } from '../net/safe-fetch';
+
+const MAX_MEDIA_CHECK_BYTES = 25 * 1024 * 1024;
 
 /** R2 remains static; one native path rewrite maps a site host to its stable namespace. */
 export async function preparePublicMediaDomains(orgId: string, manifest: { delivery?: string; account_id: string; public_bucket: string; media_host: string; website_host: string; dns_mode?: 'automatic' | 'external'; site_prefix: string; entries: Array<{ cdn_url: string; sha256: string; aliases: Array<{ url: string }> }> }) {
@@ -54,9 +57,11 @@ export async function preparePublicMediaDomains(orgId: string, manifest: { deliv
     .filter(url => new URL(url).hostname !== manifest.website_host && !(manifest.delivery === 'static' && new URL(url).hostname === manifest.media_host)).map(url => ({ url, hash: entry.sha256 })));
   for (const check of checks) {
     try {
-      const url = parsePublicHttpsUrl(check.url); await assertPublicDestination(url);
-      const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(10_000), headers: { 'Cache-Control': 'no-cache' } });
-      if (!response.ok || Number(response.headers.get('content-length')) > 25 * 1024 * 1024) return false;
+      // The guarded fetch resolves, validates and connects in one step and caps the streamed body.
+      const url = parsePublicHttpsUrl(check.url);
+      const response = await safeFetch(url, { redirect: 'error', headers: { 'Cache-Control': 'no-cache' } },
+        { label: 'Media URL', timeoutMs: 10_000, maxBytes: MAX_MEDIA_CHECK_BYTES });
+      if (!response.ok || Number(response.headers.get('content-length')) > MAX_MEDIA_CHECK_BYTES) return false;
       const actual = createHash('sha256').update(new Uint8Array(await response.arrayBuffer())).digest('hex');
       if (actual !== check.hash) return false;
     } catch { return false; }

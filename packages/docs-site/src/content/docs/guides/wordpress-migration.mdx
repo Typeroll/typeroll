@@ -138,6 +138,21 @@ permission). Poll `get_workflow` and approve its review step with
 first in both the portal and the API. See
 [Organization, access and workflow tools](../../tools/organization/#workflows).
 
+The workflow reads only the source site, and the source must be reachable on
+the public internet. The WordPress URL and every redirect it follows must
+resolve to public addresses; private, loopback and link-local addresses are
+refused. A self-hosted server can import an intranet WordPress by setting
+`TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH=1`; see [Self-hosting](../self-hosting/).
+When an item's REST body is nearly empty, the importer renders its page only if
+the item's link belongs to the source site (same host, ignoring `www.`). Other
+links are logged and not fetched.
+
+Password-protected posts and pages are not imported. WordPress omits their
+content, so importing them would publish an empty page or the password form.
+The workflow logs each one and lists it under `protected_skipped` in the import
+step's result. Recreate the content deliberately or redirect its old URL before
+launch.
+
 ## Reviewing the migration
 
 After the content is imported, the AI agent shows a coverage report:
@@ -291,8 +306,8 @@ Helper 0.4.0 and later accept the key only in the `X-Typeroll-Key` request
 header, never as a `?key=` URL parameter. The plugin exports published items of
 public post types only; orders, coupons, form submissions and other non-public
 plugin data are never exposed. Password-protected posts are listed with their
-title and URL but without content or custom fields, so recreate or restrict them
-deliberately rather than publishing them as ordinary pages. Deleting the plugin
+title and URL but without content or custom fields; the importer skips them (see
+[Server-side migration workflow](#server-side-migration-workflow)). Deleting the plugin
 in WordPress removes its stored key.
 
 <Aside type="tip">

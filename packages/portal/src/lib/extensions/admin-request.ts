@@ -1,3 +1,4 @@
+import { safeFetch } from '../net/safe-fetch';
 import { parsePublicHttpsUrl, assertPublicDestination } from './public-http';
 
 export interface AdminRequest { page_id: string; path: string; method: 'GET' | 'POST'; query?: Record<string, string>; body?: unknown }
@@ -26,8 +27,10 @@ export async function requestApprovedAdmin(url: URL, input: AdminRequest, token:
   await assertPublicDestination(url);
   const body = input.body === undefined ? undefined : JSON.stringify(input.body);
   if (body && Buffer.byteLength(body) > limits.requestBytes) throw new Error(`App request exceeds ${limits.requestBytes / 1024} KiB`);
-  const response = await fetch(url, { method: input.method, body, redirect: 'manual', signal: AbortSignal.timeout(15_000),
-    headers: { Authorization: `Bearer ${token}`, Origin: issuer, 'Content-Type': 'application/json', Accept: 'application/json' } });
+  // The connection is pinned to the validated address; the streamed limit below keeps its own message.
+  const response = await safeFetch(url, { method: input.method, body, redirect: 'manual', signal: AbortSignal.timeout(15_000),
+    headers: { Authorization: `Bearer ${token}`, Origin: issuer, 'Content-Type': 'application/json', Accept: 'application/json' } },
+  { label: 'Approved app API', maxRedirects: 0, timeoutMs: 15_000, maxBytes: 2 * limits.responseBytes });
   if (response.status >= 300 && response.status < 400) throw new Error('App redirects are not allowed');
   if (Number(response.headers.get('content-length')) > limits.responseBytes) throw new Error(`App response exceeds ${limits.responseBytes / 1024} KiB`);
   const reader = response.body?.getReader();
