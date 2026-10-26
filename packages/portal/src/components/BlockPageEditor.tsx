@@ -26,6 +26,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { useBlockDnd, type CanvasGeometry, type DropTarget } from './block-dnd';
 import { createBlockHistory } from './block-history';
 import ReviewChanges from './ReviewChanges';
+import { EDITOR_CANVAS_FRAME_SANDBOX, isEditorCanvasMessage, useEditorCanvasId } from '../lib/editor-canvas-frame';
 import {
   Monitor, Tablet, Smartphone, ChevronRight, ChevronDown,
   Trash2, Copy, GripVertical, Plus, Square, Columns, Type, Heading, Image as ImageIcon, MousePointerClick,
@@ -157,15 +158,13 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   const bumpHist = () => setHistTick((t) => t + 1);
   const [reviewOpen, setReviewOpen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const canvasId = useMemo(
-    () => `canvas-${siteId}-${page.id}-editorbridge`.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 128),
-    [siteId, page.id],
-  );
+  const canvasId = useEditorCanvasId('canvas');
   const canvasGeometryRef = useRef<CanvasGeometry | null>(null);
   const canvasScrollRef = useRef(0);
   const restoreCanvasScrollRef = useRef<number | null>(null);
   const extensionPreviewContextRef = useRef<Record<string, Record<string, string>>>({});
   function postCanvasCommand(command: Record<string, unknown>): void {
+    if (!canvasId) return;
     iframeRef.current?.contentWindow?.postMessage({
       channel: 'typeroll.editor-canvas', version: 1, canvas_id: canvasId, ...command,
     }, '*');
@@ -604,9 +603,8 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
       return ids.find((id): id is string => typeof id === 'string' && Boolean(findBlock(draftRef.current.blocks ?? [], id))) ?? null;
     };
     const receive = (event: MessageEvent) => {
-      if (event.source !== ifr.contentWindow) return;
-      const data = event.data as Record<string, unknown> | null;
-      if (!data || data.channel !== 'typeroll.editor-canvas' || data.version !== 1 || data.canvas_id !== canvasId) return;
+      if (!isEditorCanvasMessage(event, ifr, canvasId)) return;
+      const data = event.data;
       if (data.type === 'geometry' && Array.isArray(data.blocks) && data.body && typeof data.body === 'object') {
         canvasGeometryRef.current = { blocks: data.blocks.slice(0, 5000), body: data.body } as CanvasGeometry;
       } else if (data.type === 'select') {
@@ -985,12 +983,13 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               transformOrigin: 'top center',
               boxShadow: '0 0 0 1px #2a2a30', borderRadius: 8, overflow: 'hidden', background: '#fff',
             }}>
-              <iframe
+              {canvasId && <iframe
                 ref={iframeRef}
                 src={previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&interactive=1&canvas=${encodeURIComponent(canvasId)}`}
                 title="Preview"
+                sandbox={EDITOR_CANVAS_FRAME_SANDBOX}
                 style={{ width: '100%', height: '100%', border: 'none' }}
-              />
+              />}
             </div>
           </div>
           </div>

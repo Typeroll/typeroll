@@ -77,6 +77,42 @@ function ensureDevPublishSweep(): void {
   }, 60_000).unref?.();
 }
 
+// Anti-framing for portal documents (clickjacking). Every HTML page the portal
+// serves is denied to all framers, except the preview documents the portal
+// frames itself (editor canvases, review panes, revision and link previews),
+// which stay frameable by the portal's own origin. Forms and Extension
+// endpoints answer customer sites and Extension hosts, so their framing is
+// left to the route. A route that already states a framing policy keeps it.
+const SELF_FRAMED_PATHS = [
+  /^\/api\/sites\/[^/]+\/preview\//,
+  /^\/api\/sites\/[^/]+\/pages\/[^/]+\/revisions\/[^/]+\/preview$/,
+  /^\/preview\//,
+];
+const ROUTE_OWNED_FRAMING_PREFIXES = ['/api/forms/', '/api/extensions/'];
+
+function applyFramingPolicy(pathname: string, response: Response): Response {
+  if (ROUTE_OWNED_FRAMING_PREFIXES.some((prefix) => pathname.startsWith(prefix))) return response;
+  if (!/^\s*text\/html\b/i.test(response.headers.get('content-type') ?? '')) return response;
+  const selfFramed = SELF_FRAMED_PATHS.some((pattern) => pattern.test(pathname));
+  const missingFrameAncestors = !/(^|[;,]\s*)frame-ancestors\b/i.test(response.headers.get('content-security-policy') ?? '');
+  const missingFrameOptions = !response.headers.has('x-frame-options');
+  if (!missingFrameAncestors && !missingFrameOptions) return response;
+  const apply = (headers: Headers) => {
+    // A second policy is enforced alongside any existing one (e.g. a preview's sandbox).
+    if (missingFrameAncestors) headers.append('Content-Security-Policy', selfFramed ? "frame-ancestors 'self'" : "frame-ancestors 'none'");
+    if (missingFrameOptions) headers.set('X-Frame-Options', selfFramed ? 'SAMEORIGIN' : 'DENY');
+  };
+  try {
+    apply(response.headers);
+    return response;
+  } catch {
+    // Immutable headers (Response.redirect, fetched responses): copy once.
+    const copy = new Response(response.body, response);
+    apply(copy.headers);
+    return copy;
+  }
+}
+
 export const onRequest = defineMiddleware(async (context, next) => {
   if (!['/api/healthz', '/api/version'].includes(context.url.pathname)) {
     try { await requireCurrentDataSchema(); }
@@ -145,7 +181,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
 
-  try { return await withAccessRequest(context.request, next); }
+  try { return applyFramingPolicy(pathname, await withAccessRequest(context.request, next)); }
   catch (error) {
     if (error instanceof OrganizationAccessError) return error.response();
     if (context.url.pathname.startsWith('/api/') && error instanceof StorageDocumentError) {
