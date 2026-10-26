@@ -9,9 +9,10 @@
   values, palette-first editor controls and a site-owned mono font role.
 - Add read-only `lint_design_tokens`, non-blocking launch findings and a starter
   dry-run migration for exact, unambiguous scalar hex matches in a test Version.
-- Require explicit, revision-bound confirmation before a saved-content build
-  prepares a future-domain candidate. Explain its destination in UI/API/MCP;
-  show the frozen candidate's noindex status before traffic approval (F35).
+- Keep normal publication on the active/temporary host after future domains are
+  saved. Prepare the last published snapshot for a domain switch only on explicit
+  request; release waiting candidates from the publication lock, reject outdated
+  cutovers and disclose frozen indexing settings in UI/API/MCP (F35).
 - Add local ICC-aware original-to-sRGB image preparation and source-media
   archival guidance; never delete originals or automatically retire hosting.
 - Update public docs, design/migration recipes and generated starter guidance.

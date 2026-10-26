@@ -1,7 +1,7 @@
 import { paths, CORE_BLOCK_TYPES, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { projectStaticPublication } from '../../../../../scripts/lib/static-publication.mjs';
-import { getSiteDomains, getOrganizationDomains, type DomainConfiguration, type OrganizationDomains } from './domain-config';
+import { getSiteDomains, getOrganizationDomains, activePublicationDomains, type DomainConfiguration, type OrganizationDomains } from './domain-config';
 import { siteHostingGroup } from './hosting-groups';
 import { resolvePublicationVersion } from './publication-version';
 import { publicationRuntime } from './runtime-projection';
@@ -25,16 +25,17 @@ export async function previewPublicationImpact(orgId: string, siteId: string, ve
   if (job?.status !== 'succeeded' || job.version_id !== versionId || job.dry_run) return unavailable();
   const previous = await readSnapshot({ orgId, siteId, jobId: reference.snapshot_job_id }, reference);
   if (!previous.source_impact_snapshot || previous.version_id !== versionId) return unavailable();
-  const [site, domains, organization, group, resolved, runtime, media] = await Promise.all([
+  const [site, savedDomains, organization, group, resolved, runtime, media] = await Promise.all([
     store.getDoc<Site>(paths.site(orgId, siteId)), getSiteDomains(orgId, siteId), getOrganizationDomains(orgId), siteHostingGroup(orgId, siteId),
     resolvePublicationVersion(orgId, siteId, versionId), publicationRuntime(orgId, siteId, versionId), store.listDocs<any>(paths.media(orgId, siteId)),
   ]);
+  const domains = activePublicationDomains(savedDomains, site?.publishing_migration?.website_host);
   const prefix = digest(`${orgId}\0${siteId}`).slice(0, 16);
   const host = versionId === 'main' && domains.desired.website_host ||
     `${versionId === 'main' ? '' : `v-${digest(versionId).slice(0, 8)}-`}site-${prefix}.${group.sites_domain}`;
   const current = projectStaticPublication({ ...resolved, site: { ...site, domain: host }, media: [], forms: runtime.forms, extensions: runtime.extensions.installations, publicRuntime: runtime }, {
     siteUrl: `https://${host}`, coreCommit: process.env.TYPEROLL_SOURCE_SHA ?? '', publishedAt: new Date().toISOString(),
-    noindex: versionId !== 'main' || !domains.desired.website_host, coreBlockTypes: CORE_BLOCK_TYPES,
+    noindex: versionId !== 'main' || host === `site-${prefix}.${group.sites_domain}`, coreBlockTypes: CORE_BLOCK_TYPES,
   });
   return { ...compareImpact(previous.source_impact_snapshot, await capturePublicationImpact(current, orgId, siteId, domains, organization, media), true), baseline_publication_id: reference.publication_id, compared_at: new Date().toISOString() };
 }

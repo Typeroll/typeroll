@@ -422,8 +422,10 @@ keep originals, and review colour/framing before uploading. Archive completion
 and URL continuity are separate acceptance checks. Do not remove old hosting
 until the owner has approved retirement.
 
-Read publishing-domain intent before deploying saved changes. A future-domain
-candidate does not refresh the current test host. Review its frozen noindex
-setting and approve traffic separately. Use signed previews or a separate Version
-for ongoing review. Respect preserve/renew choices for owner-supplied facts;
+Saving future hosts must not block normal publication on the current/temporary
+address. Publish and review intended changes there first. Shortly before changing
+DNS, explicitly prepare the last published snapshot for the future hosts with
+`prepare_publishing_domain_change`. Review frozen indexing settings and approve
+traffic separately. If newer content is published while the candidate waits,
+prepare again before cutover; do not overwrite it with an outdated snapshot. Respect preserve/renew choices for owner-supplied facts;
 "timeless" wording must not invent recurring events or erase preserved copy.

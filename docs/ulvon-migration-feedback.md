@@ -205,18 +205,17 @@ not Ulvön content, DNS, production artifacts or its source repository.
 | --- | --- |
 | F33 | Mobile drawer/site list scrolls within the dynamic viewport. Chromium, Firefox and WebKit coverage is in PR #83. A site search field is not included. |
 | F34 / design-token proposal | Palette names, named scales, site font roles, editor controls, lint and exact-match dry-run conversion are in PR #83; see `plans/site-design-tokens.md`. Existing CSS variable expressions remain valid. No customer data is converted automatically. |
-| F35 | Domain reads/saves explain `next_publication`. New main saved-content deployments require `domain_candidate_revision` after explicit owner confirmation. Both editor controls disclose current/future host; API returns 409 before queueing without the exact revision, and the worker rechecks it before freezing/pushing source. Test Versions are unaffected. Candidate indexing flags come from frozen output, not later CMS settings, and the cutover panel warns about noindex or unknown legacy status. |
+| F35 | Saving future domains is inert for normal publication: builds continue on active/temporary website and media hosts. Only explicit **Prepare for domain switch** / `prepare_publishing_domain_change` retargets the last published snapshot, shortly before DNS changes. Waiting candidates do not lock normal publication. A newer successful publication invalidates the candidate; approval and the worker both reject stale snapshots. Frozen indexing metadata is visible before cutover. |
 
-F35 deliberately does **not** add simultaneous current-host and future-host main
-publication tracks. With future hosts saved, a confirmed main build prepares the
-future candidate; it does not refresh the old test address. Iterative review can
-use signed preview. A domain-only preparation still reuses the last publication,
-including its authored indexing decision. For an already waiting wrong candidate,
-read the current revision and re-save the same reviewed desired hosts to invalidate
-it (no traffic change); then prepare a new saved-content candidate after saving
-intended indexing settings. Never approve the old candidate expecting new CMS
-settings to change its frozen output. Noindex remains valid when intentional;
-this warning does not silently make customer pages indexable.
+This supersedes the earlier unreleased confirmation experiment. No
+`domain_candidate_revision` parameter is needed on `trigger_deploy`. Finish and
+publish intended content on the current address, explicitly prepare shortly
+before cutover, review the candidate, and approve traffic separately. Keeping
+future domains saved must not force editors into preview-only work. If a newer
+normal publication makes a candidate outdated, prepare again; do not clear and
+re-save the future hosts just to continue editing. To change an unintentionally
+noindex candidate, publish the corrected setting normally, then prepare again.
+Temporary-host indexing protection remains separate from the authored setting.
 
 ### New reusable routines
 

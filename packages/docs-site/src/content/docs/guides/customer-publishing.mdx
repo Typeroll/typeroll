@@ -471,7 +471,7 @@ images are not moved into GitHub.
 
 1. Save the future website and media addresses. This records intent and keeps
    the current website address active.
-2. Select **Prepare domain change from published content**. The candidate uses
+2. Shortly before changing DNS, select **Prepare for domain switch**. The candidate uses
    the last successful public snapshot, including its renderer, rather than
    newer saved CMS edits. Internal absolute links on the old website origin,
    canonicals, sitemap addresses and media references are retargeted.
@@ -761,30 +761,36 @@ private or secret Extension configuration, or image originals.
 
 ## Future hosts and the publication destination
 
-**Core 0.2.106 / MCP 0.45.80:** when saved future hosts differ from active hosts,
-`read_publishing_domains` and `set_publishing_domains` return `next_publication`.
-It names the current/future host and explains that a saved-content build prepares
-a domain candidate without updating the current live or test address.
-`trigger_deploy` requires explicit `domain_candidate_revision` confirmation for
-that revision; the portal asks the same question. A changed revision requires a
-new review. This confirmation does not approve the DNS/traffic switch.
+**Core 0.2.106 / MCP 0.45.80 (pending release):** saving future domains does
+not change normal publication. `trigger_deploy` continues updating the active
+website and media addresses, or the Hosting Group's temporary address before
+the first publication. Future-host validation failures do not block this work.
+`next_publication` in domain reads/saves describes the current and future hosts.
 
-Finish compiled test-host review before declaring future hosts where practical.
-Use signed previews for further edits or a separate Version for another compiled
-test address. Parallel publication to the old and future main hosts is not
-provided by this change. Do not start duplicate jobs while a candidate awaits
-approval. A domain-only preparation uses the **last published snapshot**, including
-its indexing settings, rather than current saved CMS edits.
+Prepare the domain switch deliberately, shortly before changing DNS:
 
-The cutover panel warns when the frozen candidate has `noindex`. Current CMS
-settings do not change a frozen artifact. If an indexable launch is intended,
-do not approve an unintentionally noindex candidate: save the intended setting
-and prepare a new saved-content candidate. If an old candidate is waiting, read the
-current domain revision and save the same reviewed hosts again: this supersedes
-the old candidate without switching DNS. Then confirm the new revision when
-starting the saved-content build. Temporary-host protection remains
-separate and still blocks indexing on test addresses. Older candidates without
-indexing metadata must have their actual robots output checked before approval.
+1. Finish your changes and publish normally. Verify the current/temporary site.
+2. Save the future website, media and redirect hosts (you may do this earlier).
+3. Choose **Prepare for domain switch**, or call
+   `prepare_publishing_domain_change` with the current domain revision. This
+   builds the **last successfully published snapshot** for those future hosts;
+   it does not include newer unpublished CMS edits or change website traffic.
+4. Review the candidate, indexing settings, certificates and DNS instructions.
+5. Approve **Switch website traffic** separately when ready.
+
+You can keep editing, previewing and publishing at the current address while a
+candidate waits for approval or domain validation. A newer successful publication
+makes the old candidate **outdated**. Prepare again before switching; Typeroll
+refuses to let an older snapshot replace newer published content. An ordinary
+build and a candidate share a publication lock while actively executing; waiting
+for human approval or domain validation does not retain that lock.
+
+The cutover panel shows the frozen candidate's `noindex` setting. Current CMS
+settings do not change that artifact. To correct it, save the intended indexing
+setting, publish normally, then prepare the domain switch again. Temporary hosts
+remain protected from indexing; that protection is removed in the future-host
+candidate only when the published content settings permit indexing. Candidates
+from older releases without a source-publication identity must be prepared again.
 
 ## API and MCP
 

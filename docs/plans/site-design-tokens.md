@@ -93,12 +93,13 @@ No existing customer content is automatically converted or republished.
 
 ## Later Ulvön follow-up in the same unreleased candidate
 
-PR #83 also addresses F35: exact domain-revision confirmation before queueing and
-freezing a main saved-content candidate, current/future destination in both editor
-controls and API/MCP, and frozen noindex disclosure before cutover. It does not
-introduce parallel publications for current and future main hosts. See
-`../ulvon-migration-feedback.md` for the complete disposition of later wishlist
-items, source-media archive guidance, local ICC helper and release boundaries.
+PR #83 also addresses F35: normal publication stays on active/temporary hosts;
+saved desired domains only take effect through explicit preparation of the last
+published snapshot shortly before DNS changes. Waiting candidates release the
+publication lock, and newer published content makes an older candidate outdated.
+UI/API/MCP disclose the destination and frozen noindex state before cutover. See
+`../ulvon-migration-feedback.md` for all later wishlist outcomes, source-media
+archive guidance, the local ICC helper and release boundaries.
 The mobile drawer retains a separately visible sign-out/account area while its
 pickers and navigation scroll together; list tests do not assume no other Site
 fixtures exist in the same Organization.

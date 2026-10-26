@@ -12,7 +12,7 @@ import { FirestoreDeployQueue, FIRESTORE_DEPLOY_QUEUE_PATH } from '../../lib/dep
 import { POST as deployUi } from '../../pages/api/sites/[siteId]/deploy';
 import { POST as deployApi } from '../../pages/api/v1/sites/[siteId]/deploy';
 vi.mock('../../lib/access', async original => ({ ...await original<typeof import('../../lib/access')>(), requireSiteAccess: async () => ({ ok: true, value: { owner_org_id: 'org', site: { id: 'site' }, versionId: 'main', session: {} } }), requirePermission: () => ({ ok: true }) }));
-vi.mock('../../lib/api-auth', async original => ({ ...await original<typeof import('../../lib/api-auth')>(), requireApiKey: async () => ({ ok: true, value: { orgId: 'org', siteId: 'site', versionId: 'main', permission: 'admin' } }) }));
+vi.mock('../../lib/api-auth', async original => ({ ...await original<typeof import('../../lib/api-auth')>(), requireApiKey: async (request: Request) => ({ ok: true, value: { request, keyPrefix: 'synthetic', path: '/deploy', orgId: 'org', siteId: 'site', versionId: 'main', permission: 'admin' } }) }));
 async function engine(provider: 'cloudflare' | 'github' = 'cloudflare', extra = {}) {
   await getStore().setDoc(enginePath('org', provider), { provider, state: 'ready', enabled: true });
   await getStore().setDoc(engineConfigurationPath('org', provider), { provider, status: 'ready', revision: 'engine', account_id: 'cf-account', installation_id: 'installation', owner: 'owner', github: { owner_id: 'github-account' }, static_verification: true, media_preparation: true, publication_validation: 1, ...extra });
@@ -54,9 +54,11 @@ it('requires the selected provider and its current connections', async () => {
   await engine('github', { account_id: 'old-account' });
   expect((await publishingReadiness('org', 'site')).required).toContainEqual(expect.objectContaining({ code: 'build_connection_changed' }));
 });
-it('checks the version host without requiring traffic cutover before the first candidate', async () => {
+it('requires a temporary base for first publication and keeps saved future hosts inert', async () => {
   await getStore().setDoc(organizationDomainConfigPath('org'), { sites_domain: null });
   await getStore().setDoc(siteDomainConfigPath('org', 'site'), { desired: { website_host: 'www.example.com' }, state: 'declared' });
+  expect((await publishingReadiness('org', 'site')).required).toContainEqual(expect.objectContaining({ code: 'publishing_domain_required' }));
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'current.example.com', media_host: null, media_path_prefix: '' } });
   expect((await publishingReadiness('org', 'site')).ready).toBe(true);
   expect((await publishingReadiness('org', 'site', 'new-version')).required).toContainEqual(expect.objectContaining({ code: 'publishing_domain_required' }));
 });
@@ -120,4 +122,30 @@ it('exposes missing artifact-validation capability before publication on either 
     expect((await publishingReadiness('org', 'site')).required).toContainEqual(expect.objectContaining({ code: 'build_engine_update_required' }));
     expect((await readBuildSettings('org')).engines[provider]).toMatchObject({ enabled: false, state: 'setup_required' });
   }
+});
+
+
+it.each([['UI', deployUi], ['API/MCP', deployApi]] as const)('accepts %s normal publication while a future-domain candidate waits', async (_label, route) => {
+  const queue = await import('../../lib/deploy/queue');
+  const enqueue = vi.fn();
+  const spy = vi.spyOn(queue, 'getDeployQueue').mockReturnValue({ enqueue } as never);
+  try {
+    await getStore().setDoc(siteDomainConfigPath('org', 'site'), {
+      revision: 'future', desired: { website_host: 'pending-zone.example.com', media_host: 'pending-media.example.com', media_path_prefix: '' },
+      active: { website_host: 'current.sites.example.com', media_host: null, media_path_prefix: '' },
+      dns_mode: 'automatic', active_dns_mode: 'automatic', state: 'preparing', media_aliases: [],
+    });
+    await getStore().setDoc(paths.deploy('org', 'site', 'candidate'), {
+      version_id: 'main', status: 'running', execution_backend: 'customer_git', publication_intent: 'domain_prepare', phase: 'waiting for domain validation', started_at: new Date().toISOString(),
+    });
+    const response = await route({ params: { siteId: 'site' }, request: new Request('http://localhost/deploy', { method: 'POST', body: '{}' }), cookies: {}, locals: {} } as any);
+    expect(response.status).toBeLessThan(300);
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    expect(enqueue.mock.calls[0][0].jobId).not.toBe('candidate');
+    const { GET } = await import('../../pages/api/sites/[siteId]/deploy');
+    const progress = await GET({ params: { siteId: 'site' }, cookies: {}, locals: {} } as any);
+    const result = await progress.json();
+    expect(result.active_job.id).toBe(enqueue.mock.calls[0][0].jobId);
+    expect(result.latest_job.id).not.toBe('candidate');
+  } finally { spy.mockRestore(); }
 });

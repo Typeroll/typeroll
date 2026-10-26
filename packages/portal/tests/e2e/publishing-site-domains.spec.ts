@@ -18,6 +18,7 @@ async function customerPublishingSite() {
 }
 
 const base = {
+  next_publication: { message: 'Normal publication continues at the current address. Choose Prepare for domain switch shortly before changing DNS.' },
   revision: 'r1', dns_mode: 'automatic', state: 'declared', media_aliases: [],
   active: { website_host: 'old.sites.example.com', media_host: null, media_path_prefix: '' },
   desired: { website_host: 'example.com', media_host: null, media_path_prefix: '', redirect_hosts: ['www.example.com'] },
@@ -49,17 +50,17 @@ test('shows pending-zone blockers before preparation and saves redirect hosts', 
   const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Website and media addresses', exact: true }) });
   await expect(section.getByRole('alert')).toContainText('Resolve before preparing the domain change');
   await expect(section.getByRole('alert')).toContainText('status is pending');
-  await expect(section.getByRole('button', { name: 'Prepare domain change from published content' })).toBeDisabled();
+  await expect(section.getByRole('button', { name: 'Prepare for domain switch' })).toBeDisabled();
   await expect(section.getByLabel('Redirect hosts')).toHaveValue('www.example.com');
   await noHorizontalScroll(page);
   await page.screenshot({ path: info.outputPath('site-domain-blockers.png'), fullPage: true });
   await section.getByLabel('Redirect hosts').fill('www.example.com, old.example.com');
   await section.getByRole('button', { name: 'Save domain settings' }).click();
-  await expect(section.getByRole('status')).toContainText('Future addresses saved');
+  await expect(section.getByText(/Future addresses saved/)).toBeVisible();
   expect(saved).toMatchObject({ revision: 'r1', website_host: 'example.com', redirect_hosts: 'www.example.com, old.example.com' });
   await expect(section.getByLabel('Redirect hosts')).toHaveValue('old.example.com, www.example.com');
   await expect(section.getByRole('alert')).toHaveCount(0);
-  await expect(section.getByRole('button', { name: 'Prepare domain change from published content' })).toBeEnabled();
+  await expect(section.getByRole('button', { name: 'Prepare for domain switch' })).toBeEnabled();
 });
 
 test('requires explicit acceptance of the validation window and shows the redirect rule', async ({ page }, info) => {
@@ -90,25 +91,60 @@ test('requires explicit acceptance of the validation window and shows the redire
   await page.screenshot({ path: info.outputPath('site-domain-validation-window.png'), fullPage: true });
   await section.getByLabel(/accept that example.com does not answer/).check();
   await button.click();
-  await expect(section.getByRole('status')).toContainText('Traffic switch approved');
+  await expect(section.getByText(/Traffic switch approved/)).toBeVisible();
   expect(approval).toEqual({ revision: 'r1', candidate_id: 'candidate', accept_validation_window: true });
 });
 
 test('explains future-host builds and warns about frozen noindex before cutover', async ({ page }, info) => {
   await customerPublishingSite();
   await page.route(endpoint, route => route.fulfill({json:{...base,state:'ready_to_switch',
-    next_publication:{error:'This build prepares a domain-switch candidate and does not update the current test address.'},
+    next_publication:{message:'Normal publication continues at the current test address. Prepare for domain switch is a separate action.'},
     candidate:{id:'candidate',sitewide_noindex:true,robots_blocked:false},
     preparation:{hostname:'example.com',certificate_ready:true,has_existing_traffic:false,requirements:[]},
     host_checks:{blockers:[],warnings:[]}}}));
   await authenticatePersona(page,'owner');
   await page.goto(`/app/sites/${site}/settings`);
-  await expect(page.getByText(/does not update the current test address/)).toBeVisible();
+  await expect(page.getByText(/Normal publication continues at the current test address/)).toBeVisible();
   await expect(page.getByRole('alert')).toContainText('This frozen candidate has noindex enabled');
-  await expect(page.getByRole('alert')).toContainText('A domain-only preparation reuses the old published settings');
+  await expect(page.getByRole('alert')).toContainText('The prepared candidate uses the last published settings');
   await noHorizontalScroll(page);
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({width,height:900});
-    await page.locator('section').filter({has:page.getByRole('heading',{name:'Website and media addresses',exact:true})}).screenshot({path:info.outputPath(`domain-candidate-indexing-${width}.png`)});
+    await page.getByRole('heading', {name:'Website and media addresses',exact:true}).evaluate(element => window.scrollTo(0, element.getBoundingClientRect().top + scrollY - 80));
+    await page.screenshot({path:info.outputPath(`domain-candidate-indexing-${width}.png`), animations: 'disabled'});
+  }
+});
+
+
+test('only prepares the future-host snapshot after an explicit click and explains outdated candidates', async ({ page }, info) => {
+  await customerPublishingSite();
+  let calls = 0;
+  let state = 'declared';
+  await page.route(endpoint, route => route.fulfill({ json: { ...base, state,
+    host_checks: { blockers: [], warnings: [] },
+    ...(state === 'outdated' ? { candidate: { id: 'older' }, preparation: { hostname: 'example.com', certificate_ready: true, requirements: [] } } : {}),
+  } }));
+  await page.route(`**/api/sites/${site}/publishing/prepare`, route => {
+    calls++;
+    expect(route.request().postDataJSON()).toEqual({ revision: 'r1' });
+    return route.fulfill({ json: { job_id: 'candidate', already_running: false } });
+  });
+  await authenticatePersona(page, 'owner');
+  await page.goto(`/app/sites/${site}/settings`);
+  const section = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Website and media addresses', exact: true }) });
+  await expect(section.getByText(/Normal publication continues/)).toBeVisible();
+  expect(calls).toBe(0);
+  await section.getByRole('button', { name: 'Prepare for domain switch' }).click();
+  await expect(section.getByText(/Preparing the last published content/)).toBeVisible();
+  expect(calls).toBe(1);
+  state = 'outdated';
+  await page.reload();
+  await expect(section.getByRole('alert')).toContainText('Newer content is live at the current address');
+  await expect(section.getByRole('button', { name: 'Switch website traffic' })).toHaveCount(0);
+  await expect(section.getByRole('button', { name: 'Prepare for domain switch' })).toBeEnabled();
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await section.evaluate(element => window.scrollTo(0, element.getBoundingClientRect().top + scrollY - 80));
+    await page.screenshot({ path: info.outputPath(`domain-preparation-outdated-${width}.png`), animations: 'disabled' });
   }
 });

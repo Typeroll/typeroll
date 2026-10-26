@@ -103,22 +103,20 @@ normal approval flow. A separately authorized provider-side setup with a supplie
 beacon token is an alternative, not a way to bypass Organization permissions.
 Never expose a provider API token as a public beacon token.
 
-Finish compiled test-host review before declaring future hosts when practical.
-From Core 0.2.106, differing future hosts require explicit
-`domain_candidate_revision` on `trigger_deploy`: this prepares saved content for
-cutover; it does not update the old test/live host. Read `next_publication` in
-`read_publishing_domains`. Use signed previews for ongoing review or a separate
-Version for a new compiled test address. Do not repeatedly start an already
-waiting job. `prepare_publishing_domain_change` moves the last successful public
-snapshot, not later saved CMS changes. Review the frozen candidate's noindex
-status: changing current settings cannot alter that candidate. If intentional
-public indexing is required, save the approved indexing setting before preparing
-the saved-content candidate. If the old candidate is still waiting, read the
-current revision and re-save the same reviewed hosts to supersede it without
-switching DNS; confirm the new revision for the new saved-content build.
-Platform protection still keeps temporary hosts
-noindex. Keep MX/SPF and unrelated DNS unchanged; review any validation window
-and obtain the already-defined traffic-switch authorization.
+From Core 0.2.106, saving future hosts does not redirect normal publication.
+Keep using `trigger_deploy` to update and review the current/temporary address.
+Read `next_publication` in `read_publishing_domains` for the destination.
+Shortly before DNS changes, deliberately call `prepare_publishing_domain_change`
+with the current revision. It prepares the last successful public snapshot,
+not later unpublished CMS edits. Review its frozen indexing settings and DNS
+requirements, then approve traffic separately. If another normal publication
+succeeds while the candidate waits, prepare again: an outdated snapshot cannot
+replace newer published content. There is no need to clear saved future hosts.
+To correct candidate indexing, save the intended setting, publish normally, and
+prepare again. Temporary-host protection keeps the review address noindex even
+when the published authored setting permits indexing on the future host.
+Keep MX/SPF and unrelated DNS unchanged; review any validation window and obtain
+the already-defined traffic-switch authorization.
 
 ## Owner-supplied facts and photos
 

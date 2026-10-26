@@ -20,7 +20,7 @@ type DomainData = {
   preparation?: Preparation | null;
   media_preparation?: Preparation | null;
   redirect_preparations?: RedirectPreparation[] | null;
-  next_publication?: { error: string } | null;
+  next_publication?: { message: string } | null;
   host_checks?: { blockers: HostCheckItem[]; warnings: HostCheckItem[] } | null;
 };
 
@@ -177,8 +177,8 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <ul>{hostBlockers.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul>
     </div>}
     {siteId && hostWarnings.length > 0 && <div className="muted"><strong>Check before preparing</strong><ul>{hostWarnings.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul></div>}
-    {siteId && data?.next_publication && <p role="status">{data.next_publication.error}</p>}
-    {siteId && data?.active && data.state !== 'live' && <button type="button" className="btn" disabled={busy || hostBlockers.length > 0} onClick={() => void prepare()}>Prepare domain change from published content</button>}
+    {siteId && data?.next_publication && <p role="status">{data.next_publication.message}</p>}
+    {siteId && data?.active && data.next_publication && data.state !== 'live' && <button type="button" className="btn" disabled={busy || hostBlockers.length > 0} onClick={() => void prepare()}>Prepare for domain switch</button>}
     {data?.preparation && <div className="stack">
       <h3>Domain verification</h3>
       {validationBlocker && <div role="alert" style={alertStyle}><strong>{windowRequired ? 'The switch has a short validation window' : 'Domain transition needs a DNS change outside Typeroll'}</strong><p>{validationBlocker.message}</p></div>}
@@ -209,9 +209,10 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
         {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME. A redirect host needs its proxied record and redirect rule; it does not serve pages.</p>}
       </details>
       <button type="button" className="btn" disabled={busy || checking} onClick={() => void checkSiteDomain()}>{checking ? 'Checking…' : 'Refresh verification'}</button>
+      {data.state === 'outdated' && <p role="alert">Newer content is live at the current address. Prepare for domain switch again to include it before changing DNS.</p>}
       {data.candidate && data.state === 'ready_to_switch' && <>
         <p>The prepared build uses the future website and media addresses. Switching traffic makes this build public.</p>
-        {data.candidate?.sitewide_noindex === true && <p role="alert">This frozen candidate has noindex enabled. Switching traffic will not make it indexable. If search indexing is intended, do not switch this candidate: change the site indexing setting and prepare a new saved-content candidate. A domain-only preparation reuses the old published settings.</p>}
+        {data.candidate?.sitewide_noindex === true && <p role="alert">This frozen candidate has noindex enabled. Switching traffic will not make it indexable. If search indexing is intended, do not switch this candidate: save the intended indexing setting, publish normally at the current address, then choose Prepare for domain switch again. The prepared candidate uses the last published settings.</p>}
         {data.candidate && data.candidate.sitewide_noindex === undefined && <p>Indexing status is unavailable for this older candidate. Verify its actual robots output before switching traffic; current CMS settings do not change a frozen candidate.</p>}
         {windowRequired && <label className="field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
           <input type="checkbox" checked={acceptWindow} onChange={event => setAcceptWindow(event.target.checked)} style={{ width: 'auto', marginTop: '0.25rem' }} />

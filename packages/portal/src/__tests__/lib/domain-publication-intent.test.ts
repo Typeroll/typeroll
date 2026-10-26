@@ -4,11 +4,11 @@ import type { DomainConfiguration } from '../../lib/publishing/domain-config';
 const hosts = {website_host:'old.example.com',media_host:null,media_path_prefix:''};
 const config: DomainConfiguration = {revision:'new-revision',active:hosts,desired:{...hosts,website_host:'new.example.com'},dns_mode:'automatic',state:'declared',media_aliases:[]};
 describe('publication domain intent', () => {
-  it('names both hosts and requires acknowledgement of the exact revision', () => {
-    expect(domainPublicationIntent(config)).toMatchObject({code:'domain_candidate_confirmation_required',revision:'new-revision',current_host:'old.example.com',future_host:'new.example.com',updates_current_host:false});
+  it('explains that ordinary publication continues at the current host', () => {
+    expect(domainPublicationIntent(config)).toMatchObject({revision:'new-revision',current_host:'old.example.com',future_host:'new.example.com',updates_current_host:true,requires_confirmation:false});
   });
   it('does not interrupt ordinary or first publications', () => {
-    expect(domainPublicationIntent({...config,active:null})).toBeNull();
+    expect(domainPublicationIntent({...config,active:null})).toMatchObject({current_host:null,updates_current_host:true});
     expect(domainPublicationIntent({...config,desired:hosts})).toBeNull();
   });
   it('also explains media-only and redirect-only preparations', () => {
@@ -17,7 +17,7 @@ describe('publication domain intent', () => {
   });
 });
 
-it('blocks API queueing until the current candidate revision is explicitly confirmed', async () => {
+it('accepts ordinary API publication without confirming declared future domains', async () => {
   const { makeTmpFixtures, resetDatastore } = await import('../helpers/tmp-fixtures');
   const { getStore } = await import('../../lib/datastore');
   const { paths } = await import('@typeroll/shared');
@@ -35,14 +35,9 @@ it('blocks API queueing until the current candidate revision is explicitly confi
   try {
     const {POST}=await import('../../pages/api/v1/sites/[siteId]/deploy');
     const call=(body:object)=>POST({params:{siteId:site},request:new Request('https://cms.example.com/api/v1/sites/site/deploy',{method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},body:JSON.stringify({dry_run:true,...body})})} as never);
-    for(const body of [{},{domain_candidate_revision:'stale'}]) {
-      const response=await call(body);expect(response.status).toBe(409);
-      expect(await response.json()).toMatchObject({revision:'new-revision',updates_current_host:false});
-      expect(enqueue).not.toHaveBeenCalled();
-    }
-    const response=await call({domain_candidate_revision:'new-revision'});expect(response.status).toBe(202);
+    const response=await call({});expect(response.status).toBe(202);
     const result=await response.json();
-    expect(await store.getDoc(paths.deploy(org,site,result.job_id))).toMatchObject({domain_candidate_revision:'new-revision'});
+    expect(await store.getDoc(paths.deploy(org,site,result.job_id))).not.toHaveProperty('publication_intent');
     expect(enqueue).toHaveBeenCalledTimes(1);
   } finally {spy.mockRestore();}
 });

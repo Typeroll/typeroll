@@ -8,9 +8,10 @@ vi.mock('../../lib/deploy/queue', () => ({ getDeployQueue: () => ({ enqueue }) }
 let revision: string;
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); enqueue.mockReset(); enqueue.mockResolvedValue(undefined);
+  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'baseline' } });
   revision = (await getSiteDomains('org', 'site')).revision;
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), {
-    candidate: { id: 'frozen', revision, job_id: 'job' },
+    candidate: { id: 'frozen', revision, job_id: 'job', source_publication_id: 'baseline' },
     preparation: { hostname: 'www.example.com', certificate_ready: true, has_existing_traffic: true, requirements: [], dns_fingerprint: 'dns' },
   });
   await getStore().setDoc(paths.deploy('org', 'site', 'job'), { status: 'running', phase: 'awaiting domain cutover approval',

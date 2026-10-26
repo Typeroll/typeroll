@@ -1,4 +1,3 @@
-import { confirmPublicationDestination } from './confirmPublicationDestination';
 /**
  * Shared status indicator + deploy button used across the three editors
  * (HtmlPageEditor, PartialEditor). The goal is a
@@ -100,23 +99,18 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
   const busy = job?.status === 'queued' || job?.status === 'running';
 
   async function go() {
-    if (busy) return;
-    const currentSetup = await refresh();
-    if (!currentSetup?.ready) return;
+    if (busy || !(await refresh())?.ready) return;
     const message = env === 'production'
       ? 'Deploy to your live production site? This rebuilds the static files and uploads them. Visitors will see the new version once it finishes.'
       : 'Deploy to the staging URL? Visitors won\'t see this.';
-    let destination: { domain_candidate_revision?: string } | null;
-    try { destination = await confirmPublicationDestination(siteId, currentSetup.mode === 'customer_git', message); }
-    catch (error) { setErr(error instanceof Error ? error.message : 'Could not check the publication destination.'); return; }
-    if (!destination) return;
+    if (!confirm(message)) return;
     setErr(null);
     setJob({ status: 'queued', phase: 'starting' });
     try {
       const res = await fetch(`/api/sites/${siteId}/deploy`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: currentSetup.mode === 'customer_git' ? 'production' : env, ...destination }),
+        body: JSON.stringify({ environment: setup?.mode === 'customer_git' ? 'production' : env }),
       });
       const data = await res.json();
       if (!res.ok && data.code === 'publishing_setup_required') {
