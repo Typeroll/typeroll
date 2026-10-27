@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.116 / MCP 0.45.87 (candidate)
+
+- Publish for a new domain replaces main at the current address before DNS
+  changes. DNS approval reuses that same commit and artifact without another
+  push, build or upload. Later content publications retain the new origins.
+- Separate saved future hosts, embedded publication origins and verified traffic.
+  Guard DNS approval against concurrent publications and stale artifact receipts;
+  preserve published origins when later provider checks fail.
+- Refresh domain setup without rebuilding. Retain certificate, redirect,
+  validation-window and rollback checks; DNS rollback does not revert content.
+- Update portal guidance, public/API docs, MCP tools and starter migration
+  workflow. Legacy preview-branch preparations require one explicit main
+  publication. Render version remains 11; no sites are republished automatically.
+
 ## 0.2.115 (unreleased)
 
 - Render version 11 restores contextual heading spacing through columns and

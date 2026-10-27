@@ -67,7 +67,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       if (!response.ok) throw new Error(result.error || 'Could not save domain settings.');
       setData(result); setDnsMode(result.dns_mode);
       if (siteId) window.dispatchEvent(new Event('typeroll:site-domains-changed'));
-      setNotice(siteId ? 'Future addresses saved. Prepare and verify a deployment before switching website traffic.' : 'Organization domains saved. Check the connection status and next steps below.');
+      setNotice(siteId ? 'Future addresses saved. The deployed site is unchanged. Choose Publish for the new domain when ready to replace main, then switch DNS.' : 'Organization domains saved. Check the connection status and next steps below.');
     } catch (error) { setError(error instanceof Error ? error.message : 'Could not save domain settings.'); }
     finally { setBusy(false); }
   }
@@ -171,9 +171,9 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
         {!validationBlocker && <p className="muted">In Cloudflare, select your domain → DNS → Records. Add validation records first. Apply the website CNAME only after the prepared deployment is ready. Version addresses require a proxied Cloudflare CNAME. A redirect host needs its proxied record and redirect rule; it does not serve pages.</p>}
       </details>
     </details>}
-    {data?.state === 'outdated' && <p role="alert">Newer content is live at the current address. Prepare for domain switch again to include it before changing DNS.</p>}
+    {data?.state === 'outdated' && <p role="alert">This older preparation is not the current main publication. Choose Publish for the new domain before switching DNS.</p>}
     {data?.candidate && data.state === 'ready_to_switch' && <>
-      {data.candidate.sitewide_noindex === true && <p role="alert">This frozen candidate has noindex enabled. Switching traffic will not make it indexable. If search indexing is intended, do not switch this candidate: save the intended indexing setting, publish normally at the current address, then choose Prepare for domain switch again. The prepared candidate uses the last published settings.</p>}
+      {data.candidate.sitewide_noindex === true && <p role="alert">This publication has noindex enabled. Switching DNS will not make it indexable. If search indexing is intended, save the intended indexing setting and publish normally. The DNS approval will then refer to that latest publication.</p>}
       {data.candidate.sitewide_noindex === undefined && <p>Indexing status is unavailable for this older candidate. Verify its actual robots output before switching traffic; current CMS settings do not change a frozen candidate.</p>}
     </>}
     {!siteId && data && <OrganizationDomainSetup data={data} busy={busy || checking} onSetup={setupOrganization} feedback={feedbackLocation === 'setup' ? organizationFeedback : undefined} />}
@@ -198,7 +198,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
         <option value="automatic">Typeroll (automatic)</option>
         <option value="external">Me or my AI agent</option>
       </select></label>
-      <p className="muted">{siteId ? 'Saving sets future addresses. Prepare and verify a deployment before switching website traffic.' : dnsMode === 'automatic' ? 'Typeroll sets up the media hostname in the connected Cloudflare account after you save. The domain must already be active in that account. DNS at another provider still needs manual setup there.' : 'You or your AI agent set up the domain and DNS records, then Typeroll checks the result. This works with Cloudflare DNS or another DNS provider.'}</p>
+      <p className="muted">{siteId ? 'Saving only records future addresses. Publish for the new domain replaces the same main site with those addresses. Switch DNS afterward.' : dnsMode === 'automatic' ? 'Typeroll sets up the media hostname in the connected Cloudflare account after you save. The domain must already be active in that account. DNS at another provider still needs manual setup there.' : 'You or your AI agent set up the domain and DNS records, then Typeroll checks the result. This works with Cloudflare DNS or another DNS provider.'}</p>
       <p className="muted">External DNS for R2 media requires Cloudflare Business/Enterprise partial (CNAME) setup. Your nameservers and other DNS records stay where they are.</p>
       <div><button className="btn" type="submit" disabled={busy || checking}>{busy ? 'Saving…' : 'Save domain settings'}</button></div>
     {!siteId && feedbackLocation === 'manual' && organizationFeedback}

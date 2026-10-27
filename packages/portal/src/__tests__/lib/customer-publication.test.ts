@@ -176,17 +176,18 @@ it('does not treat main plus staging as authorization to publish the live branch
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('Select a site version') });
 });
 
-it('prepares a future domain on a separate branch while the current website remains active', async () => {
+it('replaces main with future origins before DNS approval without creating a preview branch', async () => {
   const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
   await prepareFromCurrentPublication();
   await executeCustomerPublication(args);
   const candidateBranch = mocks.push.mock.calls[0][1].branch;
-  expect(candidateBranch).toMatch(/^version-domain-/);
+  expect(candidateBranch).toBe('main');
   complete(candidateBranch); mocks.probe.mockResolvedValue(true);
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(mocks.push).toHaveBeenCalledTimes(1);
   expect((await getSiteDomains('org', 'site')).active).toEqual(active);
+  expect((await getSiteDomains('org', 'site')).published).toMatchObject({ hosts: { website_host: 'www.example.com' } });
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ phase: 'awaiting domain cutover approval' });
   await getStore().updateDoc(jobPath, { started_at: '2020-01-01T00:00:00Z' });
   expect(await executeCustomerPublication(args)).toBe('ran');
@@ -282,32 +283,17 @@ it('publishes ordinary edits to main when datastore map ordering changes but hos
   expect((await getStore().getDoc<any>(jobPath)).git_publication.release_branch).toBeUndefined();
 });
 
-it('clears preview identity under Firestore nested-merge semantics before promoting frozen source', async () => {
-  const store = getStore();
-  const update = store.updateDoc.bind(store);
-  vi.spyOn(store, 'updateDoc').mockImplementation(async (path, patch) => {
-    if (path === jobPath && patch.git_publication) {
-      const previous = await store.getDoc<any>(path);
-      patch = { ...patch, git_publication: { ...previous?.git_publication, ...patch.git_publication } };
-    }
-    await update(path, patch);
-  });
-  await update(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
-  await prepareFromCurrentPublication();
+it('rejects legacy preview preparations without promoting or rebuilding them', async () => {
   await executeCustomerPublication(args);
-  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  const store = getStore(), original = await store.getDoc<any>(jobPath);
+  await store.updateDoc(jobPath, { git_publication: { ...original.git_publication, release_branch: 'main', branch: 'version-domain-legacy' } });
+  mocks.push.mockClear();
   await executeCustomerPublication(args);
-  const domains = await getSiteDomains('org', 'site');
-  await update(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: domains.revision, approved_preparation: domains.preparation });
-  await executeCustomerPublication(args);
-  expect((await store.getDoc<any>(jobPath)).git_publication).toMatchObject({ branch: 'main', commit: null, deployment_id: null, release_branch: null });
-  await executeCustomerPublication(args);
-  expect(mocks.push).toHaveBeenCalledTimes(2);
-  expect(mocks.push.mock.calls[1][1].branch).toBe('main');
-  expect(mocks.push.mock.calls[1][1].files).toEqual(mocks.push.mock.calls[0][1].files);
+  expect(await store.getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_republication_required' } });
+  expect(mocks.push).not.toHaveBeenCalled();
 });
 
-it('promotes the verified artifact without dispatching a second shared build', async () => {
+it('switches DNS for the same main artifact without a second push, build or upload', async () => {
   const store = getStore();
   await prepareFromCurrentPublication();
   const provider = mocks.cloudflare.getMockImplementation()!;
@@ -337,8 +323,8 @@ it('promotes the verified artifact without dispatching a second shared build', a
   mocks.deployment = null;
   await executeCustomerPublication(args);
   expect(mocks.enqueue).toHaveBeenCalledTimes(1);
-  expect(mocks.upload).toHaveBeenCalledTimes(2);
-  expect(mocks.upload.mock.calls[0][2]).toEqual(mocks.upload.mock.calls[1][2]);
+  expect(mocks.upload).toHaveBeenCalledTimes(1);
+  expect(mocks.push).toHaveBeenCalledTimes(1);
   expect((await store.getDoc<any>(jobPath)).status).toBe('succeeded');
 });
 
@@ -462,10 +448,18 @@ it('keeps the candidate and existing traffic when the provider cannot prevalidat
     return provider(route, options);
   });
   expect(await executeCustomerPublication(args)).toBe('ran');
-  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_prevalidation_unavailable' }, error: expect.stringContaining('replace the 2 current records') });
-  expect((await getStore().getDoc<any>(jobPath)).error).not.toContain('contact support');
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval' });
+  expect((await getSiteDomains('org', 'site')).state).toBe('preparing');
   expect(await getSiteDomains('org', 'site')).toMatchObject({ active, candidate: { commit: 'b'.repeat(40) }, preparation: { validation_blocker: { code: 'domain_prevalidation_unavailable', resolution: 'external_dns_change' } } });
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
+  mocks.cloudflare.mockImplementation(provider);
+  const {prepareDomainTransition}=await import('../../lib/publishing/domain-transition');
+  const beforeRefresh=await getSiteDomains('org','site');
+  const pushCount=mocks.push.mock.calls.length;
+  expect(await prepareDomainTransition('org','site',{revision:beforeRefresh.revision})).toMatchObject({reused_candidate:true,job_id:args.jobId});
+  expect(await getSiteDomains('org','site')).toMatchObject({state:'ready_to_switch',candidate:{id:beforeRefresh.candidate!.id}});
+  expect(mocks.push).toHaveBeenCalledTimes(pushCount);
+
 });
 
 it.each(['live', 'timeout', 'manual rollback'])('switches one reviewed record after acceptance and handles %s under the publication lease', async (outcome) => {
@@ -476,7 +470,7 @@ it.each(['live', 'timeout', 'manual rollback'])('switches one reviewed record af
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch);
   let validated = false;
-  mocks.probe.mockImplementation(async origin => origin.includes('.pages.dev') || validated);
+  mocks.probe.mockImplementation(async origin => origin.includes('.pages.dev') || origin === 'https://old.example.com' || validated);
   const records: Array<Record<string, unknown>> = [{ id: 'existing', type: 'A', name: 'www.example.com', content: '192.0.2.10', proxied: false }];
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => {
@@ -731,10 +725,7 @@ it('freezes a www redirect host, switches it after approval with the apex and ve
   const prepared = await getSiteDomains('org', 'site');
   expect(prepared.redirect_preparations).toEqual([expect.objectContaining({ hostname: 'www.moveria.se', action: 'approve_cutover', certificate_ready: true, rule: expect.objectContaining({ status: 'configured' }) })]);
   await store.updateDoc(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: prepared.revision, approved_preparation: prepared.preparation, approved_redirect_preparations: prepared.redirect_preparations });
-  await executeCustomerPublication(args);
-  expect((await store.getDoc<any>(jobPath)).git_publication).toMatchObject({ branch: 'main', redirect_preparations: null });
-  await executeCustomerPublication(args);
-  complete('main');
+  expect((await store.getDoc<any>(jobPath)).git_publication.branch).toBe('main');
   redirectProbe.mockResolvedValueOnce({ ok: false, status: 200, location: null });
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(www[0]).toMatchObject({ type: 'A', content: '192.0.2.1', proxied: true });
@@ -765,7 +756,8 @@ it('stops a redirect change with a conflicting zone rule before asking for appro
   await executeCustomerPublication(args);
   complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
   expect(await executeCustomerPublication(args)).toBe('ran');
-  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'redirect_rule_conflict' } });
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval' });
+  expect(await getSiteDomains('org','site')).toMatchObject({state:'preparing',redirect_preparations:[{blocker:{code:'redirect_rule_conflict'}}]});
   expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/rulesets') && options?.method)).toBe(false);
   expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/dns_records') && options?.method)).toBe(false);
 });
@@ -867,7 +859,7 @@ it('reports noindex from the prepared published snapshot rather than later CMS s
   expect((await getSiteDomains('org','site')).candidate).toMatchObject({sitewide_noindex:true,robots_blocked:false});
 });
 
-it('keeps normal publication usable while a candidate awaits approval and rejects its old content', async () => {
+it('keeps future origins in normal publications before DNS and refreshes the main receipt', async () => {
   const store=getStore();
   await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
   await prepareFromCurrentPublication(); await executeCustomerPublication(args);
@@ -882,11 +874,15 @@ it('keeps normal publication usable while a candidate awaits approval and reject
   await store.setDoc(paths.deploy('org','site',next.jobId),{version_id:'main',status:'queued'});
   mocks.deployment=null; mocks.probe.mockResolvedValue(false);
   await executeCustomerPublication(next); complete(); mocks.probe.mockResolvedValue(true); await executeCustomerPublication(next);
-  expect(await store.getDoc(paths.deploy('org','site',next.jobId))).toMatchObject({status:'succeeded',deploy_url:'https://old.example.com'});
-  expect(await getSiteDomains('org','site')).toMatchObject({state:'outdated',desired:{website_host:'www.example.com'}});
+  expect(await store.getDoc(paths.deploy('org','site',next.jobId))).toMatchObject({status:'running',phase:'awaiting domain cutover approval',deploy_url:'https://old.example.com'});
+  const updated=await getSiteDomains('org','site');
+  expect(updated).toMatchObject({state:'ready_to_switch',published:{hosts:{website_host:'www.example.com'}},candidate:{job_id:'current-update'}});
+  expect(updated.candidate!.id).not.toBe(prepared.candidate!.id);
+  expect(JSON.parse(mocks.push.mock.calls.at(-1)![1].files['publication.json']).site_url).toBe('https://www.example.com');
+  expect(await prepareDomainTransition('org','site',{revision:updated.revision})).toMatchObject({job_id:'current-update',reused_candidate:true});
   const {approveDomainCutover}=await import('../../lib/publishing/domain-config');
-  await expect(approveDomainCutover('org','site',{revision:prepared.revision,candidate_id:prepared.candidate!.id})).rejects.toMatchObject({code:'domain_candidate_outdated'});
-  expect(await store.getDoc(jobPath)).toMatchObject({phase:'superseded'});
+  await expect(approveDomainCutover('org','site',{revision:prepared.revision,candidate_id:prepared.candidate!.id})).rejects.toMatchObject({code:'domain_revision_conflict'});
+  expect(await store.getDoc(jobPath)).toMatchObject({status:'succeeded',phase:'replaced by newer publication'});
 });
 
 
@@ -908,4 +904,88 @@ it('requires explicit preparation instead of resuming an older automatically ret
   await executeCustomerPublication(args);
   expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'explicit_domain_preparation_required' } });
   expect(mocks.push).not.toHaveBeenCalled();
+});
+
+it('does not apply newly saved origins during a normal edit of the pending main publication', async () => {
+  const store = getStore();
+  await store.updateDoc(siteDomainConfigPath('org','site'), {active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await prepareFromCurrentPublication(); await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true); await executeCustomerPublication(args);
+  const prepared = await getSiteDomains('org','site');
+  await saveSiteDomains('org','site', { revision: prepared.revision, website_host:'later.example.com', dns_mode:'automatic' });
+  await store.updateDoc(paths.page('org','site','home'),{html_content:'<h1>Another update</h1>'});
+  const next = {...args,jobId:'next-edit'};
+  await store.setDoc(paths.deploy('org','site',next.jobId),{version_id:'main',status:'queued'});
+  mocks.deployment=null; mocks.probe.mockResolvedValue(false); mocks.cloudflare.mockClear();
+  await executeCustomerPublication(next); complete(); mocks.probe.mockResolvedValue(true); await executeCustomerPublication(next);
+  expect(await store.getDoc(paths.deploy('org','site',next.jobId))).toMatchObject({status:'succeeded',deploy_url:'https://old.example.com'});
+  expect(await getSiteDomains('org','site')).toMatchObject({desired:{website_host:'later.example.com'},published:{hosts:{website_host:'www.example.com'}},candidate:null});
+  expect(JSON.parse(mocks.push.mock.calls.at(-1)![1].files['publication.json']).site_url).toBe('https://www.example.com');
+  expect(mocks.cloudflare.mock.calls.some(([route,options])=>route.includes('/dns_records') && options?.method)).toBe(false);
+});
+
+it('waits for an actively approved DNS switch instead of replacing its artifact', async () => {
+  const store = getStore();
+  await store.updateDoc(siteDomainConfigPath('org','site'),{state:'distributing',candidate:{id:'approved',job_id:'dns-job'}});
+  expect(await executeCustomerPublication(args)).toBe('deferred');
+  expect(await store.getDoc(jobPath)).toMatchObject({waiting_for_job_id:'dns-job',phase:'waiting for the domain traffic switch'});
+  expect((await store.getDoc<any>(`${paths.site('org','site')}/publishing_targets/main`)).job_id).toBeNull();
+  expect(mocks.push).not.toHaveBeenCalled();
+});
+
+it('retains the main origins when domain setup fails after replacing the artifact', async () => {
+  const store=getStore();
+  await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await prepareFromCurrentPublication(); await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true);
+  const provider=mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route,options)=> {
+    if(route.includes('/domains/')) throw new ProviderError('Cloudflare',403,[9109]);
+    return provider(route,options);
+  });
+  await executeCustomerPublication(args);
+  expect(await store.getDoc(jobPath)).toMatchObject({status:'failed'});
+  const domains=await getSiteDomains('org','site');
+  expect(domains).toMatchObject({active:{website_host:'old.example.com'},published:{hosts:{website_host:'www.example.com'}}});
+  const {activePublicationDomains}=await import('../../lib/publishing/domain-config');
+  expect(activePublicationDomains(domains).desired.website_host).toBe('www.example.com');
+});
+
+it('requires fresh approval after a failed switch even when the embedded origins are unchanged', async () => {
+  const store=getStore();
+  await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await prepareFromCurrentPublication(); await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true); await executeCustomerPublication(args);
+  const before=await getSiteDomains('org','site');
+  const previous=(await store.getDoc<any>(`${paths.site('org','site')}/publishing_targets/main`)).last_publication;
+  await store.updateDoc(siteDomainConfigPath('org','site'),{state:'failed',rollback_status:'rolled_back',cutover_approved_revision:before.revision,approved_preparation:before.preparation});
+  const next={...args,jobId:'after-rollback'};
+  await store.setDoc(paths.deploy('org','site',next.jobId),{status:'queued',version_id:'main',publication_intent:'domain_prepare',domain_revision:before.revision,source_publication:previous});
+  mocks.deployment=null; mocks.probe.mockResolvedValue(false); mocks.cloudflare.mockClear();
+  await executeCustomerPublication(next); complete(); mocks.probe.mockResolvedValue(true); await executeCustomerPublication(next);
+  const after=await getSiteDomains('org','site');
+  expect(after.candidate!.id).not.toBe(before.candidate!.id);
+  expect(after).toMatchObject({state:'ready_to_switch',cutover_approved_revision:null});
+  expect(await store.getDoc(paths.deploy('org','site',next.jobId))).toMatchObject({phase:'awaiting domain cutover approval'});
+  expect(mocks.cloudflare.mock.calls.some(([route,options])=>route.includes('/dns_records') && options?.method)).toBe(false);
+});
+
+it('records the actual replaced origins even if future settings change during the provider request', async () => {
+  const store=getStore();
+  await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await prepareFromCurrentPublication(); await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true);
+  const before=await getSiteDomains('org','site');
+  const provider=mocks.cloudflare.getMockImplementation()!;
+  let changed=false;
+  mocks.cloudflare.mockImplementation(async (route,options)=> {
+    if(!changed) {
+      changed=true;
+      await saveSiteDomains('org','site',{revision:before.revision,website_host:'later.example.com',dns_mode:'automatic'});
+    }
+    return provider(route,options);
+  });
+  await executeCustomerPublication(args);
+  expect(await store.getDoc(jobPath)).toMatchObject({status:'failed',failure:{code:'domain_revision_conflict'}});
+  expect(await getSiteDomains('org','site')).toMatchObject({desired:{website_host:'later.example.com'},published:{hosts:{website_host:'www.example.com'},job_id:args.jobId},cutover_approved_revision:null});
 });

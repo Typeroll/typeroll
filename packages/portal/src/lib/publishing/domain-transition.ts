@@ -1,6 +1,8 @@
 import { domainPublicationRevision, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { prepareRedirectHosts, redirectApprovalBlocker } from './redirect-hosts';
-import { validationWindowAllowed } from './domain-provider';
+import { cloudflareClient } from './cloudflare-oauth';
+import { hostingDns } from './hosting-dns';
+import { preparePagesDomain, validationWindowAllowed } from './domain-provider';
 import { siteHostingGroup } from './hosting-groups';
 import { paths, type DeployJob, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -22,17 +24,28 @@ export async function prepareDomainTransition(orgId: string, siteId: string, inp
   if (domains.state === 'distributing') throw new ConnectionError('The traffic switch is already in progress.', 409, 'domain_cutover_in_progress');
   if (!target?.last_publication?.snapshot_job_id) throw new ConnectionError('Publish the site once before preparing a domain-only change. Normal publication uses the current or temporary address.', 409, 'first_publication_required');
   const candidateJob = jobs.find(job => job.id === domains.candidate?.job_id && job.status === 'running' && (job as any).git_publication?.publication_id === domains.candidate?.id);
-  if (candidateJob && !['live', 'failed', 'outdated'].includes(domains.state) && !!domains.candidate?.source_publication_id && domains.candidate.source_publication_id === target.last_publication.publication_id && domains.candidate && domains.candidate.revision === domainPublicationRevision(domains) && domains.preparation && domains.desired.website_host) {
+  if (candidateJob && !['live', 'failed', 'outdated'].includes(domains.state) && domains.published?.publication_id === domains.candidate?.id && domains.candidate?.id === target.last_publication.publication_id && domains.candidate && domains.candidate.revision === domainPublicationRevision(domains) && domains.preparation && domains.desired.website_host) {
     const group = await siteHostingGroup(orgId, siteId);
+    const publication = (candidateJob as any).git_publication;
+    const refresh = async (prepared: NonNullable<DomainConfiguration['preparation']>) => {
+      if (prepared.certificate_ready && !prepared.validation_blocker) return prepared;
+      const provider = await cloudflareClient(orgId, fetch, undefined, group.id);
+      const dns = domains.dns_mode === 'automatic' ? await hostingDns(orgId, group.id, prepared.hostname) : null;
+      return preparePagesDomain(provider, { accountId: publication.account_id, project: publication.project,
+        branch: 'main', hostname: prepared.hostname, configureTraffic: false, dnsMode: domains.dns_mode,
+        dnsProvider: dns?.provider, dnsAccountId: dns?.accountId, orgId });
+    };
+    const preparation = await refresh(domains.preparation);
+    const media = domains.media_preparation ? await refresh(domains.media_preparation) : null;
     const redirects = await prepareRedirectHosts(orgId, group.id, { hosts: domains.desired.redirect_hosts ?? [], target: domains.desired.website_host, dnsMode: domains.dns_mode, configureTraffic: false });
     const changed = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
       current => current.revision === domains.revision && current.candidate?.id === domains.candidate!.id && current.state !== 'distributing' && current.state !== 'outdated',
-      { redirect_preparations: redirects.length ? redirects : null,
-        state: redirects.some(item => redirectApprovalBlocker(item)) || (domains.preparation.validation_blocker && !validationWindowAllowed(domains.preparation)) || (domains.media_preparation && !domains.media_preparation.certificate_ready && domains.media_preparation.has_existing_traffic !== false) ? 'preparing' : 'ready_to_switch' });
+      { preparation, media_preparation: media, redirect_preparations: redirects.length ? redirects : null,
+        state: redirects.some(item => redirectApprovalBlocker(item)) || (preparation.validation_blocker && !validationWindowAllowed(preparation)) || (!preparation.certificate_ready && preparation.has_existing_traffic !== false && !validationWindowAllowed(preparation)) || (media && !media.certificate_ready && media.has_existing_traffic !== false) ? 'preparing' : 'ready_to_switch' });
     if (!changed) throw new ConnectionError('Domain settings changed. Reload before preparing.', 409, 'domain_revision_conflict');
     return { job_id: domains.candidate.job_id ?? null, already_running: false, reused_candidate: true, candidate_id: domains.candidate.id };
   }
-  const existing = domains.state !== 'outdated' && !!domains.candidate?.source_publication_id && domains.candidate.source_publication_id === target.last_publication.publication_id
+  const existing = domains.state !== 'outdated' && domains.published?.publication_id === domains.candidate?.id && domains.candidate?.id === target.last_publication.publication_id
     ? jobs.find(job => job.id === domains.candidate?.job_id && ['queued', 'running'].includes(job.status)) : null;
   if (existing) return { job_id: existing.id, already_running: true };
   const active = jobs.find(job => job.version_id === 'main' && ['queued', 'running'].includes(job.status) && job.phase !== 'awaiting domain cutover approval');

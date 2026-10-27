@@ -21,7 +21,7 @@ import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
 import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError, githubFailureHint, ProviderTransportError } from './providers.mjs';
-import { getSiteDomains, activePublicationDomains, samePublicationHosts, sameRedirectHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
+import { getSiteDomains, activePublicationDomains, hasPendingPublishedDomains, samePublicationHosts, sameRedirectHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { prepareRedirectHosts, redirectApprovalBlocker, ensureApprovedRedirectRule, applyRedirectTraffic, verifyRedirectHost, type RedirectPreparation } from './redirect-hosts';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
@@ -97,7 +97,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   if (!job || ['succeeded', 'failed'].includes(job.status)) return 'ran';
   if (job.phase === 'awaiting domain cutover approval') {
     const domains = await getSiteDomains(args.orgId, args.siteId);
-    if (domains.cutover_approved_revision !== domains.revision || job.git_publication?.domain_revision !== domainPublicationRevision(domains)) return 'ran';
+    if (domains.cutover_approved_revision !== domains.revision || domains.candidate?.id !== job.git_publication?.publication_id || job.git_publication?.domain_revision !== domainPublicationRevision(domains)) return 'ran';
   }
   const targetPath = `${paths.site(args.orgId, args.siteId)}/publishing_targets/${args.versionId}`;
   const lease = randomUUID();
@@ -143,7 +143,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   };
   let terminal = false;
   let parkedCandidate = false;
-  const preparingDomain = job.publication_intent === 'domain_prepare';
+  let preparingDomain = job.publication_intent === 'domain_prepare';
   const releaseBuildAccess = async () => {
     for (const environment of ['production', 'preview']) await store.compareAndUpdateDoc<any>(`${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`, value => value.job_id === args.jobId, { job_id: null });
   };
@@ -159,7 +159,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const matchesDesired = samePublicationHosts(currentDomains.desired, active) && sameRedirectHosts(currentDomains.desired, active);
       const outdated = !preparingDomain && currentDomains.candidate && currentDomains.candidate.source_publication_id !== publication.publication_id;
       await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === currentDomains.revision,
-        { active, active_dns_mode: domains.dns_mode,
+        { active, active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
           ...(preparingDomain || matchesDesired ? {state: 'live'} : outdated ? {state:'outdated', cutover_approved_revision:null} : {}),
           media_aliases: [...currentDomains.media_aliases, ...(currentDomains.active && !currentDomains.media_aliases.some(alias => samePublicationHosts(alias, currentDomains.active!)) ? [currentDomains.active] : [])] });
       if (outdated && currentDomains.candidate?.job_id) await store.compareAndUpdateDoc<any>(paths.deploy(args.orgId, args.siteId, currentDomains.candidate.job_id),
@@ -184,6 +184,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   try {
     await store.updateDoc(jobPath, { coordinator_observed_at: new Date().toISOString() });
     const currentDomains = await getSiteDomains(args.orgId, args.siteId);
+    if (args.versionId === 'main' && currentDomains.state === 'distributing' && currentDomains.candidate?.job_id && currentDomains.candidate.job_id !== args.jobId) {
+      await store.updateDoc(jobPath, { waiting_for_job_id: currentDomains.candidate.job_id, phase: 'waiting for the domain traffic switch' });
+      parkedCandidate = true;
+      return 'deferred';
+    }
     if (currentDomains.rollback_requested && currentDomains.candidate && currentDomains.candidate.id === job.git_publication?.publication_id) {
       const rollback = await rollbackDomainCutover(args.orgId, args.siteId, currentDomains.candidate.id);
       await store.updateDoc(jobPath, { status: 'failed', phase: rollback?.state === 'rolled_back' ? 'previous traffic restored' : 'rollback needs attention', error: rollback?.errors.join(' ') || 'The traffic switch was rolled back.', finished_at: new Date().toISOString() });
@@ -228,21 +233,20 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       getConnection(args.orgId, 'github'), getConnection(args.orgId, 'cloudflare', group.id), getSiteDomains(args.orgId, args.siteId),
       getOrganizationDomains(args.orgId), store.getDoc<Site>(paths.site(args.orgId, args.siteId)),
     ]);
-    const domains = preparingDomain ? savedDomains : activePublicationDomains(savedDomains, site?.publishing_migration?.website_host);
+    const applyingApprovedDomains = savedDomains.cutover_approved_revision === savedDomains.revision &&
+      savedDomains.candidate?.id === job.git_publication?.publication_id;
+    const domains = preparingDomain || applyingApprovedDomains ? savedDomains : activePublicationDomains(savedDomains, site?.publishing_migration?.website_host);
+    preparingDomain ||= args.versionId === 'main' && hasPendingPublishedDomains(savedDomains);
     const fallback = `${args.versionId === 'main' ? '' : `v-${digest(args.versionId).slice(0, 8)}-`}${generatedCloudflareNames(args.orgId, args.siteId).site_label}.${group.sites_domain}`;
     if (!preparingDomain && (!domains.desired.website_host || domains.desired.website_host === fallback)) domains.dns_mode = group.dns_mode;
     // A prepared candidate cannot replace content published after its source snapshot.
-    if (preparingDomain && (!job.source_publication?.publication_id || acquired.last_publication?.publication_id !== job.source_publication.publication_id)) {
+    if (job.publication_intent === 'domain_prepare' && !job.git_publication && (!job.source_publication?.publication_id || acquired.last_publication?.publication_id !== job.source_publication.publication_id)) {
       throw new ConnectionError('Newer content was published at the current address. Prepare for domain switch again.', 409, 'domain_candidate_outdated');
     }
     const identity = gitConnection.github!;
     let publication = job.git_publication;
-    // Older Firestore updates merged omitted nested fields, retaining the preview commit.
-    // Resume that frozen candidate instead of waiting for a main build that was never pushed.
-    if (!job.verification_retry && publication?.branch === 'main' && publication.release_branch === 'main') {
-      publication = { ...publication, commit: null, deployment_id: null, release_branch: null, static_checks_key: null, verification_task_key: null, verification_checks_key: null, probe_checks_key: null, static_controls_sha256: null, candidate_verified_id: null, deployment_receipt: null, website_preparation: null, media_preparation: null, traffic_applied: false };
-      await store.updateDoc(jobPath, { git_publication: publication, phase: 'promoting verified source' });
-    }
+    // A legacy preview is not the currently deployed main output and cannot switch traffic.
+    if (publication?.release_branch) throw new ConnectionError('Publish for the new domain again to replace the current site. This older preparation used a separate preview.', 409, 'domain_republication_required');
     if (!publication) {
       await store.updateDoc(jobPath, { status: 'running', phase: 'freezing source', execution_backend: 'customer_git' });
       if (job.publication_intent === 'domain_prepare' && job.domain_revision !== domainPublicationRevision(domains)) throw new ConnectionError('Domain settings changed. Prepare a new candidate.', 409);
@@ -321,36 +325,39 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
       frozen.retained_media_manifests = retainDistinctMediaManifests(retained, frozen.media_manifest);
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
-      const stable = { ...frozen, published_at: undefined, publication_id: undefined };
+      const stable = { ...frozen, published_at: undefined, publication_id: undefined,
+        // An explicit domain republication gets a fresh approval/journal identity,
+        // including after rollback. Retries of this same job remain deterministic.
+        ...(job.publication_intent === 'domain_prepare' ? { domain_transition_id: args.jobId } : {}) };
       frozen.publication_id = digest(JSON.stringify(stable));
       if (args.dryRun) {
         await publicationSourceTree(frozen);
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'source verified (dry-run, no Git push)', dry_run: true, finished_at: contentCutoff });
         terminal = true; return 'ran';
       }
+      const servedHost = preparingDomain ? savedDomains.active?.website_host ?? fallback : host;
       if (acquired.last_publication?.publication_id === frozen.publication_id &&
-          await probePublication(`https://${host}`, '/.well-known/typeroll/publication.json', frozen.publication_id)) {
-        await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${host}` });
+          await probePublication(`https://${servedHost}`, '/.well-known/typeroll/publication.json', frozen.publication_id)) {
+        await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });
         terminal = true; return 'ran';
       }
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domainPublicationRevision(domains), destination: {hosts: domains.desired, dns_mode: domains.dns_mode},
-        ...(preparingDomain ? {source_publication_id: job.source_publication!.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}), ...await saveSnapshot(args, frozen) };
+        ...(job.source_publication ? {source_publication_id: job.source_publication.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}), ...await saveSnapshot(args, frozen) };
       const selectedProvider = await selectedBuildProvider(args.orgId);
       const engine = await readEngineConfiguration(args.orgId, selectedProvider);
       if (site?.publishing_migration && engine?.status !== 'ready') throw new ConnectionError('Restore the shared build engine before publishing this migrated site.', 409, 'shared_build_setup_required');
       if (selectedProvider === 'github' && !engine) throw new ConnectionError('Finish build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       if (engine && engine.status !== 'ready') throw new ConnectionError('Finish shared build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       if (engine?.status === 'ready') { publication.build_engine_revision = engine.revision; publication.build_provider = engine.provider ?? 'cloudflare'; }
-      if (preparingDomain && args.versionId === 'main') {
-        publication.branch = `version-domain-${domainPublicationRevision(domains).replaceAll('-', '').slice(0, 16)}`;
-        publication.release_branch = 'main';
-      }
+      // Domain publication replaces main immediately; DNS approval never pushes a second branch.
       await assertLease();
       await store.updateDoc(jobPath, { git_publication: publication });
       return await checkpoint('source frozen');
     }
+    // Approval belongs to the exact deployed artifact, never merely its hosts.
+    if (domains.candidate?.id !== publication.publication_id) domains.cutover_approved_revision = null;
     const config = githubConfiguration();
     let githubClient: Awaited<ReturnType<typeof githubInstallationClient>> | undefined;
     const github: Awaited<ReturnType<typeof githubInstallationClient>> = async (path, options) => {
@@ -510,6 +517,17 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       catch { throw new ConnectionError('Cloudflare has not confirmed that this exact deployment uses static files only. Open the Cloudflare build status before retrying.', 409, 'static_build_verification_required'); }
       await releaseBuildAccess();
       if (candidate.protocol !== 'https:' || !candidate.hostname.endsWith(`.${publication.project}.pages.dev`) || candidate.username || candidate.password || candidate.port) throw new Error('Unexpected Cloudflare deployment origin');
+      if (preparingDomain && args.versionId === 'main' && domains.cutover_approved_revision !== domains.revision) {
+        // Pages has replaced main. Preserve those embedded origins even if a later
+        // DNS/certificate check fails; the next content publication must not revert them.
+        await assertLease();
+        const hosts = { ...domains.desired, website_host: publication.website_host };
+        const recorded = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId),
+          current => current.state !== 'distributing',
+          { published: { hosts, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
+            media_aliases: [...savedDomains.media_aliases, ...(savedDomains.active && !savedDomains.media_aliases.some(alias => samePublicationHosts(alias, savedDomains.active!)) ? [savedDomains.active] : [])] });
+        if (!recorded) throw new ConnectionError('Domain settings changed after the main publication. Refresh domain status before switching traffic.', 409, 'domain_revision_conflict');
+      }
       if (!await probePublication(candidate.origin, '/.well-known/typeroll/publication.json', publication.publication_id)) return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
       if (publication.verification_checks_key && !await verifyCustomerCandidate(args.orgId, jobPath, publication, candidate.origin)) {
         await store.updateDoc(jobPath, { phase: 'verifying static output on the organization build engine' }); return await waitForBuild(jobPath, args.orgId, publication.verification_task_key!);
@@ -521,6 +539,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         deployment_receipt: { id: deployment.id, url: deployment.url, uses_functions: false, latest_stage: deployment.latest_stage, deployment_trigger: deployment.deployment_trigger } };
       await store.updateDoc(jobPath, { git_publication: publication });
     }
+    if (preparingDomain && args.versionId === 'main' && domains.cutover_approved_revision !== domains.revision)
+      await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
     await recordPublishingOrigin(args.orgId, args.siteId, candidate.origin, true);
     const frozen = await readSnapshot(args, publication);
     if (!publication.public_media_prepared && frozen.media_manifest?.entries?.length && !await preparePublicMediaDomains(args.orgId, frozen.media_manifest)) {
@@ -533,8 +553,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const dnsMode = args.versionId === 'main' && domains.desired.website_host ? domains.dns_mode : group.dns_mode;
     const dns = dnsMode === 'automatic' ? await hostingDns(args.orgId, group.id, publication.website_host) : null;
     const preparation = publication.website_preparation ?? await preparePagesDomain(cloudflare, { accountId: publication.account_id, project: publication.project,
-      branch: publication.release_branch ?? publication.branch, hostname: publication.website_host,
-      configureTraffic: !publication.release_branch && domains.cutover_approved_revision !== domains.revision, dnsProvider: dns?.provider, dnsAccountId: dns?.accountId,
+      branch: publication.branch, hostname: publication.website_host,
+      configureTraffic: !preparingDomain && domains.cutover_approved_revision !== domains.revision, dnsProvider: dns?.provider, dnsAccountId: dns?.accountId,
       dnsMode, orgId: args.orgId });
     let mediaPreparation: import('./domain-provider').DomainPreparation | null = null;
     let mediaDns: Awaited<ReturnType<typeof hostingDns>> | null = null;
@@ -542,8 +562,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (mediaManifest?.delivery === 'static' && mediaManifest.media_host !== publication.website_host) {
       mediaDns = domains.dns_mode === 'automatic' ? await hostingDns(args.orgId, group.id, mediaManifest.media_host) : null;
       mediaPreparation = publication.media_preparation ?? await preparePagesDomain(cloudflare, { accountId: publication.account_id, project: publication.project,
-        branch: publication.release_branch ?? publication.branch, hostname: mediaManifest.media_host, dnsMode: domains.dns_mode,
-        dnsProvider: mediaDns?.provider, dnsAccountId: mediaDns?.accountId, configureTraffic: !publication.release_branch && domains.cutover_approved_revision !== domains.revision, orgId: args.orgId });
+        branch: publication.branch, hostname: mediaManifest.media_host, dnsMode: domains.dns_mode,
+        dnsProvider: mediaDns?.provider, dnsAccountId: mediaDns?.accountId, configureTraffic: !preparingDomain && domains.cutover_approved_revision !== domains.revision, orgId: args.orgId });
     }
     if (!sameRedirectHosts({ ...domains.desired, redirect_hosts: publication.redirect_hosts }, domains.desired)) {
       publication = { ...publication, redirect_hosts: domains.desired.redirect_hosts ?? [], redirect_preparations: null };
@@ -551,7 +571,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     // Redirect hosts never reach Pages: a zone redirect rule answers them once their record is proxied.
     const redirectPreparations: RedirectPreparation[] = publication.redirect_preparations ?? (publication.redirect_hosts?.length
-      ? await prepareRedirectHosts(args.orgId, group.id, { hosts: publication.redirect_hosts, target: publication.website_host, dnsMode, configureTraffic: !publication.release_branch && domains.cutover_approved_revision !== domains.revision })
+      ? await prepareRedirectHosts(args.orgId, group.id, { hosts: publication.redirect_hosts, target: publication.website_host, dnsMode, configureTraffic: !preparingDomain && domains.cutover_approved_revision !== domains.revision })
       : []);
     const redirectBlockers = redirectPreparations.map(redirectApprovalBlocker).filter((blocker): blocker is { code: string; message: string } => Boolean(blocker));
     if (preparation.action === 'verify' && preparation.certificate_ready) {
@@ -563,38 +583,41 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { git_publication: publication });
     }
     const requirements = [...preparation.requirements, ...redirectPreparations.flatMap(item => item.requirements)];
-    if (preparingDomain && args.versionId === 'main') await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === domains.revision && domainPublicationRevision(current) === publication!.domain_revision,
-      { media_preparation: mediaPreparation, state: domains.cutover_approved_revision === domains.revision ? 'distributing' : (preparation.action === 'complete_validation' && !validationWindowAllowed(preparation)) || redirectBlockers.length ? 'preparing' : 'ready_to_switch', preparation,
-        redirect_preparations: redirectPreparations.length ? redirectPreparations : null,
-        candidate: { source_publication_id: publication.source_publication_id, id: publication.publication_id, revision: publication.domain_revision, commit: publication.commit,
-        deployment_id: deployment.id, sitewide_noindex: frozen.settings?.sitewide_noindex === true, robots_blocked: frozen.robots_blocked === true, verified_at: new Date().toISOString(), job_id: args.jobId } });
-    if (publication.release_branch) {
-      parkedCandidate = true;
-      // Cloudflare cannot validate a single reviewed website record before it changes: the approval may accept that window.
-      const windowCandidate = validationWindowAllowed(preparation);
-      const blocker = (windowCandidate ? null : preparation.validation_blocker) ?? mediaPreparation?.validation_blocker ??
-        redirectBlockers.find(item => !['redirect_certificate_pending', 'redirect_rule_required'].includes(item.code));
-      if (blocker) throw new ConnectionError(blocker.message, 409, blocker.code);
-      if (domains.cutover_approved_revision !== domains.revision) {
-        if ((!preparation.certificate_ready && preparation.has_existing_traffic !== false && !windowCandidate) || (mediaPreparation && !mediaPreparation.certificate_ready && mediaPreparation.has_existing_traffic !== false)) {
-          await store.updateDoc(jobPath, { phase: 'waiting for domain validation', dns_requirements: requirements });
-          return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
-        }
-        if (redirectBlockers.length) {
-          // A missing manual rule or an unissued Universal SSL certificate can be completed while this check repeats.
-          await store.updateDoc(jobPath, { phase: `waiting for redirect setup: ${redirectBlockers[0].message}`, dns_requirements: requirements });
-          return await waitForPublicationCondition(jobPath, 'waiting for redirect setup');
-        }
-        await store.updateDoc(jobPath, { phase: 'awaiting domain cutover approval', dns_requirements: requirements, validation_blocker: windowCandidate ? preparation.validation_blocker : null });
-        // Human approval can take days. Consume this observation task; approval queues a continuation.
-        return 'ran';
+    if (preparingDomain && args.versionId === 'main' && domains.cutover_approved_revision !== domains.revision) {
+      // Main already serves this artifact. Verify the existing address before offering DNS activation.
+      const currentHost = savedDomains.active?.website_host ?? fallback;
+      if (!await probePublication(`https://${currentHost}`, '/.well-known/typeroll/publication.json', publication.publication_id) ||
+          (publication.static_checks_key && !await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key ?? publication.static_checks_key, `https://${currentHost}`, !!publication.probe_checks_key))) {
+        await store.updateDoc(jobPath, { phase: 'verifying replacement at the current address' });
+        return await waitForPublicationCondition(jobPath, 'verifying replacement at the current address');
       }
-      parkedCandidate = false;
-      // Keep the completed build task: its hash-verified artifact is independent of the Git branch.
-      // Only deployment/probe identities change. Explicit nulls replace nested Firestore fields.
-      publication = { ...publication, branch: 'main', commit: null, deployment_id: null, release_branch: null, static_checks_key: null, verification_task_key: null, verification_checks_key: null, probe_checks_key: null, static_controls_sha256: null, candidate_verified_id: null, deployment_receipt: null, website_preparation: null, media_preparation: null, redirect_preparations: null, traffic_applied: false };
-      await store.updateDoc(jobPath, { git_publication: publication, phase: 'promoting verified source' });
-      return await schedulePublication(jobPath, 'domain_source_promoted');
+      const finished = new Date().toISOString();
+      const hosts = { ...domains.desired, website_host: publication.website_host };
+      const matchesDesired = samePublicationHosts(savedDomains.desired, hosts) && sameRedirectHosts(savedDomains.desired, hosts);
+      const windowCandidate = validationWindowAllowed(preparation);
+      const ready = (!preparation.validation_blocker || windowCandidate) &&
+        (preparation.certificate_ready || preparation.has_existing_traffic === false || windowCandidate) && !redirectBlockers.length &&
+        (!mediaPreparation || mediaPreparation.certificate_ready || mediaPreparation.has_existing_traffic === false);
+      const recorded = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === savedDomains.revision && current.state !== 'distributing', {
+        published: { hosts, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
+        ...(matchesDesired ? { media_preparation: mediaPreparation, preparation, state: ready ? 'ready_to_switch' : 'preparing',
+          redirect_preparations: redirectPreparations.length ? redirectPreparations : null,
+          candidate: { source_publication_id: publication.source_publication_id ?? null, id: publication.publication_id, revision: publication.domain_revision, commit: publication.commit,
+            deployment_id: deployment.id, sitewide_noindex: frozen.settings?.sitewide_noindex === true, robots_blocked: frozen.robots_blocked === true, verified_at: finished, job_id: args.jobId } } : {}),
+        cutover_approved_revision: null, approved_preparation: null, approved_media_preparation: null, approved_redirect_preparations: null, approved_validation_window: null,
+      });
+      if (!recorded) throw new ConnectionError('Domain settings changed while publishing. Refresh the domain status before switching traffic.', 409, 'domain_revision_conflict');
+      await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
+      await store.updateDoc(paths.version(args.orgId, args.siteId, args.versionId), { last_deployed_at: finished, last_deployed_content_at: publication.content_cutoff, deploy_url: `https://${currentHost}` });
+      if (savedDomains.candidate?.job_id && savedDomains.candidate.job_id !== args.jobId) await store.compareAndUpdateDoc<any>(paths.deploy(args.orgId, args.siteId, savedDomains.candidate.job_id),
+        previous => previous.status === 'running' && previous.phase === 'awaiting domain cutover approval',
+        { status: 'succeeded', phase: 'replaced by newer publication', finished_at: finished });
+      await store.updateDoc(jobPath, { phase: matchesDesired ? 'awaiting domain cutover approval' : 'published at current address', deploy_url: `https://${currentHost}`,
+        dns_requirements: requirements, validation_blocker: windowCandidate ? preparation.validation_blocker : null,
+        ...(!matchesDesired ? { status: 'succeeded', finished_at: finished } : {}) });
+      terminal = !matchesDesired;
+      parkedCandidate = matchesDesired;
+      return 'ran';
     }
     if (preparingDomain && !publication.traffic_applied) await armDomainCutover(args.orgId, args.siteId, group.id, domains);
     const approvedRedirects = preparingDomain && !publication.traffic_applied && domains.cutover_approved_revision === domains.revision && domains.dns_mode === 'automatic'

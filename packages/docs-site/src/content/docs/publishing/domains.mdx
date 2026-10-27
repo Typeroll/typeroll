@@ -19,10 +19,11 @@ A site address base is a parent for generated site and version addresses. It doe
 not itself serve a website. Default's base is configured in organization setup;
 additional groups have their own settings.
 
-## Guided domain move (Core 0.2.107 / MCP 0.45.81)
+## Publish once, then switch DNS
 
-This guided flow is available in Core 0.2.107 and MCP 0.45.81 or later.
-Earlier installations use the existing prepare-and-approve controls below.
+**Core 0.2.116 / MCP 0.45.87 (pending release).** This flow replaces main
+before changing DNS. Older installations prepare a separate branch and promote
+it at approval; update Core before following the single-publication flow.
 
 Open **Site settings → Publishing → Website and media addresses**. The **Move
 site to …** card keeps the hosting account, zone, nameservers, edge certificate,
@@ -30,11 +31,9 @@ permissions, publishing prerequisites, redirect capacity and candidate together.
 Saving an address is **not** a traffic switch. The card shows the current phase
 and only reports **Live and verified** after public checks succeed.
 
-1. Save the future website/media addresses. Changing a prepared output's origins
-   requires confirmation before the candidate is replaced. The estimate uses
-   recent completed preparations when available; otherwise the duration is unknown.
-   Adding/removing redirect hosts retains the content candidate and revokes the
-   old traffic approval. Refresh preparation to reconcile redirect requirements.
+1. Save the future website/media addresses. This only records intent: it does
+   not rebuild, replace the current site or change DNS. Redirect-only changes
+   retain the main artifact but require refreshed checks and renewed DNS approval.
 2. If necessary, expand **Add this domain to the hosting account**. An organization
    owner/admin can create the zone, scan existing DNS, compare discovered records
    with current public answers and copy the reviewed inventory as **DNS only**.
@@ -44,8 +43,9 @@ and only reports **Live and verified** after public checks succeed.
    have your DNS administrator or agent supply missing records first.
    This import works only while the zone is pending. Typeroll then gives the exact
    nameservers to enter at your registrar; it never changes the registrar for you.
-3. Shortly before changing DNS, select **Prepare for domain switch** to prepare
-   the last published snapshot. Later saved CMS edits stay unpublished.
+3. Shortly before changing DNS, select **Publish for the new domain**. It republishes
+   the last published snapshot on **main**, replacing the current site immediately.
+   The temporary/current hostname serves that same artifact. DNS is still unchanged. Later saved CMS edits stay unpublished.
    Compatible cached HTML may be reused for a pure origin change. Changes to the
    renderer, content, indexing policy, derived data or incompatible caches require
    fresh rendering. A cache-format upgrade needs one successful baseline build.
@@ -58,29 +58,33 @@ and only reports **Live and verified** after public checks succeed.
    expires (15 minutes in the UI; API/MCP allow 5–45 minutes). If another
    administrator changed the records afterward, restoration stops with an explicit
    conflict instead of overwriting their changes. DNS propagation can outlast rollback.
-   **Restore previous traffic** uses the same journal. External DNS must be changed
+   **Restore previous traffic** uses the same journal; it restores DNS, not an older
+   site artifact. External DNS must be changed
    and restored by its administrator or agent.
 
-The verified build artifact is reused when promoting a candidate to the main
-branch; the promotion does not dispatch a second shared build. Temporary media
-transfer timeouts use bounded automatic retries of the same frozen job and retain
-completed checkpoints. Invalid inputs, denied permissions and integrity failures
-are not blindly retried.
+DNS approval reuses the **same main publication, Git commit and deployed files**.
+It does not push another branch, build again or upload again. Ordinary content
+publications while DNS is pending keep the new origins and replace that same
+main site. Review the latest receipt before approval; no new preparation is needed.
 
-From Core 0.2.114, the promoted deployment’s verification uses its new commit
-identity, so completion continues the same approved job even though it reused
-the earlier build artifact. If an older job stays running after all verification
-files are completed, contact support with its job ID; do not repeatedly approve
-or create overlapping candidates. After a confirmed rollback, prepare a new
-candidate and review its traffic switch again. A rolled-back journal is not reused.
+Absolute links and media URLs using a new hostname may not work until its DNS
+and certificate are ready. Choose this explicit publication shortly before the
+DNS switch. Old media aliases remain available; there is no separately served
+old version at the temporary hostname. Temporary media-transfer failures retain
+checkpoints and use bounded retries; invalid input and integrity failures do not.
+
+An old preview-branch preparation cannot activate traffic under this flow. Choose
+**Publish for the new domain** once to replace main. After a DNS rollback, review
+and publish for the domain again; the previous DNS journal is not reused.
 
 Agents use `guide_publishing_domain_change` (`check`, `preview`, `save`, `prepare`,
 `approve`, `rollback`) at `POST /api/v1/sites/{siteId}/publishing/domain-guide`.
 `onboard_publishing_domain_zone` uses the organization-scoped
 `POST /api/v1/publishing/domain-onboarding` endpoint for zone creation and reviewed
 DNS scans. Site-only credentials cannot administer organization zones. The
-existing domain tools remain available; replacing a prepared candidate requires
-`confirm_rebuild: true` after reviewing the impact. Traffic approval always needs
+existing domain tools remain available. `prepare_publishing_domain_change` now
+performs the explicit main publication, or refreshes setup when that publication
+already exists. `confirm_rebuild` is no longer needed to save future addresses. Traffic approval always needs
 an explicit human decision about the returned summary.
 
 ### Redirect capacity
@@ -190,28 +194,22 @@ domain preparation and cutover. Existing organization media links and previously
 published aliases remain usable; changing a preferred host does not invalidate
 them. Referenced media is included in static output, not committed as images to GitHub.
 
-## Prepare before switching traffic
+## Before switching traffic
 
-**Core 0.2.106 / MCP 0.45.80 (pending release):** saving future domains does not
-change normal publication. Keep editing and publishing on the active or temporary
-address. Publish your intended content there before preparing the domain switch.
+1. Save future hosts whenever convenient; keep editing and publishing normally.
+2. Publish any intended CMS edits first. **Publish for the new domain** uses the
+   last published snapshot, excluding newer unpublished edits, and retargets
+   links, canonicals, sitemap URLs and media references with the installed renderer.
+3. That publication replaces main at the current address. Check its indexing
+   settings, DNS requirements and certificates; use **Refresh domain setup** if
+   provider validation is still pending.
+4. **Review traffic switch**, then **Approve and switch traffic**. With external
+   DNS, your administrator or agent applies the reviewed records.
+5. Typeroll verifies the real domain before reporting it live.
 
-1. Save the future hosts. This records the intended addresses while the current
-   public website remains active.
-2. Shortly before changing DNS, select **Prepare for domain switch**. The candidate uses
-   the last successful publication, not newer saved CMS edits. The build updates
-   internal absolute links, canonicals, sitemap URLs and media references.
-3. Follow **Domain verification**, applying the returned validation records if
-   DNS is managed externally. Wait for the required artifact and certificate checks.
-4. When allowed, select **Review traffic switch**, then **Approve and switch traffic**, or apply the reviewed DNS
-   change through your provider or AI agent.
-5. Wait for Typeroll to verify the actual public address.
-
-Waiting for domain validation or cutover approval does not lock normal
-publication. If newer content is published at the current address, the candidate
-becomes outdated: prepare again before switching traffic. The candidate contains
-the last published content and indexing settings, not unpublished CMS changes.
-See [publication destination](../../guides/customer-publishing/#future-hosts-and-the-publication-destination).
+Normal publication remains available while DNS waits. It retains the new
+addresses and refreshes the main receipt. Read the latest receipt before approval;
+a stale approval is rejected. See [publication destination](../../guides/customer-publishing/#future-hosts-and-the-publication-destination).
 
 Because the candidate rebuilds the last publication exactly, preparation stops
 with HTTP 409 and `media_svg_unsanitized` when that publication still contains

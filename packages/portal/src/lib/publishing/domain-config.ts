@@ -31,6 +31,8 @@ export interface DomainConfiguration {
   publication_revision?: string;
   desired: PublicationHosts;
   active: PublicationHosts | null;
+  /** Origins embedded in the single deployed main output; traffic may still use active. */
+  published?: { hosts: PublicationHosts; dns_mode: 'automatic' | 'external'; publication_id: string; job_id?: string } | null;
   active_dns_mode?: 'automatic' | 'external';
   /** Retained aliases are never removed as a side effect of changing the preferred host. */
   media_aliases: PublicationHosts[];
@@ -48,10 +50,15 @@ export interface DomainConfiguration {
   approved_validation_window?: boolean | null;
 }
 
-/** Effective routing for normal publication; declared future settings are inert. */
+/** Effective output origins. Saving future settings is inert; explicit publication selects them. */
+export function hasPendingPublishedDomains(config: DomainConfiguration): boolean {
+  return Boolean(config.published && (!config.active || !samePublicationHosts(config.published.hosts, config.active) || !sameRedirectHosts(config.published.hosts, config.active)));
+}
+
+/** Normal edits retain the origins already embedded in main, even before DNS switches. */
 export function activePublicationDomains(config: DomainConfiguration, verifiedMigrationHost?: string): DomainConfiguration {
-  return { ...config, desired: config.active ?? { website_host: verifiedMigrationHost ?? null, media_host: null, media_path_prefix: '' },
-    dns_mode: config.active_dns_mode ?? config.dns_mode };
+  return { ...config, desired: config.published?.hosts ?? config.active ?? { website_host: verifiedMigrationHost ?? null, media_host: null, media_path_prefix: '' },
+    dns_mode: config.published?.dns_mode ?? config.active_dns_mode ?? config.dns_mode };
 }
 
 export interface OrganizationDomains {
@@ -201,11 +208,6 @@ export async function saveSiteDomains(orgId: string, siteId: string, input: Reco
   if (previous.revision !== input.revision) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
   const sameOutput = samePublicationHosts(previous.desired, desired);
   if (sameOutput && sameRedirectHosts(previous.desired, desired) && previous.dns_mode === input.dns_mode) return previous;
-  if (!sameOutput && previous.candidate && !['live', 'failed'].includes(previous.state) && input.confirm_rebuild !== true) {
-    const { domainChangeImpact } = await import('./domain-impact');
-    const impact = await domainChangeImpact(orgId, siteId, input);
-    throw new ConnectionError(impact.message, 409, 'domain_rebuild_confirmation_required', { impact });
-  }
   if (previous.state === 'distributing') throw new ConnectionError('A traffic switch is in progress. Wait for it to finish before changing domain settings.', 409, 'domain_cutover_in_progress');
   const revision = randomUUID();
   const preserveCandidate = sameOutput && Boolean(previous.candidate) && !['live', 'failed'].includes(previous.state);
@@ -221,7 +223,7 @@ export async function saveSiteDomains(orgId: string, siteId: string, input: Reco
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
   if (!sameOutput && previous.candidate?.job_id) await getStore().compareAndUpdateDoc<any>(paths.deploy(orgId, siteId, previous.candidate.job_id),
     job => job.status === 'running' && job.phase === 'awaiting domain cutover approval',
-    { status: 'failed', phase: 'superseded', finished_at: new Date().toISOString(), error: 'Domain settings changed. Prepare a new candidate with the saved hosts.' });
+    { status: previous.published?.publication_id === previous.candidate.id ? 'succeeded' : 'failed', phase: 'superseded', finished_at: new Date().toISOString(), error: null });
   return getSiteDomains(orgId, siteId);
 }
 
@@ -231,12 +233,12 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
     throw new ConnectionError('The prepared deployment changed. Verify the current candidate before switching traffic.', 409, 'domain_revision_conflict');
   }
   const target = await getStore().getDoc<any>(`${paths.site(orgId, siteId)}/publishing_targets/main`);
-  if (current.state === 'outdated' || !current.candidate.source_publication_id || target?.last_publication?.publication_id !== current.candidate.source_publication_id) {
-    throw new ConnectionError('The current website has a newer publication. Prepare for domain switch again before changing traffic.', 409, 'domain_candidate_outdated');
+  if (current.state === 'outdated' || current.published?.publication_id !== current.candidate.id || target?.last_publication?.publication_id !== current.candidate.id) {
+    throw new ConnectionError('Publish for the new domain before switching traffic. The approval must refer to the current main publication.', 409, 'domain_candidate_outdated');
   }
   if (target?.job_id && target.job_id !== current.candidate.job_id) {
     const activeJob = await getStore().getDoc<any>(paths.deploy(orgId, siteId, target.job_id));
-    if (activeJob && ['queued', 'running'].includes(activeJob.status)) throw new ConnectionError('A publication is in progress. Wait for it to finish, then prepare the latest content for domain switch.', 409, 'publication_in_progress');
+    if (activeJob && ['queued', 'running'].includes(activeJob.status)) throw new ConnectionError('A publication is in progress. Wait for it to finish, then review the latest publication before switching DNS.', 409, 'publication_in_progress');
   }
   if (['failed', 'live'].includes(current.state)) throw new ConnectionError('Prepare and verify a current candidate before switching traffic.', 409, 'publication_unavailable');
   if (current.candidate.job_id) {
@@ -262,11 +264,31 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
     const blocker = redirectApprovalBlocker(redirect);
     if (blocker) throw new ConnectionError(blocker.message, 409, blocker.code);
   }
-  const saved = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
-    value => value.state !== 'outdated' && value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation) && JSON.stringify(value.media_preparation) === JSON.stringify(mediaPreparation) &&
-      JSON.stringify(value.redirect_preparations ?? null) === JSON.stringify(redirectPreparations),
-    { validation_timeout_minutes: Number(timeout), rollback_requested: false, rollback_status: null, cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, approved_redirect_preparations: redirectPreparations, approved_validation_window: acceptWindow || null, state: 'distributing' });
-  if (!saved) throw new ConnectionError('Domain verification changed. Reload before switching traffic.', 409, 'domain_revision_conflict');
+  // Reserve the same target used by the runner while accepting approval. A
+  // publication that starts between the earlier read and this write must win
+  // the lock or receive a conflict, never race an approved DNS switch.
+  const targetPath = `${paths.site(orgId, siteId)}/publishing_targets/main`;
+  const approvalLease = randomUUID();
+  if (current.candidate.job_id) {
+    const reserved = await getStore().compareAndUpdateDoc<any>(targetPath,
+      value => value.last_publication?.publication_id === current.candidate!.id &&
+        (!value.job_id || value.job_id === current.candidate!.job_id) && (value.lease_until ?? 0) < Date.now(),
+      { job_id: current.candidate.job_id, lease_id: approvalLease, lease_until: Date.now() + 30_000 });
+    if (!reserved) throw new ConnectionError('A publication is in progress. Review its result before switching DNS.', 409, 'publication_in_progress');
+  }
+  let approved = false;
+  try {
+    const saved = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
+      value => value.published?.publication_id === current.candidate!.id && value.state !== 'outdated' && value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation) && JSON.stringify(value.media_preparation) === JSON.stringify(mediaPreparation) &&
+        JSON.stringify(value.redirect_preparations ?? null) === JSON.stringify(redirectPreparations),
+      { validation_timeout_minutes: Number(timeout), rollback_requested: false, rollback_status: null, cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, approved_redirect_preparations: redirectPreparations, approved_validation_window: acceptWindow || null, state: 'distributing' });
+    if (!saved) throw new ConnectionError('Domain verification changed. Reload before switching traffic.', 409, 'domain_revision_conflict');
+    approved = true;
+  } finally {
+    if (current.candidate.job_id) await getStore().compareAndUpdateDoc<any>(targetPath,
+      value => value.lease_id === approvalLease,
+      { lease_id: null, lease_until: 0, ...(!approved ? { job_id: null } : {}) });
+  }
   if (current.candidate.job_id) {
     const { getDeployQueue } = await import('../deploy/queue');
     const jobId = current.candidate.job_id;
