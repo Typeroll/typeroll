@@ -360,7 +360,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         terminal = true; return 'ran';
       }
       const servedHost = preparingDomain ? savedDomains.active?.website_host ?? fallback : host;
-      if (acquired.last_publication?.publication_id === frozen.publication_id &&
+      if (acquired.last_publication && acquired.last_publication.publication_id === frozen.publication_id &&
           await probePublication(`https://${servedHost}`, '/.well-known/typeroll/publication.json', frozen.publication_id)) {
         if (frozen.previous_website_hosts?.some((host: string) => !savedDomains.previous_hosts?.some(previous =>
           previous.host === host && previous.target_host === servedHost && previous.mode === 'redirect' && previous.status === 'verified'))) {
