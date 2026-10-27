@@ -65,6 +65,7 @@ function withCause(message: string, diagnostic?: BuildDiagnostic | null) {
 }
 
 export function buildFailureMessage(code: string, diagnostic?: BuildDiagnostic | null): string {
+  if (code === 'build_queue_timeout') return 'The build engine did not claim this queued step within 15 minutes. This task can no longer run. Prepared images and the live site are unchanged. Check Publishing → Builds, then retry. No replacement build was started.';
   if (code === 'sandbox_integrity_failed')
     return withCause('The build sandbox downloaded from a pinned URL did not match its pinned checksum. This is not a transient failure and must not be retried: the bytes at that URL changed. Check the build log for the source and the checksum it served, and establish why before publishing anything.', diagnostic);
   if (code === 'sandbox_unavailable')

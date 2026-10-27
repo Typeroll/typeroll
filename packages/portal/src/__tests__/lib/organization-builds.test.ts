@@ -62,7 +62,7 @@ it('rejects incompatible workers, swapped attempt tokens, cancellation and expir
   await expect(queue.authorize('org', claim.key, claim.lease_id, claim.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
   await queue.enqueue(identity('site-b'), 'engine-1'); now += 46 * 60_000;
   expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
-  expect(await getStore().getDoc(`${buildTasksPath('org')}/${buildTaskKey(identity('site-b'))}`)).toMatchObject({ status: 'failed', error_code: 'build_timeout' });
+  expect(await getStore().getDoc(`${buildTasksPath('org')}/${buildTaskKey(identity('site-b'))}`)).toMatchObject({ status: 'failed', error_code: 'build_queue_timeout' });
 });
 it('completes once and accepts only artifact keys scoped to the leased attempt', async () => {
   const queue = new OrganizationBuildQueue(getStore(), () => now);

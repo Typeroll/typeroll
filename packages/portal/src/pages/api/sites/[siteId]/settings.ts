@@ -3,7 +3,7 @@ import { isSiteSettingsSection, scopedSettings } from '../../../../lib/site-sett
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { TOKEN_SCALES, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS } from '@typeroll/shared';
+import { TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 
@@ -130,7 +130,11 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   const bodyFont = form.get('fonts.body');
   if (typeof bodyFont === 'string' && bodyFont) fonts.body = bodyFont;
   const sizeBase = form.get('fonts.size_base');
-  if (typeof sizeBase === 'string' && sizeBase) fonts.size_base = Number(sizeBase) || 16;
+  if (typeof sizeBase === 'string' && sizeBase) {
+    const value = Number(sizeBase);
+    if (!Number.isFinite(value) || value < 12 || value > 24) return new Response('Base font size must be from 12 to 24px.', {status:400});
+    fonts.size_base = value;
+  }
   const smoothing = form.get('fonts.smoothing');
   if (smoothing === 'auto' || smoothing === 'antialiased') fonts.smoothing = smoothing;
   else if (smoothing === '') delete fonts.smoothing;
@@ -145,13 +149,20 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     if (mono) fonts.mono = mono; else delete fonts.mono;
   }
   if (includesSection('design') && form.has('design_scales.type_size.xs')) {
-    const scales = Object.fromEntries(Object.entries(TOKEN_SCALES).map(([scale, steps]) => [scale, Object.fromEntries(Object.keys(steps).flatMap(step => {
+    let scales;
+    try { scales = Object.fromEntries(Object.entries(TOKEN_SCALES).map(([scale, steps]) => [scale, Object.fromEntries(Object.keys(steps).flatMap(step => {
       const value = String(form.get(`design_scales.${scale}.${step}`) ?? '').trim();
-      return value ? [[step, value]] : [];
-    }))]));
+      return value ? [[step, value.startsWith('{') ? JSON.parse(value) : value]] : [];
+    }))])); } catch { return new Response('Scale maps must be valid JSON.', { status: 400 }); }
     const error = designScalesError(scales);
     if (error) return new Response(error, { status: 400 });
     next.design_scales = scales;
+  }
+  if (includesSection('design') && form.has('typography.rhythm')) {
+    const typography = Object.fromEntries(Object.keys(TYPOGRAPHY_DEFAULTS).map(key => [key, Number(form.get(`typography.${key}`))]));
+    const error = typographyError(typography);
+    if (error) return new Response(error, { status: 400 });
+    next.typography = typography;
   }
   const settingsPath = paths.settings(owner_org_id, site.id, versionId);
   if (section === null) await store.setDoc(settingsPath, next as unknown as Record<string, unknown>);

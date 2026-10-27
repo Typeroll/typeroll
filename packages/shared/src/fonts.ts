@@ -1,4 +1,5 @@
-import { designScalesCss, validColor, type DesignScales } from './design-tokens.js';
+import { designScalesCss, responsiveDesignScalesCss, resolvedDesignScales, TYPOGRAPHY_DEFAULTS, typographyError, validColor, type DesignScales, type TypographySettings } from './design-tokens.js';
+import { resolveBreakpointWidths } from './breakpoints.js';
 import { resolveRenderVersion } from './render-version.js';
 /** The reserved system family never triggers a network font request. */
 export const SYSTEM_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
@@ -41,9 +42,12 @@ export function fontSmoothingCss(smoothing: unknown, renderVersion: number): str
  * values fall back so older settings documents never emit "undefined" CSS.
  * Published pages and preview emit the same block.
  */
-export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'> & { render_version?: unknown; design_scales?: DesignScales }): string {
+export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'> & { render_version?: unknown; design_scales?: DesignScales; typography?: TypographySettings; responsive_breakpoints?: import('./breakpoints.js').ResponsiveBreakpoints | null }): string {
   const colors = settings.colors ?? ({} as Partial<import('./types.js').SiteSettings['colors']>);
   const fonts = settings.fonts ?? ({} as Partial<import('./types.js').SiteSettings['fonts']>);
+  const fluid = resolveRenderVersion(settings.render_version) >= 10;
+  const scales = resolvedDesignScales(settings.design_scales, settings.typography, fluid, fonts.size_base ?? 16);
+  const typography = { ...TYPOGRAPHY_DEFAULTS, ...(!typographyError(settings.typography) ? settings.typography : {}) };
   return `:root{
   --color-primary:${colors.primary};
   --color-secondary:${colors.secondary};
@@ -56,9 +60,9 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
   --font-heading:${fontFamilyCss(fonts.heading ?? 'Inter')};
   --font-body:${fontFamilyCss(fonts.body ?? 'Inter')};
   --font-mono:${fonts.mono ? fontFamilyCss(fonts.mono) : 'ui-monospace'};
-  ${designScalesCss(settings.design_scales)}
+  ${designScalesCss(scales)}${fluid ? `\n  --type-rhythm:${typography.rhythm};\n  --measure-prose:${typography.line_length}ch;\n  --section-padding:var(--space-xl);\n  --spacing-xs:var(--space-xs);--spacing-sm:var(--space-sm);--spacing-md:var(--space-md);--spacing-lg:var(--space-lg);--spacing-xl:var(--space-xl);` : ''}
   --font-size-base:${fonts.size_base ?? 16}px;
-}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
+}${responsiveDesignScalesCss(scales, resolveBreakpointWidths(settings.responsive_breakpoints))}${fluid ? ':where([data-block=prose]){max-inline-size:var(--measure-prose)}' : ''}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
 }
 
 /** Webfont families a site loads from Google Fonts (system families excluded). */

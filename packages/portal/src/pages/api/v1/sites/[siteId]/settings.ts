@@ -28,10 +28,10 @@ import { customCssWarnings, customCssWriteError } from '../../../../../lib/custo
 import { getStore } from '../../../../../lib/datastore';
 import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentionError } from '../../../../../lib/form-submissions';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, type SiteSettings } from '@typeroll/shared';
+import { typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
-  'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
+  'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
   'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
   'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'external_routes', 'render_version',
   // Social sharing + Organization JSON-LD, as in the portal Settings form.
@@ -140,10 +140,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.render_version !== undefined && !isRenderVersion(body.render_version)) {
     return apiError(`render_version must be an integer from 1 to ${LATEST_RENDER_VERSION}`, 400);
   }
+  if (body.typography !== undefined) { const error = typographyError(body.typography); if (error) return apiError(error, 400); }
   if (body.design_scales !== undefined) { const error = designScalesError(body.design_scales); if (error) return apiError(error, 400); }
   if (body.fonts !== undefined) {
     if (!body.fonts || typeof body.fonts !== 'object' || Array.isArray(body.fonts)) return apiError('fonts must be an object', 400);
     const fonts = body.fonts as Record<string, unknown>;
+    if (fonts.size_base !== undefined && (typeof fonts.size_base !== 'number' || !Number.isFinite(fonts.size_base) || fonts.size_base < 12 || fonts.size_base > 24)) return apiError('fonts.size_base must be a number from 12 to 24', 400);
     // null clears the choice back to the render version's default.
     if (fonts.smoothing !== undefined && fonts.smoothing !== null && !isFontSmoothing(fonts.smoothing)) {
       return apiError(`fonts.smoothing must be one of: ${FONT_SMOOTHING_VALUES.join(', ')} (or null to use the default)`, 400);

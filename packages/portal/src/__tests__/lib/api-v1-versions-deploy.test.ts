@@ -1,18 +1,25 @@
 // Tests for /v1/versions + /v1/deploy* endpoints.
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
 import type { Site, SiteVersion } from '@typeroll/shared';
 
+// Test API acceptance without a detached local worker outliving its fixture.
+// Runner and queue execution have separate integration coverage.
+const enqueue = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('../../lib/deploy/queue', async importOriginal => ({
+  ...await importOriginal<typeof import('../../lib/deploy/queue')>(),
+  getDeployQueue: () => ({enqueue}),
+}));
 const ORG = 'orgone';
 const SITE = 'mysite';
 
 async function setup(): Promise<{ token: string }> {
   makeTmpFixtures();
   await resetDatastore();
-  process.env.DEPLOY_QUEUE = 'in_process'; // exercise the local queue
+  enqueue.mockClear();
   const { getStore } = await import('../../lib/datastore');
   await getStore().setDoc(paths.site(ORG, SITE), { name: 'My Site', created_at: new Date().toISOString() } satisfies Partial<Site>);
   await getStore().setDoc(paths.version(ORG, SITE, MAIN_VERSION_ID), {
@@ -181,6 +188,7 @@ describe('POST /v1/.../deploy', () => {
     expect(res.status).toBe(202);
     const body = await res.json() as { job_id: string; version_id: string; environment: string };
     expect(body.job_id).toBeTruthy();
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({jobId:body.job_id,orgId:ORG,siteId:SITE,versionId:MAIN_VERSION_ID}));
     expect(body.version_id).toBe(MAIN_VERSION_ID);
     expect(body.environment).toBe('production');
 
@@ -216,6 +224,7 @@ it('requires authenticated site admin access for verification retry and rejects 
   expect(authorized.status).toBe(404);
   const { getStore } = await import('../../lib/datastore');
   expect(await getStore().listDocs(paths.deploys(ORG, SITE))).toHaveLength(0);
+  expect(enqueue).not.toHaveBeenCalled();
   const invalid = await callRoute(route, 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { ...body, dry_run: true } });
   expect(invalid.status).toBe(400);
 });

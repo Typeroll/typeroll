@@ -117,3 +117,12 @@ See workflows/source-media.md for archive verification and original preservation
 Omit --dry-run to write local files; --migration-inventory adds recorded redirect
 sources. It never writes to the CMS, marks a Page reviewed or deletes notes. Read
 pages/README.md and workflows/page-notes.md before first use.
+
+### Heading rhythm after a rebuild
+
+`node scripts/typeroll/check_heading_spacing.cjs https://example.com [paths.json]`
+checks opening component headings and card spacing at 375, 768 and 1280px.
+`paths.json` is an array of same-origin page paths; otherwise it reads a flat
+sitemap. Requires Playwright and its Chromium browser. Findings need visual
+review: deliberate asymmetric cards belong in decisions.md. It is a read-only
+QA helper, not a publication gate or a CSS repair tool.

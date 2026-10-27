@@ -44,3 +44,12 @@ export const CONTENT_WELL_CSS = `
 [data-block="semantic-container"][data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]) + :not(style,script) { margin-block-start:0; }
 [data-block="semantic-container"][data-rhythm="article"] > :last-child { margin-block-end:0; }
 `.trim();
+
+/** Preserve historical geometry; new versions consume the configurable scales. */
+export function contentWellCss(version: number): string {
+  if (version < 10) return CONTENT_WELL_CSS;
+  const slots: Record<string,string> = {'1':'var(--space-xs)','2':'var(--space-sm)','3':'calc(var(--space-sm) * 1.5)','4':'var(--space-md)','5':'var(--space-lg)','6':'calc(var(--space-md) * 2)','7':'calc(var(--space-md) * 2.5)','8':'var(--space-xl)','9':'calc(var(--space-xl) * 1.33333)','10':'calc(var(--space-xl) * 1.66667)','11':'calc(var(--space-xl) * 2)','12':'calc(var(--space-xl) * 2.66667)'};
+  return CONTENT_WELL_CSS.replace(/var\(--space-(\d+)\)/g, (match,step) => slots[step] ?? match)
+    .replace(/--type-h([1-6]):[^;]+;/g, (_,level) => `--type-h${level}:var(--type-size-${['3xl','2xl','xl','lg','md','sm'][Number(level)-1]});`)
+    .replace(/--section-padding:[^;]+;/g, '--section-padding:var(--space-xl);');
+}

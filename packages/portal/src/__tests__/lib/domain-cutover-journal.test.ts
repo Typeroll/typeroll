@@ -100,3 +100,39 @@ it('recovers a newly created redirect rule after the response is lost without de
   expect(await rollbackDomainCutover('org', 'site', 'candidate')).toMatchObject({ state: 'rolled_back' });
   expect(currentRules.rules).toEqual([{ id: 'unrelated', ref: 'customer-rule' }]);
 });
+
+it.each([false, true])('handles CNAME-to-A normalization and rollback, lost response: %s', async lostResponse => {
+  records[0] = { ...records[0], type: 'CNAME', content: 'old.cloudfront.net', settings: { flatten_cname: false } };
+  const before = structuredClone(records), { config } = await prepare();
+  await armDomainCutover('org', 'site', 'default', config);
+  const wrapped = journaledDomainProvider(provider, 'org', 'site', 'candidate', 'www.example.com');
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (route, options) => {
+    const result = await original(route, options);
+    if (options?.method === 'PATCH' && options.body.type === 'A') {
+      records[0].settings = {};
+      if (lostResponse) throw Error('response lost');
+      return structuredClone(records[0]);
+    }
+    return result;
+  });
+  const write = wrapped('/zones/zone/dns_records/original', { method: 'PATCH', body: { type: 'A', name: 'www.example.com', content: '192.0.2.1', proxied: true, ttl: 1 } });
+  if (lostResponse) await expect(write).rejects.toThrow('response lost'); else {
+    await write;
+    await recordDomainCutover('org', 'site', 'candidate', 'www.example.com');
+  }
+  expect(await rollbackDomainCutover('org', 'site', 'candidate')).toMatchObject({ state: 'rolled_back', errors: [] });
+  expect(records).toEqual(before);
+});
+
+it('still rejects unrelated setting changes during CNAME-to-A conversion', async () => {
+  records[0] = { ...records[0], type: 'CNAME', content: 'old.cloudfront.net', settings: { flatten_cname: false } };
+  const { config } = await prepare();
+  await armDomainCutover('org', 'site', 'default', config);
+  const wrapped = journaledDomainProvider(provider, 'org', 'site', 'candidate', 'www.example.com');
+  await wrapped('/zones/zone/dns_records/original', { method: 'PATCH', body: { type: 'A', name: 'www.example.com', content: '192.0.2.1', proxied: true, ttl: 1 } });
+  records[0].settings = { ipv4_only: true };
+  await expect(recordDomainCutover('org', 'site', 'candidate', 'www.example.com')).rejects.toMatchObject({ code: 'dns_revision_conflict' });
+  expect(await rollbackDomainCutover('org', 'site', 'candidate')).toMatchObject({ state: 'conflict' });
+  expect(records[0].settings).toEqual({ ipv4_only: true });
+});

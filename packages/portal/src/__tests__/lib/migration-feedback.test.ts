@@ -54,7 +54,7 @@ describe('migration feedback safeguards', () => {
     const key = 'a'.repeat(64);
     const job = {id:'job',version_id:MAIN_VERSION_ID,git_publication:{build_task_key:key}} as unknown as DeployJob;
     await getStore().setDoc(`organizations/org/build_tasks/${key}`, {identity:{org_id:'org',site_id:'site',version_id:MAIN_VERSION_ID,job_id:'job'},status:'running',attempt:2,media_cursor:4,media_total:9,token_hash:'secret',lease_id:'secret'});
-    expect(await publicationBuildProgress('org','site',job)).toEqual({status:'running',attempt:2,step:'preparing_media',completed:4,total:9});
+    expect(await publicationBuildProgress('org','site',job)).toEqual({status:'running',attempt:2,step:'preparing_media',completed:4,total:9,queued_since:null,retry_behavior:'A new publication does not automatically cancel this job. Retry only after a terminal failure; a queued timeout revokes the old task before a retry can run.'});
     expect(await publicationBuildProgress('org','other',job)).toBeNull();
     expect(await publicationBuildProgress('org','site',{...job,id:'different'})).toBeNull();
   });

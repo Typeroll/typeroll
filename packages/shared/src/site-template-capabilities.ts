@@ -30,6 +30,8 @@ export interface SiteTemplateCapabilities {
   supports_blocks_mode: boolean;
   supports_block_palette_tokens: boolean;
   supports_design_scales: boolean;
+  supports_fluid_typography: boolean;
+  supports_responsive_design_scales: boolean;
   supports_design_token_audit: boolean;
   supports_html_mode: boolean;
   supports_x_include: boolean;
@@ -287,7 +289,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.54.0',
+  template_capabilities_version: '0.55.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -314,6 +316,8 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_blocks_mode: true,
   supports_block_palette_tokens: true,
   supports_design_scales: true,
+  supports_fluid_typography: true,
+  supports_responsive_design_scales: true,
   supports_design_token_audit: true,
   supports_html_mode: true,
   supports_x_include: true,

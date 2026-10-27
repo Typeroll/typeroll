@@ -10,6 +10,8 @@ export async function publicationBuildProgress(org: string, site: string, job: D
   const task = await getStore().getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);
   if (!task || task.identity.org_id !== org || task.identity.site_id !== site || task.identity.job_id !== job.id || task.identity.version_id !== job.version_id) return null;
   return { status: task.status, attempt: task.attempt,
-    step: publication?.verification_task_key ? 'verifying_static_files' : task.media_total && (task.media_cursor ?? 0) < task.media_total ? 'preparing_media' : 'building_site',
+    step: task.status === 'queued' ? 'waiting_for_runner' : publication?.verification_task_key ? 'verifying_static_files' : task.media_total && (task.media_cursor ?? 0) < task.media_total ? 'preparing_media' : 'building_site',
+    queued_since: task.status === 'queued' ? new Date(task.queued_at ?? task.created_at).toISOString() : null,
+    retry_behavior: 'A new publication does not automatically cancel this job. Retry only after a terminal failure; a queued timeout revokes the old task before a retry can run.',
     completed: task.media_cursor ?? 0, total: task.media_total ?? 0 };
 }

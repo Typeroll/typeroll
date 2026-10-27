@@ -61,7 +61,14 @@ export function journaledDomainProvider(provider: Provider, org: string, site: s
     let body: any, patch: Partial<Entry>;
     if (route === `/zones/${entry.zone_id}/dns_records${entry.before.length ? '/' + entry.before[0].id : ''}`) {
       body = { ...options.body as object, comment: `Typeroll cutover ${candidate}` };
-      patch = { dns_intent: { ...(entry.before[0] ? dnsRecordBody(entry.before[0]) : {}), ...body } };
+      const intent = { ...(entry.before[0] ? dnsRecordBody(entry.before[0]) : {}), ...body } as Record<string, any>;
+      // Cloudflare drops CNAME-only settings when a redirect replaces CNAME with A.
+      // Normalize only this known type transition; retain every other conflict check.
+      if (entry.before[0]?.type === 'CNAME' && ['A', 'AAAA'].includes(intent.type) && intent.settings) {
+        intent.settings = { ...intent.settings };
+        delete intent.settings.flatten_cname;
+      }
+      patch = { dns_intent: intent };
     } else if (entry.redirect && route.startsWith(`/zones/${entry.zone_id}/rulesets`)) {
       const input = options.body as any, rule = input.rules?.length === 1 ? input.rules[0] : input;
       if (rule.ref !== entry.redirect.rule.ref) throw new ConnectionError('The redirect rule is outside the approved cutover.', 409, 'cutover_rule_mismatch');

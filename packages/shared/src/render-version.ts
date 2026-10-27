@@ -109,6 +109,14 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'The "header" shadow is `0 2px 6px rgb(0 0 0 / 20%)` instead of `0 2px 5px`, as common site header CSS draws it.',
     ],
   },
+  {
+    version: 10, core_version: '0.2.114', title: 'Fluid typography and component rhythm',
+    changes: [
+      'Named type and space steps use fluid defaults controlled by the site ratios and rhythm. Explicit scale overrides remain authoritative.',
+      'Heading role margins apply to editorial flow, not component titles. Opening headings in containers and sections have no extra top margin.',
+      'Prose uses the configured line length. Preview cards and boxed headings before rebuilding an existing site.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

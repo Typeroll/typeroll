@@ -1,3 +1,4 @@
+import { designScalesError, typographyError } from '../../packages/shared/src/design-scale-validation.mjs';
 import { publicationContentFiles } from '../fixtures/static-publication/content.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -171,19 +172,11 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   if (['auto', 'antialiased'].includes(input.settings?.fonts?.smoothing)) settings.fonts.smoothing = input.settings.fonts.smoothing;
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
-  if (input.settings?.design_scales !== undefined) {
-    const scales = input.settings.design_scales;
-    if (!scales || typeof scales !== 'object' || Array.isArray(scales)) throw new Error('Invalid public design scales');
-    const steps = { type_size:['xs','sm','md','lg','xl','2xl','3xl'], space:['none','xs','sm','md','lg','xl'], leading:['tight','snug','normal','relaxed','loose'] };
-    settings.design_scales = {};
-    for (const [scale, values] of Object.entries(scales)) {
-      if (!Object.hasOwn(steps, scale) || !values || typeof values !== 'object' || Array.isArray(values)) throw new Error('Invalid public design scale');
-      if (Object.keys(values).some(step => !steps[scale].includes(step))) throw new Error('Invalid public design scale step');
-      settings.design_scales[scale] = projectStrings(values, steps[scale]);
-      for (const value of Object.values(settings.design_scales[scale])) {
-        if (!(scale === 'leading' ? /^(?:1(?:\.\d+)?|2(?:\.0+)?)$/ : /^(?:0|\d+(?:\.\d+)?(?:px|rem|em))$/).test(value)) throw new Error('Invalid public design scale value');
-      }
-    }
+  for (const [key, validate] of [['design_scales', designScalesError], ['typography', typographyError]]) {
+    if (input.settings?.[key] === undefined) continue;
+    const error = validate(input.settings[key]);
+    if (error) throw new Error(`Invalid public ${key}: ${error}`);
+    settings[key] = structuredClone(input.settings[key]);
   }
   // The site's style library: structured values, re-validated at render.
   if (input.settings?.styles !== undefined) {

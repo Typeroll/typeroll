@@ -1,6 +1,6 @@
 import { paths, type DeployJob } from '@typeroll/shared';
 import { getStore } from '../datastore';
-import { buildTasksPath, type BuildTask } from './queue';
+import { buildTasksPath, queuedBuildExpired, expireQueuedBuild, type BuildTask } from './queue';
 import { buildInputPath, readEngineConfiguration, type BuildInput } from './state';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { githubBuildClient, readGithubDispatch } from './github';
@@ -18,6 +18,8 @@ export async function refreshBuildFailure(org: string, site: string, job: Deploy
   let task = await store.getDoc<BuildTask>(taskPath);
   if (!task || task.identity.org_id !== org || task.identity.site_id !== site || task.identity.job_id !== job.id) return job;
   const now = Date.now();
+  if (queuedBuildExpired(task, now)) { await expireQueuedBuild(store, org, key, now); task = await store.getDoc<BuildTask>(taskPath); }
+  if (!task) return job;
   // A running attempt whose heartbeat lease expired cannot authorize another
   // upload or result. Surface that loss; elapsed build duration is irrelevant.
   if (task.status === 'running' && task.lease_until <= now) {

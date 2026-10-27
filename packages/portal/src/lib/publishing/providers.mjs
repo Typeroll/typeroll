@@ -8,10 +8,25 @@ export function digest(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
+const GITHUB_REASONS = {
+  non_fast_forward: 'The branch changed while publishing. Retry to publish from its current head.',
+  reference_exists: 'The branch already exists. Retry to use the existing branch.',
+  invalid_reference: 'GitHub rejected a Git object or reference. Check the generated repository and branch permissions.',
+  validation_failed: 'GitHub rejected the repository data. Check the generated repository and GitHub App permissions.',
+};
+export function githubFailureHint(error) { return GITHUB_REASONS[error?.reason] ?? ''; }
+function githubReason(body) {
+  // Only classify known responses. Never expose provider text, paths or reflected content.
+  if (body?.message === 'Update is not a fast forward') return 'non_fast_forward';
+  if (body?.message === 'Reference already exists') return 'reference_exists';
+  if (Array.isArray(body?.errors) && body.errors.some(e => ['Reference','Commit','Tree','Blob'].includes(e?.resource))) return 'invalid_reference';
+  return 'validation_failed';
+}
 export class ProviderError extends Error {
-  constructor(provider, status, codes = [], { retryAfter = null, ssoUrl = null, rateLimited = false } = {}) {
+  constructor(provider, status, codes = [], { retryAfter = null, ssoUrl = null, rateLimited = false, reason = null } = {}) {
     // Provider bodies can contain credentials or reflected request payloads.
     super(`${provider} request failed (HTTP ${status}); inspect access and resource status in the provider dashboard`);
+    this.reason = Object.hasOwn(GITHUB_REASONS, reason) ? reason : null;
     this.provider = provider;
     this.status = status;
     this.codes = codes.filter(code => Number.isSafeInteger(code));
@@ -93,7 +108,9 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
         } catch { /* Never include response bodies in errors. */ }
       }
       if (provider === 'GitHub') {
-        throw new ProviderError(provider, response.status, codes, { ...githubRateLimit(response), ssoUrl: response.headers.get('x-github-sso') });
+        let reason = null;
+        if (response.status === 422) { try { reason = githubReason(await response.json()); } catch { reason = 'validation_failed'; } }
+        throw new ProviderError(provider, response.status, codes, { reason, ...githubRateLimit(response), ssoUrl: response.headers.get('x-github-sso') });
       }
       throw new ProviderError(provider, response.status, codes);
     }
