@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { buildCoreBlockRegistry, collectBlockAssets, renderBlocks, siteThemeCss, siteStylesCss, defaultSiteSettings, contentWellCss, newSiteStyles, resolveBreakpointWidths, type Block } from '@typeroll/shared';
 import { gotoReady } from './helpers/ready';
@@ -29,6 +31,9 @@ for(const width of [375,768,1280]) test(`fluid role rhythm and component boundar
   await page.screenshot({path:info.outputPath(`fluid-${width}.png`),fullPage:true});
 });
 test('settings preview is isolated and updates before save at three real widths',async({page},info)=>{
+  const settingsPath = path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/settings/default.json');
+  const original = readFileSync(settingsPath,'utf8');
+  try {
   await gotoReady(page,'/app/sites/default/settings?section=design');
   const upgrade=await page.request.post('/api/sites/default/render-version',{data:{render_version:10},headers:{Origin:new URL(page.url()).origin}});
   expect(upgrade.ok(),await upgrade.text()).toBe(true);
@@ -49,4 +54,8 @@ test('settings preview is isolated and updates before save at three real widths'
   await expect.poll(()=>page.evaluate(()=>document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
   await page.getByRole('heading',{name:'Typography at three widths'}).scrollIntoViewIfNeeded();
   await page.screenshot({path:info.outputPath('settings-fluid-mobile.png')});
+  } finally {
+    await page.goto('about:blank');
+    writeFileSync(settingsPath,original);
+  }
 });

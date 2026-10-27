@@ -18,7 +18,7 @@ for (const width of [375,768,1280]) test(`palette changes propagate without bloc
   const before = JSON.stringify(blocks);
   const assets = collectBlockAssets(blocks,registry,{renderVersion:9});
   const markup = sanitizeBody(renderBlocks(blocks,{registry,renderVersion:9,annotate:true}));
-  const settings = structuredClone(defaultSiteSettings);
+  const settings = {...structuredClone(defaultSiteSettings),render_version:9};
   const theme = () => siteThemeCss(settings) + siteStylesCss(settings.styles,{colors:settings.colors,breakpoints:resolveBreakpointWidths(),renderVersion:9});
   await page.setContent(`<style>body{margin:0}#home{padding:1rem}${assets.css}</style><style id="theme">${theme()}</style><main id="home">${markup}</main>`);
   await expect(page.locator('[data-block="post_card"]')).toHaveCSS('background-color', settings.colors.surface === '#f3f4f6' ? 'rgb(243, 244, 246)' : 'rgb(248, 250, 252)');
