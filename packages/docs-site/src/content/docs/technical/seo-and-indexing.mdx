@@ -123,7 +123,7 @@ A build emits:
 - **`/sitemap.xml`:** published, indexable Page routes using the publication's
   origin and slash policy. Drafts, review content, unlisted Pages and noindex
   Pages are excluded. Site-wide or version indexing restrictions suppress entries.
-- **`/sitemap-images.xml`:** eligible Page image references, grouped by Page.
+- **`/sitemap-images.xml`:** eligible Page image references, grouped by the resolved Page URL (including content-type routes and explicit paths). Includes public image fields such as a featured image, OG images, HTML body images and image fields in nested blocks, slots and Page templates. Responsive image sources and `srcset` candidates are included and duplicates are removed per Page. Drafts, unlisted Pages, noindex Pages, private fields and unused media-library files are excluded; a blocked preview/version or site-wide noindex produces an empty image sitemap. Each Page includes at most 1,000 image URLs. CSS-only backgrounds and client-generated images are not discovered. Rebuild the site after upgrading Core to regenerate this file; a portal update alone does not change an existing publication.
 - **`/llms.txt`:** a text map of published, listed Pages with titles, URLs and
   descriptions; Page-level noindex content is excluded. This is discovery data,
   not authentication or a guarantee that an AI service will use it.

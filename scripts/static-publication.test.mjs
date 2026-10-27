@@ -484,3 +484,40 @@ test('design tokens survive frozen publication and invalidate its identity when 
   value.settings.design_scales.space.md = '2px;display:none';
   assert.throws(() => projectStaticPublication(value, identity), /Invalid public design_scales/);
 });
+
+test('frozen publication image sitemap groups typed Page and block images at resolved routes', async (t) => {
+  const { build } = await import('esbuild');
+  const source = await build({ entryPoints: [fileURLToPath(new URL('../packages/shared/src/core-blocks.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { CORE_BLOCK_TYPES } = await import(`data:text/javascript;base64,${Buffer.from(source.outputFiles[0].text).toString('base64')}`);
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-image-sitemap-'));
+  t.after(() => fs.rm(tmp, { recursive: true, force: true }));
+  const value = input();
+  value.contentTypes = [{ id: 'article', name: 'article', label_singular: 'Article', label_plural: 'Articles', route_template: '/tips/{slug}', fields: [
+    { name: 'featured_image', type: 'image', label: 'Featured image' }, { name: 'internal_image', type: 'image', label: 'Private', rendered: false },
+  ] }];
+  const article = { id: 'article', content_type: 'article', slug: 'address-change', title: 'Address change', status: 'published', content_mode: 'blocks',
+    fields: { featured_image: 'https://media.example.invalid/featured.jpg', internal_image: 'https://media.example.invalid/private.jpg' },
+    blocks: [{ id: 'body-image', type: 'core/image', data: { src: 'https://media.example.invalid/body.jpg', alt: 'Moving boxes' } },
+      { id: 'prose-image', type: 'core/prose', data: { html: '<p><img src="https://media.example.invalid/prose.jpg" alt="Address label"></p>' } }] };
+  value.pages.push(article, { ...article, id: 'excluded', slug: 'excluded', noindex: true }, { ...article, id: 'unlisted', slug: 'unlisted', status: 'unlisted' },
+    { ...article, id: 'nested', slug: 'simple', path: '/explicit/nested/', fields: { featured_image: 'https://media.example.invalid/nested.jpg' } });
+  for (const blocked of [false, true]) {
+    const destination = path.join(tmp, blocked ? 'blocked' : 'live');
+    const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES, noindex: blocked });
+    await createStaticPublicationProject(publication, destination);
+    await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
+    await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
+    await sealPublicationProject(destination);
+    const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: destination, encoding: 'utf8', timeout: 60_000 });
+    assert.equal(result.status, 0, result.stdout + result.stderr);
+    const xml = await fs.readFile(path.join(destination, 'dist/sitemap-images.xml'), 'utf8');
+    if (blocked) { assert.ok(!xml.includes('<url>')); continue; }
+    const groups = [...xml.matchAll(/<url>(.*?)<\/url>/g)].map(match => match[1]);
+    assert.equal(groups.length, 3, xml);
+    const target = groups.find(group => group.includes('<loc>https://example.invalid/tips/address-change/</loc>'));
+    assert.ok(target, xml);
+    for (const image of ['featured.jpg', 'body.jpg', 'prose.jpg']) assert.ok(target.includes(image), target);
+    assert.ok(groups.some(group => group.includes('<loc>https://example.invalid/explicit/nested/</loc>')));
+    assert.ok(!/private.jpg|\/excluded\/|\/unlisted\/|\/draft\//.test(xml));
+  }
+});
