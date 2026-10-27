@@ -153,6 +153,13 @@ it('allows old native media variants only while their exact source remains in th
   expect(await verifyCandidateCheck(origin, old, { fetchImpl: async () => new Response('old variant') })).toBe(false);
 });
 
+it('prioritizes replacement media URLs over ordinary assets in bounded public probes', () => {
+  const alias = { ...check('/media/old.svg', 'safe'), redirect_target: '/media/new.svg' };
+  const checks = [check('/.well-known/typeroll/publication.json'), ...Array.from({ length: 30 }, (_, i) => check(`/_assets/${i}.css`)), alias];
+  expect(selectStaticProbes(checks)).toContainEqual(alias);
+  expect(publicStaticChecks([alias])).toEqual([alias]);
+});
+
 it('allows retired content-addressed public datasets only when a verified replacement exists', async () => {
   const current = check(`/_typeroll/derived/${sha256('new public data')}.json`, 'new public data');
   const retired = { route: `/_typeroll/derived/${sha256('old public data')}.json`, status: 404 as const };

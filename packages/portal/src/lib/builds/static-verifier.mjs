@@ -56,7 +56,7 @@ export function selectStaticProbes(checks, changed = checks) {
   const byRoute = new Map(checks.map(check => [check.route, check]));
   const preferred = ['/.well-known/typeroll/publication.json', '/', '/robots.txt', '/sitemap.xml']
     .map(route => byRoute.get(route)).filter(Boolean);
-  const rest = publicStaticChecks(changed, checks).sort((a, b) => Number(b.status === 404) - Number(a.status === 404) || a.route.localeCompare(b.route));
+  const rest = publicStaticChecks(changed, checks).sort((a, b) => Number(b.status === 404) - Number(a.status === 404) || Number(!!b.redirect_target) - Number(!!a.redirect_target) || a.route.localeCompare(b.route));
   const selected = [], seen = new Set(); let bytes = 0;
   for (const check of [...preferred, ...rest]) {
     if (seen.has(check.route) || selected.length >= PROBE_FILES) continue;

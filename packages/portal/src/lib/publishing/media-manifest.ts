@@ -1,5 +1,6 @@
 import { findReferences, replaceReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
-import { paths, type Media } from '@typeroll/shared';
+import { paths, type Media, type Redirect } from '@typeroll/shared';
+import { createHash } from 'node:crypto';
 import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
 import { getSiteDomains, getOrganizationDomains, markOrganizationMediaHostUsed, publicMediaPath, type DomainConfiguration } from './domain-config';
@@ -204,4 +205,35 @@ export function retainDistinctMediaManifests(previous: any[], current: any): any
     if (entries.length) retained.push({ ...manifest, entries });
   }
   return retained;
+}
+
+/** Replace retired unsafe bytes with a redirect to the same media record's safe output.
+ * Do not retain an unsanitized SVG, infer replacements from filenames, or exempt
+ * genuinely deleted files from public verification.
+ */
+export function replacedMediaRedirects(previous: any[], current: any, existing: Redirect[] = [], retained: Array<Redirect & { media_id: string }> = []): Array<Redirect & { media_id: string }> {
+  const staticManifests = [...previous.filter(manifest => manifest.delivery === 'static' || manifest.media_host === manifest.website_host),
+    ...(current?.delivery === 'static' ? [current] : [])];
+  const output = staticManifests.flatMap(manifest => (manifest.entries ?? []).filter(safeRetainedEntry));
+  const entries = new Map<string, any>(output.map((entry: any) => [entry.id, entry]));
+  const occupied = new Set<string>(output.map((entry: any) => entry.public_path));
+  const redirects = new Map<string, Redirect & { media_id: string }>();
+  const retired = [...previous.flatMap(manifest => (manifest.entries ?? []).filter((entry: any) => !safeRetainedEntry(entry))),
+    ...retained.map(rule => ({ id: rule.media_id, public_path: rule.from_path }))];
+  for (const entry of retired) {
+    const replacement = entries.get(entry.id);
+    if (!replacement || !safeRetainedEntry(replacement)) continue;
+    const from = publicMediaPath(entry.public_path), to = publicMediaPath(replacement.public_path);
+    if (from === to) continue; // Current bytes are verified at this unchanged path.
+    if (/[*:]/.test(decodeURIComponent(from) + decodeURIComponent(to)))
+      throw new ConnectionError('A media replacement path contains redirect pattern characters. Choose a literal public path before publishing.', 409, 'media_redirect_conflict');
+    if (occupied.has(from)) throw new ConnectionError('An older media address conflicts with another current file.', 409, 'media_path_collision');
+    const authored = existing.find(rule => rule.from_path === from);
+    if (authored && (authored.to_path !== to || authored.status_code !== 301))
+      throw new ConnectionError(`The redirect at ${from} conflicts with the safe replacement for this media file. Remove or update that redirect before publishing.`, 409, 'media_redirect_conflict');
+    if (redirects.has(from) && redirects.get(from)!.to_path !== to)
+      throw new ConnectionError('Two older media records claim the same public address.', 409, 'media_redirect_conflict');
+    redirects.set(from, { id: `media-replacement-${createHash('sha256').update(from).digest('hex').slice(0, 32)}`, media_id: entry.id, from_path: from, to_path: to, status_code: 301 } as Redirect & { media_id: string });
+  }
+  return [...redirects.values()].sort((a, b) => a.from_path.localeCompare(b.from_path));
 }

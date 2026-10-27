@@ -661,6 +661,24 @@ This also applies when the updated server resumes a pending publication. No
 account reconnection, manual status override, or site content change is needed.
 See [Cloudflare's asset retention behavior](https://developers.cloudflare.com/pages/configuration/serving-pages/#asset-retention).
 
+## Safe replacements for older media URLs
+
+From Core 0.2.119, a static publication preserves an older media URL when its
+file cannot safely be retained and the same media record has a safe replacement.
+For example, sanitizing an SVG
+changes its bytes and content-hashed filename. Typeroll generates a 301 from the
+old path to the sanitized file instead of retaining the unsanitized bytes or
+requiring a broken link. This redirect remains in later publications while that
+media record is still included. It counts toward the normal Pages redirect limits;
+dry runs validate those limits too.
+
+The build verifies the replacement's actual bytes through the old URL. A fresh
+publication header or a cache-busting query string does not prove the old URL is
+safe. A conflicting authored redirect fails with `media_redirect_conflict` rather
+than being silently overwritten. Media without a safe replacement keeps its
+normal removal check. This automatic redirect applies to media delivered by the
+site's static output; a separate R2 media host has its own routing.
+
 ## Partial builds
 
 From Core 0.2.15, generated publication builds automatically reuse unchanged

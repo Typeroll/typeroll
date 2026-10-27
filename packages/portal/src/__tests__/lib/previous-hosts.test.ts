@@ -1,6 +1,8 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { previousWebsiteHosts, previousHostSummary, preparePreviousHosts, checkPreviousHost, retirePreviousHosts } from '../../lib/publishing/previous-hosts';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
+import { getStore } from '../../lib/datastore';
+import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 const mocks = vi.hoisted(() => ({ provider: vi.fn(), ownership: vi.fn() }));
 vi.mock('../../lib/publishing/hosting-dns', () => ({ hostingDns: async () => ({ provider: mocks.provider, accountId: 'account', groupId: 'default' }) }));
 vi.mock('../../lib/publishing/cloudflare-account-claims', () => ({ assertTrafficNotOwnedByOtherOrganization: mocks.ownership }));
@@ -8,7 +10,8 @@ vi.mock('../../lib/publishing/domain-cutover-journal', () => ({ journaledDomainP
 const old = 'site-123.sites.example.com';
 const target = 'www.example.com';
 const config: any = { active: { website_host: old }, media_aliases: [{ website_host: old, media_host: 'media.example.com' }, { website_host: 'deployment.project.pages.dev' }], previous_hosts: [] };
-beforeEach(() => {
+beforeEach(async () => {
+  makeTmpFixtures(); await resetDatastore();
   mocks.provider.mockReset(); mocks.ownership.mockReset();
   mocks.provider.mockImplementation(async route => {
     if (route.startsWith('/zones?')) return [{ id: 'zone', name: 'example.com', status: 'active', account: { id: 'account' } }];
@@ -16,6 +19,27 @@ beforeEach(() => {
     if (route.includes('/rulesets')) return null;
     throw Error(`Unexpected provider call ${route}`);
   });
+});
+
+it('finishes legacy retirement during normal publication without touching DNS or existing rules', async () => {
+  const [prepared] = await preparePreviousHosts('org', 'default', [old], target, vi.fn().mockResolvedValue({ status: 'active' }), 'account', 'project');
+  const original = mocks.provider.getMockImplementation()!;
+  const jobPath = 'organizations/org/sites/site/deploys/job';
+  let ruleset: any = { id: 'ruleset', rules: [{ ref: 'customer-rule', enabled: true }] };
+  mocks.provider.mockImplementation(async (route, options) => {
+    if (!route.includes('/rulesets')) return original(route, options);
+    if (!options?.method) return structuredClone(ruleset);
+    expect(await getStore().getDoc(`${jobPath}/previous_host_writes/${prepared.redirect!.rule.ref}`)).toMatchObject({ state: 'prepared', publication_id: 'publication' });
+    expect(route).toBe('/zones/zone/rulesets/ruleset/rules');
+    expect(options.method).toBe('POST');
+    ruleset.rules.push(options.body);
+    return { id: 'created' };
+  });
+  const fetcher = vi.fn(async (input: any) => new Response(null, { status: 301, headers: { location: String(input).replace(old, target) } }));
+  for (let i = 0; i < 2; i++) expect(await retirePreviousHosts('org', 'site', 'default', 'publication', [old], target, [prepared], true, fetcher, jobPath)).toMatchObject([{ mode: 'redirect', status: 'verified' }]);
+  expect(mocks.provider.mock.calls.filter(([, options]) => options?.method)).toHaveLength(1);
+  expect(ruleset.rules[0]).toEqual({ ref: 'customer-rule', enabled: true });
+  expect(await getStore().getDoc(`${jobPath}/previous_host_writes/${prepared.redirect!.rule.ref}`)).toMatchObject({ state: 'submitted', target_host: target });
 });
 it('keeps previous website hosts distinct from media aliases, current host and Pages addresses', () => {
   expect(previousWebsiteHosts(config, target, old)).toEqual([old]);

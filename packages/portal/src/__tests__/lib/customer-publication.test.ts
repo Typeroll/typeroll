@@ -970,6 +970,50 @@ it('requires fresh approval after a failed switch even when the embedded origins
   expect(mocks.cloudflare.mock.calls.some(([route,options])=>route.includes('/dns_records') && options?.method)).toBe(false);
 });
 
+it('finishes legacy previous-host redirects through normal publication after public verification', async () => {
+  const old = 'site-123.sites.example.com';
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { media_aliases: [{ website_host: old, media_host: null, media_path_prefix: '' }] });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  const rules: any[] = [];
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/rulesets')) {
+      if (!options?.method) return { id: 'ruleset', rules: structuredClone(rules) };
+      expect(mocks.probe.mock.calls.some(([origin]) => origin === 'https://www.example.com')).toBe(true);
+      rules.push(options.body);
+      return { id: 'new-rule' };
+    }
+    return provider(route, options);
+  });
+  await executeCustomerPublication(args);
+  expect(rules).toHaveLength(0);
+  complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'succeeded' });
+  expect(rules).toHaveLength(1);
+  expect(rules[0]).toMatchObject({ expression: `http.host eq "${old}"`, action_parameters: { from_value: { status_code: 301, preserve_query_string: true } } });
+  expect((await getSiteDomains('org', 'site')).previous_hosts).toMatchObject([{ host: old, mode: 'redirect', status: 'verified' }]);
+  expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/dns_records') && options?.method)).toBe(false);
+  expect(mocks.push).toHaveBeenCalledTimes(1);
+  // Reach the stable unchanged snapshot, then model a permission repair after
+  // an earlier noindex fallback. Finishing retirement must not push/build again.
+  let unchanged = false;
+  for (let i = 0; i < 3 && !unchanged; i++) {
+    const next = { ...args, jobId: `repeat-${i}` };
+    await getStore().setDoc(paths.deploy('org', 'site', next.jobId), { version_id: 'main', status: 'queued', environment: 'production', started_at: new Date().toISOString() });
+    await executeCustomerPublication(next);
+    unchanged = (await getStore().getDoc<any>(paths.deploy('org', 'site', next.jobId))).phase === 'unchanged';
+  }
+  expect(unchanged).toBe(true);
+  rules.length = 0;
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { previous_hosts: [{ host: old, target_host: 'www.example.com', mode: 'noindex', status: 'warning' }] });
+  const repair = { ...args, jobId: 'repair' }, pushes = mocks.push.mock.calls.length;
+  await getStore().setDoc(paths.deploy('org', 'site', repair.jobId), { version_id: 'main', status: 'queued', environment: 'production', started_at: new Date().toISOString() });
+  await executeCustomerPublication(repair);
+  expect((await getStore().getDoc<any>(paths.deploy('org', 'site', repair.jobId))).status).toBe('succeeded');
+  expect(rules).toHaveLength(1);
+  expect(mocks.push).toHaveBeenCalledTimes(pushes);
+});
+
 it('records the actual replaced origins even if future settings change during the provider request', async () => {
   const store=getStore();
   await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
