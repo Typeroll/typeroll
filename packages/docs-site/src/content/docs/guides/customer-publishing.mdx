@@ -1027,3 +1027,13 @@ not timed out because the overall media job is old. Check Publishing → Builds,
 then retry after the terminal error. A new publication does not automatically
 replace an active one. GitHub 422 errors include a safe classified reason
 when available, never the raw provider response.
+
+### Publication status on the site overview
+
+The overview distinguishes saved content from the latest publication result. A
+failed final check shows **Publication needs attention**, even if the website is
+already reachable. It does not claim the site is up to date until verification
+succeeds. A brief explanation and recovery action remain visible; **Technical
+details** expands the original diagnostic, including the affected path and
+deployment ID. Retry verification checks the existing publication without
+rebuilding it.

@@ -37,7 +37,7 @@ for (const width of [390, 1280]) test(`retries the same failed verification twic
 
 for (const width of [390, 1280]) test(`requires explicit named-zone cache approval at ${width}px`, async ({ page }, info) => {
   const bodies: unknown[] = [];
-  const failed = { id: 'cache-test', status: 'failed', phase: 'failed', error: 'Cloudflare still serves an old image. The build is complete; no rebuild is needed.', failure: { code: 'publication_cache_refresh_required' }, cache_recovery: { state: 'approval_required', zone_id: 'zone', zone_name: 'example.com' } };
+  const failed = { id: 'cache-test', status: 'failed', phase: 'failed', error: 'Publication verification stopped after 45 minutes. The hosting service still returns HTTP 200 at /media/0dbb87db1719d69c-moveria-moving-illustration.svg; this deployment requires HTTP 404. Contact support with deployment cache-test.', render_report: { rendered: 262, reused: 0 }, failure: { code: 'publication_cache_refresh_required' }, cache_recovery: { state: 'approval_required', zone_id: 'zone', zone_name: 'example.com' } };
   await page.route('**/api/sites/default/deploy', route => {
     if (route.request().method() === 'POST') {
       bodies.push(route.request().postDataJSON());
@@ -50,8 +50,19 @@ for (const width of [390, 1280]) test(`requires explicit named-zone cache approv
   await gotoReady(page, '/app/sites/default');
   const button = page.getByRole('button', { name: 'Refresh domain cache…', exact: true });
   await expect(button).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Rebuild…', exact: true })).toBeVisible();
   await button.scrollIntoViewIfNeeded();
   await expect(button).toBeInViewport({ ratio: 1 });
+  await expect(page.locator('.deploy-banner__text')).toHaveText('Publication needs attention — final verification is incomplete.');
+  await expect(page.locator('.deploy-banner')).toHaveClass(/deploy-banner--accent/);
+  await expect(page.locator('.deploy-banner__text')).not.toContainText('up to date');
+  await expect(page.getByRole('alert')).toContainText('Retry verification without rebuilding.');
+  const details = page.getByText('Technical details', { exact: true });
+  await expect(page.getByText(/Publication verification stopped after 45 minutes/)).not.toBeVisible();
+  await details.click();
+  await expect(page.getByText(/Publication verification stopped after 45 minutes/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await details.click();
   expect((await page.locator('.deploy-banner__text').boundingBox())!.width).toBeGreaterThan(180);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath(`cache-recovery-${width}.png`) });
@@ -67,4 +78,5 @@ for (const width of [390, 1280]) test(`requires explicit named-zone cache approv
   await expect.poll(() => bodies.length).toBe(1);
   expect(bodies).toEqual([{ retry_verification_job_id: 'cache-test', approve_cache_zone_id: 'zone' }]);
   await expect(page.getByRole('button', { name: 'verifying refreshed cache…', exact: true })).toBeDisabled();
+  await expect(page.locator('.deploy-banner__text')).toHaveText('Publication in progress — waiting for verification.');
 });

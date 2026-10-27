@@ -15,8 +15,8 @@
 
 import { usePublishingReadiness } from './usePublishingReadiness';
 import { PublishingRequirements } from './PublishingRequirements';
-import { useState } from 'react';
-import { useDeployProgress } from './useDeployProgress';
+import { useEffect, useState } from 'react';
+import { useDeployProgress, type DeployProgress } from './useDeployProgress';
 import { BuildFailureDetails } from './BuildFailureDetails';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
@@ -87,15 +87,19 @@ interface DeployButtonProps {
   pendingDeploy?: boolean;
   /** Called after a successful deploy. Useful to refresh editor state. */
   onDeployed?: () => void;
+  onProgress?: (job: DeployProgress | null) => void;
 }
 
 
-export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: DeployButtonProps) {
+export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgress }: DeployButtonProps) {
   const { setup, error: setupError, refresh } = usePublishingReadiness(siteId);
   const [env, setEnv] = useState<'production' | 'staging'>('production');
   const [err, setErr] = useState<string | null>(null);
   const { job, setJob, watch } = useDeployProgress(siteId, setErr, onDeployed);
 
+  useEffect(() => { onProgress?.(job); }, [job, onProgress]);
+
+  const verificationFailed = job?.status === 'failed' && ['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(job.failure?.code ?? '');
   const busy = job?.status === 'queued' || job?.status === 'running';
 
   async function go() {
@@ -145,7 +149,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
     if (job.phase === 'distributing') return 'Distributing…';
     if (job.status === 'running') return job.phase ? `${job.phase}…` : 'Running…';
     if (job.status === 'succeeded') return 'Deployed ✓';
-    return 'Failed';
+    return 'Rebuild…';
   })();
 
   return (
@@ -176,12 +180,20 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
       {job?.phase === 'distributing' && <span role="status" className="text-sm">Distributing… The link will appear automatically when ready.</span>}
       <PublishingRequirements setup={setup} error={setupError} retry={() => { void refresh(); }} />
       {err && setup?.ready && (
-        <span className="text-sm" style={{ color: 'var(--color-danger)', marginLeft: 8 }}>
-          {err}
-        </span>
+        <div className="deploy-error text-sm" role="alert">
+          {verificationFailed ? <>
+            <p>The files have been published, but the final checks have not passed. Retry verification without rebuilding.</p>
+            <details><summary>Technical details</summary><p>{err}</p></details>
+          </> : <p>{err}</p>}
+        </div>
       )}
       {err && setup?.ready && job?.status === 'failed' && <BuildFailureDetails failure={job.failure} />}
       <style>{`
+        .deploy-error { flex: 1 0 100%; min-width: 0; color: var(--color-danger); overflow-wrap: anywhere; }
+        .deploy-error p { margin: 0; }
+        .deploy-error details { margin-top: 0.5rem; }
+        .deploy-error summary { cursor: pointer; color: var(--color-text-muted); }
+        .deploy-error details p { margin-top: 0.5rem; }
         .deploy-env {
           padding: 0.25rem 0.4rem;
           font-size: 0.85rem;
