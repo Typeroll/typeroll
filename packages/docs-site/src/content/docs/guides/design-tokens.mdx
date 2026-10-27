@@ -112,7 +112,7 @@ from applied changes, then publish only after the normal approval and checks.
 
 Core 0.2.114 / MCP 0.45.85 / capabilities 0.55.0 adds responsive scales.
 Check the connected versions before using this contract. New sites use render
-version 10. For an existing site, test a Version first; upgrading rendering
+version 10 in that release. For an existing site, test a Version first; upgrading rendering
 and replacing existing roles are separate, deliberate choices.
 
 Use `fonts.size_base` (default 16), `typography.ratio_mobile` (1.2),
@@ -130,6 +130,29 @@ Compare 375, 768 and 1280px in Site settings → Design and in a full site previ
 After a rendering upgrade/rebuild, recheck cards, boxed headings, leading text
 and webfonts. Boxes should get their outer air from padding. Keep exceptions
 in decisions.md, and run lint_design_tokens before launch.
+
+### Contextual spacing (planned: Core 0.2.115, render version 11)
+
+This version is not yet released. It restores heading rhythm inside columns
+and grids, including the gap after an image. The first heading in a container
+still has no extra top margin. Article spacing overrides apply once, and named
+heading styles remain authoritative. A site without saved heading roles also
+gets proportional spacing.
+
+An explicit named style with `space_before: "0"` still means zero. If a site
+used that as a workaround for opening headings, check whether the same style
+was also assigned to headings later in articles. Preview removing the workaround
+from those uses; the new opening-heading rule handles the first heading without
+removing spacing from later headings. Do not overwrite all saved roles.
+
+Navigation links keep their default 44px touch targets; they no longer add a
+second vertical gap between those targets. Explicit `gap_px` and compact
+settings remain available. When reviewing a footer, compare the heading-to-link
+gap with the gaps inside the link group, not only the overall footer height.
+
+A reserved video area is not a heading margin. Review embeds with the actual
+player visible and after consent choices; do not hide iframes in screenshots
+used to approve a layout. Test unavailable or blocked embeds separately.
 
 ### Responsive step overrides
 

@@ -567,12 +567,18 @@ export interface SiteStylesCssOptions {
  */
 export const STYLE_DEFAULT_ROLE_CLASSES: readonly StyleClassRole[] = ['eyebrow', 'lead'];
 
+// Layout ancestry must not turn editorial headings into component titles.
+// These selectors follow the block that owns the heading, not every ancestor.
+const EDITORIAL_HEADING = ':where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"]) :is(h1,h2,h3,h4,h5,h6)';
+const OPENING_HEADING = ':where([data-block="container"],[data-block="semantic-container"],.block-section-inner,.block-columns-col) > :is(h1,h2,h3,h4,h5,h6):first-child, :where([data-block="container"],[data-block="semantic-container"],.block-section-inner,.block-columns-col) > :where([data-block="heading"],[data-block="rich_heading"]):first-child :is(h1,h2,h3,h4,h5,h6), :where([data-block="container"],[data-block="semantic-container"],.block-section-inner,.block-columns-col) > [data-block="prose"]:first-child > :is(h1,h2,h3,h4,h5,h6):first-child';
+
 /**
  * CSS for a site's style library and its on_* text colours. Empty for a
  * site on render version 1 without styles or explicit on_* colours. Class
  * styles get an id-level specificity boost so a chosen style wins over the
  * block's own default appearance (but not over `!important` utilities).
  */
+
 export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteStylesCssOptions): string {
   // Re-validate: stored data is rendered into a <style> element.
   const styles = (Array.isArray(input) ? input : []).flatMap(value => validateSiteStyle(value).style ?? []);
@@ -584,10 +590,16 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
   const defaultRoles = new Set<string>();
   const rootByBp = new Map<string, string[]>();
   const rules: string[] = [];
-  if (renderVersion >= 10) rules.push(
+  if (renderVersion === 10) rules.push(
     ':is([data-block="container"],[data-block="semantic-container"])[data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]){margin-block:var(--heading_before_px,0px) var(--heading_after_px,0px)}',
     ':where([data-block="container"],[data-block="semantic-container"],.block-section-inner) > :is(h1,h2,h3,h4,h5,h6):first-child, :where([data-block="container"],[data-block="semantic-container"],.block-section-inner) > :is([data-block="heading"],[data-block="rich_heading"],[data-block="prose"]):first-child :is(h1,h2,h3,h4,h5,h6):first-child{margin-block-start:0}',
     '[data-block]:not(:where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"],[data-block="container"],[data-block="semantic-container"],[data-block="section"],[data-block="template_content_slot"])) :where(h1,h2,h3,h4,h5,h6){margin-block:0}',
+  );
+  if (renderVersion >= 11) rules.push(
+    ':is([data-block="container"],[data-block="semantic-container"])[data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]){margin-block:0}',
+    `${EDITORIAL_HEADING}:not(#\\#){margin-block:var(--heading_before_px,calc(1em * var(--type-rhythm,1))) var(--heading_after_px,calc(.5em * var(--type-rhythm,1)))}`,
+    `[data-block]:not(:where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"],[data-block="container"],[data-block="semantic-container"],[data-block="section"],[data-block="template_content_slot"])) :where(h1,h2,h3,h4,h5,h6):not(:where([data-block="heading"] *,[data-block="rich_heading"] *,[data-block="prose"] *)){margin-block:0}`,
+    `:where(${OPENING_HEADING}):is(h1,h2,h3,h4,h5,h6):not(#\\#){margin-block-start:0}`,
   );
   const media = (bp: StyleBreakpoint) => `@media (min-width:${opts.breakpoints[bp]}px)`;
   const pushRoot = (key: string, decls: string[]) => { if (decls.length) rootByBp.set(key, [...(rootByBp.get(key) ?? []), ...decls]); };
@@ -597,7 +609,9 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
       const spacing = (props: StyleProps) => /^h[1-6]$/.test(role) ? [props.space_before ? `margin-block-start:${scaleCss('space', props.space_before)}` : '', props.space_after ? `margin-block-end:${scaleCss('space', props.space_after)}` : ''].filter(Boolean).join(';') : '';
       const selector = `${role}:not(#\\#)`;
       // Role rhythm belongs to editorial flow, not to component-owned titles.
-      const rhythmSelector = renderVersion >= 10
+      const rhythmSelector = renderVersion >= 11
+        ? `:where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"]) ${selector}, :where(.page-content) ${selector}:not(:where([data-block] *))`
+        : renderVersion >= 10
         ? `:where([data-block="heading"], [data-block="prose"], .page-content) ${selector}:not(:where([data-block]:not([data-block="heading"]):not([data-block="prose"]):not([data-block="container"]):not([data-block="semantic-container"]):not([data-block="rich_heading"]):not([data-block="section"]):not([data-block="template_content_slot"]) *))`
         : selector;
       const opening = ':where([data-block="container"], [data-block="semantic-container"], .block-section-inner) > :where(h1,h2,h3,h4,h5,h6):first-child, :where([data-block="container"], [data-block="semantic-container"], .block-section-inner) > :where([data-block="heading"], [data-block="rich_heading"], [data-block="prose"]):first-child :where(h1,h2,h3,h4,h5,h6):first-child';
@@ -605,6 +619,13 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
       const emitSpacing = (props: StyleProps) => {
         if (renderVersion < 10) return spacing(props) ? `${selector}{${spacing(props)}}` : '';
         if (!/^h[1-6]$/.test(role)) return '';
+        if (renderVersion >= 11) {
+          const targets = `:is(${rhythmSelector})`;
+          return [
+            props.space_before ? `${targets}:not(:where(${OPENING_HEADING})){margin-block-start:var(--heading_before_px,${rhythm(props.space_before)})}` : '',
+            props.space_after ? `${targets}{margin-block-end:var(--heading_after_px,${rhythm(props.space_after)})}` : '',
+          ].join('');
+        }
         return [props.space_before ? `${rhythmSelector}:not(:where(${opening})){margin-block-start:${rhythm(props.space_before)}}` : '', props.space_after ? `${rhythmSelector}{margin-block-end:${rhythm(props.space_after)}}` : ''].join('');
       };
       if (emitSpacing(style.base)) rules.push(emitSpacing(style.base));
