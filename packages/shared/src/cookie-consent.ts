@@ -88,7 +88,7 @@ export function renderCookieConsent(
     ${privacyLink}
     <div class="tr-consent__actions">
       <button type="button" class="tr-consent__btn tr-consent__btn--ghost" data-tr-consent-action="rejected">Neka</button>
-      <button type="button" class="tr-consent__btn tr-consent__btn--secondary" data-tr-consent-action="necessary">Endast nödvändiga</button>
+      <button type="button" class="tr-consent__btn tr-consent__btn--ghost" data-tr-consent-action="necessary">Endast nödvändiga</button>
       <button type="button" class="tr-consent__btn tr-consent__btn--primary" data-tr-consent-action="all">Godkänn alla</button>
     </div>
   </div>
