@@ -126,12 +126,13 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
     }
   }
 
-  async function retryVerification() {
+  async function retryVerification(approveCache = false) {
     if (!job?.id || busy) return;
     const prior = job;
+    if (approveCache && (!prior.cache_recovery || !confirm(`Refresh all Cloudflare cache for ${prior.cache_recovery.zone_name}, including other websites and subdomains in that zone? Files and DNS will not change. Initial requests may be slower while caches refill. This resumes the same publication without rebuilding.`))) return;
     setErr(null); setJob({ ...job, status: 'running', phase: 'retrying public verification' });
     try {
-      const response = await fetch(`/api/sites/${siteId}/deploy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ retry_verification_job_id: prior.id }) });
+      const response = await fetch(`/api/sites/${siteId}/deploy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ retry_verification_job_id: prior.id, ...(approveCache ? { approve_cache_zone_id: prior.cache_recovery!.zone_id } : {}) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? 'Could not retry verification');
       watch(data.job_id);
@@ -168,7 +169,8 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed }: Deplo
       >
         {!busy && setup?.ready !== true ? (setup ? 'Publishing setup required' : 'Checking setup…') : label}
       </button>
-      {job?.status === 'failed' && job.failure?.code === 'publication_observation_timeout' && <button type="button" className="btn btn--secondary btn--sm" onClick={retryVerification} title="Check the same published files again. No rebuild, upload or DNS change.">Retry verification</button>}
+      {job?.status === 'failed' && ['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(job.failure?.code ?? '') && <button type="button" className="btn btn--secondary btn--sm" onClick={() => retryVerification()} title="Check the same published files again. No rebuild, upload or DNS change.">Retry verification</button>}
+      {job?.status === 'failed' && job.failure?.code === 'publication_cache_refresh_required' && job.cache_recovery?.state === 'approval_required' && <button type="button" className="btn btn--secondary btn--sm" onClick={() => retryVerification(true)} title="Organization administrator approval required. Refreshes the entire domain zone, then checks the same publication without rebuilding.">Refresh domain cache…</button>}
       {busy && job?.verification_message && <span role="status" className="text-sm">{job.verification_message}</span>}
       {job?.render_report && <span role="status" className="text-sm">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</span>}
       {job?.phase === 'distributing' && <span role="status" className="text-sm">Distributing… The link will appear automatically when ready.</span>}

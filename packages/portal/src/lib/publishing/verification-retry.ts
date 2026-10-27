@@ -7,11 +7,11 @@ import type { GitJob } from './customer-runner';
 
 const unavailable = () => new ConnectionError('This deployment cannot resume verification. A finished, already-served publication with unchanged hosting is required.', 409, 'verification_retry_unavailable');
 
-/** No source, build, upload or DNS operation is authorized by this recovery. */
+/** No source, build, upload or DNS operation is authorized by this recovery. Cache refresh requires separate approval. */
 export async function assertVerificationRetry(org: string, site: string, job: GitJob, resumed = false) {
   const publication = job.git_publication;
   const failure = resumed ? job.verification_retry?.failure : job.failure;
-  if (job.status !== (resumed ? 'running' : 'failed') || job.dry_run || failure?.code !== 'publication_observation_timeout' ||
+  if (job.status !== (resumed ? 'running' : 'failed') || job.dry_run || !['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(failure?.code ?? '') ||
       !publication?.publication_id || !/^[a-f0-9]{64}$/.test(publication.publication_id) ||
       !publication.commit || !/^[a-f0-9]{40}$/.test(publication.commit) || publication.release_branch ||
       !publication.build_task_key || !publication.verification_task_key || !publication.static_checks_key || !publication.probe_checks_key ||
@@ -37,20 +37,26 @@ export async function assertVerificationRetry(org: string, site: string, job: Gi
 }
 
 /** Saving the continuation with the state transition is the durable enqueue. */
-export async function retryPublicationVerification(org: string, site: string, jobId: string, version: string) {
+export async function retryPublicationVerification(org: string, site: string, jobId: string, version: string, approvedCacheZone?: string) {
   if (!/^[a-zA-Z0-9_-]{1,200}$/.test(jobId)) throw new ConnectionError('Invalid deployment ID.', 400);
   const store = getStore(), path = paths.deploy(org, site, jobId);
   const job = await store.getDoc<GitJob>(path);
   if (!job || job.version_id !== version) throw new ConnectionError('Deployment not found in this version.', 404);
   if (job.status === 'running' && job.verification_retry) return { job_id: jobId, already_running: true };
   await assertVerificationRetry(org, site, job);
+  const recovery = job.cache_recovery;
+  if (approvedCacheZone !== undefined && (typeof approvedCacheZone !== 'string' ||
+      job.failure?.code !== 'publication_cache_refresh_required' || !recovery || recovery.state !== 'approval_required' ||
+      recovery.publication_id !== job.git_publication!.publication_id || recovery.zone_id !== approvedCacheZone)) {
+    throw new ConnectionError('Review the current failed publication and its cache zone before approving a zone-wide refresh.', 409, 'publication_cache_scope_changed');
+  }
   const now = new Date().toISOString(), token = randomUUID();
   const saved = await store.compareAndReplaceDoc(path, job, {
-    ...job, status: 'running', phase: 'retrying public verification', observation_started_at: now,
+    ...job, ...(approvedCacheZone ? { cache_recovery: { ...recovery!, state: 'zone_approved', updated_at: now } } : {}), status: 'running', phase: 'retrying public verification', observation_started_at: now,
     finished_at: null, error: null, failure: null, coordinator_retries: 0,
     verification_retry: { request_id: token, requested_at: now, failure: job.failure },
     continuation: { token, reason: 'retry_public_verification', due_at: Date.now(), attempt: 0 },
   });
   if (!saved) throw new ConnectionError('Deployment state changed. Read its status before retrying.', 409, 'verification_retry_conflict');
-  return { job_id: jobId, verification_only: true, publication_id: job.git_publication!.publication_id };
+  return { job_id: jobId, verification_only: !approvedCacheZone, ...(approvedCacheZone ? { cache_refresh: "zone" } : {}), publication_id: job.git_publication!.publication_id };
 }

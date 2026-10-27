@@ -34,3 +34,37 @@ for (const width of [390, 1280]) test(`retries the same failed verification twic
   await expect(retry).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Deployed ✓', exact: true })).toBeVisible({ timeout: 6000 });
 });
+
+for (const width of [390, 1280]) test(`requires explicit named-zone cache approval at ${width}px`, async ({ page }, info) => {
+  const bodies: unknown[] = [];
+  const failed = { id: 'cache-test', status: 'failed', phase: 'failed', error: 'Cloudflare still serves an old image. The build is complete; no rebuild is needed.', failure: { code: 'publication_cache_refresh_required' }, cache_recovery: { state: 'approval_required', zone_id: 'zone', zone_name: 'example.com' } };
+  await page.route('**/api/sites/default/deploy', route => {
+    if (route.request().method() === 'POST') {
+      bodies.push(route.request().postDataJSON());
+      return route.fulfill({ json: { job_id: 'cache-test' } });
+    }
+    return route.fulfill({ json: { latest_job: failed } });
+  });
+  await page.route('**/api/sites/default/deploys/cache-test', route => route.fulfill({ json: { id: 'cache-test', status: 'running', phase: 'verifying refreshed cache' } }));
+  await page.setViewportSize({ width, height: 900 });
+  await gotoReady(page, '/app/sites/default');
+  const button = page.getByRole('button', { name: 'Refresh domain cache…', exact: true });
+  await expect(button).toBeVisible();
+  await button.scrollIntoViewIfNeeded();
+  await expect(button).toBeInViewport({ ratio: 1 });
+  expect((await page.locator('.deploy-banner__text').boundingBox())!.width).toBeGreaterThan(180);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath(`cache-recovery-${width}.png`) });
+  page.once('dialog', async dialog => {
+    expect(dialog.message()).toContain('example.com');
+    expect(dialog.message()).toContain('including other websites and subdomains');
+    await dialog.dismiss();
+  });
+  await button.click();
+  expect(bodies).toEqual([]);
+  page.once('dialog', async dialog => { await dialog.accept(); });
+  await button.click();
+  await expect.poll(() => bodies.length).toBe(1);
+  expect(bodies).toEqual([{ retry_verification_job_id: 'cache-test', approve_cache_zone_id: 'zone' }]);
+  await expect(page.getByRole('button', { name: 'verifying refreshed cache…', exact: true })).toBeDisabled();
+});

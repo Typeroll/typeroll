@@ -18,7 +18,7 @@ import { ConnectionError } from '../../../../lib/publishing/connections';
 // (poll route, dashboard, deploy button) don't care which mode is active.
 
 import type { APIRoute } from 'astro';
-import { requireSiteAccess, json, requirePermission } from '../../../../lib/access';
+import { requireSiteAccess, json, requirePermission, requireOrganizationOwnerOrAdmin } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
 import { getDeployQueue } from '../../../../lib/deploy/queue';
 import { findActiveDeploy, isDomainPreparation } from '../../../../lib/deploy/in-flight';
@@ -34,15 +34,22 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   if (!adminCheck.ok) return adminCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
 
-  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; allow_unsaved?: boolean; retry_verification_job_id?: string };
+  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; allow_unsaved?: boolean; retry_verification_job_id?: string; approve_cache_zone_id?: string };
   if (body.retry_verification_job_id !== undefined) {
     try {
       if (typeof body.retry_verification_job_id !== 'string') return json({ error: 'Provide a deployment ID.' }, 400);
-      return json(await retryPublicationVerification(owner_org_id, site.id, body.retry_verification_job_id, versionId), 202);
+      if (body.approve_cache_zone_id !== undefined) {
+        if (typeof body.approve_cache_zone_id !== 'string' || !body.approve_cache_zone_id) return json({ error: 'Provide the exact cache zone ID from the failed job.' }, 400);
+        const org = await requireOrganizationOwnerOrAdmin(cookies, 'An organization administrator must approve a zone-wide cache refresh.');
+        if (!org.ok) return org.response;
+        if (org.value.orgId !== owner_org_id) return json({ error: 'Only the owning organization can refresh this domain zone.' }, 403);
+      }
+      return json(await retryPublicationVerification(owner_org_id, site.id, body.retry_verification_job_id, versionId, body.approve_cache_zone_id), 202);
     } catch (error) {
       return json({ error: error instanceof ConnectionError ? error.message : 'Could not retry publication verification.', code: error instanceof ConnectionError ? error.code : 'verification_retry_failed' }, error instanceof ConnectionError ? error.status : 500);
     }
   }
+  if (body.approve_cache_zone_id !== undefined) return json({ error: 'Cache approval requires an existing failed deployment ID.' }, 400);
   const environment: DeployEnvironment = body.environment === 'staging' ? 'staging' : 'production';
 
   const store = getStore();

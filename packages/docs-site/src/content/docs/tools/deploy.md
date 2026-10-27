@@ -165,7 +165,7 @@ customer publication that timed out **after** its build and candidate checks
 finished and its files reached the public host. In the site overview, choose
 **Retry verification** beside the failed deployment. The server rejects
 incomplete builds, newer deployments for the same version, changed hosting and
-other failure types. Correct the reported technical problem first.
+unrelated failure types. Correct the reported technical problem first.
 
 The retry keeps the same job ID, saved source, Git commit and artifact. It checks
 the real public marker and files, then updates CMS publication status only if
@@ -181,3 +181,35 @@ The equivalent authenticated API call is
 `{ "retry_verification_job_id": "deployment-id" }`. Do not combine it with
 `dry_run`. Requesting another retry while the same verification is running
 returns the existing job; it does not start another verification chain.
+
+### Recovering stale hosting cache
+
+**Core 0.2.117 / MCP 0.45.88 (pending release):** retry also accepts
+`publication_cache_refresh_required`, `publication_cache_refresh_external` and
+`publication_cache_refresh_failed`. These describe a completed, already-served
+build whose normal public URL still returns old bytes. Inspect `static_probe`
+and `cache_recovery` in `get_deploy_status`; do not start a new build.
+
+Without extra arguments, retry remains read-only. An administrator of the owning
+Organization can explicitly approve a zone-wide Cloudflare cache refresh:
+
+```json
+{
+  "job_id": "deployment-id",
+  "version": "main",
+  "approve_cache_zone_id": "exact-zone-id-from-cache_recovery"
+}
+```
+
+The API equivalent adds `approve_cache_zone_id` beside
+`retry_verification_job_id`. Site-only credentials cannot approve this operation.
+Personal OAuth access must select the owning Organization and have its owner or
+admin role. Explain the **zone name and scope to the owner before approval**:
+all cached content in that zone, including other sites and subdomains, is evicted.
+Files and DNS are unchanged; initial requests can be slower while the cache refills.
+
+Approval is bound to the recorded publication, zone and DNS connection. A changed
+connection or superseded publication is rejected. A successful purge request does
+not finish the job: Typeroll checks the normal public URLs against the same frozen
+artifact. An unsuccessful broad refresh stops with
+`publication_cache_refresh_failed`; it does not trigger a purge loop or a rebuild.
