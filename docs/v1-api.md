@@ -684,3 +684,20 @@ installation callers additionally need `email:send`. MCP exposes
 
 This candidate is not present in Core 0.2.95/MCP 0.45.74. App-specific setup
 and copy stay in the enabled app's private guide.
+
+
+## Single-publication domain switch (Core 0.2.116, pending release)
+
+Saving `/publishing/domains` only records intent. POST `/publishing/prepare`
+with the current `revision` explicitly republishes the last public snapshot
+on main using the saved domains. It replaces the artifact at the current address
+before DNS changes, and excludes unpublished CMS edits. It does not create a
+preview branch. New-host links can wait for DNS/certificate activation.
+
+Domain reads distinguish `desired`, `published.hosts` and `active` (verified
+traffic). Normal publication after the explicit action retains `published.hosts`
+and refreshes the DNS approval receipt. POST `/publishing/cutover` with the latest
+revision/candidate_id changes/verifies DNS for that same artifact; no second
+push/build/upload. Existing certificate, redirect, revision and DNS-fingerprint
+checks apply. DNS rollback does not restore old content. Old branch candidates
+must be republished once; saving future settings never clears the deployed origins.

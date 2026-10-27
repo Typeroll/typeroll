@@ -1,7 +1,7 @@
 import PublishingDomainOnboarding from './PublishingDomainOnboarding';
 import { useEffect, useState } from 'react';
 
-type Guide = { title: string; revision: string; state: string; current_phase: string; traffic_live: boolean; next_action: string; can_prepare?: boolean; elapsed_seconds?: number | null; candidate?: { id: string }; cutover?: { state: string; errors: string[] } | null; checks: Array<{ id: string; status: string; message: string }>;
+type Guide = { title: string; revision: string; state: string; current_phase: string; traffic_live: boolean; next_action: string; can_prepare?: boolean; published_main?: boolean; elapsed_seconds?: number | null; candidate?: { id: string }; cutover?: { state: string; errors: string[] } | null; checks: Array<{ id: string; status: string; message: string }>;
   preparation?: { validation_blocker?: { resolution: string } }; switch_summary: { interruption: string; rollback: string; validation_timeout_minutes: number }; };
 
 /** A single visible journey; polling only refreshes status and never advances a traffic action. */
@@ -30,12 +30,14 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
     if (!guide) return;
     setBusy(true); setError(''); setNotice('');
     try {
+      let result: { reused_candidate?: boolean; already_running?: boolean } = {};
       if (action !== 'check') {
         const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, revision: guide.revision, candidate_id: guide.candidate?.id, ...(action === 'approve' ? { accept_validation_window: accept, validation_timeout_minutes: 15 } : {}) }) });
         const body = await response.json(); if (!response.ok) throw new Error(body.error || 'The domain action failed.');
+        result = body;
       }
       await load(); setReview(false); setAccept(false);
-      setNotice(action === 'check' ? 'Checks refreshed. Review the current status below.' : action === 'prepare' ? 'Preparation started or resumed. Existing traffic is unchanged.' : action === 'rollback' ? 'Restoration requested. Typeroll checks for intervening DNS edits before restoring.' : 'Switch approved. This is not live until public verification succeeds.');
+      setNotice(action === 'check' ? 'Checks refreshed. Review the current status below.' : action === 'prepare' ? result.reused_candidate ? 'Domain setup refreshed. The same main publication is retained; no build or DNS change was started.' : result.already_running ? 'Publication is already in progress. Follow its status here; no duplicate build was started.' : 'Publishing for the new domain started. This replaces the site at its current address. DNS is unchanged.' : action === 'rollback' ? 'Restoration requested. Typeroll checks for intervening DNS edits before restoring.' : 'Switch approved. This is not live until public verification succeeds.');
     } catch (err) { setError(err instanceof Error ? err.message : 'The domain action failed.'); }
     finally { setBusy(false); }
   }
@@ -50,12 +52,14 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem' }}>
       <button type="button" className="btn" disabled={busy} onClick={() => void action('check')}>Refresh checks</button>
       {guide?.next_action === 'publish_first' && <a className="btn btn-primary" href={`/app/sites/${encodeURIComponent(siteId)}`}>Publish your site first</a>}
-      {guide?.next_action === 'prepare' && <button type="button" className="btn btn-primary" disabled={busy || guide.can_prepare === false} onClick={() => void action('prepare')}>Prepare for domain switch</button>}
+      {guide?.next_action === 'prepare' && <p>This republishes the last published content with the new website and media addresses, replacing the site at its current address. Newer unpublished edits are excluded. DNS changes separately afterward; links using the new addresses may not work until then.</p>}
+      {guide?.next_action === 'refresh' && <button type="button" className="btn" disabled={busy} onClick={() => void action('prepare')}>Refresh domain setup</button>}
+      {guide?.next_action === 'prepare' && <button type="button" className="btn btn-primary" disabled={busy || guide.can_prepare === false} onClick={() => void action('prepare')}>Publish for the new domain</button>}
       {guide?.next_action === 'approve' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setReview(true)}>Review traffic switch</button>}
       {guide?.cutover && guide.cutover.state !== 'rolled_back' && <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Restore the DNS records saved before this traffic switch? Later external edits will be reported instead of overwritten.')) void action('rollback'); }}>Restore previous traffic</button>}
     </div>
     {review && guide && <div className="stack" role="region" aria-label="Review traffic switch">
-      <h4>Confirm the switch to this candidate</h4><p>{guide.switch_summary.interruption}</p><p>{guide.switch_summary.rollback}</p>
+      <h4>Switch DNS to the current publication</h4><p>{guide.switch_summary.interruption}</p><p>{guide.switch_summary.rollback}</p>
       <p>Automatic validation window: 15 minutes from the traffic change. DNS propagation may outlast a rollback.</p>
       {needsWindow && <label><input type="checkbox" checked={accept} onChange={event => setAccept(event.target.checked)} /> I accept that the website may be unavailable until Cloudflare validates it.</label>}
       <button type="button" className="btn btn-primary" disabled={busy || !!needsWindow && !accept} onClick={() => void action('approve')}>Approve and switch traffic</button>

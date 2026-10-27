@@ -60,10 +60,10 @@ it('requires a matching verified candidate and certificate before approving exis
   const { getStore } = await import('../../lib/datastore');
   const { getSiteDomains, approveDomainCutover, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
   const initial = await getSiteDomains('org', 'site');
-  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'baseline' } });
+  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'publication' } });
   const candidate = { source_publication_id: 'baseline', id: 'publication', revision: initial.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString() };
   const preparation = { hostname: 'www.example.com', provider_status: 'pending', certificate_ready: false, requirements: [], dns_fingerprint: 'fingerprint', action: 'complete_validation', has_existing_traffic: true };
-  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { candidate, preparation });
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { candidate, preparation, published: { publication_id: 'publication', hosts: initial.desired, dns_mode: initial.dns_mode } });
   await expect(approveDomainCutover('org', 'site', { revision: initial.revision, candidate_id: 'stale' })).rejects.toThrow('changed');
   await expect(approveDomainCutover('org', 'site', { revision: initial.revision, candidate_id: 'publication' })).rejects.toThrow('certificate');
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { preparation: { ...preparation, certificate_ready: true } });
@@ -79,13 +79,13 @@ it('approves redirect hosts only with their prepared rule and certificate, and f
   const { getSiteDomains, saveSiteDomains, approveDomainCutover, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
   const initial = await getSiteDomains('org', 'site');
   const saved = await saveSiteDomains('org', 'site', { revision: initial.revision, website_host: 'moveria.se', redirect_hosts: ['www.moveria.se'], dns_mode: 'automatic' });
-  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'baseline' } });
+  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'publication' } });
   const candidate = { source_publication_id: 'baseline', id: 'publication', revision: saved.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString() };
   const preparation = { hostname: 'moveria.se', provider_status: 'active', certificate_ready: true, requirements: [], dns_fingerprint: 'apex', action: 'approve_cutover', has_existing_traffic: true };
   const redirect = { hostname: 'www.moveria.se', target_host: 'moveria.se', provider_status: 'redirect', certificate_ready: true, edge_certificate: 'active', requirements: [], dns_fingerprint: 'www', zone_id: 'zone', zone_name: 'moveria.se',
     action: 'approve_cutover', has_existing_traffic: true, blocker: { code: 'redirect_rule_required', message: 'Create a Single Redirect rule' },
     rule: { zone_name: 'moveria.se', phase: 'http_request_dynamic_redirect', ref: 'typeroll_redirect_x', expression: 'http.host eq "www.moveria.se"', target_url_expression: 'x', status_code: 301, preserve_query_string: true, status: 'required', managed: false } };
-  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { candidate, preparation });
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { candidate, preparation, published: { publication_id: 'publication', hosts: saved.desired, dns_mode: saved.dns_mode } });
   await expect(approveDomainCutover('org', 'site', { revision: saved.revision, candidate_id: 'publication' })).rejects.toMatchObject({ code: 'redirect_preparation_pending' });
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { redirect_preparations: [redirect] });
   await expect(approveDomainCutover('org', 'site', { revision: saved.revision, candidate_id: 'publication' })).rejects.toMatchObject({ code: 'redirect_rule_required' });
@@ -202,11 +202,11 @@ it('refreshes redirect requirements on an existing candidate without queuing a n
   const { prepareDomainTransition } = await import('../../lib/publishing/domain-transition');
   const store = getStore();
   await store.setDoc(paths.site('org', 'site'), { name: 'Site', publishing_mode: 'customer_git' });
-  await store.setDoc(`${paths.site('org', 'site')}/publishing_targets/main`, { last_publication: { publication_id: 'baseline', snapshot_job_id: 'old' } });
+  await store.setDoc(`${paths.site('org', 'site')}/publishing_targets/main`, { last_publication: { publication_id: 'publication', snapshot_job_id: 'old' } });
   const initial = await getSiteDomains('org', 'site');
   const saved = await saveSiteDomains('org', 'site', { revision: initial.revision, website_host: 'example.com', redirect_hosts: ['www.example.com'], dns_mode: 'external' });
   const candidate = { source_publication_id: 'baseline', id: 'publication', revision: saved.revision, commit: 'sha', deployment_id: 'deployment', verified_at: new Date().toISOString(), job_id: 'job' };
-  await store.updateDoc(siteDomainConfigPath('org', 'site'), { state: 'ready_to_switch', candidate,
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { state: 'ready_to_switch', candidate, published: { publication_id: 'publication', hosts: saved.desired, dns_mode: saved.dns_mode },
     preparation: { hostname: 'example.com', provider_status: 'active', certificate_ready: true, requirements: [], dns_fingerprint: 'before', action: 'approve_cutover', has_existing_traffic: true } });
   await store.setDoc(paths.deploy('org', 'site', 'job'), { status: 'running', version_id: 'main', phase: 'awaiting domain cutover approval', git_publication: { publication_id: 'publication' } });
   const removed = await saveSiteDomains('org', 'site', { revision: saved.revision, website_host: 'example.com', dns_mode: 'external' });
@@ -215,7 +215,7 @@ it('refreshes redirect requirements on an existing candidate without queuing a n
   expect(await getSiteDomains('org', 'site')).toMatchObject({ state: 'ready_to_switch', candidate });
 });
 
-it('requires explicit confirmation before replacing a verified content candidate', async () => {
+it('saves different future hosts without rebuilding or requiring a rebuild confirmation', async () => {
   makeTmpFixtures(); await resetDatastore();
   const { getStore } = await import('../../lib/datastore');
   const { getSiteDomains, saveSiteDomains, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
@@ -223,10 +223,8 @@ it('requires explicit confirmation before replacing a verified content candidate
   const initial = await getSiteDomains('org', 'site');
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { state: 'ready_to_switch', candidate: { id: 'verified', revision: initial.revision }, desired: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
   const input = { revision: initial.revision, website_host: 'new.example.com', media_host: null, dns_mode: 'automatic' };
-  expect(await domainChangeImpact('org', 'site', input)).toMatchObject({ confirmation_required: true, estimate_seconds: null });
-  await expect(saveSiteDomains('org', 'site', input)).rejects.toMatchObject({ code: 'domain_rebuild_confirmation_required' });
-  expect((await getSiteDomains('org', 'site')).candidate?.id).toBe('verified');
-  expect(await saveSiteDomains('org', 'site', { ...input, confirm_rebuild: true })).toMatchObject({ state: 'declared', candidate: null });
+  expect(await domainChangeImpact('org', 'site', input)).toMatchObject({ confirmation_required: false, estimate_seconds: null });
+  expect(await saveSiteDomains('org', 'site', input)).toMatchObject({ state: 'declared', candidate: null });
 });
 
  it('does not revive an outdated candidate after a redirect-only change', async () => {

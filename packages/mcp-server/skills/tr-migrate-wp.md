@@ -424,10 +424,13 @@ until the owner has approved retirement.
 
 Saving future hosts must not block normal publication on the current/temporary
 address. Publish and review intended changes there first. Shortly before changing
-DNS, explicitly prepare the last published snapshot for the future hosts with
-`prepare_publishing_domain_change`. Review frozen indexing settings and approve
-traffic separately. If newer content is published while the candidate waits,
-prepare again before cutover; do not overwrite it with an outdated snapshot. Respect preserve/renew choices for owner-supplied facts;
+DNS, explicitly publish the last published snapshot for the future hosts with
+`prepare_publishing_domain_change` (Core 0.2.116 / MCP 0.45.87). This replaces
+main at the current address before DNS changes; new-host links may wait for DNS.
+Review frozen indexing settings and approve DNS separately, without another
+build or upload. Later normal publications retain the new origins and refresh
+the receipt; read the latest candidate_id before approval. No separate old site
+is kept at the temporary hostname. Older Core versions use the older branch flow. Respect preserve/renew choices for owner-supplied facts;
 "timeless" wording must not invent recurring events or erase preserved copy.
 
 ## Fluid typography and component rhythm

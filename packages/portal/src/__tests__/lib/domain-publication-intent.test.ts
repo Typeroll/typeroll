@@ -41,3 +41,14 @@ it('accepts ordinary API publication without confirming declared future domains'
     expect(enqueue).toHaveBeenCalledTimes(1);
   } finally {spy.mockRestore();}
 });
+
+it('keeps deployed origins independently from subsequently saved future hosts', async () => {
+  const { activePublicationDomains, hasPendingPublishedDomains } = await import('../../lib/publishing/domain-config');
+  const published = { hosts: config.desired, dns_mode: 'external' as const, publication_id: 'main-publication' };
+  const later = { ...config, published, desired: { ...hosts, website_host: 'later.example.com' } };
+  expect(activePublicationDomains(later)).toMatchObject({ desired: published.hosts, dns_mode: 'external' });
+  expect(hasPendingPublishedDomains(later)).toBe(true);
+  expect(domainPublicationIntent(later)).toMatchObject({ current_host: 'old.example.com', published_host: 'new.example.com', future_host: 'later.example.com' });
+  expect(hasPendingPublishedDomains({ ...later, active: published.hosts })).toBe(false);
+  expect(domainPublicationIntent({...later,desired:hosts})).toMatchObject({published_host:'new.example.com',future_host:'old.example.com'});
+});

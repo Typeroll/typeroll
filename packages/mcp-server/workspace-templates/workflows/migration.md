@@ -103,18 +103,21 @@ normal approval flow. A separately authorized provider-side setup with a supplie
 beacon token is an alternative, not a way to bypass Organization permissions.
 Never expose a provider API token as a public beacon token.
 
-From Core 0.2.106, saving future hosts does not redirect normal publication.
-Keep using `trigger_deploy` to update and review the current/temporary address.
-Read `next_publication` in `read_publishing_domains` for the destination.
-Shortly before DNS changes, deliberately call `prepare_publishing_domain_change`
-with the current revision. It prepares the last successful public snapshot,
-not later unpublished CMS edits. Review its frozen indexing settings and DNS
-requirements, then approve traffic separately. If another normal publication
-succeeds while the candidate waits, prepare again: an outdated snapshot cannot
-replace newer published content. There is no need to clear saved future hosts.
-To correct candidate indexing, save the intended setting, publish normally, and
-prepare again. Temporary-host protection keeps the review address noindex even
-when the published authored setting permits indexing on the future host.
+From Core 0.2.116 / MCP 0.45.87, saving future hosts remains inert.
+Publish and review intended changes at the current/temporary address first.
+Shortly before DNS changes, explicitly call `prepare_publishing_domain_change`
+with the current revision: it republishes the last successful public snapshot
+on main with the new origins, replacing the site at its current address.
+Later unpublished CMS changes are excluded. New-host absolute links and media
+may not work until DNS/certificates are ready. Do not promise a parallel old copy.
+Review frozen indexing and DNS requirements, then approve DNS separately; that
+step does not push, build or upload again. Normal publications before DNS retain
+the newly embedded origins and refresh the current receipt. Read the latest
+candidate_id before approval; no new preparation is needed for a content edit.
+To correct indexing, save the intended setting and publish normally.
+`published.hosts` describes main output; `active` describes verified traffic.
+DNS rollback restores DNS, not an older artifact. For older servers that still
+prepare a preview branch, update Core before using this workflow.
 Keep MX/SPF and unrelated DNS unchanged; review any validation window and obtain
 the already-defined traffic-switch authorization.
 

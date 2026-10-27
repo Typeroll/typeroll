@@ -8,9 +8,10 @@ vi.mock('../../lib/deploy/queue', () => ({ getDeployQueue: () => ({ enqueue }) }
 let revision: string;
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); enqueue.mockReset(); enqueue.mockResolvedValue(undefined);
-  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'baseline' } });
+  await getStore().setDoc('organizations/org/sites/site/publishing_targets/main', { last_publication: { publication_id: 'frozen' } });
   revision = (await getSiteDomains('org', 'site')).revision;
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), {
+    published: { publication_id: 'frozen', hosts: { website_host: 'www.example.com', media_host: null, media_path_prefix: '' }, dns_mode: 'automatic' },
     candidate: { id: 'frozen', revision, job_id: 'job', source_publication_id: 'baseline' },
     preparation: { hostname: 'www.example.com', certificate_ready: true, has_existing_traffic: true, requirements: [], dns_fingerprint: 'dns' },
   });
@@ -39,6 +40,20 @@ it('reports failed queue submission and allows retry without discarding the appr
 
 it('supersedes a parked publication when its desired domains change', async () => {
   await saveSiteDomains('org', 'site', { revision, confirm_rebuild: true, website_host: 'new.example.com', media_host: 'media.example.com', dns_mode: 'automatic' });
-  expect(await getStore().getDoc<any>(paths.deploy('org', 'site', 'job'))).toMatchObject({ status: 'failed', phase: 'superseded' });
+  expect(await getStore().getDoc<any>(paths.deploy('org', 'site', 'job'))).toMatchObject({ status: 'succeeded', phase: 'superseded' });
   expect(enqueue).not.toHaveBeenCalled();
+});
+
+it('rejects approval when a content publication acquires the target after the initial read', async () => {
+  const store=getStore(), compare=store.compareAndUpdateDoc.bind(store);
+  const targetPath='organizations/org/sites/site/publishing_targets/main';
+  const spy=vi.spyOn(store,'compareAndUpdateDoc').mockImplementation(async (path,predicate,patch)=> {
+    if(path===targetPath && patch.lease_id) await store.updateDoc(targetPath,{job_id:'new-publication',lease_id:'worker',lease_until:Date.now()+60_000});
+    return compare(path,predicate,patch);
+  });
+  try {
+    await expect(approveDomainCutover('org','site',{revision,candidate_id:'frozen'})).rejects.toMatchObject({code:'publication_in_progress'});
+    expect((await getSiteDomains('org','site')).cutover_approved_revision).toBeUndefined();
+    expect(enqueue).not.toHaveBeenCalled();
+  } finally {spy.mockRestore();}
 });

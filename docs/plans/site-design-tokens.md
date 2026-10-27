@@ -93,6 +93,9 @@ No existing customer content is automatically converted or republished.
 
 ## Later Ulvön follow-up in the same unreleased candidate
 
+Historical behavior: the domain candidate workflow below is superseded by
+[single-publication domain switching](single-publication-domain-switch.md).
+
 PR #83 also addresses F35: normal publication stays on active/temporary hosts;
 saved desired domains only take effect through explicit preparation of the last
 published snapshot shortly before DNS changes. Waiting candidates release the

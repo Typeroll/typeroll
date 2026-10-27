@@ -1,5 +1,12 @@
 # Ulvon migration feedback: disposition and follow-up
 
+Domain-flow update, 2026-10-27: the F35/F42 separate-candidate preparation model
+below is superseded by [single-publication domain switching](plans/single-publication-domain-switch.md),
+Core 0.2.116 / MCP 0.45.87 candidate. Saving future hosts stays inert; explicit
+publication replaces main before a separate DNS approval. Normal updates retain
+the new origins without requiring another preparation.
+
+
 > Current follow-up (2026-10-26): Cloud's main lock pins Core 0.2.104 / MCP
 > 0.45.79 / capabilities 0.53.0. Historical “pending production” notes below
 > describe earlier gates. PR #83 prepares Core 0.2.106 / MCP 0.45.80 /
