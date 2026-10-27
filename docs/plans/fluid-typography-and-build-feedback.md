@@ -67,3 +67,23 @@ its sync must follow MCP 0.45.85 publication, not an unpublished local package.
   complete workspace build and docs artifact preparation passed.
 - No customer content, deployed environment or production publishing state was
   changed. The historical GitHub 422 reason cannot be recovered from its log.
+
+## Domain cutover follow-up (F42), 2026-10-27
+
+A promoted domain candidate retains its verified build artifact but gets a new
+Git commit on main. Verification incorrectly inherited the build's old commit,
+so the exact-identity completion guard rejected its event. New verification
+tasks now use the current publication commit/branch; the immutable build is
+unchanged and the completion guard remains strict.
+
+A separate CNAME-to-A redirect failure came from retaining `flatten_cname` in
+the expected after-image. Cloudflare removes that inapplicable setting. The
+journal now normalizes only that known transition; unrelated setting, comment,
+TTL, record and rule changes still block rollback. Regression tests cover
+normal and lost-response writes, full restoration and concurrent edits.
+
+The reported production job was resumed once, then failed on this second guard.
+Both original CloudFront records were restored and independently read back.
+The job is terminal and its approval cleared. A new candidate is needed after
+the fix is deployed; do not reapprove or reuse the rolled-back journal. This
+operational recovery is separate from deployment of the candidate code.

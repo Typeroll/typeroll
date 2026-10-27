@@ -12,6 +12,7 @@ import { buildTasksPath, type BuildTask } from './queue';
 
 export interface CustomerVerification {
   account_id: string; project: string; website_host: string; domain_revision: string;
+  commit?: string | null; branch?: string;
   static_checks_key?: string | null; static_controls_sha256?: string | null;
   verification_checks_key?: string | null; probe_checks_key?: string | null;
   verification_task_key?: string | null; build_task_key?: string | null; build_provider?: BuildProvider;
@@ -42,8 +43,12 @@ export async function verifyCustomerCandidate(org: string, jobPath: string, curr
   if (!task || !config || config.revision !== task.engine_revision || !config.static_verification) throw new ConnectionError('Update the build engine in Publishing → Builds before publishing.', 409, 'build_engine_update_required');
   let key = current.verification_task_key;
   if (!key) {
+    if (!current.commit || !current.branch) throw new ConnectionError('Verification requires the committed publication identity.', 409, 'publication_commit_required');
     const checks = await buildStorage(org, async storage => JSON.parse((await storage.read(current.verification_checks_key!, 32 * 1024 * 1024)).toString('utf8')));
-    const queued = await enqueueBuild(config, task.identity, { 'verification.json': JSON.stringify({ publication_id: task.identity.publication_id, origin, checks }) }, 'static_verification');
+    // A domain promotion retains the built artifact but publishes a new commit on main.
+    // Its verification callback must identify that promoted deployment, not the source branch.
+    const identity = { ...task.identity, commit: current.commit, branch: current.branch };
+    const queued = await enqueueBuild(config, identity, { 'verification.json': JSON.stringify({ publication_id: task.identity.publication_id, origin, checks }) }, 'static_verification');
     key = queued.key; current.verification_task_key = key;
     await store.updateDoc(jobPath, { git_publication: current });
   }

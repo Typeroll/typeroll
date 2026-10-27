@@ -67,6 +67,13 @@ transfer timeouts use bounded automatic retries of the same frozen job and retai
 completed checkpoints. Invalid inputs, denied permissions and integrity failures
 are not blindly retried.
 
+From Core 0.2.114, the promoted deployment’s verification uses its new commit
+identity, so completion continues the same approved job even though it reused
+the earlier build artifact. If an older job stays running after all verification
+files are completed, contact support with its job ID; do not repeatedly approve
+or create overlapping candidates. After a confirmed rollback, prepare a new
+candidate and review its traffic switch again. A rolled-back journal is not reused.
+
 Agents use `guide_publishing_domain_change` (`check`, `preview`, `save`, `prepare`,
 `approve`, `rollback`) at `POST /api/v1/sites/{siteId}/publishing/domain-guide`.
 `onboard_publishing_domain_zone` uses the organization-scoped

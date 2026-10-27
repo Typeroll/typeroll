@@ -2,6 +2,10 @@
 
 ## 0.2.114 (candidate)
 
+- Domain promotion verifies the retained artifact with the new main commit, so
+  its completion resumes the approved cutover. Normalize removed CNAME-only
+  DNS settings when a redirect changes record type, retaining conflict guards.
+
 - Add fluid type/spacing defaults with mobile and desktop ratios, rhythm and
   prose line length. Named scales accept responsive maps and safe clamp values.
 - Add a sandboxed three-width typography preview in Site settings → Design.
