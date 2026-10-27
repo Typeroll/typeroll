@@ -701,3 +701,26 @@ revision/candidate_id changes/verifies DNS for that same artifact; no second
 push/build/upload. Existing certificate, redirect, revision and DNS-fingerprint
 checks apply. DNS rollback does not restore old content. Old branch candidates
 must be republished once; saving future settings never clears the deployed origins.
+
+
+## Publication cache recovery (Core 0.2.117, pending release)
+
+A completed customer publication can fail with `publication_cache_refresh_required`,
+`publication_cache_refresh_external` or `publication_cache_refresh_failed` when
+normal public URLs still serve stale files. The job exposes bounded `static_probe`
+evidence and, for a connected Cloudflare zone, `cache_recovery` with the exact
+publication, hostname, path, zone and connection scope. Existing host invalidation
+is followed by at most three path-prefix refreshes; no implicit zone purge occurs.
+
+`POST /api/v1/sites/{siteId}/deploy?version=main` with
+`{ "retry_verification_job_id": "job" }` remains verification-only.
+An owning Organization admin can additionally send `approve_cache_zone_id` equal
+to the failed job's recorded zone ID after explicit owner approval. This evicts
+**all cache in the named zone**, including unrelated subdomains, then checks the
+same artifact. It cannot change source, build, upload, DNS or hosting. Site-scoped
+keys and shared-site access cannot authorize this broader operation. Wrong zones,
+changed connections, newer deployments and incomplete build receipts are rejected.
+
+The response distinguishes `verification_only: true` from an approved refresh
+(`verification_only: false, cache_refresh: "zone"`). Poll the same job. A successful
+Cloudflare API response is never sufficient to mark the publication live.

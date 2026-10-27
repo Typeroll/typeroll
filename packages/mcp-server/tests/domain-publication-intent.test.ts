@@ -14,3 +14,15 @@ it('keeps normal publication separate from explicit domain preparation', async (
   await prepare.handler({ revision: 'reviewed-revision' }, { client: { post }, siteId: 'site' } as never);
   expect(post).toHaveBeenLastCalledWith('site', 'publishing/prepare', { revision: 'reviewed-revision' });
 });
+
+it('keeps cache approval explicit in the advertised retry schema and API request', async () => {
+  const tool = deployTools.find(tool => tool.name === 'retry_deploy_verification')!;
+  const schema = z.object(tool.inputSchema!);
+  const post = vi.fn().mockResolvedValue({ job_id: 'job' });
+  const ctx = { client: { post }, siteId: 'site' } as never;
+  await tool.handler(schema.parse({ job_id: 'job', version: 'main' }), ctx);
+  expect(post).toHaveBeenLastCalledWith('site', 'deploy', { retry_verification_job_id: 'job' }, { version: 'main' });
+  await tool.handler(schema.parse({ job_id: 'job', version: 'main', approve_cache_zone_id: 'zone' }), ctx);
+  expect(post).toHaveBeenLastCalledWith('site', 'deploy', { retry_verification_job_id: 'job', approve_cache_zone_id: 'zone' }, { version: 'main' });
+  expect(schema.safeParse({ job_id: 'job', approve_cache_zone_id: true }).success).toBe(false);
+});

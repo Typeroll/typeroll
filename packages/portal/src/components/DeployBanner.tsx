@@ -57,7 +57,7 @@ export default function DeployBanner({
       </div>
       <style>{`
         .deploy-banner {
-          display: flex; align-items: center; gap: 0.75rem;
+          display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
           padding: 0.75rem 1rem;
           border-radius: var(--radius-md);
           border: 1px solid var(--color-border);
@@ -73,8 +73,8 @@ export default function DeployBanner({
           background: var(--color-success);
         }
         .deploy-banner--accent .deploy-banner__pip { background: #f6c177; }
-        .deploy-banner__text { min-width: 0; flex: 1; font-size: 0.95rem; color: var(--color-text); }
-        .deploy-banner__actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+        .deploy-banner__text { min-width: 0; flex: 1 1 14rem; font-size: 0.95rem; color: var(--color-text); }
+        .deploy-banner__actions { display: inline-flex; min-width: 0; flex: 1 1 24rem; flex-wrap: wrap; align-items: center; gap: 0.5rem; overflow-wrap: anywhere; }
         @media (max-width: 700px) {
           .deploy-banner { flex-wrap: wrap; }
           .deploy-banner__actions { width: 100%; flex-wrap: wrap; }

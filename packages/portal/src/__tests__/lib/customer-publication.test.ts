@@ -989,3 +989,41 @@ it('records the actual replaced origins even if future settings change during th
   expect(await store.getDoc(jobPath)).toMatchObject({status:'failed',failure:{code:'domain_revision_conflict'}});
   expect(await getSiteDomains('org','site')).toMatchObject({desired:{website_host:'later.example.com'},published:{hosts:{website_host:'www.example.com'},job_id:args.jobId},cutover_approved_revision:null});
 });
+
+it.each([{ corrected: true, legacy: false }, { corrected: false, legacy: false }, { corrected: true, legacy: true }])('recovers a stale public asset without rebuilding: %j', async ({ corrected, legacy }) => {
+  await executeCustomerPublication(args); complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  const store = getStore(), original = await store.getDoc<any>(jobPath);
+  const publication = { ...original.git_publication, build_task_key: 'finished-build', verification_task_key: 'finished-verification', static_checks_key: 'full', probe_checks_key: 'probes', project_prepared: true };
+  await store.updateDoc(jobPath, { status: 'running', git_publication: publication });
+  for (const key of ['finished-build', 'finished-verification']) await store.setDoc(`organizations/org/build_tasks/${key}`, { status: 'completed', identity: { org_id: 'org', site_id: 'site', version_id: 'main', job_id: 'job', publication_id: publication.publication_id, commit: publication.commit } });
+  mocks.verify.mockImplementation(async (_org, path, _checks, origin) => {
+    await store.updateDoc(path, { static_probe: { origin, route: '/media/removed.svg', expected_status: 404, actual_status: 200, reason: 'status_mismatch', response_headers: { cf_cache_status: 'MISS', age: 180000 } } });
+    return false;
+  });
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct, mocks.cloudflare]) mock.mockClear();
+  const { retryPublicationVerification } = await import('../../lib/publishing/verification-retry');
+  if (legacy) {
+    await store.updateDoc(jobPath, { status: 'failed', failure: { code: 'publication_observation_timeout' } });
+    await retryPublicationVerification('org', 'site', 'job', 'main');
+  } else {
+    expect(await executePublicationPhase(args)).toBe('waiting');
+    expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { prefixes: ['www.example.com/media/removed.svg'] } });
+    for (let i = 0; i < 5; i++) expect(await executePublicationPhase(args)).toBe('waiting');
+  }
+  expect(await executePublicationPhase(args)).toBe('ran');
+  expect(await store.getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'publication_cache_refresh_required' }, cache_recovery: { state: 'approval_required' } });
+  expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.body?.purge_everything)).toHaveLength(0);
+  await retryPublicationVerification('org', 'site', 'job', 'main', 'zone');
+  expect(await executePublicationPhase(args)).toBe('waiting');
+  expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { purge_everything: true } });
+  expect(await store.getDoc(jobPath)).toMatchObject({ status: 'running' }); // API success is not publication proof
+  if (corrected) mocks.verify.mockResolvedValue(true);
+  else for (let i = 0; i < 5; i++) expect(await executePublicationPhase(args)).toBe('waiting');
+  expect(await executePublicationPhase(args)).toBe('ran');
+  expect(await store.getDoc(jobPath)).toMatchObject({ status: corrected ? 'succeeded' : 'failed', git_publication: publication,
+    ...(!corrected ? { failure: { code: 'publication_cache_refresh_failed' } } : {}) });
+  expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.body?.purge_everything)).toHaveLength(1);
+  expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.method && opts.method !== 'GET').every(([path]) => path.endsWith('/purge_cache'))).toBe(true);
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct]) expect(mock).not.toHaveBeenCalled();
+});

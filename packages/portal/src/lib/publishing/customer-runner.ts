@@ -14,6 +14,7 @@ import { readSnapshot, saveSnapshot } from './publication-snapshot';
 import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
 import { hostingDns } from './hosting-dns';
 import { purgePublicationHost } from './publication-cache';
+import { applyApprovedCacheRefresh, recoverPublicationCache, type CacheRecovery } from './cache-recovery';
 import { randomUUID } from 'node:crypto';
 import { paths, CORE_BLOCK_TYPES, type DeployJob, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -87,7 +88,7 @@ async function pendingRedirect(jobPath: string, publication: GitPublication, pre
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
+export type GitJob = DeployJob & { cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -378,14 +379,18 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       throw new ConnectionError('Publishing accounts or domain settings changed. Start a new deployment.', 409);
     }
     if (job.verification_retry) {
-      // This path can only verify and record an already-served artifact. It does
-      // not enter source generation, build dispatch, upload or DNS preparation.
+      if (await applyApprovedCacheRefresh(args.orgId, jobPath, publication)) return await waitForPublicationCondition(jobPath, 'verifying refreshed cache');
+      // Recovery keeps the served artifact. A separately approved cache refresh
+      // may run here, but never source generation, builds, uploads or DNS.
       const frozen = await readSnapshot(args, publication);
       const mediaHost = frozen.media_manifest?.delivery === 'static' ? frozen.media_manifest.media_host : null;
       const origins = [...new Set([`https://${publication.website_host}`, ...(mediaHost ? [`https://${mediaHost}`] : [])])];
       for (const origin of origins) {
-        if (!await probePublication(origin, '/.well-known/typeroll/publication.json', publication.publication_id) ||
-            !await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key!, origin, true)) {
+        const markerReady = await probePublication(origin, '/.well-known/typeroll/publication.json', publication.publication_id);
+        if (!markerReady || !await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key!, origin, true)) {
+          if (markerReady) {
+            await recoverPublicationCache(args.orgId, jobPath, publication, origin, undefined, false);
+          }
           await store.updateDoc(jobPath, { phase: 'retrying public verification' });
           return await waitForPublicationCondition(jobPath, 'retrying public verification');
         }
@@ -681,7 +686,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (publication.static_checks_key) {
       for (const origin of [...new Set([`https://${publication.website_host}`, ...(mediaPreparation ? [`https://${mediaPreparation.hostname}`] : [])])]) {
         if (!await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key ?? publication.static_checks_key, origin, !!publication.probe_checks_key)) {
-          await store.updateDoc(jobPath, { phase: 'waiting for updated static files' }); return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
+          await store.updateDoc(jobPath, { phase: 'waiting for updated static files' });
+          await recoverPublicationCache(args.orgId, jobPath, publication, origin, origin === `https://${publication.website_host}` ? dns : mediaDns);
+          return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
         }
       }
     }

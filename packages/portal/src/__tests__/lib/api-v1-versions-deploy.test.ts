@@ -228,3 +228,21 @@ it('requires authenticated site admin access for verification retry and rejects 
   const invalid = await callRoute(route, 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { ...body, dry_run: true } });
   expect(invalid.status).toBe(400);
 });
+
+it('rejects zone cache approval from site credentials and requires the owning organization', async () => {
+  const { token } = await setup();
+  const { createApiKey } = await import('../../lib/api-keys');
+  const { getStore } = await import('../../lib/datastore');
+  const orgKey = await createApiKey({ orgId: ORG, siteId: null, name: 'organization admin', createdBy: 'admin@example.com' });
+  const otherKey = await createApiKey({ orgId: 'other-org', siteId: null, name: 'other admin', createdBy: 'admin@example.com' });
+  const route = import('../../pages/api/v1/sites/[siteId]/deploy');
+  const invoke = (key: string, body: unknown) => callRoute(route, 'POST', `http://localhost/api/v1/sites/${SITE}/deploy`, { siteId: SITE }, { headers: bearer(key), body });
+  const body = { retry_verification_job_id: 'missing-job', approve_cache_zone_id: 'zone' };
+  expect((await invoke(token, body)).status).toBe(403);
+  expect((await invoke(otherKey.token, body)).status).toBe(401);
+  expect((await invoke(orgKey.token, body)).status).toBe(404); // authorized, but no such job
+  expect((await invoke(orgKey.token, { ...body, approve_cache_zone_id: true })).status).toBe(400);
+  expect((await invoke(orgKey.token, { approve_cache_zone_id: 'zone' })).status).toBe(400);
+  expect(await getStore().listDocs(paths.deploys(ORG, SITE))).toHaveLength(0);
+  expect(enqueue).not.toHaveBeenCalled();
+});

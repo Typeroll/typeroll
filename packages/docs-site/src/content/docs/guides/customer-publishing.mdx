@@ -932,6 +932,41 @@ or authorize another publication. If server verification eventually times out,
 use **Retry verification** only after resolving the reported problem; it retains
 the same frozen build.
 
+## Recovering stale public files
+
+**Core 0.2.117 (pending release):** after the candidate artifact and public publication marker
+are verified, Typeroll detects cached responses that still contain changed or
+removed files. It refreshes the affected URL prefix and checks the ordinary public
+URL again. Attempts are bounded (at most three affected prefixes per publication);
+each refresh allows up to six checks with queue backoff for propagation. No
+additional build, image processing or upload is started.
+
+If the same stale response remains, the deployment stops with a specific cache
+error and keeps the exact file path and Cloudflare request ID in `static_probe`.
+It does not wait out the full distribution timeout or declare old bytes correct.
+Cloudflare documents that stale Pages assets may require
+[a full cache purge](https://developers.cloudflare.com/pages/configuration/serving-pages/#caching-and-performance).
+Typeroll never performs that broad operation implicitly: a zone can include
+unrelated sites and subdomains.
+
+An Organization administrator can choose **Refresh domain cache…** beside the
+failed deployment and confirm the named zone. This resumes the **same publication**
+and verifies its public URLs after the purge. It does not edit files, republish
+later CMS changes, or change DNS. Site administrators without Organization admin
+access must ask their Organization administrator. Agents have the same operation
+through [`retry_deploy_verification`](../../tools/deploy/#recovering-stale-hosting-cache).
+
+If another CDN controls the cache, refresh it there and choose **Retry verification**.
+That button does not grant permission for a zone purge. If Cloudflare still returns
+old bytes after the approved broad refresh, review its cache rules or contact
+Cloudflare with the recorded request ID, then retry verification. Typeroll cannot
+guarantee immediate eviction from every provider or from a visitor's browser.
+
+This recovery applies to completed publications already serving the intended host.
+It cannot resume an incomplete build or bypass domain traffic approval, a changed
+hosting connection, or a newer publication. Pre-switch domain preparation retains
+its existing verification and traffic-approval safeguards.
+
 ## Validate before activation
 
 Core 0.2.22 checks the actual frozen build output before activation. See

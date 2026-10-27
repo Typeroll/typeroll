@@ -12,7 +12,7 @@ import { ConnectionError } from '../../../../../lib/publishing/connections';
 // environment and isn't usually relevant to customer sites.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
+import { apiError, apiResponse, requireApiKey, requireAnyApiKey } from '../../../../../lib/api-auth';
 import { getStore } from '../../../../../lib/datastore';
 import { getDeployQueue } from '../../../../../lib/deploy/queue';
 import { paths } from '@typeroll/shared';
@@ -29,16 +29,26 @@ export const POST: APIRoute = async ({ request, params }) => {
   const body = (await request.json().catch(() => ({}))) as {
     environment?: DeployEnvironment;
     dry_run?: boolean;
-    allow_unsaved?: boolean; retry_verification_job_id?: string;
+    allow_unsaved?: boolean; retry_verification_job_id?: string; approve_cache_zone_id?: string;
   };
   if (body.retry_verification_job_id !== undefined) {
     try {
       if (typeof body.retry_verification_job_id !== 'string' || body.dry_run === true) return privateJson({ error: 'Provide a deployment ID without dry_run.' }, 400);
-      return privateJson(await retryPublicationVerification(ctx.orgId, ctx.siteId, body.retry_verification_job_id, ctx.versionId), 202);
+      if (body.approve_cache_zone_id !== undefined) {
+        if (typeof body.approve_cache_zone_id !== 'string' || !body.approve_cache_zone_id) return privateJson({ error: 'Provide the exact cache zone ID from the failed job.' }, 400);
+        const org = await requireAnyApiKey(request);
+        if (!org.ok) return org.response;
+        if (org.value.tokenSiteId !== null || org.value.tokenOrgId !== ctx.orgId) return apiError('An administrator of the owning organization must approve a zone-wide cache refresh.', 403);
+      }
+      const result = await retryPublicationVerification(ctx.orgId, ctx.siteId, body.retry_verification_job_id, ctx.versionId, body.approve_cache_zone_id);
+      const response = apiResponse(ctx, result, 202, body);
+      response.headers.set('Cache-Control', 'private, no-store');
+      return response;
     } catch (error) {
       return privateJson({ error: error instanceof ConnectionError ? error.message : 'Could not retry publication verification.', code: error instanceof ConnectionError ? error.code : 'verification_retry_failed' }, error instanceof ConnectionError ? error.status : 500);
     }
   }
+  if (body.approve_cache_zone_id !== undefined) return privateJson({ error: 'Cache approval requires an existing failed deployment ID.' }, 400);
   const environment: DeployEnvironment = body.environment === 'staging' ? 'staging' : 'production';
   const dryRun = body.dry_run === true;
   if (!dryRun) {

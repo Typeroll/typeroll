@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import type { CacheRecovery } from '../lib/publishing/cache-recovery';
 import type { DeployJob } from '@typeroll/shared';
 
 export interface DeployProgress {
+  cache_recovery?: CacheRecovery;
   build_progress?: { status: string; attempt: number; step: string; completed: number; total: number } | null;
   render_report?: DeployJob['render_report'];
   seo_report?: DeployJob['seo_report'];

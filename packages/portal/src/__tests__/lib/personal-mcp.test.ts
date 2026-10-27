@@ -199,3 +199,18 @@ it('fails closed for disabled, deleted or revoked user accounts and provider fai
     expect(await verifyApiToken(token)).toBeNull();
   }
 });
+
+it('requires owning organization admin access for a personal connection to approve zone cache recovery', async () => {
+  const { POST } = await import('../../pages/api/v1/sites/[siteId]/deploy');
+  const invoke = (org: string) => POST({ params: { siteId: 'same-id' }, request: new Request(`${origin}/api/v1/sites/same-id/deploy`, {
+    method: 'POST', headers: { authorization: `Bearer ${token}`, 'Typeroll-Organization': org, 'content-type': 'application/json' },
+    body: JSON.stringify({ retry_verification_job_id: 'missing', approve_cache_zone_id: 'zone' }),
+  }) } as never) as Promise<Response>;
+  expect((await invoke('alpha')).status).toBe(403);
+  expect((await invoke('beta')).status).toBe(404); // owning admin passes auth, job is absent
+  await getStore().setDoc(paths.share('alpha', 'same-id', 'grant'), { owner_org_id: 'alpha', site_id: 'same-id', shared_with_org_id: 'beta', permission: 'admin' });
+  await getStore().setDoc(paths.sharesWithOrgEntry('beta', 'grant'), { owner_org_id: 'alpha', site_id: 'same-id' });
+  // A site share grants publication rights, never control of the owner's DNS zone.
+  expect((await requireApiKey(request('sites/same-id/deploy', 'alpha', 'POST'), 'same-id')).ok).toBe(true);
+  expect((await invoke('alpha')).status).toBe(403);
+});

@@ -30,9 +30,9 @@ export const deployTools: ToolDef[] = [
   },
   {
     name: 'retry_deploy_verification',
-    description: 'Retry only public verification of an already-served customer publication that failed with publication_observation_timeout. Reuses the exact job, Git commit and build artifact; never builds, uploads or changes DNS. Requires completed build/candidate receipts, unchanged hosting and no newer deployment for this version. Does not publish later CMS edits. Poll get_deploy_status for the same job_id. Admin permission required.',
-    inputSchema: { job_id: z.string(), version: versionParam },
-    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'deploy', { retry_verification_job_id: args.job_id }, v(args.version)))),
+    description: 'Retry only public verification of an already-served customer publication that failed with publication_observation_timeout or publication_cache_refresh_required/external/failed. Reuses the exact job, Git commit and build artifact; never builds, uploads or changes DNS. Requires completed build/candidate receipts, unchanged hosting and no newer deployment for this version. Does not publish later CMS edits. A cache refresh is NEVER implicit: only after explicit owner approval, provide approve_cache_zone_id from job.cache_recovery to refresh that ENTIRE Cloudflare zone (including other websites/subdomains). Requires owning-organization administrator access, the exact publication and unchanged DNS account/zone; cached bytes must still pass normal URL verification. Otherwise omit it for read-only verification. Poll get_deploy_status for the same job_id. Admin permission required.',
+    inputSchema: { job_id: z.string(), approve_cache_zone_id: z.string().min(1).optional().describe('Only with explicit owner approval for a zone-wide cache refresh. Copy the exact zone_id from this failed job.cache_recovery; it affects all subdomains in that zone. Requires owning-organization admin access.'), version: versionParam },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'deploy', { retry_verification_job_id: args.job_id, ...(args.approve_cache_zone_id !== undefined ? { approve_cache_zone_id: args.approve_cache_zone_id } : {}) }, v(args.version)))),
   },
   {
     name: 'list_deploys',
