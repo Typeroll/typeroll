@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.115 (unreleased)
+
+- Render version 11 restores contextual heading spacing through columns and
+  grids, with or without saved heading roles. Opening headings remain flush;
+  explicit article spacing applies once and named styles keep precedence.
+- Navigation groups retain 44px touch targets without additional vertical
+  gaps by default. Explicit gaps and compact desktop settings are preserved.
+- Versions 1–10 retain their recorded output; preview the upgrade before
+  rebuilding an existing site.
+
 ## 0.2.114 (candidate)
 
 - Domain promotion verifies the retained artifact with the new main commit, so

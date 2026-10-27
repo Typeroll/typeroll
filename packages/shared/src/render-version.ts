@@ -117,6 +117,14 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Prose uses the configured line length. Preview cards and boxed headings before rebuilding an existing site.',
     ],
   },
+  {
+    version: 11, core_version: '0.2.115', title: 'Contextual heading and navigation spacing',
+    changes: [
+      'Editorial headings retain their rhythm inside columns and grids, including after images. Opening headings remain flush with their container; component titles keep their own spacing.',
+      'Article heading spacing also works without a saved role library. Explicit heading spacing overrides apply once.',
+      'Navigation link groups keep 44px default touch targets without an additional vertical gap. Explicit gaps and compact desktop density are preserved.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

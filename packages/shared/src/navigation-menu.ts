@@ -134,3 +134,14 @@ export const navigationLinks: BlockType = {
 [data-block="navigation_links"] a:focus-visible { outline:2px solid currentColor;outline-offset:3px; }`,
   origin:'core',created_at:'1970-01-01T00:00:00Z',
 };
+
+// Keep full touch targets without adding a second layer of vertical spacing.
+// Horizontal gaps, explicit gaps and the opt-in compact densities are retained.
+navigationLinks.render_versions = [{
+  from: 11,
+  styles: `${navigationLinks.styles}
+[data-block="navigation_links"]:not([data-density="compact"]) { row-gap:var(--gap_px,0px); }
+@media (min-width:1024px) and (hover:hover) and (pointer:fine) {
+  [data-block="navigation_links"][data-density="compact-desktop"] { row-gap:var(--gap_px,4px); }
+}`,
+}];

@@ -61,7 +61,7 @@ const webServer = target.isRemote ? undefined : {
 };
 
 /** Specs that also run in Firefox and WebKit (`npm run test:e2e:install` installs both). */
-const CROSS_ENGINE_TESTS = /(?:forms-multistep-validation|address-field-parity|media-and-carousel|mobile-site-switcher|fluid-typography|design-tokens|post-card-hit-area|migration-design)\.spec\.ts/;
+const CROSS_ENGINE_TESTS = /(?:forms-multistep-validation|address-field-parity|media-and-carousel|mobile-site-switcher|fluid-typography|contextual-spacing|design-tokens|post-card-hit-area|migration-design)\.spec\.ts/;
 const CROSS_ENGINE_SPECS = [
   { name: 'firefox', device: 'Desktop Firefox' },
   { name: 'webkit', device: 'Desktop Safari' },
