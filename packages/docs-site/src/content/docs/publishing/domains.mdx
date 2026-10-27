@@ -242,3 +242,35 @@ Domain settings select a website host, not which repository serves each path.
 For a CMS site with independently generated docs at `/docs/`, follow
 [Different generators on one website](../multiple-generators/). That separate
 hosting configuration must also be preserved during domain changes.
+
+## Previous website addresses
+
+After an approved domain switch, Typeroll keeps the previous website addresses
+in `previous_hosts`. With access to the old address's Cloudflare zone, it creates
+a Single Redirect that sends requests to the new website host with HTTP 301,
+preserving the path and query string. This does not consume one of the four
+optional redirect-host slots. The existing proxied Pages record and certificate
+remain attached; the rule does not replace their DNS records.
+
+Old media paths are retained in the static publication, so a redirect to the same
+path on the new host continues to reach the file. Shared media hosts are not
+retired. An address that still serves the current media host is kept with noindex
+protection rather than redirecting its media to an unavailable destination.
+
+The static artifact also adds a host-specific `X-Robots-Tag: noindex, nofollow`
+header to previous website addresses. If the connection cannot create a redirect,
+Typeroll checks that header on the actual deployed publication and shows a warning
+in Publishing and `read_publishing_domains`. If neither redirect nor noindex can
+be verified, the traffic switch does not complete silently. `check_site_indexing`
+reports previous addresses separately from the indexable production host.
+
+Rollback removes only redirect rules created by that approved traffic switch,
+using its recorded before/after state. Existing customer rules and later edits
+are not overwritten. As with other domain rollbacks, this restores traffic, not
+an older artifact: publish for the restored address to restore its canonical and
+indexing policy too.
+
+Sites switched before this behavior was introduced show unverified previous
+addresses. A new publication is needed to install the fallback headers; use
+**Publish for the new domain** and approve the switch to create the redirect rules.
+Saving domain settings or refreshing status never changes public traffic.

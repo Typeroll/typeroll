@@ -36,6 +36,9 @@ export interface DomainConfiguration {
   active_dns_mode?: 'automatic' | 'external';
   /** Retained aliases are never removed as a side effect of changing the preferred host. */
   media_aliases: PublicationHosts[];
+  previous_hosts?: import('./previous-hosts').PreviousHost[];
+  previous_host_preparations?: import('./previous-hosts').PreviousHostPreparation[] | null;
+  approved_previous_host_preparations?: import('./previous-hosts').PreviousHostPreparation[] | null;
   dns_mode: 'automatic' | 'external';
   state: 'unconfigured' | 'declared' | 'preparing' | 'ready_to_switch' | 'distributing' | 'live' | 'failed' | 'outdated';
   candidate?: { id: string; revision: string; commit: string; deployment_id: string; verified_at: string; job_id?: string; sitewide_noindex?: boolean; robots_blocked?: boolean; source_publication_id?: string } | null;
@@ -219,7 +222,7 @@ export async function saveSiteDomains(orgId: string, siteId: string, input: Reco
       ...(!preserveCandidate ? { candidate: null } : {}),
       ...(sameOutput ? {} : { preparation: null, media_preparation: null }),
       approved_media_preparation: null, cutover_approved_revision: null, approved_preparation: null,
-      redirect_preparations: null, approved_redirect_preparations: null, approved_validation_window: null });
+      redirect_preparations: null, approved_redirect_preparations: null, previous_host_preparations: null, approved_previous_host_preparations: null, approved_validation_window: null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
   if (!sameOutput && previous.candidate?.job_id) await getStore().compareAndUpdateDoc<any>(paths.deploy(orgId, siteId, previous.candidate.job_id),
     job => job.status === 'running' && job.phase === 'awaiting domain cutover approval',
@@ -258,6 +261,7 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
     throw new ConnectionError('Cloudflare has not confirmed a working certificate. Complete validation while keeping current DNS in place. Traffic cannot be switched safely yet.', 409, 'domain_certificate_pending');
   }
   const redirectPreparations = current.redirect_preparations ?? null;
+  const previousPreparations = current.previous_host_preparations ?? null;
   const { redirectApprovalBlocker } = await import('./redirect-hosts');
   if ((current.desired.redirect_hosts?.length ?? 0) !== (redirectPreparations?.length ?? 0) || (redirectPreparations ?? []).some(item => !current.desired.redirect_hosts?.includes(item.hostname) || item.target_host !== current.desired.website_host)) throw new ConnectionError('The redirect hosts have not been prepared yet. Wait for domain verification to finish.', 409, 'redirect_preparation_pending');
   for (const redirect of redirectPreparations ?? []) {
@@ -280,8 +284,9 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
   try {
     const saved = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
       value => value.published?.publication_id === current.candidate!.id && value.state !== 'outdated' && value.revision === current.revision && value.candidate?.id === current.candidate!.id && JSON.stringify(value.preparation) === JSON.stringify(preparation) && JSON.stringify(value.media_preparation) === JSON.stringify(mediaPreparation) &&
-        JSON.stringify(value.redirect_preparations ?? null) === JSON.stringify(redirectPreparations),
-      { validation_timeout_minutes: Number(timeout), rollback_requested: false, rollback_status: null, cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, approved_redirect_preparations: redirectPreparations, approved_validation_window: acceptWindow || null, state: 'distributing' });
+        JSON.stringify(value.redirect_preparations ?? null) === JSON.stringify(redirectPreparations) &&
+        JSON.stringify(value.previous_host_preparations ?? null) === JSON.stringify(previousPreparations),
+      { validation_timeout_minutes: Number(timeout), rollback_requested: false, rollback_status: null, cutover_approved_revision: current.revision, approved_preparation: preparation, approved_media_preparation: mediaPreparation ?? null, approved_redirect_preparations: redirectPreparations, approved_previous_host_preparations: previousPreparations, approved_validation_window: acceptWindow || null, state: 'distributing' });
     if (!saved) throw new ConnectionError('Domain verification changed. Reload before switching traffic.', 409, 'domain_revision_conflict');
     approved = true;
   } finally {

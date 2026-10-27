@@ -429,3 +429,16 @@ test('exhausted grant retries stop after three attempts with the same media iden
   await assert.rejects(() => prepareMediaBatch(publication, root), /media_transfer_interrupted/);
   assert.equal(attempts, 3); assert.match(failures[0], /step=read_grant.*attempts=3/);
 }, 1, true));
+
+test('domain retirement keeps the old media path in the replacement site output', async () => withMediaFixture(async ({ publication, root, entries: [entry] }) => {
+  await prepareMedia(publication, root);
+  const previous = structuredClone(publication.media_manifest);
+  const oldPath = previous.entries[0].public_path;
+  publication.site_url = 'https://new.example.com';
+  publication.retained_media_manifests = [previous];
+  publication.media_manifest = { ...previous, website_host: 'new.example.com', media_host: 'new.example.com', delivery: 'static',
+    entries: [{ ...entry, public_path: '/new-media/image.png', cdn_url: 'https://new.example.com/new-media/image.png' }] };
+  const files = await prepareMedia(publication, root);
+  assert.ok(files.some(file => file.path === oldPath), '301 of the old media URL reaches the retained path on the new host');
+  assert.ok(files.some(file => file.path === '/new-media/image.png'));
+}));

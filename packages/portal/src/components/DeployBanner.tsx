@@ -6,7 +6,9 @@
  *  - Pending changes    → amber banner with counts + "Deploy"
  *  - Up to date         → quiet line with the last deploy time + "Redeploy"
  */
+import { useState } from 'react';
 import { DeployButton } from './EditorStatus';
+import type { DeployProgress } from './useDeployProgress';
 
 interface Props {
   siteId: string;
@@ -38,11 +40,18 @@ export default function DeployBanner({
   lastDeployedAt,
   distributing = false,
 }: Props) {
+  const [job, setJob] = useState<DeployProgress | null>(null);
+  const failed = job?.status === 'failed';
+  const active = job?.status === 'queued' || job?.status === 'running';
+  const verificationFailed = failed && ['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(job.failure?.code ?? '');
   const neverDeployed = !lastDeployedAt;
   const pending = totalPending > 0;
-  const accent = neverDeployed || pending || distributing;
+  const accent = neverDeployed || pending || distributing || failed || active;
 
-  const headline = distributing ? 'Distributing… The link will appear automatically when ready.' : neverDeployed
+  const headline = verificationFailed ? 'Publication needs attention — final verification is incomplete.'
+    : failed ? 'The latest publication failed.'
+    : active ? 'Publication in progress — waiting for verification.'
+    : distributing ? 'Distributing… The link will appear automatically when ready.' : neverDeployed
     ? 'This site has never been deployed.'
     : pending
       ? buildPendingLabel(pendingPages, pendingPartials)
@@ -53,7 +62,7 @@ export default function DeployBanner({
       <div className="deploy-banner__pip" aria-hidden />
       <div className="deploy-banner__text">{headline}</div>
       <div className="deploy-banner__actions">
-        <DeployButton siteId={siteId} pendingDeploy={accent} />
+        <DeployButton siteId={siteId} pendingDeploy={accent} onProgress={setJob} />
       </div>
       <style>{`
         .deploy-banner {

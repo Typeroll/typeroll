@@ -1,3 +1,4 @@
+import { previousHostSummary } from './previous-hosts';
 import { domainPublicationIntent } from './domain-publication-intent';
 import { getConnection, ConnectionError } from './connections';
 import { cloudflareClient } from './cloudflare-oauth';
@@ -139,7 +140,7 @@ export async function siteDomainsWithChecks(orgId: string, siteId: string, confi
     // Reading settings must keep working when Cloudflare is unreachable or a grant expired.
     console.warn(JSON.stringify({ event: 'publishing_host_checks_unavailable', org_id: orgId, site_id: siteId, code: error instanceof ConnectionError ? error.code : 'provider_unavailable' }));
   }
-  return { ...config, host_checks, next_publication: versionId === 'main' ? domainPublicationIntent(config) : null };
+  return { ...config, previous_hosts: previousHostSummary(config), host_checks, next_publication: versionId === 'main' ? domainPublicationIntent(config) : null };
 }
 
 /** Stop before building a candidate that Cloudflare cannot serve. */

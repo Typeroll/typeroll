@@ -136,3 +136,33 @@ it('still rejects unrelated setting changes during CNAME-to-A conversion', async
   expect(await rollbackDomainCutover('org', 'site', 'candidate')).toMatchObject({ state: 'conflict' });
   expect(records[0].settings).toEqual({ ipv4_only: true });
 });
+
+it('journals previous-host redirects and removes only the created rule on rollback', async () => {
+  const { config } = await prepare();
+  config.approved_preparation = null;
+  const old = 'old.example.com';
+  records = [{ id: 'old-dns', type: 'CNAME', name: old, content: 'project.pages.dev', proxied: true, ttl: 1 }];
+  const before = structuredClone(records);
+  const { redirectRuleSpec, ensureRedirectRule } = await import('../../lib/publishing/redirect-hosts');
+  const spec = { ...redirectRuleSpec(old, 'www.example.com', 'example.com'), ref: 'typeroll_previous_test' };
+  const redirect: any = { hostname: old, target_host: 'www.example.com', zone_id: 'zone', rule: spec, dns_fingerprint: trafficFingerprint(records), requirements: [] };
+  config.approved_previous_host_preparations = [{ host: old, target_host: 'www.example.com', redirect, message: '' }];
+  let currentRules: any = { id: 'ruleset', rules: [{ id: 'customer', ref: 'keep-me', enabled: true }] };
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (route, options) => {
+    if (!route.includes('/rulesets')) return original(route, options);
+    if (!options?.method) return structuredClone(currentRules);
+    if (options.method === 'POST') { currentRules.rules.push({ ...options.body, id: 'retirement' }); return {}; }
+    if (options.method === 'DELETE') { currentRules.rules = currentRules.rules.filter((rule: any) => rule.id !== route.split('/').pop()); return {}; }
+    throw Error('Unexpected redirect write');
+  });
+  await armDomainCutover('org', 'site', 'default', config);
+  const wrapped = journaledDomainProvider(provider, 'org', 'site', 'candidate', old);
+  await ensureRedirectRule(wrapped, 'zone', spec, old, 'www.example.com');
+  await recordDomainCutover('org', 'site', 'candidate', old);
+  expect(records).toEqual(before);
+  expect(currentRules.rules).toHaveLength(2);
+  expect(await rollbackDomainCutover('org', 'site', 'candidate')).toMatchObject({ state: 'rolled_back', errors: [] });
+  expect(records).toEqual(before);
+  expect(currentRules.rules).toEqual([{ id: 'customer', ref: 'keep-me', enabled: true }]);
+});

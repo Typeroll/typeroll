@@ -1,66 +1,30 @@
-// Image sitemap — sitemaps.org extension that lets search engines discover
-// every image referenced by the site. Useful for image search ranking and
-// for sites where images live on a different origin (our CDN).
-//
-// We extract `<img src>` and `<img srcset>` entries from each published
-// page's body. og:image doesn't need to be here — it's already a per-page
-// meta tag.
-
 import type { APIRoute } from 'astro';
-import { getAllPages, getSiteSettings, isVersionRobotsBlocked, urlFor } from '../lib/content';
-import type { Page } from '@typeroll/shared';
+import { getAllPages, getBlockRegistry, getContentTypes, getPageTemplate, getPartials, getSiteSettings, isVersionRobotsBlocked, urlFor } from '../lib/content';
+import { imageSitemapEntry, pageSitemapImages } from '../lib/image-sitemap';
 
 export const GET: APIRoute = async ({ site }) => {
   const base = site ? site.toString().replace(/\/$/, '') : '';
-  const pages = await getAllPages({ includeUnlisted: false });
   const settings = await getSiteSettings();
-
   const blocked = settings.sitewide_noindex || await isVersionRobotsBlocked();
-  const entries = (blocked ? [] : pages)
-    .filter((p) => !p.noindex)
-    .map((p) => {
-      const images = extractImages(p);
-      if (images.length === 0) return '';
-      const loc = `${base}${urlFor(p, settings.trailing_slash)}`;
-      const imageTags = images
-        .map((img) => `<image:image><image:loc>${escapeXml(img)}</image:loc></image:image>`)
-        .join('');
-      return `<url><loc>${escapeXml(loc)}</loc>${imageTags}</url>`;
-    })
-    .filter(Boolean)
-    .join('');
-
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">${entries}</urlset>`;
-
-  return new Response(xml, {
+  let entries = '';
+  if (!blocked) {
+    const [pages, types, registry, partials] = await Promise.all([
+      getAllPages({ includeUnlisted: false }), getContentTypes(), getBlockRegistry(), getPartials(),
+    ]);
+    const templates = new Map<string, ReturnType<typeof getPageTemplate>>();
+    for (const page of pages) {
+      if (page.noindex) continue;
+      const type = types.find(item => item.id === (page.content_type ?? 'page'))!;
+      const loc = `${base}${urlFor(page, settings.trailing_slash)}`;
+      if (page.template && !templates.has(page.template)) templates.set(page.template, getPageTemplate(page.template));
+      const template = page.template ? await templates.get(page.template) : null;
+      entries += imageSitemapEntry(loc, pageSitemapImages(page, {
+        pageUrl: loc, contentType: type, registry, template: template?.blocks, partials: partials.freeBlocks,
+      }));
+    }
+  }
+  return new Response(`<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">${entries}</urlset>`, {
     headers: { 'Content-Type': 'application/xml; charset=utf-8' },
   });
 };
-
-function extractImages(page: Page): string[] {
-  const set = new Set<string>();
-  const html = page.html_content ?? '';
-  if (page.og_image) set.add(page.og_image);
-  for (const m of html.matchAll(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi)) {
-    set.add(m[1]);
-  }
-  // srcset: "url1 1x, url2 2x" — grab every URL.
-  for (const m of html.matchAll(/<img\b[^>]*\bsrcset=["']([^"']+)["'][^>]*>/gi)) {
-    for (const part of m[1].split(',')) {
-      const url = part.trim().split(/\s+/)[0];
-      if (url) set.add(url);
-    }
-  }
-  // Filter out data: URIs.
-  return Array.from(set).filter((u) => !/^data:/i.test(u));
-}
-
-function escapeXml(s: string): string {
-  return s
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&apos;');
-}

@@ -1,7 +1,7 @@
 import PublishingDomainOnboarding from './PublishingDomainOnboarding';
 import { useEffect, useState } from 'react';
 
-type Guide = { title: string; revision: string; state: string; current_phase: string; traffic_live: boolean; next_action: string; can_prepare?: boolean; published_main?: boolean; elapsed_seconds?: number | null; candidate?: { id: string }; cutover?: { state: string; errors: string[] } | null; checks: Array<{ id: string; status: string; message: string }>;
+type Guide = { previous_hosts?: Array<{ host: string; target_host: string; mode: 'redirect' | 'noindex'; status: string; message: string }>; title: string; revision: string; state: string; current_phase: string; traffic_live: boolean; next_action: string; can_prepare?: boolean; published_main?: boolean; elapsed_seconds?: number | null; candidate?: { id: string }; cutover?: { state: string; errors: string[] } | null; checks: Array<{ id: string; status: string; message: string }>;
   preparation?: { validation_blocker?: { resolution: string } }; switch_summary: { interruption: string; rollback: string; validation_timeout_minutes: number }; };
 
 /** A single visible journey; polling only refreshes status and never advances a traffic action. */
@@ -48,6 +48,13 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
     {guide && ['preparing', 'distributing'].includes(guide.state) && <p className="muted">{guide.elapsed_seconds != null ? `${Math.floor(guide.elapsed_seconds / 60)} min elapsed. ` : ''}The completion time depends on the build and provider checks; this page updates automatically.</p>}
     {error && <p role="alert">{error}</p>}{notice && <p role="status">{notice}</p>}
     <ol className="stack" style={{ paddingInlineStart: '1.25rem', overflowWrap: 'anywhere' }}>{guide?.checks.map(check => <li key={check.id}><strong>{check.status === 'ready' ? '✓ Ready' : check.status === 'waiting' ? '◷ Waiting' : 'Action needed'}</strong> — {check.message}</li>)}</ol>
+    {!!guide?.previous_hosts?.length && <section aria-label="Previous website addresses" className="stack">
+      <h4>Previous website addresses</h4>
+      {guide.previous_hosts.map(host => <div key={host.host} style={{ overflowWrap: 'anywhere' }}>
+        <strong>{host.host}</strong><p>{host.status === 'pending' ? 'Not verified' : host.mode === 'redirect' ? `301 → ${host.target_host}` : 'Noindex protection · redirect needs attention'}</p>
+        <p className="muted">{host.message}</p>
+      </div>)}
+    </section>}
     <PublishingDomainOnboarding siteId={siteId} />
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem' }}>
       <button type="button" className="btn" disabled={busy} onClick={() => void action('check')}>Refresh checks</button>
