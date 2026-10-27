@@ -56,3 +56,14 @@ it('reports the latest main publication failure instead of offering an older DNS
   expect(guide).toMatchObject({published_main:false,next_action:'prepare'});
   expect(guide.checks.find(check=>check.id==='candidate')).toMatchObject({status:'action_required',message:'Certificate setup failed.'});
 });
+it('shows verification failure for the replaced main artifact even before its public verification receipt', async () => {
+  const {siteDomainConfigPath}=await import('../../lib/publishing/domain-config');
+  const config=await getSiteDomains('org','site');
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{state:'preparing',candidate:{id:'older',job_id:'old-job'},published:{hosts:config.desired,dns_mode:'automatic',publication_id:'latest',job_id:'latest-job'}});
+  await getStore().setDoc(paths.deploy('org','site','old-job'),{status:'running',phase:'awaiting domain cutover approval'});
+  await getStore().setDoc(paths.deploy('org','site','latest-job'),{status:'failed',phase:'failed',error:'Public verification timed out.'});
+  await getStore().setDoc(`${paths.site('org','site')}/publishing_targets/main`,{last_publication:{publication_id:'older',snapshot_job_id:'old-job'}});
+  const guide=await readDomainGuide('org','site');
+  expect(guide).toMatchObject({published_main:false,next_action:'prepare'});
+  expect(guide.checks.find(check=>check.id==='candidate')).toMatchObject({status:'action_required',message:'Public verification timed out.'});
+});

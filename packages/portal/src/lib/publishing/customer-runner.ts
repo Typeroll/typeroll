@@ -159,7 +159,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const matchesDesired = samePublicationHosts(currentDomains.desired, active) && sameRedirectHosts(currentDomains.desired, active);
       const outdated = !preparingDomain && currentDomains.candidate && currentDomains.candidate.source_publication_id !== publication.publication_id;
       await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === currentDomains.revision,
-        { active, active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id },
+        { active, active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
           ...(preparingDomain || matchesDesired ? {state: 'live'} : outdated ? {state:'outdated', cutover_approved_revision:null} : {}),
           media_aliases: [...currentDomains.media_aliases, ...(currentDomains.active && !currentDomains.media_aliases.some(alias => samePublicationHosts(alias, currentDomains.active!)) ? [currentDomains.active] : [])] });
       if (outdated && currentDomains.candidate?.job_id) await store.compareAndUpdateDoc<any>(paths.deploy(args.orgId, args.siteId, currentDomains.candidate.job_id),
@@ -523,8 +523,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await assertLease();
         const hosts = { ...domains.desired, website_host: publication.website_host };
         const recorded = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId),
-          current => current.revision === savedDomains.revision && current.state !== 'distributing',
-          { published: { hosts, dns_mode: domains.dns_mode, publication_id: publication.publication_id },
+          current => current.state !== 'distributing',
+          { published: { hosts, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
             media_aliases: [...savedDomains.media_aliases, ...(savedDomains.active && !savedDomains.media_aliases.some(alias => samePublicationHosts(alias, savedDomains.active!)) ? [savedDomains.active] : [])] });
         if (!recorded) throw new ConnectionError('Domain settings changed after the main publication. Refresh domain status before switching traffic.', 409, 'domain_revision_conflict');
       }
@@ -599,7 +599,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         (preparation.certificate_ready || preparation.has_existing_traffic === false || windowCandidate) && !redirectBlockers.length &&
         (!mediaPreparation || mediaPreparation.certificate_ready || mediaPreparation.has_existing_traffic === false);
       const recorded = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === savedDomains.revision && current.state !== 'distributing', {
-        published: { hosts, dns_mode: domains.dns_mode, publication_id: publication.publication_id },
+        published: { hosts, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
         ...(matchesDesired ? { media_preparation: mediaPreparation, preparation, state: ready ? 'ready_to_switch' : 'preparing',
           redirect_preparations: redirectPreparations.length ? redirectPreparations : null,
           candidate: { source_publication_id: publication.source_publication_id ?? null, id: publication.publication_id, revision: publication.domain_revision, commit: publication.commit,

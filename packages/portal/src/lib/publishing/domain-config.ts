@@ -32,7 +32,7 @@ export interface DomainConfiguration {
   desired: PublicationHosts;
   active: PublicationHosts | null;
   /** Origins embedded in the single deployed main output; traffic may still use active. */
-  published?: { hosts: PublicationHosts; dns_mode: 'automatic' | 'external'; publication_id: string } | null;
+  published?: { hosts: PublicationHosts; dns_mode: 'automatic' | 'external'; publication_id: string; job_id?: string } | null;
   active_dns_mode?: 'automatic' | 'external';
   /** Retained aliases are never removed as a side effect of changing the preferred host. */
   media_aliases: PublicationHosts[];

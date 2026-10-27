@@ -969,3 +969,23 @@ it('requires fresh approval after a failed switch even when the embedded origins
   expect(await store.getDoc(paths.deploy('org','site',next.jobId))).toMatchObject({phase:'awaiting domain cutover approval'});
   expect(mocks.cloudflare.mock.calls.some(([route,options])=>route.includes('/dns_records') && options?.method)).toBe(false);
 });
+
+it('records the actual replaced origins even if future settings change during the provider request', async () => {
+  const store=getStore();
+  await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await prepareFromCurrentPublication(); await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true);
+  const before=await getSiteDomains('org','site');
+  const provider=mocks.cloudflare.getMockImplementation()!;
+  let changed=false;
+  mocks.cloudflare.mockImplementation(async (route,options)=> {
+    if(!changed) {
+      changed=true;
+      await saveSiteDomains('org','site',{revision:before.revision,website_host:'later.example.com',dns_mode:'automatic'});
+    }
+    return provider(route,options);
+  });
+  await executeCustomerPublication(args);
+  expect(await store.getDoc(jobPath)).toMatchObject({status:'failed',failure:{code:'domain_revision_conflict'}});
+  expect(await getSiteDomains('org','site')).toMatchObject({desired:{website_host:'later.example.com'},published:{hosts:{website_host:'www.example.com'},job_id:args.jobId},cutover_approved_revision:null});
+});

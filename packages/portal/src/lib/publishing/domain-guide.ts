@@ -66,8 +66,8 @@ export async function readDomainGuide(org: string, site: string) {
     } catch { checks.push({ id: 'launch_ready', status: 'waiting', message: 'Migration launch evidence could not be checked. Open Migration and refresh its launch report.' }); }
   }
   const lastPublication = (await getStore().getDoc<any>(`${paths.site(org, site)}/publishing_targets/main`))?.last_publication;
-  const currentJobId = config.published?.publication_id === lastPublication?.publication_id
-    ? lastPublication?.snapshot_job_id ?? config.candidate?.job_id : config.candidate?.job_id;
+  const currentJobId = config.published?.job_id ?? (config.published?.publication_id === lastPublication?.publication_id
+    ? lastPublication?.snapshot_job_id ?? config.candidate?.job_id : config.candidate?.job_id);
   const job = currentJobId ? await getStore().getDoc<any>(paths.deploy(org, site, currentJobId)) :
     (await getStore().listDocs<any>(paths.deploys(org, site))).filter(item => item.publication_intent === 'domain_prepare').sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
   const publishedMain = Boolean(config.candidate && config.published?.publication_id === config.candidate.id && lastPublication?.publication_id === config.candidate.id);
