@@ -144,3 +144,21 @@ it('expects the platform robots block on a customer temporary host independently
   expect(publicSite.ready).toBe(false);
   expect(publicSite.issues.join(' ')).toContain('Expected an indexable document');
 });
+
+it('reports previous addresses as redirected or noindex rather than indexable copies', async () => {
+  const old = 'old.example.com';
+  for (const redirect of [true, false]) {
+    const report = await diagnoseSiteIndexing({ ...site, publishing_mode: 'customer_git' }, { site_name: 'Demo' } as never, {
+      publicationId: 'publication', previousHosts: [{ host: old, target_host: 'www.example.test', mode: 'noindex', status: 'pending', message: '' }],
+      validateDestination: async () => {},
+      fetchImpl: async (input, init) => {
+        const url = new URL(String(input));
+        if (url.hostname !== old) return mockFetch(input, init);
+        if (redirect) return new Response(null, { status: 301, headers: { location: url.href.replace(old, 'www.example.test') } });
+        return new Response('old content', { headers: { 'x-robots-tag': 'noindex, nofollow', 'x-typeroll-publication': 'publication' } });
+      },
+    });
+    expect(report.ready).toBe(true);
+    expect(report.previous_hosts?.[0]).toMatchObject({ host: old, mode: redirect ? 'redirect' : 'noindex', status: redirect ? 'verified' : 'warning' });
+  }
+});

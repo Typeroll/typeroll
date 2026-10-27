@@ -9,7 +9,7 @@ import { siteDomainConfigPath, type DomainConfiguration } from './domain-config'
 
 type Provider = (route: string, options?: { method?: string; body?: unknown; missing?: boolean }) => Promise<any>;
 type Entry = { hostname: string; group_id: string; account_id: string; zone_id: string; before: any[]; after: any[] | null; dns_intent?: Record<string, any>; rule_intent?: Record<string, any>; redirect?: RedirectPreparation; rules_before?: any; rules_after?: any };
-export interface CutoverJournal { revision: string; candidate_id: string; state: 'armed' | 'live' | 'rolling_back' | 'rolled_back' | 'conflict'; deadline_at: number; entries: Entry[]; previous_active: DomainConfiguration['active']; previous_publication?: any; previous_version?: any; previous_site?: any; errors: string[] }
+export interface CutoverJournal { revision: string; candidate_id: string; state: 'armed' | 'live' | 'rolling_back' | 'rolled_back' | 'conflict'; deadline_at: number; entries: Entry[]; previous_active: DomainConfiguration['active']; previous_hosts?: DomainConfiguration['previous_hosts']; previous_publication?: any; previous_version?: any; previous_site?: any; errors: string[] }
 const journalPath = (org: string, site: string, candidate: string) => `${paths.site(org, site)}/domain_cutovers/${candidate}`;
 const writable = ['type', 'name', 'content', 'ttl', 'proxied', 'comment', 'tags', 'settings', 'priority', 'data'];
 export function dnsRecordBody(record: any) { return Object.fromEntries(writable.filter(key => record[key] !== undefined).map(key => [key, record[key]])); }
@@ -28,7 +28,7 @@ export async function armDomainCutover(org: string, site: string, group: string,
     if (existing.revision !== config.revision || !['armed', 'live'].includes(existing.state)) throw new ConnectionError('This traffic switch has already been rolled back or needs attention.', 409, 'cutover_not_active');
     return existing;
   }
-  const preparations = [config.approved_preparation, config.approved_media_preparation, ...config.approved_redirect_preparations ?? []].filter((item): item is DomainPreparation => Boolean(item?.zone_id));
+  const preparations = [config.approved_preparation, config.approved_media_preparation, ...config.approved_redirect_preparations ?? [], ...(config.approved_previous_host_preparations ?? []).flatMap(item => item.redirect ? [item.redirect] : [])].filter((item): item is DomainPreparation => Boolean(item?.zone_id));
   const entries: Entry[] = [];
   for (const preparation of preparations) {
     if (entries.some(entry => entry.hostname === preparation.hostname)) continue;
@@ -40,7 +40,7 @@ export async function armDomainCutover(org: string, site: string, group: string,
       ...(redirect ? { redirect, rules_before: await rules(access.provider, preparation.zone_id!), rules_after: null } : {}) });
   }
   const journal: CutoverJournal = { revision: config.revision, candidate_id: config.candidate.id, state: 'armed',
-    deadline_at: Date.now() + (config.validation_timeout_minutes ?? 15) * 60_000, entries, previous_active: config.active,
+    deadline_at: Date.now() + (config.validation_timeout_minutes ?? 15) * 60_000, entries, previous_active: config.active, previous_hosts: config.previous_hosts ?? [],
     previous_publication: (await store.getDoc<any>(`${paths.site(org, site)}/publishing_targets/main`))?.last_publication ?? null,
     previous_version: Object.fromEntries(['last_deployed_at', 'last_deployed_content_at', 'deploy_url'].map(key => [key, null])),
     previous_site: Object.fromEntries(['domain', 'domain_status', 'domain_verified_at'].map(key => [key, null])), errors: [] };
@@ -154,7 +154,7 @@ export async function rollbackDomainCutover(org: string, site: string, candidate
   await store.updateDoc(path, { state, errors });
   if (!errors.length) {
     const restored = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(org, site), current => current.candidate?.id === candidate,
-      { state: 'failed', active: journal.previous_active, cutover_approved_revision: null, rollback_requested: false, rollback_status: 'rolled_back' });
+      { state: 'failed', active: journal.previous_active, previous_hosts: journal.previous_hosts ?? [], cutover_approved_revision: null, rollback_requested: false, rollback_status: 'rolled_back' });
     if (!restored) {
       await store.updateDoc(path, { state: 'conflict', errors: ['DNS restored, but site settings changed concurrently. Review publication metadata.'] });
       throw new ConnectionError('DNS restored, but site settings changed concurrently. Review publication metadata.', 409, 'cutover_metadata_conflict');

@@ -67,7 +67,7 @@ function equivalent(rule: any, spec: RedirectRuleSpec) {
 
 const denied = (error: unknown) => error instanceof ProviderError && (error.status === 401 || error.status === 403);
 
-async function readRule(provider: Provider, zoneId: string, spec: RedirectRuleSpec) {
+export async function readRedirectRule(provider: Provider, zoneId: string, spec: RedirectRuleSpec) {
   let ruleset: any;
   try { ruleset = await provider(`/zones/${zoneId}/rulesets/phases/${REDIRECT_PHASE}/entrypoint`, { missing: true }); }
   catch (error) { if (denied(error)) return { status: 'unverifiable' as const, ruleset: null }; throw error; }
@@ -95,7 +95,7 @@ async function redirectAccessStep(orgId: string, groupId: string): Promise<strin
 
 /** Create the redirect rule unless an equivalent rule exists. Never edits or removes another rule. */
 export async function ensureRedirectRule(provider: Provider, zoneId: string, spec: RedirectRuleSpec, host: string, target: string): Promise<RedirectRuleSpec> {
-  const current = await readRule(provider, zoneId, spec);
+  const current = await readRedirectRule(provider, zoneId, spec);
   if (current.status === 'configured') return { ...spec, status: 'configured' };
   if (current.status === 'conflict') throw new ConnectionError(`The redirect rule ${spec.ref} in ${spec.zone_name ?? 'the zone'} differs from the saved redirect to ${target}. Review or remove it in Cloudflare → Rules → Redirect Rules, then prepare again.`, 409, 'redirect_rule_conflict');
   try {
@@ -158,7 +158,7 @@ export async function prepareRedirectHost(dns: Provider | null, input: { host: s
   result.previous_records = records.map(({ id, type, name, content, proxied, ttl }: any) => ({ id, type, name, content, proxied, ttl }));
   result.dns_fingerprint = trafficFingerprint(records);
   const proxied = records.length > 0 && records.every((record: any) => record.proxied === true);
-  const current = await readRule(dns, zone.id, result.rule);
+  const current = await readRedirectRule(dns, zone.id, result.rule);
   result.rule = { ...result.rule, status: current.status };
   if (proxied || current.status === 'conflict') {
     // Already proxied: a new rule would change what visitors see, so it waits for approval.

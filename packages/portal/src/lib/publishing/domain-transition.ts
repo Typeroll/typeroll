@@ -1,3 +1,4 @@
+import { preparePreviousHosts } from './previous-hosts';
 import { domainPublicationRevision, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { prepareRedirectHosts, redirectApprovalBlocker } from './redirect-hosts';
 import { cloudflareClient } from './cloudflare-oauth';
@@ -38,9 +39,12 @@ export async function prepareDomainTransition(orgId: string, siteId: string, inp
     const preparation = await refresh(domains.preparation);
     const media = domains.media_preparation ? await refresh(domains.media_preparation) : null;
     const redirects = await prepareRedirectHosts(orgId, group.id, { hosts: domains.desired.redirect_hosts ?? [], target: domains.desired.website_host, dnsMode: domains.dns_mode, configureTraffic: false });
+    const previousPreparations = domains.previous_host_preparations?.length ? await preparePreviousHosts(orgId, group.id,
+      (domains.previous_host_preparations ?? []).map(item => item.host), domains.desired.website_host,
+      await cloudflareClient(orgId, fetch, undefined, group.id), publication.account_id, publication.project) : [];
     const changed = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
       current => current.revision === domains.revision && current.candidate?.id === domains.candidate!.id && current.state !== 'distributing' && current.state !== 'outdated',
-      { preparation, media_preparation: media, redirect_preparations: redirects.length ? redirects : null,
+      { preparation, media_preparation: media, previous_host_preparations: previousPreparations, redirect_preparations: redirects.length ? redirects : null,
         state: redirects.some(item => redirectApprovalBlocker(item)) || (preparation.validation_blocker && !validationWindowAllowed(preparation)) || (!preparation.certificate_ready && preparation.has_existing_traffic !== false && !validationWindowAllowed(preparation)) || (media && !media.certificate_ready && media.has_existing_traffic !== false) ? 'preparing' : 'ready_to_switch' });
     if (!changed) throw new ConnectionError('Domain settings changed. Reload before preparing.', 409, 'domain_revision_conflict');
     return { job_id: domains.candidate.job_id ?? null, already_running: false, reused_candidate: true, candidate_id: domains.candidate.id };

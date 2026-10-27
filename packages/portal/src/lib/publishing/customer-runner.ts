@@ -1,3 +1,4 @@
+import { previousWebsiteHosts, preparePreviousHosts, retirePreviousHosts } from './previous-hosts';
 import { refreshBuildFailure } from '../builds/failure-status';
 import { journaledDomainProvider, armDomainCutover, recordDomainCutover, readDomainCutover, completeDomainCutover, rollbackDomainCutover } from './domain-cutover-journal';
 import { domainPublicationRevision } from './domain-config';
@@ -149,6 +150,15 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     for (const environment of ['production', 'preview']) await store.compareAndUpdateDoc<any>(`${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`, value => value.job_id === args.jobId, { job_id: null });
   };
   const finishPublication = async (publication: GitPublication, domains: DomainConfiguration, frozen: any): Promise<DeployRunOutcome> => {
+    let previousHosts: import('./previous-hosts').PreviousHost[] = [];
+    try { previousHosts = args.versionId === 'main' ? await retirePreviousHosts(args.orgId, args.siteId,
+      publication.hosting_group_id ?? 'default', publication.publication_id, frozen.previous_website_hosts ?? [], publication.website_host,
+      domains.approved_previous_host_preparations ?? [], preparingDomain && !job.verification_retry && domains.candidate?.id === publication.publication_id && domains.cutover_approved_revision === domains.revision && domains.dns_mode === 'automatic') : []; }
+    catch (error) {
+      if (!(error instanceof ConnectionError) || error.code !== 'previous_host_unprotected') throw error;
+      await store.updateDoc(jobPath, { phase: 'verifying previous website addresses', verification_message: error.message });
+      return await waitForPublicationCondition(jobPath, 'verifying previous website addresses');
+    }
     await recordPublishingOrigin(args.orgId, args.siteId, `https://${publication.website_host}`);
     const finished = new Date().toISOString();
     const stillOwned = await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 60_000 });
@@ -160,7 +170,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const matchesDesired = samePublicationHosts(currentDomains.desired, active) && sameRedirectHosts(currentDomains.desired, active);
       const outdated = !preparingDomain && currentDomains.candidate && currentDomains.candidate.source_publication_id !== publication.publication_id;
       await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === currentDomains.revision,
-        { active, active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
+        { active, previous_hosts: previousHosts, active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
           ...(preparingDomain || matchesDesired ? {state: 'live'} : outdated ? {state:'outdated', cutover_approved_revision:null} : {}),
           media_aliases: [...currentDomains.media_aliases, ...(currentDomains.active && !currentDomains.media_aliases.some(alias => samePublicationHosts(alias, currentDomains.active!)) ? [currentDomains.active] : [])] });
       if (outdated && currentDomains.candidate?.job_id) await store.compareAndUpdateDoc<any>(paths.deploy(args.orgId, args.siteId, currentDomains.candidate.job_id),
@@ -325,6 +335,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
       const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
       frozen.retained_media_manifests = retainDistinctMediaManifests(retained, frozen.media_manifest);
+      frozen.previous_website_hosts = args.versionId === 'main'
+        ? previousWebsiteHosts(savedDomains, host, prior?.site_url ? new URL(prior.site_url).hostname : undefined) : [];
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
       const stable = { ...frozen, published_at: undefined, publication_id: undefined,
         // An explicit domain republication gets a fresh approval/journal identity,
@@ -596,6 +608,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { phase: 'verifying replacement at the current address' });
         return await waitForPublicationCondition(jobPath, 'verifying replacement at the current address');
       }
+      const previousPreparations = await preparePreviousHosts(args.orgId, group.id, (frozen.previous_website_hosts ?? []).filter((host: string) => !publication?.redirect_hosts?.includes(host) && host !== domains.desired.media_host), publication.website_host, cloudflare, publication.account_id, publication.project);
       const finished = new Date().toISOString();
       const hosts = { ...domains.desired, website_host: publication.website_host };
       const matchesDesired = samePublicationHosts(savedDomains.desired, hosts) && sameRedirectHosts(savedDomains.desired, hosts);
@@ -606,10 +619,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const recorded = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === savedDomains.revision && current.state !== 'distributing', {
         published: { hosts, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
         ...(matchesDesired ? { media_preparation: mediaPreparation, preparation, state: ready ? 'ready_to_switch' : 'preparing',
-          redirect_preparations: redirectPreparations.length ? redirectPreparations : null,
+          redirect_preparations: redirectPreparations.length ? redirectPreparations : null, previous_host_preparations: previousPreparations,
           candidate: { source_publication_id: publication.source_publication_id ?? null, id: publication.publication_id, revision: publication.domain_revision, commit: publication.commit,
             deployment_id: deployment.id, sitewide_noindex: frozen.settings?.sitewide_noindex === true, robots_blocked: frozen.robots_blocked === true, verified_at: finished, job_id: args.jobId } } : {}),
-        cutover_approved_revision: null, approved_preparation: null, approved_media_preparation: null, approved_redirect_preparations: null, approved_validation_window: null,
+        cutover_approved_revision: null, approved_preparation: null, approved_media_preparation: null, approved_redirect_preparations: null, approved_previous_host_preparations: null, approved_validation_window: null,
       });
       if (!recorded) throw new ConnectionError('Domain settings changed while publishing. Refresh the domain status before switching traffic.', 409, 'domain_revision_conflict');
       await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });

@@ -272,6 +272,7 @@ test('generated renderer builds with no HOME and an unusable package-manager shi
   publication.pages.push({ id: 'about', slug: 'about', title: 'About', status: 'published', content_mode: 'html', html_content: '<h1 id="team">Team</h1>' });
   publication.pages[0].html_content += '<a href="https://before.example/about#team">Retargeted</a>';
   publication.reference_mapping = { format: 1, media: [], website_origins: ['https://before.example'] };
+  publication.previous_website_hosts = ['old.sites.example.com'];
   await createStaticPublicationProject(publication, destination);
   // Reuse the test environment's installed dependencies without a network install.
   await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
@@ -291,6 +292,9 @@ test('generated renderer builds with no HOME and an unusable package-manager shi
   const marker = JSON.parse(await fs.readFile(path.join(destination, 'dist/.well-known/typeroll/publication.json'), 'utf8'));
   assert.deepEqual(marker.paths.sort(), ['/', '/about/']);
   assert.match(await fs.readFile(path.join(destination, 'dist/_headers'), 'utf8'), new RegExp('X-Typeroll-Publication: ' + marker.id));
+  const headers = await fs.readFile(path.join(destination, 'dist/_headers'), 'utf8');
+  assert.ok(headers.includes('https://old.sites.example.com/*\n  X-Robots-Tag: noindex, nofollow'));
+  assert.ok(!headers.includes('https://example.invalid/*\n  X-Robots-Tag: noindex, nofollow'));
   assert.ok(!result.stderr.includes('Package-manager shim must not run'));
 });
 

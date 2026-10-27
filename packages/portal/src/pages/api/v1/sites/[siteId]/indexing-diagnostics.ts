@@ -1,3 +1,4 @@
+import { previousHostSummary } from '../../../../../lib/publishing/previous-hosts';
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
@@ -16,6 +17,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const domains = ctx.site.publishing_mode === 'customer_git' ? await getSiteDomains(ctx.orgId, ctx.siteId) : null;
   const report = await diagnoseSiteIndexing(ctx.site, settings, {
     robotsBlocked: domains !== null && !domains.desired.website_host,
+    previousHosts: domains ? previousHostSummary(domains) : [], publicationId: domains?.published?.publication_id,
   });
   return apiResponse(ctx, report);
 };

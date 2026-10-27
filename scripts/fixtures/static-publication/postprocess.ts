@@ -8,7 +8,7 @@ import { buildPagesHeaders, withGlobalHeaders } from './source/pages-headers';
 import { vendorExtensionAssets } from './source/extensions/assets';
 import type { ExtensionRuntimeSnapshot } from '@typeroll/shared';
 
-export async function postprocess(dist: string, publication: { publication_id: string; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; trailing_slash?: TrailingSlashPolicy }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot }) {
+export async function postprocess(dist: string, publication: { publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; trailing_slash?: TrailingSlashPolicy }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot }) {
   await bundleBlockAssets(dist);
   await buildSearchIndexIfUsed(dist);
   if (publication.extensions?.installations?.length) await vendorExtensionAssets(dist, publication.extensions);
@@ -19,6 +19,10 @@ export async function postprocess(dist: string, publication: { publication_id: s
   });
   headers += '\nhttps://:project.pages.dev/*\n  X-Robots-Tag: noindex, nofollow\n';
   headers += '\nhttps://:version.:project.pages.dev/*\n  X-Robots-Tag: noindex, nofollow\n';
+  for (const host of publication.previous_website_hosts ?? []) {
+    if (!/^[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?$/.test(host) || host === publication.site.domain) throw new Error('Invalid previous website host');
+    headers += `\nhttps://${host}/*\n  X-Robots-Tag: noindex, nofollow\n`;
+  }
   await fs.writeFile(path.join(dist, '_headers'), headers);
   const routes: string[] = [];
   async function walk(directory: string, prefix = '') {

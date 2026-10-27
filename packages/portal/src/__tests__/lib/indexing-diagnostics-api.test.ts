@@ -16,7 +16,7 @@ it.each([null, 'example.test'])('checks the customer publishing intent, not the 
   const response = await GET({ request: new Request('https://portal.test/api/v1/sites/site/indexing-diagnostics'), params: { siteId: 'site' } } as never);
   expect(response.status).toBe(200);
   expect(getSiteDomains).toHaveBeenCalledWith('org', 'site');
-  expect(diagnoseSiteIndexing).toHaveBeenCalledWith(site, { sitewide_noindex: false }, { robotsBlocked: !websiteHost });
+  expect(diagnoseSiteIndexing).toHaveBeenCalledWith(site, { sitewide_noindex: false }, { robotsBlocked: !websiteHost, previousHosts: [], publicationId: undefined });
 });
 
 it('does not read publishing settings when access is denied', async () => {

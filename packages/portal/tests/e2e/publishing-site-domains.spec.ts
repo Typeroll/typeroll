@@ -165,3 +165,22 @@ test('only replaces main after an explicit click and explains legacy preparation
     await page.screenshot({ path: info.outputPath(`domain-preparation-outdated-${width}.png`), animations: 'disabled' });
   }
 });
+
+for (const width of [390, 1280]) test(`shows verified redirects and noindex warnings for previous addresses at ${width}px`, async ({ page }, info) => {
+  await customerPublishingSite();
+  await page.setViewportSize({ width, height: 900 });
+  await page.route(endpoint, route => route.fulfill({ json: base }));
+  await page.route(guideEndpoint, route => route.fulfill({ json: { ...guideBase, state: 'live', traffic_live: true, next_action: 'none', current_phase: 'live', checks: [], previous_hosts: [
+    { host: 'site-782c37b7bd005ada.sites.example.com', target_host: 'example.com', mode: 'redirect', status: 'verified', message: '301 redirect preserves the path and query string.' },
+    { host: 'old-demo.sites.example.com', target_host: 'example.com', mode: 'noindex', status: 'warning', message: 'The old address is blocked from indexing. Enable Single Redirect access to finish.' },
+  ] } }));
+  await authenticatePersona(page, 'owner');
+  await page.goto(`/app/sites/${site}/settings?section=publishing`);
+  const section = page.getByRole('region', { name: 'Previous website addresses' });
+  await expect(section).toBeVisible();
+  await expect(section.getByText('301 → example.com', { exact: true })).toBeVisible();
+  await expect(section.getByText('Noindex protection · redirect needs attention')).toBeVisible();
+  await section.scrollIntoViewIfNeeded();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: info.outputPath(`previous-hosts-${width}.png`), animations: 'disabled' });
+});

@@ -1,3 +1,4 @@
+import { checkPreviousHost, type PreviousHost } from './publishing/previous-hosts';
 import type { Site, SiteSettings } from '@typeroll/shared';
 import { publicUrlsFor } from './site-public-urls';
 import { assertPublicDestination } from './extensions/public-http';
@@ -30,6 +31,7 @@ export interface IndexingTargetDiagnostic {
 }
 
 export interface SiteIndexingDiagnosticReport {
+  previous_hosts?: PreviousHost[];
   checked_at: string;
   sitewide_noindex: boolean;
   ready: boolean;
@@ -40,6 +42,8 @@ export interface SiteIndexingDiagnosticReport {
 export interface SiteIndexingDiagnosticOptions {
   /** Publishing policy supplied by the authenticated route, never inferred from the response being tested. */
   robotsBlocked?: boolean;
+  previousHosts?: PreviousHost[];
+  publicationId?: string;
   fetchImpl?: typeof fetch;
   validateDestination?: (url: URL) => Promise<void>;
   now?: () => Date;
@@ -71,6 +75,17 @@ export async function diagnoseSiteIndexing(
 
   const targets = await Promise.all(entries.map((entry) => probeTarget(entry, opts)));
   const issues = targets.flatMap((target) => target.issues.map((issue) => `${target.kind}: ${issue}`));
+  const previousHosts: PreviousHost[] = [];
+  for (const previous of opts.previousHosts ?? []) {
+    try {
+      await (opts.validateDestination ?? assertPublicDestination)(new URL(`https://${previous.host}/`));
+      previousHosts.push(await checkPreviousHost(previous.host, previous.target_host, opts.publicationId ?? '', opts.fetchImpl));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Previous address could not be verified.';
+      previousHosts.push({ ...previous, status: 'pending', message });
+      issues.push(`previous ${previous.host}: ${message}`);
+    }
+  }
   if (targets.length === 0) issues.push('No fallback or live production URL is available to probe.');
 
   return {
@@ -78,6 +93,7 @@ export async function diagnoseSiteIndexing(
     sitewide_noindex: settings.sitewide_noindex === true,
     ready: targets.length > 0 && issues.length === 0,
     targets,
+    ...(previousHosts.length ? { previous_hosts: previousHosts } : {}),
     issues,
   };
 }
