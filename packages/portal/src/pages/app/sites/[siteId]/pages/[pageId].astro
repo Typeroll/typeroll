@@ -25,7 +25,9 @@ const page = await vstore.page(orgId, siteId, versionId, pageId);
 if (!page) return Astro.redirect(`/app/sites/${siteId}/pages`);
 
 // Unsaved autosaved edits (working copy) — the editor overlays these on the
-// canonical page and shows the "Unsaved changes" state in the Publish menu.
+// canonical page only after the person chooses to recover it.
+// History navigation must fetch the current saved page and working copy.
+Astro.response.headers.set('Cache-Control', 'private, no-store');
 const workingCopy = await readWorkingCopy(
   { orgId, siteId, versionId },
   { kind: 'page', id: pageId },

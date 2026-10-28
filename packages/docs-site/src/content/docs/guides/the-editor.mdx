@@ -147,6 +147,10 @@ already published static site.
 | `Enter`                | Commit an inline edit or a rename     |
 | `Escape`               | Cancel an inline edit, close a dialog |
 
+Shortcuts also work when the block preview has focus. A shortcut waits for
+pending block autosaves; it never commits the Page. Text fields and inline text
+keep their native text undo. History lasts for the current editor session.
+
 Undo covers block edits — adding, moving, deleting, field changes. A burst of
 typing in one field collapses into a single undo step, so one `⌘Z` takes you back
 to before you started typing, not one character at a time.
@@ -201,6 +205,17 @@ The same panel holds the **Template** picker and the **Content mode** switch
 (blocks ↔ HTML).
 
 ## Saving and publishing
+
+The Structure list displays decoded text (including accented characters). Empty-block
+labels are only editing aids: blocks with visible background images or embedded
+media do not receive a placeholder over that content.
+
+When you reopen a Page with autosaved changes, choose **Continue autosaved draft**
+or **Discard draft and open saved version** before editing. The saved version is
+the last version explicitly saved in the CMS, which may differ from the live
+website. Going back in the browser does not commit your changes. Autosave keeps
+them available for recovery; only **Save** promotes them to the saved Page.
+This choice applies to both the block and HTML editors.
 
 Content edits are kept in a **working copy**. They do not change the saved
 publication input or the live site until you save and deploy. Read the save state

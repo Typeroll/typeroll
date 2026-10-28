@@ -1,0 +1,20 @@
+.draft-recovery {
+  width: min(48rem, 100%);
+  margin: 2rem auto;
+  padding: clamp(1rem, 4vw, 2rem);
+  box-sizing: border-box;
+  border: 1px solid var(--border, #ddd);
+  border-radius: 1rem;
+  background: var(--surface, #fff);
+  color: var(--text, #222);
+  line-height: 1.6;
+}
+.draft-recovery h2 { margin: 0 0 .75rem; font-size: 1.5rem; }
+.draft-recovery h3 { margin: 0; font-size: 1.1rem; }
+.draft-recovery__choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: 1.5rem; margin: 1.5rem 0; }
+.draft-recovery__choices > div { display: flex; flex-direction: column; align-items: flex-start; }
+.draft-recovery button { margin-top: auto; padding: .75rem 1rem; border: 1px solid currentColor; border-radius: .5rem; background: transparent; color: inherit; font: inherit; font-weight: 600; cursor: pointer; text-align: left; }
+.draft-recovery button:disabled { opacity: .6; cursor: wait; }
+.draft-recovery [role=alert] { color: var(--danger, #b91c1c); }
+/* Programmatic focus announces the choice; only interactive controls need a ring. */
+.draft-recovery h2:focus { outline: none; }
