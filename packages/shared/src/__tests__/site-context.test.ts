@@ -7,8 +7,8 @@
 // portal preview alike. These tests pin the mapping and the properties that
 // keep it from breaking something else.
 
-import { describe, it, expect } from 'vitest';
-import { renderBlocks, siteContext, buildCoreBlockRegistry } from '../index.js';
+import { describe, it, expect, vi } from 'vitest';
+import { renderBlocks, siteContext, resolveBuildVariables, buildCoreBlockRegistry } from '../index.js';
 
 describe('siteContext', () => {
   it('exposes site_name as name — the token the core blocks actually bind', () => {
@@ -63,5 +63,39 @@ describe('siteContext', () => {
       },
     );
     expect(html).not.toContain('ACME Studio');
+  });
+});
+
+
+describe('build year variable', () => {
+  it('uses the UTC year and reserves it against stored settings', () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2030-01-01T00:30:00+02:00'));
+      expect(siteContext({ current_year: 1900 }).current_year).toBe(2029);
+      expect(siteContext({}, 2031).current_year).toBe(2031);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('expands inline text, rich text and custom template bindings without changing source', () => {
+    const registry = buildCoreBlockRegistry();
+    registry.set('year-label', { id: 'year-label', name: 'year-label', label: 'Year', category: 'content', container: false, created_at: '2026-01-01T00:00:00Z', schema: [], template: '<p>Built {{site.current_year}}</p>' });
+    const blocks = [
+      { id: 'footer', type: 'core/text', data: { text: 'Copyright {{site.current_year}} Example' } },
+      { id: 'prose', type: 'core/prose', data: { html: '<p>Since 2000–{{ site.current_year }}</p>' } },
+      { id: 'custom', type: 'year-label', data: {} },
+    ];
+    const before = JSON.stringify(blocks);
+    const html = renderBlocks(blocks, { registry, context: { site: siteContext({}, 2032) } });
+    expect(html).toContain('Copyright 2032 Example');
+    expect(html).toContain('Since 2000–2032');
+    expect(html).toContain('Built 2032');
+    expect(html).not.toContain('site.current_year');
+    expect(JSON.stringify(blocks)).toBe(before);
+  });
+
+  it('leaves unrelated tokens and historical dates intact and rejects unsafe year overrides', () => {
+    expect(resolveBuildVariables('2025 {{site.name}} {{ site.current_year }}', 2033)).toBe('2025 {{site.name}} 2033');
+    expect(() => resolveBuildVariables('{{site.current_year}}', '<script>')).toThrow('Invalid build year');
   });
 });

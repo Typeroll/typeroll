@@ -14,7 +14,7 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
   for (const slash of ['always', 'never']) {
     const input = {
       site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', language: 'sv', default_og_image: '/default.jpg', render_version: 10, typography:{ratio_mobile:1.2,ratio_desktop:1.3,rhythm:1.2,line_length:68}, trailing_slash: slash, colors: {surface:'#f8fafc'}, fonts: {mono:'Roboto Mono', delivery:'google'}, design_scales:{space:{lg:{mobile:'2rem',desktop:'clamp(2rem, 1rem + 2vw, 4rem)'}}}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
-      pages: [page('home', { slug: '', html_content: '<h1>Home</h1><a href="/states/">States</a><a href="https://example.test/docs/">Documentation</a><img alt="" src="/decorative.svg">' }), page('companies'),
+      pages: [page('home', { slug: '', html_content: '<h1>Home</h1><p>Build year {{site.current_year}}</p><a href="/states/">States</a><a href="https://example.test/docs/">Documentation</a><img alt="" src="/decorative.svg">' }), page('companies'),
         page('abc', { content_type: 'supplier', og_title: 'Share ABC', og_description: 'Sharing ABC', fields: { company: 'ABC', city: 'Town', featured_image: '/media/company.jpg', featured_image_alt: 'ABC team' } }),
         page('nested', { content_type: 'supplier', slug: 'nested/profile' }), page('explicit', { path: '/special/nested/' }),
         page('states', { noindex: true }), page('strict', { noindex: true, nofollow: true }),
@@ -24,7 +24,7 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
         page('legacy-dated-article', { kind: 'article', date_published: '2024-05-02T11:01:08' }),
         page('faq', { content_mode:'blocks', html_content:undefined, blocks:[{id:'questions',type:'core/accordion',data:{items:[{title:'Is it free?',content:'<p>Yes, <strong>always</strong>.</p>'},{title:'Can I export?',content:'<p>As JSON.</p>'}]}}] }),
       ], contentTypes: [{ id: 'supplier', name: 'supplier', label_singular: 'Supplier', label_plural: 'Companies', route_template: '/companies/{slug}/', schema_type: 'Organization', schema_field_map: { featured_image: 'image', company: 'name' }, fields: [{ name: 'company', type: 'text' }, { name: 'featured_image', type: 'image' }, { name: 'featured_image_alt', type: 'text' }, { name: 'city', type: 'text' }] }],
-      forms: [], extensions: [], partials: [], blockTypes: [{id:'token_panel',name:'token_panel',label:'Token panel',container:false,
+      forms: [], extensions: [], partials: [{id:'footer',kind:'footer',status:'published',content_mode:slash === 'always' ? 'html' : 'blocks',html_content:'<p>Copyright {{site.current_year}} Example</p>',blocks:[{id:'copyright',type:'year_text',data:{text:'Copyright {{site.current_year}} Example'}}]}], blockTypes: [{id:'year_text',name:'year_text',label:'Year text',container:false,schema:[{name:'text',type:'text'}],template:'<p>{{text}}</p>'},{id:'token_panel',name:'token_panel',label:'Token panel',container:false,
         schema:[{name:'background',type:'color'},{name:'gap_px',type:'number',css_unit:'px',design_token:'space'}],
         template:'<section data-block="token_panel" style="background:{{background}};padding:var(--gap_px)"><p>Palette and spacing</p></section>'}], pageTemplates: [], media: [], redirects: [],
     };
@@ -81,6 +81,11 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     assert.match(await fs.readFile(path.join(destination, 'dist/strict/index.html'), 'utf8'), /content="noindex,nofollow"/);
     assert.ok(!(await fs.readFile(path.join(destination, 'dist/sitemap.xml'), 'utf8')).includes('/states'));
     const home = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8'); assert.ok(!home.includes('BreadcrumbList'));
+    for (const rendered of [home, tokenHtml, await fs.readFile(path.join(destination, 'dist/404.html'), 'utf8')]) {
+      assert.ok(rendered.includes(`Copyright ${new Date().getUTCFullYear()} Example`));
+      assert.ok(!rendered.includes('{{site.current_year}}'));
+    }
+    assert.ok(home.includes(`Build year ${new Date().getUTCFullYear()}`));
     // Reintroduce the reported slug-only defect in the actual frozen renderer,
     // not a preview or a mock HTML assertion. The build must now fail.
     const headPath = path.join(destination, 'packages/site-template/src/components/SEOHead.astro');

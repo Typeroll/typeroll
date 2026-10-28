@@ -1,6 +1,6 @@
 ---
 import type { ExtensionIncludeDescriptor, Partial as PartialDoc, RenderContext, SiteSettings } from '@typeroll/shared';
-import { renderPartialHtml } from '../lib/content';
+import { getBuildYear, renderPartialHtml } from '../lib/content';
 
 interface Props {
   partial: PartialDoc | null;
@@ -21,7 +21,7 @@ const html: string | null = partial
   : null;
 
 const startsWithFooter = !!html && /^\s*(?:<!--[\s\S]*?-->\s*)*<footer(?:\s|>)/i.test(html);
-const year = new Date().getFullYear();
+const year = getBuildYear();
 ---
 {html && startsWithFooter ? (
   <Fragment set:html={html} />

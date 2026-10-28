@@ -100,3 +100,23 @@ Every save of a partial keeps the previous saved state. `list_partial_revisions`
 them (`/api/v1/sites/{siteId}/partials/{partialId}/revisions`). A restore puts
 the earlier name and content back as a draft, or saves it with `save: true`.
 See [History and restore](../drafts-and-saving/#history-and-restore).
+
+
+## Current year in shared content
+
+Available from Core 0.2.144. Use `{{site.current_year}}` in a text or prose
+block, a custom block template, or HTML content. For example, a footer text block can contain:
+
+```text
+© 2020–{{site.current_year}} Example Company
+```
+
+The source keeps the variable. Publication captures the current **UTC year**
+once at build start and writes ordinary static text to every page. Preview
+uses the current UTC year too. This works for Pages, Page templates and global
+blocks; no editable Site setting or browser script is needed.
+
+The next publication in a new year refreshes cached pages automatically.
+An already published site does not change at midnight: publish it again to
+update the year. Keep historical dates as literal text. This reserved variable
+does not enable arbitrary template expressions in authored HTML or rich text.

@@ -287,6 +287,10 @@ function sectionHomeHref(site: Record<string, unknown> | undefined, language: un
 }
 
 export function renderBlock(block: Block, options: RenderBlocksOptions): string {
+  return resolveBuildVariables(renderBlockContent(block, options), options.context?.site?.current_year);
+}
+
+function renderBlockContent(block: Block, options: RenderBlocksOptions): string {
   // Asset collection uses the same alias defaults and traversal limit.
   const expanded = expandBlockAlias(block, options.registry);
   if (!expanded) {
@@ -1040,9 +1044,19 @@ function wrapRepeater(
  */
 export function siteContext(
   settings: Record<string, unknown> | null | undefined,
+  year: number = new Date().getUTCFullYear(),
 ): Record<string, unknown> {
   const s = settings ?? {};
-  return { ...s, name: s.site_name ?? s.name ?? '' };
+  return { ...s, name: s.site_name ?? s.name ?? '', current_year: year };
+}
+
+/** Only this reserved build variable expands inside authored text/HTML.
+ * Other tokens are never evaluated recursively. The result is static digits,
+ * with one UTC year captured by the publication build and shared by all routes.
+ */
+export function resolveBuildVariables(value: string, year: unknown = new Date().getUTCFullYear()): string {
+  if (!Number.isInteger(year) || Number(year) < 1 || Number(year) > 9999) throw new Error('Invalid build year');
+  return value.replace(/\{\{\s*site\.current_year\s*\}\}/g, String(year));
 }
 
 /**
@@ -1153,6 +1167,7 @@ function resolveDottedToken(
   data: Record<string, unknown>,
   context: RenderContext | undefined,
 ): unknown {
+  if (name === 'site.current_year') return context?.site?.current_year ?? new Date().getUTCFullYear();
   if (!name.includes('.')) return data[name];
   const [head, ...rest] = name.split('.');
   const root: Record<string, unknown> | undefined = (() => {

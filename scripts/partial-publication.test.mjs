@@ -482,3 +482,14 @@ test('a publication with frozen theme fonts renders them without network or the 
   assert.match(html, /href="\/_typeroll\/fonts\/fonts\.css"/);
   assert.doesNotMatch(html, /fonts\.(?:googleapis|gstatic)\.com/);
 });
+
+test('build year invalidates page reuse and domain rebase caches together', () => {
+  const value = publication();
+  const before = createRenderPlan(value, manifest, process.version, 2026);
+  const same = createRenderPlan(value, manifest, process.version, 2026);
+  const next = createRenderPlan(value, manifest, process.version, 2027);
+  assert.equal(before.globalKey, same.globalKey);
+  assert.equal(before.domainKey, same.domainKey);
+  assert.notEqual(before.keys.one.key, next.keys.one.key);
+  assert.notEqual(before.domainKey, next.domainKey);
+});

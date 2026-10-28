@@ -13,6 +13,7 @@ import { readPublicationContent } from './content.mjs';
 import { resolvePublicationReferences } from './references.mjs';
 import { createRenderPlan, readRenderCache, MAX_RENDER_CACHE_BYTES, RENDER_CACHE_FORMAT } from '../packages/site-template/src/lib/publication-render-cache.mjs';
 
+const buildYear = new Date().getUTCFullYear();
 const root = fileURLToPath(new URL('../', import.meta.url));
 const manifest = JSON.parse(await fs.readFile(path.join(root, 'publication-manifest.json'), 'utf8'));
 if (manifest.format_version !== 1) throw new Error('Unsupported publication manifest');
@@ -52,7 +53,7 @@ if (process.env.TYPEROLL_FULL_BUILD !== '1') {
 }
 const cacheWork = path.join(work, 'render-cache');
 await fs.mkdir(cacheWork, { recursive: true });
-const renderPlan = createRenderPlan(publication, manifest);
+const renderPlan = createRenderPlan(publication, manifest, process.version, buildYear);
 await fs.writeFile(path.join(cacheWork, 'input.json'), JSON.stringify({
   plan: renderPlan, cache: previousCache,
 }));
@@ -91,7 +92,7 @@ const env = {
   ...(process.env.NODE_OPTIONS ? { NODE_OPTIONS: process.env.NODE_OPTIONS } : {}),
   ASTRO_TELEMETRY_DISABLED: '1', TYPEROLL_ORG_ID: 'default', TYPEROLL_SITE_ID: 'default',
   TYPEROLL_VERSION_ID: versionId, TYPEROLL_FIXTURES_DIR: fixtures, TYPEROLL_SITE_URL: publication.site_url,
-  TYPEROLL_RENDER_CACHE_WORK: cacheWork,
+  TYPEROLL_RENDER_CACHE_WORK: cacheWork, TYPEROLL_BUILD_YEAR: String(buildYear),
 };
 const dist = path.join(root, 'dist');
 await fs.rm(dist, { recursive: true, force: true });

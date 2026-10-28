@@ -1,4 +1,6 @@
 ---
+import { resolveBuildVariables } from '@typeroll/shared';
+import { getBuildYear } from '../lib/content';
 import { navigationContext, trackedMediaLookup, trackedDerivedSource } from '../lib/publication-dependencies.mjs';
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from '../components/Header.astro';
@@ -107,7 +109,7 @@ const contentType = (await getContentTypes()).find(type => type.id === (props.pa
 const navigationPages = await getAllPages();
 const renderCtx: RenderContext = {
   page: { ...pageContentValues(props.page), breadcrumbs: props.breadcrumbs },
-  site: { ...siteContext(settings as unknown as Record<string, unknown>), url: Astro.site?.href, get derived_data_url() { return derivedDataUrl(); } },
+  site: { ...siteContext(settings as unknown as Record<string, unknown>, getBuildYear()), url: Astro.site?.href, get derived_data_url() { return derivedDataUrl(); } },
   content_type: contentType ? navigationContext(contentType, props.page.id, () => pageNavigation(props.page, contentType, navigationPages, settings.trailing_slash)) : undefined,
   // Archive pagination: which slice a paginating repeater renders + where
   // its pager links point. Present on every page render (current: 1 when
@@ -197,6 +199,8 @@ let formsRuntimeTag = '';
     bodyBlocks = effectiveBlocks;
     blocksBody = true;
   }
+if (bodyHtml) bodyHtml = resolveBuildVariables(bodyHtml, getBuildYear());
+
 // Block assets for EVERYTHING on the page — the header and footer partials as
 // well as the body. Collected in one call so a block type used in both the
 // header and the body emits its CSS once (collectBlockAssets dedupes per type
