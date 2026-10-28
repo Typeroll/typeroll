@@ -451,3 +451,29 @@ external requests, including analytics calls; only add code you intend to run
 in previews. Typeroll's built-in analytics remain excluded from previews.
 For a widget on one page, use a page-local `core/embed` block instead of a
 site-wide script with a pathname condition.
+
+### Published site icons
+
+**Prepared for Core 0.2.122.** Upload your icon to the site's media library and
+set `favicon` to that media URL. Publication generates a real `/favicon.ico`
+with 16, 32 and 48 pixel images, preserving the complete motif and transparency.
+Every published HTML page links to a content-hashed copy. Changing the icon and
+publishing again changes that link, including on pages whose HTML was reused.
+No custom code or manual ICO conversion is needed.
+
+`icon_192` supplies the 192 pixel image in `/site.webmanifest`. If it is absent,
+Typeroll generates that image from the favicon. A site without either setting
+receives a small transparent fallback icon, so `/favicon.ico` does not return
+an HTML error page. `apple_touch_icon` remains a separate setting.
+
+Use PNG, SVG, JPEG, WebP or ICO (PNG-backed or uncompressed Windows bitmap entries).
+For customer builds, both icon settings must reference uploaded media included
+in the frozen publication. Invalid or unavailable configured images fail with
+`site_icon_build_failed`; Typeroll does not silently publish a different icon.
+
+The fixed `/favicon.ico` and `/site.webmanifest` addresses use the publication's
+revalidation policy. Hashed icon files can be cached immutably. A new deployment
+cannot remotely clear an old WordPress favicon already cached by a browser for
+years. The new HTML icon URL avoids that old cache on subsequent page visits;
+saved bookmarks and pinned tabs may still need a browser refresh or re-saving.
+Existing sites receive these files on their next publication after upgrading.

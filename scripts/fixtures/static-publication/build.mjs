@@ -7,6 +7,7 @@ import { createRequire } from 'node:module';
 import { build } from 'esbuild';
 import { validatePublicationDirectory } from '../packages/site-template/src/lib/publication-validation.mjs';
 import { prepareMedia } from './media.mjs';
+import { writeSiteIcons, readFrozenIcon } from './site-icons.mjs';
 import { readPublicationContent } from './content.mjs';
 import { resolvePublicationReferences } from './references.mjs';
 import { createRenderPlan, readRenderCache, MAX_RENDER_CACHE_BYTES, RENDER_CACHE_FORMAT } from '../packages/site-template/src/lib/publication-render-cache.mjs';
@@ -147,6 +148,7 @@ for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values(
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.copyFile(file.source, destination);
 }
+await writeSiteIcons(dist, publication.settings, url => readFrozenIcon(publication, sameHostMedia, url));
 const validation = await validatePublicationDirectory(dist, {
   publication, configurationHash, routes: JSON.parse(await fs.readFile(path.join(work, 'routes.json'), 'utf8')),
   sourceHash: createHash('sha256').update(JSON.stringify(manifest.files)).digest('hex'),

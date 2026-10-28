@@ -221,9 +221,9 @@ const breadcrumbJsonLd = breadcrumbSchema();
 {twHandle && <meta name="twitter:site" content={`@${twHandle}`} />}
 {twHandle && <meta name="twitter:creator" content={`@${twHandle}`} />}
 
-{settings.favicon && <link rel="icon" href={settings.favicon} />}
+{settings.favicon && <link data-site-icon="favicon" rel="icon" href={settings.favicon} />}
 {settings.apple_touch_icon && <link rel="apple-touch-icon" sizes="180x180" href={settings.apple_touch_icon} />}
-{settings.icon_192 && <link rel="icon" type="image/png" sizes="192x192" href={settings.icon_192} />}
+{settings.icon_192 && <link data-site-icon="icon_192" rel="icon" type="image/png" sizes="192x192" href={settings.icon_192} />}
 
 {pageJsonLd && (
   <script type="application/ld+json" set:html={pageJsonLd} />

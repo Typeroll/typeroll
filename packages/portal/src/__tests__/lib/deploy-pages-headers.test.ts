@@ -2,6 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { buildPagesHeaders, withGlobalHeaders } from '../../lib/deploy/pages-headers';
 
 describe('buildPagesHeaders', () => {
+  it('serves fixed icons as images with revalidation and immutable hashed copies', () => {
+    const headers = buildPagesHeaders();
+    expect(headers).toContain('/favicon.ico\n  Content-Type: image/x-icon');
+    expect(headers).toContain('/site.webmanifest\n  Content-Type: application/manifest+json');
+    expect(headers).toContain('/_assets/icons/*.ico\n  Content-Type: image/x-icon');
+    expect(headers.split('\n\n').find(rule => rule.startsWith('/*\n'))).toContain('max-age=0, must-revalidate');
+    expect(headers.split('\n\n').find(rule => rule.startsWith('/_assets/*\n'))).toContain('max-age=31536000, immutable');
+  });
   it('keeps cache, security and marker headers together when updating global rules', () => {
     const stamped = withGlobalHeaders(buildPagesHeaders() + '\n/*\n  X-Robots-Tag: noindex\n', { 'X-Typeroll-Publication': 'first' });
     const updated = withGlobalHeaders(stamped, { 'X-Typeroll-Publication': 'second' });

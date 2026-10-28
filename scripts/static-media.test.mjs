@@ -442,3 +442,16 @@ test('domain retirement keeps the old media path in the replacement site output'
   assert.ok(files.some(file => file.path === oldPath), '301 of the old media URL reaches the retained path on the new host');
   assert.ok(files.some(file => file.path === '/new-media/image.png'));
 }));
+
+test('site icons materialize only their original when the remaining image artifacts can be reused', async t => withMediaFixture(async ({ publication, root, entries: [entry], stored }) => {
+  publication.settings = { favicon: 'https://portal.example/api/sites/test/media/image/content' };
+  publication.reference_mapping = { media: [[publication.settings.favicon, entry.cdn_url]] };
+  await prepareMediaBatch(publication, root);
+  const receipt = JSON.parse(stored.get(mediaReceiptKey(publication.media_manifest, entry)));
+  const reusableFiles = Object.fromEntries([{ path: entry.public_path, sha256: entry.sha256, size: entry.size_bytes }, ...receipt.variants.map(v => ({ path: entry.public_path + `.v2.${v.width === receipt.width ? 'original' : 'w' + v.width}.${entry.sha256.slice(0, 16)}.${v.format}`, sha256: v.sha256, size: v.size_bytes }))].map(f => [f.path.slice(1), f]));
+  t.mock.method(sharp.prototype, 'toBuffer', () => { throw Error('Existing source images must not be re-encoded'); });
+  const result = await prepareMediaBatch(publication, root, 0, { materialize: true, reusableFiles });
+  assert.equal(result.files.filter(f => !f.reused).length, 1);
+  assert.equal(result.files.find(f => !f.reused).path, entry.public_path);
+  assert.equal(result.files.filter(f => f.reused).length, 4);
+}, 1, true));
