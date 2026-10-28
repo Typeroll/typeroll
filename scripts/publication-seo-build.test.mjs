@@ -15,7 +15,7 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     const input = {
       site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', language: 'sv', default_og_image: '/default.jpg', render_version: 10, typography:{ratio_mobile:1.2,ratio_desktop:1.3,rhythm:1.2,line_length:68}, trailing_slash: slash, colors: {surface:'#f8fafc'}, fonts: {mono:'Roboto Mono'}, design_scales:{space:{lg:{mobile:'2rem',desktop:'clamp(2rem, 1rem + 2vw, 4rem)'}}}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
       pages: [page('home', { slug: '', html_content: '<h1>Home</h1><a href="/states/">States</a><a href="https://example.test/docs/">Documentation</a><img alt="" src="/decorative.svg">' }), page('companies'),
-        page('abc', { content_type: 'supplier', og_title: 'Share ABC', og_description: 'Sharing ABC', fields: { company: 'ABC', city: 'Town', featured_image: 'https://example.test/media/company.jpg', featured_image_alt: 'ABC team' } }),
+        page('abc', { content_type: 'supplier', og_title: 'Share ABC', og_description: 'Sharing ABC', fields: { company: 'ABC', city: 'Town', featured_image: '/media/company.jpg', featured_image_alt: 'ABC team' } }),
         page('nested', { content_type: 'supplier', slug: 'nested/profile' }), page('explicit', { path: '/special/nested/' }),
         page('states', { noindex: true }), page('strict', { noindex: true, nofollow: true }),
         page('syndicated', { canonical_url: 'https://original.test/article/' }),

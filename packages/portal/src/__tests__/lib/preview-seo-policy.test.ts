@@ -18,7 +18,7 @@ it('preview uses content-type routes, canonical overrides and independent robots
   expect(html).toContain('property="og:locale" content="de_AT"');
   expect(html).toContain('property="og:title" content="Sharing ABC"');
   expect(html).toContain('name="twitter:description" content="Sharing description"');
-  expect(html).toContain('property="og:image" content="/media/company.jpg"');
+  expect(html).toContain('property="og:image" content="https://example.test/media/company.jpg"');
   expect(html).toContain('property="og:image:alt" content="Company team"');
   expect(html).toContain('href="https://example.test/companies/abc/"');
   const crumbs = [...html!.matchAll(/<script type="application\/ld\+json">([^<]+)<\/script>/g)].map(m => JSON.parse(m[1])).filter(ld => ld['@type'] === 'BreadcrumbList');

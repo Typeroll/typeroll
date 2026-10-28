@@ -39,7 +39,7 @@ const description =
 
 const canonical = page.canonical_url || new URL(Astro.url.pathname, Astro.site).toString();
 
-const social = socialMetadata(page, settings, contentType);
+const social = socialMetadata(page, settings, contentType, new URL(Astro.url.pathname, Astro.site).href);
 const ogImage = social.image;
 const ogImageAlt = social.imageAlt;
 const language = page.language || settings.language || 'en';

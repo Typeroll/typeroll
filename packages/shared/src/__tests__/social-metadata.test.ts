@@ -8,6 +8,9 @@ describe('social metadata', () => {
   it('uses the public mapped image and its corresponding alt before the site fallback', () => {
     expect(socialMetadata(page, settings, type)).toEqual({ title: 'SEO – Site', description: 'Search description', image: '/media/cat.jpg', imageAlt: 'A cat', locale: 'sv_SE' });
   });
+  it('resolves relative images on the publication origin, independently of canonical overrides', () => {
+    expect(socialMetadata({ ...page, canonical_url: 'https://original.test/post/' }, settings, type, 'https://site.test/article/').image).toBe('https://site.test/media/cat.jpg');
+  });
   it('keeps explicit social metadata separate from document metadata', () => {
     expect(socialMetadata({ ...page, og_title: 'Share', og_description: 'Sharing', og_image: '/chosen.jpg', seo_image_alt: 'Chosen' }, settings, type)).toMatchObject({ title: 'Share', description: 'Sharing', image: '/chosen.jpg', imageAlt: 'Chosen' });
   });
