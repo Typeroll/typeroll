@@ -195,3 +195,19 @@ it('mapped schema includes only explicit public facts and preserves the canonica
     '@context': 'https://schema.org', '@type': 'Organization', url: 'https://directory.example/company/', name: 'Supplier', sameAs: 'https://supplier.example',
   });
 });
+
+
+it('explicitly maps Page dates without leaking other fields in mapped mode', () => {
+  const page = makePage({ title: 'Article', date_published: '2024-05-02T10:01:08Z', date_updated: '2024-05-03T12:00:00+02:00',
+    html_content: '<p>Private to the body renderer</p>', categories: ['moving'], related_articles: ['other'], sort_order: 5 });
+  const type: ContentType = { id: 'articles', name: 'articles', label_singular: 'Article', label_plural: 'Articles',
+    route_template: '/articles/{slug}', created_at: '', fields: [], schema_type: 'Article', schema_field_mode: 'mapped',
+    schema_field_map: { title: 'headline', date_published: 'datePublished', date_updated: 'dateModified' } };
+  expect(JSON.parse(buildContentPageSchema(page, type, site, 'https://example.test/articles/example/')!)).toEqual({
+    '@context': 'https://schema.org', '@type': 'Article', url: 'https://example.test/articles/example/', headline: 'Article',
+    datePublished: '2024-05-02T10:01:08Z', dateModified: '2024-05-03T12:00:00+02:00',
+  });
+  const missing = JSON.parse(buildContentPageSchema({ ...page, date_published: '', date_updated: 'invalid' }, type, site, 'https://example.test/')!);
+  expect(missing).not.toHaveProperty('datePublished');
+  expect(missing).not.toHaveProperty('dateModified');
+});

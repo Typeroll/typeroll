@@ -157,6 +157,27 @@ rather than emitted as a literal dotted JSON key. Reserved prototype names are
 also rejected. Use `schema_field_mode: "mapped"` to restrict automatic output
 to explicitly mapped fields. Fields marked `rendered: false` remain private.
 
+Page dates can be selected explicitly in mapped mode without including the
+body or unrelated custom fields:
+
+```json
+{
+  "schema_type": "Article",
+  "schema_field_mode": "mapped",
+  "schema_field_map": {
+    "title": "headline",
+    "date_published": "datePublished",
+    "date_updated": "dateModified"
+  }
+}
+```
+
+The two date sources read Page metadata, not similarly named custom fields.
+Missing or invalid dates are omitted; explicit timezone offsets are preserved.
+Mapped mode does not add `articleBody`, publisher or unmapped fields. Existing
+custom date-field mappings remain supported. Page date mapping is prepared for
+the next Core release after 0.2.120; republish static sites after upgrading.
+
 A Site's structured contact address uses `street_address`, `postal_code`,
 `address_locality`, `address_region` and `address_country`. The renderer converts
 these to Schema.org's PostalAddress keys in the homepage Organization object.

@@ -66,6 +66,19 @@ on that palette colour: the site's own choice when one is set (see
 [Text on theme colours](../settings/#text-on-theme-colours)), else black or
 white, whichever reads better.
 
+## Site-wide link hover
+
+The `link` role supports `hover`, for example
+`{ "color": "primary", "decoration": "underline" }`. It generates a normal
+`a:hover` rule for links throughout the site, including prose, breadcrumbs,
+the table of contents and the consent dialog's privacy link. More specific
+block and part hover rules (buttons, navigation and cards) retain precedence.
+No hover values means no additional hover rule. Palette names are supported.
+
+This correction is prepared for the next Core release after 0.2.120; it is not
+available in 0.2.120. Existing static sites need to be published again after
+upgrading. Touch-only devices do not have a persistent mouse hover state.
+
 ## Readable text
 
 Every style's text is measured against its background at every screen size,
