@@ -175,7 +175,11 @@ current default and save before changing to an incompatible type.
 `multiselect` stores unique strings from required `options`; `email` and `url`
 are supported string fields. `facet_combinations` is an array of two-element
 field-name arrays. `schema_field_mode: "mapped"` limits automatic JSON-LD to
-explicit `schema_field_map` entries and the canonical envelope.
+explicit `schema_field_map` entries and the canonical envelope. Core 0.2.121 and later
+also accept Page metadata dates as explicit sources:
+`"date_published": "datePublished"` and `"date_updated": "dateModified"`.
+This keeps article dates without adding the body or unrelated fields; see
+[SEO and indexing](../../technical/seo-and-indexing/).
 Pages, typed fields, list blocks, facets and JSON-LD mapping are generic CMS
 features. Product-specific app recipes are available through
 `read_app_documentation` when the relevant app is installed and enabled.

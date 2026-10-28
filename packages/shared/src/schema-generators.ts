@@ -210,6 +210,10 @@ export function buildContentPageSchema(
   const data = { ...page.fields, title: page.title, body: page.html_content, author: page.author,
     ...(page.seo_description ? { description: page.seo_description } : {}),
     ...(page.og_image ? { image: page.og_image } : {}),
+    // Page metadata is available to explicit maps in both field modes. Do not
+    // introduce implicit fields in mapped mode or change legacy all-mode data.
+    ...(Object.hasOwn(userMap ?? {}, 'date_published') ? { date_published: page.date_published } : {}),
+    ...(Object.hasOwn(userMap ?? {}, 'date_updated') ? { date_updated: page.date_updated } : {}),
   };
 
   for (const [field, value] of Object.entries(data)) {

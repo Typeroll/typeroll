@@ -1317,6 +1317,7 @@ export interface ContentType {
   allowed_templates?: string[] | null;
   template?: string;
   schema_type?: string;
+  /** Public fields or Page metadata (title, author, body, date_published, date_updated) to direct schema properties. */
   schema_field_map?: Record<string, string>;
   /** Emit only explicitly mapped fields when set to mapped. */
   schema_field_mode?: 'all' | 'mapped';

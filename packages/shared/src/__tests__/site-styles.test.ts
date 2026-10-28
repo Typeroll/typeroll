@@ -286,3 +286,21 @@ describe('render version 2', () => {
     expect(css).toContain('--color-on-secondary:');
   });
 });
+
+
+describe('site-wide link hover', () => {
+  const link: SiteStyle = { id: 'link', name: 'Link', role: 'link', targets: ['link'], base: { color: 'primary' } };
+  it('emits a normal anchor hover rule without the class specificity boost', () => {
+    const css = siteStylesCss([{ ...link, hover: { color: '#0056a0', decoration: 'underline' } }], { ...opts, renderVersion: 11 });
+    expect(css).toContain('a:hover,[data-block="table_of_contents"] a:hover{color:#0056a0;text-decoration:underline;text-underline-offset:.15em}');
+    expect(css).not.toContain('.s-link');
+  });
+  it('adds no hover rule when the role has no hover values', () => {
+    expect(siteStylesCss([link], { ...opts, renderVersion: 11 })).not.toContain('a:hover');
+  });
+  it('resolves palette hover colours on older and current render versions', () => {
+    for (const renderVersion of [1, 11]) {
+      expect(siteStylesCss([{ ...link, hover: { color: 'secondary' } }], { ...opts, renderVersion })).toContain('a:hover,[data-block="table_of_contents"] a:hover{color:var(--color-secondary)}');
+    }
+  });
+});

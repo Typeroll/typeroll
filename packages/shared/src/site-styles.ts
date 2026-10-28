@@ -630,6 +630,14 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
       };
       if (emitSpacing(style.base)) rules.push(emitSpacing(style.base));
       for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp] && emitSpacing(style.at[bp]!)) rules.push(`${media(bp)}{${emitSpacing(style.at[bp]!)}}`);
+      // Match ordinary site a:hover rules, without the class-style ID boost.
+      // Explicit block/part hover rules retain their higher specificity.
+      if (role === 'link' && style.hover) {
+        const hover = declarations(style.hover);
+        // The TOC's active/neutral state has a more specific base colour.
+        // Hover still applies there; explicit part styles retain their ID boost.
+        if (hover.length) rules.push(`a:hover,[data-block="table_of_contents"] a:hover{${hover.join(';')}}`);
+      }
       pushRoot('base', roleVariables(role, style.base));
       for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp]) pushRoot(bp, roleVariables(role, style.at[bp]!));
       continue;

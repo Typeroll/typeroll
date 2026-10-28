@@ -247,7 +247,10 @@ describe('GitHub connection diagnosis', () => {
     const started = await startGithubInstallation(session);
     const pending = await state();
     expect(Date.parse(pending.installation_started_at)).toBeGreaterThanOrEqual(before - 1000);
-    expect(JSON.stringify(pending)).not.toMatch(/install_|synthetic-owner|78/);
+    expect(pending).toEqual({
+      recheck_available: true,
+      installation_started_at: expect.any(String),
+    });
     // Another admin sees neither this person's identity nor their installation.
     expect(await (await import('../../lib/publishing/github-connection')).githubReturnState({ orgId: 'default', userId: 'other-admin' }))
       .toEqual({ recheck_available: false, installation_started_at: null });
