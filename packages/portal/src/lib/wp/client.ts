@@ -39,6 +39,8 @@ export interface WPPage {
     title?: string;
     description?: string;
     canonical?: string;
+    og_title?: string;
+    og_description?: string;
     og_image?: Array<{ url: string }>;
     schema?: unknown;
   };

@@ -528,6 +528,21 @@ describe('GET/PATCH/PUT/DELETE /api/v1/sites/{siteId}/pages/{pageId}', () => {
     expect(body.error).toContain('data.cols');
   });
 
+  it('saves sharing overrides through the API without changing search metadata', async () => {
+    const { token } = await setup();
+    await seedPage('home', { title: 'Home', seo_title: 'Search title', seo_description: 'Search description' });
+    for (const overrides of [{ og_title: 'Sharing title', og_description: 'Sharing description' }, { og_title: '', og_description: '' }]) {
+      const res = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'), 'PATCH',
+        `http://localhost/api/v1/sites/${SITE}/pages/home`, { siteId: SITE, pageId: 'home' },
+        { headers: bearer(token), body: { ...overrides, save: true } });
+      expect(res.status).toBe(200);
+      expect((await res.json()).page).toMatchObject({ ...overrides, seo_title: 'Search title', seo_description: 'Search description' });
+      const listed = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/index'), 'GET',
+        `http://localhost/api/v1/sites/${SITE}/pages`, { siteId: SITE }, { headers: bearer(token) });
+      expect((await listed.json()).pages.find((page: { id: string }) => page.id === 'home')).toMatchObject(overrides);
+    }
+  });
+
   it('PUT preserves system fields but replaces writable ones', async () => {
     const { token } = await setup();
     await seedPage('home', {

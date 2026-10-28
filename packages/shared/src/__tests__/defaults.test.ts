@@ -11,11 +11,15 @@ describe('ogLocale', () => {
     expect(ogLocale('en-GB')).toBe('en_GB');
     expect(ogLocale('sv-SE')).toBe('sv_SE');
     expect(ogLocale('pt-BR')).toBe('pt_BR');
+    expect(ogLocale('de-AT')).toBe('de_AT');
+    expect(ogLocale('zh-Hant-TW')).toBe('zh_TW');
   });
 
   it('infers region from language code as a fallback', () => {
-    expect(ogLocale('sv')).toBe('sv_SV');
+    expect(ogLocale('sv')).toBe('sv_SE');
     expect(ogLocale('fr')).toBe('fr_FR');
+    expect(ogLocale('da')).toBe('da_DK');
+    expect(ogLocale('invalid tag')).toBe('en_US');
   });
 
   it('special-cases en → en_US', () => {

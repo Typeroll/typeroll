@@ -160,3 +160,20 @@ Compare 375, 768 and 1280px in Site settings → Design and in a full site previ
 After a rendering upgrade/rebuild, recheck cards, boxed headings, leading text
 and webfonts. Boxes should get their outer air from padding. Keep exceptions
 in decisions.md, and run lint_design_tokens before launch.
+
+### Sharing metadata
+
+Compare saved full source and deployed target HTML with
+`python3 scripts/typeroll/compare_seo.py qa/source.html qa/target.html`.
+The report includes document metadata, `og:image`, `og:title`,
+`og:description` and Twitter tags, including missing and duplicate tags.
+Record intentional differences; an image URL changed by migration needs review
+against the media mapping, not automatic approval. This script does not fetch
+pages or change content. Keep source snapshots free of private data.
+
+From Core 0.2.120 / MCP 0.45.90, preserve distinct sharing text in Page
+`og_title` and `og_description`. Empty fields use SEO metadata. The public
+content-type field mapped to Schema.org `image` supplies the image after
+`og_image`, before site defaults. Its `<field>_alt` supplies the image description
+when public; `seo_image_alt` is the explicit override. Never copy a site logo
+into every Page merely to reproduce an old fallback.

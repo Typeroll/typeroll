@@ -156,7 +156,9 @@ const tools: Anthropic.Tool[] = [
         append_seo_suffix: { type: 'boolean', description: 'Set false to omit the site default SEO suffix on this page.' },
         seo_description: { type: 'string' },
         og_image: { type: 'string' },
-        seo_image_alt: { type: 'string', description: 'Alt text for og:image / twitter:image. Falls back to first <img alt> on the page when unset.' },
+        og_title: { type: 'string', description: 'Optional sharing title for OpenGraph and Twitter.' },
+        og_description: { type: 'string', description: 'Optional sharing description for OpenGraph and Twitter.' },
+        seo_image_alt: { type: 'string', description: 'Alt text for og:image / twitter:image. Uses the public mapped image alt when selected; explicit images retain the HTML alt fallback.' },
         canonical_url: { type: 'string' },
         noindex: { type: 'boolean' },
         lastmod_override: { type: 'string', description: 'Override sitemap <lastmod>. Empty string suppresses lastmod entirely.' },
@@ -1290,7 +1292,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       if (!existing) return { result: { error: 'Page not found' } };
       const update: Record<string, unknown> = {};
       for (const k of [
-        'seo_title', 'append_seo_suffix', 'seo_description', 'og_image', 'seo_image_alt',
+        'seo_title', 'append_seo_suffix', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt',
         'canonical_url', 'noindex', 'lastmod_override',
         'schema_type', 'service', 'kind', 'author',
       ] as const) {

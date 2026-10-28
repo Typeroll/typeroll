@@ -135,3 +135,16 @@ export function previousHostSummary(config: DomainConfiguration): PreviousHost[]
     message: 'Protection has not been verified. Publish with the updated build engine; an accessible previous Pages address is redirected after the current website passes verification.',
   });
 }
+
+/** Refresh observations for Publishing without starting builds or changing DNS/rules. */
+export async function readPreviousHosts(config: DomainConfiguration, fetchImpl?: typeof fetch): Promise<PreviousHost[]> {
+  const hosts = previousHostSummary(config);
+  if (!config.published?.publication_id) return hosts;
+  return Promise.all(hosts.map(async host => {
+    try { return await checkPreviousHost(host.host, host.target_host, config.published!.publication_id, fetchImpl); }
+    catch (error) {
+      return { ...host, status: 'pending' as const, checked_at: new Date().toISOString(),
+        message: error instanceof Error ? error.message : 'The previous address could not be checked. Retry the status check.' };
+    }
+  }));
+}

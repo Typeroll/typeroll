@@ -13,16 +13,16 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
   const page = (id, extra = {}) => ({ id, title: id, slug: id, status: 'published', content_mode: 'html', html_content: `<h1>${id}</h1>`, ...extra });
   for (const slash of ['always', 'never']) {
     const input = {
-      site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', render_version: 10, typography:{ratio_mobile:1.2,ratio_desktop:1.3,rhythm:1.2,line_length:68}, trailing_slash: slash, colors: {surface:'#f8fafc'}, fonts: {mono:'Roboto Mono'}, design_scales:{space:{lg:{mobile:'2rem',desktop:'clamp(2rem, 1rem + 2vw, 4rem)'}}}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
+      site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', language: 'sv', default_og_image: '/default.jpg', render_version: 10, typography:{ratio_mobile:1.2,ratio_desktop:1.3,rhythm:1.2,line_length:68}, trailing_slash: slash, colors: {surface:'#f8fafc'}, fonts: {mono:'Roboto Mono'}, design_scales:{space:{lg:{mobile:'2rem',desktop:'clamp(2rem, 1rem + 2vw, 4rem)'}}}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
       pages: [page('home', { slug: '', html_content: '<h1>Home</h1><a href="/states/">States</a><a href="https://example.test/docs/">Documentation</a><img alt="" src="/decorative.svg">' }), page('companies'),
-        page('abc', { content_type: 'supplier', fields: { company: 'ABC', city: 'Town' } }),
+        page('abc', { content_type: 'supplier', og_title: 'Share ABC', og_description: 'Sharing ABC', fields: { company: 'ABC', city: 'Town', featured_image: '/media/company.jpg', featured_image_alt: 'ABC team' } }),
         page('nested', { content_type: 'supplier', slug: 'nested/profile' }), page('explicit', { path: '/special/nested/' }),
         page('states', { noindex: true }), page('strict', { noindex: true, nofollow: true }),
         page('syndicated', { canonical_url: 'https://original.test/article/' }),
         page('dated-article', { kind: 'article', date_published: '2024-05-02T10:01:08Z', date_updated: '2024-05-03T11:01:08+01:00' }),
         page('tokens', { content_mode:'blocks', html_content:undefined, blocks:[{id:'panel',type:'token_panel',data:{background:'surface',gap_px:'lg'}}] }),
         page('legacy-dated-article', { kind: 'article', date_published: '2024-05-02T11:01:08' }),
-      ], contentTypes: [{ id: 'supplier', name: 'supplier', label_singular: 'Supplier', label_plural: 'Companies', route_template: '/companies/{slug}/', schema_type: 'Organization', schema_field_map: { company: 'name' }, fields: [{ name: 'company', type: 'text' }, { name: 'city', type: 'text' }] }],
+      ], contentTypes: [{ id: 'supplier', name: 'supplier', label_singular: 'Supplier', label_plural: 'Companies', route_template: '/companies/{slug}/', schema_type: 'Organization', schema_field_map: { featured_image: 'image', company: 'name' }, fields: [{ name: 'company', type: 'text' }, { name: 'featured_image', type: 'image' }, { name: 'featured_image_alt', type: 'text' }, { name: 'city', type: 'text' }] }],
       forms: [], extensions: [], partials: [], blockTypes: [{id:'token_panel',name:'token_panel',label:'Token panel',container:false,
         schema:[{name:'background',type:'color'},{name:'gap_px',type:'number',css_unit:'px',design_token:'space'}],
         template:'<section data-block="token_panel" style="background:{{background}};padding:var(--gap_px)"><p>Palette and spacing</p></section>'}], pageTemplates: [], media: [], redirects: [],
@@ -43,6 +43,12 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     assert.ok(first.report.warnings.some(issue => issue.code === 'external_route_owned_elsewhere'));
     const suffix = slash === 'always' ? '/' : '';
     const html = await fs.readFile(path.join(destination, 'dist/companies/abc/index.html'), 'utf8');
+    assert.match(html, /property="og:locale" content="sv_SE"/);
+    assert.match(html, /property="og:title" content="Share ABC"/);
+    assert.match(html, /name="twitter:title" content="Share ABC"/);
+    assert.match(html, /property="og:description" content="Sharing ABC"/);
+    assert.match(html, /property="og:image" content="https:\/\/example.test\/media\/company.jpg"/);
+    assert.match(html, /property="og:image:alt" content="ABC team"/);
     const schemas = [...html.matchAll(/<script type="application\/ld\+json">([^<]+)<\/script>/g)].map(match => JSON.parse(match[1]));
     const crumbs = schemas.filter(schema => schema['@type'] === 'BreadcrumbList');
     assert.equal(crumbs.length, 1);
