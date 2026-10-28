@@ -1,5 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { previousWebsiteHosts, previousHostSummary, preparePreviousHosts, checkPreviousHost, retirePreviousHosts } from '../../lib/publishing/previous-hosts';
+import { previousWebsiteHosts, previousHostSummary, readPreviousHosts, preparePreviousHosts, checkPreviousHost, retirePreviousHosts } from '../../lib/publishing/previous-hosts';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -99,4 +99,15 @@ it('a provider refusal leaves a verified noindex warning instead of falsely repo
   });
   const fetcher = vi.fn(async () => new Response('page', { headers: { 'x-robots-tag': 'noindex, nofollow', 'x-typeroll-publication': 'publication' } }));
   expect(await retirePreviousHosts('org', 'site', 'default', 'publication', [old], target, [prepared], true, fetcher)).toMatchObject([{ mode: 'noindex', status: 'warning' }]);
+});
+
+
+it('refreshes stale Publishing warnings after redirect propagation without provider writes', async () => {
+  const input = { ...config, active: { website_host: target }, published: { publication_id: 'publication', hosts: { website_host: target } },
+    previous_hosts: [{ host: old, target_host: target, mode: 'noindex', status: 'warning', message: 'Waiting for propagation' }] };
+  const fetcher = vi.fn(async (url: any) => new Response(null, { status: 301, headers: { location: String(url).replace(old, target) } }));
+  expect(await readPreviousHosts(input, fetcher)).toMatchObject([{ mode: 'redirect', status: 'verified' }]);
+  expect(input.previous_hosts[0].status).toBe('warning');
+  expect(mocks.provider).not.toHaveBeenCalled();
+  expect(await readPreviousHosts(input, vi.fn().mockRejectedValue(new Error('Offline')))).toMatchObject([{ status: 'pending', message: 'Offline' }]);
 });

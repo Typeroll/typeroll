@@ -1,4 +1,4 @@
-import { previousHostSummary } from './previous-hosts';
+import { readPreviousHosts } from './previous-hosts';
 import { buildMigrationLaunchReport } from '../migration-launch-report';
 import { Resolver } from 'node:dns/promises';
 import { paths, pagesRedirectsFile } from '@typeroll/shared';
@@ -74,7 +74,7 @@ export async function readDomainGuide(org: string, site: string) {
   const publishedMain = Boolean(config.candidate && config.published?.publication_id === config.candidate.id && lastPublication?.publication_id === config.candidate.id);
   checks.push({ id: 'candidate', status: job?.status === 'failed' ? 'action_required' : publishedMain && config.state === 'ready_to_switch' ? 'ready' : 'waiting', message: job?.error || (job?.phase === 'awaiting domain cutover approval' ? 'The main site is published with the new addresses. DNS is still pending.' : job?.phase) || 'Publish the last published content again with the new addresses. This replaces main before DNS changes.', details: { candidate_id: config.candidate?.id ?? null, job_id: job?.id ?? null } });
   const cutover = config.candidate ? await readDomainCutover(org, site, config.candidate.id) : null;
-  const previousHosts = previousHostSummary(config);
+  const previousHosts = await readPreviousHosts(config);
   for (const host of previousHosts) checks.push({ id: `previous:${host.host}`, status: host.status === 'verified' ? 'ready' : host.status === 'pending' ? 'waiting' : 'action_required', message: `${host.host}: ${host.message}` });
   const canPrepare = checks.filter(check => ['hosting_account', 'host_requirements', 'publishing_ready', 'redirect_capacity'].includes(check.id)).every(check => check.status !== 'action_required');
   return { ...config, previous_hosts: previousHosts, published_main: publishedMain, can_prepare: canPrepare, elapsed_seconds: job?.started_at ? Math.max(0, Math.round((Date.parse(job.finished_at ?? new Date().toISOString()) - Date.parse(job.started_at)) / 1000)) : null, title: `Move site to ${config.desired.website_host ?? 'your domain'}`, checks,

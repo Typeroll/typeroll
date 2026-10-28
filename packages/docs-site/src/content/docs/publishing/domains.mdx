@@ -280,3 +280,8 @@ keeps a verified noindex fallback with an actionable warning. A second domain
 build and traffic approval are not needed solely to finish legacy redirects.
 Verification-only retries remain read-only; saving domain settings or refreshing
 status never changes public traffic.
+
+From Core 0.2.120, opening Publishing or checking the domain guide probes the
+previous addresses again. A warning captured before a redirect propagated can
+therefore become verified without another publication. A failed network check
+is reported as pending; it never changes DNS or redirect rules.
