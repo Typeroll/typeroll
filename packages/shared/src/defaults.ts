@@ -25,18 +25,14 @@ export const defaultSiteSettings: SiteSettings = {
   render_version: LATEST_RENDER_VERSION,
 };
 
-/**
- * Map a BCP 47 language tag to an OpenGraph locale (xx_XX). Best-effort —
- * defaults the region to an uppercased copy of the language code when no
- * explicit region is supplied (en → en_US is a special case Facebook docs
- * recommend).
- */
+/** Resolve a language tag using CLDR likely subtags, preserving an explicit region. */
 export function ogLocale(language?: string): string {
-  if (!language) return 'en_US';
-  const [lang, region] = language.split('-');
-  if (region) return `${lang.toLowerCase()}_${region.toUpperCase()}`;
-  if (lang.toLowerCase() === 'en') return 'en_US';
-  return `${lang.toLowerCase()}_${lang.toUpperCase()}`;
+  try {
+    const locale = new Intl.Locale(language?.replaceAll('_', '-') || 'en');
+    const region = locale.region || locale.maximize().region;
+    if (region && /^[A-Z]{2}$/.test(region)) return `${locale.language}_${region}`;
+  } catch { /* Invalid editor input must not emit an invalid OpenGraph locale. */ }
+  return 'en_US';
 }
 
 export function slugify(s: string): string {

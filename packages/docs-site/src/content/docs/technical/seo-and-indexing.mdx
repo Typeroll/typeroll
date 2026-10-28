@@ -15,13 +15,14 @@ or traffic.
 
 ## Titles, descriptions and social previews
 
-| Output           | Value selection                                                                                   |
-| ---------------- | ------------------------------------------------------------------------------------------------- |
-| Document title   | `Page.seo_title`, otherwise `Page.title`, with the configured suffix unless disabled for the Page |
-| Description      | `Page.seo_description`, then `default_meta_description`, then the Site tagline                    |
-| Social image     | `Page.og_image`, then `default_og_image`, then the Site logo                                      |
-| Social image alt | `Page.seo_image_alt`, otherwise the first available image alt in the Page HTML                    |
-| Language         | `Page.language`, otherwise the Site language, otherwise English                                   |
+| Output           | Value selection                                                                                                        |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Document title   | `Page.seo_title`, otherwise `Page.title`, with the configured suffix unless disabled for the Page                      |
+| Description      | `Page.seo_description`, then `default_meta_description`, then the Site tagline                                         |
+| Sharing text     | `Page.og_title` / `Page.og_description`, otherwise the document title / description                                    |
+| Social image     | `Page.og_image`, then the public content-type image mapping, then `default_og_image`, then the Site logo               |
+| Social image alt | `Page.seo_image_alt`, then the mapped image’s public `<field>_alt` field; explicit images retain the HTML-alt fallback |
+| Language         | `Page.language`, otherwise the Site language, otherwise English                                                        |
 
 The renderer emits OpenGraph and Twitter card metadata alongside ordinary HTML
 metadata. Use specific descriptions for important Pages; a Site-wide fallback
@@ -195,3 +196,25 @@ before relying on newer validation behavior. Updating MCP alone cannot change
 the renderer. The [source renderer](https://github.com/typeroll/typeroll/blob/main/packages/site-template/src/components/SEOHead.astro)
 and the [publication-check guide](../../guides/publication-validation/) describe
 the technical contract and its limitations.
+
+## Sharing metadata
+
+From Core 0.2.120 / MCP 0.45.90, **Meta → Sharing title** and
+**Sharing description** control OpenGraph and Twitter text independently of
+the search title and description. API/MCP agents set Page `og_title` and
+`og_description`; empty values restore the SEO fallback.
+
+The sharing image uses Page `og_image`, then a public content-type field
+mapped to `image` in `schema_field_map`, then the site's `default_og_image`,
+then its logo. For a mapped field such as `featured_image`, its public
+`featured_image_alt` field provides the description. `seo_image_alt` overrides
+that description. Private (`rendered: false`) fields are never exposed.
+
+Language-only tags use a likely region (`sv` → `sv_SE`); explicit regions are
+preserved (`de-AT` → `de_AT`, `en-GB` → `en_GB`). Changes require a new site
+publication; updating Typeroll does not rewrite an already published site.
+
+WordPress import preserves helper/Yoast OpenGraph titles and descriptions.
+Existing imports are not rewritten. Compare source and target full HTML with
+the starter's `scripts/typeroll/compare_seo.py`, review differences and restore
+verified source values through `update_page` before publishing.

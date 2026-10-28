@@ -1,10 +1,11 @@
 ---
-import type { BreadcrumbItem, Page, PostalAddress, SiteSettings } from '@typeroll/shared';
-import { ogLocale, resolveAlternates, pageRobots, schemaDate, breadcrumbJsonLd as buildBreadcrumbJsonLd } from '@typeroll/shared';
+import type { BreadcrumbItem, ContentType, Page, PostalAddress, SiteSettings } from '@typeroll/shared';
+import { socialMetadata, resolveAlternates, pageRobots, schemaDate, breadcrumbJsonLd as buildBreadcrumbJsonLd } from '@typeroll/shared';
 import { isVersionRobotsBlocked } from '../lib/content';
 
 interface Props {
   page: Page;
+  contentType?: ContentType;
   settings: SiteSettings;
   breadcrumbs?: BreadcrumbItem[];
   /**
@@ -19,7 +20,7 @@ interface Props {
   extraJsonLd?: string[];
 }
 
-const { page, settings, extraJsonLd, breadcrumbs = [] } = Astro.props;
+const { page, contentType, settings, extraJsonLd, breadcrumbs = [] } = Astro.props;
 const publishedDate = schemaDate(page.date_published);
 const modifiedDate = schemaDate(page.date_updated);
 
@@ -38,21 +39,11 @@ const description =
 
 const canonical = page.canonical_url || new URL(Astro.url.pathname, Astro.site).toString();
 
-// OG image fallback chain: page-specific → site default OG → site logo.
-const ogImage = page.og_image || settings.default_og_image || settings.logo;
-
-// Alt text for og:image / twitter:image. Falls back to seo_image_alt → the
-// first <img alt> on the page body (best-effort regex — robust enough for
-// the bulk of imported and AI-written content).
-function firstImgAltFromHtml(html: string | undefined | null): string {
-  if (!html) return '';
-  const m = html.match(/<img\b[^>]*\balt=["']([^"']*)["']/i);
-  return m ? m[1] : '';
-}
-const ogImageAlt = page.seo_image_alt || firstImgAltFromHtml(page.html_content) || '';
-
+const social = socialMetadata(page, settings, contentType);
+const ogImage = social.image;
+const ogImageAlt = social.imageAlt;
 const language = page.language || settings.language || 'en';
-const locale = ogLocale(language);
+const locale = social.locale;
 
 // hreflang cluster. Only the OTHER language variants are declared on the
 // page; the self-reference is injected here because Google drops a cluster
@@ -203,8 +194,8 @@ const breadcrumbJsonLd = breadcrumbSchema();
   <link rel="alternate" hreflang={a.hreflang} href={a.href} />
 ))}
 
-<meta property="og:title" content={title} />
-<meta property="og:description" content={description} />
+<meta property="og:title" content={social.title} />
+<meta property="og:description" content={social.description} />
 <meta property="og:type" content={isArticle ? 'article' : 'website'} />
 <meta property="og:url" content={canonical} />
 <meta property="og:locale" content={locale} />
@@ -223,8 +214,8 @@ const breadcrumbJsonLd = breadcrumbSchema();
 )}
 
 <meta name="twitter:card" content={ogImage ? 'summary_large_image' : 'summary'} />
-<meta name="twitter:title" content={title} />
-<meta name="twitter:description" content={description} />
+<meta name="twitter:title" content={social.title} />
+<meta name="twitter:description" content={social.description} />
 {ogImage && <meta name="twitter:image" content={ogImage} />}
 {ogImage && ogImageAlt && <meta name="twitter:image:alt" content={ogImageAlt} />}
 {twHandle && <meta name="twitter:site" content={`@${twHandle}`} />}

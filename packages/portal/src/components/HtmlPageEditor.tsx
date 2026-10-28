@@ -434,6 +434,14 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
                 />
               </div>
               <div className="field">
+                <label htmlFor="html-og-title">Sharing title</label>
+                <input id="html-og-title" value={draft.og_title ?? ''} onChange={(e) => update('og_title', e.target.value)} placeholder="Uses the SEO title when empty" />
+              </div>
+              <div className="field">
+                <label htmlFor="html-og-description">Sharing description</label>
+                <textarea id="html-og-description" value={draft.og_description ?? ''} onChange={(e) => update('og_description', e.target.value)} placeholder="Uses the meta description when empty" rows={3} />
+              </div>
+              <div className="field">
                 <label>OG image URL</label>
                 <input value={draft.og_image ?? ''} onChange={(e) => update('og_image', e.target.value)} />
                 <p className="muted text-sm">Must be a raster image (PNG/JPG, ~1200×630). SVGs don't render correctly on most social platforms.</p>
@@ -443,7 +451,7 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
                 <input
                   value={draft.seo_image_alt ?? ''}
                   onChange={(e) => update('seo_image_alt', e.target.value)}
-                  placeholder="Falls back to the page's first <img alt> when blank."
+                  placeholder="Uses the image description when empty."
                 />
               </div>
               <div className="field">

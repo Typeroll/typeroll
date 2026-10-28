@@ -646,6 +646,8 @@ export const migrationWorkflow: WorkflowDef = {
           const seoDesc = rawSeoDesc ? normalizeWordPressPlainText(rawSeoDesc) : undefined;
           const seoCanon = helperSEO?.canonical ?? yoast?.canonical;
           const noindex  = helperSEO?.noindex === true ? true : undefined;
+          const ogTitle = normalizeWordPressPlainText(helperSEO?.og_title ?? yoast?.og_title ?? '') || undefined;
+          const ogDescription = normalizeWordPressPlainText(helperSEO?.og_description ?? yoast?.og_description ?? '') || undefined;
           const rawOgImage = helperSEO?.og_image ?? yoast?.og_image?.[0]?.url;
           const ogImage = rawOgImage
             ? (mediaMap.get(rawOgImage) ?? (await transfer.ensureUrl(new URL(rawOgImage, item.link).href, '')).cdnUrl)
@@ -676,7 +678,7 @@ export const migrationWorkflow: WorkflowDef = {
             sort_order: item.menu_order,
             content_mode: 'html',
             html_content: cleaned,
-            seo_title: seoTitle, seo_description: seoDesc, og_image: ogImage, canonical_url: seoCanon, noindex,
+            seo_title: seoTitle, seo_description: seoDesc, og_title: ogTitle, og_description: ogDescription, og_image: ogImage, canonical_url: seoCanon, noindex,
             kind: sourceType === 'page' ? 'page' : 'article', status: 'review',
             old_wp_url: item.link, ai_generated: false,
             date_published: wordpressDate(item.date, item.date_gmt), date_updated: wordpressDate(item.modified, item.modified_gmt),

@@ -119,6 +119,13 @@ describe('working-copy routes', () => {
     expect(res.status).toBe(404);
   });
 
+  it('keeps sharing edits in the editor working copy', async () => {
+    await seedPage('home', { seo_title: 'Search' });
+    const fields = { og_title: 'Share', og_description: 'Sharing description' };
+    expect((await callWc('PUT', 'page/home', { fields })).status).toBe(200);
+    expect((await readWc('page--home'))?.fields).toEqual(fields);
+  });
+
   it('PUT allows a partial working copy before the partial exists (create-on-write)', async () => {
     const res = await callWc('PUT', 'partial/header', { fields: { html_content: '<nav></nav>' } });
     expect(res.status).toBe(200);

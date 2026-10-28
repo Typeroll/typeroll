@@ -644,10 +644,13 @@ export interface Page {
   /** Set false to use the page SEO title verbatim, without the site suffix. */
   append_seo_suffix?: boolean;
   seo_description?: string;
+  /** Optional sharing overrides for OpenGraph and Twitter; SEO metadata is the fallback. */
+  og_title?: string;
+  og_description?: string;
   og_image?: string;
   /**
-   * Alt text for the OG/Twitter image. Falls back to the page's first
-   * `<img alt>` when unset. Surfaced as `og:image:alt` + `twitter:image:alt`
+   * Alt text for the OG/Twitter image. Uses the public mapped image's alt
+   * when selected; explicit images retain the first HTML `<img alt>` fallback. Surfaced as `og:image:alt` + `twitter:image:alt`
    * meta tags — important for accessibility readouts and a small SEO signal.
    */
   seo_image_alt?: string;

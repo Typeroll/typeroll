@@ -259,7 +259,7 @@ if (ld) extraJsonLd.push(ld);
 if (bodyHtml) bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
 
 ---
-<BaseLayout identity={identity} breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd}>
+<BaseLayout contentType={contentType} identity={identity} breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd}>
   <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 
   {bodyHtml ? (

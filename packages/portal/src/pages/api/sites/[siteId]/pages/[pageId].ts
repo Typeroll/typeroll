@@ -31,7 +31,7 @@ const ALLOWED_FIELDS: Array<keyof Page> = [
   'breadcrumb_label', 'seo_title',
   'append_seo_suffix',
   'seo_description',
-  'og_image',
+  'og_title', 'og_description', 'og_image',
   'seo_image_alt',
   'canonical_url',
   'noindex', 'nofollow',

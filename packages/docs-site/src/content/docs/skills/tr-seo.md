@@ -9,15 +9,15 @@ description: Audit your site's search visibility and fix meta descriptions, Open
 
 You don't need to configure these — they work out of the box:
 
-| Feature                     | How                                                                    |
-| --------------------------- | ---------------------------------------------------------------------- |
-| `<html lang>`               | From site `language` setting (per-page override available)             |
-| `<title>`                   | `seo_title` if set, otherwise `title + default_seo_suffix`             |
-| `<meta name="description">` | From `page.seo_description`                                            |
-| `<meta name="robots">`      | From `page.noindex`                                                    |
-| Open Graph tags             | From `seo_title`, `seo_description`, `og_image`                        |
-| `<link rel="canonical">`    | From `page.canonical_url` (defaults to page URL)                       |
-| Article JSON-LD             | Automatic for `kind: "article"` pages with `author` + `date_published` |
+| Feature                     | How                                                                                                    |
+| --------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `<html lang>`               | From site `language` setting (per-page override available)                                             |
+| `<title>`                   | `seo_title` if set, otherwise `title + default_seo_suffix`                                             |
+| `<meta name="description">` | From `page.seo_description`                                                                            |
+| `<meta name="robots">`      | From `page.noindex`                                                                                    |
+| Open Graph tags             | From sharing overrides (`og_title`, `og_description`, `og_image`), then SEO and mapped-image fallbacks |
+| `<link rel="canonical">`    | From `page.canonical_url` (defaults to page URL)                                                       |
+| Article JSON-LD             | Automatic for `kind: "article"` pages with `author` + `date_published`                                 |
 
 ## What the AI agent audits and fixes
 

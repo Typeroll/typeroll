@@ -27,6 +27,7 @@ import {
   breadcrumbJsonLd,
   applyTrailingSlash,
   buildContentPageSchema,
+  socialMetadata,
   buildPageSchema,
   buildConsentEarlyPaintRuntime,
   buildCoreBlockRegistry,
@@ -370,9 +371,16 @@ export async function renderPreview(
       if (!seoBase) return '';
       const pathname = applyTrailingSlash('/' + pagePathSegment(page), settings.trailing_slash ?? 'always');
       const canonical = page.canonical_url || new URL(pathname, seoBase).href;
+      const social = socialMetadata(page, settings, contentType);
+      const tags = Object.entries({ 'og:title': social.title, 'og:description': social.description, 'og:locale': social.locale,
+        'og:url': canonical, ...(social.image ? { 'og:image': social.image, 'og:image:alt': social.imageAlt } : {}) })
+        .map(([property, value]) => `<meta property="${property}" content="${escapeAttr(value)}" />`).join('');
+      const twitter = Object.entries({ 'twitter:title': social.title, 'twitter:description': social.description,
+        ...(social.image ? { 'twitter:image': social.image, 'twitter:image:alt': social.imageAlt } : {}) })
+        .map(([name, value]) => `<meta name="${name}" content="${escapeAttr(value)}" />`).join('');
       const schema = [breadcrumbJsonLd({ pathname, canonical, baseUrl: seoBase, title: page.title, siteName: settings.site_name, breadcrumbs }),
         page.schema_type ? buildPageSchema(page, settings, canonical) : buildContentPageSchema(publicContentPage(page, contentType), contentType, settings, canonical)];
-      return `<link rel="canonical" href="${escapeAttr(canonical)}" />` + schema.filter(Boolean).map(value => `<script type="application/ld+json">${value!.replace(/</g, '\\u003c')}</script>`).join('');
+      return tags + twitter + `<link rel="canonical" href="${escapeAttr(canonical)}" />` + schema.filter(Boolean).map(value => `<script type="application/ld+json">${value!.replace(/</g, '\\u003c')}</script>`).join('');
     })(),
     banner: opts.showBanner ? {
       versionId,

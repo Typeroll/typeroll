@@ -1522,6 +1522,17 @@ function MetaPanel({
       </div>
 
       <div style={fieldGroup}>
+        <label htmlFor="block-og-title" style={fieldLabel}>Sharing title</label>
+        <input id="block-og-title" style={textInput} value={draft.og_title ?? ''}
+          onChange={(e) => onChange('og_title', e.target.value)} placeholder="Uses the SEO title when empty" />
+      </div>
+      <div style={fieldGroup}>
+        <label htmlFor="block-og-description" style={fieldLabel}>Sharing description</label>
+        <textarea id="block-og-description" style={textareaInput} value={draft.og_description ?? ''}
+          onChange={(e) => onChange('og_description', e.target.value)} placeholder="Uses the meta description when empty" />
+      </div>
+
+      <div style={fieldGroup}>
         <label htmlFor="block-og-image" style={fieldLabel}>OG image (URL)</label>
         <input id="block-og-image"
           style={textInput}

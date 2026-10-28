@@ -26,3 +26,15 @@ it('round-trips sparse imports and authority reads with exact version and paths'
   const schema = z.toJSONSchema(z.object(write.inputSchema), { target: 'draft-7', io: 'input' });
   expect(JSON.stringify(schema)).toContain('base_revision');
 });
+
+it('exposes sharing text overrides in strict create and update schemas', async () => {
+  const metadata = { og_title: 'Share this', og_description: 'Sharing description', og_image: 'https://example.com/share.jpg' };
+  for (const [name, data] of [['create_page', { title: 'Document', ...metadata }], ['update_page', { page_id: 'example', patch: metadata }]] as const) {
+    const tool = pageTools.find(tool => tool.name === name)!;
+    const input = z.strictObject(tool.inputSchema).parse(data);
+    expect(input).toEqual(data);
+    const schema = z.toJSONSchema(z.strictObject(tool.inputSchema), { target: 'draft-7', io: 'input' });
+    expect(JSON.stringify(schema)).toContain('og_title');
+    expect(JSON.stringify(schema)).toContain('og_description');
+  }
+});

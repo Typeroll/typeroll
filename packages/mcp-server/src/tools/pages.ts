@@ -134,6 +134,9 @@ export const pageTools: ToolDef[] = [
       seo_title: z.string().optional(),
       append_seo_suffix: z.boolean().optional().describe('Set false to omit the site default SEO suffix on this page.'),
       seo_description: z.string().optional(),
+      og_title: z.string().optional(),
+      og_description: z.string().optional(),
+      og_image: z.string().optional(),
       seo_image_alt: z.string().optional(),
       alternates: z
         .array(z.object({ hreflang: z.string(), href: z.string() }))
@@ -183,8 +186,10 @@ export const pageTools: ToolDef[] = [
           seo_title: z.string().optional(),
           append_seo_suffix: z.boolean().optional().describe('Set false to use seo_title/page title verbatim without the site suffix.'),
           seo_description: z.string().optional(),
+          og_title: z.string().optional().describe("Sharing title for OpenGraph/Twitter. Empty uses the SEO title."),
+          og_description: z.string().optional().describe("Sharing description for OpenGraph/Twitter. Empty uses the SEO description."),
           og_image: z.string().optional(),
-          seo_image_alt: z.string().optional().describe('Alt text for og:image/twitter:image. Falls back to first <img alt> on the page when unset.'),
+          seo_image_alt: z.string().optional().describe('Alt text for og:image/twitter:image. Uses the public mapped image alt when that image is selected; explicit images retain the HTML alt fallback.'),
           canonical_url: z.string().optional(),
           path: z.string().optional().describe('Explicit URL path for nested pages (e.g. "/erbjudanden/sommar-2026"). Takes precedence over slug for routing; changing it auto-creates a 301 from the old URL on save.'),
           noindex: z.boolean().optional(),
@@ -318,6 +323,8 @@ export const pageTools: ToolDef[] = [
         seo_title: src.seo_title,
         append_seo_suffix: src.append_seo_suffix,
         seo_description: src.seo_description,
+        og_title: src.og_title,
+        og_description: src.og_description,
         og_image: src.og_image,
         canonical_url: undefined,  // intentionally NOT copied — point of canonical is to differ
         noindex: src.noindex,

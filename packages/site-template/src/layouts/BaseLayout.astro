@@ -1,5 +1,5 @@
 ---
-import type { BreadcrumbItem, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
+import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
 import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, contentWellCss, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
@@ -8,6 +8,7 @@ import '../styles/global.css';
 
 interface Props {
   page: Page;
+  contentType?: ContentType;
   /**
    * `data-*` attributes describing which route this is, spread onto <body>.
    * Built by `pageIdentityAttributes`; absent keys are absent attributes, so
@@ -53,7 +54,7 @@ interface Props {
   extraJsonLd?: string[];
 }
 
-const { page, settings, blockCss, blockJs, clientCapabilities, extraJsonLd, apps, extensions, breadcrumbs } = Astro.props;
+const { page, contentType, settings, blockCss, blockJs, clientCapabilities, extraJsonLd, apps, extensions, breadcrumbs } = Astro.props;
 const extensionRuntime = extensions?.installations?.length
   ? buildExtensionRuntimeScript(extensions, { analytics: apps?.apps?.analytics?.enabled && typeof apps.apps.analytics.config.event_token === 'string' && typeof apps.apps.analytics.config.event_endpoint === 'string'
       ? { endpoint: apps.apps.analytics.config.event_endpoint, token: apps.apps.analytics.config.event_token, requires_consent: settings.cookie_consent?.enabled === true } : undefined })
@@ -140,7 +141,7 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {extensionUsesSensitiveUrlContext && <meta name="referrer" content="no-referrer" />}
 
-    <SEOHead page={page} settings={settings} extraJsonLd={extraJsonLd} breadcrumbs={breadcrumbs} />
+    <SEOHead contentType={contentType} page={page} settings={settings} extraJsonLd={extraJsonLd} breadcrumbs={breadcrumbs} />
 
     <style set:html={themeStyle} />
     <style set:html={contentWellCss(resolveRenderVersion(settings.render_version))} />

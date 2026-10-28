@@ -15,11 +15,19 @@ import page_notes
 import check_url_parity as parity
 from check_assets import Assets
 from compare_text import tokens
+from compare_seo import compare as compare_seo
 
 CONFIG = {'portal': 'https://cms.example.test', 'organization_id': 'org', 'site_id': 'site', 'version': 'review'}
 
 
 class QA(unittest.TestCase):
+    def test_social_metadata_comparison_reports_missing_changed_and_duplicate_values(self):
+        source = '<title>Page</title><meta property="og:title" content="Share &amp; learn"><meta property="og:image" content="/old.jpg">'
+        target = '<title>Page</title><meta property="og:title" content="Page"><meta property="og:description" content="New"><meta property="og:image" content="/new.jpg">'
+        self.assertEqual([item['field'] for item in compare_seo(source, target)], ['og:description', 'og:image', 'og:title'])
+        self.assertEqual(compare_seo(source, source), [])
+        self.assertEqual(compare_seo(source, source + '<meta property="og:title" content="Duplicate">')[0]['field'], 'og:title')
+
     def test_page_notes_preserve_human_context_and_review_dates(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
