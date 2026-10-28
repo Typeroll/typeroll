@@ -27,6 +27,15 @@ const BASE_HEADERS = [
   '  ! Cache-Control',
   '  Cache-Control: public, max-age=31536000, immutable, no-transform',
   '',
+  '/favicon.ico',
+  '  Content-Type: image/x-icon',
+  '',
+  '/_assets/icons/*.ico',
+  '  Content-Type: image/x-icon',
+  '',
+  '/site.webmanifest',
+  '  Content-Type: application/manifest+json',
+  '',
   ...SCRIPTABLE_DOCUMENT_PATTERNS.flatMap(pattern => [pattern, `  Content-Security-Policy: ${SCRIPTABLE_DOCUMENT_POLICY}`, '']),
 ];
 

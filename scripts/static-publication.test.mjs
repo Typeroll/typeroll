@@ -269,6 +269,8 @@ test('generated renderer builds with no HOME and an unusable package-manager shi
   t.after(() => fs.rm(tmp, { recursive: true, force: true }));
   const destination = path.join(tmp, 'site');
   const publication = projectStaticPublication(input(), identity);
+  publication.settings.favicon = publication.media[0].cdn_url;
+  publication.media_manifest = { entries: [{ cdn_url: publication.settings.favicon, public_path: '/media/site-icon.png' }] };
   publication.pages.push({ id: 'about', slug: 'about', title: 'About', status: 'published', content_mode: 'html', html_content: '<h1 id="team">Team</h1>' });
   publication.pages[0].html_content += '<a href="https://before.example/about#team">Retargeted</a>';
   publication.reference_mapping = { format: 1, media: [], website_origins: ['https://before.example'] };
@@ -279,16 +281,32 @@ test('generated renderer builds with no HOME and an unusable package-manager shi
   await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
   await sealPublicationProject(destination);
   const shims = path.join(tmp, 'shims');
+  const { default: sharp } = await import('sharp');
+  const realDestination = await fs.realpath(destination);
+  const iconSource = path.join(realDestination, '.publication-media/site-icon.png');
+  await fs.mkdir(path.dirname(iconSource), { recursive: true });
+  await fs.writeFile(iconSource, await sharp({ create: { width: 64, height: 64, channels: 3, background: '#ff00ff' } }).png().toBuffer());
+  const preparedPath = path.join(realDestination, 'prepared-media.json');
+  await fs.writeFile(preparedPath, JSON.stringify({ publication_id: publication.publication_id, media: publication.media, files: [{ path: '/media/site-icon.png', source: iconSource }] }));
   await fs.mkdir(shims);
   await fs.writeFile(path.join(shims, 'npm'), '#!/bin/sh\necho "Package-manager shim must not run" >&2\nexit 93\n', { mode: 0o755 });
   const result = spawnSync(process.execPath, ['scripts/build.mjs'], {
-    cwd: destination, env: { PATH: shims }, encoding: 'utf8', timeout: 60_000,
+    cwd: destination, env: { PATH: shims, TYPEROLL_BUILD_MEDIA_PREPARED: preparedPath }, encoding: 'utf8', timeout: 60_000,
   });
   assert.equal(result.status, 0, result.stderr + result.stdout);
   const html = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');
   assert.match(html, /<h1>Public<\/h1>/);
   assert.ok(html.includes(`${new URL(publication.site_url).origin}/about#team`));
   assert.ok(!html.includes('https://before.example'));
+  assert.match(html, /href="\/_assets\/icons\/favicon-[a-f0-9]+\.ico"/);
+  assert.ok(html.includes('rel="manifest"'));
+  const favicon = await fs.readFile(path.join(destination, 'dist/favicon.ico'));
+  assert.equal(favicon.readUInt16LE(2), 1);
+  assert.equal(favicon.readUInt16LE(4), 3);
+  const icon32Offset = favicon.readUInt32LE(34);
+  const icon32Size = favicon.readUInt32LE(30);
+  const pixel = await sharp(favicon.subarray(icon32Offset, icon32Offset + icon32Size)).resize(1, 1).removeAlpha().raw().toBuffer();
+  assert.deepEqual([...pixel], [255, 0, 255]);
   const marker = JSON.parse(await fs.readFile(path.join(destination, 'dist/.well-known/typeroll/publication.json'), 'utf8'));
   assert.deepEqual(marker.paths.sort(), ['/', '/about/']);
   assert.match(await fs.readFile(path.join(destination, 'dist/_headers'), 'utf8'), new RegExp('X-Typeroll-Publication: ' + marker.id));

@@ -228,6 +228,25 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
     console.log(`[deploy] extensions: vendored ${vendored.files} files (${vendored.bytes} bytes)`);
   }
 
+  await phase('generating site icons');
+  {
+    const { writeSiteIcons, MAX_ICON_BYTES } = await import('../../../../../scripts/fixtures/static-publication/site-icons.mjs');
+    const { createSafeFetch } = await import('../net/safe-fetch');
+    const fetchIcon = createSafeFetch({ label: 'Site icon', maxRedirects: 0, timeoutMs: 15_000, maxBytes: MAX_ICON_BYTES });
+    const settings = await vstore.settings(args.orgId, args.siteId, versionId);
+    await writeSiteIcons(buildDir, settings ?? {}, async url => {
+      let location = new URL(url, siteUrl);
+      const parts = location.pathname.split('/').filter(Boolean);
+      if (parts.length === 6 && parts[0] === 'api' && parts[1] === 'sites' && parts[2] === args.siteId && parts[3] === 'media' && parts[5] === 'content') {
+        const { privateMediaReadUrl } = await import('../publishing/media-storage');
+        location = new URL(await privateMediaReadUrl(args.orgId, args.siteId, parts[4]!));
+      }
+      const response = await fetchIcon(location.href);
+      if (!response.ok) throw new Error('Site icon could not be read');
+      return new Uint8Array(await response.arrayBuffer());
+    });
+  }
+
   // 2b. Roll up inlined block CSS / JS into one cached bundle per type.
   //     BaseLayout writes inline tags per page — this pass extracts and
   //     consolidates them so multi-page sites stop shipping the same
