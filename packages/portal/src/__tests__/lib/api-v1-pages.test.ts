@@ -537,6 +537,9 @@ describe('GET/PATCH/PUT/DELETE /api/v1/sites/{siteId}/pages/{pageId}', () => {
         { headers: bearer(token), body: { ...overrides, save: true } });
       expect(res.status).toBe(200);
       expect((await res.json()).page).toMatchObject({ ...overrides, seo_title: 'Search title', seo_description: 'Search description' });
+      const listed = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/index'), 'GET',
+        `http://localhost/api/v1/sites/${SITE}/pages`, { siteId: SITE }, { headers: bearer(token) });
+      expect((await listed.json()).pages.find((page: { id: string }) => page.id === 'home')).toMatchObject(overrides);
     }
   });
 
