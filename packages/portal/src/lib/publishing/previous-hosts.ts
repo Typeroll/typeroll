@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { ConnectionError } from './connections';
 import { ProviderError } from './providers.mjs';
 import { hostingDns } from './hosting-dns';
@@ -8,6 +9,7 @@ import { redirectRuleSpec, readRedirectRule, ensureRedirectRule, verifyRedirectH
 import { journaledDomainProvider, recordDomainCutover } from './domain-cutover-journal';
 import { publicationHostname, type DomainConfiguration } from './domain-config';
 import { createSafeFetch } from '../net/safe-fetch';
+import { getStore } from '../datastore';
 
 type Provider = (route: string, options?: { method?: string; body?: unknown; missing?: boolean }) => Promise<any>;
 export type PreviousHost = { host: string; target_host: string; mode: 'redirect' | 'noindex'; status: 'pending' | 'verified' | 'warning'; message: string; checked_at?: string };
@@ -68,25 +70,60 @@ export async function checkPreviousHost(host: string, target: string, publicatio
 
 /** Apply only approved, journaled rules; never replace the old DNS or detach media-serving domains. */
 export async function retirePreviousHosts(org: string, site: string, group: string, publication: string, hosts: string[], target: string,
-  approved: PreviousHostPreparation[] = [], apply = false, fetchImpl?: typeof fetch): Promise<PreviousHost[]> {
+  approved: PreviousHostPreparation[] = [], apply = false, fetchImpl?: typeof fetch,
+  maintenanceJobPath?: string): Promise<PreviousHost[]> {
   const result: PreviousHost[] = [];
   for (const host of hosts) {
-    const preparation = approved.find(item => item.host === host && item.target_host === target)?.redirect;
+    const preparedHost = approved.find(item => item.host === host && item.target_host === target);
+    const preparation = preparedHost?.redirect;
     if (apply && preparation?.zone_id) {
       const access = await hostingDns(org, group, host);
       const records = (await access.provider(`/zones/${preparation.zone_id}/dns_records?name=${encodeURIComponent(host)}&per_page=100`)).filter((record: any) => ['A', 'AAAA', 'CNAME'].includes(record.type));
       if (trafficFingerprint(records) !== preparation.dns_fingerprint) throw new ConnectionError('The previous address DNS changed after approval. Review it before enabling its redirect.', 409, 'dns_revision_conflict');
-      try { await ensureRedirectRule(journaledDomainProvider(access.provider, org, site, publication, host), preparation.zone_id, preparation.rule, host, target); }
+      const writer = maintenanceJobPath
+        ? retirementRuleProvider(access.provider, maintenanceJobPath, publication, preparation)
+        : journaledDomainProvider(access.provider, org, site, publication, host);
+      try { await ensureRedirectRule(writer, preparation.zone_id, preparation.rule, host, target); }
       catch (error) {
         // A deterministic provider refusal leaves the artifact's verified noindex fallback.
         // Transport errors and uncertain writes must resume through the existing job retry.
         if (!(error instanceof ProviderError) || ![400, 401, 403].includes(error.status)) throw error;
       }
-      await recordDomainCutover(org, site, publication, host);
+      if (!maintenanceJobPath) await recordDomainCutover(org, site, publication, host);
     }
-    result.push(await checkPreviousHost(host, target, publication, fetchImpl));
+    const checked = await checkPreviousHost(host, target, publication, fetchImpl);
+    result.push(checked.mode === 'noindex' && preparedHost?.message ? { ...checked, message: preparedHost.message } : checked);
   }
   return result;
+}
+
+/** Normal publishing may finish retirement after an already approved switch.
+ * Only a new, exact Single Redirect is allowed. DNS and existing rules are never
+ * changed. The caller holds the publication lease and has verified the target.
+ * Actual traffic switches continue to use the full rollback journal above.
+ */
+function retirementRuleProvider(provider: Provider, jobPath: string, publication: string, prepared: RedirectPreparation): Provider {
+  return async (route, options) => {
+    if (!options?.method) return provider(route, options);
+    const body = options.body as any, rule = body?.rules?.length === 1 ? body.rules[0] : body;
+    if (options.method !== 'POST' || !new RegExp(`^/zones/${prepared.zone_id}/rulesets(?:/[a-zA-Z0-9_-]+/rules)?$`).test(route) ||
+        rule?.ref !== prepared.rule.ref || rule?.expression !== prepared.rule.expression ||
+        rule?.action !== 'redirect' || rule?.action_parameters?.from_value?.target_url?.expression !== prepared.rule.target_url_expression ||
+        rule?.action_parameters?.from_value?.status_code !== 301 || rule?.action_parameters?.from_value?.preserve_query_string !== true)
+      throw new ConnectionError('The previous address write is outside this publication.', 409, 'previous_host_write_mismatch');
+    const key = `${jobPath}/previous_host_writes/${prepared.rule.ref}`;
+    const intent = { publication_id: publication, hostname: prepared.hostname, target_host: prepared.target_host,
+      zone_id: prepared.zone_id, dns_fingerprint: prepared.dns_fingerprint, rule, state: 'prepared' };
+    const store = getStore();
+    await store.createDocIfMissing(key, intent);
+    const saved = await store.getDoc<any>(key);
+    if (saved?.publication_id !== publication || saved?.hostname !== prepared.hostname || saved?.target_host !== prepared.target_host ||
+        saved?.zone_id !== prepared.zone_id || saved?.dns_fingerprint !== prepared.dns_fingerprint || !isDeepStrictEqual(saved?.rule, rule))
+      throw new ConnectionError('The previous address write changed. Review this publication.', 409, 'previous_host_write_conflict');
+    const result = await provider(route, options);
+    await store.updateDoc(key, { state: 'submitted' });
+    return result;
+  };
 }
 
 /** Reads expose unprotected legacy aliases too; a saved alias is not evidence of protection. */
@@ -95,6 +132,6 @@ export function previousHostSummary(config: DomainConfiguration): PreviousHost[]
   if (!target) return [];
   return previousWebsiteHosts(config, target).map(host => config.previous_hosts?.find(item => item.host === host && item.target_host === target) ?? {
     host, target_host: target, mode: 'noindex', status: 'pending',
-    message: 'Protection has not been verified. Publish with the updated build engine, then approve the domain switch to enable its redirect.',
+    message: 'Protection has not been verified. Publish with the updated build engine; an accessible previous Pages address is redirected after the current website passes verification.',
   });
 }

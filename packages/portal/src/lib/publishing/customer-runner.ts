@@ -32,7 +32,7 @@ import { projectStaticPublication } from '../../../../../scripts/lib/static-publ
 import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
 import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed } from './domain-provider';
-import { retainDistinctMediaManifests, publicationMediaManifest } from './media-manifest';
+import { retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
 import { DerivationError, runBuildDerivations } from './build-derivation';
@@ -151,9 +151,18 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   };
   const finishPublication = async (publication: GitPublication, domains: DomainConfiguration, frozen: any): Promise<DeployRunOutcome> => {
     let previousHosts: import('./previous-hosts').PreviousHost[] = [];
+    // A normal publication also finishes legacy retirement. It may add an exact
+    // redirect on an existing Pages host, never move DNS or change another rule.
+    const maintainPrevious = !!frozen.previous_website_hosts?.length && args.versionId === 'main' && !preparingDomain && !job.verification_retry &&
+      domains.dns_mode === 'automatic' && domains.active?.website_host === publication.website_host;
+    const previousPreparations = maintainPrevious ? await preparePreviousHosts(args.orgId, publication.hosting_group_id ?? 'default',
+      (frozen.previous_website_hosts ?? []).filter((host: string) => !publication.redirect_hosts?.includes(host) && host !== domains.desired.media_host),
+      publication.website_host, await cloudflareClient(args.orgId, fetch, undefined, publication.hosting_group_id ?? 'default'), publication.account_id, publication.project)
+      : domains.approved_previous_host_preparations ?? [];
     try { previousHosts = args.versionId === 'main' ? await retirePreviousHosts(args.orgId, args.siteId,
       publication.hosting_group_id ?? 'default', publication.publication_id, frozen.previous_website_hosts ?? [], publication.website_host,
-      domains.approved_previous_host_preparations ?? [], preparingDomain && !job.verification_retry && domains.candidate?.id === publication.publication_id && domains.cutover_approved_revision === domains.revision && domains.dns_mode === 'automatic') : []; }
+      previousPreparations, maintainPrevious || preparingDomain && !job.verification_retry && domains.candidate?.id === publication.publication_id && domains.cutover_approved_revision === domains.revision && domains.dns_mode === 'automatic', undefined,
+      maintainPrevious ? jobPath : undefined) : []; }
     catch (error) {
       if (!(error instanceof ConnectionError) || error.code !== 'previous_host_unprotected') throw error;
       await store.updateDoc(jobPath, { phase: 'verifying previous website addresses', verification_message: error.message });
@@ -334,6 +343,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         delete frozen.source_impact_snapshot;
       }
       const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
+      frozen.media_replacement_redirects = replacedMediaRedirects(retained, frozen.media_manifest, frozen.redirects, prior?.media_replacement_redirects);
+      frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_replacement_redirects.filter((rule: any) => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path))];
       frozen.retained_media_manifests = retainDistinctMediaManifests(retained, frozen.media_manifest);
       frozen.previous_website_hosts = args.versionId === 'main'
         ? previousWebsiteHosts(savedDomains, host, prior?.site_url ? new URL(prior.site_url).hostname : undefined) : [];
@@ -349,8 +360,14 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         terminal = true; return 'ran';
       }
       const servedHost = preparingDomain ? savedDomains.active?.website_host ?? fallback : host;
-      if (acquired.last_publication?.publication_id === frozen.publication_id &&
+      if (acquired.last_publication && acquired.last_publication.publication_id === frozen.publication_id &&
           await probePublication(`https://${servedHost}`, '/.well-known/typeroll/publication.json', frozen.publication_id)) {
+        if (frozen.previous_website_hosts?.some((host: string) => !savedDomains.previous_hosts?.some(previous =>
+          previous.host === host && previous.target_host === servedHost && previous.mode === 'redirect' && previous.status === 'verified'))) {
+          // Permission may have been approved since an unchanged publication's
+          // noindex fallback. Finish retirement without rebuilding its artifact.
+          return await finishPublication(acquired.last_publication, domains, frozen);
+        }
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });
         terminal = true; return 'ran';
       }

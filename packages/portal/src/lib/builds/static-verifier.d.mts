@@ -1,4 +1,4 @@
-export interface VerificationCheck { route: string; status: 200 | 404; sha256?: string; size?: number }
+export interface VerificationCheck { route: string; status: 200 | 404; sha256?: string; size?: number; redirect_target?: string }
 export const PROBE_BYTES: number;
 export const PROBE_FILE_BYTES: number;
 export const PROBE_FILES: number;

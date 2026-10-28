@@ -271,6 +271,12 @@ an older artifact: publish for the restored address to restore its canonical and
 indexing policy too.
 
 Sites switched before this behavior was introduced show unverified previous
-addresses. A new publication is needed to install the fallback headers; use
-**Publish for the new domain** and approve the switch to create the redirect rules.
-Saving domain settings or refreshing status never changes public traffic.
+addresses. From Core 0.2.119, a normal publication installs the fallback headers
+and finishes missing redirects after the current website passes verification.
+It checks the old address's active Pages certificate, connected zone and existing
+proxied CNAME, and records the exact rule write before submitting it. It never
+changes DNS or overwrites an existing rule. A permission or configuration problem
+keeps a verified noindex fallback with an actionable warning. A second domain
+build and traffic approval are not needed solely to finish legacy redirects.
+Verification-only retries remain read-only; saving domain settings or refreshing
+status never changes public traffic.

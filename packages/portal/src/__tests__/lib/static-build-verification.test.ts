@@ -5,6 +5,17 @@ import { responseBytes, outputFiles } from '../../lib/builds/executor.mjs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
+it('verifies safe replacement bytes through a retired media redirect and rejects stale bytes', async () => {
+  const files = { 'media/new.svg': Buffer.from('sanitized'), _redirects: Buffer.from('/media/old.svg /media/new.svg 301') };
+  const checks = staticChecks(files, [{ route: '/media/old.svg', status: 200, sha256: sha256('unsafe') }]);
+  const old = checks.find(check => check.route === '/media/old.svg')!;
+  expect(old).toMatchObject({ status: 200, sha256: sha256('sanitized') });
+  const validate = async () => undefined;
+  expect(await verifyStaticResponse('https://site.example.invalid', old, { validate, fetchImpl: async () => new Response('unsafe') })).toBe(false);
+  expect(await verifyStaticResponse('https://site.example.invalid', old, { validate, fetchImpl: async url => String(url).endsWith('/old.svg')
+    ? new Response(null, { status: 301, headers: { location: '/media/new.svg' } }) : new Response('sanitized') })).toBe(true);
+  expect(staticChecks({ 'index.html': Buffer.from('home') }, checks)).toContainEqual({ route: '/media/old.svg', status: 404 });
+});
 it('checks current pages and assets plus removed routes without treating headers as content', () => {
   const before = staticChecks({ 'index.html': Buffer.from('old'), 'removed/index.html': Buffer.from('gone'), 'moved/index.html': Buffer.from('redirect') });
   const checks = staticChecks({ 'index.html': Buffer.from('new'), 'image.png': Buffer.from('png'), _headers: Buffer.from('/*\n X-Robots-Tag: noindex'), _redirects: Buffer.from('/moved/ / 301') }, before);

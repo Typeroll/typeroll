@@ -9,7 +9,7 @@ export interface StaticObservation {
   final_path?: string; redirect_chain?: ProbeRedirect[];
   response_headers?: Record<string, string | number>; body_sample?: BodySample;
 }
-export interface StaticCheck { route: string; status: 200 | 404; sha256?: string; size?: number }
+export interface StaticCheck { route: string; status: 200 | 404; sha256?: string; size?: number; redirect_target?: string }
 export function staticChecks(files: Record<string, Buffer>, previous: StaticCheck[] = []): StaticCheck[] {
   return staticManifestChecks(Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, { sha256: sha256(bytes) }])), files._redirects?.toString('utf8') ?? '', previous);
 }
@@ -21,7 +21,18 @@ export function staticManifestChecks(files: Record<string, { sha256: string; siz
     const route = '/' + (name.endsWith('.html') ? name.replace(/index\.html$/, '').replace(/\.html$/, '') : name);
     checks.push({ route, status: 200, sha256: bytes.sha256, ...(bytes.size === undefined ? {} : { size: bytes.size }) });
   }
-  const redirects = redirectsText.split('\n').map(line => line.trim().split(/\s+/)[0]);
+  const rules = redirectsText.split('\n').map(line => line.trim().split(/\s+/));
+  const redirects = rules.map(rule => rule[0]);
+  // A retained media URL must resolve to the exact replacement bytes, not just
+  // disappear from the deletion checks because a redirect was declared.
+  const assets = new Map(checks.map(check => [check.route, check]));
+  for (const [from, to, status] of rules) {
+    if (!['301', '302'].includes(status) || !from.startsWith('/') || from.startsWith('//') || /[*:?#]/.test(from)) continue;
+    const target = assets.get(to);
+    if (!target || !files[to.slice(1)] || to.endsWith('.html') || assets.has(from)) continue;
+    checks.push({ ...target, route: from, redirect_target: to });
+    assets.set(from, target);
+  }
   const current = new Set(checks.map(check => check.route.replace(/\/$/, '')));
   for (const check of previous) if (check.status === 200 && !current.has(check.route.replace(/\/$/, '')) && !redirects.includes(check.route)) checks.push({ route: check.route, status: 404 });
   return checks.sort((a, b) => a.route.localeCompare(b.route));
