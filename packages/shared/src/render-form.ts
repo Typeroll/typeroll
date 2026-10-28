@@ -220,7 +220,7 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
     : '';
 
   return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam} data-tr-context-params="${escapeHtml(JSON.stringify(form.target?.context_params ?? []))}">
-${styles}<form data-tr-form-el method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${preview ? 0 : (opts.pow_bits ?? 0)}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${remoteMsgAttrs}${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}${labelAttrs}${versionAttr}${previewAttrs}>
+${styles}<form data-tr-form-el${!preview && form.option_sources?.length ? ' data-live-options="true"' : ''} method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${preview ? 0 : (opts.pow_bits ?? 0)}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${remoteMsgAttrs}${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}${labelAttrs}${versionAttr}${previewAttrs}>
 ${previewHtml}<input type="hidden" name="_token" value="${escapeHtml(preview ? '' : (embed.submit_token ?? ''))}" />
 <input type="hidden" name="_state" value="" />
 <input type="hidden" name="_form_id" value="${escapeHtml(form.id)}" />

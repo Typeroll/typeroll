@@ -21,6 +21,7 @@ export async function sendViaPostmark(
   if (msg.replyTo) body.ReplyTo = msg.replyTo;
   if (msg.html) body.HtmlBody = msg.html;
   if (msg.text) body.TextBody = msg.text;
+  if (msg.calendar) body.Attachments=[{Name:msg.calendar.filename,Content:Buffer.from(msg.calendar.content).toString('base64'),ContentType:'text/calendar; charset=utf-8; method=PUBLISH'}];
 
   const res = await fetch(POSTMARK_ENDPOINT, {
     method: 'POST',

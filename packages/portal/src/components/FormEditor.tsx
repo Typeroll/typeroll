@@ -54,6 +54,7 @@ interface InitialForm {
   allow_back: boolean | null;
   show_progress: false | 'text' | 'bar';
   actions: FormAction[];
+  option_sources?: Array<{field:string;type:string;config:Record<string,unknown>;notice_field?:string}>;
 }
 
 interface Props {
@@ -112,7 +113,7 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
             allow_back: form.allow_back,
             show_progress: form.show_progress,
           } : {}),
-          ...(canManageActions ? { actions: form.actions } : {}),
+          ...(canManageActions ? { actions: form.actions, option_sources: form.option_sources??[] } : {}),
           ...(fieldsEditable ? { fields } : {}),
         }),
       });
@@ -132,6 +133,7 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
   // /form-capabilities exists: this editor used to be able to offer only the
   // one type it was hand-coded for.
   const [caps, setCaps] = useState<{
+    option_sources?:Array<{type:string;label:string;config_fields:Array<{key:string;label:string;type:string}>}>;
     actions: Array<{ type: string; label: string; description?: string; admin_only: boolean; has_before: boolean; config_fields: Array<{ key: string; label: string; type: string; help?: string; default?: unknown }> }>;
   } | null>(null);
   useEffect(() => {
@@ -338,6 +340,20 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
             </p>
           )}
 
+          {(caps?.option_sources?.length || form.option_sources?.length) ? <section className="card stack">
+            <h3>Live field options</h3>
+            <p>Choose an installed app to keep a select or radio field up to date without publishing the site again.</p>
+            {(form.option_sources??[]).map((source,i)=><div key={i} className="stack">
+              <label className="field"><span>Form field name</span><input value={source.field} disabled={!canWrite} onChange={e=>patch('option_sources',(form.option_sources??[]).map((v,n)=>n===i?{...v,field:e.target.value}:v))}/></label>
+              <label className="field"><span>Source</span><select value={source.type} disabled={!canWrite} onChange={e=>patch('option_sources',(form.option_sources??[]).map((v,n)=>n===i?{...v,type:e.target.value,config:{}}:v))}>
+                {(caps?.option_sources??[]).map(o=><option key={o.type} value={o.type}>{o.label}</option>)}
+              </select></label>
+              {(caps?.option_sources?.find(o=>o.type===source.type)?.config_fields??[]).map(f=><label className="field" key={f.key}><span>{f.label}</span><input disabled={!canWrite} value={String(source.config[f.key]??'')} onChange={e=>patch('option_sources',(form.option_sources??[]).map((v,n)=>n===i?{...v,config:{...v.config,[f.key]:f.type==='number'?Number(e.target.value):e.target.value}}:v))}/></label>)}
+              <label className="field"><span>Notice version hidden field (if supplied by the app)</span><input disabled={!canWrite} value={source.notice_field??''} onChange={e=>patch('option_sources',(form.option_sources??[]).map((v,n)=>n===i?{...v,notice_field:e.target.value}:v))}/></label>
+              <button className="btn" disabled={!canWrite} onClick={()=>patch('option_sources',(form.option_sources??[]).filter((_,n)=>n!==i))}>Remove live source</button>
+            </div>)}
+            {!!caps?.option_sources?.length&&<button className="btn" disabled={!canWrite} onClick={()=>patch('option_sources',[...(form.option_sources??[]),{field:'',type:caps!.option_sources![0].type,config:{}}])}>Add live source</button>}
+          </section>:null}
           {form.actions.map((a, i) => (a.type !== 'email' ? (
             // Any other registered type renders from its declared config
             // schema. Deliberately generic rather than another hand-written
@@ -358,7 +374,7 @@ export default function FormEditor({ siteId, formId, initialForm, fields: initia
               </div>
               {(caps?.actions.find((c) => c.type === a.type)?.config_fields ?? []).map((f) => (
                 <label className="field" key={f.key}><span>{f.label}</span>
-                  {f.type === 'boolean' ? (
+                  {f.type === 'json' ? (<JsonConfig value={a.config[f.key]} disabled={!canWrite} onChange={value=>updateActionConfig(i,f.key,value)} />) : f.type === 'boolean' ? (
                     <input type="checkbox" disabled={!canWrite}
                       checked={Boolean(a.config[f.key])}
                       onChange={(e) => updateActionConfig(i, f.key, e.target.checked)} />
@@ -498,6 +514,7 @@ interface SubmissionRow {
   data: Record<string, unknown>;
   created_at: string;
   status?: string;
+  action_status?: "pending" | "running" | "failed" | "notifying" | "done";
   webhook_deliveries?: Array<{
     webhook_id?: string;
     status?: 'pending' | 'delivered' | 'failed';
@@ -573,6 +590,9 @@ function Submissions({ siteId, formId, canWrite, showWebhookStatus }: { siteId: 
                 </span>
               </button>
               <div className="submission-card__actions">
+                {s.action_status && <span className={`text-sm submission-card__status submission-card__status--${s.action_status === 'done' ? 'delivered' : s.action_status === 'failed' ? 'failed' : 'pending'}`}>
+                  App actions: {{pending:'waiting',running:'processing',failed:'needs attention',notifying:'completed; sending notifications',done:'completed'}[s.action_status]}
+                </span>}
                 {showWebhookStatus && s.webhook_deliveries?.map((delivery, index) => (
                   <span
                     key={`${delivery.webhook_id}-${index}`}
@@ -609,4 +629,10 @@ function Submissions({ siteId, formId, canWrite, showWebhookStatus }: { siteId: 
 
 function formatSubmissionValue(value: unknown): string {
   return Array.isArray(value) ? value.join(', ') : String(value ?? '');
+}
+
+function JsonConfig({value,disabled,onChange}:{value:unknown;disabled:boolean;onChange:(value:unknown)=>void}) {
+  const [draft,setDraft]=useState(()=>JSON.stringify(value??{},null,2));
+  const [invalid,setInvalid]=useState(false);
+  return <><textarea rows={5} disabled={disabled} value={draft} aria-invalid={invalid} onChange={e=>{setDraft(e.target.value);try{const value=JSON.parse(e.target.value);if(!value||typeof value!=='object'||Array.isArray(value))throw Error();setInvalid(false);onChange(value);}catch{setInvalid(true);onChange(e.target.value);}}}/>{invalid&&<span role="alert">Enter a JSON object. Invalid configuration cannot be saved.</span>}</>;
 }
