@@ -272,7 +272,8 @@ test.describe("native receiving form in a real preview link", () => {
 
       await page.goto(url);
       const frame = page.frameLocator("iframe");
-      const decline = frame.getByRole("button", { name: "Neka" });
+      // The banner follows the page language; select the action, not its wording.
+      const decline = frame.locator('[data-tr-consent-action="rejected"]');
       if (await decline.isVisible({ timeout: 5_000 }).catch(() => false)) await decline.click();
       await frame.getByLabel("Moving from", { exact: true }).fill(FROM);
       await frame.getByLabel("Moving to", { exact: true }).fill(TO);

@@ -46,7 +46,8 @@ test('a preview link clicks through a multi-step form without creating a submiss
     await page.goto(url);
     // The link opens a shell; the page renders in its isolated frame.
     const frame = page.frameLocator('iframe');
-    const decline = frame.getByRole('button', { name: 'Neka' });
+    // The banner follows the page language; select the action, not its wording.
+    const decline = frame.locator('[data-tr-consent-action="rejected"]');
     if (await decline.isVisible({ timeout: 5_000 }).catch(() => false)) await decline.click();
 
     await expect(frame.getByRole('note')).toHaveText('Preview – nothing is sent');
