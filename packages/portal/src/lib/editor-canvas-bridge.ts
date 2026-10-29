@@ -35,7 +35,6 @@ addEventListener("message",function(event){var data=event.data;if(event.source!=
   if(data.action==="scroll"&&Number.isFinite(data.scroll_y))scrollTo(0,data.scroll_y);
   if(data.action==="placeholders"&&data.labels&&typeof data.labels==="object"){var style=document.getElementById("__tr_ph_style");if(!style){style=document.createElement("style");style.id="__tr_ph_style";style.textContent="[data-empty-label]{position:relative;min-height:2.5em;outline:1px dashed rgba(99,102,241,.45);outline-offset:-1px}[data-empty-label]::after{content:attr(data-empty-label);position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:rgba(120,120,140,.8);font:italic 500 14px/1.4 -apple-system,system-ui,sans-serif;pointer-events:none}";document.head.appendChild(style);}placeholderLabels=data.labels;applyPlaceholders();scheduleGeometry();}
   if(data.action==="geometry")geometry();
-  if(data.action==="reload")location.reload();
 });
 if(typeof ResizeObserver!=="undefined")new ResizeObserver(scheduleGeometry).observe(document.body);
 send("ready");scheduleGeometry();send("scroll",{scroll_y:scrollY});

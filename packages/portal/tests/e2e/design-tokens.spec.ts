@@ -35,6 +35,7 @@ for (const width of [375,768,1280]) test(`palette changes propagate without bloc
 
 test('editor stores palette and scale names and labels fixed values as exceptions', async ({page}, info) => {
   const file = path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/token-editor.json');
+  await page.request.delete('/api/sites/default/working-copy/page/token-editor');
   mkdirSync(path.dirname(file),{recursive:true});
   writeFileSync(file, JSON.stringify({id:'token-editor',title:'Token editor',slug:'token-editor',status:'draft',content_mode:'blocks',blocks:[{id:'heading',type:'core/heading',data:{text:'Palette preview',level:'h2'}}]}));
   try {
@@ -57,5 +58,5 @@ test('editor stores palette and scale names and labels fixed values as exception
     await expect(page.getByRole('alert').filter({hasText:'Unknown colour'})).toBeVisible();
     await color.selectOption('primary');
     await page.screenshot({path:info.outputPath('token-editor.png')});
-  } finally { rmSync(file,{force:true}); }
+  } finally { await page.request.delete('/api/sites/default/working-copy/page/token-editor'); rmSync(file,{force:true}); }
 });

@@ -69,8 +69,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const canvasId = useEditorCanvasId('html');
   const canvasScrollRef = useRef(0);
-  const canvasReadyRef = useRef(false);
-  const canvasReloadPendingRef = useRef(false);
+  const [canvasRevision, setCanvasRevision] = useState(0);
   const restoreCanvasScrollRef = useRef<number | null>(null);
   const postCanvas = (command: Record<string, unknown>): void => {
     if (!canvasId) return;
@@ -82,12 +81,9 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
     const ifr = iframeRef.current;
     if (!ifr) return;
     restoreCanvasScrollRef.current = canvasScrollRef.current;
-    if (!canvasReadyRef.current) {
-      canvasReloadPendingRef.current = true;
-      return;
-    }
-    canvasReadyRef.current = false;
-    postCanvas({ action: 'reload' });
+    // Parent-initiated navigation preserves SameSite authentication without
+    // adding a browser-history entry for every autosave.
+    setCanvasRevision((value) => value + 1);
   }
   const [copied, setCopied] = useState(false);
   const [seoWarnings, setSeoWarnings] = useState<string[]>([]);
@@ -103,14 +99,6 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
       if (!isEditorCanvasMessage(event, iframeRef.current, canvasId)) return;
       const data = event.data;
       if (data.type === 'scroll' && typeof data.scroll_y === 'number' && Number.isFinite(data.scroll_y)) canvasScrollRef.current = data.scroll_y;
-      if (data.type === 'ready') {
-        canvasReadyRef.current = true;
-        if (canvasReloadPendingRef.current) {
-          canvasReloadPendingRef.current = false;
-          reloadPreview();
-          return;
-        }
-      }
       if (data.type === 'ready' && restoreCanvasScrollRef.current !== null) {
         postCanvas({ action: 'scroll', scroll_y: restoreCanvasScrollRef.current });
         restoreCanvasScrollRef.current = null;
@@ -632,6 +620,7 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
           </div>
           <div className="editor__preview-frame">
             {canvasId && <iframe
+                key={canvasRevision}
               ref={iframeRef}
               src={previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&canvas=${encodeURIComponent(canvasId)}`}
               sandbox={EDITOR_CANVAS_FRAME_SANDBOX}

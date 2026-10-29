@@ -171,8 +171,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   const canvasId = useEditorCanvasId('canvas');
   const canvasGeometryRef = useRef<CanvasGeometry | null>(null);
   const canvasScrollRef = useRef(0);
-  const canvasReadyRef = useRef(false);
-  const canvasReloadPendingRef = useRef(false);
+  const [canvasRevision, setCanvasRevision] = useState(0);
   const restoreCanvasScrollRef = useRef<number | null>(null);
   const extensionPreviewContextRef = useRef<Record<string, Record<string, string>>>({});
   function postCanvasCommand(command: Record<string, unknown>): void {
@@ -192,12 +191,10 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     setCanvasLoading(true);
     // Keep shortcuts in the parent while the focused frame is navigating.
     if (document.activeElement === ifr) editorFocusRef.current?.focus({ preventScroll: true });
-    if (!canvasReadyRef.current) {
-      canvasReloadPendingRef.current = true;
-      return;
-    }
-    canvasReadyRef.current = false;
-    postCanvasCommand({ action: 'reload' });
+    // A fresh frame keeps the navigation initiated by the authenticated parent.
+    // Reloading inside an opaque sandbox can omit SameSite session cookies;
+    // assigning src to the existing frame adds unwanted browser Back entries.
+    setCanvasRevision((value) => value + 1);
   }
   // Center-panel size, tracked so a fixed-width device preset wider than the
   // panel scales DOWN to fit (instead of being capped to the panel width,
@@ -667,12 +664,6 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       } else if (data.type === 'scroll' && typeof data.scroll_y === 'number' && Number.isFinite(data.scroll_y)) {
         canvasScrollRef.current = data.scroll_y;
       } else if (data.type === 'ready') {
-        canvasReadyRef.current = true;
-        if (canvasReloadPendingRef.current) {
-          canvasReloadPendingRef.current = false;
-          reloadPreview();
-          return;
-        }
         setCanvasLoading(false);
         postCanvasCommand({ action: 'highlight', selected_id: selectedIdRef.current, hover_id: hoverIdRef.current });
         const labels: Record<string, string> = {};
@@ -691,7 +682,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [canvasId]);
+  }, [canvasId, canvasRevision]);
 
   // Keep the canvas outline in sync when selection changes from the tree.
   useEffect(() => {
@@ -1046,6 +1037,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
               boxShadow: '0 0 0 1px #2a2a30', borderRadius: 8, overflow: 'hidden', background: '#fff',
             }}>
               {canvasId && <iframe
+                key={canvasRevision}
                 ref={iframeRef}
                 src={previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&interactive=1&canvas=${encodeURIComponent(canvasId)}`}
                 title="Preview"
