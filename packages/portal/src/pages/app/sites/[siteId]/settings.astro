@@ -312,7 +312,7 @@ const domainBlocksArchiving =
       <div class="field">
         <label for="setting-cookie_consent-text">Dialog text (HTML)</label>
         <textarea id="setting-cookie_consent-text" name="cookie_consent.text" rows="3" placeholder="We use cookies to improve your experience. Read more in our &lt;a href=&quot;/privacy&quot;&gt;privacy policy&lt;/a&gt;.">{settings.cookie_consent?.text ?? ''}</textarea>
-        <p class="muted text-sm">Leave empty to use the built-in default text. You can put <code>&lt;a&gt;</code> links straight in here.</p>
+        <p class="muted text-sm">Leave empty to use the built-in text in the page language (Swedish, German, otherwise English). You can put <code>&lt;a&gt;</code> links straight in here.</p>
       </div>
       <div class="field">
         <label for="setting-cookie_consent-privacy_policy_url">Privacy policy URL (optional)</label>
@@ -323,6 +323,33 @@ const domainBlocksArchiving =
         />
         <p class="muted text-sm">When set, a "Read our privacy policy" link appears under the text.</p>
       </div>
+      <details class="field">
+        <summary>Banner wording</summary>
+        <p class="muted text-sm">
+          Buttons, heading and links follow the page language: Swedish, German,
+          otherwise English. Fill in a field only to replace that wording, for
+          example for another language. Plain text, at most 120 characters.
+        </p>
+        {[
+          ['title', 'Heading', 'Cookies on this website'],
+          ['reject', 'Decline button', 'Decline'],
+          ['necessary', 'Necessary-only button', 'Necessary only'],
+          ['accept_all', 'Accept-all button', 'Accept all'],
+          ['privacy_link', 'Privacy policy link', 'Read our privacy policy →'],
+          ['manage', 'Settings button label (screen readers)', 'Manage cookie settings'],
+        ].map(([key, label, placeholder]) => (
+          <div class="field">
+            <label for={`setting-cookie_consent-labels-${key}`}>{label}</label>
+            <input
+              id={`setting-cookie_consent-labels-${key}`}
+              name={`cookie_consent.labels.${key}`}
+              maxlength="120"
+              value={(settings.cookie_consent?.labels as Record<string, string> | undefined)?.[key] ?? ''}
+              placeholder={placeholder}
+            />
+          </div>
+        ))}
+      </details>
       <div class="field">
         <label for="setting-cookie_consent-scripts_necessary">Necessary scripts (always run)</label>
         <textarea id="setting-cookie_consent-scripts_necessary" name="cookie_consent.scripts_necessary" rows="3" style="font-family: var(--font-mono);">{settings.cookie_consent?.scripts_necessary ?? ''}</textarea>

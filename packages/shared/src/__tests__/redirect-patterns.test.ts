@@ -49,10 +49,11 @@ describe('validateRedirectPattern', () => {
     expect(res.error).toContain(':year');
   });
 
-  it('rejects query strings with an explanation, not a generic error', () => {
-    const res = validateRedirectPattern('/?p=123', '/x');
+  it('accepts literal query-string sources and explains malformed ones', () => {
+    expect(validateRedirectPattern('/?p=123', '/x').ok).toBe(true);
+    const res = validateRedirectPattern('/category/*?p=1', '/x');
     expect(res.ok).toBe(false);
-    expect(res.error).toContain('query strings');
+    expect(res.error).toContain('literal path');
   });
 
   it('rejects whitespace — _redirects is space-delimited', () => {

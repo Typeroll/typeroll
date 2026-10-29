@@ -3,7 +3,7 @@ import { isSiteSettingsSection, scopedSettings } from '../../../../lib/site-sett
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS } from '@typeroll/shared';
+import { TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 
@@ -48,6 +48,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
         scripts_necessary: String(form.get('cookie_consent.scripts_necessary') ?? '') || undefined,
         scripts_optional: String(form.get('cookie_consent.scripts_optional') ?? '') || undefined,
         reload_after_consent: form.get('cookie_consent.reload_after_consent') === 'on',
+        labels: normalizeCookieConsentLabels(Object.fromEntries(
+          COOKIE_CONSENT_LABEL_KEYS.map((key) => [key, String(form.get(`cookie_consent.labels.${key}`) ?? '')]),
+        )).labels,
       }
     : undefined;
   const iframeHostCheck = normalizeIframeAllowedHosts(

@@ -12,7 +12,7 @@ import { contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 //   - the inventory entry's `excluded` flag
 // so it never goes stale.
 
-import { paths, MAIN_VERSION_ID, isRedirectPattern, matchRedirect, sortRedirectsForEmit } from '@typeroll/shared';
+import { paths, MAIN_VERSION_ID, isRedirectPattern, isQueryRedirect, matchRedirect, sortRedirectsForEmit } from '@typeroll/shared';
 import { vstore } from '../version-store';
 import type {
   ContentType,
@@ -419,6 +419,8 @@ export async function analyzeCoverage(
   for (const r of redirects) {
     if (isRedirectPattern(r.from_path)) patternRules.push(r);
     else redirectByFrom.set(normalizePath(r.from_path), r);
+    // `/?p=123` also matches `/?p=123&utm_source=x` and reordered parameters.
+    if (isQueryRedirect(r.from_path)) patternRules.push(r);
   }
   // Same order the deploy emits, so the report predicts production rather
   // than a second opinion about it: most specific first, first match wins.

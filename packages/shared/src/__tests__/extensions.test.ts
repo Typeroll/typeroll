@@ -463,7 +463,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.56.0',
+      template_capabilities_version: '0.57.0',
       supports_responsive_image_framing: true,
       supports_shared_body_heading_scale: true,
       supports_site_responsive_breakpoints: true,

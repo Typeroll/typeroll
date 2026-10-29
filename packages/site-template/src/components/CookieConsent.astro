@@ -1,20 +1,19 @@
 ---
 import type { SiteSettings } from '@typeroll/shared';
-import {
-  DEFAULT_COOKIE_CONSENT_TEXT,
-  renderCookieConsent,
-} from '@typeroll/shared';
+import { renderCookieConsent } from '@typeroll/shared';
 import { sanitizeBody } from '../lib/sanitize';
 
 interface Props {
   settings: SiteSettings;
+  /** The page's BCP 47 language; selects the banner's built-in wording. */
+  language?: string;
 }
 
-const { settings } = Astro.props;
+const { settings, language } = Astro.props;
 const consent = settings.cookie_consent;
 const bodyHtml = consent?.text
   ? sanitizeBody(consent.text, settings.iframe_allowed_hosts)
-  : `<p>${DEFAULT_COOKIE_CONSENT_TEXT}</p>`;
-const markup = renderCookieConsent(consent, bodyHtml);
+  : undefined;
+const markup = renderCookieConsent(consent, bodyHtml, language);
 ---
 {markup && <Fragment set:html={markup} />}

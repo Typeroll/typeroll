@@ -214,6 +214,6 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     {integrationsBodyEnd && <Fragment set:html={integrationsBodyEnd} />}
     {settings.scripts_body_end && <Fragment set:html={settings.scripts_body_end} />}
 
-    <CookieConsent settings={settings} />
+    <CookieConsent settings={settings} language={page.language || settings.language} />
   </body>
 </html>

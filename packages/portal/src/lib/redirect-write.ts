@@ -18,10 +18,9 @@
 // The deploy runner keeps its belt-and-braces drop for anything that slips
 // through (a page published after the rule was created).
 
-import { paths, validateRedirectPattern, pagesShadowedByRedirect, isRedirectPattern, matchRedirect, sortRedirectsForEmit } from '@typeroll/shared';
-import type { Page, Redirect } from '@typeroll/shared';
+import { paths, validateRedirectPattern, pagesShadowedByRedirect, isRedirectPattern, matchRedirect, sortRedirectsForEmit, contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
+import type { ContentType, Page, Redirect } from '@typeroll/shared';
 import { vstore } from './version-store';
-import { pageUrlFromDoc } from './page-paths';
 import { isLivePageStatus } from './redirect-hygiene';
 
 export type RedirectWarning = { code: 'redirect_chain' | 'redirect_loop'; from_path: string; via: string[]; final_target: string };
@@ -37,6 +36,9 @@ export function redirectDocId(fromPath: string): string {
   return (
     fromPath
       .replace(/^\//, '')
+      .replace(/\?/g, '__q_')
+      .replace(/&/g, '__and_')
+      .replace(/=/g, '__eq_')
       .replace(/\*/g, '__splat')
       .replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '__p_$1')
       .replace(/[\/\\]/g, '_')
@@ -64,10 +66,20 @@ export async function checkRedirectWrite(args: {
     return { ok: false, error: 'Invalid redirect: to_path must be a site-relative path ("/x") or an absolute http(s) URL' };
   }
 
-  const pages = await vstore.pages(args.orgId, args.siteId, args.versionId);
+  // Resolve URLs exactly as the renderer does: the content type's route
+  // template places a page, and types without a route have no public URL.
+  const [pages, contentTypes] = await Promise.all([
+    vstore.pages(args.orgId, args.siteId, args.versionId),
+    vstore.contentTypes(args.orgId, args.siteId, args.versionId),
+  ]);
+  const types = new Map<string, ContentType>([[DEFAULT_CONTENT_TYPE.id, DEFAULT_CONTENT_TYPE], ...contentTypes.map((type) => [type.id, type] as [string, ContentType])]);
   const liveUrls = pages
     .filter((p: Page) => isLivePageStatus(p.status))
-    .map((p: Page) => pageUrlFromDoc(p));
+    .flatMap((p: Page) => {
+      const type = types.get(p.content_type ?? 'page');
+      const url = type ? contentPagePath(p, type) : null;
+      return url ? [url] : [];
+    });
   const shadowed = pagesShadowedByRedirect(args.from_path, args.to_path, liveUrls);
   if (shadowed.length) {
     const list = shadowed.slice(0, 8).join(', ') + (shadowed.length > 8 ? `, +${shadowed.length - 8} more` : '');

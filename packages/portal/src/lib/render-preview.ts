@@ -58,7 +58,6 @@ import {
   pageBodyContext,
   pageContentValues,
   publicContentPage,
-  DEFAULT_COOKIE_CONSENT_TEXT,
   pageBreadcrumbs,
   siteContext,
   STICKY_HEADER_RUNTIME_JS,
@@ -343,7 +342,7 @@ export async function renderPreview(
     : '';
   const previewNavigationBridge = buildPreviewNavigationBridgeScript(opts);
   const cookieConsentHtml = opts.allowScripts === true
-    ? rewriteIf(renderPreviewCookieConsent(settings))
+    ? rewriteIf(renderPreviewCookieConsent(settings, page.language || settings.language))
     : '';
 
   return resolvePreviewMedia(buildHtml({
@@ -640,12 +639,10 @@ ${cookieConsentHtml ?? ''}
 </html>`;
 }
 
-function renderPreviewCookieConsent(settings: SiteSettings): string {
+function renderPreviewCookieConsent(settings: SiteSettings, language?: string): string {
   const text = settings.cookie_consent?.text;
-  const bodyHtml = text
-    ? sanitizeBody(text, settings.iframe_allowed_hosts)
-    : `<p>${DEFAULT_COOKIE_CONSENT_TEXT}</p>`;
-  return renderCookieConsent(settings.cookie_consent, bodyHtml);
+  const bodyHtml = text ? sanitizeBody(text, settings.iframe_allowed_hosts) : undefined;
+  return renderCookieConsent(settings.cookie_consent, bodyHtml, language);
 }
 
 function renderBanner(b: BannerArgs): string {

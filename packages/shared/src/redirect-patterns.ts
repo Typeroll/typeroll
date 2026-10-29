@@ -25,11 +25,13 @@
 //                         `:slug` in the target substitutes it.
 //   /shop/:cat/:id      → several placeholders.
 //
-// NOT supported: a splat anywhere but the end (CF ignores it), regexes, or
-// query strings (`_redirects` matches on path only — a `/?p=123` style rule
-// cannot be expressed and must be handled as an exact path).
+// NOT supported: a splat anywhere but the end (CF ignores it) or regexes.
+// Query-string sources (`/?p=123`) are accepted with a literal path and a
+// fixed target. `_redirects` matches on path only, so they are published as
+// an in-page redirect instead (query-redirects.ts) and never reach that file.
 
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
+import { isQueryRedirect, parseQueryRedirectSource, queryRedirectMatches } from './query-redirects.js';
 
 /** True when `from_path` is a pattern rather than a literal path. */
 export function isRedirectPattern(fromPath: string): boolean {
@@ -62,12 +64,18 @@ export function validateRedirectPattern(
   if (/\s/.test(fromPath) || /\s/.test(toPath)) {
     return { ok: false, error: 'paths cannot contain whitespace — _redirects is a space-delimited format' };
   }
-  if (fromPath.includes('?') || fromPath.includes('#')) {
-    return {
-      ok: false,
-      error: 'from_path matches the path only — query strings and fragments cannot be matched. ' +
-        'A WordPress "/?p=123" URL needs handling at the source, not here.',
-    };
+  if (fromPath.includes('#')) {
+    return { ok: false, error: 'from_path cannot contain a fragment ("#"); browsers never send it to the server' };
+  }
+  if (isQueryRedirect(fromPath)) {
+    // `/?p=123` style sources are published as an in-page redirect (see
+    // query-redirects.ts), so they take a literal path and a fixed target.
+    const parsed = parseQueryRedirectSource(fromPath);
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+    if (/:[A-Za-z_]/.test(toPath.replace(/^https?:\/\//, '')) || toPath.includes('*')) {
+      return { ok: false, error: 'a from_path with a query string needs a fixed to_path, without :placeholders or *' };
+    }
+    return { ok: true, params: [], hasSplat: false };
   }
 
   const starCount = (fromPath.match(/\*/g) ?? []).length;
@@ -139,6 +147,7 @@ export function matchRedirect(
   toPath: string,
   path: string,
 ): string | null {
+  if (isQueryRedirect(fromPath)) return queryRedirectMatches(fromPath, path) ? toPath : null;
   if (!isRedirectPattern(fromPath)) {
     return normalize(fromPath) === normalize(path) ? toPath : null;
   }

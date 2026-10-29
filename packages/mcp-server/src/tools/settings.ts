@@ -122,6 +122,14 @@ export const settingsTools: ToolDef[] = [
         scripts_necessary: z.string().optional().describe('Trusted script markup that runs before consent.'),
         scripts_optional: z.string().optional().describe('Trusted script markup activated only after full consent.'),
         reload_after_consent: z.boolean().optional(),
+        labels: z.object({
+          title: z.string().optional(),
+          reject: z.string().optional(),
+          necessary: z.string().optional(),
+          accept_all: z.string().optional(),
+          privacy_link: z.string().optional(),
+          manage: z.string().optional(),
+        }).optional().describe('Plain-text replacements for the banner heading, buttons and links (max 120 characters each). Omitted or blank labels follow the page language: Swedish, German, otherwise English. Replaces the whole labels object.'),
       }).optional().describe('Native consent banner configuration. Partial updates preserve omitted fields. Script fields execute in visitor browsers and are accepted under the API key authority.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {

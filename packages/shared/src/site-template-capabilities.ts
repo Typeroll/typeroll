@@ -129,6 +129,11 @@ export interface SiteTemplateCapabilities {
   supports_media_batch_upload: boolean;
   /** Native cookie-consent settings are readable/writable through v1 and MCP. */
   supports_cookie_consent_config_api: boolean;
+  /**
+   * 0.57.0+: the consent banner follows the page language (Swedish, German,
+   * otherwise English) and accepts plain-text `cookie_consent.labels`.
+   */
+  supports_localized_cookie_consent: boolean;
   /** Site-wide HTML noindex and live fallback/production indexing probes. */
   supports_indexing_diagnostics: boolean;
 
@@ -251,6 +256,14 @@ export interface SiteTemplateCapabilities {
   supports_redirect_wildcards: boolean;
 
   /**
+   * 0.57.0+: redirect sources may carry exact query parameters
+   * (`/?p=123`, `/index.php?page_id=5`). They are published as an in-page
+   * script redirect in the document that answers the path, not in
+   * `_redirects`, and migration coverage counts them as redirected.
+   */
+  supports_query_redirects: boolean;
+
+  /**
    * 0.35.0+: installed Extension components can render as ordinary block
    * instances. The runtime captures only URL inputs declared by the manifest
    * and keeps per-mount in-memory navigation state without changing page paths.
@@ -291,7 +304,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.56.0',
+  template_capabilities_version: '0.57.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -302,6 +315,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_migration_url_api: true,
   supports_migration_launch_report: true,
   supports_redirect_wildcards: true,
+  supports_query_redirects: true,
   supports_extension_blocks: true,
   supports_extension_html_directive: true,
   supports_extension_html_partial_directive: true,
@@ -367,6 +381,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_iframe_host_allowlist: true,
   supports_media_batch_upload: true,
   supports_cookie_consent_config_api: true,
+  supports_localized_cookie_consent: true,
   supports_indexing_diagnostics: true,
 
   supports_dry_run_deploys: true,
