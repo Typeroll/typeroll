@@ -72,6 +72,9 @@ export async function checkRedirectWrite(args: {
     vstore.pages(args.orgId, args.siteId, args.versionId),
     vstore.contentTypes(args.orgId, args.siteId, args.versionId),
   ]);
+  const normalize = (value: string) => value.replace(/\/+$/, '').toLowerCase() || '/';
+  if (!isRedirectPattern(args.from_path) && args.to_path.startsWith('/') && normalize(args.from_path) === normalize(args.to_path))
+    return { ok: false, error: 'Invalid redirect: source and destination are the same normalized path. Use the site trailing-slash policy instead.' };
   const types = new Map<string, ContentType>([[DEFAULT_CONTENT_TYPE.id, DEFAULT_CONTENT_TYPE], ...contentTypes.map((type) => [type.id, type] as [string, ContentType])]);
   const liveUrls = pages
     .filter((p: Page) => isLivePageStatus(p.status))
@@ -95,6 +98,7 @@ export async function checkRedirectWrite(args: {
   }
   const existing = await vstore.redirects(args.orgId, args.siteId, args.versionId);
   const warnings = redirectChainWarnings([...existing.filter(rule => rule.from_path !== args.from_path), { id:'candidate', from_path:args.from_path, to_path:args.to_path, status_code:301 }]);
+  if (warnings.some(warning => warning.code === 'redirect_loop' && warning.via.includes(args.from_path))) return { ok: false, error: 'Invalid redirect: this rule creates a redirect loop.' };
   return { ok: true, ...(warnings.length ? { warnings } : {}) };
 }
 

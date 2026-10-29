@@ -48,6 +48,8 @@ Two things Typeroll will refuse, and why:
 
 - **A `*` anywhere but the end.** Cloudflare ignores it, so the rule would look saved and do nothing.
 - **A rule that would hide a live page.** Redirects are applied before files are served, so `/blogg/*` would make every real article under `/blogg/` unreachable. Narrow the prefix instead.
+- **A rule whose source and target are the same path** apart from a trailing slash or letter case, such as `/blog` → `/blog/`. Use the site's trailing-slash setting instead.
+- **A rule that closes a redirect loop** with existing rules. A longer chain is saved with a `redirect_chain` warning.
 
 ### Query-string sources
 
