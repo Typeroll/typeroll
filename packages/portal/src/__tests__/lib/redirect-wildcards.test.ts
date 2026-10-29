@@ -257,3 +257,17 @@ describe('deploy-time shadow guard', () => {
     expect(shadowedPages.get(shadowed[0])).toEqual(['/blogg/hej']);
   });
 });
+
+it('checks resolved content routes rather than unmapped article slugs', async () => {
+  await setup();
+  const { getStore } = await import('../../lib/datastore');
+  await getStore().setDoc(`${paths.contentTypes(ORG, SITE, MAIN_VERSION_ID)}/article`, { id: 'article', fields: [], route_template: '/umzugstipps/{slug}' });
+  await seedPage('wien', { slug: 'umzug-nach-wien', content_type: 'article' });
+  expect((await checkRedirectWrite({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, from_path: '/umzug-nach-wien/', to_path: '/umzugstipps/umzug-nach-wien/' })).ok).toBe(true);
+  expect((await checkRedirectWrite({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, from_path: '/umzugstipps/*', to_path: '/elsewhere/:splat' })).ok).toBe(false);
+});
+it('rejects slash and case self-redirects before saving', async () => {
+  await setup();
+  for (const [from_path, to_path] of [['/blog', '/blog/'], ['/Blog/', '/blog']])
+    expect((await checkRedirectWrite({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, from_path, to_path })).ok).toBe(false);
+});

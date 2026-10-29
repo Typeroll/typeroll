@@ -62,3 +62,13 @@ test('truncated ICO offsets are rejected without reading outside their payload',
  const ico=packIcon([{size:32,bytes:await png('#ff00ff')}]);ico.writeUInt32LE(0xffffffff,18);
  await assert.rejects(()=>writeSiteIcons(dir,{favicon:'/invalid.ico'},async()=>ico),/site_icon_build_failed/);
 }));
+
+test('replaces existing manifest links and stays idempotent on cached HTML',async()=>fixture(async dir=>{
+ await fs.writeFile(path.join(dir,'index.html'), `<head><link rel="manifest" href="/site.webmanifest"><link href='/old.webmanifest' rel='manifest'></head>`);
+ for(let i=0;i<2;i++) {
+  await writeSiteIcons(dir,{},async()=>{throw Error('No network');});
+  const html=await fs.readFile(path.join(dir,'index.html'),'utf8');
+  assert.equal((html.match(/rel="manifest"/g)||[]).length,1);
+  assert.ok(!html.includes('/old.webmanifest'));
+ }
+}));

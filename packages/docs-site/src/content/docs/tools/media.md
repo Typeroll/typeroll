@@ -241,6 +241,32 @@ Preview readiness and public availability are different checks. Verify the
 finished site without a Typeroll session, including responsive images, CSS
 backgrounds and file downloads, before retiring the import source.
 
+### Published address of a file
+
+The published file name is derived from the content hash and a cleaned file
+name, so do not compute it yourself. After each successful publication of the
+`main` version, every media record carries:
+
+- `published_url`: the absolute URL at which that publication serves the file.
+- `published_path`: the path of `published_url` on its host. That host is the
+  website when media is served from the site (for example `/media/…`), otherwise
+  the Site's media host.
+
+Both are `null` when the latest `main` publication contains no reference to the
+file, and absent until the file has been published once. Version (branch)
+publications do not change them. Use `published_url` as the target when you
+redirect old file addresses after a migration. It changes only when a later
+publication serves the file at another address. Responsive variants are
+generated from the published file and are not listed separately.
+
+`source_aliases` lists every address the file has had: the original source URL,
+earlier storage, CDN and published addresses, and their image variants. It only
+grows. Publishing rewrites any of these addresses found in content to the file's
+current address, so content that still links to an old address keeps working
+without edits. Earlier publications' files also remain available at their old
+addresses. The order of `source_aliases` is not significant; read
+`published_url` for the current address.
+
 ## Image recommendations
 
 | Use                 | Recommended size                              |

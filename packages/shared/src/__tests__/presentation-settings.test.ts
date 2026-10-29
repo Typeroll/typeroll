@@ -247,6 +247,7 @@ describe('every core block field changes what renders', () => {
       .map(name => [`core/repeater.${name}`, { source_type: 'pages', item_block: 'core/post_card' }])),
     ...Object.fromEntries(['group_sort_order', 'group_heading_level', 'ungrouped_label'].map(name => [`core/repeater.${name}`, { group_by: 'group' }])),
     'core/repeater.empty_state': { items: [] },
+    ...Object.fromEntries(['link_rel', 'new_tab'].map(name => [`core/image.${name}`, { link: '/linked-image/' }])),
     ...Object.fromEntries(['mobile_src_below', 'mobile_src_below_px'].map(name => [`core/image.${name}`, { mobile_src: '/mobile.png' }])),
     'core/page_list.empty_state': { filter_value: 'nothing-matches' },
     ...Object.fromEntries(['download_behavior', 'download_label'].map(name => [`core/post_card.${name}`, { download_url_field: 'pdf' }])),

@@ -65,6 +65,7 @@ export const POST: APIRoute = async ({ request }) => {
     {
       site: {
         id: site.id,
+        organization_id: ctx.tokenOrgId,
         name: site.name,
         domain: (site as { domain?: string }).domain,
         urls: publicUrlsFor(site),

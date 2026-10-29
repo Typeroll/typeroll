@@ -205,7 +205,21 @@ describe('requireApiKey — org-scoped reach', () => {
     });
     const guard = await requireApiKey(req, 'someone-elses-site');
     expect(guard.ok).toBe(false);
-    if (!guard.ok) expect(guard.response.status).toBe(401);
+    // Another Organization's Site and a Site that does not exist get the same answer.
+    const missing = await requireApiKey(new Request('https://portal.test/api/v1/sites/no-such-site/pages', {
+      headers: { Authorization: `Bearer ${token}` },
+    }), 'no-such-site');
+    if (!guard.ok && !missing.ok) {
+      expect(guard.response.status).toBe(404);
+      const body = await guard.response.json();
+      expect(body).toMatchObject({ code: 'site_not_found', details: { organization_id: 'default' } });
+      expect(await missing.response.json()).toEqual({ ...body, error: body.error.replace('someone-elses-site', 'no-such-site') });
+    }
+    const revoked = await requireApiKey(new Request('https://portal.test/api/v1/sites/no-such-site/pages', {
+      headers: { Authorization: 'Bearer typeroll_live_0000000000_notarealsecret' },
+    }), 'no-such-site');
+    if (!revoked.ok) expect(revoked.response.status).toBe(401);
+    expect(revoked.ok).toBe(false);
   });
 
   it('site-scoped key still works only for its bound site', async () => {
@@ -230,6 +244,6 @@ describe('requireApiKey — org-scoped reach', () => {
       'two',
     );
     expect(wrong.ok).toBe(false);
-    if (!wrong.ok) expect(wrong.response.status).toBe(401);
+    if (!wrong.ok) expect(wrong.response.status).toBe(404);
   });
 });

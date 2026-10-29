@@ -853,7 +853,16 @@ export interface Media {
   preparation_pending?: boolean;
   preparation?: { state: 'ready'; source_sha256: string; recipe: string };
   public_path?: string;
+  /**
+   * Every address this file has had: original source URLs, earlier storage and
+   * published addresses and their image variants. Grows only. Publication
+   * rewrites any of them found in content to the file's current address.
+   */
   source_aliases?: string[];
+  /** Absolute URL the latest successful main publication serves the file at; null when it published no reference to it. */
+  published_url?: string | null;
+  /** Path of `published_url` on its host (the website host, or the media host when media is served from one). */
+  published_path?: string | null;
   migration_source?: { provider: 'draft_r2' | 'legacy_r2'; account_id: string; bucket: string; key: string };
   alt_text?: string;
   title?: string;

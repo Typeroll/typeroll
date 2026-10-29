@@ -57,6 +57,7 @@ describe('POST /api/v1/sites', () => {
     expect(status).toBe(201);
     expect(json.site.id).toBe('acme-studio'); // slugified from name
     expect(json.site.name).toBe('Acme Studio');
+    expect(json.site.organization_id).toBe(ORG);
     expect(json.site.urls).toBeDefined();
 
     // The bootstrap really landed: settings + draft home + header/footer.

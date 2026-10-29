@@ -3,9 +3,8 @@ import { refreshBuildFailure } from '../builds/failure-status';
 import { journaledDomainProvider, armDomainCutover, recordDomainCutover, readDomainCutover, completeDomainCutover, rollbackDomainCutover } from './domain-cutover-journal';
 import { domainPublicationRevision } from './domain-config';
 import { assertVerificationRetry } from './verification-retry';
-import { MEDIA_VARIANT_SLOTS, mediaVariantSuffix } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import { schedulePublication, waitForBuild, waitForPublicationCondition } from '../scheduling/continuation';
-import { mapPublicationParts } from './parallel';
+import { recordPublishedMedia } from './published-media';
 import { ensureGithubMainBranch } from './providers.mjs';
 import { createGithubRepository } from './github-user';
 import { verifyManagedProject } from './managed-migration';
@@ -186,14 +185,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         value => value.status === 'running', {status:'failed',phase:'superseded',finished_at:finished,error:'Newer content was published at the current address. Prepare for domain switch again before changing traffic.'});
       await store.updateDoc(paths.site(args.orgId, args.siteId), { domain: publication.website_host, domain_status: 'live', domain_verified_at: finished });
     }
-    await mapPublicationParts<any, void>(frozen.media_manifest?.entries ?? [], async entry => {
-      const mediaPath = `${paths.media(args.orgId, args.siteId)}/${entry.id}`;
-      const aliases = [entry.cdn_url, ...entry.aliases.map((alias: any) => alias.url)];
-      for (const slot of MEDIA_VARIANT_SLOTS) for (const format of ['webp', 'avif']) aliases.push(entry.cdn_url + mediaVariantSuffix(slot, entry.sha256, format));
-      const record = await store.getDoc<any>(mediaPath);
-      if (record && aliases.some(alias => !(record.source_aliases ?? []).includes(alias))) await store.compareAndUpdateDoc<any>(mediaPath, current => current.sha256 === entry.sha256 && JSON.stringify(current.source_aliases) === JSON.stringify(record.source_aliases),
-        { source_aliases: [...new Set([...(record.source_aliases ?? []), ...aliases])] });
-    });
+    await recordPublishedMedia(args.orgId, args.siteId, frozen.media_manifest?.entries ?? [], { main: args.versionId === 'main' });
     await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
     await assertLease();
     await completeDomainCutover(args.orgId, args.siteId, publication.publication_id);

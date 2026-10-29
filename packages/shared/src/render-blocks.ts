@@ -479,7 +479,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''} loading="lazy" decoding="async" />`;
     const picture = d.mobile_src ? `<picture><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
     const frame = `<span class="block-image-frame">${picture}</span>`;
-    d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link">${frame}</a>` : frame;
+    const rel = new Set(String(d.link_rel ?? '').split(/\s+/).filter(token => /^[a-z][a-z0-9_-]*$/i.test(token)));
+    if (d.new_tab === true) { rel.add('noopener'); rel.add('noreferrer'); }
+    d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link"${d.new_tab === true ? ' target="_blank"' : ''}${rel.size ? ` rel="${escapeHtml([...rel].join(' '))}"` : ''}>${frame}</a>` : frame;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
     // Mark authored spacing so an unset field never overrides the surrounding flow.
     const authored = (name: string) => { const value = effectiveBlock.data?.[name]; return value !== undefined && value !== null && value !== ''; };

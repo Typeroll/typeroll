@@ -78,7 +78,7 @@ describe('site-scoped key management', () => {
     expect(await verifyApiToken(other)).toBeNull();
 
     // Another site of the same organization is out of reach.
-    expect((await call('site', 'GET', token, { siteId: SECOND })).status).toBe(401);
+    expect((await call('site', 'GET', token, { siteId: SECOND })).status).toBe(404);
   });
 
   it('refuses organization key management with a site key', async () => {

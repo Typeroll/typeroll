@@ -18,7 +18,8 @@ export const redirectTools: ToolDef[] = [
   {
     name: 'create_redirect',
     description:
-      'Create a redirect rule. Defaults to 301; pass status_code=302 for a temporary redirect. ' +
+      'Create a redirect rule, or update the rule that already has this from_path in place (same id, no gap). ' +
+      'Defaults to 301; pass status_code=302 for a temporary redirect. ' +
       'WILDCARDS: a trailing "*" captures everything under a prefix and ":splat" replays it into the ' +
       'target — `from_path="/category/*", to_path="/blogg/:splat"` retires an entire WordPress taxonomy ' +
       'in one rule. `:name` matches exactly one segment (`"/blog/:slug"` → `"/artiklar/:slug"`). ' +
@@ -35,6 +36,45 @@ export const redirectTools: ToolDef[] = [
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { version, ...body } = args;
       const res = await client.post(siteId, 'redirects', body, v(version));
+      return ok(res);
+    }),
+  },
+  {
+    name: 'update_redirect',
+    description:
+      'Change the target or status code of an existing redirect rule in place. The id and from_path stay the same ' +
+      'and the source path keeps redirecting throughout. To change from_path, create a new rule and delete the old one.',
+    inputSchema: {
+      redirect_id: z.string().describe('Rule id from list_redirects.'),
+      to_path: z.string().optional().describe('New target path or absolute URL.'),
+      status_code: z.union([z.literal(301), z.literal(302)]).optional(),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const { redirect_id, version, ...body } = args;
+      const res = await client.patch(siteId, `redirects/${encodeURIComponent(redirect_id)}`, body, v(version));
+      return ok(res);
+    }),
+  },
+  {
+    name: 'upsert_redirects',
+    description:
+      'Create or update up to 1000 redirect rules in one call, keyed by from_path: an existing rule keeps its id and is ' +
+      'replaced in place, so no address is ever without a rule. Every rule is validated against the site and against the ' +
+      'batch as a whole (loops, hidden live pages); if any rule fails, nothing is written. Pass dry_run=true first to see ' +
+      'per-rule create/update/unchanged results and warnings without writing.',
+    inputSchema: {
+      redirects: z.array(z.object({
+        from_path: z.string(),
+        to_path: z.string(),
+        status_code: z.union([z.literal(301), z.literal(302)]).optional(),
+      })).min(1).max(1000),
+      dry_run: z.boolean().optional().describe('Validate and report without writing.'),
+      version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const { version, ...body } = args;
+      const res = await client.put(siteId, 'redirects', body, v(version));
       return ok(res);
     }),
   },

@@ -48,6 +48,8 @@ Two things Typeroll will refuse, and why:
 
 - **A `*` anywhere but the end.** Cloudflare ignores it, so the rule would look saved and do nothing.
 - **A rule that would hide a live page.** Redirects are applied before files are served, so `/blogg/*` would make every real article under `/blogg/` unreachable. Narrow the prefix instead.
+- **A rule whose source and target are the same path** apart from a trailing slash or letter case, such as `/blog` → `/blog/`. Use the site's trailing-slash setting instead.
+- **A rule that closes a redirect loop** with existing rules. A longer chain is saved with a `redirect_chain` warning.
 
 ### Query-string sources
 
@@ -72,13 +74,65 @@ Search engines follow these redirects, but they are not a 301, and visitors
 without JavaScript stay on the page. Migration coverage counts the addresses
 as redirected. Hosted previews do not run them.
 
+## Changing existing rules
+
+A rule is identified by its `from_path`. `create_redirect` with a `from_path`
+that already has a rule updates that rule in place: it keeps its id and the
+address keeps redirecting throughout. Never delete and recreate a rule to change
+its target, because the address would have no redirect in between.
+
+### `update_redirect`
+
+Changes `to_path` and/or `status_code` of a rule by its id from
+`list_redirects`. The id and `from_path` stay the same. To move a rule to
+another source path, create the new rule and delete the old one.
+
+```
+update_redirect redirect_id="wp-content_uploads_2019_05_a.jpg" to_path="/media/0123456789abcdef-a.jpg"
+```
+
+Over REST: `PATCH /api/v1/sites/{siteId}/redirects/{redirectId}` with
+`{ "to_path": "…", "status_code": 301 }`. An edited rule counts as authored, so
+automatic rule maintenance does not replace it.
+
+### `upsert_redirects`
+
+Creates or updates up to 1,000 rules in one call, keyed by `from_path`, for
+example after media addresses change in a migration:
+
+```json
+{
+  "dry_run": true,
+  "redirects": [
+    {
+      "from_path": "/wp-content/uploads/2019/05/a.jpg",
+      "to_path": "/media/0123456789abcdef-a.jpg"
+    },
+    {
+      "from_path": "/wp-content/uploads/2019/05/b.jpg",
+      "to_path": "/media/fedcba9876543210-b.jpg",
+      "status_code": 301
+    }
+  ]
+}
+```
+
+Over REST: `PUT /api/v1/sites/{siteId}/redirects`. Every rule is checked against
+the Site's pages and against all rules as they will be after the call, so a loop
+formed inside the batch is found. The response lists each rule with its id,
+`action` (`create`, `update` or `unchanged`) and `ok`, plus a `summary` and
+chain `warnings`. With `dry_run: true` nothing is written. Without it, the call
+is all or nothing: if any rule fails, it returns HTTP 422 with the same per-rule
+results and writes no rule. A `from_path` may appear only once per call. Run a
+dry run first, fix the reported rules, then repeat the call without `dry_run`.
+
 ## `list_redirects`
 
 Returns all configured redirects.
 
 ## `delete_redirect`
 
-Deletes a redirect by its from-path.
+Deletes a redirect by its id from `list_redirects`.
 
 ## After a slug change
 
