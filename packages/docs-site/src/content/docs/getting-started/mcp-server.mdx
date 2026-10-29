@@ -160,15 +160,15 @@ See [Publishing with your own accounts](../../guides/customer-publishing/#api-an
 
 ## Troubleshooting
 
-| Result                    | What to check                                                                                  |
-| ------------------------- | ---------------------------------------------------------------------------------------------- |
-| Missing bearer token      | The key is missing from the connection headers or local process environment.                   |
-| Invalid or revoked token  | Use a current key from the same portal environment. Staging and production keys are separate.  |
-| Site not found            | Call `list_sites` and confirm the selected site is accessible to this key.                     |
-| Write permission required | A read-only share or key cannot edit or deploy. Ask the site owner to grant the needed access. |
-| Organization key required | Site-scoped keys cannot change organization connections or domains.                            |
-| No tools shown            | Confirm the transport and authentication support, then reload the client's MCP connection.     |
-| Local process exits       | Verify Node.js, `npx`, the package installation and the two required environment variables.    |
+| Result                    | What to check                                                                                                                                                            |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Missing bearer token      | The key is missing from the connection headers or local process environment.                                                                                             |
+| Invalid or revoked token  | Use a current key from the same portal environment. Staging and production keys are separate.                                                                            |
+| Site not found            | HTTP 404 `site_not_found`: the key works, but this Site is not in its Organization (`details.organization_id`) or shared with it. Call `list_sites`; do not switch keys. |
+| Write permission required | A read-only share or key cannot edit or deploy. Ask the site owner to grant the needed access.                                                                           |
+| Organization key required | Site-scoped keys cannot change organization connections or domains.                                                                                                      |
+| No tools shown            | Confirm the transport and authentication support, then reload the client's MCP connection.                                                                               |
+| Local process exits       | Verify Node.js, `npx`, the package installation and the two required environment variables.                                                                              |
 
 A hosted client must be able to reach your portal over HTTPS. For local
 self-hosting development, use a client that can reach the local endpoint or use

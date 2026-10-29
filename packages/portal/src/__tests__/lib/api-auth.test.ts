@@ -74,7 +74,7 @@ describe('requireApiKey', () => {
     if (!r.ok) expect(r.response.status).toBe(401);
   });
 
-  it('401 when the token is valid but the URL site doesn\'t match', async () => {
+  it('404 site_not_found when the token is valid but the URL site doesn\'t match', async () => {
     const { token } = await setup();
     const { requireApiKey } = await import('../../lib/api-auth');
     const req = makeRequest(`https://api.example/v1/sites/${OTHER_SITE}/pages`, {
@@ -82,7 +82,10 @@ describe('requireApiKey', () => {
     });
     const r = await requireApiKey(req, OTHER_SITE);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.response.status).toBe(401);
+    if (!r.ok) {
+      expect(r.response.status).toBe(404);
+      expect(await r.response.json()).toMatchObject({ code: 'site_not_found' });
+    }
   });
 
   it('400 when siteId is missing from the URL', async () => {

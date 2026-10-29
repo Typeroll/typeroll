@@ -239,7 +239,7 @@ it('rejects zone cache approval from site credentials and requires the owning or
   const invoke = (key: string, body: unknown) => callRoute(route, 'POST', `http://localhost/api/v1/sites/${SITE}/deploy`, { siteId: SITE }, { headers: bearer(key), body });
   const body = { retry_verification_job_id: 'missing-job', approve_cache_zone_id: 'zone' };
   expect((await invoke(token, body)).status).toBe(403);
-  expect((await invoke(otherKey.token, body)).status).toBe(401);
+  expect((await invoke(otherKey.token, body)).status).toBe(404);
   expect((await invoke(orgKey.token, body)).status).toBe(404); // authorized, but no such job
   expect((await invoke(orgKey.token, { ...body, approve_cache_zone_id: true })).status).toBe(400);
   expect((await invoke(orgKey.token, { approve_cache_zone_id: 'zone' })).status).toBe(400);

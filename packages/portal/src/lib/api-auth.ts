@@ -455,8 +455,17 @@ async function resolveApiKey(
     ? await resolvePersonalSite(verified.personalUserId, declaredOrg!, urlSiteId)
     : await resolveTokenSite(verified.orgId, verified.siteId, urlSiteId);
   if (!resolved) {
-    // Don't leak whether the key is valid for some other site — opaque 401.
-    return { ok: false, response: json({ error: 'Invalid or revoked token' }, 401) };
+    // The key itself is valid, so say the Site is out of reach rather than
+    // blaming the key: an agent told its key is revoked switches credentials
+    // and can end up in the wrong Organization. The answer is the same for a
+    // Site that does not exist and one owned by another Organization.
+    return { ok: false, response: json({
+      error: verified.siteId !== null
+        ? `This key is bound to Site ${verified.siteId}. Use a key for Site ${urlSiteId}.`
+        : `No Site ${urlSiteId} is available to this key's Organization. List reachable Sites with GET /api/v1/sites.`,
+      code: 'site_not_found',
+      ...(verified.personalUserId ? {} : { details: { organization_id: verified.orgId } }),
+    }, 404) };
   }
   const { ownerOrgId, permission, site } = resolved;
   const declaredMismatch = organizationMismatch(request, ownerOrgId);
