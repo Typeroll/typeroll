@@ -10,9 +10,14 @@ const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'typeroll-publication-
 try {
   const destination = path.join(temporary, 'project');
   await createStaticPublicationProject({ format: 'typeroll-static-publication', format_version: 2, pages: [], partials: [], media: [] }, destination);
+  // Keep only what npm needs to reach the registry, including a proxy and its CA.
+  const network = ['HTTPS_PROXY', 'https_proxy', 'HTTP_PROXY', 'http_proxy', 'NO_PROXY', 'no_proxy', 'NODE_EXTRA_CA_CERTS'];
   const result = spawnSync('npm', ['install', '--package-lock-only', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: destination, stdio: 'inherit', timeout: 180_000,
-    env: { PATH: process.env.PATH, HOME: process.env.HOME, npm_config_cache: process.env.npm_config_cache },
+    env: {
+      PATH: process.env.PATH, HOME: process.env.HOME, npm_config_cache: process.env.npm_config_cache,
+      ...Object.fromEntries(network.filter(name => process.env[name]).map(name => [name, process.env[name]])),
+    },
   });
   if (result.error || result.status !== 0) throw new Error('Could not freeze the publication dependency lock');
   const files = {};
