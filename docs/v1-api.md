@@ -430,6 +430,11 @@ saved job's `static_probe` when public distribution verification fails. Alongsid
 `checked_at`, `origin`, `route`, expected/actual status, reason and `cf_ray`, the
 candidate adds `final_path`, `redirect_chain`, `response_headers`, and optional
 `body_sample: {sha256, bytes, scope}`. No input schema changes are required.
+From Core 0.2.126 `reason` is one of `status_mismatch`, `content_mismatch`,
+`timeout`, `connection_failed`, `probe_byte_budget`, `redirect_offsite`,
+`redirect_without_location`, `redirect_limit` or the unclassified
+`request_failed`, with optional `attempts` and a non-secret `error_code`.
+Timeouts and dropped connections are retried twice per check.
 
 Redirect paths omit query/fragment/userinfo, and cross-origin destinations are
 not recorded or fetched. Response headers are a parsed allowlist: media type,

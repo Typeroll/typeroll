@@ -4,7 +4,7 @@ import { type ProviderClient } from '../publishing/providers.mjs';
 import { buildStorage } from './storage';
 import { sha256 } from './contract.mjs';
 import type { DirectReceipt } from './direct-upload.mjs';
-import { staticManifestChecks, staticChecks, verifyStaticResponse, type StaticCheck, type StaticObservation } from './verification';
+import { staticManifestChecks, staticChecks, verifyStaticResponse, ProbeByteBudgetError, type StaticCheck, type StaticObservation } from './verification';
 import { staticControlsHash, changedStaticChecks, selectStaticProbes, publicStaticChecks, needsArtifactRetentionEvidence, PROBE_FILE_BYTES, PROBE_BYTES, PROBE_FILES } from './static-verifier.mjs';
 import { enqueueBuild, completedBuild } from './jobs';
 import { readEngineConfiguration, type BuildProvider } from './state';
@@ -102,7 +102,10 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
   if (!Array.isArray(checks) || !checks.length) throw new ConnectionError('Static verification data is missing.', 409);
   if (bounded && checks.length > PROBE_FILES) throw new ConnectionError('Coordinator probe count exceeds its limit.', 409);
   let downloaded = 0;
-  const observeBytes = bounded ? (bytes: number) => { downloaded += bytes; if (downloaded > PROBE_BYTES) throw Error('coordinator_probe_byte_limit'); } : undefined;
+  // Selection keeps the expected bytes within PROBE_BYTES. Each probe stops at
+  // its own file size, so this ceiling only stops a runaway transfer; retried
+  // transport failures return their bytes before the next attempt.
+  const observeBytes = bounded ? (bytes: number) => { downloaded += bytes; if (downloaded > 2 * PROBE_BYTES) throw new ProbeByteBudgetError(); } : undefined;
   let cursor = state?.cursor ?? 0;
   const limit = Math.min(checks.length, cursor + 1024), deadline = Date.now() + 20000;
   // Image libraries produce thousands of static files. Drain healthy checks
@@ -116,11 +119,7 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
       await store.setDoc(checkPath, { cursor: 0, complete: false, failure: failure ?? null });
       if (failure) await store.updateDoc(jobPath, {
         static_probe: { origin, ...failure, checked_at: new Date().toISOString() },
-        verification_message: failure.reason === 'status_mismatch'
-          ? `The hosting service still returns HTTP ${failure.actual_status} at ${failure.route}; this deployment requires HTTP ${failure.expected_status}. Public verification will retry automatically.`
-          : failure.reason === 'content_mismatch'
-          ? `The hosting service returns different content at ${failure.route}. Public verification will retry automatically.`
-          : `The hosting service could not be verified at ${failure.route}. Public verification will retry automatically.`,
+        verification_message: `${staticFailureMessage(failure)} Public verification will retry automatically.`,
       });
       return false;
     }
@@ -130,4 +129,20 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
     if (complete) { if (bounded) console.info(JSON.stringify({ event: 'coordinator_static_probes', files: checks.length, downloaded_bytes: downloaded })); await store.updateDoc(jobPath, { verification_message: null, static_probe: null }); return true; }
   } while (cursor < limit && Date.now() < deadline);
   return false;
+}
+
+/** One sentence naming the actual cause of a failed static probe. */
+export function staticFailureMessage(failure: StaticObservation): string {
+  const attempts = failure.attempts && failure.attempts > 1 ? ` after ${failure.attempts} attempts` : '';
+  switch (failure.reason) {
+    case 'status_mismatch': return `The hosting service still returns HTTP ${failure.actual_status} at ${failure.route}; this deployment requires HTTP ${failure.expected_status}.`;
+    case 'content_mismatch': return `The hosting service returns different content at ${failure.route}.`;
+    case 'timeout': return `The hosting service did not finish sending ${failure.route} within 10 seconds${attempts}.`;
+    case 'connection_failed': return `The connection to the hosting service failed while reading ${failure.route}${attempts}${failure.error_code ? ` (${failure.error_code})` : ''}.`;
+    case 'probe_byte_budget': return `Verification stopped at ${failure.route} because the probes downloaded more than their byte limit.`;
+    case 'redirect_offsite': return `${failure.route} redirects to another host, so its content cannot be verified.`;
+    case 'redirect_without_location': return `${failure.route} returns a redirect without a destination.`;
+    case 'redirect_limit': return `${failure.route} redirects more than three times.`;
+    default: return `The hosting service could not be verified at ${failure.route}.`;
+  }
 }
