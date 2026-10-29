@@ -1,8 +1,103 @@
-import type { CookieConsentSettings } from './types.js';
+import type { CookieConsentLabels, CookieConsentSettings } from './types.js';
 import { buildConsentRuntime, wrapConsentScripts } from './consent-scripts.js';
 
+/** Swedish default body text, kept for callers that predate localization. */
 export const DEFAULT_COOKIE_CONSENT_TEXT =
   'Vi använder cookies för att webbplatsen ska fungera och för att förstå hur den används. Du kan välja att godkänna alla cookies, bara de nödvändiga, eller neka.';
+
+export type CookieConsentLanguage = 'sv' | 'de' | 'en';
+
+type ConsentStrings = Required<CookieConsentLabels> & { text: string };
+
+const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
+  sv: {
+    text: DEFAULT_COOKIE_CONSENT_TEXT,
+    title: 'Cookies på den här webbplatsen',
+    reject: 'Neka',
+    necessary: 'Endast nödvändiga',
+    accept_all: 'Godkänn alla',
+    privacy_link: 'Läs vår integritetspolicy →',
+    manage: 'Hantera cookie-inställningar',
+  },
+  de: {
+    text: 'Wir verwenden Cookies, damit die Website funktioniert und um zu verstehen, wie sie genutzt wird. Sie können alle Cookies akzeptieren, nur die notwendigen zulassen oder ablehnen.',
+    title: 'Cookies auf dieser Website',
+    reject: 'Ablehnen',
+    necessary: 'Nur notwendige',
+    accept_all: 'Alle akzeptieren',
+    privacy_link: 'Datenschutzerklärung lesen →',
+    manage: 'Cookie-Einstellungen verwalten',
+  },
+  en: {
+    text: 'We use cookies to make this website work and to understand how it is used. You can accept all cookies, allow only the necessary ones, or decline.',
+    title: 'Cookies on this website',
+    reject: 'Decline',
+    necessary: 'Necessary only',
+    accept_all: 'Accept all',
+    privacy_link: 'Read our privacy policy →',
+    manage: 'Manage cookie settings',
+  },
+};
+
+/** Built-in banner language for a BCP 47 tag: Swedish, German, otherwise English. */
+export function cookieConsentLanguage(language: unknown): CookieConsentLanguage {
+  const tag = String(language ?? '');
+  if (/^sv\b/i.test(tag)) return 'sv';
+  if (/^de\b/i.test(tag)) return 'de';
+  return 'en';
+}
+
+/** Default body text shown when the site has not written its own. */
+export function cookieConsentDefaultText(language: unknown): string {
+  return CONSENT_STRINGS[cookieConsentLanguage(language)].text;
+}
+
+export const COOKIE_CONSENT_LABEL_KEYS = [
+  'title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage',
+] as const;
+export const COOKIE_CONSENT_LABEL_MAX_LENGTH = 120;
+
+/**
+ * Validate cookie_consent.labels from an API or form write. Values are plain
+ * text; blank values are dropped so the built-in wording applies.
+ */
+export function normalizeCookieConsentLabels(value: unknown): { labels?: CookieConsentLabels; error?: string } {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== 'object' || Array.isArray(value)) return { error: 'cookie_consent.labels must be an object' };
+  const allowed = new Set<string>(COOKIE_CONSENT_LABEL_KEYS);
+  const unknown = Object.keys(value).filter((key) => !allowed.has(key));
+  if (unknown.length) return { error: `Unknown cookie_consent.labels fields: ${unknown.join(', ')}` };
+  const labels: CookieConsentLabels = {};
+  for (const key of COOKIE_CONSENT_LABEL_KEYS) {
+    const raw = (value as Record<string, unknown>)[key];
+    if (raw === undefined || raw === null) continue;
+    if (typeof raw !== 'string') return { error: `cookie_consent.labels.${key} must be a string` };
+    const text = raw.trim();
+    if (text.length > COOKIE_CONSENT_LABEL_MAX_LENGTH) {
+      return { error: `cookie_consent.labels.${key} must be at most ${COOKIE_CONSENT_LABEL_MAX_LENGTH} characters` };
+    }
+    if (text) labels[key] = text;
+  }
+  return Object.keys(labels).length ? { labels } : {};
+}
+
+function consentLabels(consent: CookieConsentSettings, language: unknown): ConsentStrings {
+  const defaults = CONSENT_STRINGS[cookieConsentLanguage(language)];
+  const custom = consent.labels ?? {};
+  const pick = (key: keyof CookieConsentLabels) => {
+    const value = custom[key];
+    return typeof value === 'string' && value.trim() ? value.trim() : defaults[key];
+  };
+  return {
+    text: defaults.text,
+    title: pick('title'),
+    reject: pick('reject'),
+    necessary: pick('necessary'),
+    accept_all: pick('accept_all'),
+    privacy_link: pick('privacy_link'),
+    manage: pick('manage'),
+  };
+}
 
 export const COOKIE_CONSENT_STYLES = `
 .tr-consent{display:none;position:fixed;inset:0;z-index:2147483000;align-items:flex-end;justify-content:center;font-family:var(--font-body),-apple-system,BlinkMacSystemFont,'SF Pro Display','Inter',sans-serif}
@@ -59,23 +154,29 @@ function escapeAttr(value: string): string {
     .replaceAll('"', '&quot;');
 }
 
+const escapeText = escapeAttr;
+
 /**
  * Render the complete consent fragment shared by static output and the
  * isolated hosted preview. bodyHtml must already have passed the caller's
- * HTML sanitizer because allowed iframe hosts are site-specific.
+ * HTML sanitizer because allowed iframe hosts are site-specific. language is
+ * the page's BCP 47 tag; it selects the built-in wording, which
+ * consent.labels can replace per site.
  */
 export function renderCookieConsent(
   consent: CookieConsentSettings | undefined,
   bodyHtml?: string,
+  language?: string,
 ): string {
   if (consent?.enabled !== true) return '';
-  const body = bodyHtml || `<p>${DEFAULT_COOKIE_CONSENT_TEXT}</p>`;
+  const labels = consentLabels(consent, language);
+  const body = bodyHtml || `<p>${escapeText(labels.text)}</p>`;
   const necessary = consent.scripts_necessary ?? '';
   const optional = consent.scripts_optional
     ? wrapConsentScripts(consent.scripts_optional)
     : '';
   const privacyLink = consent.privacy_policy_url
-    ? `<a class="tr-consent__link" href="${escapeAttr(consent.privacy_policy_url)}" target="_blank" rel="noopener">Läs vår integritetspolicy →</a>`
+    ? `<a class="tr-consent__link" href="${escapeAttr(consent.privacy_policy_url)}" target="_blank" rel="noopener">${escapeText(labels.privacy_link)}</a>`
     : '';
 
   return `${necessary}${optional}<style data-cookie-consent="1">${COOKIE_CONSENT_STYLES}</style>
@@ -83,17 +184,17 @@ export function renderCookieConsent(
   <div class="tr-consent__backdrop" aria-hidden="true"></div>
   <div class="tr-consent__panel">
     <span class="tr-consent__handle" aria-hidden="true"></span>
-    <h2 id="tr-consent-title" class="tr-consent__title">Cookies på den här webbplatsen</h2>
+    <h2 id="tr-consent-title" class="tr-consent__title">${escapeText(labels.title)}</h2>
     <div id="tr-consent-body" class="tr-consent__body">${body}</div>
     ${privacyLink}
     <div class="tr-consent__actions">
-      <button type="button" class="tr-consent__btn tr-consent__btn--ghost" data-tr-consent-action="rejected">Neka</button>
-      <button type="button" class="tr-consent__btn tr-consent__btn--ghost" data-tr-consent-action="necessary">Endast nödvändiga</button>
-      <button type="button" class="tr-consent__btn tr-consent__btn--primary" data-tr-consent-action="all">Godkänn alla</button>
+      <button type="button" class="tr-consent__btn tr-consent__btn--ghost" data-tr-consent-action="rejected">${escapeText(labels.reject)}</button>
+      <button type="button" class="tr-consent__btn tr-consent__btn--ghost" data-tr-consent-action="necessary">${escapeText(labels.necessary)}</button>
+      <button type="button" class="tr-consent__btn tr-consent__btn--primary" data-tr-consent-action="all">${escapeText(labels.accept_all)}</button>
     </div>
   </div>
 </div>
-<button type="button" class="tr-consent__manage" data-tr-open-consent aria-label="Hantera cookie-inställningar">
+<button type="button" class="tr-consent__manage" data-tr-open-consent aria-label="${escapeAttr(labels.manage)}">
   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.5" r=".9" fill="currentColor"/><circle cx="10.5" cy="7.5" r=".7" fill="currentColor"/><circle cx="7" cy="10.5" r=".8" fill="currentColor"/></svg>
   <span>Cookies</span>
 </button>

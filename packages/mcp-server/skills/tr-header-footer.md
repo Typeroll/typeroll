@@ -144,6 +144,11 @@ Cookie consent is a site feature, not a footer widget. Configure it separately:
 }
 ```
 
+The heading, buttons and links follow the page language: Swedish for `sv`,
+German for `de`, otherwise English. For any other language, write `text` and
+set `labels` (`title`, `reject`, `necessary`, `accept_all`, `privacy_link`,
+`manage`) in that language.
+
 Use `update_site_settings`, then read settings back. `scripts_necessary` and
 `scripts_optional` execute in visitors' browsers and must be reviewed like
 other API-key-authorized script surfaces. Verify accept/necessary/reject,

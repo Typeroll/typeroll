@@ -28,7 +28,7 @@ import { customCssWarnings, customCssWriteError } from '../../../../../lib/custo
 import { getStore } from '../../../../../lib/datastore';
 import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentionError } from '../../../../../lib/form-submissions';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, type SiteSettings } from '@typeroll/shared';
+import { typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
@@ -71,7 +71,7 @@ function installationRefusedFields(body: Record<string, unknown>): string[] {
 
 const COOKIE_CONSENT_FIELDS = new Set([
   'enabled', 'text', 'privacy_policy_url', 'scripts_necessary',
-  'scripts_optional', 'reload_after_consent',
+  'scripts_optional', 'reload_after_consent', 'labels',
 ]);
 
 export const GET: APIRoute = async ({ request, params }) => {
@@ -184,6 +184,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
     if (consent.reload_after_consent !== undefined && typeof consent.reload_after_consent !== 'boolean') {
       return apiError('cookie_consent.reload_after_consent must be boolean', 400);
+    }
+    if (consent.labels !== undefined) {
+      const checked = normalizeCookieConsentLabels(consent.labels);
+      if (checked.error) return apiError(checked.error, 400);
+      consent.labels = checked.labels;
     }
   }
 

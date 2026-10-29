@@ -246,10 +246,22 @@ settings route and MCP tool:
     "privacy_policy_url": "/privacy/",
     "scripts_necessary": "",
     "scripts_optional": "<script>startAnalytics()</script>",
-    "reload_after_consent": false
+    "reload_after_consent": false,
+    "labels": {
+      "title": "Cookies auf dieser Website",
+      "accept_all": "Alle akzeptieren"
+    }
   }
 }
 ```
+
+The banner's heading, buttons, privacy link and settings label follow the
+page language (`Page.language`, otherwise the site `language`): Swedish for
+`sv`, German for `de`, otherwise English. The default `text` follows the same
+rule. Set `labels` only to replace that wording, for example for another
+language. Its keys are `title`, `reject`, `necessary`, `accept_all`,
+`privacy_link` and `manage`. Values are plain text of at most 120 characters,
+and blank values use the built-in wording. `labels` is replaced as a whole.
 
 The object is shallow-merged, so omitted fields keep their saved values. In a
 signed hosted preview the banner and optional-script gate work, but the frame

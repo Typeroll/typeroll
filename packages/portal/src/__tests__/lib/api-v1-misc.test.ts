@@ -200,6 +200,25 @@ describe('settings endpoints', () => {
       privacy_policy_url: '/privacy/',
     });
   });
+
+  it('PATCH validates and trims cookie_consent.labels', async () => {
+    const { token } = await setup();
+    const { vstore } = await import('../../lib/version-store');
+    const patch = (cookie_consent: unknown) => callRoute(
+      import('../../pages/api/v1/sites/[siteId]/settings'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/settings`,
+      { siteId: SITE },
+      { headers: bearer(token), body: { cookie_consent } },
+    );
+    expect((await patch({ labels: { title: 'x', button: 'y' } })).status).toBe(400);
+    expect((await patch({ labels: { reject: 5 } })).status).toBe(400);
+    expect((await patch({ labels: { title: 'x'.repeat(121) } })).status).toBe(400);
+    const res = await patch({ enabled: true, labels: { title: '  Cookies auf dieser Website ', reject: '' } });
+    expect(res.status).toBe(200);
+    const settings = await vstore.settings(ORG, SITE, MAIN_VERSION_ID);
+    expect(settings?.cookie_consent?.labels).toEqual({ title: 'Cookies auf dieser Website' });
+  });
 });
 
 describe('media endpoints', () => {

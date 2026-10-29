@@ -261,8 +261,12 @@ Native cookie consent is configured through `PATCH /settings` or
 `update_site_settings` under `cookie_consent`. The nested object is
 shallow-merged, so omitted keys remain unchanged. Supported keys are
 `enabled`, `text`, `privacy_policy_url`, `scripts_necessary`,
-`scripts_optional`, and `reload_after_consent`. Script fields execute in the
-visitor's browser and require an admin-capable API key.
+`scripts_optional`, `reload_after_consent`, and `labels`. Script fields execute
+in the visitor's browser and require an admin-capable API key. The banner's
+built-in wording follows the page language (Swedish, German, otherwise
+English); `labels` (`title`, `reject`, `necessary`, `accept_all`,
+`privacy_link`, `manage`) replaces it with plain text of at most 120
+characters.
 
 ## Versioned rendering dependencies
 

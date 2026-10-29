@@ -574,6 +574,21 @@ export interface CookieConsentSettings {
    * the modal entirely.
    */
   reload_after_consent?: boolean;
+  /**
+   * Plain-text replacements for the banner's built-in wording. Omitted or
+   * blank labels use the page language's default (Swedish, German or
+   * English).
+   */
+  labels?: CookieConsentLabels;
+}
+
+export interface CookieConsentLabels {
+  title?: string;
+  reject?: string;
+  necessary?: string;
+  accept_all?: string;
+  privacy_link?: string;
+  manage?: string;
 }
 
 // ─── Global blocks (header / footer / free) ──────────────────────────────
