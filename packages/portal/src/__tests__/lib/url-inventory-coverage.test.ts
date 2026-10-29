@@ -194,6 +194,20 @@ describe('analyzeCoverage', () => {
     expect(summary.redirected).toBe(1);
   });
 
+  it('classifies WordPress query-string URLs covered by exact query rules as redirected', async () => {
+    await setup();
+    await seedInventory([{ path: '/?p=123' }, { path: '/?utm_source=x&page_id=5' }, { path: '/?cat=9' }]);
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.redirects(ORG, SITE, MAIN_VERSION_ID)}/q1`, { from_path: '/?p=123', to_path: '/wien/', status: 301 });
+    await getStore().setDoc(`${paths.redirects(ORG, SITE, MAIN_VERSION_ID)}/q2`, { from_path: '/?page_id=5', to_path: '/kontakt/', status: 301 });
+    const { analyzeCoverage } = await import('../../lib/wp/url-inventory');
+    const { urls } = await analyzeCoverage(getStore(), ORG, SITE);
+    const byPath = new Map(urls.map(url => [url.path, url]));
+    expect(byPath.get('/?p=123')).toMatchObject({ status: 'redirected', target: '/wien/' });
+    expect(byPath.get('/?utm_source=x&page_id=5')).toMatchObject({ status: 'redirected', target: '/kontakt/' });
+    expect(byPath.get('/?cat=9')?.status).toBe('unhandled');
+  });
+
   it('honours the excluded flag on inventory entries', async () => {
     await setup();
     await seedInventory([{ path: '/wp-admin/edit.php', excluded: true }]);

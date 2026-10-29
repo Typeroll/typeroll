@@ -33,6 +33,7 @@ import {
   DEFAULT_CONTENT_TYPE,
   publicContentPage,
   pagesRedirectsFile,
+  applyQueryRedirects,
   paths,
   MAIN_VERSION_ID,
 } from '@typeroll/shared';
@@ -319,6 +320,15 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
       console.log(`[deploy] canonical redirect: ${siteForRedirect.domain_alias} → ${siteForRedirect.domain} (force)`);
     }
   }
+  // Query-string sources (`/?p=123`) cannot live in `_redirects`; embed them
+  // in the document that answers their path.
+  const queryReport = await applyQueryRedirects(safeRedirects, {
+    exists: (relative) => fs.promises.access(path.join(buildDir, relative)).then(() => true, () => false),
+    read: (relative) => fs.promises.readFile(path.join(buildDir, relative), 'utf8'),
+    write: (relative, text) => fs.promises.writeFile(path.join(buildDir, relative), text),
+  });
+  for (const entry of queryReport.embedded) console.log(`[deploy] query redirects: ${entry.rules} in ${entry.file}`);
+  for (const unplaced of queryReport.unplaced) console.warn(`[deploy] query redirects for ${unplaced} skipped: no document to carry them`);
 
   // 3b. Write _headers — Cloudflare Pages reads this to set HTTP response
   //     headers per route. We set sensible caching + security defaults; the

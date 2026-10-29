@@ -44,11 +44,33 @@ Typical after a WordPress move:
 | `/author/…` archives   | `/author/*` → `/om-oss`         |
 | Date permalinks        | `/2019/*` → `/blogg/:splat`     |
 
-Three things Typeroll will refuse, and why:
+Two things Typeroll will refuse, and why:
 
 - **A `*` anywhere but the end.** Cloudflare ignores it, so the rule would look saved and do nothing.
 - **A rule that would hide a live page.** Redirects are applied before files are served, so `/blogg/*` would make every real article under `/blogg/` unreachable. Narrow the prefix instead.
-- **Query strings.** Redirects match the path only — an old `/?p=123` URL has nothing to key on.
+
+### Query-string sources
+
+Old WordPress addresses such as `/?p=123`, `/?page_id=5`, `/?cat=7` or
+`/index.php?lang=de` can be redirected with an exact rule:
+
+```json
+{ "from_path": "/?p=123", "to_path": "/umzugstipps/umzug-nach-wien/" }
+```
+
+The path before `?` must be literal (no `*` or `:name`), every parameter must
+be written as `key=value`, and `to_path` must be a fixed path or URL. A request
+matches when it has the same path and every listed parameter with that exact
+value; other parameters, such as `utm_source`, are ignored. When several rules
+match, the one with the most parameters wins.
+
+Cloudflare's `_redirects` file matches paths only, and customer sites stay
+static, so these rules are not HTTP redirects. The publication embeds them in
+the page that answers the path (the home page for `/?p=123`, otherwise
+`404.html`), and a small script sends the visitor on with `location.replace`.
+Search engines follow these redirects, but they are not a 301, and visitors
+without JavaScript stay on the page. Migration coverage counts the addresses
+as redirected. Hosted previews do not run them.
 
 ## `list_redirects`
 

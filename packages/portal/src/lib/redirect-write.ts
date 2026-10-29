@@ -36,6 +36,9 @@ export function redirectDocId(fromPath: string): string {
   return (
     fromPath
       .replace(/^\//, '')
+      .replace(/\?/g, '__q_')
+      .replace(/&/g, '__and_')
+      .replace(/=/g, '__eq_')
       .replace(/\*/g, '__splat')
       .replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '__p_$1')
       .replace(/[\/\\]/g, '_')

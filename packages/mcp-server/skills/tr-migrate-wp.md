@@ -274,10 +274,11 @@ Rules:
   is the platform protecting you: redirects are applied before static files, so
   `/blogg/*` would make every real article under `/blogg/` unreachable. Narrow
   the prefix instead.
-- **Query-string URLs can't be matched.** WP's `/?p=123` has no path to key on;
-  these require an explicit query-routing solution on the future host or a
-  reviewed retirement decision. The old host cannot handle requests after its
-  hostname moves.
+- **Query-string URLs get exact rules.** Create one rule per old address, for
+  example `from_path="/?p=123"` or `"/?page_id=5"`, with a fixed `to_path`. The
+  path before `?` must be literal. The publication embeds these rules in the
+  page that answers the path (or `404.html`) as a script redirect, not a 301;
+  coverage reports them as redirected.
 - Rules are emitted most-specific-first, so a narrow rule always beats a broad
   one — you can safely have `/blogg/recept/*` alongside `/blogg/*`.
 

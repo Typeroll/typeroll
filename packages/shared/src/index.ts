@@ -34,6 +34,7 @@ export * from './schema-dates.js';
 export * from './seo-transform.js';
 export * from './hreflang.js';
 export * from './redirect-patterns.js';
+export * from './query-redirects.js';
 export * from './url-policy.js';
 export * from './iframe-policy.js';
 export * from './diff-blocks.js';

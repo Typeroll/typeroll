@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { bundleBlockAssets } from './source/bundle-blocks';
 import { buildSearchIndexIfUsed } from './source/search-index';
-import { pagesRedirectsFile, pagesShadowedByRedirect, pageRobots } from '@typeroll/shared';
+import { applyQueryRedirects, pagesRedirectsFile, pagesShadowedByRedirect, pageRobots } from '@typeroll/shared';
 import type { Redirect, TrailingSlashPolicy } from '@typeroll/shared';
 import { buildPagesHeaders, withGlobalHeaders } from './source/pages-headers';
 import { vendorExtensionAssets } from './source/extensions/assets';
@@ -40,4 +40,9 @@ export async function postprocess(dist: string, publication: { publication_id: s
   const safeRedirects = (publication.redirects ?? []).filter(rule => !pagesShadowedByRedirect(rule.from_path, rule.to_path, livePaths).length);
   const redirects = pagesRedirectsFile(safeRedirects, publication.settings, publication.site);
   if (redirects) await fs.writeFile(path.join(dist, '_redirects'), redirects);
+  await applyQueryRedirects(safeRedirects, {
+    exists: relative => fs.access(path.join(dist, relative)).then(() => true, () => false),
+    read: relative => fs.readFile(path.join(dist, relative), 'utf8'),
+    write: (relative, text) => fs.writeFile(path.join(dist, relative), text),
+  });
 }
