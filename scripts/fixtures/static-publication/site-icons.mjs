@@ -114,6 +114,7 @@ export async function writeSiteIcons(dist, settings, readImage) {
       else if (entry.isFile() && entry.name.endsWith('.html')) {
         const html = await fs.readFile(file, 'utf8');
         const next = html.replace(/<link\b[^>]*data-site-icon="(?:favicon|icon_192|manifest)"[^>]*>/g, '')
+          .replace(/<link\b[^>]*\brel\s*=\s*["']manifest["'][^>]*>/gi, '')
           .replace('</head>', `<link data-site-icon="favicon" rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="${faviconUrl}"><link data-site-icon="icon_192" rel="icon" type="image/png" sizes="192x192" href="${iconUrl}"><link data-site-icon="manifest" rel="manifest" href="/site.webmanifest"></head>`);
         if (next !== html) await fs.writeFile(file, next);
       }
