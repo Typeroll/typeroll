@@ -80,6 +80,7 @@ export interface ActionContext {
    * one attempt inside the request, and the time (epoch ms) by which those
    * attempts must end. The rest are delivered in the background. runFormActions sets it.
    */
+  submittedAt?: string;
   syncWebhooks?: { remaining: number; deadline: number };
 }
 
@@ -117,8 +118,9 @@ export interface FormActionDef {
    * (the thing already happened). Folding both into one hook would mean a
    * bounced confirmation email could roll back a saved listing.
    */
+  required?: boolean;
   before?: (action: FormAction, ctx: ActionContext) => Promise<void | { reject: string }>;
-  run: (action: FormAction, ctx: ActionContext) => Promise<void>;
+  run: (action: FormAction, ctx: ActionContext) => Promise<void | Record<string, unknown>>;
 }
 
 const CORE_ACTIONS: FormActionDef[] = [
@@ -188,7 +190,13 @@ let registry: Map<string, FormActionDef> | null = null;
  * to be `await import`, never `require`: this is ESM, and a runtime require
  * is the exact pattern that once took the hosted MCP route down.
  */
-export async function actionRegistry(): Promise<Map<string, FormActionDef>> {
+export async function actionRegistry(orgId?: string, siteId?: string): Promise<Map<string, FormActionDef>> {
+  if (orgId && siteId) {
+    const base = new Map(await actionRegistry());
+    const { extensionActions } = await import('./extension-actions');
+    for (const action of await extensionActions(orgId, siteId)) base.set(action.type, action);
+    return base;
+  }
   if (registry) return registry;
   registry = new Map(CORE_ACTIONS.map((a) => [a.type, a]));
   const { listAppDefs } = await import('../apps/registry');
@@ -223,7 +231,8 @@ export function completionActions(form: Pick<Form, 'actions'>): FormAction[] {
 /**
  * Run a form's actions.
  *
- * Every failure is swallowed per-action: the thing the form was FOR has
+ * Optional notification failures are swallowed per action. Required provider
+ * effects must complete before notifications and propagate failure. The form has
  * already happened (a submission stored, a listing updated) before this runs,
  * and a bounced email must never turn that into an error the visitor sees.
  * One action failing also mustn't stop the next — they have different owners.
@@ -233,8 +242,8 @@ export function completionActions(form: Pick<Form, 'actions'>): FormAction[] {
 export async function runFormActions(
   form: Pick<Form, 'actions' | 'steps'>,
   ctx: ActionContext,
-): Promise<{ ran: string[]; failed: string[] }> {
-  const reg = await actionRegistry();
+): Promise<{ ran: string[]; failed: string[]; results: Array<{type:string; result:Record<string,unknown>}> }> {
+  const reg = await (form.actions?.some(a=>a.type.startsWith('extension:')) ? actionRegistry(ctx.orgId,ctx.siteId) : actionRegistry());
   // Webhooks get one short attempt each, for a bounded number of them, so a
   // slow receiver or a form with many webhooks cannot hold the request.
   const actionCtx: ActionContext = {
@@ -244,22 +253,27 @@ export async function runFormActions(
   };
   const ran: string[] = [];
   const failed: string[] = [];
-  for (const action of completionActions(form)) {
+  const results: Array<{type:string; result:Record<string,unknown>}> = [];
+  const ordered = completionActions(form).sort((a,b) => Number(Boolean(reg.get(b.type)?.required)) - Number(Boolean(reg.get(a.type)?.required)));
+  for (const action of ordered) {
     const def = reg.get(action.type);
     if (!def) {
       // An action whose app was disabled, or a type from a newer release.
+      if (action.type.startsWith('extension:')) throw new RequiredFormActionError('The connected form app is unavailable');
       console.warn(`[form action] no handler for type "${action.type}"`);
       continue;
     }
     try {
-      await def.run(action, actionCtx);
+      const result = await def.run(action, actionCtx);
+      if (result) results.push({ type:action.type, result });
       ran.push(action.type);
     } catch (e) {
+      if (def.required) throw new RequiredFormActionError(e instanceof Error ? e.message : 'The connected app could not complete registration');
       failed.push(action.type);
       console.error(`[form action] "${action.type}" failed:`, e);
     }
   }
-  return { ran, failed };
+  return { ran, failed, results };
 }
 
 /**
@@ -273,7 +287,7 @@ export async function runBeforeActions(
   /** Site language for the visitor-facing message of a failed check. */
   lang?: string,
 ): Promise<{ ok: true } | { ok: false; reason: string }> {
-  const reg = await actionRegistry();
+  const reg = await (form.actions?.some(a=>a.type.startsWith('extension:')) ? actionRegistry(ctx.orgId,ctx.siteId) : actionRegistry());
   for (const action of completionActions(form)) {
     const def = reg.get(action.type);
     if (!def?.before) continue;
@@ -287,3 +301,6 @@ export async function runBeforeActions(
   }
   return { ok: true };
 }
+
+/** Required provider effects cannot be reported as a completed registration. */
+export class RequiredFormActionError extends Error {}

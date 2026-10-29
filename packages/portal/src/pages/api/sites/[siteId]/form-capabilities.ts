@@ -20,5 +20,5 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
   // configure them has no use for seeing them.
   const adminCheck = requirePermission(guard.value, 'admin');
   if (!adminCheck.ok) return adminCheck.response;
-  return json(await formCapabilities());
+  return json(await formCapabilities(guard.value.owner_org_id, guard.value.site.id));
 };

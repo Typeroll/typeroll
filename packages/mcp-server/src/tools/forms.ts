@@ -50,6 +50,7 @@ const targetSchema = z.object({
 // Actions run after a successful submission: email notifications, signed
 // webhooks and app-provided action types. Same validation as the portal's
 // Forms editor; admin permission required, as in the portal.
+const optionSourceSchema = z.object({field:z.string(),type:z.string(),config:z.record(z.string(),z.unknown()),notice_field:z.string().optional()}).strict();
 const actionSchema = z.object({
   id: z.string().optional().describe('Keep an existing action\'s id to update it in place (webhooks keep their stored secret).'),
   type: z.string().describe('"email", "webhook", or an action type provided by an installed app (see get_form_capabilities).'),
@@ -102,6 +103,7 @@ export const formTools: ToolDef[] = [
       success_message: z.string().optional().describe('Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized.'),
       success_redirect_url: z.string().optional().describe('After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear.'),
       actions: z.array(actionSchema).optional().describe(actionsDescription),
+      option_sources: z.array(optionSourceSchema).max(20).optional().describe("Live select/radio options from an installed app. Discover types with get_form_capabilities; admin permission required."),
       allow_back: allowBackSchema,
       show_progress: showProgressSchema,
       target: targetSchema,
@@ -128,6 +130,7 @@ export const formTools: ToolDef[] = [
         success_message: z.string().optional().describe('Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized.'),
         success_redirect_url: z.string().optional().describe('After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear.'),
         actions: z.array(actionSchema).optional().describe(actionsDescription),
+        option_sources: z.array(optionSourceSchema).max(20).optional().describe("Live select/radio options from an installed app. Discover types with get_form_capabilities; admin permission required."),
         allow_back: allowBackSchema,
         show_progress: showProgressSchema,
         target: targetSchema,

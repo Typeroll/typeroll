@@ -270,6 +270,8 @@ export interface SiteTemplateCapabilities {
   supports_extension_installation_config_api: boolean;
   /** 0.36.0+: Extension components can submit to explicitly bound Typeroll forms. */
   supports_extension_form_bindings: boolean;
+  /** Extension runtime 0.45.0: mapped required actions, live choices and completion events. */
+  supports_extension_form_actions: boolean;
   /**
    * 0.52.0+ (Extension runtime 0.43.0): an Extension component that declares
    * `page_handoff`, on an installation granted `page_handoff:read`, receives
@@ -289,7 +291,7 @@ export interface SiteTemplateCapabilities {
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.55.0',
+  template_capabilities_version: '0.56.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -308,6 +310,7 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_extension_storage: true,
   supports_extension_installation_config_api: true,
   supports_extension_form_bindings: true,
+  supports_extension_form_actions: true,
   supports_extension_page_handoff: true,
   extension_protocol_version: EXTENSION_HOST_PROTOCOL_VERSION,
   extension_runtime_version: EXTENSION_RUNTIME_VERSION,

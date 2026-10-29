@@ -93,3 +93,13 @@ it('requires own SMTP for private intake and app email without consuming a deliv
   expect((await sendApplicationEmail(scope, input, { send })).status).toBe('accepted');
   expect(send).toHaveBeenCalledOnce();
 });
+
+it('binds an inline calendar to the durable delivery identity without accepting remote attachments',async()=>{
+  const send=vi.fn().mockResolvedValue({ok:true,id:'calendar-1'});
+  const calendar={filename:'event.ics',content:'BEGIN:VCALENDAR\r\nVERSION:2.0\r\nEND:VCALENDAR\r\n'};
+  await sendApplicationEmail(scope,{...input,calendar},{send});
+  expect(send.mock.calls[0][1].calendar).toEqual(calendar);
+  await expect(sendApplicationEmail(scope,{...input,calendar:{...calendar,filename:'changed.ics'}},{send})).rejects.toMatchObject({status:409});
+  await expect(sendApplicationEmail(scope,{...input,calendar:{...calendar,filename:'../secret.ics'}},{send})).rejects.toMatchObject({status:400});
+  expect(send).toHaveBeenCalledOnce();
+});

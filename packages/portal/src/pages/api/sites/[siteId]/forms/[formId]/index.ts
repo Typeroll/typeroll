@@ -78,12 +78,19 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     // saves like any other and a typo still gets refused.
     const { actionRegistry } = await import('../../../../../../lib/forms/actions');
     const webhookFields = (existing.steps ?? []).flatMap((step) => collectStepFields(step.blocks)).map((field) => field.name);
-    const actions = validateEmailActions(body.actions, [...(await actionRegistry()).keys()], existing.actions, webhookFields);
+    const actions = validateEmailActions(body.actions, [...(await actionRegistry(guard.value.owner_org_id, guard.value.site.id)).keys()], existing.actions, webhookFields);
     if (typeof actions === 'string') return json({ error: actions }, 400);
     update.actions = actions;
   }
   if (Object.keys(update).length === 0 && Object.keys(navigation).length === 0) return json({ error: 'No writable fields in body' }, 400);
 
+  if(body.option_sources!==undefined) {
+    if(guard.value.permission !== 'admin') return json({error:'Admin permission required'},403);
+    update.option_sources=body.option_sources;
+  }
+  const { validateExtensionFormConfig } = await import('../../../../../../lib/extensions/form-contract');
+  const contractError=await validateExtensionFormConfig(owner_org_id,site.id,{...existing,...update});
+  if(contractError)return json({error:contractError},400);
   await store.setDoc(`${paths.forms(owner_org_id, site.id)}/${formId}`, applyFormNavigation({ ...existing, ...update }, navigation));
   const fresh = await store.getDoc<Form>(`${paths.forms(owner_org_id, site.id)}/${formId}`);
   return json({ form: formView(fresh!, guard.value.permission === 'admin') });

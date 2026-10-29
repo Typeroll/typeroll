@@ -13,6 +13,8 @@ export interface EmailMessage {
   text?: string;
   /** Platform correlation only; never populated from untrusted message headers. */
   deliveryId?: string;
+  /** Bounded inline iCalendar, never a file path or remote attachment URL. */
+  calendar?: { filename: string; content: string };
   /** Internal forwarding only; suppress automatic replies and forwarding loops. */
   forwarded?: boolean;
 }

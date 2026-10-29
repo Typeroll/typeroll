@@ -75,6 +75,7 @@ test('global blocks stay shared and block templates are copied', async ({ page }
     await expect(page.getByText('Reuse A')).toBeVisible();
 
     await gotoReady(page, '/app/sites/default/pages/reuse-b');
+    await page.getByRole('button', { name: 'Continue autosaved draft', exact: true }).click();
     await expect(preview.getByRole('heading', { name: 'Book a meeting' })).toBeVisible();
 
     // Detaching leaves an independent copy.
@@ -178,6 +179,7 @@ test('usage covers templates and nesting blocks; a block header edits like a glo
     // The copy stays once the global block's draft is gone.
     rmSync(promoDraft, { force: true });
     await reloadReady(page);
+    await page.getByRole('button', { name: 'Continue autosaved draft', exact: true }).click();
     await expect(preview.getByRole('heading', { name: 'Draft offer' })).toBeVisible();
   } finally {
     writeFileSync(header, originalHeader);

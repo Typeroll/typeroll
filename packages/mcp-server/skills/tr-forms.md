@@ -129,6 +129,16 @@ A webhook needs `url` (https), an explicit `fields` allowlist and a signing
 `get_form_capabilities` lists every action type the site offers, including
 types from installed apps, with the config fields each one takes.
 
+For installed extension actions (Core 0.2.123 / runtime 0.45.0 and later), read the
+app's instructions with `read_app_documentation` and use the exact namespaced
+contribution IDs returned by discovery. Pass `option_sources` for live select/radio
+choices; its `field` and optional hidden `notice_field` must already be declared.
+Set `config.field_map` explicitly on completion actions: only mapped answers go
+to that provider. Verify a fresh date/choice without republishing. Required action
+failure must display a retry, not success; inspect submission `action_status`.
+Use `typeroll:form-success` for consent-aware success integration, never a
+MutationObserver or CSS class. Do not include contact identity in public results.
+
 Email actions send through the site's email provider. Check it with
 `get_email_settings`; if `email` is null, connect one with `set_email_settings`
 (for example `type: "postmark"`, `from`, `config: { server_token }`) and confirm

@@ -80,7 +80,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // mask to keep the stored secret.
   if (body.actions !== undefined) {
     if (formActionsPermission(ctx) !== 'admin') return apiError('Admin permission required to change form actions', 403);
-    const actions = await validateFormActionsInput(body.actions, existing.actions, update.steps ?? existing.steps);
+    const actions = await validateFormActionsInput(body.actions, existing.actions, update.steps ?? existing.steps, ctx);
     if (typeof actions === 'string') return apiError(actions, 400);
     update.actions = actions;
   }
@@ -100,6 +100,13 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (typeof navigation === 'string') return apiError(navigation);
   if (Object.keys(update).length === 0 && Object.keys(navigation).length === 0) return apiError('No writable fields in body');
 
+  if(body.option_sources!==undefined) {
+    if(formActionsPermission(ctx) !== 'admin') return apiError('Admin permission required',403);
+    update.option_sources=body.option_sources;
+  }
+  const { validateExtensionFormConfig } = await import('../../../../../../lib/extensions/form-contract');
+  const contractError=await validateExtensionFormConfig(ctx.orgId,ctx.siteId,{...existing,...update});
+  if(contractError)return apiError(contractError);
   await store.setDoc(
     `${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`,
     applyFormNavigation({ ...existing, ...update }, navigation),

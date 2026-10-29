@@ -158,3 +158,31 @@ hidden identities and a base revision. Unchanged prefilled answers are omitted
 from revision-bound submissions. A hidden honeypot stays outside keyboard and
 assistive-technology interaction. See [Owner answers and review](../../guides/owner-review/)
 for proposal isolation and the separate publication step.
+
+## Live choices and actions supplied by installed apps
+
+Starting with Core 0.2.123 (Extension runtime 0.45.0), an enabled
+app can contribute **Live field options** and completion actions. This is available
+to Cloud and self-hosted installations running the matching Core version.
+
+A Site administrator configures these in the Form editor. Agents first call
+`get_form_capabilities` for the selected Site, then read the enabled app's private
+instructions through `read_app_documentation`. Use the returned action/source IDs
+rather than guessing them. Pass `option_sources` through `create_form` or
+`update_form`; each source targets an existing select or radio field. App actions
+receive only answers named in their `field_map`.
+
+Live choices refresh when the form loads, so adding a choice at the provider does
+not require another site publication. The server checks choices again before
+accepting answers. If a source supplies a notice, bind its version to a declared
+hidden field; the runtime displays the notice next to its choices.
+
+A required app action must succeed before the visitor sees success. If it fails,
+the form retains the answers and offers a retry of that saved submission.
+The Forms inbox/API exposes `action_status` separately from stored-submission
+status. Ordinary optional notification failures do not undo a successful action.
+
+For the provider protocol, safe retries and the `typeroll:form-success` browser
+event, see [Forms integration](../../extensions/backend/#ordinary-forms-with-provider-actions).
+Never infer success by observing a message's CSS class. The success event does not
+itself authorize analytics or advertising tracking; check the visitor's consent.

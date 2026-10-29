@@ -1,3 +1,4 @@
+import PageDraftRecovery from './PageDraftRecovery';
 import CustomCssEditor from './CustomCssEditor';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Page, WorkingCopy } from '@typeroll/shared';
@@ -32,7 +33,7 @@ function listBlocksUsedInHtml(html: string): string[] {
 interface Props {
   siteId: string;
   page: Page;
-  /** Unsaved autosaved edits, loaded server-side. Overlaid on `page` at mount. */
+  /** Unsaved edits, offered for recovery before the editor mounts. */
   workingCopy?: WorkingCopy | null;
   previewUrl: string;
   /** Permalink on the deployed site (null when the site has no live base). */
@@ -46,7 +47,13 @@ interface Props {
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 type Device = 'desktop' | 'tablet' | 'mobile';
 
-export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, aiChatEnabled = false }: Props) {
+export default function HtmlPageEditor(props: Props) {
+  return <PageDraftRecovery siteId={props.siteId} pageId={props.page.id} workingCopy={props.workingCopy}>
+    {copy => <HtmlPageEditorSession {...props} workingCopy={copy} />}
+  </PageDraftRecovery>;
+}
+
+function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, aiChatEnabled = false }: Props) {
   // Edits autosave to a server-side working copy; the canonical page only
   // changes on the deliberate Save (or a status change) in the Publish menu.
   const [draft, setDraft] = useState<Page>({ ...page, ...(workingCopy?.fields ?? {}) } as Page);
@@ -62,6 +69,7 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const canvasId = useEditorCanvasId('html');
   const canvasScrollRef = useRef(0);
+  const [canvasRevision, setCanvasRevision] = useState(0);
   const restoreCanvasScrollRef = useRef<number | null>(null);
   const postCanvas = (command: Record<string, unknown>): void => {
     if (!canvasId) return;
@@ -73,7 +81,9 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
     const ifr = iframeRef.current;
     if (!ifr) return;
     restoreCanvasScrollRef.current = canvasScrollRef.current;
-    ifr.src = ifr.src;
+    // Parent-initiated navigation preserves SameSite authentication without
+    // adding a browser-history entry for every autosave.
+    setCanvasRevision((value) => value + 1);
   }
   const [copied, setCopied] = useState(false);
   const [seoWarnings, setSeoWarnings] = useState<string[]>([]);
@@ -107,6 +117,13 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
   }
 
   const saveTimer = useRef<number | null>(null);
+  const draftWrites = useRef<Promise<unknown>>(Promise.resolve());
+  const discarding = useRef(false);
+  function enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const next = draftWrites.current.catch(() => {}).then(operation);
+    draftWrites.current = next;
+    return next;
+  }
   const initialMount = useRef(true);
   // What we last persisted. Compared to `draft` for the dirty check so the
   // indicator clears properly after a save instead of flipping straight
@@ -140,27 +157,30 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
 
   // Autosave — writes the working copy, never the canonical page.
   async function save() {
-    setStatus('saving');
-    setError(null);
-    try {
-      const res = await fetch(`/api/sites/${siteId}/working-copy/page/${page.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: contentFields(draft) }),
-      });
-      const responseData = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(responseData.error ?? `Autosave failed (${res.status})`);
+    if (discarding.current) return;
+    return enqueueWrite(async () => {
+      setStatus('saving');
+      setError(null);
+      try {
+        const res = await fetch(`/api/sites/${siteId}/working-copy/page/${page.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: contentFields(draft) }),
+        });
+        const responseData = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(responseData.error ?? `Autosave failed (${res.status})`);
+        }
+        lastSaved.current = JSON.stringify(draft);
+        setHasWc(true);
+        setStatus('saved');
+        reloadPreview();
+        window.setTimeout(() => setStatus('idle'), 1500);
+      } catch (e) {
+        setStatus('error');
+        setError(e instanceof Error ? e.message : 'Autosave failed');
       }
-      lastSaved.current = JSON.stringify(draft);
-      setHasWc(true);
-      setStatus('saved');
-      reloadPreview();
-      window.setTimeout(() => setStatus('idle'), 1500);
-    } catch (e) {
-      setStatus('error');
-      setError(e instanceof Error ? e.message : 'Autosave failed');
-    }
+    });
   }
 
   // Deliberate Save — flush the latest draft into the working copy, then
@@ -168,46 +188,59 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
   // hygiene — the same path agents use via the v1 API).
   async function saveAll() {
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
-    setStatus('saving');
-    setError(null);
-    try {
-      const wcUrl = `/api/sites/${siteId}/working-copy/page/${page.id}`;
-      const flush = await fetch(wcUrl, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fields: contentFields(draft) }),
-      });
-      if (!flush.ok) {
-        const j = await flush.json().catch(() => ({})) as { error?: string };
-        throw new Error(j.error ?? `Save failed (${flush.status})`);
+    return enqueueWrite(async () => {
+      setStatus('saving');
+      setError(null);
+      try {
+        const wcUrl = `/api/sites/${siteId}/working-copy/page/${page.id}`;
+        const flush = await fetch(wcUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fields: contentFields(draft) }),
+        });
+        if (!flush.ok) {
+          const j = await flush.json().catch(() => ({})) as { error?: string };
+          throw new Error(j.error ?? `Save failed (${flush.status})`);
+        }
+        const res = await fetch(wcUrl, { method: 'POST' });
+        const responseData = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(responseData.error ?? `Save failed (${res.status})`);
+        }
+        setHasWc(false);
+        // Stamp date_updated AND move the dirty baseline in the same update,
+        // otherwise the stamp re-dirties the draft and the autosave loop
+        // immediately recreates the working copy we just promoted.
+        setDraft((d) => {
+          const updated = { ...d, date_updated: new Date().toISOString() };
+          lastSaved.current = JSON.stringify(updated);
+          return updated;
+        });
+        setSeoWarnings(Array.isArray(responseData.seo_warnings) ? responseData.seo_warnings : []);
+        setStatus('saved');
+        reloadPreview();
+        window.setTimeout(() => setStatus('idle'), 1500);
+      } catch (e) {
+        setStatus('error');
+        setError(e instanceof Error ? e.message : 'Save failed');
       }
-      const res = await fetch(wcUrl, { method: 'POST' });
-      const responseData = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(responseData.error ?? `Save failed (${res.status})`);
-      }
-      setHasWc(false);
-      // Stamp date_updated AND move the dirty baseline in the same update,
-      // otherwise the stamp re-dirties the draft and the autosave loop
-      // immediately recreates the working copy we just promoted.
-      setDraft((d) => {
-        const updated = { ...d, date_updated: new Date().toISOString() };
-        lastSaved.current = JSON.stringify(updated);
-        return updated;
-      });
-      setSeoWarnings(Array.isArray(responseData.seo_warnings) ? responseData.seo_warnings : []);
-      setStatus('saved');
-      reloadPreview();
-      window.setTimeout(() => setStatus('idle'), 1500);
-    } catch (e) {
-      setStatus('error');
-      setError(e instanceof Error ? e.message : 'Save failed');
-    }
+    });
   }
 
   async function discardWc() {
-    await fetch(`/api/sites/${siteId}/working-copy/page/${page.id}`, { method: 'DELETE' });
-    window.location.reload();
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    discarding.current = true;
+    await enqueueWrite(async () => {
+      try {
+        const res = await fetch(`/api/sites/${siteId}/working-copy/page/${page.id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Could not discard the draft. Please try again.');
+        window.location.reload();
+      } catch (e) {
+        discarding.current = false;
+        setStatus('error');
+        setError((e as Error).message);
+      }
+    });
   }
 
   async function changeStatus(next: string) {
@@ -587,6 +620,7 @@ export default function HtmlPageEditor({ siteId, page, workingCopy, previewUrl, 
           </div>
           <div className="editor__preview-frame">
             {canvasId && <iframe
+                key={canvasRevision}
               ref={iframeRef}
               src={previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&canvas=${encodeURIComponent(canvasId)}`}
               sandbox={EDITOR_CANVAS_FRAME_SANDBOX}

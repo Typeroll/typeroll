@@ -130,6 +130,7 @@ test('an admin builds the icon list from its starter and fills it in on a page',
 test('an admin turns a section on a page into a block type and the page keeps its text', async ({ page }, info) => {
   const pageFile = path.join(main, 'pages/turn-into.json');
   const typeFile = path.join(main, 'block_types/offer_banner.json');
+  await page.request.delete('/api/sites/default/working-copy/page/turn-into', { headers: { Origin: 'http://127.0.0.1:4322' } });
   writeJson(pageFile, { id: 'turn-into', title: 'Offers', slug: 'offers', status: 'draft', content_mode: 'blocks', blocks: [
     { id: 'offer', name: 'Offer section', type: 'core/section', data: {}, children: [
       { id: 'offer-h', type: 'core/heading', data: { text: 'Spring offer', level: 'h2' } },
@@ -173,6 +174,7 @@ test('an admin turns a section on a page into a block type and the page keeps it
     await page.screenshot({ path: info.outputPath('turned-into-1440.png') });
 
     await gotoReady(page, '/app/sites/default/pages/turn-into');
+    await page.getByRole('button', { name: 'Continue autosaved draft', exact: true }).click();
     await page.getByRole('button', { name: 'Structure', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Edit Offer section', exact: true })).toBeVisible();
     await expect(preview.locator('[data-block="offer_banner"]').getByText('Half price on all plans.')).toBeVisible();
@@ -186,7 +188,9 @@ test('an admin turns a section on a page into a block type and the page keeps it
     await expect(preview.getByRole('heading', { name: 'Summer offer' })).toBeVisible({ timeout: 15_000 });
     await expect(preview.locator('[data-block="offer_banner"]')).toHaveCount(0);
   } finally {
+    await page.request.delete('/api/sites/default/working-copy/page/turn-into', { headers: { Origin: 'http://127.0.0.1:4322' } });
     rmSync(pageFile, { force: true });
+    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: 'http://127.0.0.1:4322' } });
     rmSync(typeFile, { force: true });
     rmSync(path.join(coreMain, 'block_types/editor_test.json'), { force: true });
   }
@@ -206,6 +210,7 @@ test('an editor opens the builder and edits a placed composed block', async ({ p
   ] });
   try {
     await authenticatePersona(page, 'editor');
+    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: 'http://127.0.0.1:4322' } });
     await page.setViewportSize({ width: 1440, height: 1000 });
     await gotoReady(page, '/app/sites/e2e-core-site/blocks');
     await expect(page.getByRole('button', { name: 'New block type' }).first()).toBeVisible();
@@ -231,6 +236,7 @@ test('an editor opens the builder and edits a placed composed block', async ({ p
     await expect(preview.locator('[data-block="team_note"]')).toHaveText('Office open on Friday', { timeout: 15_000 });
     await page.screenshot({ path: info.outputPath('editor-props-1440.png') });
   } finally {
+    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: 'http://127.0.0.1:4322' } });
     rmSync(typeFile, { force: true });
     rmSync(path.join(coreMain, 'block_types/editor_test.json'), { force: true });
     rmSync(pageFile, { force: true });

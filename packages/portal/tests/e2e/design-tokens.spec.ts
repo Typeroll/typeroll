@@ -33,11 +33,22 @@ for (const width of [375,768,1280]) test(`palette changes propagate without bloc
   await page.screenshot({path:info.outputPath(`tokens-${width}.png`),fullPage:true});
 });
 
+test.afterEach(async ({ page }, info) => {
+  if (!info.title.startsWith('editor stores palette')) return;
+  await page.goto('about:blank');
+  try {
+    const response = await page.request.delete('/api/sites/default/working-copy/page/token-editor', { timeout: 10_000, headers: { Origin: 'http://127.0.0.1:4322' } });
+    expect(response.ok()).toBe(true);
+  } finally {
+    rmSync(path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/token-editor.json'), { force: true });
+  }
+});
+
 test('editor stores palette and scale names and labels fixed values as exceptions', async ({page}, info) => {
   const file = path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/token-editor.json');
+  await page.request.delete('/api/sites/default/working-copy/page/token-editor', { headers: { Origin: 'http://127.0.0.1:4322' } });
   mkdirSync(path.dirname(file),{recursive:true});
   writeFileSync(file, JSON.stringify({id:'token-editor',title:'Token editor',slug:'token-editor',status:'draft',content_mode:'blocks',blocks:[{id:'heading',type:'core/heading',data:{text:'Palette preview',level:'h2'}}]}));
-  try {
     await page.setViewportSize({width:1280,height:1000});
     await gotoReady(page,'/app/sites/default/pages/token-editor');
     await page.getByRole('button',{name:'Structure',exact:true}).click();
@@ -56,6 +67,7 @@ test('editor stores palette and scale names and labels fixed values as exception
     await page.getByLabel('Text color custom colour').fill('surfase');
     await expect(page.getByRole('alert').filter({hasText:'Unknown colour'})).toBeVisible();
     await color.selectOption('primary');
-    await page.screenshot({path:info.outputPath('token-editor.png')});
-  } finally { rmSync(file,{force:true}); }
+    await expect(page.locator('iframe[title="Preview"]')).toHaveAttribute('aria-busy', 'false');
+    await expect(heading).toHaveCSS('font-size', '24px');
+    await page.screenshot({path:info.outputPath('token-editor.png'), animations: 'disabled', timeout: 10_000});
 });

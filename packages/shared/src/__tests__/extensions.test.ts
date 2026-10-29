@@ -463,7 +463,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.55.0',
+      template_capabilities_version: '0.56.0',
       supports_responsive_image_framing: true,
       supports_shared_body_heading_scale: true,
       supports_site_responsive_breakpoints: true,
@@ -477,9 +477,10 @@ describe('extension renderer capabilities', () => {
       supports_extension_site_navigation: true,
       supports_extension_storage: true,
       supports_extension_form_bindings: true,
+      supports_extension_form_actions: true,
       supports_extension_page_handoff: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.44.0',
+      extension_runtime_version: '0.45.0',
       supports_extension_installation_config_api: true,
       supports_indexing_diagnostics: true,
       supports_migration_launch_report: true,
@@ -503,4 +504,19 @@ it('requires authenticated private guides to keep their instructions out of publ
   for (const patch of [{ access: 'hidden' }, { agent_instructions: 'Private product instructions' }]) {
     expect(validateExtensionManifest({ ...quotePilotManifest, documentation: { ...documentation, ...patch } }).valid).toBe(false);
   }
+});
+
+describe('ordinary form contributions',()=>{
+  const candidate=()=>({...manifest(),permissions:[{scope:'forms:actions' as const,reason:'Receive selected completed fields'}],forms:{protocol:1 as const,path:'/forms',actions:[{id:'save-record',label:'Save record',config_fields:[{key:'field_map',label:'Field mapping',type:'json' as const,required:true}]}],option_sources:[{id:'available',label:'Available options'}]}});
+  it('requires an approved API, explicit sensitive permission, valid identifiers and bounded contributions',()=>{
+    expect(validateExtensionManifest(candidate()).errors).toEqual([]);
+    for(const mutate of [
+      (v:Record<string,any>)=>{v.permissions=[];},
+      (v:Record<string,any>)=>{v.forms.path='https://unapproved.example/forms';},
+      (v:Record<string,any>)=>{delete v.api;},
+      (v:Record<string,any>)=>{v.forms.actions[0].config_fields[0].key='constructor';},
+      (v:Record<string,any>)=>{v.forms.actions.push(v.forms.actions[0]);},
+      (v:Record<string,any>)=>{v.forms.actions=Array.from({length:21},(_,i)=>({id:`action-${i}`,label:'Too many'}));},
+    ]){const value=structuredClone(candidate());mutate(value);expect(validateExtensionManifest(value).errors.length).toBeGreaterThan(0);}
+  });
 });

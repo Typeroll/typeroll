@@ -44,6 +44,10 @@
   independently. Run `npm run release:plan` and never create release tags
   manually. Successful main CI runs the ordered Core, MCP, docs, and
   release-manifest workflow in `.github/workflows/publish-mcp.yml`.
+- Merging here publishes Core but does not deploy Typeroll Cloud. Cloud is
+  deployed from the private `Typeroll/typeroll-cloud` repository: pin the
+  released manifest, push to its `staging` branch, then move the same qualified
+  commit to its `main` for production, following its `docs/deployment.md`.
 
 - User-facing copy uses Organization and Site. Never label or address an
   organization as an agency; it may manage only its own websites. Keep

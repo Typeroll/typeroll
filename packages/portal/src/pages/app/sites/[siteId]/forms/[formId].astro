@@ -60,6 +60,7 @@ const hasConnector = Boolean(integrations?.email);
         // ALL actions, not just email. Filtering here used to be harmless
         // because the editor only understood email; now it would silently
         // drop an app-contributed action on the next save.
+        option_sources: permission==='admin' ? form.option_sources??[] : [],
         actions: (permission === 'admin' ? maskFormActionsForAdmin(form.actions ?? []) : []).map((a) => ({
           id: a.id,
           type: a.type,

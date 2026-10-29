@@ -14,5 +14,5 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   if (ctx.permission !== 'admin') return apiError('Insufficient permission (admin required)', 403, ctx);
-  return apiResponse(ctx, await formCapabilities());
+  return apiResponse(ctx, await formCapabilities(ctx.orgId, ctx.siteId));
 };

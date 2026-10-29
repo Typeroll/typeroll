@@ -100,6 +100,7 @@ export async function sendViaPinnedSmtp(cfg: SmtpSettings, msg: Parameters<Email
       subject: msg.subject,
       html: msg.html,
       text: msg.text,
+      ...(msg.calendar?{attachments:[{filename:msg.calendar.filename,content:msg.calendar.content,contentType:'text/calendar; charset=utf-8; method=PUBLISH'}]}:{}),
     });
     return { ok: true, id: info.messageId };
   } catch (error) {

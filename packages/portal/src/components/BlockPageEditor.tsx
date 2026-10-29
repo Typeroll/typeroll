@@ -1,3 +1,5 @@
+import { decodeHTML } from 'entities';
+import PageDraftRecovery from './PageDraftRecovery';
 // Block-mode page editor.
 //
 // Three-column layout matching the HtmlPageEditor pattern:
@@ -59,7 +61,7 @@ interface Props {
   siteId: string;
   page: Page;
   contentType?: ContentType;
-  /** Unsaved autosaved edits, loaded server-side. Overlaid on `page` at mount. */
+  /** Unsaved edits, offered for recovery before the editor mounts. */
   workingCopy?: WorkingCopy | null;
   previewUrl: string;
   /** Permalink on the deployed site (null when the site has no live base). */
@@ -112,7 +114,13 @@ export const ICONS: Record<string, IconCmp> = {
 
 // ─── Top-level component ────────────────────────────────────────────────
 
-export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false }: Props) {
+export default function BlockPageEditor(props: Props) {
+  return <PageDraftRecovery siteId={props.siteId} pageId={props.page.id} workingCopy={props.workingCopy}>
+    {copy => <BlockPageEditorSession {...props} workingCopy={copy} />}
+  </PageDraftRecovery>;
+}
+
+function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false }: Props) {
   const [globalBlocks, setGlobalBlocks] = useState(initialGlobalBlocks);
   const [blockTemplates, setBlockTemplates] = useState(initialTemplates);
   // The editor edits the working-copy view of the page: canonical doc with
@@ -158,9 +166,12 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   const bumpHist = () => setHistTick((t) => t + 1);
   const [reviewOpen, setReviewOpen] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const editorFocusRef = useRef<HTMLDivElement>(null);
+  const [canvasLoading, setCanvasLoading] = useState(true);
   const canvasId = useEditorCanvasId('canvas');
   const canvasGeometryRef = useRef<CanvasGeometry | null>(null);
   const canvasScrollRef = useRef(0);
+  const [canvasRevision, setCanvasRevision] = useState(0);
   const restoreCanvasScrollRef = useRef<number | null>(null);
   const extensionPreviewContextRef = useRef<Record<string, Record<string, string>>>({});
   function postCanvasCommand(command: Record<string, unknown>): void {
@@ -177,7 +188,13 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     if (!ifr) return;
     restoreCanvasScrollRef.current = canvasScrollRef.current;
     canvasGeometryRef.current = null;
-    ifr.src = ifr.src;
+    setCanvasLoading(true);
+    // Keep shortcuts in the parent while the focused frame is navigating.
+    if (document.activeElement === ifr) editorFocusRef.current?.focus({ preventScroll: true });
+    // A fresh frame keeps the navigation initiated by the authenticated parent.
+    // Reloading inside an opaque sandbox can omit SameSite session cookies;
+    // assigning src to the existing frame adds unwanted browser Back entries.
+    setCanvasRevision((value) => value + 1);
   }
   // Center-panel size, tracked so a fixed-width device preset wider than the
   // panel scales DOWN to fit (instead of being capped to the panel width,
@@ -251,6 +268,15 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     reloadPreview();
   }
 
+  // Serialize block mutations and history writes. A quick Cmd-Z must wait for
+  // the preceding autosave, not disappear or race its response.
+  const editorWrites = useRef<Promise<unknown>>(Promise.resolve());
+  function enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const next = editorWrites.current.catch(() => {}).then(operation);
+    editorWrites.current = next;
+    return next;
+  }
+
   async function callMutation(args: {
     method: 'POST' | 'PATCH' | 'PUT' | 'DELETE';
     body?: Record<string, unknown>;
@@ -258,38 +284,40 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     /** History coalescing signature — same sig within the window = one undo step. */
     histSig?: string;
   }): Promise<{ blocks?: Block[]; added_id?: string } | null> {
-    setStatus('saving');
-    setError(null);
-    // Block mutations always target the working copy server-side (buffer
-    // model) — the saved page only changes on the deliberate Save.
-    const url = new URL(`${resourceUrl}/blocks`, window.location.origin);
-    if (args.query) for (const [k, v] of Object.entries(args.query)) url.searchParams.set(k, v);
-    try {
-      const res = await fetch(url.toString(), {
-        method: args.method,
-        headers: { 'content-type': 'application/json' },
-        body: args.body ? JSON.stringify(args.body) : undefined,
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(j.error ?? `${args.method} failed (${res.status})`);
+    return enqueueWrite(async () => {
+      setStatus('saving');
+      setError(null);
+      // Block mutations always target the working copy server-side (buffer
+      // model) — the saved page only changes on the deliberate Save.
+      const url = new URL(`${resourceUrl}/blocks`, window.location.origin);
+      if (args.query) for (const [k, v] of Object.entries(args.query)) url.searchParams.set(k, v);
+      try {
+        const res = await fetch(url.toString(), {
+          method: args.method,
+          headers: { 'content-type': 'application/json' },
+          body: args.body ? JSON.stringify(args.body) : undefined,
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(j.error ?? `${args.method} failed (${res.status})`);
+        }
+        const result = await res.json() as { blocks?: Block[]; added_id?: string };
+        if (result.blocks) {
+          setDraft((d) => ({ ...d, blocks: result.blocks }));
+          setHasWc(true);
+          historyRef.current?.record(result.blocks, args.histSig);
+          bumpHist();
+          reloadPreview();
+        }
+        setStatus('saved');
+        window.setTimeout(() => setStatus('idle'), 1200);
+        return result;
+      } catch (e) {
+        setError((e as Error).message);
+        setStatus('error');
+        return null;
       }
-      const result = await res.json() as { blocks?: Block[]; added_id?: string };
-      if (result.blocks) {
-        setDraft((d) => ({ ...d, blocks: result.blocks }));
-        setHasWc(true);
-        historyRef.current?.record(result.blocks, args.histSig);
-        bumpHist();
-        reloadPreview();
-      }
-      setStatus('saved');
-      window.setTimeout(() => setStatus('idle'), 1200);
-      return result;
-    } catch (e) {
-      setError((e as Error).message);
-      setStatus('error');
-      return null;
-    }
+    });
   }
 
   async function handleAddBlock(
@@ -337,15 +365,17 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   async function callReusable(body: Record<string, unknown>): Promise<{ blocks?: Block[]; added_ids?: string[]; reference_id?: string; global_block?: GlobalBlockSummary }> {
     await blockWrite.current.catch(() => {});
     await fieldFlush.current?.();
-    const res = await fetch(`${resourceUrl}/blocks/reusable`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const result = await res.json().catch(() => ({})) as { blocks?: Block[]; added_ids?: string[]; reference_id?: string; global_block?: GlobalBlockSummary; error?: string };
-    if (!res.ok || !result.blocks) throw new Error(result.error ?? `Request failed (${res.status})`);
-    setDraft((d) => ({ ...d, blocks: result.blocks }));
-    setHasWc(true);
-    historyRef.current?.record(result.blocks, `reusable:${String(body.action)}:${Date.now()}`);
-    bumpHist();
-    reloadPreview();
-    return result;
+    return enqueueWrite(async () => {
+      const res = await fetch(`${resourceUrl}/blocks/reusable`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+      const result = await res.json().catch(() => ({})) as { blocks?: Block[]; added_ids?: string[]; reference_id?: string; global_block?: GlobalBlockSummary; error?: string };
+      if (!res.ok || !result.blocks) throw new Error(result.error ?? `Request failed (${res.status})`);
+      setDraft((d) => ({ ...d, blocks: result.blocks }));
+      setHasWc(true);
+      historyRef.current?.record(result.blocks, `reusable:${String(body.action)}:${Date.now()}`);
+      bumpHist();
+      reloadPreview();
+      return result;
+    });
   }
 
   const insertTarget = (): { parent_id: string | null; position?: number } =>
@@ -426,25 +456,27 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
 
   /** Replace the whole block tree in the working copy (one undo step). */
   async function writeTree(blocks: Block[], sig: string): Promise<void> {
-    setStatus('saving');
-    setError(null);
-    const res = await fetch(workingCopyUrl, {
-      method: 'PUT', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ fields: { blocks } }),
+    return enqueueWrite(async () => {
+      setStatus('saving');
+      setError(null);
+      const res = await fetch(workingCopyUrl, {
+        method: 'PUT', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ fields: { blocks } }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({})) as { error?: string };
+        setStatus('error');
+        setError(j.error ?? `Could not save the page draft (${res.status})`);
+        throw new Error(j.error ?? `Could not save the page draft (${res.status})`);
+      }
+      setDraft((d) => ({ ...d, blocks }));
+      setHasWc(true);
+      historyRef.current?.record(blocks, `${sig}:${Date.now()}`);
+      bumpHist();
+      setStatus('saved');
+      window.setTimeout(() => setStatus('idle'), 1200);
+      reloadPreview();
     });
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({})) as { error?: string };
-      setStatus('error');
-      setError(j.error ?? `Could not save the page draft (${res.status})`);
-      throw new Error(j.error ?? `Could not save the page draft (${res.status})`);
-    }
-    setDraft((d) => ({ ...d, blocks }));
-    setHasWc(true);
-    historyRef.current?.record(blocks, `${sig}:${Date.now()}`);
-    bumpHist();
-    setStatus('saved');
-    window.setTimeout(() => setStatus('idle'), 1200);
-    reloadPreview();
   }
 
   function handleUpdateOverrides(blockId: string, overrides: Block['style_overrides']): Promise<void> {
@@ -473,34 +505,44 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   // uses). On network failure the pointer is rolled back so the stack
   // never drifts from what's actually on the server.
   async function applyHistory(direction: 'undo' | 'redo'): Promise<void> {
-    const h = historyRef.current;
-    if (!h || status === 'saving') return;
-    const snap = direction === 'undo' ? h.undo() : h.redo();
-    if (!snap) return;
-    setStatus('saving');
-    setError(null);
     try {
-      const res = await fetch(workingCopyUrl, {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ fields: { blocks: snap } }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(j.error ?? `${direction} failed (${res.status})`);
-      }
-      setDraft((d) => ({ ...d, blocks: snap }));
-      setHasWc(true);
-      if (selectedIdRef.current && !findBlock(snap, selectedIdRef.current)) setSelectedId(null);
-      setStatus('saved');
-      window.setTimeout(() => setStatus('idle'), 1200);
-      reloadPreview();
+      await fieldFlush.current?.();
+      await blockWrite.current;
     } catch (e) {
-      if (direction === 'undo') h.revertUndo(); else h.revertRedo();
       setError((e as Error).message);
       setStatus('error');
+      return;
     }
-    bumpHist();
+    return enqueueWrite(async () => {
+      const h = historyRef.current;
+      if (!h) return;
+      const snap = direction === 'undo' ? h.undo() : h.redo();
+      if (!snap) return;
+      setStatus('saving');
+      setError(null);
+      try {
+        const res = await fetch(workingCopyUrl, {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ fields: { blocks: snap } }),
+        });
+        if (!res.ok) {
+          const j = await res.json().catch(() => ({})) as { error?: string };
+          throw new Error(j.error ?? `${direction} failed (${res.status})`);
+        }
+        setDraft((d) => ({ ...d, blocks: snap }));
+        setHasWc(true);
+        if (selectedIdRef.current && !findBlock(snap, selectedIdRef.current)) setSelectedId(null);
+        setStatus('saved');
+        window.setTimeout(() => setStatus('idle'), 1200);
+        reloadPreview();
+      } catch (e) {
+        if (direction === 'undo') h.revertUndo(); else h.revertRedo();
+        setError((e as Error).message);
+        setStatus('error');
+      }
+      bumpHist();
+    });
   }
   // Keyboard shortcuts. Installed once; handlers go through a ref so the
   // stable listener always sees the latest closures. Editable targets are
@@ -605,7 +647,9 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     const receive = (event: MessageEvent) => {
       if (!isEditorCanvasMessage(event, ifr, canvasId)) return;
       const data = event.data;
-      if (data.type === 'geometry' && Array.isArray(data.blocks) && data.body && typeof data.body === 'object') {
+      if (data.type === 'history' && (data.direction === 'undo' || data.direction === 'redo')) {
+        void shortcutsRef.current.history(data.direction);
+      } else if (data.type === 'geometry' && Array.isArray(data.blocks) && data.body && typeof data.body === 'object') {
         canvasGeometryRef.current = { blocks: data.blocks.slice(0, 5000), body: data.body } as CanvasGeometry;
       } else if (data.type === 'select') {
         selectBlock(firstExisting(data.ancestor_ids));
@@ -620,6 +664,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
       } else if (data.type === 'scroll' && typeof data.scroll_y === 'number' && Number.isFinite(data.scroll_y)) {
         canvasScrollRef.current = data.scroll_y;
       } else if (data.type === 'ready') {
+        setCanvasLoading(false);
         postCanvasCommand({ action: 'highlight', selected_id: selectedIdRef.current, hover_id: hoverIdRef.current });
         const labels: Record<string, string> = {};
         forEachBlock(draftRef.current.blocks ?? [], (block) => {
@@ -637,7 +682,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     };
     window.addEventListener('message', receive);
     return () => window.removeEventListener('message', receive);
-  }, [canvasId]);
+  }, [canvasId, canvasRevision]);
 
   // Keep the canvas outline in sync when selection changes from the tree.
   useEffect(() => {
@@ -695,6 +740,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     if (metaSaveTimer.current) window.clearTimeout(metaSaveTimer.current);
     await fieldFlush.current?.();
     await blockWrite.current;
+    await editorWrites.current;
     await flushMetaToWc();
   }
 
@@ -737,10 +783,17 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
   }
 
   async function discardWc(): Promise<void> {
-    await fetch(workingCopyUrl, { method: 'DELETE' });
-    // Reload so the editor re-mounts from canonical state — simplest way to
-    // guarantee no stale working-copy fields linger in client state.
-    window.location.reload();
+    try {
+      await flushPendingDraft();
+      await enqueueWrite(async () => {
+        const res = await fetch(workingCopyUrl, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Could not discard the draft. Please try again.');
+        window.location.reload();
+      });
+    } catch (e) {
+      setError((e as Error).message);
+      setStatus('error');
+    }
   }
 
   async function changeSchedule(field: 'publish_at' | 'unpublish_at', iso: string | null): Promise<void> {
@@ -831,7 +884,7 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
     <SiteStylesContext.Provider value={siteStyles ?? []}>
     <RenderVersionContext.Provider value={renderVersion ?? null}>
     <GlobalBlocksContext.Provider value={{ siteId, blocks: globalBlocks }}>
-    <div className="block-editor" data-mobile-pane={mobilePane}>
+    <div ref={editorFocusRef} tabIndex={-1} className="block-editor" data-mobile-pane={mobilePane}>
       <header className="block-editor__topbar">
         <div className="block-editor__identity">
           <a href={`/app/sites/${siteId}/pages`} style={exitBtn} className="block-editor__exit" title="Exit editor">
@@ -984,11 +1037,13 @@ export default function BlockPageEditor({ siteId, page, workingCopy, previewUrl,
               boxShadow: '0 0 0 1px #2a2a30', borderRadius: 8, overflow: 'hidden', background: '#fff',
             }}>
               {canvasId && <iframe
+                key={canvasRevision}
                 ref={iframeRef}
                 src={previewUrl + (previewUrl.includes('?') ? '&' : '?') + `embed=1&interactive=1&canvas=${encodeURIComponent(canvasId)}`}
                 title="Preview"
                 sandbox={EDITOR_CANVAS_FRAME_SANDBOX}
-                style={{ width: '100%', height: '100%', border: 'none' }}
+                aria-busy={canvasLoading}
+                style={{ width: '100%', height: '100%', border: 'none', pointerEvents: canvasLoading ? 'none' : undefined }}
               />}
             </div>
           </div>
@@ -1934,7 +1989,8 @@ function fieldText(v: unknown): string {
 }
 
 function stripHtml(s: string): string {
-  return s.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ').trim();
+  // Strip markup before decoding so escaped literal markup stays visible text.
+  return decodeHTML(s.replace(/<!--[\s\S]*?-->|<\/?[a-z][^>]*>/gi, ' ')).replace(/\s+/g, ' ').trim();
 }
 
 function fileName(url: string): string {
@@ -1949,7 +2005,7 @@ function fileName(url: string): string {
  * filename; text-bearing blocks show their text. Returns '' for content-less
  * blocks (sections, grids, columns), where the caller falls back to the label.
  */
-function blockSummary(block: Block): string {
+export function blockSummary(block: Block): string {
   const data = (block.data ?? {}) as Record<string, unknown>;
 
   // Image-ish fields → filename.
@@ -1967,8 +2023,7 @@ function blockSummary(block: Block): string {
   ]) {
     let s = fieldText(data[k]);
     if (!s) continue;
-    if (/<[a-z!/][\s\S]*>/i.test(s)) s = stripHtml(s);
-    s = s.trim();
+    s = stripHtml(s);
     if (s) return s.length > 80 ? `${s.slice(0, 80)}…` : s;
   }
   return '';
