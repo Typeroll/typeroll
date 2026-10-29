@@ -371,7 +371,7 @@ export async function renderPreview(
       const pathname = applyTrailingSlash('/' + pagePathSegment(page), settings.trailing_slash ?? 'always');
       const canonical = page.canonical_url || new URL(pathname, seoBase).href;
       const social = socialMetadata(page, settings, contentType, new URL(pathname, seoBase).href);
-      const tags = Object.entries({ 'og:title': social.title, 'og:description': social.description, 'og:locale': social.locale,
+      const tags = Object.entries({ 'og:type': social.type, 'og:title': social.title, 'og:description': social.description, 'og:locale': social.locale,
         'og:url': canonical, ...(social.image ? { 'og:image': social.image, 'og:image:alt': social.imageAlt } : {}) })
         .map(([property, value]) => `<meta property="${property}" content="${escapeAttr(value)}" />`).join('');
       const twitter = Object.entries({ 'twitter:title': social.title, 'twitter:description': social.description,

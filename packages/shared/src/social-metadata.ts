@@ -20,6 +20,7 @@ export function socialMetadata(page: Page, settings: SiteSettings, type?: Conten
   }
   const bodyAlt = page.html_content?.match(/<img\b[^>]*\balt=["']([^"']*)["']/i)?.[1] || '';
   return {
+    type: page.kind === 'article' || ['Article', 'BlogPosting', 'NewsArticle'].includes(page.schema_type || type?.schema_type || '') ? 'article' : 'website',
     title: text(page.og_title) || documentTitle,
     description: text(page.og_description) || text(page.seo_description) || settings.default_meta_description || settings.tagline || '',
     image,
