@@ -1361,8 +1361,9 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       // deploy's `_redirects` shadows the page on Cloudflare Pages.
       const { isLivePageStatus, retireRedirectsShadowingUrl } = await import('./redirect-hygiene');
       if (isLivePageStatus(status)) {
-        const { pageUrlFromDoc } = await import('./page-paths');
-        await retireRedirectsShadowingUrl(ctx.orgId, ctx.siteId, ctx.versionId, pageUrlFromDoc(existing));
+        const { pageAddress } = await import('./page-fields');
+        const url = await pageAddress(ctx, existing);
+        if (url) await retireRedirectsShadowingUrl(ctx.orgId, ctx.siteId, ctx.versionId, url);
       }
       return {
         result: { ok: true },

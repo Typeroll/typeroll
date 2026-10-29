@@ -76,6 +76,39 @@ describe('checkRedirectWrite', () => {
     expect(res.ok).toBe(true);
   });
 
+  it('places content-type pages at their routed URL, not at /slug', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.contentType(ORG, SITE, 'umzugstipps', MAIN_VERSION_ID), {
+      id: 'umzugstipps', name: 'umzugstipps', label_singular: 'Tipp', label_plural: 'Tipps',
+      fields: [], route_template: '/umzugstipps/{slug}', created_at: new Date().toISOString(),
+    });
+    await getStore().setDoc(paths.contentType(ORG, SITE, 'faq', MAIN_VERSION_ID), {
+      id: 'faq', name: 'faq', label_singular: 'FAQ', label_plural: 'FAQs',
+      fields: [], route_template: '', created_at: new Date().toISOString(),
+    });
+    await seedPage('umzug-nach-wien', { slug: 'umzug-nach-wien', content_type: 'umzugstipps' });
+    await seedPage('kosten', { slug: 'kosten', content_type: 'faq' });
+
+    const moved = await checkRedirectWrite({
+      orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID,
+      from_path: '/umzug-nach-wien/', to_path: '/umzugstipps/umzug-nach-wien/',
+    });
+    expect(moved.ok).toBe(true);
+    const dataOnly = await checkRedirectWrite({
+      orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID,
+      from_path: '/kosten/', to_path: '/preise/',
+    });
+    expect(dataOnly.ok).toBe(true);
+
+    const hidden = await checkRedirectWrite({
+      orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID,
+      from_path: '/umzugstipps/umzug-nach-wien/', to_path: '/wien/',
+    });
+    expect(hidden.ok).toBe(false);
+    if (hidden.ok) return;
+    expect(hidden.error).toContain('/umzugstipps/umzug-nach-wien');
+  });
+
   it('rejects a malformed pattern before it can be silently dropped by Cloudflare', async () => {
     const res = await checkRedirectWrite({
       orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID,

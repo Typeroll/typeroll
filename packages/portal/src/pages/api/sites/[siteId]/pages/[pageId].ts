@@ -1,5 +1,5 @@
 import { customCssWriteError } from '../../../../../lib/custom-css-write';
-import { pageContentType, validatePagePresentation } from '../../../../../lib/page-fields';
+import { pageAddress, pageContentType, validatePagePresentation } from '../../../../../lib/page-fields';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
 import { vstore } from '../../../../../lib/version-store';
@@ -7,7 +7,6 @@ import { snapshotRevision } from '../../../../../lib/revisions';
 import { getStore } from '../../../../../lib/datastore';
 import { buildMediaLookup, transformBodyForSeo, lintBodyForSeo } from '../../../../../lib/seo-transform';
 import { sanitizeBody } from '../../../../../lib/sanitize';
-import { pageUrlFromDoc } from '../../../../../lib/page-paths';
 import {
   isLivePageStatus,
   removeAutoRedirectsTargeting,
@@ -126,7 +125,8 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   if ('slug' in update || 'status' in update) {
     const fresh = await vstore.page(owner_org_id, site.id, versionId, pageId);
     if (fresh && isLivePageStatus(fresh.status)) {
-      await retireRedirectsShadowingUrl(owner_org_id, site.id, versionId, pageUrlFromDoc(fresh));
+      const url = await pageAddress({ orgId: owner_org_id, siteId: site.id, versionId }, fresh);
+      if (url) await retireRedirectsShadowingUrl(owner_org_id, site.id, versionId, url);
     }
   }
   return json({ ok: true, seo_warnings: warnings });
@@ -158,7 +158,8 @@ export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
   // Auto-generated redirects pointing at the deleted page's URL would 301
   // visitors into a 404 — drop them. Manual redirects are kept on purpose.
   if (existing) {
-    await removeAutoRedirectsTargeting(owner_org_id, site.id, versionId, pageUrlFromDoc(existing));
+    const url = await pageAddress({ orgId: owner_org_id, siteId: site.id, versionId }, existing);
+    if (url) await removeAutoRedirectsTargeting(owner_org_id, site.id, versionId, url);
   }
   return json({ ok: true });
 };
