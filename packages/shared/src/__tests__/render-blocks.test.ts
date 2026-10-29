@@ -1125,3 +1125,18 @@ describe('schema defaults for imported and repeated blocks', () => {
     expect(html).toContain('data-exc="false"');
   });
 });
+
+
+describe('linked image attributes', () => {
+  const render = (data: Record<string, unknown>) => renderBlock({ id: 'image', type: 'core/image', data: { src: '/image.png', alt: 'Example', ...data } }, { registry });
+  it('preserves affiliate relationships and protects new-window links', () => {
+    const html = render({ link: 'https://example.test/', link_rel: 'nofollow sponsored', new_tab: true });
+    expect(html).toContain('target="_blank"');
+    expect(html).toContain('rel="nofollow sponsored noopener noreferrer"');
+  });
+  it('keeps ordinary and unlinked images unchanged and rejects attribute injection', () => {
+    expect(render({ link: '/example/' })).not.toContain('target=');
+    expect(render({ link_rel: 'sponsored', new_tab: true })).not.toContain('<a ');
+    expect(render({ link: '/example/', link_rel: 'nofollow \"onclick=alert(1)' })).toContain('rel="nofollow"');
+  });
+});
