@@ -58,23 +58,27 @@ export async function checkRedirectWrite(args: {
   from_path: string;
   to_path: string;
 }): Promise<RedirectWriteCheck> {
-  const syntax = validateRedirectPattern(args.from_path, args.to_path);
-  if (!syntax.ok) {
-    return { ok: false, error: `Invalid redirect: ${syntax.error}` };
-  }
-  if (!args.to_path.startsWith('/') && !/^https?:\/\//.test(args.to_path)) {
-    return { ok: false, error: 'Invalid redirect: to_path must be a site-relative path ("/x") or an absolute http(s) URL' };
-  }
+  const syntax = checkRedirectSyntax(args.from_path, args.to_path);
+  if (!syntax.ok) return syntax;
+  const context = await loadRedirectWriteContext(args.orgId, args.siteId, args.versionId);
+  const shadow = checkRedirectShadow(context, args.from_path, args.to_path);
+  if (!shadow.ok) return shadow;
+  const warnings = redirectChainWarnings([...context.existing.filter(rule => rule.from_path !== args.from_path), { id:'candidate', from_path:args.from_path, to_path:args.to_path, status_code:301 }]);
+  if (createsLoop(warnings, args.from_path)) return { ok: false, error: 'Invalid redirect: this rule creates a redirect loop.' };
+  return { ok: true, ...(warnings.length ? { warnings } : {}) };
+}
 
+export type RedirectWriteContext = { liveUrls: string[]; existing: Redirect[] };
+
+/** Read the pages, content types and rules a redirect write is checked against. */
+export async function loadRedirectWriteContext(orgId: string, siteId: string, versionId: string): Promise<RedirectWriteContext> {
   // Resolve URLs exactly as the renderer does: the content type's route
   // template places a page, and types without a route have no public URL.
-  const [pages, contentTypes] = await Promise.all([
-    vstore.pages(args.orgId, args.siteId, args.versionId),
-    vstore.contentTypes(args.orgId, args.siteId, args.versionId),
+  const [pages, contentTypes, existing] = await Promise.all([
+    vstore.pages(orgId, siteId, versionId),
+    vstore.contentTypes(orgId, siteId, versionId),
+    vstore.redirects(orgId, siteId, versionId),
   ]);
-  const normalize = (value: string) => value.replace(/\/+$/, '').toLowerCase() || '/';
-  if (!isRedirectPattern(args.from_path) && args.to_path.startsWith('/') && normalize(args.from_path) === normalize(args.to_path))
-    return { ok: false, error: 'Invalid redirect: source and destination are the same normalized path. Use the site trailing-slash policy instead.' };
   const types = new Map<string, ContentType>([[DEFAULT_CONTENT_TYPE.id, DEFAULT_CONTENT_TYPE], ...contentTypes.map((type) => [type.id, type] as [string, ContentType])]);
   const liveUrls = pages
     .filter((p: Page) => isLivePageStatus(p.status))
@@ -83,23 +87,70 @@ export async function checkRedirectWrite(args: {
       const url = type ? contentPagePath(p, type) : null;
       return url ? [url] : [];
     });
-  const shadowed = pagesShadowedByRedirect(args.from_path, args.to_path, liveUrls);
-  if (shadowed.length) {
-    const list = shadowed.slice(0, 8).join(', ') + (shadowed.length > 8 ? `, +${shadowed.length - 8} more` : '');
-    return {
-      ok: false,
-      error:
-        `This rule would hide ${shadowed.length} live page(s): ${list}. ` +
-        'Cloudflare Pages applies redirects before serving files, so the page would become unreachable. ' +
-        (isRedirectPattern(args.from_path)
-          ? 'Narrow the pattern (a deeper prefix), or unpublish the page(s) if the redirect is what you want.'
-          : 'Delete or unpublish the page first if the redirect is what you want.'),
-    };
+  return { liveUrls, existing };
+}
+
+function checkRedirectSyntax(from_path: string, to_path: string): RedirectWriteCheck {
+  const syntax = validateRedirectPattern(from_path, to_path);
+  if (!syntax.ok) {
+    return { ok: false, error: `Invalid redirect: ${syntax.error}` };
   }
-  const existing = await vstore.redirects(args.orgId, args.siteId, args.versionId);
-  const warnings = redirectChainWarnings([...existing.filter(rule => rule.from_path !== args.from_path), { id:'candidate', from_path:args.from_path, to_path:args.to_path, status_code:301 }]);
-  if (warnings.some(warning => warning.code === 'redirect_loop' && warning.via.includes(args.from_path))) return { ok: false, error: 'Invalid redirect: this rule creates a redirect loop.' };
-  return { ok: true, ...(warnings.length ? { warnings } : {}) };
+  if (!to_path.startsWith('/') && !/^https?:\/\//.test(to_path)) {
+    return { ok: false, error: 'Invalid redirect: to_path must be a site-relative path ("/x") or an absolute http(s) URL' };
+  }
+  const normalize = (value: string) => value.replace(/\/+$/, '').toLowerCase() || '/';
+  if (!isRedirectPattern(from_path) && to_path.startsWith('/') && normalize(from_path) === normalize(to_path))
+    return { ok: false, error: 'Invalid redirect: source and destination are the same normalized path. Use the site trailing-slash policy instead.' };
+  return { ok: true };
+}
+
+function checkRedirectShadow(context: RedirectWriteContext, from_path: string, to_path: string): RedirectWriteCheck {
+  const shadowed = pagesShadowedByRedirect(from_path, to_path, context.liveUrls);
+  if (!shadowed.length) return { ok: true };
+  const list = shadowed.slice(0, 8).join(', ') + (shadowed.length > 8 ? `, +${shadowed.length - 8} more` : '');
+  return {
+    ok: false,
+    error:
+      `This rule would hide ${shadowed.length} live page(s): ${list}. ` +
+      'Cloudflare Pages applies redirects before serving files, so the page would become unreachable. ' +
+      (isRedirectPattern(from_path)
+        ? 'Narrow the pattern (a deeper prefix), or unpublish the page(s) if the redirect is what you want.'
+        : 'Delete or unpublish the page first if the redirect is what you want.'),
+  };
+}
+
+const createsLoop = (warnings: RedirectWarning[], fromPath: string) =>
+  warnings.some(warning => warning.code === 'redirect_loop' && warning.via.includes(fromPath));
+
+export type RedirectBatchRule = { from_path: string; to_path: string; status_code: 301 | 302 };
+export type RedirectBatchResult = {
+  from_path: string;
+  id: string;
+  action: 'create' | 'update' | 'unchanged';
+  ok: boolean;
+  error?: string;
+};
+
+/**
+ * Check a set of upserts as one change: each rule is validated against the
+ * site's pages and against every other rule as it will be after the batch,
+ * so a loop formed inside the batch is caught before anything is written.
+ */
+export function checkRedirectBatch(context: RedirectWriteContext, rules: RedirectBatchRule[]): { results: RedirectBatchResult[]; warnings: RedirectWarning[] } {
+  const byFrom = new Map(context.existing.map(rule => [rule.from_path, rule]));
+  const merged = new Map(byFrom);
+  for (const rule of rules) merged.set(rule.from_path, { ...(byFrom.get(rule.from_path) ?? {}), id: redirectDocId(rule.from_path), ...rule });
+  const warnings = redirectChainWarnings([...merged.values()]);
+  const results = rules.map<RedirectBatchResult>(rule => {
+    const current = byFrom.get(rule.from_path);
+    const id = current?.id ?? redirectDocId(rule.from_path);
+    const action = !current ? 'create' : current.to_path === rule.to_path && current.status_code === rule.status_code ? 'unchanged' : 'update';
+    const check = [checkRedirectSyntax(rule.from_path, rule.to_path), checkRedirectShadow(context, rule.from_path, rule.to_path)].find(result => !result.ok);
+    if (check && !check.ok) return { from_path: rule.from_path, id, action, ok: false, error: check.error };
+    if (createsLoop(warnings, rule.from_path)) return { from_path: rule.from_path, id, action, ok: false, error: 'Invalid redirect: this rule creates a redirect loop.' };
+    return { from_path: rule.from_path, id, action, ok: true };
+  });
+  return { results, warnings };
 }
 
 /** Check literal entry paths through the same ordered rules used at publication. */

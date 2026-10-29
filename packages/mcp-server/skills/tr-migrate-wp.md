@@ -281,6 +281,12 @@ Rules:
   coverage reports them as redirected.
 - Rules are emitted most-specific-first, so a narrow rule always beats a broad
   one — you can safely have `/blogg/recept/*` alongside `/blogg/*`.
+- **Change rules in place, many at once.** To retarget existing rules, use
+  `upsert_redirects` (up to 1000 per call, `dry_run=true` first) or
+  `update_redirect`; never delete and recreate, which leaves the address
+  without a redirect. Old file addresses (`/wp-content/uploads/...`) should
+  point to the media record's `published_url` after the first publication,
+  not to an address you construct.
 
 Then verify against reality before anything is cut over:
 

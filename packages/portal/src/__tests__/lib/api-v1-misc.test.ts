@@ -300,6 +300,89 @@ describe('redirects endpoints', () => {
     );
     expect(del.status).toBe(200);
   });
+
+  const index = () => import('../../pages/api/v1/sites/[siteId]/redirects/index');
+  const single = () => import('../../pages/api/v1/sites/[siteId]/redirects/[redirectId]');
+  const url = `http://localhost/api/v1/sites/${SITE}/redirects`;
+  async function rules(token: string) {
+    const res = await callRoute(index(), 'GET', url, { siteId: SITE }, { headers: bearer(token) });
+    return (await res.json() as { redirects: Array<{ id: string; from_path: string; to_path: string; status_code: number }> }).redirects;
+  }
+
+  it('POST with an existing from_path updates that rule in place', async () => {
+    const { token } = await setup();
+    await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: '/old', to_path: '/a' } });
+    const second = await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: '/old', to_path: '/b', status_code: 302 } });
+    expect(second.status).toBe(201);
+    expect(await rules(token)).toEqual([expect.objectContaining({ from_path: '/old', to_path: '/b', status_code: 302 })]);
+  });
+
+  it('PATCH changes target and status but keeps id and source path', async () => {
+    const { token } = await setup();
+    const created = await (await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: '/wp-content/uploads/a.jpg', to_path: '/media/old-a.jpg' } })).json() as { redirect: { id: string } };
+    const id = created.redirect.id;
+    const patch = await callRoute(single(), 'PATCH', `${url}/${id}`, { siteId: SITE, redirectId: id }, { headers: bearer(token), body: { to_path: '/media/0123456789abcdef-a.jpg' } });
+    expect(patch.status).toBe(200);
+    expect(await rules(token)).toEqual([{ id, from_path: '/wp-content/uploads/a.jpg', to_path: '/media/0123456789abcdef-a.jpg', status_code: 301, auto_generated: false }]);
+
+    const moved = await callRoute(single(), 'PATCH', `${url}/${id}`, { siteId: SITE, redirectId: id }, { headers: bearer(token), body: { from_path: '/elsewhere' } });
+    expect(moved.status).toBe(400);
+    const badStatus = await callRoute(single(), 'PATCH', `${url}/${id}`, { siteId: SITE, redirectId: id }, { headers: bearer(token), body: { status_code: 308 } });
+    expect(badStatus.status).toBe(400);
+    const missing = await callRoute(single(), 'PATCH', `${url}/nope`, { siteId: SITE, redirectId: 'nope' }, { headers: bearer(token), body: { to_path: '/x' } });
+    expect(missing.status).toBe(404);
+    const loop = await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: '/media/0123456789abcdef-a.jpg', to_path: '/c' } });
+    expect(loop.status).toBe(201);
+    const closesLoop = await callRoute(single(), 'PATCH', `${url}/${id}`, { siteId: SITE, redirectId: id }, { headers: bearer(token), body: { to_path: '/wp-content/uploads/a.jpg' } });
+    expect(closesLoop.status).toBe(400);
+  });
+
+  it('PUT dry run reports per-rule actions and writes nothing', async () => {
+    const { token } = await setup();
+    await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: '/a', to_path: '/x' } });
+    await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: '/b', to_path: '/y' } });
+    const before = await rules(token);
+    const res = await callRoute(index(), 'PUT', url, { siteId: SITE }, { headers: bearer(token), body: { dry_run: true, redirects: [
+      { from_path: '/a', to_path: '/x2' }, { from_path: '/b', to_path: '/y' }, { from_path: '/c', to_path: '/z' },
+    ] } });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { applied: boolean; summary: Record<string, number>; results: Array<{ action: string; ok: boolean }> };
+    expect(body.applied).toBe(false);
+    expect(body.summary).toEqual({ create: 1, update: 1, unchanged: 1, failed: 0 });
+    expect(body.results.map((result) => result.action)).toEqual(['update', 'unchanged', 'create']);
+    expect(await rules(token)).toEqual(before);
+  });
+
+  it('PUT applies many updates in place and keeps every id', async () => {
+    const { token } = await setup();
+    for (let i = 0; i < 30; i++)
+      await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: `/wp-content/uploads/${i}.jpg`, to_path: `/media/wp-content/${i}.jpg` } });
+    const before = await rules(token);
+    const res = await callRoute(index(), 'PUT', url, { siteId: SITE }, { headers: bearer(token), body: { redirects:
+      before.map((rule) => ({ from_path: rule.from_path, to_path: rule.to_path.replace('/media/wp-content/', '/media/0123456789abcdef-') })) } });
+    expect(res.status).toBe(200);
+    expect((await res.json() as { summary: Record<string, number> }).summary).toMatchObject({ update: 30, failed: 0 });
+    const after = await rules(token);
+    expect(after.map((rule) => rule.id).sort()).toEqual(before.map((rule) => rule.id).sort());
+    expect(after.every((rule) => rule.to_path.startsWith('/media/0123456789abcdef-'))).toBe(true);
+  });
+
+  it('PUT writes nothing when any rule fails, including a loop formed inside the batch', async () => {
+    const { token } = await setup();
+    await seedPage('live', { slug: 'live' });
+    const res = await callRoute(index(), 'PUT', url, { siteId: SITE }, { headers: bearer(token), body: { redirects: [
+      { from_path: '/one', to_path: '/two' }, { from_path: '/two', to_path: '/one' }, { from_path: '/fine', to_path: '/ok' }, { from_path: '/live', to_path: '/x' },
+    ] } });
+    expect(res.status).toBe(422);
+    const body = await res.json() as { error: string; summary: { failed: number }; results: Array<{ from_path: string; ok: boolean }> };
+    expect(body.error).toContain('nothing was written');
+    expect(body.results.filter((result) => !result.ok).map((result) => result.from_path)).toEqual(['/one', '/two', '/live']);
+    expect(await rules(token)).toEqual([]);
+    const repeated = await callRoute(index(), 'PUT', url, { siteId: SITE }, { headers: bearer(token), body: { redirects: [
+      { from_path: '/a', to_path: '/b' }, { from_path: '/a', to_path: '/c' },
+    ] } });
+    expect(repeated.status).toBe(400);
+  });
 });
 
 describe('forms endpoints', () => {

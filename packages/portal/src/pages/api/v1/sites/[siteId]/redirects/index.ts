@@ -1,12 +1,17 @@
 // GET  /api/v1/sites/{siteId}/redirects
-// POST /api/v1/sites/{siteId}/redirects
+// POST /api/v1/sites/{siteId}/redirects   create, or update the rule with the same from_path
+// PUT  /api/v1/sites/{siteId}/redirects   upsert many rules at once, optionally as a dry run
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { getStore } from '../../../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
-import { checkRedirectWrite, redirectDocId } from '../../../../../../lib/redirect-write';
+import { checkRedirectBatch, checkRedirectWrite, loadRedirectWriteContext, redirectDocId } from '../../../../../../lib/redirect-write';
+import type { RedirectBatchRule } from '../../../../../../lib/redirect-write';
+
+/** One call stays well inside Cloudflare Pages' 2,100-rule limit per site. */
+const MAX_BATCH = 1000;
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -42,7 +47,9 @@ export const POST: APIRoute = async ({ request, params }) => {
     orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, from_path, to_path,
   });
   if (!check.ok) return apiError(check.error);
-  const id = redirectDocId(from_path);
+  // The same source path always means the same rule: keep its id.
+  const existing = (await vstore.redirects(ctx.orgId, ctx.siteId, ctx.versionId)).find((rule) => rule.from_path === from_path);
+  const id = existing?.id ?? redirectDocId(from_path);
   await getStore().setDoc(`${paths.redirects(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`, {
     from_path,
     to_path,
@@ -50,4 +57,57 @@ export const POST: APIRoute = async ({ request, params }) => {
     auto_generated: false,
   });
   return apiResponse(ctx, { redirect: { id, from_path, to_path, status_code }, warnings: check.warnings ?? [] }, 201, body);
+};
+
+export const PUT: APIRoute = async ({ request, params }) => {
+  const guard = await requireApiKey(request, params.siteId);
+  if (!guard.ok) return guard.response;
+  const ctx = guard.value;
+  const body = (await request.json().catch(() => null)) as { redirects?: unknown; dry_run?: unknown } | null;
+  if (!body || !Array.isArray(body.redirects)) return apiError('redirects must be an array of { from_path, to_path, status_code }');
+  if (body.dry_run !== undefined && typeof body.dry_run !== 'boolean') return apiError('dry_run must be a boolean');
+  if (!body.redirects.length) return apiError('redirects must not be empty');
+  if (body.redirects.length > MAX_BATCH) return apiError(`At most ${MAX_BATCH} redirects per request`);
+  const rules: RedirectBatchRule[] = [];
+  const seen = new Set<string>();
+  for (const [index, raw] of body.redirects.entries()) {
+    const item = raw as { from_path?: unknown; to_path?: unknown; status_code?: unknown } | null;
+    if (!item || typeof item.from_path !== 'string' || typeof item.to_path !== 'string' || !item.from_path.trim() || !item.to_path.trim())
+      return apiError(`redirects[${index}] needs from_path and to_path`);
+    if (item.status_code !== undefined && item.status_code !== 301 && item.status_code !== 302)
+      return apiError(`redirects[${index}].status_code must be 301 or 302`);
+    const from_path = item.from_path.trim();
+    if (seen.has(from_path)) return apiError(`redirects[${index}] repeats from_path ${from_path}`);
+    seen.add(from_path);
+    rules.push({ from_path, to_path: item.to_path.trim(), status_code: item.status_code === 302 ? 302 : 301 });
+  }
+  const context = await loadRedirectWriteContext(ctx.orgId, ctx.siteId, ctx.versionId);
+  const { results, warnings } = checkRedirectBatch(context, rules);
+  const failed = results.filter((result) => !result.ok);
+  const summary = {
+    create: results.filter((result) => result.action === 'create').length,
+    update: results.filter((result) => result.action === 'update').length,
+    unchanged: results.filter((result) => result.action === 'unchanged').length,
+    failed: failed.length,
+  };
+  const dryRun = body.dry_run === true;
+  // All or nothing: a batch with one invalid rule writes none of them.
+  if (dryRun || failed.length) {
+    return apiResponse(ctx, {
+      ...(failed.length && !dryRun ? { error: `${failed.length} redirect(s) failed validation; nothing was written.` } : {}),
+      dry_run: dryRun, applied: false, summary, results, warnings,
+    }, failed.length && !dryRun ? 422 : 200, body);
+  }
+  const existing = new Map(context.existing.map((rule) => [rule.from_path, rule]));
+  const writes = rules.flatMap((rule, index) => {
+    const result = results[index]!;
+    if (result.action === 'unchanged') return [];
+    const { id: _id, ...stored } = existing.get(rule.from_path) ?? {};
+    return [{ path: `${paths.redirects(ctx.orgId, ctx.siteId, ctx.versionId)}/${result.id}`, data: { ...stored, ...rule, auto_generated: false } }];
+  });
+  // Each rule is replaced in place, so no source path is ever without a rule.
+  for (let start = 0; start < writes.length; start += 20) {
+    await Promise.all(writes.slice(start, start + 20).map((write) => getStore().setDoc(write.path, write.data)));
+  }
+  return apiResponse(ctx, { dry_run: false, applied: true, summary, results, warnings }, 200, body);
 };
