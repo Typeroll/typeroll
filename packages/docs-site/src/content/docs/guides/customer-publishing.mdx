@@ -943,6 +943,19 @@ only with the same byte count and scope. Query parameters, fragments, cookies
 and arbitrary response headers are excluded. A diagnostic fingerprint is evidence
 for troubleshooting, not a replacement for the artifact's full content check.
 
+**From Core 0.2.126:** `static_probe.reason` names the actual cause.
+`status_mismatch` and `content_mismatch` are evidence about the deployment.
+`timeout` and `connection_failed` mean the bytes were never fully read; they are
+retried twice within the same check, and `attempts` and a non-secret
+`error_code` (for example `ECONNRESET`) show what happened. A redirect that
+leaves the site, has no destination or exceeds three hops is reported as
+`redirect_offsite`, `redirect_without_location` or `redirect_limit`.
+`request_failed` remains only for unclassified errors. A body longer than its
+file stops at that file's size and is reported as `content_mismatch` on that
+route, so a shared byte limit never blames a different file. A matching status
+and publication marker are not enough: every probed file must also have the
+published bytes.
+
 Different responses from different hosting locations are evidence to investigate;
 they do not by themselves establish a provider bug. Keep the same deployment ID
 while investigating. A local observer timing out does not cancel the server job

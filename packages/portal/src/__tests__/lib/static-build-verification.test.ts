@@ -1,5 +1,6 @@
-import { expect, it, vi } from 'vitest';
-import { staticChecks, verifyStaticResponse } from '../../lib/builds/verification';
+import { describe, expect, it, vi } from 'vitest';
+import { staticChecks, staticManifestChecks, verifyStaticResponse, ProbeByteBudgetError } from '../../lib/builds/verification';
+import { staticFailureMessage } from '../../lib/builds/publication';
 import { sha256, assertFilePath } from '../../lib/builds/contract.mjs';
 import { responseBytes, outputFiles } from '../../lib/builds/executor.mjs';
 import fs from 'node:fs/promises';
@@ -111,7 +112,7 @@ it('does not fetch or disclose cross-origin redirect destinations', async () => 
   const observe = vi.fn();
   const fetchImpl = vi.fn(async () => new Response(null, { status: 302, headers: { Location: 'https://other.example.invalid/private-path?secret=yes' } }));
   expect(await verifyStaticResponse('https://site.example.invalid', { route: '/gone/', status: 404 }, { fetchImpl, validate: async () => {}, observe })).toBe(false);
-  expect(observe.mock.lastCall?.[0]).toMatchObject({ reason: 'request_failed', final_path: '/gone/',
+  expect(observe.mock.lastCall?.[0]).toMatchObject({ reason: 'redirect_offsite', final_path: '/gone/',
     redirect_chain: [{ status: 302, from_path: '/gone/', to_path: null, same_origin: false }] });
   expect(fetchImpl).toHaveBeenCalledTimes(1);
   expect(JSON.stringify(observe.mock.calls)).not.toMatch(/other.example|private-path|secret/);
@@ -173,4 +174,63 @@ it('does not read bodies for correct 404 responses or weaken failures when sampl
   })).toBe(false);
   expect(observe.mock.lastCall?.[0].reason).toBe('status_mismatch');
   expect(JSON.stringify(observe.mock.calls)).not.toContain('private stream failure');
+});
+
+describe('retained WordPress file addresses', () => {
+  const image = Buffer.from('jpeg bytes of the published media file');
+  const files = { 'media/wp-content/uploads/2013/12/photo.jpg': { sha256: sha256(image), size: image.length } };
+  const redirects = '/wp-content/uploads/2013/12/photo.jpg /media/wp-content/uploads/2013/12/photo.jpg 301';
+  const check = staticManifestChecks(files, redirects).find(entry => entry.route === '/wp-content/uploads/2013/12/photo.jpg')!;
+  const redirecting = (body: () => Response) => vi.fn(async (url: URL | RequestInfo) => String(url instanceof Request ? url.url : url).includes('/media/')
+    ? body() : new Response(null, { status: 301, headers: { location: '/media/wp-content/uploads/2013/12/photo.jpg' } }));
+
+  it('follows a 301 from the old file address to the published media file and verifies its bytes', async () => {
+    expect(check).toMatchObject({ status: 200, sha256: sha256(image), size: image.length, redirect_target: '/media/wp-content/uploads/2013/12/photo.jpg' });
+    const observe = vi.fn();
+    expect(await verifyStaticResponse('https://site.example.invalid', check, { validate: async () => {}, observe, fetchImpl: redirecting(() => new Response(image)) })).toBe(true);
+    expect(observe).not.toHaveBeenCalled();
+  });
+
+  it('retries a dropped connection and a timeout, then passes without counting the failed bytes', async () => {
+    let calls = 0, downloaded = 0;
+    const fetchImpl = redirecting(() => {
+      calls++;
+      if (calls === 1) return new Response(new ReadableStream({ start(controller) { controller.enqueue(image.subarray(0, 8)); controller.error(Object.assign(new TypeError('terminated'), { cause: { code: 'UND_ERR_SOCKET' } })); } }));
+      if (calls === 2) throw Object.assign(new Error('timed out'), { name: 'TimeoutError' });
+      return new Response(image);
+    });
+    const observe = vi.fn();
+    expect(await verifyStaticResponse('https://site.example.invalid', check, { validate: async () => {}, observe, fetchImpl, retryDelayMs: 1, observeBytes: bytes => { downloaded += bytes; } })).toBe(true);
+    expect(calls).toBe(3);
+    expect(downloaded).toBe(image.length);
+    expect(observe).not.toHaveBeenCalled();
+  });
+
+  it('names the transport cause when every attempt fails', async () => {
+    const observe = vi.fn();
+    const fetchImpl = redirecting(() => { throw Object.assign(new TypeError('fetch failed'), { cause: { code: 'ECONNRESET', message: 'secret socket detail' } }); });
+    expect(await verifyStaticResponse('https://site.example.invalid', check, { validate: async () => {}, observe, fetchImpl, retryDelayMs: 1 })).toBe(false);
+    const failure = observe.mock.lastCall?.[0];
+    expect(failure).toMatchObject({ route: '/wp-content/uploads/2013/12/photo.jpg', reason: 'connection_failed', error_code: 'ECONNRESET', attempts: 3,
+      redirect_chain: [{ status: 301, to_path: '/media/wp-content/uploads/2013/12/photo.jpg' }] });
+    expect(staticFailureMessage(failure)).toContain('ECONNRESET');
+    expect(JSON.stringify(observe.mock.calls)).not.toContain('secret socket');
+  });
+
+  it('reports a body longer than its file as content_mismatch on that route, not a shared budget failure', async () => {
+    const observe = vi.fn();
+    let downloaded = 0;
+    const longer = Buffer.concat([image, Buffer.alloc(64 * 1024, 1)]);
+    expect(await verifyStaticResponse('https://site.example.invalid', check, { validate: async () => {}, observe, maxBytes: 256 * 1024,
+      observeBytes: bytes => { downloaded += bytes; }, fetchImpl: redirecting(() => new Response(longer)) })).toBe(false);
+    expect(observe.mock.lastCall?.[0]).toMatchObject({ reason: 'content_mismatch', attempts: 1 });
+    expect(downloaded).toBeLessThanOrEqual(longer.length);
+  });
+
+  it('labels an exhausted coordinator budget instead of a generic request failure', async () => {
+    const observe = vi.fn();
+    expect(await verifyStaticResponse('https://site.example.invalid', check, { validate: async () => {}, observe, retryDelayMs: 1,
+      observeBytes: () => { throw new ProbeByteBudgetError(); }, fetchImpl: redirecting(() => new Response(image)) })).toBe(false);
+    expect(observe.mock.lastCall?.[0]).toMatchObject({ reason: 'probe_byte_budget', actual_status: 200, attempts: 1 });
+  });
 });
