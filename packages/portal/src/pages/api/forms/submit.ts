@@ -1,3 +1,5 @@
+import {completeRequiredActions,hasRequiredActions,pendingCompletion} from '../../../lib/forms/required-completion';
+import {liveOptions} from '../../../lib/extensions/form-contract';
 import { assertOrganizationAccess, OrganizationAccessError } from '../../../lib/organization-access';
 // Public form submission endpoint.
 //
@@ -485,11 +487,18 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   const protocolJson = (body: unknown, status = 200) =>
     jsonCors({ v: 1, ...(body as Record<string, unknown>) }, status);
 
+  if(typeof data._retry==='string') {
+    const retry=verifyFormState(data._retry);
+    if(!retry||retry.step!=='$actions'||retry.orgId!==orgId||retry.siteId!==siteId||retry.formId!==formId||Date.now()-retry.iat>86_400_000)
+      return protocolJson({ok:false,errors:[{field:null,code:'bad_retry',message:formMessage('bad_state',lang)}]},403);
+    try { const results=await completeRequiredActions(orgId,siteId,formId,retry.submissionId);return protocolJson({ok:true,done:true,form_id:formId,results}); }
+    catch {return protocolJson({ok:false,retry:data._retry,errors:[{field:null,code:'action_incomplete',message:'Your answers are saved, but the connected app has not completed your submission. Try again or contact the organizer.'}]},409);}
+  }
   // Continuation: absent → this POST is for the first step.
   let state = null as ReturnType<typeof verifyFormState>;
   if (typeof data._state === 'string' && data._state) {
     state = verifyFormState(data._state);
-    if (!state || state.orgId !== orgId || state.siteId !== siteId || state.formId !== formId) {
+    if (!state || state.step==='$actions' || state.orgId !== orgId || state.siteId !== siteId || state.formId !== formId) {
       return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: formMessage('bad_state', lang) }] }, 403);
     }
     // Faster than any human moves between steps → automated.
@@ -509,6 +518,10 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
 
   // Validate THIS step's fields (derived from its form/* blocks).
   const fields = collectStepFields(current.blocks);
+  if(form.option_sources?.length) {
+    try {const options=await liveOptions(orgId,siteId,form);for(const field of fields)if(options[field.name])field.options=options[field.name].options.map(o=>o.value);}
+    catch {return protocolJson({ok:false,errors:[{field:null,code:'options_unavailable',message:'Choices could not be checked. Please try again.'}]},503);}
+  }
   const userData: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(data)) {
     if (!k.startsWith('_')) userData[k] = v;
@@ -583,6 +596,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
         step: current.id,
         status: next ? 'partial' : 'complete',
         ...(completion ?? {}),
+        ...(!next?pendingCompletion(form):{}),
         updated_at: now.toISOString(),
       },
     );
@@ -595,6 +609,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       data: acceptedData,
       status: next ? 'partial' : 'complete',
       step: current.id,
+      ...(!next?pendingCompletion(form):{}),
       // No IP address or user agent: abuse limits use them in memory only.
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
@@ -617,17 +632,24 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   }
 
   if (!next) {
-    try {
-      await runFormActions(orgId, siteId, form, acceptedData, submissionId);
-    } catch (e) {
-      console.error('Form actions failed:', e);
+    let results: Array<{type:string;result:Record<string,unknown>}> = [];
+    if(hasRequiredActions(form)) {
+      try {results=await completeRequiredActions(orgId,siteId,formId,submissionId);}
+      catch {
+        const message='Your answers are saved, but the connected app has not completed your submission. Try again or contact the organizer.';
+        if(ctx.wantsHtml&&!ctx.wantsProtocol)return respond(true,{error:message},409,ctx.backUrl,lang);
+        return protocolJson({ok:false,retry:signFormState({orgId,siteId,formId,submissionId,step:'$actions'}),errors:[{field:null,code:'action_incomplete',message}]},409);
+      }
+    } else {
+      try { await runFormActions(orgId,siteId,form,acceptedData,submissionId); }
+      catch { console.error('Optional form actions could not complete'); }
     }
     if (ctx.wantsHtml && !ctx.wantsProtocol) {
       const redirect = noScriptRedirect(form.success_redirect_url, ctx.backUrl);
       if (redirect) return new Response(null, { status: 303, headers: { Location: redirect, 'Cache-Control': 'no-store', ...corsHeaders } });
       return respond(true, { success: true, message: form.success_message ?? formMessage('thanks', lang) }, 200, ctx.backUrl, lang);
     }
-    return protocolJson({ ok: true, done: true });
+    return protocolJson({ ok: true, done: true, form_id: formId, results });
   }
 
   const newState = signFormState({ orgId, siteId, formId, submissionId, step: current.id });

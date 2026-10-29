@@ -1433,6 +1433,8 @@ export interface FormStepAction {
 }
 
 export interface Form {
+  /** Live choices supplied by an explicitly enabled Extension. */
+  option_sources?: Array<{ field: string; type: string; config: Record<string, unknown>; notice_field?: string }>;
   id: string;
   name: string;
   actions: FormAction[];
@@ -1521,6 +1523,8 @@ export interface Form {
 }
 
 export interface FormSubmission {
+  /** Required app-effect status; action configuration is never returned. */
+  action_status?: 'pending' | 'running' | 'failed' | 'notifying' | 'done';
   id: string;
   form_id: string;
   data: Record<string, unknown>;

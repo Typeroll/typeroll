@@ -235,3 +235,40 @@ They are identities, not new owner permissions. Preserve them unchanged when
 editing a row. A managed identity also prevents adding/removing rows unless its
 write authority permits it. Per-leaf provenance uses escaped keyed paths, not
 array positions. Private non-identity fields remain excluded.
+
+## Form contributions (runtime 0.45.0)
+
+Providers can contribute to ordinary Site forms with `forms:actions` permission:
+
+```json
+{
+  "forms": {
+    "protocol": 1,
+    "path": "/forms",
+    "actions": [
+      {
+        "id": "save-record",
+        "label": "Save in connected app",
+        "config_fields": [
+          {
+            "key": "field_map",
+            "label": "Field mapping",
+            "type": "json",
+            "required": true
+          }
+        ]
+      }
+    ],
+    "option_sources": [{ "id": "available-items", "label": "Available items" }]
+  }
+}
+```
+
+`path` is relative to the approved `api.base_url`. Config fields support text,
+number, boolean and JSON objects. Each contribution has a unique stable ID;
+maximum 20 actions, 20 option sources and 30 config fields per contribution.
+Form actions are administrator-configured required effects on completed
+submissions. They cannot run as abandoned-partial actions. Use live option sources
+for data that changes independently of static publication. See
+[provider form requests](../backend/#ordinary-forms-with-provider-actions) for
+body-bound authentication, field mapping, retries and public success results.

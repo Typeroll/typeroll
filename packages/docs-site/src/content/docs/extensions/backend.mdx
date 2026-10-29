@@ -579,3 +579,70 @@ removes the token from its URL, waits for **Start editing**, and sends
 redemption by GET. This avoids consuming single-use links during ordinary link
 previews. Existing targets without this option retain their previous exchange
 contract; migrate the provider and published form together.
+
+## Ordinary forms with provider actions
+
+Extension runtime **0.45.0** adds generic completed-form actions and live
+select/radio choices. This contract is available in the next Core release;
+providers must require `>=0.45.0 <1.0.0` until all target installations upgrade.
+It works in Typeroll Cloud and self-hosted installations with an approved provider
+origin and installation signing configured.
+
+Declare `forms:actions` permission and a `forms` manifest contribution. The Site
+administrator chooses its types using `get_form_capabilities`, the Forms editor,
+`create_form` or `update_form`. Types are scoped to an installation:
+`extension:<installation-id>:<contribution-id>`. Core remains the submission owner;
+an app provides additional effects, not a second form collector.
+
+For each action, `config.field_map` maps provider field names to declared Form
+field names. Only these accepted fields are sent. Raw answers, IP addresses,
+other form actions and mail credentials are not included. Core calls the
+manifest's approved API origin and `forms.path` with a short-lived ES256 assertion:
+
+- audience is the Extension ID;
+- `token_use` is `form_action` or `form_options`;
+- Organization, Site, installation and immutable provider version are bound;
+- `body_sha256` authenticates the exact JSON request bytes;
+- `scopes` includes `forms:actions`.
+
+Verify all claims and the active installation before performing an effect. Never
+use an unsigned request's issuer as a discovery or fetch destination. Form action
+requests contain `operation`, configuration, form_id, submission_id, submitted_at
+and mapped `data`. Treat submission_id + operation as an idempotency key. Reusing
+that identity with different input must fail instead of applying another effect.
+
+Required app effects run before optional email/webhook notifications. Core saves
+a frozen completion snapshot and supports explicit retry of the same answers.
+A failed effect is not a successful registration. A known retryable failure may
+be resumed; an operation with an unknown running outcome is not reclaimed on a
+timer. Submission reads expose action_status but never the frozen configuration.
+
+An option source is configured as
+`{field, type, config, notice_field?}` in `Form.option_sources`. Its field must be
+a declared select/radio field. `notice_field`, if used, must be a declared hidden
+field. The provider returns `options: [{value,label}]` (max 200, unique stable
+values), optionally `notice: {version,text}`. Core displays that notice and submits
+its version. Return current choices; the provider must still enforce capacity,
+availability and other business rules when it receives the completed action.
+No customer-site rebuild is required for changed choices. Failure to load choices
+blocks submission rather than using stale static labels.
+
+An action may return a small `public_result` object containing only safe public
+identifiers and outcomes. Never return recipient identity, private answers or
+credentials there: it is delivered to the browser. Core emits a bubbling
+`typeroll:form-success` CustomEvent with `{form_id, results: [{type,result}]}` only
+after successful completion, before any success redirect. Previews do not emit
+real success events. This event does not send analytics; callers must enforce
+consent before invoking external advertising or analytics services.
+
+## Calendar confirmations
+
+The existing `email:send` installation API accepts an optional
+`calendar: {filename: "event.ics", content: "BEGIN:VCALENDAR\r\n…"}` alongside its
+plain-text message. Content is inline UTF-8, limited to 64 KiB; remote URLs and
+file paths are never accepted. SMTP, SES and Postmark receive a calendar attachment.
+The exact attachment bytes participate in the idempotency fingerprint. Freeze
+message and calendar content before the first attempt and reuse the same key
+on network retry. An uncertain delivery is not permission to send again under a
+new key. Imports and background data reconciliation must not send confirmations
+unless explicitly designed and authorized to do so.

@@ -289,7 +289,8 @@ export function signInstallationAssertion(args: {
    * Narrows what the proof may be used for. A derivation token must not be
    * replayable as a documentation read, or the reverse.
    */
-  purpose?: 'documentation' | 'build_derivation';
+  purpose?: 'documentation' | 'build_derivation' | 'form_action' | 'form_options';
+  bodySha256?: string;
   version?: string;
   now?: Date;
 }): string {
@@ -301,6 +302,7 @@ export function signInstallationAssertion(args: {
     aud: args.installation.extension_id,
     sub: args.installation.id,
     token_use: args.purpose ?? 'installation',
+    ...(args.bodySha256 ? { body_sha256: args.bodySha256 } : {}),
     ...(args.version ? { version: args.version } : {}),
     org_id: args.installation.owner_org_id,
     site_id: args.installation.site_id,

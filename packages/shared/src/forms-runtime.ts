@@ -217,6 +217,29 @@ function previewSubmit(form){
 // Keeping a campaign across pages (first or last touch) is not Core's.
 function fillCampaign(form){var q;try{q=new URLSearchParams(location.search)}catch(e){return}
   $all('input[type="hidden"]',form).forEach(function(el){if(!/^utm_[A-Za-z0-9_]{1,64}$/.test(el.name))return;var v=(q.get(el.name)||"").trim();if(v)el.value=v.slice(0,255)})}
+async function loadOptions(form){
+  if(!form.hasAttribute("data-live-options")||form.hasAttribute("data-tr-preview"))return;
+  if(form.__optionsLoading)return;
+  form.__optionsLoading=true;form.__optionsReady=false;
+  try{
+    var url=new URL(form.action,location.href);url.pathname="/api/forms/options";url.search="";
+    var res=await fetch(url.href,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({token:(form.elements._token||{}).value||""})});
+    var response=await res.json();if(!res.ok)throw Error();
+    Object.keys(response.options||{}).forEach(function(name){
+      var source=response.options[name],field=$('[data-field="'+CSS.escape(name)+'"]',form);if(!field)return;
+      var selected=(form.elements[name]||{}).value||"",select=$("select",field),radio=$("input[type=radio]",field);
+      if(select){select.replaceChildren();source.options.forEach(function(o){var option=document.createElement("option");option.value=o.value;option.textContent=o.label;select.append(option)});select.value=source.options.some(function(o){return o.value===selected})?selected:(source.options[0]||{}).value||"";}
+      else if(field.getAttribute("data-block")==="form_radio_group"){
+        var required=source.required===true||(radio&&radio.required);
+        $all('label',field).forEach(function(n){n.remove()});
+        source.options.forEach(function(o){var label=document.createElement("label"),input=document.createElement("input"),text=document.createElement("span");label.className="form-choice";input.type="radio";input.name=name;input.value=o.value;input.required=required;input.checked=o.value===selected;text.textContent=o.label;label.append(input,text);field.append(label)});
+      }
+      if(source.notice){var hidden=form.elements[source.notice.field];if(hidden)hidden.value=source.notice.version;var notice=$('[data-live-notice="'+CSS.escape(name)+'"]',form);if(!notice){notice=document.createElement("p");notice.setAttribute("data-live-notice",name);field.after(notice)}notice.textContent=source.notice.text;}
+    });
+    form.__optionsReady=true;
+  }catch(e){topError(form,"Live choices could not be loaded. Reload this page to try again.");}
+  finally{form.__optionsLoading=false;}
+}
 function init(form){
   $all("[data-required]",form).forEach(function(el){el.required=el.getAttribute("data-required")==="true"});
   // A required checkbox group needs one checked box: every box is required
@@ -225,6 +248,7 @@ function init(form){
   $all('[data-block="form_slider"]',form).forEach(function(w){var inp=$("input[type=range]",w),out=$(".form-slider-value",w),unit=w.getAttribute("data-unit")||"";if(!inp||!out||w.__trReady)return;w.__trReady=true;var upd=function(){out.textContent=inp.value+(unit?" "+unit:"")};inp.addEventListener("input",upd);upd()});
   $all('[data-clear-answer]',form).forEach(function(button){if(button.__trReady)return;button.__trReady=true;button.addEventListener("click",function(){var name=button.getAttribute("data-clear-answer");$all('input[type=radio]',button.parentElement).forEach(function(input){input.checked=false});form.__cleared=form.__cleared||{};form.__cleared[name]=true;form.dispatchEvent(new Event("input",{bubbles:true}))})});
   fillCampaign(form);
+  loadOptions(form);
   syncSteps(form);
   // init runs again after a dynamic step is injected so its new fields get
   // the enhancements above; listeners on the form itself bind only once, or
@@ -243,10 +267,10 @@ function init(form){
   var powP=null,powStart=function(){if(!powP&&bits>0&&window.crypto&&crypto.subtle){var bucket=Math.floor(Date.now()/6e5);powP=computePow(token+"."+bucket,bits).then(function(n){return bucket+"."+n})}};
   form.addEventListener("focusin",powStart,{once:true});
   form.addEventListener("submit",async function(ev){
-    ev.preventDefault();clearErrors(form);if(preview){previewSubmit(form);return}if(remote&&!form.__hydrated){topError(form,msg(form,"loading","Wait for the form to load before submitting. If loading failed, reload this page."));return}powStart();
+    ev.preventDefault();clearErrors(form);if(preview){previewSubmit(form);return}if(remote&&!form.__hydrated){topError(form,msg(form,"loading","Wait for the form to load before submitting. If loading failed, reload this page."));return}if(form.hasAttribute("data-live-options")&&!form.__optionsReady){topError(form,"Wait for the live choices to load, or reload this page.");return}powStart();
     var btn=$('[type="submit"]',form);if(btn)btn.disabled=true;
     try{
-      var fd=new FormData(form);fd.set("_protocol","1");
+      var fd=new FormData(form);fd.set("_protocol","1");if(form.__retry)fd.set("_retry",form.__retry);
       // With Back, a visitor may send an earlier step again: name the step,
       // so the server updates the same partial submission.
       if(back){var trail=stepTrail(form);fd.set("_step",trail[trail.length-1].id)}
@@ -272,6 +296,7 @@ function init(form){
       var out=await res.json().catch(function(){return null});
       if(!out){topError(form,msg(form,"fail","Something went wrong."));return}
       if(!res.ok||out.ok===false){
+        if(out.retry)form.__retry=out.retry;
         if(out.message||out.error)topError(form,(out.message||out.error)+(out.retry_after?" "+retryMsg(form,out.retry_after):""));
         (out.errors||[]).forEach(function(e){if(e.field)fieldError(form,e.field,e.message);else topError(form,e.message)});
         var first=$("[data-invalid] .form-input, [data-invalid] input",form);if(first)first.focus();
@@ -280,6 +305,7 @@ function init(form){
       if(out.state&&form.elements._state)form.elements._state.value=out.state;
       powP=null;if(bits>0)powStart();
       if(out.done){
+        if(out.form_id)form.dispatchEvent(new CustomEvent("typeroll:form-success",{bubbles:true,detail:{form_id:out.form_id,results:out.results||[]}}));
         var redirect=form.getAttribute("data-redirect")||"";
         if(/^(https?:\/\/|\/(?![\/\\]))/i.test(redirect)){location.assign(redirect);return}
         var region=form.closest("[data-tr-form]")||form;

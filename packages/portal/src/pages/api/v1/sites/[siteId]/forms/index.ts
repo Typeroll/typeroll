@@ -87,7 +87,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   let actions: Form['actions'] = [];
   if (body.actions !== undefined) {
     if (formActionsPermission(ctx) !== 'admin') return apiError('Admin permission required to set form actions', 403);
-    const validated = await validateFormActionsInput(body.actions, [], steps);
+    const validated = await validateFormActionsInput(body.actions, [], steps, ctx);
     if (typeof validated === 'string') return apiError(validated, 400);
     actions = validated;
   }
@@ -95,6 +95,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     name: body.name,
     ...(body.target ? { target: body.target } : {}),
     actions,
+    ...(body.option_sources!==undefined?{option_sources:body.option_sources}:{}),
     submit_text: body.submit_text ?? 'Submit',
     success_message: body.success_message ?? 'Thanks — your message has been received.',
     ...(redirect ? { success_redirect_url: redirect } : {}),
@@ -104,6 +105,10 @@ export const POST: APIRoute = async ({ request, params }) => {
     ...(typeof body.partial_ttl_days === 'number' ? { partial_ttl_days: body.partial_ttl_days } : {}),
     created_at: new Date().toISOString(),
   };
+  if(body.option_sources!==undefined && formActionsPermission(ctx)!=='admin')return apiError('Admin permission required',403);
+  const {validateExtensionFormConfig}=await import('../../../../../../lib/extensions/form-contract');
+  const contractError=await validateExtensionFormConfig(ctx.orgId,ctx.siteId,doc);
+  if(contractError)return apiError(contractError);
   await store.setDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`, applyFormNavigation(doc, navigation));
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`);
   const warnings = formStepWarnings(steps);

@@ -22,8 +22,8 @@ export function formActionsPermission(ctx: { permission: string; extensionIdenti
 }
 
 /** Validate incoming actions against the action registry and the form's own fields. */
-export async function validateFormActionsInput(input: unknown, existing: FormAction[] | undefined, steps: Form['steps']): Promise<FormAction[] | string> {
+export async function validateFormActionsInput(input: unknown, existing: FormAction[] | undefined, steps: Form['steps'], scope?: {orgId:string;siteId:string}): Promise<FormAction[] | string> {
   const { actionRegistry } = await import('./forms/actions');
   const webhookFields = (steps ?? []).flatMap((step) => collectStepFields(step.blocks)).map((field) => field.name);
-  return validateEmailActions(input, [...(await actionRegistry()).keys()], existing ?? [], webhookFields);
+  return validateEmailActions(input, [...(await actionRegistry(scope?.orgId,scope?.siteId)).keys()], existing ?? [], webhookFields);
 }

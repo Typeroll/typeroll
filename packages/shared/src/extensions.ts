@@ -11,7 +11,7 @@ export {
 } from './network-address.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.44.0';
+export const EXTENSION_RUNTIME_VERSION = '0.45.0';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
 /**
  * Block data field in which the page author binds an Extension block instance
@@ -46,6 +46,7 @@ export type ExtensionScope =
   | 'forms:submit'
   | 'forms:write'
   | 'forms:execute'
+  | 'forms:actions'
   | 'submissions:read'
   | 'forms:intake:read'
   | 'media:read'
@@ -67,6 +68,7 @@ export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, Extension
   'email:inbound:status': { scope: 'email:inbound:status', minimum_permission: 'admin', sensitive: true, description: 'Read metadata and forwarding status for incoming mail routes explicitly bound to this installation. Does not grant access to messages or attachments.' },
   'email:send': { scope: 'email:send', minimum_permission: 'admin', sensitive: true, description: 'Send transactional email through the site connector.' },
   'content:write': { scope: 'content:write', minimum_permission: 'write', sensitive: true, description: 'Change site content.' },
+  'forms:actions': { scope: 'forms:actions', minimum_permission: 'admin', sensitive: true, description: 'Receive explicitly mapped completed form answers and supply live field options.' },
   'forms:read': { scope: 'forms:read', minimum_permission: 'read', sensitive: false, description: 'Read form definitions.' },
   'forms:submit': { scope: 'forms:submit', minimum_permission: 'read', sensitive: false, description: 'Submit to explicitly bound forms.' },
   'forms:execute': { scope: 'forms:execute', minimum_permission: 'admin', sensitive: true, description: 'Run configured actions on forms bound to this installation.' },
@@ -217,6 +219,19 @@ export type ExtensionLifecycleEvent =
   | 'extension.uninstalled'
   | 'extension.credential_rotated';
 
+export interface ExtensionFormContribution {
+  id: string;
+  label: string;
+  description?: string;
+  config_fields?: Array<{ key: string; label: string; type: 'text' | 'number' | 'boolean' | 'json'; required?: boolean; help?: string }>;
+}
+export interface ExtensionFormContract {
+  protocol: 1;
+  path: string;
+  actions: ExtensionFormContribution[];
+  option_sources?: ExtensionFormContribution[];
+}
+
 export interface ExtensionManifest {
   /** Provider-authored reference material, not user authorization. */
   documentation?: { url: string; access?: 'public' | 'installation'; agent_instructions?: string };
@@ -253,6 +268,7 @@ export interface ExtensionManifest {
    * two apps claiming the same source collide at install time, where someone
    * can act on it, instead of mid-publication.
    */
+  forms?: ExtensionFormContract;
   build_derivation?: {
     input_format: 'frozen_publication_v1';
     /** Relative path below `api.base_url`. Core POSTs the frozen input here. */
@@ -700,13 +716,48 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
   rejectUnknown(manifest, [
     'schema_version', 'id', 'name', 'version', 'runtime_compatibility', 'distribution',
     'developer', 'permissions', 'auth', 'config_schema', 'frontend', 'admin',
-    'api', 'events', 'data_handling', 'documentation', 'activation_policy', 'build_derivation',
+    'api', 'events', 'data_handling', 'documentation', 'activation_policy', 'build_derivation', 'forms',
   ], 'manifest', errors);
   if (manifest.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION) {
     errors.push(`schema_version must be ${EXTENSION_MANIFEST_SCHEMA_VERSION}`);
   }
   if (manifest.activation_policy !== undefined && !['automatic', 'explicit'].includes(String(manifest.activation_policy))) {
     errors.push('activation_policy must be automatic or explicit');
+  }
+  if (manifest.forms !== undefined) {
+    const forms = asRecord(manifest.forms, 'forms', errors);
+    rejectUnknown(forms, ['protocol', 'path', 'actions', 'option_sources'], 'forms', errors);
+    if (!Array.isArray(forms.actions)) errors.push('forms.actions must be an array');
+    if (forms.protocol !== 1) errors.push('forms.protocol must be 1');
+    if (typeof forms.path !== 'string' || !/^\/[a-zA-Z0-9_/-]+$/.test(forms.path) || forms.path.includes('//')) errors.push('forms.path must be a relative API path');
+    if (!isRecord(manifest.api) || !manifest.api.base_url || manifest.api.authentication === 'browser_key') errors.push('forms requires a signed installation API');
+    if (!Array.isArray(manifest.permissions) || !manifest.permissions.some(p => isRecord(p) && p.scope === 'forms:actions')) errors.push('forms requires forms:actions permission');
+    for (const kind of ['actions', 'option_sources']) {
+      const list = forms[kind] ?? [];
+      if (!Array.isArray(list) || list.length > 20) { errors.push(`forms.${kind} must be an array of up to 20 contributions`); continue; }
+      const ids = new Set<string>();
+      for (const raw of list) {
+        const def = asRecord(raw, `forms.${kind}`, errors);
+        rejectUnknown(def, ['id', 'label', 'description', 'config_fields'], `forms.${kind}`, errors);
+        const id = requireString(def.id, 'form contribution id', errors);
+        if (!/^[a-z][a-z0-9_-]{0,63}$/.test(id) || ids.has(id)) errors.push('Form contribution ids must be valid and unique');
+        ids.add(id); requireString(def.label, 'form contribution label', errors);
+        if (def.description !== undefined && (typeof def.description !== 'string' || def.description.length > 1000)) errors.push('Invalid form contribution description');
+        const fields = def.config_fields ?? [];
+        if (!Array.isArray(fields) || fields.length > 30) { errors.push('Invalid form contribution config fields'); continue; }
+        const names = new Set<string>();
+        for (const rawField of fields) {
+          const field = asRecord(rawField, 'form config field', errors);
+          rejectUnknown(field, ['key','label','type','required','help'], 'form config field', errors);
+          const key = requireString(field.key, 'form config key', errors);
+          if (!/^[a-z][a-z0-9_]{0,63}$/.test(key) || ['constructor','prototype'].includes(key) || names.has(key)) errors.push('Invalid or duplicate form config key');
+          names.add(key); requireString(field.label, 'form config label', errors);
+          if (!['text','number','boolean','json'].includes(String(field.type))) errors.push('Invalid form config type');
+          if (field.required !== undefined && typeof field.required !== 'boolean') errors.push('Form config required must be boolean');
+          if (field.help !== undefined && (typeof field.help !== 'string' || field.help.length > 1000)) errors.push('Invalid form config help');
+        }
+      }
+    }
   }
   if (manifest.build_derivation !== undefined) {
     const derivation = asRecord(manifest.build_derivation, 'build_derivation', errors);

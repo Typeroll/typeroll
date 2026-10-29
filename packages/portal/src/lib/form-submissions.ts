@@ -93,7 +93,8 @@ function isExpired(submission: StoredSubmission, days: number | null, now: numbe
  * TTL timestamp are never returned; the legacy user agent only to admins.
  */
 export function submissionView(submission: StoredSubmission, isAdmin: boolean): FormSubmission {
-  const { submitted_from_ip: _ip, user_agent: userAgent, delete_at: _deleteAt, ...view } = submission;
+  const { required_completion: _completion, submitted_from_ip: _ip, user_agent: userAgent, delete_at: _deleteAt, ...view } = submission as StoredSubmission & {required_completion?:unknown};
+  if(_completion && typeof _completion==='object' && 'state' in _completion && ['pending','running','failed','notifying','done'].includes(String(_completion.state)))view.action_status=String(_completion.state) as FormSubmission['action_status'];
   if (isAdmin && typeof userAgent === 'string' && userAgent) {
     return { ...view, user_agent: userAgent.slice(0, USER_AGENT_MAX) };
   }

@@ -93,7 +93,8 @@
               "email:send",
               "forms:execute",
               "forms:intake:read",
-              "page_handoff:read"
+              "page_handoff:read",
+              "forms:actions"
             ]
           },
           "reason": {
@@ -428,6 +429,153 @@
         }
       },
       "additionalProperties": false
+    },
+    "forms": {
+      "type": "object",
+      "required": [
+        "protocol",
+        "path",
+        "actions"
+      ],
+      "properties": {
+        "protocol": {
+          "const": 1
+        },
+        "path": {
+          "type": "string",
+          "pattern": "^/[a-zA-Z0-9_/-]+$"
+        },
+        "actions": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "config_fields": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "label",
+                    "type"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "enum": [
+                        "text",
+                        "number",
+                        "boolean",
+                        "json"
+                      ]
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "help": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "option_sources": {
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "label"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+              },
+              "label": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "config_fields": {
+                "type": "array",
+                "maxItems": 30,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "key",
+                    "label",
+                    "type"
+                  ],
+                  "properties": {
+                    "key": {
+                      "type": "string",
+                      "pattern": "^[a-z][a-z0-9_]{0,63}$"
+                    },
+                    "label": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "type": {
+                      "enum": [
+                        "text",
+                        "number",
+                        "boolean",
+                        "json"
+                      ]
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "help": {
+                      "type": "string",
+                      "maxLength": 1000
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false,
+      "description": "Runtime 0.45+: granted forms:actions and an approved API origin are required. Operations receive purpose-bound, body-bound server assertions."
     }
   },
   "additionalProperties": false,

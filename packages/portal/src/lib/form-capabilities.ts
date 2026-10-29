@@ -8,15 +8,18 @@
 
 import { FORM_ABANDONED_MAX_HOURS } from '@typeroll/shared';
 
-export async function formCapabilities() {
+export async function formCapabilities(orgId?:string,siteId?:string) {
   const { actionRegistry } = await import('./forms/actions');
   const { prefillRegistry } = await import('./forms/prefill');
+  const providers = orgId && siteId ? await (await import('./extensions/form-contract')).formProviders(orgId,siteId) : [];
   return {
-    actions: [...(await actionRegistry()).values()].map((a) => ({
+    option_sources: providers.flatMap(p => (p.version.manifest.forms?.option_sources??[]).map(def=>({...def,type:`extension:${p.installation.id}:${def.id}`}))),
+    actions: [...(await actionRegistry(orgId,siteId)).values()].map((a) => ({
       type: a.type,
       label: a.label,
       description: a.description,
       admin_only: Boolean(a.admin_only),
+      required: Boolean(a.required),
       config_fields: a.config_fields ?? [],
       // Whether it can also veto a submit, so the editor can say so.
       has_before: typeof a.before === 'function',

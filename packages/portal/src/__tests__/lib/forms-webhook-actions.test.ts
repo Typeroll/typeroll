@@ -165,7 +165,7 @@ describe('form webhook actions', () => {
     vi.stubGlobal('fetch', fetchMock);
     const { runFormActions } = await import('../../lib/forms/actions');
     const result = await runFormActions({ actions: [action] }, context('sub-gone'));
-    expect(result).toEqual({ ran: [], failed: ['webhook'] });
+    expect(result).toEqual({ ran: [], failed: ['webhook'], results: [] });
     expect((await deliveries())[0]).toMatchObject({ status: 'failed', attempts: 1, response_status: 410 });
     await runDue(Date.now() + 86_400_000);
     expect(fetchMock).toHaveBeenCalledTimes(1);
