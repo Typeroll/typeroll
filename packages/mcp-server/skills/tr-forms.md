@@ -129,7 +129,7 @@ A webhook needs `url` (https), an explicit `fields` allowlist and a signing
 `get_form_capabilities` lists every action type the site offers, including
 types from installed apps, with the config fields each one takes.
 
-For installed extension actions (Core 0.2.121 / runtime 0.45.0 candidate), read the
+For installed extension actions (Core 0.2.123 / runtime 0.45.0 and later), read the
 app's instructions with `read_app_documentation` and use the exact namespaced
 contribution IDs returned by discovery. Pass `option_sources` for live select/radio
 choices; its `field` and optional hidden `notice_field` must already be declared.
