@@ -74,7 +74,7 @@ for (const mode of ['blocks', 'html']) {
       await reloadReady(page);
       await expect(page.getByLabel('Page title', { exact: true })).toHaveValue('Explicitly saved');
       await expect(page.getByRole('heading', { name: 'Continue your autosaved draft?' })).toHaveCount(0);
-    } finally { await page.request.delete(wc); rmSync(file, { force: true }); }
+    } finally { await page.request.delete(wc, { headers: { Origin: 'http://127.0.0.1:4322' } }); rmSync(file, { force: true }); }
   });
 }
 
@@ -127,7 +127,7 @@ test('block history works in the canvas, waits for autosave, and recovers from w
     await page.keyboard.press('ControlOrMeta+z');
     await expect(imageRow).toHaveCount(0);
     await page.screenshot({ path: testInfo.outputPath('history-desktop.png') });
-  } finally { await page.request.delete(wc); rmSync(file, { force: true }); }
+  } finally { await page.request.delete(wc, { headers: { Origin: 'http://127.0.0.1:4322' } }); rmSync(file, { force: true }); }
 });
 
 test('structure labels decode entities and visual HTML never receives an empty placeholder', async ({ page }, testInfo) => {
