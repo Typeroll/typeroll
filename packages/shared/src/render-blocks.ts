@@ -220,6 +220,17 @@ const HTML_ESCAPES: Record<string, string> = {
   "'": '&#39;',
 };
 
+
+/**
+ * target/rel for an authored link: rel keeps simple tokens such as nofollow
+ * and sponsored; only the boolean new-tab opt-in adds target and noopener.
+ */
+export function linkTargetAttributes(rawRel: unknown, newTab: unknown): string {
+  const rel = new Set(String(typeof rawRel === 'string' ? rawRel : '').split(/\s+/).filter(token => /^[a-z][a-z0-9_-]*$/i.test(token)).map(token => token.toLowerCase()));
+  if (newTab === true) { rel.add('noopener'); rel.add('noreferrer'); }
+  return `${newTab === true ? ' target="_blank"' : ''}${rel.size ? ` rel="${escapeHtml([...rel].join(' '))}"` : ''}`;
+}
+
 export function escapeHtml(value: unknown): string {
   if (value == null) return '';
   return String(value).replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]!);
@@ -479,9 +490,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''} loading="lazy" decoding="async" />`;
     const picture = d.mobile_src ? `<picture><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
     const frame = `<span class="block-image-frame">${picture}</span>`;
-    const rel = new Set(String(d.link_rel ?? '').split(/\s+/).filter(token => /^[a-z][a-z0-9_-]*$/i.test(token)));
-    if (d.new_tab === true) { rel.add('noopener'); rel.add('noreferrer'); }
-    d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link"${d.new_tab === true ? ' target="_blank"' : ''}${rel.size ? ` rel="${escapeHtml([...rel].join(' '))}"` : ''}>${frame}</a>` : frame;
+    d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link"${linkTargetAttributes(d.link_rel, d.new_tab)}>${frame}</a>` : frame;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
     // Mark authored spacing so an unset field never overrides the surrounding flow.
     const authored = (name: string) => { const value = effectiveBlock.data?.[name]; return value !== undefined && value !== null && value !== ''; };
@@ -493,7 +502,8 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   if (effectiveBlock.type === 'core/button') {
     // Only the typed opt-in may change browsing context; never trust a supplied
     // prepared flag or coerce strings such as 'false' to true.
-    compiled.flatData.button_new_tab = compiled.flatData.new_tab === true;
+    // Byte-identical to earlier output when no rel is set (render version references).
+    compiled.flatData.button_link_attrs = linkTargetAttributes(compiled.flatData.link_rel, compiled.flatData.new_tab).trimStart();
   }
   if (effectiveBlock.type === 'core/icon_box') {
     const d = compiled.flatData;

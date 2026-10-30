@@ -518,9 +518,10 @@ const button: BlockType = {
     { name: 'variant', type: 'select', label: 'Style', options: ['primary', 'secondary', 'ghost'], default: 'primary' },
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'new_tab', type: 'boolean', label: 'Open in new tab' },
+    { name: 'link_rel', type: 'text', label: 'Link relationship (e.g. nofollow sponsored)' },
   ],
   template: `<p data-block="button" data-variant="{{variant}}" data-size="{{size}}">
-  <a href="{{href}}" class="block-button-link" {{#button_new_tab}}target="_blank" rel="noopener noreferrer"{{/button_new_tab}}>{{label}}</a>
+  <a href="{{href}}" class="block-button-link" {{{button_link_attrs}}}>{{label}}</a>
 </p>`,
   styles: `
 [data-block="button"] { margin: 1rem 0; }
