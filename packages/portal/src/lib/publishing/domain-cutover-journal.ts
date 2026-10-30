@@ -80,13 +80,24 @@ export function journaledDomainProvider(provider: Provider, org: string, site: s
     return provider(route, { ...options, body });
   };
 }
-function matchesIntent(records: any[], entry: Entry) {
-  if (records.length !== 1 || !entry.dns_intent || entry.before.length && records[0].id !== entry.before[0].id) return false;
-  const actual = dnsRecordBody(records[0]);
+/** Field names (never values) where the provider's record differs from the journaled intent. */
+export function intentDifferences(records: any[], entry: Pick<Entry, 'before' | 'dns_intent'>): string[] {
+  if (!entry.dns_intent) return ['intent'];
+  if (records.length !== 1) return ['record_count'];
+  if (entry.before.length && records[0].id !== entry.before[0].id) return ['id'];
   // Provider-generated defaults are allowed; customer-supplied settings, tags and comments are not ignored.
-  const normalized = (record: any) => ({ tags: [], settings: {}, ...record });
-  return stable(normalized(actual)) === stable(normalized(entry.dns_intent));
+  // Cloudflare lists every CNAME with flatten_cname: false, its default, even when the write sent no settings.
+  const normalized = (record: any) => {
+    const result = { tags: [], settings: {}, ...record };
+    if (result.type === 'CNAME' && result.settings?.flatten_cname === false) {
+      result.settings = { ...result.settings }; delete result.settings.flatten_cname;
+    }
+    return result;
+  };
+  const actual = normalized(dnsRecordBody(records[0])), intent = normalized(entry.dns_intent);
+  return [...new Set([...Object.keys(actual), ...Object.keys(intent)])].filter(key => stable(actual[key]) !== stable(intent[key])).sort();
 }
+const matchesIntent = (records: any[], entry: Entry) => intentDifferences(records, entry).length === 0;
 
 /** Record provider-confirmed writes. A lost response leaves after=null and requires conflict-safe recovery. */
 export async function recordDomainCutover(org: string, site: string, candidate: string, hostname: string) {
@@ -97,7 +108,11 @@ export async function recordDomainCutover(org: string, site: string, candidate: 
   const access = await hostingDns(org, entry.group_id, hostname);
   if (access.accountId !== entry.account_id) throw new ConnectionError('The DNS account changed during cutover.', 409, 'cutover_account_changed');
   const after = await dnsRecords(access.provider, entry);
-  if (entry.dns_intent && !matchesIntent(after, entry) && !sameRecords(after, entry.before)) throw new ConnectionError('DNS differs from the intended cutover write.', 409, 'dns_revision_conflict');
+  if (entry.dns_intent && !matchesIntent(after, entry) && !sameRecords(after, entry.before)) {
+    const fields = intentDifferences(after, entry);
+    console.error(JSON.stringify({ event: 'domain_cutover_intent_mismatch', org_id: org, site_id: site, candidate_id: candidate, hostname, fields }));
+    throw new ConnectionError(`DNS differs from the intended cutover write (${fields.join(', ')}).`, 409, 'dns_revision_conflict', { hostname, fields });
+  }
   const updated = { ...entry, after, ...(entry.redirect ? { rules_after: await rules(access.provider, entry.zone_id) } : {}) };
   const saved = await store.compareAndReplaceDoc(path, journal, { ...journal, entries: journal.entries.map(item => item.hostname === hostname ? updated : item) });
   if (!saved) throw new ConnectionError('The traffic journal changed. Resume the same publication.', 409, 'cutover_journal_conflict');
@@ -162,7 +177,12 @@ export async function rollbackDomainCutover(org: string, site: string, candidate
     if (journal.previous_site) await store.updateDoc(paths.site(org, site), journal.previous_site);
     if (journal.previous_version) await store.updateDoc(paths.version(org, site, 'main'), journal.previous_version);
     if (target) await store.updateDoc(`${paths.site(org, site)}/publishing_targets/main`, { last_publication: journal.previous_publication ?? null });
-  } else await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(org, site), current => current.candidate?.id === candidate, { rollback_status: 'conflict' });
+  } else {
+    // The switch has ended: leave the domain settings preparable so a new review can read the
+    // current DNS. The journal keeps the conflict and its before-image for a manual decision.
+    await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(org, site), current => current.candidate?.id === candidate,
+      { rollback_status: 'conflict', rollback_requested: false, cutover_approved_revision: null, state: 'failed' });
+  }
   return { ...journal, state, errors };
 }
 

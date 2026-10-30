@@ -125,6 +125,39 @@ it.each([false, true])('handles CNAME-to-A normalization and rollback, lost resp
   expect(records).toEqual(before);
 });
 
+it('accepts the CNAME default Cloudflare lists after an A-to-CNAME switch and still restores the A record', async () => {
+  const before = structuredClone(records), { config, preparation } = await prepare();
+  await armDomainCutover('org', 'site', 'default', config);
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (route, options) => {
+    const result = await original(route, options);
+    if (options?.method === 'PATCH' && options.body.type === 'CNAME') records[0].settings = { flatten_cname: false };
+    return result;
+  });
+  await applyPreparedTraffic(journaledDomainProvider(provider, 'org', 'site', 'candidate', 'www.example.com'), preparation);
+  await recordDomainCutover('org', 'site', 'candidate', 'www.example.com');
+  expect((await readDomainCutover('org', 'site', 'candidate'))?.entries[0].after?.[0]).toMatchObject({ type: 'CNAME', settings: { flatten_cname: false } });
+  expect(await rollbackDomainCutover('org', 'site', 'candidate')).toMatchObject({ state: 'rolled_back', errors: [] });
+  expect(records).toEqual(before);
+});
+
+it('names the differing fields and leaves the domain preparable when rollback meets a conflict', async () => {
+  const { config, preparation } = await prepare();
+  await armDomainCutover('org', 'site', 'default', config);
+  const original = provider.getMockImplementation()!;
+  provider.mockImplementation(async (route, options) => {
+    const result = await original(route, options);
+    if (options?.method === 'PATCH') records[0].settings = { flatten_cname: true };
+    return result;
+  });
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  await applyPreparedTraffic(journaledDomainProvider(provider, 'org', 'site', 'candidate', 'www.example.com'), preparation);
+  await expect(recordDomainCutover('org', 'site', 'candidate', 'www.example.com')).rejects.toMatchObject({ code: 'dns_revision_conflict', details: { fields: ['settings'] }, message: expect.stringContaining('(settings)') });
+  expect(await rollbackDomainCutover('org', 'site', 'candidate')).toMatchObject({ state: 'conflict' });
+  expect(records[0]).toMatchObject({ type: 'CNAME', settings: { flatten_cname: true } });
+  expect(await getSiteDomains('org', 'site')).toMatchObject({ state: 'failed', rollback_status: 'conflict', rollback_requested: false, cutover_approved_revision: null, candidate: { id: 'candidate' } });
+});
+
 it('still rejects unrelated setting changes during CNAME-to-A conversion', async () => {
   records[0] = { ...records[0], type: 'CNAME', content: 'old.cloudfront.net', settings: { flatten_cname: false } };
   const { config } = await prepare();
