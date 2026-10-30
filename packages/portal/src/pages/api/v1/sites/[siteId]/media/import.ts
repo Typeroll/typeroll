@@ -6,6 +6,7 @@ import { requireImportStorage, importStorageStatus } from '../../../../../../lib
 import { connectionFailure, publishingJsonBody } from '../../../../../../lib/publishing/http';
 import { WPMediaTransfer } from '../../../../../../lib/wp/media';
 import { publicSource } from '../../../../../../lib/media/transfer-worker.mjs';
+import { QUEUED_PREPARATION } from '../../../../../../lib/media/preparation';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -33,6 +34,6 @@ export const POST: APIRoute = async ({ request, params }) => {
     const media = await getStore().getDoc<Media>(`${paths.media(ctx.orgId, ctx.siteId)}/${result.mediaId}`);
     return apiResponse(ctx, { media_id: result.mediaId, cdn_url: result.cdnUrl, filename: media?.filename,
       content_type: result.contentType, size_bytes: media?.size_bytes,
-      finalize: { sha256: media?.sha256, variants_pending: true }, finalize_error: null });
+      finalize: { sha256: media?.sha256, variants_pending: true, ...(media?.preparation_pending ? { preparation: QUEUED_PREPARATION } : {}) }, finalize_error: null });
   } catch (error) { return connectionFailure(error); }
 };

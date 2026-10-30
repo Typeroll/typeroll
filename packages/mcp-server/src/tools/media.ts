@@ -64,7 +64,7 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'get_media_preparation',
-    description: 'Read background image preparation progress. Originals and prepared draft variants remain private. Requires site access.',
+    description: 'Read background image preparation progress, including the build_job_id of a running preparation job on the organization build engine. Originals and prepared draft variants remain private. Requires site access.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'media/preparation'))),
   },
@@ -101,7 +101,7 @@ export const mediaTools: ToolDef[] = [
   {
     name: 'upload_media_from_url',
     description:
-      'Fetch an image (or PDF) from any public URL and push it to the site\'s media library in one call. The MCP server downloads the source from verified public HTTP(S) destinations; private addresses and unsafe redirects are refused. Integrity-safe: the bytes are streamed, never transcribed as base64 through the model, so (unlike a large `upload_media_inline` payload) they can\'t be silently corrupted in transit. Returns { media_id, cdn_url, filename }.',
+      'Fetch an image (or PDF) from any public URL and push it to the site\'s media library in one call. The MCP server downloads the source from verified public HTTP(S) destinations; private addresses and unsafe redirects are refused. Integrity-safe: the bytes are streamed, never transcribed as base64 through the model, so (unlike a large `upload_media_inline` payload) they can\'t be silently corrupted in transit. Returns { media_id, cdn_url, filename, finalize }. Each upload queues image preparation (finalize.preparation): one job per site on the organization\'s shared build engine, started shortly after the upload. get_media_preparation returns its build_job_id; let it finish, like any other active build, before publishing another site of the organization.',
     inputSchema: {
       source_url: z.string().url().describe('Public URL to download the image from.'),
       filename: z.string().optional().describe('Override the filename used on R2. Defaults to the last path segment of source_url. When its extension does not match the content type, the type\'s extension is appended; the response returns the stored filename.'),
@@ -118,7 +118,7 @@ export const mediaTools: ToolDef[] = [
   {
     name: 'upload_media_batch_from_urls',
     description:
-      'Upload 1–50 public images/PDFs (max 25 MiB each) in one MCP call. Uses the same integrity-safe download → signed PUT → finalize pipeline as upload_media_from_url, with four concurrent workers. Returns one result per source URL; individual failures do not abort the batch.',
+      'Upload 1–50 public images/PDFs (max 25 MiB each) in one MCP call. Uses the same integrity-safe download → signed PUT → finalize pipeline as upload_media_from_url, with four concurrent workers. Returns one result per source URL; individual failures do not abort the batch. Uploads queue image preparation as upload_media_from_url describes.',
     inputSchema: {
       items: z.array(z.object({
         source_url: z.string().url(),
