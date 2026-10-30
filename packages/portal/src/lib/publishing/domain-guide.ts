@@ -15,6 +15,7 @@ import { cloudflarePermissionReport } from './cloudflare-capabilities';
 import { siteHostingGroup } from './hosting-groups';
 import { readDomainCutover, requestDomainRollback } from './domain-cutover-journal';
 import { ConnectionError } from './connections';
+import { ProviderError } from './providers.mjs';
 
 type Check = { id: string; status: 'ready' | 'waiting' | 'action_required' | 'external'; message: string; details?: unknown };
 
@@ -42,7 +43,20 @@ export async function readDomainGuide(org: string, site: string) {
       const packs = await source.provider(`/zones/${zone.id}/ssl/verification`);
       const active = Array.isArray(packs) && packs.some((pack: any) => pack.certificate_status === 'active' && (!pack.hosts || pack.hosts.includes(host.host) || pack.hosts.includes(`*.${zone.name}`) && host.host.split('.').length === zone.name.split('.').length + 1));
       checks.push({ id: `certificate:${host.host}`, status: active ? 'ready' : 'waiting', message: active ? `Cloudflare reports an active edge certificate for ${host.host}.` : `Wait for Cloudflare to issue the edge certificate for ${host.host}. Existing traffic stays in place.` });
-    } catch { checks.push({ id: `certificate:${host.host}`, status: 'action_required', message: 'The connection could not read certificate status. Check SSL/TLS → Edge Certificates in Cloudflare or update its SSL read permission.' }); }
+    } catch (error) {
+      // Typeroll does not request SSL read permission, so OAuth connections are denied here. Fall back to
+      // Cloudflare's documented issuance window, as redirect preparation does.
+      if (!(error instanceof ProviderError && [401, 403].includes(error.status))) {
+        checks.push({ id: `certificate:${host.host}`, status: 'waiting', message: `Cloudflare did not return certificate status for ${host.host}. Retry the check; existing traffic stays in place.` });
+        continue;
+      }
+      const activated = zone.activated_on ? Date.parse(zone.activated_on) : NaN;
+      const expected = Number.isFinite(activated) && Date.now() - activated > 24 * 3_600_000;
+      checks.push({ id: `certificate:${host.host}`, status: expected ? 'ready' : 'waiting', details: { source: 'zone_activation' },
+        message: expected
+          ? `${zone.name} has been active for more than 24 hours, within which Cloudflare issues its Universal SSL certificate. This connection cannot read certificate status directly; check SSL/TLS → Edge Certificates if ${host.host} shows a certificate error.`
+          : `Cloudflare issues the Universal SSL certificate within 24 hours of zone activation. This connection cannot read certificate status directly; check SSL/TLS → Edge Certificates, or retry later. Existing traffic stays in place.` });
+    }
   }
   try {
     const permissions = await cloudflarePermissionReport(org, group.id);
