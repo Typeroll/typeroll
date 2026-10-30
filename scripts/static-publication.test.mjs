@@ -208,7 +208,11 @@ const FULL_SETTINGS = {
   contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
   social: { facebook: 'https://example.invalid/f', instagram: 'https://example.invalid/i', linkedin: 'https://example.invalid/l', x: 'https://example.invalid/x', youtube: 'https://example.invalid/y' },
   scripts_head: '<meta name="a">', scripts_body_end: '<meta name="b">', custom_css: 'body{}', render_version: 6,
-  styles: [], cookie_consent: { enabled: true, text: 'Consent' }, language: 'sv', twitter_handle: '@site',
+  styles: [], language: 'sv',
+  cookie_consent: {
+    enabled: true, text: 'Consent', privacy_policy_url: '/privacy', scripts_necessary: '<meta name="n">', scripts_optional: '<meta name="o">', reload_after_consent: true,
+    labels: { title: 'Cookies', reject: 'Reject', necessary: 'Necessary', accept_all: 'All', privacy_link: 'Privacy', manage: 'Manage' },
+  }, twitter_handle: '@site',
   default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
   organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },
   robots_txt: 'User-agent: *', sitewide_noindex: true, sitewide_nofollow: true,
@@ -241,6 +245,24 @@ test('every SiteSettings field is published or deliberately left out', () => {
   assert.deepEqual(unaccounted, [], 'add these fields to FULL_SETTINGS, or to NOT_PUBLISHED with a reason');
   const dropped = fields.filter(field => !NOT_PUBLISHED[field] && at(published, field) === undefined);
   assert.deepEqual(dropped, [], 'the publication drops these fields; project them or list them in NOT_PUBLISHED');
+});
+
+function interfaceFields(name) {
+  const source = readFileSync(new URL('../packages/shared/src/types.ts', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf(`export interface ${name} {`));
+  return [...body.slice(0, body.indexOf('\n}\n')).matchAll(/^ {2}([a-z0-9_]+)\??:/gm)].map(match => match[1]);
+}
+
+test('every cookie banner setting and label is published', () => {
+  // SiteSettings refers to these by type name, so the field parser above does not reach them.
+  const value = input(); value.settings = structuredClone(FULL_SETTINGS);
+  const published = projectStaticPublication(value, identity).settings.cookie_consent;
+  for (const [name, source, output] of [['CookieConsentSettings', FULL_SETTINGS.cookie_consent, published], ['CookieConsentLabels', FULL_SETTINGS.cookie_consent.labels, published.labels]]) {
+    const fields = interfaceFields(name);
+    assert.ok(fields.length >= 6, `the parser found the ${name} fields`);
+    assert.deepEqual(fields.filter(field => source[field] === undefined), [], `add these ${name} fields to FULL_SETTINGS`);
+    assert.deepEqual(fields.filter(field => output?.[field] === undefined), [], `the publication drops these ${name} fields`);
+  }
 });
 
 test('publication rejects unsafe document paths and expiring credential-bearing media URLs', () => {
