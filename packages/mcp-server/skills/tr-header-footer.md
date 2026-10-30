@@ -121,6 +121,9 @@ desktop 1280, wide 1536); do not independently hide all links at the menu bounda
 Verify 1023/1024 px, Tab/Shift-Tab, Enter/Space, Escape returning focus,
 visible focus, long labels, no-JavaScript links and no horizontal overflow.
 
+Each entry in `links` (`core/navigation_links` and `core/navigation`) may set
+`link_rel`, for example `nofollow sponsored` on an affiliate or partner link.
+
 ## Footer tree and consent
 
 Use an accessible footer navigation landmark and `core/navigation_links`, not

@@ -103,7 +103,7 @@ export const navigationLinks: BlockType = {
     { name:'icon', label:'Link icons', selector:'> li > a > .block-nav-icon', target:'text', decorative:true },
   ],
   schema:[
-    { name:'links', type:'array', label:'Links', fields:[{ name:'label', type:'text', label:'Label', required:true },{ name:'href', type:'url', label:'Link', required:true },{ name:'icon', type:'icon', label:'Icon (optional)' }] },
+    { name:'links', type:'array', label:'Links', fields:[{ name:'label', type:'text', label:'Label', required:true },{ name:'href', type:'url', label:'Link', required:true },{ name:'icon', type:'icon', label:'Icon (optional)' },{ name:'link_rel', type:'text', label:'Link relationship (e.g. nofollow sponsored)' }] },
     { name:'direction', type:'select', label:'Direction', options:['row','column'], default:'column', responsive:true },
     { name:'font', type:'select',label:'Font',options:['inherit','body','heading'],default:'inherit' },
     pixels('icon_size_px','Link icon size (px)',8,96),pixels('icon_gap_px','Icon gap (px)',0,80),

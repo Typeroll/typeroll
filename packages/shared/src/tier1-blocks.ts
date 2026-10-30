@@ -1189,6 +1189,7 @@ const navigation: BlockType = {
     { name: 'links', type: 'array', label: 'Links', fields: [
       { name: 'label', type: 'text', label: 'Label', required: true },
       { name: 'href', type: 'url', label: 'Link', required: true },
+      { name: 'link_rel', type: 'text', label: 'Link relationship (e.g. nofollow sponsored)' },
     ] },
   ],
   template: `<nav data-block="navigation" aria-label="{{aria_label}}">

@@ -1457,7 +1457,7 @@ function renderNavigationLinks(
       try { const target = new URL(href, currentUrl); sameOrigin = target.origin === currentUrl.origin; targetPath = normalize(target.href); } catch { /* Not a navigable URL. */ }
       const ariaCurrent = sameOrigin && !href.startsWith('#') && targetPath === current ? ' aria-current="page"' : '';
       const icon = withIcons ? String(entry.icon ?? '').trim() : '';
-      return `<li><a href="${escapeHtml(href)}"${ariaCurrent}>${icon ? `<span class="block-nav-icon" aria-hidden="true">${renderIconHtml(icon)}</span><span>${escapeHtml(label)}</span>` : escapeHtml(label)}</a></li>`;
+      return `<li><a href="${escapeHtml(href)}"${ariaCurrent}${linkTargetAttributes(entry.link_rel, false)}>${icon ? `<span class="block-nav-icon" aria-hidden="true">${renderIconHtml(icon)}</span><span>${escapeHtml(label)}</span>` : escapeHtml(label)}</a></li>`;
     })
     .join('');
 }
