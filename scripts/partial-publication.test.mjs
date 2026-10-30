@@ -372,6 +372,8 @@ test('a deferred-media build has exactly the same complete output as materializi
   await fs.writeFile(preparedPath, JSON.stringify(prepared));
   await harness.run(true, { TYPEROLL_BUILD_MEDIA_PREPARED: preparedPath });
   const complete = await harness.output(); assert.equal(complete['photo.png'], digest(bytes));
+  // Theme fonts are served from the site itself, restored from the build's font cache without network.
+  assert.ok(complete[`_typeroll/fonts/${'0'.repeat(32)}.woff2`] && complete['_typeroll/fonts/fonts.css']);
   prepared.files = [{ path: '/photo.png', reused: true, sha256: digest(bytes), size: bytes.length }];
   await fs.writeFile(preparedPath, JSON.stringify(prepared)); await fs.rm(source);
   const result = await harness.run(false, { TYPEROLL_BUILD_MEDIA_PREPARED: preparedPath });

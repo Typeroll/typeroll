@@ -241,7 +241,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       return;
     }
     for (const [name, content] of Object.entries(files)) {
-      if (name.startsWith('.typeroll-runner/') || name.startsWith('.publication-cache.json')) throw Error('reserved_build_source');
+      if (name.startsWith('.typeroll-runner/') || name.startsWith('.publication-cache.json') || name.startsWith('.publication-fonts/')) throw Error('reserved_build_source');
       const target = path.join(work, name); await fs.mkdir(path.dirname(target), { recursive: true }); await fs.writeFile(target, content, { flag: 'wx' });
     }
     if (job.kind === 'publication' && job.render_cache) {

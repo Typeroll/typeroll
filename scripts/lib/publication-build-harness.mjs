@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { createStaticPublicationProject, sealPublicationProject } from './static-publication.mjs';
 import { publicationContentFiles } from '../fixtures/static-publication/content.mjs';
@@ -15,6 +16,12 @@ export async function publicationBuildHarness(publication) {
   await createStaticPublicationProject(publication, destination);
   await fs.symlink(fileURLToPath(new URL('../../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
   await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
+  // Self-hosted theme fonts come from the build's font cache, so builds stay offline.
+  const fontCss = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
+  const fonts = path.join(destination, '.publication-fonts', createHash('sha256').update(fontCss).digest('hex').slice(0, 32));
+  await fs.mkdir(fonts, { recursive: true });
+  await fs.writeFile(path.join(fonts, `${'0'.repeat(32)}.woff2`), 'synthetic font');
+  await fs.writeFile(path.join(fonts, 'fonts.css'), `@font-face{font-family:'Inter';src:url(/_typeroll/fonts/${'0'.repeat(32)}.woff2) format('woff2')}\n`);
   return {
     destination,
     cleanup: () => fs.rm(root, { recursive: true, force: true }),

@@ -73,3 +73,16 @@ it('prefetches theme fonts in the trusted stage and replays them while rendering
     expect(offline).not.toHaveBeenCalled();
   } finally { restore(); }
 });
+
+it('reuses the fonts a build workspace copied before, so rebuilding is identical', async () => {
+  const root = makeTmpFixtures().dir, cacheDir = path.join(root, '.publication-fonts');
+  vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: '203.0.113.1', family: 4 }] as any);
+  const first = path.join(root, 'first'), second = path.join(root, 'second');
+  await vendorThemeFonts(first, { heading: 'Sofia Sans' }, network() as any, { cacheDir });
+  // A different edge would serve different bytes; the cached copy wins.
+  const changed = vi.fn(async (url: any) => new Response(String(url).includes('googleapis') ? css : 'other bytes'));
+  expect(await vendorThemeFonts(second, { heading: 'Sofia Sans' }, changed as any, { cacheDir })).toMatchObject({ delivery: 'self_hosted', files: 2 });
+  expect(changed).not.toHaveBeenCalled();
+  const list = async (dir: string) => Object.fromEntries(await Promise.all((await fs.readdir(path.join(dir, '_typeroll/fonts'))).map(async name => [name, (await fs.readFile(path.join(dir, '_typeroll/fonts', name))).toString('base64')])));
+  expect(await list(second)).toEqual(await list(first));
+});

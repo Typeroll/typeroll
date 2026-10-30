@@ -13,7 +13,7 @@ export async function postprocess(dist: string, publication: { publication_id: s
   await bundleBlockAssets(dist);
   await buildSearchIndexIfUsed(dist);
   if (publication.extensions?.installations?.length) await vendorExtensionAssets(dist, publication.extensions);
-  await vendorThemeFonts(dist, publication.settings.fonts);
+  await vendorThemeFonts(dist, publication.settings.fonts, fetch, { cacheDir: path.join(dist, '..', '.publication-fonts') });
   if (!/^[a-f0-9]{64}$/.test(publication.publication_id)) throw new Error('Invalid publication identity');
   let headers = withGlobalHeaders(buildPagesHeaders(), {
     'X-Typeroll-Publication': publication.publication_id,

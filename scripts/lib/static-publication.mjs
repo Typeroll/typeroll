@@ -353,7 +353,7 @@ export async function sealPublicationProject(destination) {
   const files = {};
   async function walk(directory, prefix = '') {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-      if (['node_modules', 'dist', '.astro', '.git', '.publication-work', '.publication-media', '.publication-cache.json', '.publication-cache.json.tmp', 'publication-manifest.json'].includes(entry.name)) continue;
+      if (['node_modules', 'dist', '.astro', '.git', '.publication-work', '.publication-media', '.publication-fonts', '.publication-cache.json', '.publication-cache.json.tmp', 'publication-manifest.json'].includes(entry.name)) continue;
       const relative = prefix + entry.name;
       if (entry.isDirectory()) await walk(path.join(directory, entry.name), `${relative}/`);
       else if (entry.isFile()) files[relative] = digest(await fs.readFile(path.join(directory, entry.name)));
