@@ -33,6 +33,18 @@ function headerRobots(source, url) {
   return tokens;
 }
 
+function linkAccessibleName(link, all) {
+  const images = nodes(link).filter(n => n.name === 'img');
+  const labelled = attr(link, 'aria-labelledby').split(/\s+/).filter(Boolean).map(id => text(all.find(n => attr(n, 'id') === id) ?? {})).join(' ');
+  const name = [attr(link, 'aria-label'), labelled, visibleText(link), images.map(n => attr(n, 'alt')).join(' '), attr(link, 'title')].map(norm).find(Boolean) ?? '';
+  return { images, name };
+}
+/** Hrefs of image links without an accessible name in an HTML fragment (the image_link_unnamed rule). */
+export function unnamedImageLinks(html) {
+  const all = nodes(parseDocument(String(html ?? '')));
+  return all.filter(n => n.name === 'a' && attr(n, 'href')).filter(link => { const { images, name } = linkAccessibleName(link, all); return images.length && !name; }).map(link => attr(link, 'href'));
+}
+
 /** Validate complete output, including HTML restored from the render cache.
  * No network crawl, bot impersonation, content rewriting, or cached verdicts.
  */
@@ -179,9 +191,7 @@ export function validatePublication({ files, publication, routes = [], sourceHas
         else if (result.invalid || result.loop || (!result.external && !result.file)) add('error', 'internal_target_missing', page, link, `Broken internal target: ${href}`, 'Fix the link or create the intended route.');
         else if (result.redirected) add('warning', 'internal_redirect', page, link, `Link redirects: ${href}`, 'Use the final destination where appropriate.');
       }
-      const descendants = nodes(link), images = descendants.filter(n => n.name === 'img');
-      const labelled = attr(link, 'aria-labelledby').split(/\s+/).filter(Boolean).map(id => text(all.find(n => attr(n, 'id') === id) ?? {})).join(' ');
-      const name = [attr(link, 'aria-label'), labelled, visibleText(link), images.map(n => attr(n, 'alt')).join(' '), attr(link, 'title')].map(norm).find(Boolean) ?? '';
+      const { images, name } = linkAccessibleName(link, all);
       if (images.length && !name) add('error', 'image_link_unnamed', page, link, `Image link has no accessible name: ${href}`, 'Supply meaningful image alt, image_alt_field, or a card title.');
       if (/^(?:about|click here|read more|learn more|explore companies and programs)$/i.test(name)) add('warning', 'generic_link_text', page, link, `Review generic link text: ${name}`, 'Make the destination clear in context; do not add keywords mechanically.');
     }

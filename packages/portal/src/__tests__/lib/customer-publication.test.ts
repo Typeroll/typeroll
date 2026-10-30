@@ -552,6 +552,16 @@ it('captures media impact from the same records used in the frozen media manifes
 });
 
 
+it('stops a dry run on an image link without an accessible name, as the build would', async () => {
+  const store = getStore();
+  await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<p><a href="/partner"><img src="/a.png" alt=""></a></p>' });
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  await executeCustomerPublication({ ...args, dryRun: true });
+  const job = await store.getDoc<any>(jobPath);
+  expect(job).toMatchObject({ status: 'failed', failure: expect.objectContaining({ code: 'publication_validation_failed' }) });
+  expect(job.error).toContain('Image link has no accessible name: /partner');
+});
+
 it('publishes without an SVG that cannot be made safe and reports it on the job', async () => {
   const store = getStore();
   await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });

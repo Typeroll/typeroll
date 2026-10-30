@@ -19,7 +19,7 @@ export const deployTools: ToolDef[] = [
     inputSchema: {
       environment: z.enum(['production', 'staging']).optional(),
       allow_unsaved: z.boolean().optional().describe('Explicitly publish saved content while leaving the reported unsaved Pages/partials untouched. Only after owner confirmation.'),
-      dry_run: z.boolean().optional().describe('Validate without publishing. Customer publishing checks frozen source only; other adapters may build locally without upload.'),
+      dry_run: z.boolean().optional().describe('Validate without publishing. Customer publishing checks frozen source only, including image links without an accessible name (publication_validation_failed); other adapters may build locally without upload.'),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
