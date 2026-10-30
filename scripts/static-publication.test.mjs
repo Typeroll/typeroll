@@ -12,7 +12,7 @@ import { projectStaticPublication, createStaticPublicationProject, sealPublicati
 function input() {
   return {
     site: { name: 'Synthetic Site', domain: 'example.invalid', hosting_config: { token: 'private-value' } },
-    settings: { site_name: 'Synthetic Site', colors: { primary: '#112233', private: 'private-value' }, fonts: { heading: 'Arial', body: 'Arial', size_base: 16 }, _internal: 'private-value' },
+    settings: { site_name: 'Synthetic Site', colors: { primary: '#112233', private: 'private-value' }, fonts: { heading: 'system-ui', body: 'system-ui', size_base: 16 }, _internal: 'private-value' },
     pages: [
       { id: 'home', slug: '', title: 'Home', status: 'published', content_mode: 'html', html_content: '<h1>Public</h1><img src="https://media.example.invalid/one.png" />', api_generated: true, editor_email: 'private-value' },
       { id: 'draft', slug: 'draft', status: 'draft', content_mode: 'html', html_content: 'private-value' },

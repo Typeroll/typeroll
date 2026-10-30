@@ -20,6 +20,28 @@ const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 type Fonts = { heading?: string; body?: string; mono?: string; delivery?: unknown } | undefined;
 export interface ThemeFontResult { delivery: 'self_hosted' | 'google' | 'none'; files: number; bytes: number; error?: string }
 
+const fetchCss = async (families: string[], fetchImpl: typeof fetch) =>
+  new TextDecoder().decode(await fetchPublicAsset(googleFontsCssUrl(families)!, MAX_CSS_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT }));
+const notServed = (error: unknown) => error instanceof Error && /HTTP 400$/.test(error.message);
+
+/**
+ * Google answers 400 for the whole request when one family is not a Google
+ * font (for example Arial, which browsers have locally). Those families are
+ * left to the browser; network and server errors still fail the copy.
+ */
+async function googleFontsCss(families: string[], fetchImpl: typeof fetch): Promise<string> {
+  try { return await fetchCss(families, fetchImpl); }
+  catch (error) {
+    if (!notServed(error) || families.length === 1) { if (notServed(error)) return ''; throw error; }
+  }
+  const parts: string[] = [];
+  for (const family of families) {
+    try { parts.push(await fetchCss([family], fetchImpl)); }
+    catch (error) { if (!notServed(error)) throw error; }
+  }
+  return parts.join('\n');
+}
+
 /**
  * Copy the theme's Google webfonts into the build so published pages load them
  * from the site's own origin. A failure leaves an empty stylesheet: pages fall
@@ -44,9 +66,14 @@ export async function vendorThemeFonts(buildDir: string, fonts: Fonts, fetchImpl
     return { delivery: 'self_hosted', files: names.filter(name => name !== path.basename(cssPath)).length, bytes };
   }
   try {
-    const css = new TextDecoder().decode(await fetchPublicAsset(cssUrl, MAX_CSS_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT }));
+    const css = await googleFontsCss(families, fetchImpl);
     const urls = googleFontFileUrls(css);
-    if (!urls.length) throw new Error('The font stylesheet named no font files');
+    if (!urls.length) {
+      // Every family is a local font such as Arial; there is nothing to copy.
+      await fs.promises.writeFile(cssPath, `/* ${families.join(', ').replace(/\*\//g, '')}: not served by Google Fonts; the browser uses local fonts. */\n`);
+      if (cached) { await fs.promises.rm(cached, { recursive: true, force: true }); await fs.promises.cp(directory, cached, { recursive: true }); }
+      return { delivery: 'self_hosted', files: 0, bytes: 0 };
+    }
     if (urls.length > MAX_FONT_FILES) throw new Error(`The theme fonts need more than ${MAX_FONT_FILES} files`);
     const local = new Map<string, string>();
     let bytes = 0;
@@ -82,4 +109,49 @@ async function restoreCachedFonts(cached: string, directory: string): Promise<bo
     for (const name of names) await fs.promises.copyFile(path.join(cached, name), path.join(directory, name));
     return true;
   } catch { return false; }
+}
+
+/** Font files Typeroll fetched when it froze the publication, carried in publication.json. */
+export interface FrozenThemeFonts { css_url: string; css: string; files: Array<{ name: string; sha256: string; data: string }> }
+const FROZEN_NAME = /^[a-f0-9]{32}\.(?:woff2?|ttf|otf)$/;
+
+/** The stylesheet URL a theme needs, or null for system fonts and Google delivery. */
+export function themeFontsCssUrl(fonts: Fonts): string | null {
+  const families = webFontFamilies(fonts?.heading ?? 'Inter', fonts?.body ?? 'Inter', fonts?.mono);
+  return families.length && fontDelivery(fonts) === 'self_hosted' ? googleFontsCssUrl(families) : null;
+}
+
+/** Copy the theme fonts into a frozen record. Throws when they cannot be copied completely. */
+export async function captureThemeFonts(workDir: string, fonts: Fonts, fetchImpl: typeof fetch = fetch): Promise<FrozenThemeFonts | null> {
+  const cssUrl = themeFontsCssUrl(fonts);
+  if (!cssUrl) return null;
+  const result = await vendorThemeFonts(workDir, fonts, fetchImpl);
+  if (result.error) throw new Error(result.error);
+  const directory = path.join(workDir, SELF_HOSTED_FONTS_DIRECTORY.replace(/^\//, ''));
+  const css = await fs.promises.readFile(path.join(directory, 'fonts.css'), 'utf8');
+  const files = [];
+  for (const name of (await fs.promises.readdir(directory)).sort()) {
+    if (name === 'fonts.css') continue;
+    const bytes = await fs.promises.readFile(path.join(directory, name));
+    files.push({ name, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), data: bytes.toString('base64') });
+  }
+  return { css_url: cssUrl, css, files };
+}
+
+/** Write frozen theme fonts into the build output after verifying every file. */
+export async function writeFrozenThemeFonts(buildDir: string, frozen: FrozenThemeFonts): Promise<number> {
+  const directory = path.join(buildDir, SELF_HOSTED_FONTS_DIRECTORY.replace(/^\//, ''));
+  await fs.promises.mkdir(directory, { recursive: true });
+  if (typeof frozen.css !== 'string' || !Array.isArray(frozen.files) || frozen.files.length > MAX_FONT_FILES) throw new Error('Invalid frozen theme fonts');
+  let bytes = 0;
+  for (const file of frozen.files) {
+    if (!FROZEN_NAME.test(file.name)) throw new Error('Invalid frozen theme font name');
+    const data = Buffer.from(String(file.data), 'base64');
+    bytes += data.byteLength;
+    if (bytes > MAX_TOTAL_BYTES) throw new Error('The frozen theme fonts exceed the size limit');
+    if (crypto.createHash('sha256').update(data).digest('hex') !== file.sha256) throw new Error(`Frozen theme font ${file.name} failed integrity verification`);
+    await fs.promises.writeFile(path.join(directory, file.name), data);
+  }
+  await fs.promises.writeFile(path.join(directory, 'fonts.css'), frozen.css);
+  return frozen.files.length;
 }
