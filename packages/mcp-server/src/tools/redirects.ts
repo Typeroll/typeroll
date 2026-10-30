@@ -62,7 +62,9 @@ export const redirectTools: ToolDef[] = [
       'Create or update up to 1000 redirect rules in one call, keyed by from_path: an existing rule keeps its id and is ' +
       'replaced in place, so no address is ever without a rule. Every rule is validated against the site and against the ' +
       'batch as a whole (loops, hidden live pages); if any rule fails, nothing is written. Pass dry_run=true first to see ' +
-      'per-rule create/update/unchanged results and warnings without writing.',
+      'per-rule create/update/unchanged results and warnings without writing. capacity reports the Cloudflare Pages rules ' +
+      'the site emits afterwards (2000 static, 100 dynamic per site, shared by page redirects and old file addresses); ' +
+      'heed capacity.warning before publishing.',
     inputSchema: {
       redirects: z.array(z.object({
         from_path: z.string(),

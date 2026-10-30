@@ -6,7 +6,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { getStore } from '../../../../../../lib/datastore';
-import { paths } from '@typeroll/shared';
+import { paths, pagesRedirectCapacity } from '@typeroll/shared';
 import { checkRedirectBatch, checkRedirectWrite, loadRedirectWriteContext, redirectDocId } from '../../../../../../lib/redirect-write';
 import type { RedirectBatchRule } from '../../../../../../lib/redirect-write';
 
@@ -91,11 +91,20 @@ export const PUT: APIRoute = async ({ request, params }) => {
     failed: failed.length,
   };
   const dryRun = body.dry_run === true;
+  // Cloudflare Pages caps a site's _redirects file; report the rules this batch
+  // would leave, so an inventory over the cap is seen before publishing fails.
+  const merged = new Map(context.existing.map((rule) => [rule.from_path, rule]));
+  for (const rule of rules) merged.set(rule.from_path, { ...(merged.get(rule.from_path) ?? {}), ...rule } as any);
+  const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+  const counted = pagesRedirectCapacity([...merged.values()], { trailing_slash: settings?.trailing_slash });
+  const capacityWarning = counted.over_limit ? `After this batch the site emits ${counted.static} static and ${counted.dynamic} dynamic redirect rules (with slash aliases); Cloudflare Pages allows ${counted.limit_static} and ${counted.limit_dynamic}, so publishing will fail with publication_redirect_limit. Consolidate rules, or point old file addresses at fewer targets.`
+    : counted.remaining_static < 100 ? `After this batch only ${counted.remaining_static} of ${counted.limit_static} static redirect rules remain; publication also adds media replacement rules.` : null;
+  const capacity = { ...counted, ...(capacityWarning ? { warning: capacityWarning } : {}) };
   // All or nothing: a batch with one invalid rule writes none of them.
   if (dryRun || failed.length) {
     return apiResponse(ctx, {
       ...(failed.length && !dryRun ? { error: `${failed.length} redirect(s) failed validation; nothing was written.` } : {}),
-      dry_run: dryRun, applied: false, summary, results, warnings,
+      dry_run: dryRun, applied: false, summary, capacity, results, warnings,
     }, failed.length && !dryRun ? 422 : 200, body);
   }
   const existing = new Map(context.existing.map((rule) => [rule.from_path, rule]));
@@ -109,5 +118,5 @@ export const PUT: APIRoute = async ({ request, params }) => {
   for (let start = 0; start < writes.length; start += 20) {
     await Promise.all(writes.slice(start, start + 20).map((write) => getStore().setDoc(write.path, write.data)));
   }
-  return apiResponse(ctx, { dry_run: false, applied: true, summary, results, warnings }, 200, body);
+  return apiResponse(ctx, { dry_run: false, applied: true, summary, capacity, results, warnings }, 200, body);
 };

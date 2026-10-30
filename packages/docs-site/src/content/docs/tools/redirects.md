@@ -126,6 +126,14 @@ is all or nothing: if any rule fails, it returns HTTP 422 with the same per-rule
 results and writes no rule. A `from_path` may appear only once per call. Run a
 dry run first, fix the reported rules, then repeat the call without `dry_run`.
 
+Each response also has `capacity`: the static and dynamic Cloudflare Pages rules
+the Site's redirects emit after the call (`static`, `dynamic`, including
+generated slash aliases), the limits (`limit_static` 2000, `limit_dynamic` 100),
+`remaining_static` and `over_limit`. Page redirects and old file addresses share
+the same limit. Publication adds media replacement rules on top, so when
+`capacity.warning` is present, consolidate rules before publishing; over the
+limit, publishing fails with `publication_redirect_limit`.
+
 ## `list_redirects`
 
 Returns all configured redirects.
