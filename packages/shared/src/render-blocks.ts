@@ -520,6 +520,15 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     if (effectiveBlock.type === 'core/container' && compiled.flatData.tag === 'a' && !safeLinkHref(compiled.flatData.href)) compiled.flatData.tag = 'div';
   }
   prepareArticleBlockData(effectiveBlock.type, compiled.flatData);
+  // From render version 12 a flex container that is a column at every
+  // breakpoint says so, and its width-constrained child containers fill it.
+  if (effectiveBlock.type === 'core/container' && compiled.flatData.container_kind === 'container' && resolveRenderVersion(options.renderVersion) >= 12) {
+    const direction = effectiveBlock.data?.direction;
+    const values = direction && typeof direction === 'object' ? Object.values(direction as Record<string, unknown>) : [direction];
+    if (values.every(value => value === undefined || value === null || value === '' || value === 'column')) {
+      compiled.flatData.container_attributes_html = `${compiled.flatData.container_attributes_html ?? ''} data-column-only="true"`.trim();
+    }
+  }
   // Link fields resolve to href/target/rel; a template that loops gets the
   // same derived values inside every array item (block-fields.ts).
   const loops = usesExtendedSections(template);

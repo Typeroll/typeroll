@@ -125,6 +125,13 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Navigation link groups keep 44px default touch targets without an additional vertical gap. Explicit gaps and compact desktop density are preserved.',
     ],
   },
+  {
+    version: 12, core_version: '0.2.132', title: 'Constrained containers fill columns',
+    changes: [
+      'A container with width narrow, normal or wide inside a container that is a column at every breakpoint fills the column up to its maximum width and stays centered. Before, it shrank to its content, so an archive with one card was narrower than one with many.',
+      'Such column containers carry data-column-only="true". Rows, and containers that become rows at some breakpoint, are unchanged.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

@@ -26,6 +26,16 @@ const ISO_EPOCH = '1970-01-01T00:00:00Z';
 // ─── Layout primitives ───────────────────────────────────────────────────
 
 /**
+ * From render version 12 a narrow, normal or wide container inside a column
+ * container fills the column up to its maximum width and stays centered.
+ * Its auto margins used to shrink it to its content (a column's stretch does
+ * not apply to a child with auto margins). The stretch keyword keeps padding
+ * inside the width, as an ordinary block does.
+ */
+const FILL_COLUMN_CSS = `[data-block="container"][data-column-only="true"] > [data-block="container"]:is([data-width="narrow"], [data-width="normal"], [data-width="wide"]) { width:-webkit-fill-available; width:-moz-available; width:stretch; }
+`;
+
+/**
  * Container CSS. From render version 9 (`raised`) a container with a shadow
  * is raised above the blocks after it (position:relative; z-index:10, as a
  * typical site header does), so the next block's background no longer paints
@@ -34,7 +44,7 @@ const ISO_EPOCH = '1970-01-01T00:00:00Z';
  * (z-index 2) that form no stacking context of their own, so menus opening
  * from a shadowed header land above the next block.
  */
-const containerStyles = (raised: boolean) => `
+const containerStyles = (raised: boolean, fill = false) => `${fill ? FILL_COLUMN_CSS : ''}
  :is([data-block="container"], [data-block="semantic-container"]) { --surface-gradient:initial;border-radius:var(--radius_px,0px); }
 :is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] { overflow:clip; }
 :is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
@@ -145,7 +155,7 @@ const container: BlockType = {
   // to a real rem value via attribute-selectors against the inline style.
   template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});--background_fit:{{background_fit}};{{surface_gradient_css}}{{inline_style}}">{{children}}</{{=tag}}>`,
   styles: containerStyles(false),
-  render_versions: [{ from: 9, styles: containerStyles(true) }],
+  render_versions: [{ from: 9, styles: containerStyles(true) }, { from: 12, styles: containerStyles(true, true) }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
