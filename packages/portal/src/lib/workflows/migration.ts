@@ -30,6 +30,7 @@ import { normalizeWordPressPlainText } from '../wp/plain-text';
 import { wordpressDate } from '../wp/dates';
 import { sameSourceSite } from '../net/safe-fetch';
 import { reviewGate, type WorkflowDef } from './types';
+import { assignRedirectDocId } from '../redirect-write';
 
 // REST `content.rendered` shorter than this triggers the public-page fallback —
 // page builders sometimes return just shortcode markup that hasn't been
@@ -711,6 +712,13 @@ export const migrationWorkflow: WorkflowDef = {
         const sourceOrigin = new URL(String(ctx.state.wp_url)).origin;
         let added = 0;
         let importedExisting = 0;
+        // A source path keeps its rule's id; a new one never takes another path's id.
+        const taken = new Map((await vstore.redirects(ctx.orgId, ctx.siteId, migrationVersion(ctx))).map(rule => [rule.id, rule.from_path]));
+        const redirectId = (fromPath: string) => {
+          const { id } = assignRedirectDocId(fromPath, taken);
+          taken.set(id, fromPath);
+          return id;
+        };
 
         // 1. Pull in whatever the customer already has in their WP redirect
         //    plugin (helper plugin only — falls back silently if it's not
@@ -733,7 +741,7 @@ export const migrationWorkflow: WorkflowDef = {
                 status_code: r.status_code === 302 ? 302 : 301,
                 auto_generated: true,
               };
-              const id = makeSafeDocId(oldPath);
+              const id = redirectId(oldPath);
               await ctx.store.setDoc(`${paths.redirects(ctx.orgId, ctx.siteId, migrationVersion(ctx))}/${id}`, redirect);
               importedExisting++;
             }
@@ -756,7 +764,7 @@ export const migrationWorkflow: WorkflowDef = {
             status_code: 301,
             auto_generated: true,
           };
-          const id = makeSafeDocId(oldPath);
+          const id = redirectId(oldPath);
           await ctx.store.setDoc(`${paths.redirects(ctx.orgId, ctx.siteId, migrationVersion(ctx))}/${id}`, redirect);
           added++;
         }
@@ -918,10 +926,6 @@ function isLikelyHome(item: WPPage, baseUrl: string): boolean {
   } catch {
     return false;
   }
-}
-
-function makeSafeDocId(s: string): string {
-  return s.replace(/[\/\\]/g, '_').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 100) || `doc-${Date.now()}`;
 }
 
 /** Reuse an existing article content type or create a default native Page template. */

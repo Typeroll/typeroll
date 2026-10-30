@@ -104,7 +104,7 @@ describe('redirect hygiene — page writes retire shadowing redirects', () => {
     let redirects = await listRedirects();
     expect(redirects).toHaveLength(1);
     expect(redirects[0]).toMatchObject({
-      id: '_', from_path: '/', to_path: '/home-html-legacy', auto_generated: true,
+      id: expect.any(String), from_path: '/', to_path: '/home-html-legacy', auto_generated: true,
     });
 
     // Step 2: page B takes "/" and is published — the redirect must retire,

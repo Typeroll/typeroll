@@ -16,7 +16,7 @@ import { getBlockUsage, getAllBlockUsage } from './partials-usage';
 import { DESIGN_NOTES_STARTER } from './design-notes';
 import { PLAYBOOK_STARTER } from './playbook';
 import { pageLiveUrl, pagePreviewUrl } from './site-urls';
-import { checkRedirectWrite, redirectDocId } from './redirect-write';
+import { checkRedirectWrite } from './redirect-write';
 import { paths, slugify } from '@typeroll/shared';
 import type { Block, BlockType } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES } from '@typeroll/shared';
@@ -1957,7 +1957,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, from_path, to_path,
       });
       if (!check.ok) return { result: { error: check.error } };
-      const id = redirectDocId(from_path);
+      const { id } = check;
       await store.setDoc(`${paths.redirects(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`, {
         from_path,
         to_path,
