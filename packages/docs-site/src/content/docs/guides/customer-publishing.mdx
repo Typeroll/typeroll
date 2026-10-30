@@ -218,6 +218,9 @@ here. Configure the shared connection and address base in **Cloudflare account**
 and **Domains**. The Organization owns shared media,
 DNS access, GitHub and the build-provider selection.
 Each site gets its own generated private repository and static Pages project.
+A new site's repository is named `typeroll-<site id>` (with a short suffix if
+that name is taken); sites published before Core 0.2.133 keep their existing
+hash-named repository.
 Adding a site or version reuses the organization connections.
 
 Account ID is only needed in advanced token setup. In Cloudflare, select the

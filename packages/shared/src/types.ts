@@ -161,6 +161,8 @@ export interface Site {
   publishing_migration?: { account_id: string; project: string; website_host: string; previous_deployment_id: string; hosting_group_id: string; migrated_at: string };
   /** Omitted legacy values resolve to the organization's Default Hosting Group. */
   hosting_group_id?: string;
+  /** GitHub repository with the generated source, chosen at the first Git publication; older sites keep their hash name. */
+  git_repository?: string;
   /** First publication serializes assignment; moving hosting then requires migration. */
   hosting_assignment_locked?: boolean;
   /**

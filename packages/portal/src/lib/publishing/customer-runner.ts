@@ -7,6 +7,7 @@ import { schedulePublication, waitForBuild, waitForPublicationCondition } from '
 import { recordPublishedMedia } from './published-media';
 import { ensureGithubMainBranch } from './providers.mjs';
 import { createGithubRepository } from './github-user';
+import { siteRepositoryName, generatedRepositoryDescription } from './site-repository';
 import { verifyManagedProject } from './managed-migration';
 import { capturePublicationImpact } from './impact-preview';
 import { compareImpact } from './impact';
@@ -369,7 +370,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });
         terminal = true; return 'ran';
       }
-      publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
+      publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: site?.git_repository ?? generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domainPublicationRevision(domains), destination: {hosts: domains.desired, dns_mode: domains.dns_mode},
         ...(job.source_publication ? {source_publication_id: job.source_publication.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}), ...await saveSnapshot(args, frozen) };
@@ -432,16 +433,23 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (!publication.commit) {
       const frozen = await readSnapshot(args, publication);
       const files = await publicationSourceTree(frozen);
+      // The repository name is settled with GitHub here, not while freezing the source.
+      const repo = await siteRepositoryName(args.orgId, args.siteId, site, github, publication.owner);
+      if (repo !== publication.repo) {
+        publication = { ...publication, repo };
+        await assertLease();
+        await store.updateDoc(jobPath, { git_publication: publication });
+      }
       const repoRoot = `/repos/${publication.owner}/${publication.repo}`;
       let repository = await github(repoRoot, { missing: true });
       if (!repository) {
         await createGithubRepository(args.orgId, github, identity, {
           name: publication.repo, private: true, auto_init: true, has_issues: false, has_projects: false, has_wiki: false,
-          description: `Generated Typeroll site ${digest(`${args.orgId}\0${args.siteId}`).slice(0, 16)}`,
+          description: generatedRepositoryDescription(args.orgId, args.siteId),
         });
         repository = await github(repoRoot);
       }
-      if (repository.private !== true || String(repository.owner?.id) !== identity.account_id || repository.archived || repository.description !== `Generated Typeroll site ${digest(`${args.orgId}\0${args.siteId}`).slice(0, 16)}`) {
+      if (repository.private !== true || String(repository.owner?.id) !== identity.account_id || repository.archived || repository.description !== generatedRepositoryDescription(args.orgId, args.siteId)) {
         throw new ConnectionError('The generated repository does not match this organization. Check GitHub publishing access.', 409);
       }
       repository = await ensureGithubMainBranch(github, { owner: publication.owner, repo: publication.repo, repository });
