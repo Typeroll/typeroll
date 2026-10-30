@@ -447,7 +447,11 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
 
 - **Deploys.** Customers see live changes only after a deploy. Preview
   sees saved content unless `include_working_copy:true` is requested. `trigger_deploy` enqueues; `get_deploy_status`
-  reports `queued → running → succeeded | failed`.
+  reports `queued → running → succeeded | failed`. All sites in an
+  organization share one build engine: publish one site at a time and start
+  the next only when the previous job has finished and
+  `read_organization_build_engine` shows no `active_jobs` (details in
+  `tr-edit-site`).
   `trigger_deploy dry_run=true` validates frozen source in customer publishing
   without a Git push or external build; it does not prove Astro compilation.
   Other self-hosted adapters may run a local build without upload.
@@ -1189,7 +1193,10 @@ After any non-trivial change, verify against the DB-live `get_preview_link`
 (reused — mint once; 24h TTL by default) and/or your own browser tool before moving
 on. It reflects the DB instantly with no build, so it — not a deploy — is the
 loop for design/content iteration. One reload vs. shipping a broken redesign —
-always worth it.
+always worth it. The signed preview is a sandboxed, opaque-origin frame served
+from the portal: use it for content and layout. Third-party embeds, consent,
+analytics, cookies, font loading and measured design checks (DOM/computed
+styles) need the published temporary/test address after an authorized publish.
 
 **To UNDERSTAND a page, render it to one HTML file — don't reconstruct it
 from the block tree in your head.** A page is assembled at render time from the

@@ -60,6 +60,14 @@ comparison first.
    `version` to do it on a branch first). The preview changes at once; the
    live site changes at the next deploy. To undo, write the previous number.
 
+## Platform fixes behind a newer version
+
+When a layout defect is fixed in a newer render version (for example version
+12: constrained containers fill column layouts), the fix is to raise
+`render_version` through steps 3–8 — compare, report, upgrade with approval,
+then publish. Do not work around it in content (extra wrappers, widths,
+paddings or custom CSS); those workarounds outlive the fix and fight it.
+
 ## Pitfalls
 
 - Comparing a draft against saved content shows content edits, not

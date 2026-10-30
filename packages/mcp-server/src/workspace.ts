@@ -72,6 +72,11 @@ Public documentation: https://typeroll.com/docs/llms.txt
   upload/finalization. Never put image bytes or customer secrets in Git.
 - Inspect desktop/mobile layouts and interaction states. Read changes back.
   Record exact version, tested pages, evidence and unresolved issues in qa/.
+- The signed preview is for content and layout review. Verify embeds, consent,
+  analytics, fonts and measured design checks on the published test address.
+- Publish one Site at a time per Organization: all Sites share one build engine.
+- Record Typeroll defects in qa/typeroll-platform-feedback.md. Do not resume
+  affected publishing until the fix is confirmed live.
 - Never edit generated publishing source to change CMS content. Do not overwrite
   current CMS or owner answers from an old local snapshot.
 

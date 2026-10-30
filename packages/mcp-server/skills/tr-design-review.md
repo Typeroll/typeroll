@@ -37,14 +37,21 @@ So, always:
 1. Get a URL for the version under review. While iterating, use the DB-live
    `get_preview_link` (mint once, reuse — defaults to a 24h TTL) — it renders
    from the DB with no build, so fixes show on reload without re-deploying, and
-   it's the loop for the review-fix-recheck cycle. For a FINAL bit-for-bit check
-   of the compiled output before merge, deploy once (`trigger_deploy
-   version="<branch>"` → poll `get_deploy_status` → use the immutable
-   `deploy_url`, a Cloudflare Pages hash URL). Review the SAME url end to end.
+   it's the loop for content and layout review (screenshots, reading). It is
+   NOT a measurement surface: it serves the page from the portal origin as a
+   nested frame in an opaque-origin sandbox, so evaluate/DOM/computed-style
+   reads from your browser tool do not reach it reliably, the same-origin
+   iframe snippets below fail, third-party iframes usually stay empty, cookies
+   and storage do not persist, and fonts load from Google. `?consent=all|necessary`
+   on the link only pre-answers the cookie banner for that session.
+   Run the measured dimensions, third-party embeds, consent, analytics and
+   font checks on the published temporary/test address (an authorized
+   `trigger_deploy version="<branch>"` → poll `get_deploy_status` → its
+   `deploy_url`). Review the SAME url end to end.
 2. The snippets below run in a browser tool's "evaluate JavaScript" (Playwright /
-   chrome-devtools / puppeteer MCP). **One origin per eval:** the iframe trick
-   needs same-origin, so run each variant's snippet on its own page (different
-   `*.pages.dev` hashes are cross-origin → `contentDocument` is null).
+   chrome-devtools / puppeteer MCP) on that published page. **One origin per
+   eval:** the iframe trick needs same-origin, so run each variant's snippet on
+   its own page (different hosts are cross-origin → `contentDocument` is null).
 3. If you run several variants with one shared browser profile, do them
    SEQUENTIALLY — parallel browser agents on one profile contaminate each other's
    tabs/screenshots.
@@ -293,9 +300,9 @@ then a one-line verdict. Rules:
   unqualified "approved" off a partial pass is not.
 - Brand FIT (palette/voice matching `brand.md`) is a direction judgment, not a
   pass/fail defect — call it out separately so the user decides direction.
-- If you fixed anything mid-review, just reload the DB-live preview and re-run
-  the affected dimension before signing off — no re-deploy needed (deploy only
-  for the final compiled-output check, if any).
+- If you fixed anything mid-review, check it on the DB-live preview, then
+  re-run the affected measured dimension on the next authorized publish of the
+  test address before signing off.
 
 See `tr-redesign-branch` for the surrounding branch → preview → approve → merge
 flow; this skill is its measured approval round.

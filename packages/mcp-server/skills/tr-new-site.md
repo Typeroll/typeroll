@@ -160,7 +160,9 @@ One `update_site_settings` call with every field you know:
 ```
 
 Read it back with `read_site_settings`. Google Fonts names are
-case-sensitive display names ("Plus Jakarta Sans", not "plus jakarta").
+case-sensitive display names ("Plus Jakarta Sans", not "plus jakarta"). Fonts
+are self-hosted on the site by default; a name Google does not serve falls
+back silently, so verify fonts on the published address (`tr-brand` Step 7).
 
 **Site icons are part of brand setup** — upload favicon (32–64px), a
 180×180 apple touch icon, and a 192×192 app icon; set `favicon`,

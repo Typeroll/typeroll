@@ -175,6 +175,14 @@ together with the automatic alternative.
 | `smoothing` | unset     | `auto` (browser default) or `antialiased`. Unset is `auto` from render version 6 and `antialiased` before it. `antialiased` draws thinner text on macOS and can suit light text on a dark background; `null` clears it.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `delivery`  | unset     | `self_hosted` (unset) or `google`. Self-hosted: Typeroll copies the theme's font files from Google Fonts while preparing each publication and publishes them on the site's own origin, so a visitor's browser never contacts Google, including before any consent choice, and no build engine needs network access for them. A failed copy is retried; if Google stays unreachable, the previous publication's identical fonts are reused, and otherwise the publication stops with `theme_fonts_unavailable` before anything changes. `google` loads the fonts from the Google Fonts CDN, which sends each visitor's IP address to Google. Editor previews still load fonts from Google. `null` clears it. |
 
+Use exact Google Fonts family names, such as `Plus Jakarta Sans`. A self-hosted
+publication serves `/_typeroll/fonts/fonts.css` and the font files under
+`/_typeroll/fonts/`. A family Google does not serve is skipped without an error,
+and the browser falls back to the next font in the stack; `system` and local-only
+families such as Arial copy nothing. To verify, open `fonts.css` on the published
+site: it should contain `@font-face` rules for each chosen family, and every
+font file it names should return 200.
+
 ### `typography` and `design_scales`
 
 Available in Core 0.2.114 / MCP 0.45.85. Render version 10 provides fluid defaults.

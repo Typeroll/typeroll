@@ -102,6 +102,18 @@ size_base: 16   (1rem = 16px — the default)
 
 Headings scale from this base using Typeroll's built-in fluid type scale.
 
+## Fonts on the published site
+
+Use exact Google Fonts family names. By default the site self-hosts them:
+when a publication is prepared, Typeroll copies the font files into the build,
+so visitors never contact Google, before or after a consent choice. A name
+Google does not serve falls back silently to the next font, so the agent checks
+`/_typeroll/fonts/fonts.css` and the font files on the published test address;
+the preview loads fonts from Google and cannot show this. Loading fonts from
+Google instead (`fonts.delivery: "google"`) sends each visitor's IP address to
+Google and is a privacy decision for the site owner. See
+[`fonts` settings](../../tools/settings/#fonts-object).
+
 ## How the AI agent applies it
 
 1. Asks (or infers from context) which mood fits the brand

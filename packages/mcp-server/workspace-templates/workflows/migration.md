@@ -75,6 +75,15 @@ A deploy with working copies returns `unsaved_content`; review the targets.
 Save explicitly or obtain approval to publish saved content only using
 `allow_unsaved: true`. Never silently save somebody else's work.
 
+All Sites in an Organization share one build engine. Run trigger_deploy for one
+Site at a time: start the next only when the previous job is succeeded/failed
+and read_organization_build_engine shows no active_jobs. `build_result_missing`
+means a runner never ran the task (not a content fault): publish again once the
+engine is idle. retry_deploy_verification only retries public verification of an
+already-served publication (`publication_observation_timeout`,
+`publication_cache_refresh_*`); build and engine-side static verification
+failures need a new publish.
+
 Keep the bound Organization/Site/Version explicit. A site API key cannot switch
 to another Organization: use an authorized OAuth connection or a separate key.
 Read the schema for target envelopes and pagination; do not guess aliases.

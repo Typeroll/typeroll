@@ -201,6 +201,17 @@ Menus use matching SVG symbols; `close_size_px` overrides the close symbol size
 without shrinking the44px hit area. Compare exact threshold boundaries in real
 preview and static output before deleting corrective CSS.
 
+## Constrained containers in a column (render version 12)
+
+From render version 12 (Core 0.2.132), a `core/container` with width narrow,
+normal or wide inside a container whose direction is column at every
+breakpoint fills the column up to its maximum width, centered. Below 12, auto
+margins shrink it to its content, so setting width `wide` does NOT make a card
+fill a column. Read `read_site_settings` → `render.version` before advising;
+when it is below 12, raise it with `tr-upgrade-rendering` instead of working
+around it in content. Rows, and containers that become rows at some
+breakpoint, are unchanged.
+
 ## Native image framing and body heading scales (Core 0.2.35+)
 
 Use `core/image.scale_percent` (100–200, responsive) for deliberate horizontal

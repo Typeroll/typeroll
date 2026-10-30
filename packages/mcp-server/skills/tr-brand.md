@@ -143,6 +143,18 @@ Pick from high-quality Google Fonts pairings:
 Same font for heading and body is fine if it has enough weight variation
 (Inter at 700 + 400 works well).
 
+Use the exact Google Fonts family name ("Plus Jakarta Sans", not "plus
+jakarta"). Fonts are self-hosted by default (`fonts.delivery: "self_hosted"`,
+Core 0.2.130+): when a publication is frozen, Typeroll copies the Google Fonts
+CSS and woff2 files (weights 400–700) into the build. The site serves
+`/_typeroll/fonts/fonts.css` and the files under `/_typeroll/fonts/`; visitors
+never contact `fonts.googleapis.com` or `fonts.gstatic.com`, before or after
+consent. A family Google does not serve is skipped without an error and the
+browser falls back to the next font in the stack. `system`, or only local
+fonts such as Arial, captures nothing. `fonts.delivery: "google"` links the
+Google CDN directly and sends every visitor's IP address to Google: that is a
+privacy/consent decision for the owner, never your default.
+
 `size_base` should be 16 for most sites; 17–18 for text-heavy editorial
 sites; 15 for dense dashboards.
 
@@ -324,7 +336,7 @@ Better default:
 
 Reserve a third column only when there's a genuinely different surface (locations, languages, partner pages). Don't pad the footer with content-type columns — navigation to those happens via top nav + topic pages.
 
-## Step 7 — Preview
+## Step 7 — Preview, then verify fonts on the published site
 
 ```
 get_preview_link
@@ -332,9 +344,18 @@ get_preview_link
 
 Open in browser. Check:
 - Colors render as intended (not "undefined" or missing)
-- Fonts load (Google Fonts link is in `<head>`)
 - Nav text is readable against header background
 - Body text has sufficient contrast
+
+The preview loads fonts from Google inside a sandbox, so it proves nothing
+about font delivery. After an authorized publish, check the published
+temporary/test address:
+- `/_typeroll/fonts/fonts.css` has `@font-face` rules for every chosen family.
+  A comment instead of rules means Google did not serve that name: fix it.
+- Every font file `url(...)` in it returns 200.
+- No request goes to `fonts.googleapis.com` or `fonts.gstatic.com`.
+- After `await document.fonts.ready`, `[...document.fonts]` has a `loaded`
+  face for each family, and headings/body compute to that family.
 
 ## Pitfalls
 
@@ -344,9 +365,9 @@ Open in browser. Check:
 - **Custom_css is global.** Rules here apply to every page. Keep it to
   `:root {}` token additions and truly global utilities. Page-specific
   styles go in the page's HTML `<style>` block.
-- **Google Fonts load time.** Two different font families is fine; three
-  adds measurable LCP impact. Stick to two families with variable-font
-  versions when possible.
+- **Font weight on every page.** Two families is fine; a third adds
+  measurable LCP impact even when self-hosted. A misspelled family name
+  fails silently to the fallback font — verify it as in Step 7.
 - **Dark themes need dark surface too.** Setting `background: #0f0f0f`
   but leaving `surface: #f8fafc` (white) breaks every card/input. Always
   update all 7 tokens as a set.
