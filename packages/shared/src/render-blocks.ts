@@ -418,7 +418,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       String(options.context?.site?.url ?? ''),
     );
   }
-  if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots);
+  if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots, { authored: effectiveBlock.data, language: options.context?.page?.language ?? options.context?.site?.language });
   // Read only by the render version 7 templates (block-media.ts).
   if (effectiveBlock.type === 'core/video') compiled.flatData.video_html = videoPlayerHtml(compiled.flatData);
   if (effectiveBlock.type === 'core/hero') compiled.flatData.hero_video_html = heroVideoHtml(compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
