@@ -6,7 +6,7 @@ import { checkPagesRedirects, PAGES_REDIRECT_LIMITS } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getSiteDomains, saveSiteDomains, approveDomainCutover } from './domain-config';
 import { domainChangeImpact } from './domain-impact';
-import { prepareDomainTransition } from './domain-transition';
+import { endedDistribution, prepareDomainTransition } from './domain-transition';
 import { checkPublicationHosts, siteZoneSources } from './host-checks';
 import { findZone } from './domain-provider';
 import { publishingReadiness } from './readiness';
@@ -74,12 +74,13 @@ export async function readDomainGuide(org: string, site: string) {
   const publishedMain = Boolean(config.candidate && config.published?.publication_id === config.candidate.id && lastPublication?.publication_id === config.candidate.id);
   checks.push({ id: 'candidate', status: job?.status === 'failed' ? 'action_required' : publishedMain && config.state === 'ready_to_switch' ? 'ready' : 'waiting', message: job?.error || (job?.phase === 'awaiting domain cutover approval' ? 'The main site is published with the new addresses. DNS is still pending.' : job?.phase) || 'Publish the last published content again with the new addresses. This replaces main before DNS changes.', details: { candidate_id: config.candidate?.id ?? null, job_id: job?.id ?? null } });
   const cutover = config.candidate ? await readDomainCutover(org, site, config.candidate.id) : null;
+  const ended = await endedDistribution(org, site, config);
   const previousHosts = await readPreviousHosts(config);
   for (const host of previousHosts) checks.push({ id: `previous:${host.host}`, status: host.status === 'verified' ? 'ready' : host.status === 'pending' ? 'waiting' : 'action_required', message: `${host.host}: ${host.message}` });
   const canPrepare = checks.filter(check => ['hosting_account', 'host_requirements', 'publishing_ready', 'redirect_capacity'].includes(check.id)).every(check => check.status !== 'action_required');
   return { ...config, previous_hosts: previousHosts, published_main: publishedMain, can_prepare: canPrepare, elapsed_seconds: job?.started_at ? Math.max(0, Math.round((Date.parse(job.finished_at ?? new Date().toISOString()) - Date.parse(job.started_at)) / 1000)) : null, title: `Move site to ${config.desired.website_host ?? 'your domain'}`, checks,
     current_phase: config.rollback_status === 'rolled_back' ? 'previous traffic restored' : (job?.phase === 'awaiting domain cutover approval' ? 'Published; DNS switch pending' : job?.phase) ?? ({ unconfigured: 'Save a website address to begin', declared: 'Ready to publish for the new domain', preparing: 'Preparing and checking requirements', ready_to_switch: 'Ready for your approval', distributing: 'Switching and verifying traffic', live: 'Public traffic verified', failed: 'Needs attention', outdated: 'Publish for the new domain to replace this older preparation.' }[config.state]),
-    traffic_live: config.state === 'live', next_action: config.state === 'live' ? 'none' : config.state === 'distributing' ? 'wait' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : !lastPublication ? 'publish_first' : publishedMain ? 'refresh' : 'prepare',
+    traffic_live: config.state === 'live', next_action: config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : !lastPublication ? 'publish_first' : publishedMain ? 'refresh' : 'prepare',
     cutover: cutover ? { state: cutover.state, deadline_at: cutover.deadline_at, errors: cutover.errors, previous_records: cutover.entries.map(entry => ({ hostname: entry.hostname, records: entry.before })) } : null,
     switch_summary: { website: config.preparation, media: config.media_preparation, redirects: config.redirect_preparations, previous_hosts: config.previous_host_preparations, validation_timeout_minutes: config.validation_timeout_minutes ?? 15,
       interruption: config.preparation?.validation_blocker?.message ?? 'The same main publication already serves at the current address. This step changes DNS without another build or upload. DNS propagation and provider validation can still take time.',

@@ -215,6 +215,29 @@ it('refreshes redirect requirements on an existing candidate without queuing a n
   expect(await getSiteDomains('org', 'site')).toMatchObject({ state: 'ready_to_switch', candidate });
 });
 
+it('releases a distributing switch only after its job ended and no journal is still armed', async () => {
+  makeTmpFixtures(); await resetDatastore();
+  const { getStore } = await import('../../lib/datastore');
+  const { paths } = await import('@typeroll/shared');
+  const { getSiteDomains, siteDomainConfigPath } = await import('../../lib/publishing/domain-config');
+  const { prepareDomainTransition, endedDistribution } = await import('../../lib/publishing/domain-transition');
+  const store = getStore();
+  await store.setDoc(paths.site('org', 'site'), { name: 'Site', publishing_mode: 'customer_git' });
+  const initial = await getSiteDomains('org', 'site');
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { state: 'distributing', rollback_status: 'conflict', cutover_approved_revision: initial.revision, candidate: { id: 'publication', revision: initial.revision, job_id: 'job' } });
+  const journal = `${paths.site('org', 'site')}/domain_cutovers/publication`;
+  await store.setDoc(journal, { state: 'armed' });
+  await store.setDoc(paths.deploy('org', 'site', 'job'), { status: 'running', version_id: 'main' });
+  await expect(prepareDomainTransition('org', 'site', { revision: initial.revision })).rejects.toMatchObject({ code: 'domain_cutover_in_progress' });
+  await store.updateDoc(paths.deploy('org', 'site', 'job'), { status: 'failed' });
+  expect(await endedDistribution('org', 'site', await getSiteDomains('org', 'site'))).toBe(false);
+  await store.updateDoc(journal, { state: 'conflict' });
+  expect(await endedDistribution('org', 'site', await getSiteDomains('org', 'site'))).toBe(true);
+  // Without a previous publication the new review stops later; the stale switch is released first.
+  await expect(prepareDomainTransition('org', 'site', { revision: initial.revision })).rejects.toMatchObject({ code: 'first_publication_required' });
+  expect(await getSiteDomains('org', 'site')).toMatchObject({ state: 'failed', rollback_status: 'conflict', rollback_requested: false, cutover_approved_revision: null, candidate: { id: 'publication' } });
+});
+
 it('saves different future hosts without rebuilding or requiring a rebuild confirmation', async () => {
   makeTmpFixtures(); await resetDatastore();
   const { getStore } = await import('../../lib/datastore');

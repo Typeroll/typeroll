@@ -11,11 +11,34 @@ import { getDeployQueue } from '../deploy/queue';
 import { getSiteDomains } from './domain-config';
 import { assertPublishingReady } from './readiness';
 import { ConnectionError } from './connections';
+import { readDomainCutover } from './domain-cutover-journal';
 import { assertHostChecks, siteHostChecks } from './host-checks';
+
+/**
+ * Whether a "distributing" switch has already ended: its job finished and no traffic journal is
+ * still armed or restoring. Earlier releases left this state behind after a rollback conflict.
+ */
+export async function endedDistribution(orgId: string, siteId: string, domains: DomainConfiguration) {
+  if (domains.state !== 'distributing' || !domains.candidate?.job_id) return false;
+  const job = await getStore().getDoc<DeployJob>(paths.deploy(orgId, siteId, domains.candidate.job_id));
+  if (!job || ['queued', 'running'].includes(job.status)) return false;
+  const journal = await readDomainCutover(orgId, siteId, domains.candidate.id);
+  return !journal || !['armed', 'rolling_back'].includes(journal.state);
+}
+
+/** End a switch whose job has finished, so a new review can read the current DNS. */
+async function releaseEndedDistribution(orgId: string, siteId: string, domains: DomainConfiguration) {
+  if (!await endedDistribution(orgId, siteId, domains)) return;
+  await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
+    current => current.revision === domains.revision && current.state === 'distributing' && current.candidate?.id === domains.candidate!.id,
+    { state: 'failed', rollback_requested: false, cutover_approved_revision: null });
+}
 
 /** A domain-only build always reuses the last public snapshot, never saved CMS changes. */
 export async function prepareDomainTransition(orgId: string, siteId: string, input: Record<string, unknown>) {
   const store = getStore();
+  const stored = await getSiteDomains(orgId, siteId);
+  if (stored.revision === input.revision) await releaseEndedDistribution(orgId, siteId, stored);
   const [site, domains, target, jobs] = await Promise.all([
     store.getDoc<Site>(paths.site(orgId, siteId)), getSiteDomains(orgId, siteId),
     store.getDoc<any>(`${paths.site(orgId, siteId)}/publishing_targets/main`), store.listDocs<DeployJob>(paths.deploys(orgId, siteId)),
