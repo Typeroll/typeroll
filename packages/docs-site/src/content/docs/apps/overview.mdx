@@ -57,11 +57,14 @@ This is the recommended surface for agents and automated publishing systems:
 GET /api/v1/sites/{siteId}/apps
 GET /api/v1/sites/{siteId}/apps/{appId}
 PUT /api/v1/sites/{siteId}/apps/{appId}
+PATCH /api/v1/sites/{siteId}/apps/{appId}
 ```
 
 The list and read responses include each module's field schema and masked state.
-The write body is `{ "enabled": true, "config": { ... } }`. Omitted fields
-preserve their current values. Secret fields are encrypted server-side and are
+The write body is `{ "enabled": true, "config": { ... } }`. Omitted config
+fields preserve their current values. With `PUT`, an omitted `enabled` means
+`false`; `PATCH` keeps the current `enabled` value, so it can change config
+alone. Secret fields are encrypted server-side and are
 never returned; audit entries record only the names of submitted config fields,
 not their values. Analytics provisioning and module-provided forms or blocks run
 through the same service whether the change comes from the portal or API.

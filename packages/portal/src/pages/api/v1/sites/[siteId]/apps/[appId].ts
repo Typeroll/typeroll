@@ -37,7 +37,9 @@ export const GET: APIRoute = async ({ request, params }) => {
   });
 };
 
-export const PUT: APIRoute = async ({ request, params }) => {
+// PUT sets enabled from the body (absent means false); PATCH keeps the current
+// value when the body leaves it out. Config fields merge in both: omitted ones are kept.
+const save = (partial: boolean): APIRoute => async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
@@ -50,13 +52,17 @@ export const PUT: APIRoute = async ({ request, params }) => {
     config?: Record<string, unknown>;
   } | null;
   if (!body) return apiError('Invalid JSON body');
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') return apiError('enabled must be a boolean');
+  const enabled = partial && body.enabled === undefined
+    ? Boolean((await getStore().getDoc<SiteApps>(paths.apps(ctx.orgId, ctx.siteId)))?.apps?.[def.id]?.enabled)
+    : Boolean(body.enabled);
 
   try {
     const result = await saveAppState({
       orgId: ctx.orgId,
       siteId: ctx.siteId,
       appId,
-      enabled: Boolean(body.enabled),
+      enabled,
       config: body.config,
     });
     const state = maskAppState(def.id, result.state);
@@ -75,7 +81,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
       setup: result.setup,
       affects_build: result.affectsBuild,
     }, 200, {
-      enabled: Boolean(body.enabled),
+      enabled,
       config_keys: Object.keys(body.config ?? {}),
     });
   } catch (error) {
@@ -85,3 +91,6 @@ export const PUT: APIRoute = async ({ request, params }) => {
     return apiError('Failed to save app config', 500);
   }
 };
+
+export const PUT = save(false);
+export const PATCH = save(true);
