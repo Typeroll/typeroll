@@ -16,11 +16,31 @@ const safeHref = (value: unknown) =>
   !/[\u0000-\u0020\\]/.test(value)
     ? value
     : "";
+/** Built-in toggle and menu labels by page language; authored labels always win. */
+const TABS_TEXT = {
+  en: { toggle: "Explore options", menu: "Options" },
+  de: { toggle: "Optionen anzeigen", menu: "Optionen" },
+  sv: { toggle: "Visa alternativ", menu: "Alternativ" },
+} as const;
+function tabsLanguage(language: unknown): keyof typeof TABS_TEXT {
+  const tag = String(language ?? "");
+  return /^de\b/i.test(tag) ? "de" : /^sv\b/i.test(tag) ? "sv" : "en";
+}
+
 export function prepareTabs(
   data: Record<string, unknown>,
   id: string,
   slots: unknown[][] = [],
+  context: { authored?: Record<string, unknown>; language?: unknown } = {},
 ): void {
+  const text = TABS_TEXT[tabsLanguage(context.language)];
+  // A stored English default (saved by an editor) is not an authored label.
+  const authored = (name: string, englishDefault: string) => {
+    const value = context.authored?.[name];
+    return typeof value === "string" && value.trim() !== "" && value.trim() !== englishDefault;
+  };
+  if (!authored("toggle_label", TABS_TEXT.en.toggle)) data.toggle_label = text.toggle;
+  if (!authored("menu_label", TABS_TEXT.en.menu)) data.menu_label = text.menu;
   const labels = Array.isArray(data.labels) ? data.labels : [];
   const tabs: string[] = [],
     links: string[] = [];

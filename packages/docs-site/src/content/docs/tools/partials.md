@@ -16,6 +16,13 @@ Like pages, partials have a `content_mode` of either `"html"` or `"blocks"`. The
   → add_block target={kind:"partial", id:"header"} block={type:"core/navigation_menu", ...}
 ```
 
+A new site's header and footer start in HTML mode. A `PATCH` or `PUT` that sends
+`blocks` to an HTML-mode partial, or `html_content` to a block-mode one, stores
+the content but does not render it. The response then carries a warning
+`{ code: "content_mode_mismatch", content_mode, ignored_field }` naming the
+`/mode` endpoint. Switch with `POST /partials/{partialId}/mode` (`set_partial_mode`)
+first; the switch keeps both versions. Pages answer the same way.
+
 ## `read_partial`
 
 Reads a partial's current HTML content.

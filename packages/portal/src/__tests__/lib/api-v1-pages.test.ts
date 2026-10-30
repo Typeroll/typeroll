@@ -480,6 +480,14 @@ describe('GET/PATCH/PUT/DELETE /api/v1/sites/{siteId}/pages/{pageId}', () => {
     expect(patched.page.title).toBe('Home'); // untouched
   });
 
+  it('warns when html_content is sent to a blocks-mode page', async () => {
+    const { token } = await setup();
+    await seedPage('home', { title: 'Home', content_mode: 'blocks', blocks: [] });
+    const res = await callRoute(import('../../pages/api/v1/sites/[siteId]/pages/[pageId]'), 'PATCH', `http://localhost/api/v1/sites/${SITE}/pages/home`, { siteId: SITE, pageId: 'home' }, { headers: bearer(token), body: { html_content: '<p>x</p>' } });
+    expect(res.status).toBe(200);
+    expect((await res.json() as { warnings?: unknown[] }).warnings).toContainEqual(expect.objectContaining({ code: 'content_mode_mismatch', content_mode: 'blocks', ignored_field: 'html_content' }));
+  });
+
   it('writes and returns sort_order through PATCH alone', async () => {
     const { token } = await setup();
     await seedPage('home', { title: 'Home', sort_order: 1 });

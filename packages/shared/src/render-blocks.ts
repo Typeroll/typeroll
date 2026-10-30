@@ -418,7 +418,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       String(options.context?.site?.url ?? ''),
     );
   }
-  if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots);
+  if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots, { authored: effectiveBlock.data, language: options.context?.page?.language ?? options.context?.site?.language });
   // Read only by the render version 7 templates (block-media.ts).
   if (effectiveBlock.type === 'core/video') compiled.flatData.video_html = videoPlayerHtml(compiled.flatData);
   if (effectiveBlock.type === 'core/hero') compiled.flatData.hero_video_html = heroVideoHtml(compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
@@ -520,6 +520,15 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     if (effectiveBlock.type === 'core/container' && compiled.flatData.tag === 'a' && !safeLinkHref(compiled.flatData.href)) compiled.flatData.tag = 'div';
   }
   prepareArticleBlockData(effectiveBlock.type, compiled.flatData);
+  // From render version 12 a flex container that is a column at every
+  // breakpoint says so, and its width-constrained child containers fill it.
+  if (effectiveBlock.type === 'core/container' && compiled.flatData.container_kind === 'container' && resolveRenderVersion(options.renderVersion) >= 12) {
+    const direction = effectiveBlock.data?.direction;
+    const values = direction && typeof direction === 'object' ? Object.values(direction as Record<string, unknown>) : [direction];
+    if (values.every(value => value === undefined || value === null || value === '' || value === 'column')) {
+      compiled.flatData.container_attributes_html = `${compiled.flatData.container_attributes_html ?? ''} data-column-only="true"`.trim();
+    }
+  }
   // Link fields resolve to href/target/rel; a template that loops gets the
   // same derived values inside every array item (block-fields.ts).
   const loops = usesExtendedSections(template);

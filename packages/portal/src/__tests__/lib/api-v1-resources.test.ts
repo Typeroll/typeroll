@@ -147,6 +147,19 @@ describe('partials endpoints', () => {
     expect(body.partial.html_content).not.toContain('<script');
   });
 
+  it('PATCH warns when blocks are sent to an html-mode partial, and not when the mode matches', async () => {
+    const { token } = await setup();
+    await seedPartial('header', { kind: 'header', content_mode: 'html', html_content: '<p>Default</p>' });
+    const patch = (body: unknown) => callRoute(import('../../pages/api/v1/sites/[siteId]/partials/[partialId]'), 'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/partials/header`, { siteId: SITE, partialId: 'header' }, { headers: bearer(token), body });
+    const res = await patch({ blocks: [{ id: 'logo', type: 'template/site_logo', data: {} }] });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { warnings?: Array<{ code: string; ignored_field: string; message: string }> };
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'content_mode_mismatch', ignored_field: 'blocks', message: expect.stringContaining('/partials/header/mode') }));
+    const same = await (await patch({ html_content: '<p>New</p>' })).json() as { warnings?: unknown[] };
+    expect(same.warnings ?? []).not.toContainEqual(expect.objectContaining({ code: 'content_mode_mismatch' }));
+  });
+
   it('switches a partial to blocks mode and returns the rendered tree', async () => {
     const { token } = await setup();
     await seedPartial('header', {
