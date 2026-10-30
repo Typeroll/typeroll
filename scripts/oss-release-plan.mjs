@@ -39,6 +39,8 @@ export function releaseScopes(files) {
     ['scripts/release-artifact.mjs', 'scripts/release-artifact.test.mjs', 'scripts/release-dependencies.mjs', 'scripts/qualified-docs.mjs', 'scripts/source-check-plan.mjs', 'scripts/source-check-plan.test.mjs'].includes(file) ||
     file === 'scripts/oss-release-plan.mjs' ||
     file === 'scripts/oss-release-plan.test.mjs' ||
+    file === 'scripts/oss-release-bump.mjs' ||
+    file === 'scripts/oss-release-bump.test.mjs' ||
     file === 'scripts/oss-release-check.mjs' ||
     file === 'scripts/oss-release-check.test.mjs' ||
     file === 'scripts/mcp-publish-workflow.test.mjs' ||
@@ -58,6 +60,14 @@ export function releaseScopes(files) {
   };
 }
 
+/** Which versions are already tagged but have relevant changes since that tag. */
+export function requiredVersionBumps({ coreTagSha, mcpTagSha, coreChanges = [], mcpChanges = [] }) {
+  return {
+    core: Boolean(coreTagSha) && releaseScopes(coreChanges).core,
+    mcp: Boolean(mcpTagSha) && releaseScopes(mcpChanges).mcp,
+  };
+}
+
 export function buildReleasePlan({ sourceSha, coreVersion, mcpVersion, coreTagSha, mcpTagSha, coreChanges = [], mcpChanges = [] }) {
   if (!GIT_SHA.test(sourceSha)) throw new Error('source SHA must be a full lowercase Git SHA');
   if (!STABLE_VERSION.test(coreVersion)) throw new Error('Core version must be stable semantic version');
@@ -65,10 +75,11 @@ export function buildReleasePlan({ sourceSha, coreVersion, mcpVersion, coreTagSh
 
   const coreTag = `core-v${coreVersion}`;
   const mcpTag = `mcp-v${mcpVersion}`;
-  if (coreTagSha && releaseScopes(coreChanges).core) {
+  const bumps = requiredVersionBumps({ coreTagSha, mcpTagSha, coreChanges, mcpChanges });
+  if (bumps.core) {
     throw new Error(`${coreTag} already points to ${coreTagSha}, but Core-relevant files changed; bump the Core version`);
   }
-  if (mcpTagSha && releaseScopes(mcpChanges).mcp) {
+  if (bumps.mcp) {
     throw new Error(`${mcpTag} already points to ${mcpTagSha}, but MCP-relevant files changed; bump the MCP version`);
   }
 
@@ -122,7 +133,7 @@ export function buildReleaseManifest({ repositoryRoot = root, sourceSha, imageDi
   return manifest;
 }
 
-function tagSha(tag) {
+export function tagSha(tag) {
   try {
     return git(['rev-list', '-n', '1', tag]);
   } catch {
@@ -145,14 +156,15 @@ function workingTreeChanges() {
   ])];
 }
 
-function currentPlan() {
+/** The inputs `buildReleasePlan` judges for this checkout, including uncommitted work. */
+export function currentPlanInputs() {
   const sourceSha = git(['rev-parse', 'HEAD']);
   const coreVersion = readJson(root, 'package.json').version;
   const mcpVersion = readJson(root, 'packages/mcp-server/package.json').version;
   const coreTagSha = tagSha(`core-v${coreVersion}`);
   const mcpTagSha = tagSha(`mcp-v${mcpVersion}`);
   const localChanges = workingTreeChanges();
-  return buildReleasePlan({
+  return {
     sourceSha,
     coreVersion,
     mcpVersion,
@@ -160,7 +172,11 @@ function currentPlan() {
     mcpTagSha,
     coreChanges: [...new Set([...changesSince(coreTagSha), ...localChanges])],
     mcpChanges: [...new Set([...changesSince(mcpTagSha), ...localChanges])],
-  });
+  };
+}
+
+export function currentPlan() {
+  return buildReleasePlan(currentPlanInputs());
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

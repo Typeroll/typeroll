@@ -34,8 +34,8 @@ and say so in the changelog. Design: `docs/plans/design-system-and-render-versio
 ## Releases
 
 Core and MCP are independently versioned but published by one ordered train.
-Run `npm run release:plan`, bump every affected version source, and push public
-`main`. After `Tests` passes, **Release OSS** publishes and verifies Core, then
+Run `npm run release:bump` to bump the versions `npm run release:plan` asks for,
+and push public `main`. After `Tests` passes, **Release OSS** publishes and verifies Core, then
 MCP, then public documentation, and finally records the manifest consumed by
 Typeroll Cloud.
 
@@ -61,9 +61,15 @@ The routine from change to published release:
    Run new browser specs in WebKit too. CI also runs Firefox for the specs in
    `CROSS_ENGINE_TESTS`.
 
-3. Run `npm run release:plan` and bump exactly the versions it asks for, with a
-   `CHANGELOG.md` entry. Check `git tag -l 'core-v*'` and `origin/main` first:
-   `main` may have released while the branch was open.
+3. Fetch tags and merge `origin/main` first: `main` may have released while
+   the branch was open. Then run `npm run release:bump` and add a
+   `CHANGELOG.md` entry. It bumps exactly the Core and MCP patch versions
+   `release:plan` asks for in every version source, refreshes
+   `package-lock.json` and prints the passing plan; it does nothing when the
+   plan already passes. Do not edit version strings by hand. Use `--dry-run` to
+   preview, and `--core x.y.z` or `--mcp x.y.z` for a minor or major bump. A
+   new render version's `core_version` names the Core release that introduces
+   it; the bump lands on that version and refuses a conflicting one.
 4. Open a pull request. Merge it with a merge commit once every check is green.
    The repository does not allow auto-merge.
 5. If main's tree is identical to a tree a pull request run fully qualified,

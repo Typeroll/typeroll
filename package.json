@@ -19,6 +19,7 @@
     "security:audit": "node scripts/audit-dependencies.mjs",
     "core:release:verify": "node scripts/verify-core-release.mjs",
     "release:plan": "node scripts/oss-release-plan.mjs",
+    "release:bump": "node scripts/oss-release-bump.mjs",
     "self-host:check": "node scripts/self-host-doctor.mjs",
     "self-host:bootstrap": "node scripts/self-host-bootstrap.mjs",
     "self-host:migrate": "node scripts/self-host-migrate.mjs",
