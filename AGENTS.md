@@ -17,6 +17,13 @@
   for broad shared changes, release-infrastructure changes or unresolved risk;
   do not repeat the full gate after every small edit. The release workflow
   reuses qualified documentation artifacts instead of rebuilding them.
+- Tests run offline and deterministically. Use fixtures or seeded caches for
+  fonts, media and provider responses; a unit or integration test that reaches
+  the network is a bug, because it makes the release gate flaky.
+- Organization build engines run in customer accounts and update only when the
+  customer updates them, so the executor and its scripts may be older than this
+  Core. Anything a build needs travels with the frozen publication; a build-path
+  fix must also work on an older engine revision before it counts as fixed.
 - Forms, the Extension protocol, WordPress migration and helper plugin, the
   portal, the public API, MCP, and the static renderer are open-source core
   functionality.
@@ -41,8 +48,8 @@
   exports.
 - Public `main` is the release source. Keep each artifact's package version and
   runtime version literals in lockstep; Core and standalone MCP are versioned
-  independently. Run `npm run release:plan` and never create release tags
-  manually. Successful main CI runs the ordered Core, MCP, docs, and
+  independently. Run `npm run release:bump` (it applies what `npm run
+  release:plan` asks for) and never create release tags manually. Successful main CI runs the ordered Core, MCP, docs, and
   release-manifest workflow in `.github/workflows/publish-mcp.yml`.
 - Merging here publishes Core but does not deploy Typeroll Cloud. Cloud is
   deployed from the private `Typeroll/typeroll-cloud` repository: pin the
