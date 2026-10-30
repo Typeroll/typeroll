@@ -125,6 +125,8 @@ export interface PreviewOptions {
    * may still contact external services, so preview is not a network sandbox.
    */
   allowScripts?: boolean;
+  /** Review previews only: answer the cookie banner in advance so it stays hidden; 'all' also runs consented scripts. */
+  consentChoice?: 'all' | 'necessary';
   /** Enables the authority-free postMessage bridge used by the isolated
    * editor canvas. The id is an unguessable per-frame correlation value. */
   editorCanvasId?: string;
@@ -342,7 +344,7 @@ export async function renderPreview(
     : '';
   const previewNavigationBridge = buildPreviewNavigationBridgeScript(opts);
   const cookieConsentHtml = opts.allowScripts === true
-    ? rewriteIf(renderPreviewCookieConsent(settings, page.language || settings.language))
+    ? rewriteIf(renderPreviewCookieConsent(settings, page.language || settings.language, opts.consentChoice))
     : '';
 
   return resolvePreviewMedia(buildHtml({
@@ -362,6 +364,7 @@ export async function renderPreview(
     editorExtensionRuntime,
     previewNavigationBridge,
     cookieConsentHtml,
+    consentPreset: Boolean(opts.consentChoice),
     robotsBlocked,
     // Same call as the site's [...slug].astro, so page-scoped CSS such as
     // body[data-route="home"] matches in preview exactly as it does when published.
@@ -547,13 +550,14 @@ function buildHtml(args: {
   editorExtensionRuntime?: string;
   previewNavigationBridge?: string;
   cookieConsentHtml?: string;
+  consentPreset?: boolean;
   robotsBlocked: boolean;
   seoHead?: string;
   banner: BannerArgs | null;
   /** The page's identity contract on `<body>`, the same attributes the published build writes. */
   bodyAttributes?: Record<string, string>;
 }): string {
-  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, robotsBlocked, banner } = args;
+  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, consentPreset, robotsBlocked, banner } = args;
   const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
   const f = {
     heading: settings.fonts?.heading ?? 'Inter',
@@ -620,7 +624,7 @@ ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css
 .tr-banner a.tr-banner__btn:hover{background:#fff;color:#1f1f23}
 </style>
 ${allowScripts ? settings.scripts_head ?? '' : ''}
-${cookieConsentHtml ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
+${cookieConsentHtml && !consentPreset ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>
 <body${Object.entries(args.bodyAttributes ?? {}).map(([name, value]) => ` ${name}="${escapeAttr(value)}"`).join('')}>
 ${banner ? renderBanner(banner) : ''}
@@ -639,10 +643,10 @@ ${cookieConsentHtml ?? ''}
 </html>`;
 }
 
-function renderPreviewCookieConsent(settings: SiteSettings, language?: string): string {
+function renderPreviewCookieConsent(settings: SiteSettings, language?: string, initialChoice?: 'all' | 'necessary'): string {
   const text = settings.cookie_consent?.text;
   const bodyHtml = text ? sanitizeBody(text, settings.iframe_allowed_hosts) : undefined;
-  return renderCookieConsent(settings.cookie_consent, bodyHtml, language);
+  return renderCookieConsent(settings.cookie_consent, bodyHtml, language, { initialChoice });
 }
 
 function renderBanner(b: BannerArgs): string {

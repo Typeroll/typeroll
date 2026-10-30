@@ -167,6 +167,7 @@ export function renderCookieConsent(
   consent: CookieConsentSettings | undefined,
   bodyHtml?: string,
   language?: string,
+  options: { initialChoice?: 'all' | 'necessary' } = {},
 ): string {
   if (consent?.enabled !== true) return '';
   const labels = consentLabels(consent, language);
@@ -198,5 +199,5 @@ export function renderCookieConsent(
   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.5" r=".9" fill="currentColor"/><circle cx="10.5" cy="7.5" r=".7" fill="currentColor"/><circle cx="7" cy="10.5" r=".8" fill="currentColor"/></svg>
   <span>Cookies</span>
 </button>
-<script data-cookie-consent-runtime="1">${buildConsentRuntime(consent.reload_after_consent === true)}</script>`;
+<script data-cookie-consent-runtime="1">${buildConsentRuntime(consent.reload_after_consent === true, options.initialChoice)}</script>`;
 }
