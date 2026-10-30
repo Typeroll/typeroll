@@ -22,7 +22,7 @@ import type {
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
-  contentWellCss, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS,
+  contentWellCss, siteThemeCss, webFontFamilies, googleFontsCssUrl, WEBFONT_FALLBACK_CSS,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -662,11 +662,7 @@ function renderBanner(b: BannerArgs): string {
 }
 
 function buildFontUrl(heading: string, body: string, mono?: string): string | null {
-  const fams = webFontFamilies(heading, body, mono);
-  if (!fams.length) return null;
-  return `https://fonts.googleapis.com/css2?${fams
-    .map((fam) => `family=${encodeURIComponent(fam)}:wght@400;500;600;700`)
-    .join('&')}&display=swap`;
+  return googleFontsCssUrl(webFontFamilies(heading, body, mono));
 }
 
 /**

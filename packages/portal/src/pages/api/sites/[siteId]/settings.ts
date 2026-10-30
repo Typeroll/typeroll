@@ -141,6 +141,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   const smoothing = form.get('fonts.smoothing');
   if (smoothing === 'auto' || smoothing === 'antialiased') fonts.smoothing = smoothing;
   else if (smoothing === '') delete fonts.smoothing;
+  const delivery = form.get('fonts.delivery');
+  if (delivery === 'google') fonts.delivery = 'google';
+  else if (delivery === 'self_hosted' || delivery === '') delete fonts.delivery;
 
   if (includesSection('design') && form.has('colors.surface_hover')) {
     const hover = String(form.get('colors.surface_hover') ?? '').trim();

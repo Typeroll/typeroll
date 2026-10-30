@@ -405,6 +405,12 @@ export interface SiteSettings {
      * reset's `antialiased` before it. See `fontSmoothingCss`.
      */
     smoothing?: 'auto' | 'antialiased';
+    /**
+     * Webfont delivery on published pages. Unset or `self_hosted` copies the
+     * files to the site's origin at build time; `google` loads them from the
+     * Google Fonts CDN. See `fontDelivery`.
+     */
+    delivery?: 'self_hosted' | 'google';
   };
   contact?: {
     email?: string;

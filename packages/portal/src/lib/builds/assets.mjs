@@ -11,27 +11,37 @@ export async function prepareAssets(root) {
   const dir = path.join(root, '.typeroll-runner');
   const publication = JSON.parse(await fs.readFile(path.join(root, 'publication.json'), 'utf8'));
   const entries = []; let total = 0;
-  if (publication.extensions?.installations?.some(installation => installation.components?.some(component => component.render_mode === 'bundled_component'))) {
-    const bundled = path.join(dir, 'extension-preparation.mjs');
-    await build({ entryPoints: [path.join(root, 'scripts/source/extensions/assets.ts')], outfile: bundled,
+  const recordingFetch = async (url, options) => {
+    const response = await fetch(url, options);
+    if (!response.ok) return response;
+    const chunks = []; let size = 0;
+    for await (const chunk of response.body) { size += chunk.length; if (size > 2 * 1024 * 1024) throw Error('extension_asset_limit'); chunks.push(Buffer.from(chunk)); }
+    total += size; if (total > 128 * 1024 * 1024 || entries.length >= 20000) throw Error('extension_assets_limit');
+    const bytes = Buffer.concat(chunks), hash = digest(bytes);
+    const hostname = new URL(url).hostname;
+    // These addresses were resolved during the trusted preparation stage. Reusing
+    // them permits the frozen URL guard to run again with rendering offline.
+    const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+    await fs.writeFile(path.join(dir, `extension-${hash}`), bytes);
+    entries.push({ url: String(url), hostname, addresses, sha256: hash });
+    return new Response(bytes, { status: response.status, headers: response.headers });
+  };
+  const load = async (name, exported) => {
+    const source = path.join(root, `scripts/source/extensions/${name}.ts`);
+    // Templates frozen before a module existed do not use it.
+    if (!await fs.access(source).then(() => true, () => false)) return null;
+    const bundled = path.join(dir, name === 'assets' ? 'extension-preparation.mjs' : `${name}-preparation.mjs`);
+    await build({ entryPoints: [source], outfile: bundled,
       bundle: true, platform: 'node', format: 'esm', packages: 'external', alias: { '@typeroll/shared': path.join(root, 'packages/shared/src/index.ts') } });
-    const { vendorExtensionAssets } = await import(pathToFileURL(bundled).href);
-    await vendorExtensionAssets(path.join(dir, 'extension-output'), publication.extensions, async (url, options) => {
-      const response = await fetch(url, options);
-      if (!response.ok) return response;
-      const chunks = []; let size = 0;
-      for await (const chunk of response.body) { size += chunk.length; if (size > 2 * 1024 * 1024) throw Error('extension_asset_limit'); chunks.push(Buffer.from(chunk)); }
-      total += size; if (total > 128 * 1024 * 1024 || entries.length >= 20000) throw Error('extension_assets_limit');
-      const bytes = Buffer.concat(chunks), hash = digest(bytes);
-      const hostname = new URL(url).hostname;
-      // These addresses were resolved during the trusted preparation stage. Reusing
-      // them permits the frozen URL guard to run again with rendering offline.
-      const addresses = await dns.lookup(hostname, { all: true, verbatim: true });
-      await fs.writeFile(path.join(dir, `extension-${hash}`), bytes);
-      entries.push({ url: String(url), hostname, addresses, sha256: hash });
-      return new Response(bytes, { status: response.status, headers: response.headers });
-    });
+    return (await import(pathToFileURL(bundled).href))[exported];
+  };
+  if (publication.extensions?.installations?.some(installation => installation.components?.some(component => component.render_mode === 'bundled_component'))) {
+    const vendorExtensionAssets = await load('assets', 'vendorExtensionAssets');
+    await vendorExtensionAssets(path.join(dir, 'extension-output'), publication.extensions, recordingFetch);
   }
+  // Theme fonts are copied in the same way, so the offline render serves the exact files fetched here.
+  const vendorThemeFonts = await load('theme-fonts', 'vendorThemeFonts');
+  if (vendorThemeFonts) await vendorThemeFonts(path.join(dir, 'font-output'), publication.settings?.fonts, recordingFetch);
   await fs.writeFile(path.join(dir, 'extension-cache.json'), JSON.stringify(entries), { flag: 'wx' });
 }
 
