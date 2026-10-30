@@ -34,6 +34,7 @@ import { treeWriteWarnings } from '../../../../../../lib/block-write-warnings';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import { pickWritable, REPLACEABLE } from '../../../../../../lib/page-writable';
+import { contentModeMismatch } from '../../../../../../lib/content-mode-warning';
 import type { Page } from '@typeroll/shared';
 
 function project(p: Page, hasUnsaved: boolean): Record<string, unknown> {
@@ -162,7 +163,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
-    const warnings = await treeWriteWarnings(ctx, body.blocks);
+    const mismatch = contentModeMismatch((await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId))?.content_mode, body, `/api/v1/sites/${ctx.siteId}/pages/${pageId}/mode`);
+    const warnings: unknown[] = [...await treeWriteWarnings(ctx, body.blocks), ...(mismatch ? [mismatch] : [])];
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {
@@ -207,7 +209,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
-    const warnings = await treeWriteWarnings(ctx, body.blocks);
+    const mismatch = contentModeMismatch((await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId))?.content_mode, body, `/api/v1/sites/${ctx.siteId}/pages/${pageId}/mode`);
+    const warnings: unknown[] = [...await treeWriteWarnings(ctx, body.blocks), ...(mismatch ? [mismatch] : [])];
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {
