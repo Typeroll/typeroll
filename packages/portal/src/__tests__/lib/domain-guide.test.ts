@@ -11,6 +11,7 @@ vi.mock('../../lib/publishing/publication-version', () => ({ resolvePublicationV
 vi.mock('../../lib/publishing/cloudflare-capabilities', () => ({ cloudflarePermissionReport: async () => ({ capabilities: [] }) }));
 vi.mock('../../lib/migration-launch-report', () => ({ buildMigrationLaunchReport: mocks.launch }));
 import { readDomainGuide } from '../../lib/publishing/domain-guide';
+import { ProviderError } from '../../lib/publishing/providers.mjs';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); vi.clearAllMocks();
   mocks.ready.mockResolvedValue({ ready: true, required: [] });
@@ -66,4 +67,15 @@ it('shows verification failure for the replaced main artifact even before its pu
   const guide=await readDomainGuide('org','site');
   expect(guide).toMatchObject({published_main:false,next_action:'prepare'});
   expect(guide.checks.find(check=>check.id==='candidate')).toMatchObject({status:'action_required',message:'Public verification timed out.'});
+});
+it('falls back to the zone activation window when the connection may not read certificates', async () => {
+  const zone = (activated: string) => ({ id: 'zone', name: 'example.com', status: 'active', account: { id: 'account' }, name_servers: ['ns1.example.net', 'ns2.example.net'], activated_on: activated });
+  let activated = new Date(Date.now() - 48 * 3_600_000).toISOString();
+  mocks.provider.mockImplementation(async route => { if (route.startsWith('/zones?')) return [zone(activated)]; throw new ProviderError('Cloudflare', 403, [10000]); });
+  const certificate = async () => (await readDomainGuide('org', 'site')).checks.find(check => check.id === 'certificate:example.com');
+  expect(await certificate()).toMatchObject({ status: 'ready', details: { source: 'zone_activation' } });
+  activated = new Date(Date.now() - 3_600_000).toISOString();
+  expect(await certificate()).toMatchObject({ status: 'waiting' });
+  mocks.provider.mockImplementation(async route => { if (route.startsWith('/zones?')) return [zone(activated)]; throw new ProviderError('Cloudflare', 502); });
+  expect(await certificate()).toMatchObject({ status: 'waiting', message: expect.stringContaining('Retry the check') });
 });
