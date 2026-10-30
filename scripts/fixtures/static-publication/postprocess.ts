@@ -6,14 +6,20 @@ import { applyQueryRedirects, pagesRedirectsFile, pagesShadowedByRedirect, pageR
 import type { Redirect, TrailingSlashPolicy } from '@typeroll/shared';
 import { buildPagesHeaders, withGlobalHeaders } from './source/pages-headers';
 import { vendorExtensionAssets } from './source/extensions/assets';
-import { vendorThemeFonts } from './source/extensions/theme-fonts';
+import { vendorThemeFonts, writeFrozenThemeFonts, type FrozenThemeFonts } from './source/extensions/theme-fonts';
 import type { ExtensionRuntimeSnapshot } from '@typeroll/shared';
 
-export async function postprocess(dist: string, publication: { publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; trailing_slash?: TrailingSlashPolicy; fonts?: { heading?: string; body?: string; mono?: string; delivery?: 'self_hosted' | 'google' } }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot }) {
+export async function postprocess(dist: string, publication: { publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; trailing_slash?: TrailingSlashPolicy; fonts?: { heading?: string; body?: string; mono?: string; delivery?: 'self_hosted' | 'google' } }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot; theme_fonts?: FrozenThemeFonts }) {
   await bundleBlockAssets(dist);
   await buildSearchIndexIfUsed(dist);
   if (publication.extensions?.installations?.length) await vendorExtensionAssets(dist, publication.extensions);
-  await vendorThemeFonts(dist, publication.settings.fonts, fetch, { cacheDir: path.join(dist, '..', '.publication-fonts') });
+  // Typeroll froze the font files with the publication; older snapshots and
+  // local harnesses copy them here. A self-hosted site never ships without them.
+  if (publication.theme_fonts) await writeFrozenThemeFonts(dist, publication.theme_fonts);
+  else {
+    const fonts = await vendorThemeFonts(dist, publication.settings.fonts, fetch, { cacheDir: path.join(dist, '..', '.publication-fonts') });
+    if (fonts.error) throw new Error(`theme_fonts_unavailable: ${fonts.error}`);
+  }
   if (!/^[a-f0-9]{64}$/.test(publication.publication_id)) throw new Error('Invalid publication identity');
   let headers = withGlobalHeaders(buildPagesHeaders(), {
     'X-Typeroll-Publication': publication.publication_id,

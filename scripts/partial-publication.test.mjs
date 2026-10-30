@@ -466,3 +466,19 @@ test('a domain-only preparation reuses raw HTML and matches a full build at the 
   value.settings.sitewide_noindex = true;
   const policyChange = await harness.run(); assert.equal(policyChange.report.reused, 0);
 });
+
+test('a publication with frozen theme fonts renders them without network or the build cache', async t => {
+  const value = publication();
+  value.pages.push({ ...page('home'), path: '/' });
+  const bytes = Buffer.from('frozen font bytes'), name = `${'f'.repeat(32)}.woff2`;
+  value.theme_fonts = { css_url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap', css: `@font-face{font-family:'Inter';src:url(/_typeroll/fonts/${name}) format('woff2')}\n`,
+    files: [{ name, sha256: digest(bytes), data: bytes.toString('base64') }] };
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await harness.run(true);
+  const output = await harness.output();
+  assert.equal(output[`_typeroll/fonts/${name}`], digest(bytes));
+  assert.equal(output[`_typeroll/fonts/${'0'.repeat(32)}.woff2`], undefined);
+  const html = await fs.readFile(path.join(harness.destination, 'dist/one/index.html'), 'utf8');
+  assert.match(html, /href="\/_typeroll\/fonts\/fonts\.css"/);
+  assert.doesNotMatch(html, /fonts\.(?:googleapis|gstatic)\.com/);
+});

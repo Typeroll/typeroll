@@ -32,6 +32,7 @@ import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
 import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed } from './domain-provider';
 import { assertDryRunValidation } from './dry-run-validation';
+import { freezeThemeFonts } from './theme-font-freeze';
 import { retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
@@ -341,6 +342,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       frozen.retained_media_manifests = retainDistinctMediaManifests(retained, frozen.media_manifest);
       frozen.previous_website_hosts = args.versionId === 'main'
         ? previousWebsiteHosts(savedDomains, host, prior?.site_url ? new URL(prior.site_url).hostname : undefined) : [];
+      // Theme fonts are copied now, so no build engine needs network access or Google to render them.
+      const themeFonts = await freezeThemeFonts(frozen.settings?.fonts, prior?.theme_fonts);
+      if (themeFonts) frozen.theme_fonts = themeFonts; else delete frozen.theme_fonts;
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
       const stable = { ...frozen, published_at: undefined, publication_id: undefined,
         // An explicit domain republication gets a fresh approval/journal identity,

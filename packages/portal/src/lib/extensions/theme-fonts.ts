@@ -83,3 +83,48 @@ async function restoreCachedFonts(cached: string, directory: string): Promise<bo
     return true;
   } catch { return false; }
 }
+
+/** Font files Typeroll fetched when it froze the publication, carried in publication.json. */
+export interface FrozenThemeFonts { css_url: string; css: string; files: Array<{ name: string; sha256: string; data: string }> }
+const FROZEN_NAME = /^[a-f0-9]{32}\.(?:woff2?|ttf|otf)$/;
+
+/** The stylesheet URL a theme needs, or null for system fonts and Google delivery. */
+export function themeFontsCssUrl(fonts: Fonts): string | null {
+  const families = webFontFamilies(fonts?.heading ?? 'Inter', fonts?.body ?? 'Inter', fonts?.mono);
+  return families.length && fontDelivery(fonts) === 'self_hosted' ? googleFontsCssUrl(families) : null;
+}
+
+/** Copy the theme fonts into a frozen record. Throws when they cannot be copied completely. */
+export async function captureThemeFonts(workDir: string, fonts: Fonts, fetchImpl: typeof fetch = fetch): Promise<FrozenThemeFonts | null> {
+  const cssUrl = themeFontsCssUrl(fonts);
+  if (!cssUrl) return null;
+  const result = await vendorThemeFonts(workDir, fonts, fetchImpl);
+  if (result.error) throw new Error(result.error);
+  const directory = path.join(workDir, SELF_HOSTED_FONTS_DIRECTORY.replace(/^\//, ''));
+  const css = await fs.promises.readFile(path.join(directory, 'fonts.css'), 'utf8');
+  const files = [];
+  for (const name of (await fs.promises.readdir(directory)).sort()) {
+    if (name === 'fonts.css') continue;
+    const bytes = await fs.promises.readFile(path.join(directory, name));
+    files.push({ name, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), data: bytes.toString('base64') });
+  }
+  return { css_url: cssUrl, css, files };
+}
+
+/** Write frozen theme fonts into the build output after verifying every file. */
+export async function writeFrozenThemeFonts(buildDir: string, frozen: FrozenThemeFonts): Promise<number> {
+  const directory = path.join(buildDir, SELF_HOSTED_FONTS_DIRECTORY.replace(/^\//, ''));
+  await fs.promises.mkdir(directory, { recursive: true });
+  if (typeof frozen.css !== 'string' || !Array.isArray(frozen.files) || frozen.files.length > MAX_FONT_FILES) throw new Error('Invalid frozen theme fonts');
+  let bytes = 0;
+  for (const file of frozen.files) {
+    if (!FROZEN_NAME.test(file.name)) throw new Error('Invalid frozen theme font name');
+    const data = Buffer.from(String(file.data), 'base64');
+    bytes += data.byteLength;
+    if (bytes > MAX_TOTAL_BYTES) throw new Error('The frozen theme fonts exceed the size limit');
+    if (crypto.createHash('sha256').update(data).digest('hex') !== file.sha256) throw new Error(`Frozen theme font ${file.name} failed integrity verification`);
+    await fs.promises.writeFile(path.join(directory, file.name), data);
+  }
+  await fs.promises.writeFile(path.join(directory, 'fonts.css'), frozen.css);
+  return frozen.files.length;
+}

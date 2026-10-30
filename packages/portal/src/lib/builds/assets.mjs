@@ -41,7 +41,7 @@ export async function prepareAssets(root) {
   }
   // Theme fonts are copied in the same way, so the offline render serves the exact files fetched here.
   const vendorThemeFonts = await load('theme-fonts', 'vendorThemeFonts');
-  if (vendorThemeFonts) await vendorThemeFonts(path.join(dir, 'font-output'), publication.settings?.fonts, recordingFetch);
+  if (vendorThemeFonts && !publication.theme_fonts) await vendorThemeFonts(path.join(dir, 'font-output'), publication.settings?.fonts, recordingFetch);
   await fs.writeFile(path.join(dir, 'extension-cache.json'), JSON.stringify(entries), { flag: 'wx' });
 }
 

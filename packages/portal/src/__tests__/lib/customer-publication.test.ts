@@ -24,6 +24,9 @@ vi.mock('../../lib/publishing/github-connection', () => ({ githubConfiguration: 
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => mocks.cloudflare }));
 vi.mock('../../lib/publishing/providers.mjs', async importOriginal => ({ ...await importOriginal<object>(), githubInstallationClient: async () => mocks.github, publishTree: mocks.push }));
 vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source }));
+const fonts = vi.hoisted(() => ({ freeze: vi.fn() }));
+// Publications freeze theme fonts from Google; tests never reach the network.
+vi.mock('../../lib/publishing/theme-font-freeze', () => ({ freezeThemeFonts: fonts.freeze }));
 vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => mocks.runtime }));
 vi.mock('../../lib/extensions/auth', async original => ({ ...await original<object>(), signInstallationAssertion: () => 'synthetic-proof' }));
 vi.mock('../../lib/extensions/admin-request', async original => ({ ...await original<object>(), requestApprovedAdmin: mocks.derive }));
@@ -42,6 +45,7 @@ const jobPath = paths.deploy('org', 'site', 'job');
 
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); vi.clearAllMocks();
+  fonts.freeze.mockResolvedValue(null);
   mocks.runtime = { forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] };
   vi.stubEnv('TYPEROLL_SOURCE_SHA', 'a'.repeat(40));
   vi.stubEnv('PORTAL_PUBLIC_URL', 'https://cms.example.com');
@@ -560,6 +564,21 @@ it('stops a dry run on an image link without an accessible name, as the build wo
   const job = await store.getDoc<any>(jobPath);
   expect(job).toMatchObject({ status: 'failed', failure: expect.objectContaining({ code: 'publication_validation_failed' }) });
   expect(job.error).toContain('Image link has no accessible name: /partner');
+});
+
+it('freezes the theme fonts into the publication and stops before building when they cannot be copied', async () => {
+  const store = getStore();
+  const frozenFonts = { css_url: 'https://fonts.googleapis.com/css2?family=Inter', css: '@font-face{}', files: [{ name: `${'a'.repeat(32)}.woff2`, sha256: 'b'.repeat(64), data: 'AA==' }] };
+  fonts.freeze.mockResolvedValueOnce(frozenFonts);
+  await executeCustomerPublication({ ...args, dryRun: true });
+  expect(mocks.source.mock.calls[0][0].theme_fonts).toEqual(frozenFonts);
+  const { ConnectionError } = await import('../../lib/publishing/connections');
+  fonts.freeze.mockRejectedValueOnce(new ConnectionError('The theme fonts could not be copied', 503, 'theme_fonts_unavailable'));
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  await store.updateDoc(jobPath, { status: 'queued', error: null });
+  await executeCustomerPublication({ ...args, dryRun: true });
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: expect.objectContaining({ code: 'theme_fonts_unavailable' }) });
+  expect(mocks.source).toHaveBeenCalledTimes(1);
 });
 
 it('publishes without an SVG that cannot be made safe and reports it on the job', async () => {
