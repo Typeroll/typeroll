@@ -86,3 +86,18 @@ it('reuses the fonts a build workspace copied before, so rebuilding is identical
   const list = async (dir: string) => Object.fromEntries(await Promise.all((await fs.readdir(path.join(dir, '_typeroll/fonts'))).map(async name => [name, (await fs.readFile(path.join(dir, '_typeroll/fonts', name))).toString('base64')])));
   expect(await list(second)).toEqual(await list(first));
 });
+
+it('leaves families Google does not serve, such as Arial, to the browser', async () => {
+  const dir = makeTmpFixtures().dir;
+  vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: '203.0.113.1', family: 4 }] as any);
+  const fetch = vi.fn(async (url: any) => {
+    const href = String(url);
+    if (href.includes('googleapis')) return href.includes('Arial') ? new Response('', { status: 400 }) : new Response(css);
+    return new Response(`font:${href}`);
+  });
+  expect(await vendorThemeFonts(dir, { heading: 'Arial', body: 'Sofia Sans' }, fetch as any)).toMatchObject({ delivery: 'self_hosted', files: 2 });
+  expect(fetch.mock.calls.filter(([url]) => String(url).includes('googleapis')).map(([url]) => decodeURIComponent(String(url)).match(/family=([^:]+)/g)?.join('&'))).toEqual(['family=Arial&family=Sofia Sans', 'family=Arial', 'family=Sofia Sans']);
+  const local = makeTmpFixtures().dir;
+  expect(await vendorThemeFonts(local, { heading: 'Arial', body: 'Arial' }, fetch as any)).toEqual({ delivery: 'self_hosted', files: 0, bytes: 0 });
+  expect(await fs.readFile(path.join(local, '_typeroll/fonts/fonts.css'), 'utf8')).toContain('not served by Google Fonts');
+});

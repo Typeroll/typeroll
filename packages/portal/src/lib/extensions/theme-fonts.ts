@@ -20,6 +20,28 @@ const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKi
 type Fonts = { heading?: string; body?: string; mono?: string; delivery?: unknown } | undefined;
 export interface ThemeFontResult { delivery: 'self_hosted' | 'google' | 'none'; files: number; bytes: number; error?: string }
 
+const fetchCss = async (families: string[], fetchImpl: typeof fetch) =>
+  new TextDecoder().decode(await fetchPublicAsset(googleFontsCssUrl(families)!, MAX_CSS_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT }));
+const notServed = (error: unknown) => error instanceof Error && /HTTP 400$/.test(error.message);
+
+/**
+ * Google answers 400 for the whole request when one family is not a Google
+ * font (for example Arial, which browsers have locally). Those families are
+ * left to the browser; network and server errors still fail the copy.
+ */
+async function googleFontsCss(families: string[], fetchImpl: typeof fetch): Promise<string> {
+  try { return await fetchCss(families, fetchImpl); }
+  catch (error) {
+    if (!notServed(error) || families.length === 1) { if (notServed(error)) return ''; throw error; }
+  }
+  const parts: string[] = [];
+  for (const family of families) {
+    try { parts.push(await fetchCss([family], fetchImpl)); }
+    catch (error) { if (!notServed(error)) throw error; }
+  }
+  return parts.join('\n');
+}
+
 /**
  * Copy the theme's Google webfonts into the build so published pages load them
  * from the site's own origin. A failure leaves an empty stylesheet: pages fall
@@ -44,9 +66,14 @@ export async function vendorThemeFonts(buildDir: string, fonts: Fonts, fetchImpl
     return { delivery: 'self_hosted', files: names.filter(name => name !== path.basename(cssPath)).length, bytes };
   }
   try {
-    const css = new TextDecoder().decode(await fetchPublicAsset(cssUrl, MAX_CSS_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT }));
+    const css = await googleFontsCss(families, fetchImpl);
     const urls = googleFontFileUrls(css);
-    if (!urls.length) throw new Error('The font stylesheet named no font files');
+    if (!urls.length) {
+      // Every family is a local font such as Arial; there is nothing to copy.
+      await fs.promises.writeFile(cssPath, `/* ${families.join(', ').replace(/\*\//g, '')}: not served by Google Fonts; the browser uses local fonts. */\n`);
+      if (cached) { await fs.promises.rm(cached, { recursive: true, force: true }); await fs.promises.cp(directory, cached, { recursive: true }); }
+      return { delivery: 'self_hosted', files: 0, bytes: 0 };
+    }
     if (urls.length > MAX_FONT_FILES) throw new Error(`The theme fonts need more than ${MAX_FONT_FILES} files`);
     const local = new Map<string, string>();
     let bytes = 0;
