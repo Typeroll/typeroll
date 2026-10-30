@@ -158,7 +158,10 @@ API/MCP fields: `ContentType.sort_field`, `sort_dir`, `template` and
 `allowed_templates`; `Page.sort_order` and `template`. An absent or null
 `allowed_templates` permits all compatible templates, while `[]` permits none.
 Set a Page's `template` to null or an empty string to restore inheritance; set
-`sort_order` to null to clear manual order. `list_pages` with `content_type`
+`sort_order` to null to clear manual order. `update_page` (PATCH) accepts
+`sort_order` on its own; like other content edits it lands in the working copy
+until saved. `read_page`, `batch_read_pages` and `list_pages` return it.
+`list_pages` with `content_type`
 inherits its order; `sort_by`/`sort_order` override it. Unfiltered API lists use
 stable Page IDs unless a sort field is specified. Keep query settings unchanged
 while following pagination cursors.

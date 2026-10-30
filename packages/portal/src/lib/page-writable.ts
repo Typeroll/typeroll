@@ -9,13 +9,13 @@ export const WRITABLE: Array<keyof Page> = [
   'breadcrumb_label', 'seo_title', 'append_seo_suffix', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'noindex', 'nofollow',
   'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service',
   'template', 'date_published', 'language', 'image_sizes_default', 'custom_css',
-  'publish_at', 'unpublish_at', 'fields',
+  'publish_at', 'unpublish_at', 'fields', 'sort_order',
 ];
 
 /** Content fields PUT clears when absent from the body ("PUT replaces"). */
 export const REPLACEABLE: Array<keyof Page> = WRITABLE.filter(
   (k) => k !== 'status' && k !== 'content_mode' && k !== 'date_published' && k !== 'slug'
-    && k !== 'publish_at' && k !== 'unpublish_at',
+    && k !== 'publish_at' && k !== 'unpublish_at' && k !== 'sort_order',
 );
 
 export function pickWritable(body: Partial<Page>): Partial<Page> {
