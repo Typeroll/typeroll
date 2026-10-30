@@ -102,6 +102,12 @@ export const POST: APIRoute = async ({ request, params }) => {
       omitted_results: report.results.length - results.length,
       result_verdicts: selectedVerdicts,
       gaps,
+      // Launch evidence needs one complete, unfiltered check; a truncated call
+      // cannot store it. The url_parity workflow checks the whole inventory.
+      ...(report.truncated ? { evidence_stored: false, next_step: {
+        message: `This call checked ${report.checked} of ${report.inventory_total} inventory URLs (limit ${MAX_LIMIT}), so it stored no launch evidence. Start the url_parity workflow to check every URL and record evidence for the launch report.`,
+        workflow: 'url_parity', config: { ...(body.target_origin ? { target_origin: body.target_origin } : {}), ...(body.source_origin ? { source_origin: body.source_origin } : {}) },
+      } } : { evidence_stored: !statuses?.length }),
     }, 200, {
       target_origin: body.target_origin,
       source_origin: body.source_origin,
