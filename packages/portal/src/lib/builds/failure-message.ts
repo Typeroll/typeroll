@@ -51,6 +51,8 @@ const REASONS: Array<[RegExp, (match: RegExpMatchArray) => Reason]> = [
   [/^reserved_build_source$/, () => ({ text: 'the site source uses a path reserved for the build engine.' })],
   [/^build_result_missing$/, () => ({ text: 'the build engine stopped without reporting a result.' })],
   [/^build_timeout$/, () => ({ text: 'the build did not finish before its deadline.' })],
+  [/^shared_runner_start_failed$/, () => ({ text: 'Cloudflare stopped every shared build runner started for this build before it could run.', action: 'Check the build project in Publishing → Builds, then retry publishing.' })],
+  [/^shared_build_timeout$/, () => ({ text: 'the build could not start before its deadline.' })],
   [/^build_failed$/, () => ({ text: 'the step failed.' })],
 ];
 
