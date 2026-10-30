@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, WEBFONT_FALLBACK_CSS, contentWellCss, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS } from '@typeroll/shared';
+import { resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, WEBFONT_FALLBACK_CSS, contentWellCss, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 import '../styles/reset.css';
@@ -117,11 +117,11 @@ const f = {
 const themeStyle = siteThemeCss(settings);
 
 const googleFontFamilies = webFontFamilies(f.heading, f.body, f.mono);
-const googleFontUrl = googleFontFamilies.length
-  ? `https://fonts.googleapis.com/css2?${googleFontFamilies
-      .map((fam) => `family=${encodeURIComponent(fam)}:wght@400;500;600;700`)
-      .join('&')}&display=swap`
-  : null;
+// Self-hosted by default: the build copies the files to this origin, so no
+// visitor request reaches Google before consent (fontDelivery).
+const selfHostedFonts = googleFontFamilies.length > 0 && fontDelivery(settings.fonts) === 'self_hosted';
+const googleFontUrl = selfHostedFonts ? null : googleFontsCssUrl(googleFontFamilies);
+const fontStylesheetUrl = selfHostedFonts ? SELF_HOSTED_FONTS_CSS_PATH : googleFontUrl;
 
 // CLS guard: while the Google webfont is loading, the browser uses the
 // generic fallback (Arial / sans-serif). When the webfont arrives and
@@ -148,29 +148,23 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
 
     {googleFontUrl && (
       <>
-        {/* Webfont loading optimised for Core Web Vitals:
-           - preconnect warms the TLS handshake to fonts.gstatic.com so
-             the woff2 fetch starts on first paint instead of after the
-             CSS roundtrip (≈300 ms saved on a cold cache).
-           - The stylesheet link uses the rel="preload"/onload swap
-             pattern. The browser fetches the CSS asynchronously and
-             promotes it to a real stylesheet once it lands — render no
-             longer blocks waiting for fonts.googleapis.com (≈1500 ms
-             saved per autopilot.se Lighthouse).
-           - <noscript> fallback keeps the page accessible when JS is
-             disabled (crawlers, accessibility tools).
-           - The size-adjusted 'tr-fallback' @font-face (above) keeps
-             layout stable while swap happens, cutting CLS from ~0.2 to
-             <0.05 in the common case. */}
+        {/* Only when the site opts into the Google Fonts CDN: warm its TLS handshakes. */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+      </>
+    )}
+    {fontStylesheetUrl && (
+      <>
+        {/* The preload/onload swap keeps the font stylesheet off the render
+           path; <noscript> covers crawlers. The size-adjusted 'tr-fallback'
+           face below keeps layout stable while the webfont swaps in. */}
         <link
           rel="preload"
           as="style"
-          href={googleFontUrl}
+          href={fontStylesheetUrl}
           onload="this.onload=null;this.rel='stylesheet'"
         />
-        <noscript><link rel="stylesheet" href={googleFontUrl} /></noscript>
+        <noscript><link rel="stylesheet" href={fontStylesheetUrl} /></noscript>
       </>
     )}
     {fontFallbackStyle && <style set:html={fontFallbackStyle} />}

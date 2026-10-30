@@ -170,6 +170,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body', 'mono']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
   // A rendered setting left out of this projection is stored, previewed and never published.
   if (['auto', 'antialiased'].includes(input.settings?.fonts?.smoothing)) settings.fonts.smoothing = input.settings.fonts.smoothing;
+  if (input.settings?.fonts?.delivery === 'google') settings.fonts.delivery = 'google';
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
   for (const [key, validate] of [['design_scales', designScalesError], ['typography', typographyError]]) {
@@ -338,7 +339,7 @@ export async function createStaticPublicationProject(publication, destination) {
     await fs.copyFile(path.join(root, `packages/portal/src/lib/deploy/${module}.ts`), path.join(destination, `scripts/source/${module}.ts`));
   }
   await fs.mkdir(path.join(destination, 'scripts/source/extensions'), { recursive: true });
-  for (const module of ['assets', 'public-http']) await fs.copyFile(path.join(root, `packages/portal/src/lib/extensions/${module}.ts`), path.join(destination, `scripts/source/extensions/${module}.ts`));
+  for (const module of ['assets', 'public-http', 'theme-fonts']) await fs.copyFile(path.join(root, `packages/portal/src/lib/extensions/${module}.ts`), path.join(destination, `scripts/source/extensions/${module}.ts`));
   for (const [name, content] of Object.entries(publicationContentFiles(publication))) {
     await fs.mkdir(path.dirname(path.join(destination, name)), { recursive: true });
     await fs.writeFile(path.join(destination, name), content);
@@ -352,7 +353,7 @@ export async function sealPublicationProject(destination) {
   const files = {};
   async function walk(directory, prefix = '') {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-      if (['node_modules', 'dist', '.astro', '.git', '.publication-work', '.publication-media', '.publication-cache.json', '.publication-cache.json.tmp', 'publication-manifest.json'].includes(entry.name)) continue;
+      if (['node_modules', 'dist', '.astro', '.git', '.publication-work', '.publication-media', '.publication-fonts', '.publication-cache.json', '.publication-cache.json.tmp', 'publication-manifest.json'].includes(entry.name)) continue;
       const relative = prefix + entry.name;
       if (entry.isDirectory()) await walk(path.join(directory, entry.name), `${relative}/`);
       else if (entry.isFile()) files[relative] = digest(await fs.readFile(path.join(directory, entry.name)));

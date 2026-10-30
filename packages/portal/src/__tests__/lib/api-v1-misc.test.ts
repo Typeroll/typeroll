@@ -353,6 +353,20 @@ describe('redirects endpoints', () => {
     expect(await rules(token)).toEqual(before);
   });
 
+  it('PUT reports Cloudflare Pages redirect capacity before publishing would fail', async () => {
+    const { token } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    const { paths } = await import('@typeroll/shared');
+    const small = await callRoute(index(), 'PUT', url, { siteId: SITE }, { headers: bearer(token), body: { dry_run: true, redirects: [{ from_path: '/old', to_path: '/new' }] } });
+    expect((await small.json() as any).capacity).toMatchObject({ limit_static: 2000, over_limit: false });
+    for (let start = 0; start < 1900; start += 100) await Promise.all(Array.from({ length: 100 }, (_, i) => getStore().setDoc(`${paths.redirects(ORG, SITE, 'main')}/r${start + i}`, { from_path: `/wp-content/uploads/${start + i}.jpg`, to_path: '/media/a.jpg', status_code: 301 })));
+    const res = await callRoute(index(), 'PUT', url, { siteId: SITE }, { headers: bearer(token), body: { dry_run: true, redirects:
+      Array.from({ length: 200 }, (_, i) => ({ from_path: `/wp-content/uploads/new-${i}.jpg`, to_path: '/media/a.jpg' })) } });
+    const body = await res.json() as any;
+    expect(body.capacity).toMatchObject({ static: 2100, over_limit: true });
+    expect(body.capacity.warning).toContain('publication_redirect_limit');
+  });
+
   it('PUT applies many updates in place and keeps every id', async () => {
     const { token } = await setup();
     for (let i = 0; i < 30; i++)

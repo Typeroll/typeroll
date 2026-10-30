@@ -6,17 +6,24 @@ export const PAGES_REDIRECT_LIMITS = Object.freeze({ static: 2000, dynamic: 100,
 // UTF-8 can use four bytes per character. Bound transport independently of the
 // provider's rule counts; keep a little space for comments and line endings.
 export const MAX_PAGES_REDIRECT_BYTES = 10 * 1024 * 1024;
-export function checkPagesRedirects(text) {
-  if (new TextEncoder().encode(text).length > MAX_PAGES_REDIRECT_BYTES) throw new Error('Redirect file exceeds the 10 MiB transport limit.');
+/** Static and dynamic rule counts of a `_redirects` file, without enforcing the limits. */
+export function countPagesRedirectRules(text) {
   let fixed = 0, dynamic = 0;
-  for (const [index, raw] of text.split(/\r?\n/).entries()) {
+  for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
-    if ([...raw].length > PAGES_REDIRECT_LIMITS.line) throw new Error(`_redirects line ${index + 1} exceeds Cloudflare Pages’ 1000-character limit.`);
     const from = line.split(/\s+/)[0];
     if (from.includes('*') || /(^|[/.]):[A-Za-z_][A-Za-z0-9_]*/.test(from)) dynamic++;
     else fixed++;
   }
+  return { static: fixed, dynamic, total: fixed + dynamic };
+}
+export function checkPagesRedirects(text) {
+  if (new TextEncoder().encode(text).length > MAX_PAGES_REDIRECT_BYTES) throw new Error('Redirect file exceeds the 10 MiB transport limit.');
+  for (const [index, raw] of text.split(/\r?\n/).entries()) {
+    if (raw.trim() && !raw.trim().startsWith('#') && [...raw].length > PAGES_REDIRECT_LIMITS.line) throw new Error(`_redirects line ${index + 1} exceeds Cloudflare Pages’ 1000-character limit.`);
+  }
+  const { static: fixed, dynamic } = countPagesRedirectRules(text);
   if (fixed > PAGES_REDIRECT_LIMITS.static || dynamic > PAGES_REDIRECT_LIMITS.dynamic) {
     throw new Error(`Cloudflare Pages supports 2000 static and 100 dynamic redirects per site. This publication emits ${fixed} static and ${dynamic} dynamic rules, including generated slash aliases and host redirects. Reduce or consolidate rules before publishing; do not delete required migration redirects without replacing their coverage.`);
   }

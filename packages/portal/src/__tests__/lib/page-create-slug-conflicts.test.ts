@@ -162,3 +162,16 @@ describe('create_page slug conflicts', () => {
     expect(await response.json()).toMatchObject({ code: 'path_in_use', details: { page_id: 'offices_sundsvall', path: '/offices/sundsvall' } });
   });
 });
+
+describe('a supplied page id', () => {
+  it('is kept even when a path would derive another id', async () => {
+    const res = await create({ id: 'category_diy-selber-machen', title: 'DIY', path: '/category/alle-blogposts/diy-selber-machen' });
+    expect(res.status).toBe(201);
+    expect(((await res.json()) as { page: { id: string } }).page.id).toBe('category_diy-selber-machen');
+  });
+  it('answers 409 when the id is taken and 400 when it is invalid, instead of replacing it', async () => {
+    await seedPage('taken', { title: 'Taken', slug: 'taken' });
+    expect((await create({ id: 'taken', title: 'Other', slug: 'other' })).status).toBe(409);
+    expect((await create({ id: 'has/slash', title: 'Other', slug: 'other' })).status).toBe(400);
+  });
+});

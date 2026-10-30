@@ -114,7 +114,11 @@ Deploy first — the check tests published, deployed content, not unsaved drafts
 A complete, unfiltered run stores compact evidence for the launch report. It
 records the target origin, check time, expected request count (including slash
 variants), and the latest successful non-dry-run deploy job. Filtered or
-truncated runs never replace this evidence.
+truncated runs never replace this evidence. One call checks at most 500 inventory URLs. For a
+larger inventory the response has `truncated: true`, `evidence_stored: false`
+and a `next_step` naming the `url_parity` workflow (`start_workflow` with
+`type: "url_parity"`), which checks every URL in one run and records the
+evidence. A complete call returns `evidence_stored: true`.
 
 ## `record_migration_seo_acceptance`
 

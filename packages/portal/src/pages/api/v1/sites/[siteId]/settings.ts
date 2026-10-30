@@ -150,6 +150,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (fonts.smoothing !== undefined && fonts.smoothing !== null && !isFontSmoothing(fonts.smoothing)) {
       return apiError(`fonts.smoothing must be one of: ${FONT_SMOOTHING_VALUES.join(', ')} (or null to use the default)`, 400);
     }
+    if (fonts.delivery !== undefined && fonts.delivery !== null && fonts.delivery !== 'self_hosted' && fonts.delivery !== 'google') {
+      return apiError('fonts.delivery must be "self_hosted" (font files copied to the site, the default) or "google" (Google Fonts CDN), or null for the default', 400);
+    }
   }
   if (body.colors !== undefined) {
     if (!body.colors || typeof body.colors !== 'object' || Array.isArray(body.colors)) return apiError('colors must be an object', 400);

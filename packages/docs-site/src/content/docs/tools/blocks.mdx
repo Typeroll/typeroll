@@ -1134,10 +1134,12 @@ Button `new_tab: true` opens its link in a new tab using native HTML
 Omitted or false keeps navigation in the same tab. Supply a JSON boolean, not a
 string. Keep the label meaningful; long labels wrap within the available width.
 During migration verify the rendered link's query parameters, fragment and tab
-behavior. Source CTA classes copied into Prose do not recreate a Button. If the
-source requires additional link semantics such as `sponsored`, `nofollow` or a
-forced download, do not assume that `new_tab` preserves them; verify support in
-the selected block before converting it.
+behavior. Source CTA classes copied into Prose do not recreate a Button. For
+affiliate or paid links set `link_rel`, a space-separated list such as
+`nofollow sponsored`, exactly as on image links; with `new_tab: true` the button
+renders `rel="nofollow sponsored noopener noreferrer"`. Tokens other than plain
+names are ignored. A forced download is not supported; verify other link
+semantics in the selected block before converting it.
 
 ## Block menus and article cards
 

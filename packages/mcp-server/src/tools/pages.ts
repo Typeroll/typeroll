@@ -146,6 +146,7 @@ export const pageTools: ToolDef[] = [
       kind: z.enum(['page', 'article']).optional(),
       author: z.string().optional(),
       language: z.string().optional().describe('BCP-47 tag overriding the site default (e.g. "en" on an otherwise Swedish site).'),
+      id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/).optional().describe('Page id to use instead of one derived from the address; keeps references such as parent or filter values stable. A taken id fails with 409; it is never replaced.'),
       sort_order: z.number().finite().optional().describe('Manual Page order; lower numbers come first in ascending lists. Content types and listings choose how to sort.'),
       template: z.string().nullable().optional().describe('Allowed Page template ID; null uses the content type default.'),
       image_sizes_default: z.string().optional().describe('Per-page default `sizes` for responsive images (e.g. "(max-width: 640px) 360px, 560px"). Overrides the site setting; a per-<img> `sizes` attr still wins. Set when this page\'s images render narrower than the generic default so the browser stops over-fetching.'),

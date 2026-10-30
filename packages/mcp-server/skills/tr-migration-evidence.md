@@ -10,6 +10,7 @@ another MCP client) working through MCP and the public API. The portal's built-i
 AI assistant has no migration tools: it does not import, convert or verify sites.
 
 Use this shared contract with WordPress, Astro, URL and multisite recipes.
+
 ## Choose the migration intent before writes
 
 Record two independent choices in `brief/migration.md` (or the project's
@@ -19,12 +20,12 @@ Use the starter's `workflows/interview.md` when guidance or decisions are missin
 resume existing answers. Do not infer either choice from a vague "migrate" or
 "renew", or silently apply an old single-choice brief to both dimensions.
 
-| Text | Design/images | Acceptance |
-| --- | --- | --- |
-| Preserve | Preserve | Compare wording and appearance separately with the source. |
-| Preserve | Renew | Keep wording; compare appearance with approved new prototypes. |
-| Renew | Preserve | Review copy against the editorial brief; keep source appearance, allowing documented layout adjustments for new text length. |
-| Renew | Renew | Review copy and appearance against their separately approved briefs. |
+| Text     | Design/images | Acceptance                                                                                                                   |
+| -------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Preserve | Preserve      | Compare wording and appearance separately with the source.                                                                   |
+| Preserve | Renew         | Keep wording; compare appearance with approved new prototypes.                                                               |
+| Renew    | Preserve      | Review copy against the editorial brief; keep source appearance, allowing documented layout adjustments for new text length. |
+| Renew    | Renew         | Review copy and appearance against their separately approved briefs.                                                         |
 
 Preserved text includes headings, body copy, CTA labels and captions. Record
 metadata, alt text, legal text and translation rules explicitly; SEO is not an
@@ -148,9 +149,10 @@ Core 0.2.25+ `new_tab: true` emits `target="_blank"` and
 `rel="noopener noreferrer"` in static HTML; false/unset keeps the same tab.
 Verify the rendered target/rel, preserved affiliate queries/fragments, keyboard
 activation, actual tab opening and narrow-screen wrapping without requiring
-JavaScript. Do not silently discard source `sponsored`/`nofollow`, download
-behavior or other semantics unsupported by the chosen block: record the gap
-and use a supported composition or stop for native support.
+JavaScript. Carry source `sponsored`/`nofollow` into the Button or image
+`link_rel` field. Do not silently discard download behavior or other semantics
+unsupported by the chosen block: record the gap and use a supported
+composition or stop for native support.
 Do not apply a template to hundreds of Pages until its prototype passes.
 
 ## Distinguish custom presentation from platform defects
@@ -215,13 +217,13 @@ about to be switched off. Inventory every `<script>` on representative source
 pages (head and body, inline and external, and which plugin or theme it
 belongs to), then decide each one:
 
-| Source script | Decision |
-| --- | --- |
-| WordPress core, theme or plugin runtime | Never copy. Rebuild what it did with native blocks, Forms or settings, or report a platform gap (see "Report platform gaps"). |
-| Cookie plugin (CookieYes, Complianz, Cookiebot, Borlabs, …) | Never copy. Enable the site's cookie banner (`cookie_consent.enabled: true`) with Swedish or local text and the privacy policy URL. |
+| Source script                                                                                                                                                                                     | Decision                                                                                                                                                                                                                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| WordPress core, theme or plugin runtime                                                                                                                                                           | Never copy. Rebuild what it did with native blocks, Forms or settings, or report a platform gap (see "Report platform gaps").                                                                                                          |
+| Cookie plugin (CookieYes, Complianz, Cookiebot, Borlabs, …)                                                                                                                                       | Never copy. Enable the site's cookie banner (`cookie_consent.enabled: true`) with Swedish or local text and the privacy policy URL.                                                                                                    |
 | Analytics or advertising tag in the Integrations catalog (GA4, GTM, Meta Pixel, LinkedIn, TikTok, Hotjar, Clarity, Pinterest, Snap, Reddit, X, Microsoft Ads, HubSpot, Plausible, Fathom, Matomo) | Carry over the ID only: enable the Integrations app with the source's ID (`list_apps`, `update_app`). Enable the cookie banner; analytics and advertising integrations wait for the visitor's consent. Never paste the vendor snippet. |
-| Tracking tag the catalog does not cover | Only with the owner's approval, in `cookie_consent.scripts_optional` with the banner enabled. Never in `scripts_head`, `scripts_body_end`, `scripts_necessary`, pages or partials. |
-| Partner widget or embed the page needs to work | Prefer a native block or an iframe from an allowlisted host. Keep custom code minimal, record why, and do not load it from the source site. |
+| Tracking tag the catalog does not cover                                                                                                                                                           | Only with the owner's approval, in `cookie_consent.scripts_optional` with the banner enabled. Never in `scripts_head`, `scripts_body_end`, `scripts_necessary`, pages or partials.                                                     |
+| Partner widget or embed the page needs to work                                                                                                                                                    | Prefer a native block or an iframe from an allowlisted host. Keep custom code minimal, record why, and do not load it from the source site.                                                                                            |
 
 Ask the owner to confirm the analytics IDs; never invent or reuse one from
 another market. Before launch, `get_migration_launch_report` must show
@@ -245,11 +247,11 @@ fires before consent, and the tags fire after "accept all".
 
 Filled examples:
 
-| Observation | Technical result | Visual decision |
-| --- | --- | --- |
-| Source video overflows a 390px viewport; native video fits and shows the entire frame | Width 390px, original aspect preserved; captures reviewed | PASS: deliberate improvement in mobile usability |
-| Source has four cards and turquoise hero at 1280px; target has three plain cards and no color panel | HTTP 200, no overflow, all content is blocks | FAIL: brand/layout lost; those technical facts cannot attest visual fidelity |
-| Heading round-trip retains 48 but computed size stays 32 | Save succeeds | FAIL: find ignored field/cascade before bulk conversion |
+| Observation                                                                                         | Technical result                                          | Visual decision                                                              |
+| --------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| Source video overflows a 390px viewport; native video fits and shows the entire frame               | Width 390px, original aspect preserved; captures reviewed | PASS: deliberate improvement in mobile usability                             |
+| Source has four cards and turquoise hero at 1280px; target has three plain cards and no color panel | HTTP 200, no overflow, all content is blocks              | FAIL: brand/layout lost; those technical facts cannot attest visual fidelity |
+| Heading round-trip retains 48 but computed size stays 32                                            | Save succeeds                                             | FAIL: find ignored field/cascade before bulk conversion                      |
 
 Keep imported, saved, locally checked, hosted-preview checked, published and
 traffic-cut-over distinct. Template/theme changes invalidate affected acceptance;
@@ -303,17 +305,16 @@ after evidence, specific user benefit and accepted scope; “cleaner” is not a
 
 Preserve-mode examples from a moving-services migration:
 
-| Surface | Passing evidence | Separate visual result |
-| --- | --- | --- |
-| Mobile menu | Keyboard focus and Escape work | FAIL: header moves, source service group is missing, open-menu composition differs |
-| Category archive | Every destination URL exists | FAIL: source sequence, card anatomy and columns differ |
-| Article body | All text imported | UNVERIFIED: unique embed and footer were never compared |
+| Surface          | Passing evidence               | Separate visual result                                                             |
+| ---------------- | ------------------------------ | ---------------------------------------------------------------------------------- |
+| Mobile menu      | Keyboard focus and Escape work | FAIL: header moves, source service group is missing, open-menu composition differs |
+| Category archive | Every destination URL exists   | FAIL: source sequence, card anatomy and columns differ                             |
+| Article body     | All text imported              | UNVERIFIED: unique embed and footer were never compared                            |
 
 Do not report “all design checked” from a viewport or recipe sample. Keep source
 link-order comparisons and paired contact sheets with the report. The same contract
 applies to WordPress, URL, Astro and multisite migration; do not create separate,
 weaker checklists for individual import mechanisms.
-
 
 ## Navigation and empty-media variants
 

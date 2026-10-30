@@ -57,13 +57,17 @@ export const GET: APIRoute = async ({ params, request }) => {
   // portal origin safely and own tab-scoped Extension state, while all
   // customer HTML remains in the opaque child response below.
   const isFrame = url.searchParams.get('frame') === '1';
+  // ?consent=all|necessary answers the cookie banner for this review session;
+  // the sandbox keeps no cookies, so the shell carries it to every page.
+  const consentParam = url.searchParams.get('consent');
+  const consentChoice = consentParam === 'all' || consentParam === 'necessary' ? consentParam : undefined;
   if (!isFrame) {
     return new Response(buildExtensionPreviewShell({
       siteId,
       bridgeId: randomUUID(),
       rootPath: `/preview/${siteId}`,
       storageScope: token!,
-      carriedQuery: { t: token! },
+      carriedQuery: { t: token!, ...(consentChoice ? { consent: consentChoice } : {}) },
     }), { status: 200, headers: extensionPreviewShellHeaders() });
   }
   const bridgeId = url.searchParams.get('bridge') ?? '';
@@ -72,7 +76,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   // Link rewriting: keep clicks inside /preview/{siteId}/... AND carry the
   // same ?t= so the agent's browser hops between pages without re-auth.
   const browseRoot = `/preview/${siteId}`;
-  const embedSuffix = `?t=${encodeURIComponent(token!)}`;
+  const embedSuffix = `?t=${encodeURIComponent(token!)}${consentChoice ? `&consent=${consentChoice}` : ''}`;
 
   const html = await renderPreviewBySlug(
     ticket.org_id,
@@ -94,6 +98,7 @@ export const GET: APIRoute = async ({ params, request }) => {
       // abuse. Keeping scripts on means an agent's preview matches the
       // deployed site.
       allowScripts: true,
+      ...(consentChoice ? { consentChoice } : {}),
       extensionPreviewBridge: { id: bridgeId, parentOrigin: publicRequestOrigin(request) },
     },
   );

@@ -129,6 +129,32 @@ describe('token-authed preview route', () => {
   });
 });
 
+describe('review consent preset', () => {
+  it('answers the cookie banner for the review session without relaxing the sandbox', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.setDoc(paths.site('default', 'mysite'), { name: 'Mine', hosting_adapter: 'cloudflare' });
+    await store.setDoc(paths.page('default', 'mysite', 'home'), { title: 'Home', slug: 'home', status: 'published', content_mode: 'html', html_content: '<h1>Hello</h1>' });
+    const { vstore } = await import('../../lib/version-store');
+    const settings = await vstore.settings('default', 'mysite', 'main');
+    await store.setDoc(paths.settings('default', 'mysite', 'main'), { ...(settings ?? {}), cookie_consent: { enabled: true, scripts_optional: '<script>window.partner=1</script>' } });
+    const { signPreviewTicket } = await import('../../lib/preview-signing');
+    const { token } = signPreviewTicket({ orgId: 'default', siteId: 'mysite', versionId: 'main', ttlSeconds: 300 });
+    const { GET } = await import('../../pages/preview/[siteId]/[...slug]');
+    const frame = async (query: string) => (await GET({ params: { siteId: 'mysite', slug: 'home' }, request: new Request(`https://app.typeroll.com/preview/mysite/home?t=${encodeURIComponent(token)}&frame=1&bridge=12345678-1234-1234-1234-123456789abc${query}`) } as never));
+    const plain = await (await frame('')).text();
+    expect(plain).toContain('data-cookie-consent-early="1"');
+    const preset = await frame('&consent=all');
+    expect(preset.headers.get('Content-Security-Policy')).toBe(PREVIEW_SANDBOX);
+    const html = await preset.text();
+    expect(html).not.toContain('data-cookie-consent-early="1"');
+    expect(html).toContain("memory='all'");
+    expect(await (await frame('&consent=bogus')).text()).toContain('data-cookie-consent-early="1"');
+    const shell = await (await GET({ params: { siteId: 'mysite', slug: 'home' }, request: new Request(`https://app.typeroll.com/preview/mysite/home?t=${encodeURIComponent(token)}&consent=necessary`) } as never)).text();
+    expect(shell).toContain('"consent":"necessary"');
+  });
+});
+
 describe('editor canvas never runs block JS', () => {
   // The escalation this closes, which an ownership check did NOT: block
   // content needs only `write`, so an `editor` can put JS in a core/embed

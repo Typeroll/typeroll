@@ -31,6 +31,7 @@ import { projectStaticPublication } from '../../../../../scripts/lib/static-publ
 import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
 import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed } from './domain-provider';
+import { assertDryRunValidation } from './dry-run-validation';
 import { retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
@@ -348,6 +349,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       frozen.publication_id = digest(JSON.stringify(stable));
       if (args.dryRun) {
         await publicationSourceTree(frozen);
+        assertDryRunValidation(frozen.pages ?? []);
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'source verified (dry-run, no Git push)', dry_run: true, finished_at: contentCutoff });
         terminal = true; return 'ran';
       }

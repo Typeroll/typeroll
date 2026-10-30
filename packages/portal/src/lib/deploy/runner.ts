@@ -229,6 +229,15 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
     console.log(`[deploy] extensions: vendored ${vendored.files} files (${vendored.bytes} bytes)`);
   }
 
+  await phase('copying theme fonts');
+  {
+    const { vendorThemeFonts } = await import('../extensions/theme-fonts');
+    const { createSafeFetch } = await import('../net/safe-fetch');
+    const settings = await vstore.settings(args.orgId, args.siteId, versionId);
+    const fonts = await vendorThemeFonts(buildDir, settings?.fonts, createSafeFetch({ label: 'Asset URL', maxRedirects: 0, timeoutMs: 15_000, maxBytes: 2 * 1024 * 1024 }));
+    console.log(`[deploy] theme fonts: ${fonts.delivery}, ${fonts.files} files (${fonts.bytes} bytes)${fonts.error ? `; ${fonts.error}` : ''}`);
+  }
+
   await phase('generating site icons');
   {
     const { writeSiteIcons, MAX_ICON_BYTES } = await import('../../../../../scripts/fixtures/static-publication/site-icons.mjs');

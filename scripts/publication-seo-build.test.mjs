@@ -13,7 +13,7 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
   const page = (id, extra = {}) => ({ id, title: id, slug: id, status: 'published', content_mode: 'html', html_content: `<h1>${id}</h1>`, ...extra });
   for (const slash of ['always', 'never']) {
     const input = {
-      site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', language: 'sv', default_og_image: '/default.jpg', render_version: 10, typography:{ratio_mobile:1.2,ratio_desktop:1.3,rhythm:1.2,line_length:68}, trailing_slash: slash, colors: {surface:'#f8fafc'}, fonts: {mono:'Roboto Mono'}, design_scales:{space:{lg:{mobile:'2rem',desktop:'clamp(2rem, 1rem + 2vw, 4rem)'}}}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
+      site: { name: 'Example', domain: 'example.test' }, settings: { site_name: 'Example', language: 'sv', default_og_image: '/default.jpg', render_version: 10, typography:{ratio_mobile:1.2,ratio_desktop:1.3,rhythm:1.2,line_length:68}, trailing_slash: slash, colors: {surface:'#f8fafc'}, fonts: {mono:'Roboto Mono', delivery:'google'}, design_scales:{space:{lg:{mobile:'2rem',desktop:'clamp(2rem, 1rem + 2vw, 4rem)'}}}, external_routes: [{ path: "/docs/", owner: "Documentation deployment" }] },
       pages: [page('home', { slug: '', html_content: '<h1>Home</h1><a href="/states/">States</a><a href="https://example.test/docs/">Documentation</a><img alt="" src="/decorative.svg">' }), page('companies'),
         page('abc', { content_type: 'supplier', og_title: 'Share ABC', og_description: 'Sharing ABC', fields: { company: 'ABC', city: 'Town', featured_image: '/media/company.jpg', featured_image_alt: 'ABC team' } }),
         page('nested', { content_type: 'supplier', slug: 'nested/profile' }), page('explicit', { path: '/special/nested/' }),
@@ -63,6 +63,9 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     assert.match(tokenHtml,/--gap_px:var\(--space-lg\)/);
     assert.match(tokenHtml,/background:var\(--color-surface\)/);
     assert.match(tokenHtml,/--font-mono:[^;]*Roboto Mono/);
+    // The fixture opts into the Google CDN so this build makes no network request; self-hosted fonts are covered by theme-fonts tests.
+    assert.match(tokenHtml, /href="https:\/\/fonts\.googleapis\.com\/css2\?family=Inter/);
+    await assert.rejects(fs.access(path.join(destination, 'dist/_typeroll/fonts/fonts.css')));
     const datedHtml = await fs.readFile(path.join(destination, 'dist/dated-article/index.html'), 'utf8');
     assert.match(datedHtml, /"datePublished":"2024-05-02T10:01:08Z"/);
     assert.match(datedHtml, /"dateModified":"2024-05-03T11:01:08\+01:00"/);

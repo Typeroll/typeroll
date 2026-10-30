@@ -223,7 +223,7 @@ Returns this site’s media assets with stable media URLs, filenames and sizes. 
 
 ## Media URLs
 
-Use the stable URL returned by the media API instead of constructing an address. A URL ending in `/api/sites/{site}/media/{id}/content` requires authenticated Site access because it identifies a private original. Typeroll authorizes images temporarily for previews and resolves public delivery URLs during publishing. Public visitors should never need to log in. Use the returned stable URL in:
+Use the stable URL returned by the media API instead of constructing an address. A URL ending in `/api/sites/{site}/media/{id}/content` requires authenticated Site access because it identifies a private original: a portal session, or the same `Authorization: Bearer` API key (site or organization) as `/api/v1`, which receives a 302 to a short-lived signed address. Typeroll authorizes images temporarily for previews and resolves public delivery URLs during publishing. Public visitors should never need to log in. Use the returned stable URL in:
 
 - `<img src>` attributes in page HTML
 - `og_image` and `logo` settings fields

@@ -70,6 +70,39 @@ export function webFontFamilies(heading: string, body: string, mono?: string): s
   return Array.from(new Set([heading, body, mono].filter((value): value is string => !!value && !isSystemFont(value))));
 }
 
+/** The Google Fonts stylesheet for these families, or null when only system fonts are used. */
+export function googleFontsCssUrl(families: string[]): string | null {
+  if (!families.length) return null;
+  return `https://fonts.googleapis.com/css2?${families.map(family => `family=${encodeURIComponent(family)}:wght@400;500;600;700`).join('&')}&display=swap`;
+}
+
+export type FontDelivery = 'self_hosted' | 'google';
+/**
+ * How a published site delivers its webfonts. Self-hosted is the default: the
+ * build copies the font files to the site's own origin, so a visitor's browser
+ * never contacts Google before consent. `google` keeps the Google Fonts CDN.
+ */
+export function fontDelivery(fonts: { delivery?: unknown } | undefined): FontDelivery {
+  return fonts?.delivery === 'google' ? 'google' : 'self_hosted';
+}
+/** Same-origin stylesheet a self-hosted publication links instead of Google Fonts. */
+export const SELF_HOSTED_FONTS_CSS_PATH = '/_typeroll/fonts/fonts.css';
+export const SELF_HOSTED_FONTS_DIRECTORY = '/_typeroll/fonts/';
+const GSTATIC_URL = /url\((['"]?)(https:\/\/fonts\.gstatic\.com\/[^'")\s]+)\1\)/g;
+/** Font file URLs in a Google Fonts stylesheet; only fonts.gstatic.com is accepted. */
+export function googleFontFileUrls(css: string): string[] {
+  return Array.from(new Set(Array.from(css.matchAll(GSTATIC_URL), match => match[2])));
+}
+/** Rewrite Google font file URLs to their same-origin copies; unknown URLs are dropped with their rule. */
+export function rewriteGoogleFontCss(css: string, localPaths: Map<string, string>): string {
+  const rules = css.match(/@font-face\s*\{[^}]*\}/g) ?? [];
+  return rules.flatMap(rule => {
+    const urls = Array.from(rule.matchAll(GSTATIC_URL), match => match[2]);
+    if (!urls.length || urls.some(url => !localPaths.has(url))) return [];
+    return [rule.replace(GSTATIC_URL, (_, _quote, url) => `url(${localPaths.get(url)})`)];
+  }).join('\n');
+}
+
 /**
  * CLS guard used while a webfont loads: a size-adjusted Arial stands in with
  * Inter-like metrics. Published pages and preview emit the same rule.

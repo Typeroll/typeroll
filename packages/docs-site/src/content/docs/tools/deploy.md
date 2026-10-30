@@ -16,8 +16,12 @@ Ask the agent to deploy explicitly after you have reviewed and saved the intende
 ### Dry runs
 
 Pass `dry_run: true` to validate without publishing. Customer publishing validates
-the frozen source without pushing Git or starting an external build. It does not
-prove that Astro compilation succeeds. Other self-hosted adapters may build
+the frozen source without pushing Git or starting an external build. It also
+applies validation rules that need no rendering: an image link without an
+accessible name (`<a><img alt=""></a>` without text, or an image block with a
+`link` and empty `alt`) fails the dry run with `publication_validation_failed`,
+as the build would after media preparation. It does not prove that Astro
+compilation succeeds or that the rendered pages pass every other check. Other self-hosted adapters may build
 locally without uploading. Inspect the reported phase; a successful dry run has
 `dry_run: true` and no `deploy_url`.
 
@@ -107,6 +111,13 @@ the last deploy. Pass `include_working_copy: true` when the reviewer should also
 see unsaved drafts; that choice is signed into the link. Anyone holding the link
 sees unpublished content, so creating one needs write permission on the site, in
 the portal as well as through the API.
+
+The preview runs in a sandbox without cookies, so a cookie banner returns on
+every page. For visual review, add `&consent=all` to the link to answer it for
+the whole session: the banner stays hidden and consented scripts and embeds
+load. `&consent=necessary` hides the banner and loads only necessary scripts.
+The sandbox itself is unchanged; a widget that needs a first-party origin may
+still need a test publication.
 
 ## `get_page_preview`
 

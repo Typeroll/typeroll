@@ -30,4 +30,13 @@ describe('native CTA link semantics', () => {
     expect(link.hasAttribute('target')).toBe(false);
     expect(link.outerHTML).toContain('data-edit="cta:label"');
   });
+  it('keeps affiliate rel tokens and adds noopener only for a new tab', () => {
+    const link = button({ link_rel: 'nofollow Sponsored "onclick=alert(1)', new_tab: true, button_link_attrs: ' onclick="x"' });
+    expect(new Set(link.rel.split(' '))).toEqual(new Set(['nofollow', 'sponsored', 'noopener', 'noreferrer']));
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.hasAttribute('onclick')).toBe(false);
+    const sameTab = button({ link_rel: 'nofollow sponsored' });
+    expect(sameTab.rel).toBe('nofollow sponsored');
+    expect(sameTab.hasAttribute('target')).toBe(false);
+  });
 });

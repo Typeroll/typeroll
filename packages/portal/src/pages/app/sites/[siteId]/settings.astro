@@ -193,6 +193,14 @@ const domainBlocksArchiving =
         </select>
         <p class="muted text-sm">Antialiased can suit light text on a dark background. Dark text on a light background reads closer to other sites with the browser default.</p>
       </div>
+      <div class="field">
+        <label for="fonts-delivery">Font delivery</label>
+        <select id="fonts-delivery" name="fonts.delivery">
+          <option value="self_hosted" selected={settings.fonts.delivery !== 'google'}>From this website (recommended)</option>
+          <option value="google" selected={settings.fonts.delivery === 'google'}>Google Fonts CDN</option>
+        </select>
+        <p class="muted text-sm">From this website, publishing copies the font files to your site, so visitors' browsers never contact Google. The Google Fonts CDN sends each visitor's IP address to Google before any consent choice.</p>
+      </div>
     </div>
 
     <div class="card stack" data-settings-section="seo" hidden={section !== 'seo'}>

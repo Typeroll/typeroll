@@ -318,6 +318,21 @@ describe('v1 migration-urls/verify', () => {
     }
   });
 
+  it('says when a truncated check stored no evidence and points to the url_parity workflow', async () => {
+    await call(indexRoute(), 'POST', BASE, { siteId: SITE }, { token, body: { urls: [{ url: '/a' }, { url: '/b' }] } });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => new Response(null, { status: 200 })) as unknown as typeof fetch;
+    try {
+      const truncated = await (await call(verifyRoute(), 'POST', `${BASE}/verify`, { siteId: SITE }, { token, body: { target_origin: 'https://new.example.com', limit: 1 } })).json();
+      expect(truncated).toMatchObject({ truncated: true, evidence_stored: false, next_step: { workflow: 'url_parity', config: { target_origin: 'https://new.example.com' } } });
+      const complete = await (await call(verifyRoute(), 'POST', `${BASE}/verify`, { siteId: SITE }, { token, body: { target_origin: 'https://new.example.com' } })).json();
+      expect(complete).toMatchObject({ truncated: false, evidence_stored: true });
+      expect(complete.next_step).toBeUndefined();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('supports an exact verdict filter without leaking other gaps', async () => {
     await call(indexRoute(), 'POST', BASE, { siteId: SITE }, {
       token, body: { urls: [{ url: '/gone' }, { url: '/fine' }] },

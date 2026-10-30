@@ -480,6 +480,19 @@ describe('GET/PATCH/PUT/DELETE /api/v1/sites/{siteId}/pages/{pageId}', () => {
     expect(patched.page.title).toBe('Home'); // untouched
   });
 
+  it('writes and returns sort_order through PATCH alone', async () => {
+    const { token } = await setup();
+    await seedPage('home', { title: 'Home', sort_order: 1 });
+    const route = () => import('../../pages/api/v1/sites/[siteId]/pages/[pageId]');
+    const patch = (body: unknown) => callRoute(route(), 'PATCH', `http://localhost/api/v1/sites/${SITE}/pages/home`, { siteId: SITE, pageId: 'home' }, { headers: bearer(token), body });
+    const res = await patch({ sort_order: 3 });
+    expect(res.status).toBe(200);
+    expect((await res.json() as { page: { sort_order: number } }).page.sort_order).toBe(3);
+    expect((await patch({ sort_order: 'first' })).status).toBe(400);
+    const got = await callRoute(route(), 'GET', `http://localhost/api/v1/sites/${SITE}/pages/home`, { siteId: SITE, pageId: 'home' }, { headers: bearer(token) });
+    expect((await got.json() as { page: Record<string, unknown> }).page).toHaveProperty('sort_order');
+  });
+
   it('rejects content_mode in PATCH and points callers to the safe mode endpoint', async () => {
     const { token } = await setup();
     await seedPage('home', { title: 'Home', content_mode: 'html' });

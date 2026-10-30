@@ -141,6 +141,15 @@ test('projects nested public settings and permits publication after the last pag
   assert.match(publication.publication_id, /^[a-f0-9]{64}$/);
 });
 
+test('publishes Google font delivery only when chosen, so self-hosting is the default', () => {
+  const value = input();
+  value.settings.fonts.delivery = 'google';
+  assert.equal(projectStaticPublication(value, identity).settings.fonts.delivery, 'google');
+  for (const other of ['self_hosted', 'cdn', undefined]) {
+    value.settings.fonts.delivery = other;
+    assert.equal(projectStaticPublication(value, identity).settings.fonts.delivery, undefined);
+  }
+});
 test('publishes the font smoothing setting and drops unknown values', () => {
   const value = input();
   value.settings.fonts.smoothing = 'antialiased';
@@ -195,7 +204,7 @@ const FULL_SETTINGS = {
   colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', surface_hover:'#dddddd', text: '#000000', text_light: '#555555', on_primary: '#ffffff', on_secondary: '#fff', on_accent: '#111827' },
   typography: {ratio_mobile:1.2,ratio_desktop:1.25,rhythm:1.1,line_length:70},
   design_scales: { type_size:{xl:'1.5rem'}, space:{md:'1rem'}, leading:{normal:'1.5'} },
-  fonts: { heading: 'Inter', body: 'Inter', mono:'Roboto Mono', size_base: 17, smoothing: 'antialiased' },
+  fonts: { heading: 'Inter', body: 'Inter', mono:'Roboto Mono', size_base: 17, smoothing: 'antialiased', delivery: 'google' },
   contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
   social: { facebook: 'https://example.invalid/f', instagram: 'https://example.invalid/i', linkedin: 'https://example.invalid/l', x: 'https://example.invalid/x', youtube: 'https://example.invalid/y' },
   scripts_head: '<meta name="a">', scripts_body_end: '<meta name="b">', custom_css: 'body{}', render_version: 6,

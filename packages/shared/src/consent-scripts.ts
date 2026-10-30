@@ -82,9 +82,12 @@ export function wrapConsentScripts(input: string): string {
  * Must never contain a literal "</script" — it's injected inside a
  * script element.
  */
-export function buildConsentRuntime(reloadAfterConsent: boolean): string {
+export function buildConsentRuntime(reloadAfterConsent: boolean, initialChoice?: 'all' | 'necessary'): string {
+  // initialChoice presets the in-memory answer for a review preview, where the
+  // sandbox has no cookies; published pages never pass it.
+  const memory = initialChoice === 'all' || initialChoice === 'necessary' ? `'${initialChoice}'` : 'null';
   return `(function(){
-      var COOKIE='tr_consent',DAYS=365,RELOAD=${reloadAfterConsent ? 'true' : 'false'},memory=null;
+      var COOKIE='tr_consent',DAYS=365,RELOAD=${reloadAfterConsent ? 'true' : 'false'},memory=${memory};
       function read(){try{var m=document.cookie.match(/(?:^|;\\s*)tr_consent=([^;]+)/);return m?decodeURIComponent(m[1]):memory}catch(_){return memory}}
       function write(v){memory=v;try{var d=new Date();d.setTime(d.getTime()+DAYS*864e5);var sec=location.protocol==='https:'?'; Secure':'';document.cookie=COOKIE+'='+encodeURIComponent(v)+'; expires='+d.toUTCString()+'; path=/; SameSite=Lax'+sec}catch(_){}}
       function activate(){var ns=document.querySelectorAll('script[type="text/plain"][data-tr-consent="optional"],template[data-tr-consent="optional"]');for(var i=0;i<ns.length;i++){var n=ns[i];if(n.tagName==='TEMPLATE'){n.parentNode.replaceChild(n.content.cloneNode(true),n);continue}var s=document.createElement('script');for(var j=0;j<n.attributes.length;j++){var a=n.attributes[j];if(a.name==='type'||a.name==='data-tr-consent')continue;s.setAttribute(a.name,a.value)}s.text=n.textContent||'';n.parentNode.replaceChild(s,n)}}

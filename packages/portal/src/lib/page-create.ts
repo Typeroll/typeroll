@@ -136,9 +136,17 @@ export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteA
   const url = contentPagePath(page, type);
   // The id is internal: when an unrelated page already holds the id derived
   // from this address (e.g. it moved to another path), number the id, never the slug.
-  const baseId = makeSafePageId(url ?? `${type.id}-${page.slug}`);
-  page.id = baseId;
-  for (let n = 2; usedIds.has(page.id); n++) page.id = `${baseId.slice(0, 94)}-${n}`;
+  const requestedId = (input as Record<string, unknown>).id;
+  if (requestedId !== undefined && requestedId !== null) {
+    // A caller-chosen id keeps references (parent, filter values) stable; it is never silently replaced.
+    if (typeof requestedId !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/.test(requestedId)) throw new WorkingCopyError('Page id must be 1-100 letters, digits, dots, underscores or hyphens, starting with a letter or digit', 400);
+    if (usedIds.has(requestedId)) throw new WorkingCopyError(`Page id ${requestedId} is already in use. Choose another id or omit it to derive one from the address.`, 409);
+    page.id = requestedId;
+  } else {
+    const baseId = makeSafePageId(url ?? `${type.id}-${page.slug}`);
+    page.id = baseId;
+    for (let n = 2; usedIds.has(page.id); n++) page.id = `${baseId.slice(0, 94)}-${n}`;
+  }
   const warnings: SlugAdjustedWarning[] = conflict ? [{
     code: 'slug_adjusted',
     message: `The slug "${baseSlug}" derived from the title is already in use by page ${conflict.id}, so the page was created as "${page.slug}"${url ? ` at ${url}` : ''}. Pass an explicit slug to be told about a conflict instead.`,
