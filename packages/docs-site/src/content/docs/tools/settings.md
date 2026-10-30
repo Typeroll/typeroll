@@ -266,8 +266,9 @@ settings route and MCP tool:
 
 The banner's heading, buttons, privacy link and settings label follow the
 page language (`Page.language`, otherwise the site `language`): Swedish for
-`sv`, German for `de`, otherwise English. The default `text` follows the same
-rule. Set `labels` only to replace that wording, for example for another
+`sv`, German for `de`, Dutch for `nl`, otherwise English. The default `text`
+follows the same rule. A publication for another language reports the wording
+that falls back to English in its job `warnings`. Set `labels` only to replace that wording, for example for another
 language. Its keys are `title`, `reject`, `necessary`, `accept_all`,
 `privacy_link` and `manage`. Values are plain text of at most 120 characters,
 and blank values use the built-in wording. `labels` is replaced as a whole.

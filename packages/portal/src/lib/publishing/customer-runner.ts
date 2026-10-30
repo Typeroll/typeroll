@@ -32,7 +32,7 @@ import { projectStaticPublication } from '../../../../../scripts/lib/static-publ
 import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
 import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed } from './domain-provider';
-import { assertDryRunValidation } from './dry-run-validation';
+import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
 import { freezeThemeFonts } from './theme-font-freeze';
 import { retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
@@ -322,7 +322,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
       const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true });
       // Non-blocking findings (for example media left out of this publication) stay on the job for users and agents.
-      if (mapped.warnings.length) await store.updateDoc(jobPath, { warnings: mapped.warnings });
+      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen)];
+      if (warnings.length) await store.updateDoc(jobPath, { warnings });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
       const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
       // Links to a redirect host (for example https://www.example.com/page) are frozen as links to the website host.

@@ -131,7 +131,7 @@ export interface SiteTemplateCapabilities {
   supports_cookie_consent_config_api: boolean;
   /**
    * 0.57.0+: the consent banner follows the page language (Swedish, German,
-   * otherwise English) and accepts plain-text `cookie_consent.labels`.
+   * Dutch, otherwise English) and accepts plain-text `cookie_consent.labels`.
    */
   supports_localized_cookie_consent: boolean;
   /** Site-wide HTML noindex and live fallback/production indexing probes. */

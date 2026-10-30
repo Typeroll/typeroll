@@ -53,6 +53,7 @@ import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
+import { uiText } from './ui-text.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
 import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
@@ -519,7 +520,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     // container, so linked and unlinked items of one list can share a design.
     if (effectiveBlock.type === 'core/container' && compiled.flatData.tag === 'a' && !safeLinkHref(compiled.flatData.href)) compiled.flatData.tag = 'div';
   }
-  prepareArticleBlockData(effectiveBlock.type, compiled.flatData);
+  prepareArticleBlockData(effectiveBlock.type, compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
   // From render version 12 a flex container that is a column at every
   // breakpoint says so, and its width-constrained child containers fill it.
   if (effectiveBlock.type === 'core/container' && compiled.flatData.container_kind === 'container' && resolveRenderVersion(options.renderVersion) >= 12) {
@@ -779,7 +780,7 @@ function renderRepeater(
       const baseUrl = options.context?.pagination?.base_url ?? '';
       items = items.slice((current - 1) * perPage, current * perPage);
       const pager = totalPages > 1
-        ? renderPager(current, totalPages, baseUrl, options.context?.pagination?.trailing_slash, data.pager_link_style_id)
+        ? renderPager(current, totalPages, baseUrl, options.context?.pagination?.trailing_slash, data.pager_link_style_id, options.context?.page?.language ?? options.context?.site?.language)
         : '';
       return renderRepeaterItems(block, blockType, itemBlockType, data, items, options) + pager;
     }
@@ -928,6 +929,7 @@ function renderPager(
   baseUrl: string,
   trailingSlash: TrailingSlashPolicy = 'always',
   linkStyle?: unknown,
+  language?: unknown,
 ): string {
   const base = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
   const urlFor = (n: number) => applyTrailingSlash(n <= 1 ? base : `${base}page/${n}`, trailingSlash);
@@ -951,7 +953,7 @@ function renderPager(
   }
   if (current < totalPages) parts.push(link(current + 1, '›', 'next'));
 
-  return `<nav data-block="pager" class="tr-pager" aria-label="Pagination">${parts.join('')}</nav>`;
+  return `<nav data-block="pager" class="tr-pager" aria-label="${escapeHtml(uiText(language, 'pagination'))}">${parts.join('')}</nav>`;
 }
 
 /**

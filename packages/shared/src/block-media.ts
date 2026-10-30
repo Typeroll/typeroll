@@ -7,19 +7,23 @@
 // templates that include it exist only from version 7, so older sites keep
 // their output byte for byte.
 
+import { uiLanguage, type UiLanguage } from './ui-text.js';
+
 type Data = Record<string, unknown>;
-type Lang = 'sv' | 'en';
+type Lang = UiLanguage;
 
 const escapeAttr = (value: unknown) =>
   String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
 
 /** Interface language for the few words the platform writes itself. */
 export function blockUiLanguage(language: unknown): Lang {
-  return /^sv\b/i.test(String(language ?? '')) ? 'sv' : 'en';
+  return uiLanguage(language);
 }
 
 const TEXT = {
   en: { pause: 'Pause video', play: 'Play video', previous: 'Previous', next: 'Next', item: 'Show item', pauseSlides: 'Pause', playSlides: 'Play', carousel: 'Carousel', rating: (value: string) => `Rating: ${value} out of 5` },
+  de: { pause: 'Video pausieren', play: 'Video abspielen', previous: 'Zurück', next: 'Weiter', item: 'Anzeigen', pauseSlides: 'Pausieren', playSlides: 'Abspielen', carousel: 'Karussell', rating: (value: string) => `Bewertung: ${value} von 5` },
+  nl: { pause: 'Video pauzeren', play: 'Video afspelen', previous: 'Vorige', next: 'Volgende', item: 'Toon', pauseSlides: 'Pauzeren', playSlides: 'Afspelen', carousel: 'Carrousel', rating: (value: string) => `Beoordeling: ${value} van 5` },
   sv: { pause: 'Pausa video', play: 'Spela video', previous: 'Föregående', next: 'Nästa', item: 'Visa', pauseSlides: 'Pausa', playSlides: 'Spela', carousel: 'Karusell', rating: (value: string) => `Betyg: ${value} av 5` },
 } as const;
 
