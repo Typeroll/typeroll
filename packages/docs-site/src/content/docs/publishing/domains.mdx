@@ -57,7 +57,10 @@ and only reports **Live and verified** after public checks succeed.
    writes and restores them if public verification fails or the agreed window
    expires (15 minutes in the UI; API/MCP allow 5–45 minutes). If another
    administrator changed the records afterward, restoration stops with an explicit
-   conflict instead of overwriting their changes. DNS propagation can outlast rollback.
+   conflict instead of overwriting their changes. The switch then ends as failed:
+   review the previous records shown with the conflict, then prepare again. The new
+   review reads the current DNS, and a record that already points at the site is
+   not written again. DNS propagation can outlast rollback.
    **Restore previous traffic** uses the same journal; it restores DNS, not an older
    site artifact. External DNS must be changed
    and restored by its administrator or agent.

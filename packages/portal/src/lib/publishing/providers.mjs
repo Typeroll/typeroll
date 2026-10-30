@@ -22,8 +22,25 @@ function githubReason(body) {
   if (Array.isArray(body?.errors) && body.errors.some(e => ['Reference','Commit','Tree','Blob'].includes(e?.resource))) return 'invalid_reference';
   return 'validation_failed';
 }
+// Route segments that may appear in logs as-is; every other segment (owner,
+// repository, SHA, account or zone id) becomes `:id`.
+const ROUTE_WORDS = new Set(['repos', 'git', 'trees', 'commits', 'refs', 'ref', 'heads', 'blobs', 'branches', 'rename', 'app',
+  'installations', 'access_tokens', 'contents', 'accounts', 'pages', 'projects', 'deployments', 'domains', 'zones', 'dns_records',
+  'rulesets', 'phases', 'entrypoint', 'rules', 'user', 'orgs', 'tokens', 'verify', 'r2', 'buckets', 'custom_hostnames']);
+/** Identify which provider call failed without exposing owners, repositories, SHAs or ids. */
+export function providerOperation(method, route) {
+  const segments = String(route).split('?')[0].split('/').filter(Boolean);
+  return `${method} /${segments.map(part => ROUTE_WORDS.has(part) ? part : ':id').join('/')}`.slice(0, 160);
+}
+const errorToken = value => typeof value === 'string' && /^[A-Za-z][A-Za-z0-9_.]{0,39}$/.test(value) ? value : undefined;
+/** GitHub's documented error resource, code and field names only; never messages or values. */
+export function githubErrorTypes(body) {
+  return (Array.isArray(body?.errors) ? body.errors : []).slice(0, 5)
+    .map(item => Object.fromEntries(['resource', 'code', 'field'].flatMap(key => errorToken(item?.[key]) ? [[key, item[key]]] : [])))
+    .filter(item => Object.keys(item).length);
+}
 export class ProviderError extends Error {
-  constructor(provider, status, codes = [], { retryAfter = null, ssoUrl = null, rateLimited = false, reason = null } = {}) {
+  constructor(provider, status, codes = [], { retryAfter = null, ssoUrl = null, rateLimited = false, reason = null, operation = null, errorTypes = [] } = {}) {
     // Provider bodies can contain credentials or reflected request payloads.
     super(`${provider} request failed (HTTP ${status}); inspect access and resource status in the provider dashboard`);
     this.reason = Object.hasOwn(GITHUB_REASONS, reason) ? reason : null;
@@ -34,6 +51,8 @@ export class ProviderError extends Error {
     this.retryAfter = Number.isSafeInteger(retryAfter) && retryAfter > 0 ? Math.min(retryAfter, 3600) : null;
     this.ssoUrl = githubSsoUrl(ssoUrl);
     this.rateLimited = rateLimited === true;
+    this.operation = typeof operation === 'string' ? operation : null;
+    this.errorTypes = Array.isArray(errorTypes) ? errorTypes : [];
   }
 }
 
@@ -107,12 +126,15 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
           if (Array.isArray(error.errors)) codes = error.errors.map(item => item?.code);
         } catch { /* Never include response bodies in errors. */ }
       }
+      const operation = providerOperation(method, route);
       if (provider === 'GitHub') {
-        let reason = null;
-        if (response.status === 422) { try { reason = githubReason(await response.json()); } catch { reason = 'validation_failed'; } }
-        throw new ProviderError(provider, response.status, codes, { reason, ...githubRateLimit(response), ssoUrl: response.headers.get('x-github-sso') });
+        let reason = null, errorTypes = [];
+        if (response.status === 422) {
+          try { const error = await response.json(); reason = githubReason(error); errorTypes = githubErrorTypes(error); } catch { reason = 'validation_failed'; }
+        }
+        throw new ProviderError(provider, response.status, codes, { reason, operation, errorTypes, ...githubRateLimit(response), ssoUrl: response.headers.get('x-github-sso') });
       }
-      throw new ProviderError(provider, response.status, codes);
+      throw new ProviderError(provider, response.status, codes, { operation });
     }
     let data;
     try { data = await response.json(); } catch { throw new Error(`${provider} returned an invalid response`); }

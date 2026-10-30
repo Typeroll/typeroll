@@ -1,0 +1,11 @@
+{
+  "status": "connected",
+  "revision": "test",
+  "media_ready": true,
+  "encrypted_credentials": "synthetic",
+  "cloudflare": {
+    "account_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "bucket": "private",
+    "public_bucket": "public"
+  }
+}

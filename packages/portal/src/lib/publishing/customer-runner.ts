@@ -737,7 +737,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const failure = { stage: failedJob?.phase ?? 'connecting publishing accounts',
       code: error instanceof DerivationError ? 'publication_derivation_failed' : error instanceof ProviderTransportError ? error.code : error instanceof ConnectionError ? error.code : error instanceof ProviderError ? 'provider_request_failed' : 'publication_internal_error',
       ...(error instanceof DerivationError ? { provider: error.provider } : {}),
-      ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes, provider_reason: error.reason } : {}),
+      ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes, provider_reason: error.reason, provider_operation: error.operation, provider_error_types: error.errorTypes } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
     console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
@@ -745,7 +745,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       ? projectCreationMessage(error, failedJob?.git_publication)
       : error instanceof DerivationError ? `An app could not prepare publication data (${error.provider}). ${error.message} The live site has not changed.`
       : error instanceof ConnectionError ? error.message : error instanceof ProviderError
-      ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. ${githubFailureHint(error) || 'Open Publishing to check the connection and retry.'}`
+      ? `${error.provider} returned HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''} during ${failure.stage}. ${githubFailureHint(error) || 'Open Publishing to check the connection and retry.'}${providerRequestNote(error)}`
       : `Publishing stopped during ${failure.stage}. Retry the deployment. If it fails again, contact support with deployment ${args.jobId}.`;
     let rollbackMessage = '';
     if (failedJob?.git_publication) {
@@ -774,4 +774,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await wakePendingSite(args.orgId, args.siteId);
     }
   }
+}
+
+/** Name the failed provider call and its error types (no ids, paths or provider text) for support. */
+function providerRequestNote(error: ProviderError): string {
+  if (!error.operation) return '';
+  const types = error.errorTypes.map(type => [type.resource, type.code, type.field].filter(Boolean).join(' ')).filter(Boolean);
+  return ` Request: ${error.operation}${types.length ? `; ${types.join(', ')}` : ''}.`;
 }
