@@ -64,6 +64,8 @@ export interface ParityResult {
   error?: string;
   /** Carried through from the inventory so callers can prioritise. */
   gsc_clicks?: number;
+  /** Requests made for this path when an inconclusive result was retried. */
+  attempts?: number;
 }
 
 export interface ParitySummary {
@@ -90,6 +92,9 @@ export interface CheckParityOptions {
   concurrency?: number;
   /** Per-request timeout in ms. */
   timeoutMs?: number;
+  /** Extra rounds for inconclusive results (timeouts, network errors, 429 and
+   *  5xx). Each round runs at low concurrency with twice the timeout. */
+  retryRounds?: number;
   /** Cap on redirect hops before calling it a broken chain. */
   maxHops?: number;
   /** Canonical URL policy for the target site. A redirect that only adds or
@@ -105,6 +110,9 @@ const publicationFetch: typeof fetch = (...args) => fetch(...args);
 const DEFAULTS = {
   concurrency: 6,
   timeoutMs: 15_000,
+  retryRounds: 2,
+  retryConcurrency: 3,
+  retryLimit: 60,
   maxHops: 5,
 };
 
@@ -144,6 +152,24 @@ export async function checkUrlParity(
     }
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, checks.length) }, worker));
+
+  // A busy host times out a few requests under parallel load and answers them
+  // at once when asked again. Retry only inconclusive results, more gently.
+  const retryRounds = Math.max(0, opts.retryRounds ?? DEFAULTS.retryRounds);
+  for (let round = 1; round <= retryRounds; round++) {
+    const pending = results.flatMap((result, index) => isRetryable(result) ? [index] : []);
+    // Many failures mean the host is down, not busy: report them without waiting longer.
+    if (!pending.length || pending.length > Math.max(DEFAULTS.retryLimit, checks.length / 4)) break;
+    let next = 0;
+    const retryWorker = async (): Promise<void> => {
+      for (;;) {
+        const index = pending[next++];
+        if (index === undefined) return;
+        results[index] = { ...await checkOne(checks[index], { doFetch, targetOrigin, timeoutMs: timeoutMs * 2, maxHops, opts }), attempts: round + 1 };
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(DEFAULTS.retryConcurrency, pending.length) }, retryWorker));
+  }
 
   const summary: ParitySummary = {
     checked: results.length,
@@ -451,6 +477,11 @@ async function safeFetch(
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
+}
+
+/** Timeouts, network errors, rate limits and 5xx can pass; a real 4xx cannot. */
+function isRetryable(result: ParityResult): boolean {
+  return result.verdict === 'error' && (result.status === null || result.status === 429 || result.status >= 500);
 }
 
 function isRedirect(status: number): boolean {
