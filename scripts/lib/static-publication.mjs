@@ -152,7 +152,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     ...projectBooleans(input.settings.cookie_consent, ['enabled', 'reload_after_consent']),
   };
   // Saved banner wording; without it every non-Swedish, non-German page falls back to English.
-  if (input.settings?.cookie_consent?.labels) settings.cookie_consent.labels = projectStrings(input.settings.cookie_consent.labels, ['title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage']);
+  if (input.settings?.cookie_consent?.labels) settings.cookie_consent.labels = projectStrings(input.settings.cookie_consent.labels, ['title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button']);
   if (input.settings?.organization) {
     settings.organization = projectStrings(input.settings.organization, ['name', 'logo']);
     if (input.settings.organization.same_as !== undefined) settings.organization.same_as = projectStringArray(input.settings.organization.same_as, 'organization.same_as');

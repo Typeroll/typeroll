@@ -289,6 +289,14 @@ publish a site. REST clients use `GET` and `POST` on
 status. The Organization's selected, updated shared build engine performs this
 work. Original files and prepared draft variants remain private until publication.
 
+Uploads and imports share one preparation job per Site. The job starts once no
+new upload has arrived for 30 seconds, and at most five minutes after the first
+upload it waits for, so a series of single-file imports or
+`upload_media_batch_from_urls` calls becomes one build job instead of one per
+file. Files uploaded while a job runs are prepared together in the next round.
+`prepare_media` starts at once. While a preparation job runs, it occupies the
+Organization's shared build engine like any other build.
+
 ## Responsive image resolution (Core 0.2.37+)
 
 Static publishing and explicit variant generation create AVIF and WebP images

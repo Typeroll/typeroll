@@ -211,7 +211,10 @@ it('migrates 1,001 originals in consecutive bounded tasks with linear reads and 
   const { executeMediaMigration } = await import('../../lib/publishing/media-migration');
   for (let batch = 0; batch < 11; batch++) {
     const delay = await executeMediaMigration('org');
-    expect(delay).toBe(batch === 10 ? 10000 : 0); // Private image preparation is queued after the copy pass.
+    // After the copy pass the migration requests image preparation, which
+    // starts at once; without a configured engine it waits for setup and the
+    // recovery poll resumes it.
+    expect(delay).toBe(batch === 10 ? null : 0);
     expect((await mediaMigrationStatus('org'))?.copied_files).toBe(Math.min((batch + 1) * 100, 1001));
   }
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 1001, copied_bytes: 3003 });

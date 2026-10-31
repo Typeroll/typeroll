@@ -14,22 +14,22 @@ it('finds unnamed image links in image blocks and stored HTML, including nested 
 });
 
 describe('publication language warnings', () => {
-  const labels = { title: 'Evästeet', reject: 'Hylkää', necessary: 'Vain välttämättömät', accept_all: 'Hyväksy kaikki', privacy_link: 'Tietosuoja', manage: 'Asetukset' };
+  const labels = { title: 'Soubory cookie', reject: 'Odmítnout', necessary: 'Jen nezbytné', accept_all: 'Přijmout vše', privacy_link: 'Ochrana soukromí', manage: 'Nastavení cookies', manage_button: 'Cookies' };
 
   it('stays quiet for languages with built-in text', () => {
-    expect(publicationLanguageWarnings({ settings: { language: 'nl-NL', cookie_consent: { enabled: true } }, pages: [{ language: 'de' }, { language: 'en-GB' }] })).toEqual([]);
+    expect(publicationLanguageWarnings({ settings: { language: 'nl-NL', cookie_consent: { enabled: true } }, pages: [{ language: 'de' }, { language: 'en-GB' }, { language: 'nb-NO' }, { language: 'fi' }] })).toEqual([]);
   });
 
   it('lists the English fallbacks of an untranslated language, including missing banner wording', () => {
-    const warnings = publicationLanguageWarnings({ settings: { language: 'fi', cookie_consent: { enabled: true, labels: { title: 'Evästeet' } } }, pages: [{ language: 'fi' }] });
+    const warnings = publicationLanguageWarnings({ settings: { language: 'cs', cookie_consent: { enabled: true, labels: { title: 'Soubory cookie' } } }, pages: [{ language: 'cs' }] });
     expect(warnings).toHaveLength(2);
-    expect(warnings[0]).toContain('no built-in fi interface text');
+    expect(warnings[0]).toContain('no built-in cs interface text');
     expect(warnings[1]).toContain('cookie_consent.text, cookie_consent.labels.reject');
     expect(warnings[1]).not.toContain('labels.title');
   });
 
   it('drops the banner warning once every label and the text are saved', () => {
-    const warnings = publicationLanguageWarnings({ settings: { language: 'fi', cookie_consent: { enabled: true, text: '<p>Evästeet</p>', labels } } });
+    const warnings = publicationLanguageWarnings({ settings: { language: 'cs', cookie_consent: { enabled: true, text: '<p>Soubory cookie</p>', labels } } });
     expect(warnings).toHaveLength(1);
   });
 });

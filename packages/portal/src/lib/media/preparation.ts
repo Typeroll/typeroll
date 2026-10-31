@@ -11,7 +11,7 @@ import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { sha256 } from '../builds/contract.mjs';
 import { buildTasksPath, type BuildTask } from '../builds/queue';
 
-interface Preparation { recipe?: string; full_scan?: boolean; org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number }
+interface Preparation { recipe?: string; full_scan?: boolean; org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; first_requested_at?: number; round_request?: string; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number }
 const jobPath = (org: string, site: string) => `media_preparations/${sha256(`${org}\0${site}`)}`;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
@@ -23,8 +23,24 @@ const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif
 export const QUEUED_PREPARATION = {
   state: 'queued',
   runs_on: 'organization_build_engine',
+  starts: 'after 30 s without new uploads to the site, at most 5 min after the first',
   status: 'GET media/preparation (MCP get_media_preparation) returns build_job_id once the job starts.',
 } as const;
+
+/**
+ * Uploads that arrive within this quiet window share one preparation job. A
+ * slow series of single-file imports (one every few seconds) used to start a
+ * job after a fixed 10 s, then another for every later batch, each occupying
+ * the organization's shared build engine.
+ */
+export const PREPARATION_QUIET_MS = 30_000;
+/** A steady stream of uploads still starts a job this long after its first request. */
+export const PREPARATION_MAX_WAIT_MS = 5 * 60_000;
+
+/** When a queued job should start: after the quiet window, never later than the cap. */
+export function preparationStartAt(now: number, firstRequestedAt: number | undefined): number {
+  return Math.min(now + PREPARATION_QUIET_MS, (firstRequestedAt ?? now) + PREPARATION_MAX_WAIT_MS);
+}
 
 /** Coalesce upload notifications. Durable scheduling never requires a browser to stay open. */
 export async function requestMediaPreparation(org: string, site: string, mediaId?: string): Promise<boolean> {
@@ -38,9 +54,20 @@ export async function requestMediaPreparation(org: string, site: string, mediaId
       { preparation_pending: true });
     if (!queued) return false;
   }
-  const created = await store.createDocIfMissing(path, { org, site, full_scan: !mediaId, state: 'queued', request: randomUUID(), lease: null, lease_until: 0, next_at: Date.now() + 10000 });
+  const now = Date.now();
+  const created = await store.createDocIfMissing(path, { org, site, full_scan: !mediaId, state: 'queued', request: randomUUID(), lease: null, lease_until: 0, first_requested_at: now, next_at: preparationStartAt(now, now) });
   const current = await store.getDoc<Preparation>(path);
-  await store.compareAndUpdateDoc<Preparation>(path, value => value.request === current?.request, { request: randomUUID(), state: 'queued', error: null, ...(!mediaId ? { full_scan: true } : current?.state === 'complete' ? { full_scan: false } : {}), ...(current?.state === 'failed' ? { task: null } : {}) });
+  // A queued job waits for the uploads to go quiet; a running job keeps its
+  // schedule and picks the new files up in its next round. A finished job
+  // starts a new window.
+  // An explicit request (prepare_media, a migration) starts without waiting.
+  const fresh = current?.state === 'complete' || current?.state === 'failed';
+  const schedule = !mediaId && current?.state !== 'running' ? { first_requested_at: now, next_at: now }
+    : !current || created ? {}
+    : fresh ? { first_requested_at: now, next_at: preparationStartAt(now, now) }
+      : current.state === 'queued' && !current.task ? { next_at: preparationStartAt(now, current.first_requested_at ?? now) }
+        : {};
+  await store.compareAndUpdateDoc<Preparation>(path, value => value.request === current?.request, { request: randomUUID(), state: current?.state === 'running' ? 'running' : 'queued', error: null, ...schedule, ...(!mediaId ? { full_scan: true } : current?.state === 'complete' ? { full_scan: false } : {}), ...(current?.state === 'failed' ? { task: null } : {}) });
   const { enqueueMediaMigration } = await import('../publishing/media-migration-queue');
   if (created || !['queued', 'running'].includes(current?.state ?? '')) await enqueueMediaMigration(org, 10000).catch(() => { console.error('[media-preparation] scheduling interrupted; durable work will be recovered'); });
   return true;
@@ -66,8 +93,12 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
         const completedRecipe = item.recipe ?? 'v1';
         for (const entry of item.entries ?? []) await store.compareAndUpdateDoc<Media>(`${paths.media(item.org, item.site)}/${entry.id}`,
           value => value.sha256 === entry.sha256, { preparation_pending: completedRecipe !== MEDIA_RECIPE_VERSION, preparation: { state: 'ready', source_sha256: entry.sha256, recipe: completedRecipe } });
+        // Files uploaded while this round ran wait for a quiet window too;
+        // without new uploads the job finishes on the next poll.
+        const finishedAt = Date.now();
+        const uploadedMeanwhile = item.round_request !== undefined && item.request !== item.round_request;
         await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease,
-          { task: null, state: 'queued', completed: item.entries?.length ?? 0, error: null });
+          { task: null, state: 'queued', completed: item.entries?.length ?? 0, error: null, ...(uploadedMeanwhile ? { first_requested_at: finishedAt, next_at: preparationStartAt(finishedAt, finishedAt) } : {}) });
         pending = true;
         continue;
       }
@@ -98,7 +129,7 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       if (!await update({ active_request: preparationRequest })) { pending = true; continue; }
       const queued = await enqueueBuild(engine, { org_id: item.org, site_id: item.site, version_id: 'main', job_id: `media-${preparationRequest}`,
         publication_id: publicationId, commit: engine.runner_commit, branch: 'main' }, source, 'media_preparation');
-      await update({ task: queued.key, recipe: MEDIA_RECIPE_VERSION, active_request: preparationRequest, entries: entries.map(({ id, sha256 }) => ({ id, sha256 })),
+      await update({ task: queued.key, recipe: MEDIA_RECIPE_VERSION, active_request: preparationRequest, round_request: item.request, entries: entries.map(({ id, sha256 }) => ({ id, sha256 })),
         state: 'running', total: entries.length, completed: 0, next_at: 0 });
       pending = true;
     } catch {

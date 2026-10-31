@@ -16,7 +16,7 @@
 
 import { STYLE_OVERRIDE_KEYS, type BlockType } from './types.js';
 import { blockFieldTypeWarnings } from './block-field-types.js';
-import { unknownTreeFields } from './block-unknown-fields.js';
+import { unknownItemFields, unknownTreeFields } from './block-unknown-fields.js';
 import { buildCoreBlockRegistry } from './core-blocks.js';
 
 let coreRegistry: Map<string, BlockType> | undefined;
@@ -60,6 +60,7 @@ export function blockTreeWarnings(value: unknown, root = 'blocks', registry?: Re
   const known = new Set<string>(STYLE_OVERRIDE_KEYS);
   const warnings: BlockTreeWarning[] = [];
   const seen = new Set<object>();
+  const typed: [{ type: string }, string][] = [];
 
   const visit = (node: unknown, path: string) => {
     if (!Array.isArray(node)) return;
@@ -94,6 +95,7 @@ export function blockTreeWarnings(value: unknown, root = 'blocks', registry?: Re
         });
       }
       warnings.push(...blockBehaviorWarnings(block as { id?: string; type?: string; data?: Record<string, unknown> }, at));
+      if (typeof (block as { type?: unknown }).type === 'string') typed.push([block as { type: string }, at]);
       const children = (block as { children?: unknown }).children;
       if (children !== undefined) visit(children, `${at}.children`);
       const slots = (block as { slots?: unknown }).slots;
@@ -104,6 +106,7 @@ export function blockTreeWarnings(value: unknown, root = 'blocks', registry?: Re
   visit(value, root);
   const types = registry ?? (coreRegistry ??= buildCoreBlockRegistry());
   warnings.push(...unknownTreeFields(value, types, root));
+  for (const [block, at] of typed) warnings.push(...unknownItemFields(block, types, { path: `${at}.data` }));
   warnings.push(...blockFieldTypeWarnings(value, types, root));
   return warnings;
 }

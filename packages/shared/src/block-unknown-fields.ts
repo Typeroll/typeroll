@@ -233,3 +233,48 @@ export function unknownTreeFields(value: unknown, registry: Registry, root = 'bl
   if (!Array.isArray(value)) return [];
   return value.flatMap((block, index) => unknownBlockFields(block, registry, `${root}[${index}]`));
 }
+
+/**
+ * Keys inside the items of a core block's list fields (`type: 'array'` with
+ * declared item `fields`) that no item field declares, e.g. `labels[0].link_rel`
+ * on a core/tabs before that field existed: the key was stored and never
+ * rendered. Reported as warnings, never rejected, because older content may
+ * carry item keys a renderer still reads. `keys` limits the check to the
+ * fields a write set. Site and extension block types are not checked: their
+ * templates may read any item key.
+ */
+export function unknownItemFields(
+  block: { id?: unknown; type: string; data?: unknown },
+  registry: Registry,
+  options: { path?: string; keys?: Iterable<string> } = {},
+): UnknownFieldIssue[] {
+  const type = registry.get(block.type);
+  if (!type || type.origin !== 'core') return [];
+  const data = block.data && typeof block.data === 'object' && !Array.isArray(block.data) ? block.data as Record<string, unknown> : {};
+  const path = options.path ?? 'data';
+  const blockId = typeof block.id === 'string' && block.id ? block.id : undefined;
+  const keys = new Set(options.keys ?? Object.keys(data));
+  const issues: UnknownFieldIssue[] = [];
+  for (const field of type.schema ?? []) {
+    if (field.type !== 'array' || !field.fields?.length || !keys.has(field.name) || !Array.isArray(data[field.name])) continue;
+    const names = field.fields.map(item => item.name);
+    (data[field.name] as unknown[]).forEach((item, index) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) return;
+      for (const key of Object.keys(item)) {
+        if (names.includes(key) || key.startsWith('_')) continue;
+        const suggestions = closestFieldNames(key, names);
+        const at = `${path}.${field.name}[${index}].${key}`;
+        issues.push({
+          code: 'unknown_field',
+          ...(blockId ? { block_id: blockId } : {}),
+          block_type: type.id,
+          path: at,
+          key,
+          suggestions,
+          message: `${at} is not an item field of ${type.id} ${field.name} (fields: ${names.join(', ')})${suggestions.length ? `. Did you mean ${suggestions.join(', ')}?` : '.'} The key would be stored and never rendered.`,
+        });
+      }
+    });
+  }
+  return issues;
+}

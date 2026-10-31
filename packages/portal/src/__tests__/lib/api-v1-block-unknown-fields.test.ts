@@ -131,6 +131,15 @@ describe('update_block rejects keys no field declares', () => {
     expect(((await read.json()) as { blocks: Block[] }).blocks[0]!.data).toEqual({ text: 'Hello' });
   });
 
+  it('warns about a list item key the item fields do not declare', async () => {
+    const { token } = await setup();
+    await seedPage('home', [{ id: 't', type: 'core/accordion', data: { items: [{ title: 'A', content: 'x' }] } }]);
+    const res = await call(pageBlocks(), 'PATCH', pageUrl, pageParams, token, { block_id: 't', data: { items: [{ title: 'A', content: 'x', link_rel: 'nofollow' }] } });
+    expect(res.status).toBe(200);
+    const body = await res.json() as { warnings?: Array<{ code: string; path: string }> };
+    expect(body.warnings).toContainEqual(expect.objectContaining({ code: 'unknown_field', path: 'data.items[0].link_rel' }));
+  });
+
   it('checks only the written keys, so an older stored key does not block other writes', async () => {
     const { token } = await setup();
     await seedPage('home', [{ id: 'h', type: 'core/heading', data: { text: 'Hello', legacy: true } }]);

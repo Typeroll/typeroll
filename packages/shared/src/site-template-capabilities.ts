@@ -130,8 +130,9 @@ export interface SiteTemplateCapabilities {
   /** Native cookie-consent settings are readable/writable through v1 and MCP. */
   supports_cookie_consent_config_api: boolean;
   /**
-   * 0.57.0+: the consent banner follows the page language (Swedish, German,
-   * Dutch, otherwise English) and accepts plain-text `cookie_consent.labels`.
+   * 0.57.0+: the consent banner follows the page language (the built-in
+   * languages in ui-text.ts, otherwise English) and accepts plain-text
+   * `cookie_consent.labels`.
    */
   supports_localized_cookie_consent: boolean;
   /** Site-wide HTML noindex and live fallback/production indexing probes. */

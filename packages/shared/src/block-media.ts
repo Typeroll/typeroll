@@ -24,6 +24,12 @@ const TEXT = {
   en: { pause: 'Pause video', play: 'Play video', previous: 'Previous', next: 'Next', item: 'Show item', pauseSlides: 'Pause', playSlides: 'Play', carousel: 'Carousel', rating: (value: string) => `Rating: ${value} out of 5` },
   de: { pause: 'Video pausieren', play: 'Video abspielen', previous: 'Zurück', next: 'Weiter', item: 'Anzeigen', pauseSlides: 'Pausieren', playSlides: 'Abspielen', carousel: 'Karussell', rating: (value: string) => `Bewertung: ${value} von 5` },
   nl: { pause: 'Video pauzeren', play: 'Video afspelen', previous: 'Vorige', next: 'Volgende', item: 'Toon', pauseSlides: 'Pauzeren', playSlides: 'Afspelen', carousel: 'Carrousel', rating: (value: string) => `Beoordeling: ${value} van 5` },
+  nb: { pause: 'Sett video på pause', play: 'Spill av video', previous: 'Forrige', next: 'Neste', item: 'Vis', pauseSlides: 'Pause', playSlides: 'Spill av', carousel: 'Karusell', rating: (value: string) => `Vurdering: ${value} av 5` },
+  fi: { pause: 'Keskeytä video', play: 'Toista video', previous: 'Edellinen', next: 'Seuraava', item: 'Näytä', pauseSlides: 'Keskeytä', playSlides: 'Toista', carousel: 'Karuselli', rating: (value: string) => `Arvio: ${value}/5` },
+  fr: { pause: 'Mettre la vidéo en pause', play: 'Lire la vidéo', previous: 'Précédent', next: 'Suivant', item: 'Afficher', pauseSlides: 'Pause', playSlides: 'Lecture', carousel: 'Carrousel', rating: (value: string) => `Note : ${value} sur 5` },
+  pl: { pause: 'Wstrzymaj wideo', play: 'Odtwórz wideo', previous: 'Poprzedni', next: 'Następny', item: 'Pokaż', pauseSlides: 'Wstrzymaj', playSlides: 'Odtwórz', carousel: 'Karuzela', rating: (value: string) => `Ocena: ${value} na 5` },
+  it: { pause: 'Metti in pausa il video', play: 'Riproduci il video', previous: 'Precedente', next: 'Successivo', item: 'Mostra', pauseSlides: 'Pausa', playSlides: 'Riproduci', carousel: 'Carosello', rating: (value: string) => `Valutazione: ${value} su 5` },
+  es: { pause: 'Pausar vídeo', play: 'Reproducir vídeo', previous: 'Anterior', next: 'Siguiente', item: 'Mostrar', pauseSlides: 'Pausar', playSlides: 'Reproducir', carousel: 'Carrusel', rating: (value: string) => `Valoración: ${value} de 5` },
   sv: { pause: 'Pausa video', play: 'Spela video', previous: 'Föregående', next: 'Nästa', item: 'Visa', pauseSlides: 'Pausa', playSlides: 'Spela', carousel: 'Karusell', rating: (value: string) => `Betyg: ${value} av 5` },
 } as const;
 

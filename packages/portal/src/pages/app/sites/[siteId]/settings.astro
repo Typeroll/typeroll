@@ -320,7 +320,7 @@ const domainBlocksArchiving =
       <div class="field">
         <label for="setting-cookie_consent-text">Dialog text (HTML)</label>
         <textarea id="setting-cookie_consent-text" name="cookie_consent.text" rows="3" placeholder="We use cookies to improve your experience. Read more in our &lt;a href=&quot;/privacy&quot;&gt;privacy policy&lt;/a&gt;.">{settings.cookie_consent?.text ?? ''}</textarea>
-        <p class="muted text-sm">Leave empty to use the built-in text in the page language (Swedish, German, Dutch, otherwise English). You can put <code>&lt;a&gt;</code> links straight in here.</p>
+        <p class="muted text-sm">Leave empty to use the built-in text in the page language (Swedish, Norwegian Bokmål, German, Dutch, Finnish, French, Polish, Italian, Spanish, otherwise English). You can put <code>&lt;a&gt;</code> links straight in here.</p>
       </div>
       <div class="field">
         <label for="setting-cookie_consent-privacy_policy_url">Privacy policy URL (optional)</label>
@@ -345,6 +345,7 @@ const domainBlocksArchiving =
           ['accept_all', 'Accept-all button', 'Accept all'],
           ['privacy_link', 'Privacy policy link', 'Read our privacy policy →'],
           ['manage', 'Settings button label (screen readers)', 'Manage cookie settings'],
+          ['manage_button', 'Settings button text', 'Cookies'],
         ].map(([key, label, placeholder]) => (
           <div class="field">
             <label for={`setting-cookie_consent-labels-${key}`}>{label}</label>

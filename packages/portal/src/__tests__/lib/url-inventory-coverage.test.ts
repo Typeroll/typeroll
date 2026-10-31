@@ -97,6 +97,31 @@ describe('analyzeCoverage', () => {
     ]);
   });
 
+  it('counts archive pagination and site files the build writes as migrated', async () => {
+    await setup();
+    const listing = { id: 'list', type: 'core/repeater', data: { source_type: 'pages', content_type: 'posts', paginate: 10 } };
+    await seedPage('blog', { content_mode: 'blocks', blocks: [{ id: 'c', type: 'core/container', data: {}, children: [listing] }] as Page['blocks'] });
+    await seedPage('about', { content_mode: 'blocks', blocks: [{ id: 'h', type: 'core/heading', data: { text: 'About' } }] as Page['blocks'] });
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.pageTemplate(ORG, SITE, 'archive', MAIN_VERSION_ID), { name: 'archive', label: 'Archive', status: 'published', created_at: '', blocks: [listing] });
+    await seedPage('category-news', { slug: 'category/news', content_mode: 'blocks', template: 'archive', blocks: [{ id: 'p', type: 'core/prose', data: { html: '<p>News</p>' } }] as Page['blocks'] });
+    await seedInventory([
+      { path: '/blog/page/2' },
+      { path: '/category/news/page/3' },
+      { path: '/about/page/2' },
+      { path: '/favicon.ico' },
+    ]);
+    const { analyzeCoverage } = await import('../../lib/wp/url-inventory');
+    const { urls, summary } = await analyzeCoverage(getStore(), ORG, SITE);
+    const byPath = Object.fromEntries(urls.map(url => [url.path, url]));
+    expect(byPath['/blog/page/2']).toMatchObject({ status: 'migrated', generated: 'archive_pagination', target: '/blog/page/2' });
+    expect(byPath['/category/news/page/3']).toMatchObject({ status: 'migrated', generated: 'archive_pagination' });
+    expect(byPath['/favicon.ico']).toMatchObject({ status: 'migrated', generated: 'site_file' });
+    // A Page without a paginated listing gets no /page/N route.
+    expect(byPath['/about/page/2']!.status).toBe('unhandled');
+    expect(summary.unhandled).toBe(1);
+  });
+
   it('classifies a URL covered by a published page as migrated', async () => {
     await setup();
     await seedInventory([{ path: '/about' }]);

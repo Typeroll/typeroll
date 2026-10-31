@@ -596,7 +596,10 @@ export interface CookieConsentLabels {
   necessary?: string;
   accept_all?: string;
   privacy_link?: string;
+  /** Accessible name of the floating button that reopens the banner. */
   manage?: string;
+  /** Visible text of that button; "Cookies" by default. */
+  manage_button?: string;
 }
 
 // ─── Global blocks (header / footer / free) ──────────────────────────────

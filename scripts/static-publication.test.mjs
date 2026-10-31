@@ -211,7 +211,7 @@ const FULL_SETTINGS = {
   styles: [], language: 'sv',
   cookie_consent: {
     enabled: true, text: 'Consent', privacy_policy_url: '/privacy', scripts_necessary: '<meta name="n">', scripts_optional: '<meta name="o">', reload_after_consent: true,
-    labels: { title: 'Cookies', reject: 'Reject', necessary: 'Necessary', accept_all: 'All', privacy_link: 'Privacy', manage: 'Manage' },
+    labels: { title: 'Cookies', reject: 'Reject', necessary: 'Necessary', accept_all: 'All', privacy_link: 'Privacy', manage: 'Manage', manage_button: 'Settings' },
   }, twitter_handle: '@site',
   default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
   organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },

@@ -1,4 +1,6 @@
 import { colorCss, tokenScale, scaleValue } from './design-tokens.js';
+import { linkTargetAttributes } from './link-attributes.js';
+export { linkTargetAttributes };
 import { queryDerivedSource, type DerivedQuery } from './derived-source.js';
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
@@ -226,12 +228,6 @@ const HTML_ESCAPES: Record<string, string> = {
  * target/rel for an authored link: rel keeps simple tokens such as nofollow
  * and sponsored; only the boolean new-tab opt-in adds target and noopener.
  */
-export function linkTargetAttributes(rawRel: unknown, newTab: unknown): string {
-  const rel = new Set(String(typeof rawRel === 'string' ? rawRel : '').split(/\s+/).filter(token => /^[a-z][a-z0-9_-]*$/i.test(token)).map(token => token.toLowerCase()));
-  if (newTab === true) { rel.add('noopener'); rel.add('noreferrer'); }
-  return `${newTab === true ? ' target="_blank"' : ''}${rel.size ? ` rel="${escapeHtml([...rel].join(' '))}"` : ''}`;
-}
-
 export function escapeHtml(value: unknown): string {
   if (value == null) return '';
   return String(value).replace(/[&<>"']/g, (ch) => HTML_ESCAPES[ch]!);
