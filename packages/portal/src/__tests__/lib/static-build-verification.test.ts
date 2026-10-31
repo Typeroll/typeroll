@@ -17,6 +17,10 @@ it('verifies safe replacement bytes through a retired media redirect and rejects
     ? new Response(null, { status: 301, headers: { location: '/media/new.svg' } }) : new Response('sanitized') })).toBe(true);
   expect(staticChecks({ 'index.html': Buffer.from('home') }, checks)).toContainEqual({ route: '/media/old.svg', status: 404 });
 });
+it('leaves not-found pages, including a language section 404, out of the route checks', () => {
+  const checks = staticChecks({ 'index.html': Buffer.from('home'), '404.html': Buffer.from('missing'), 'sv/404.html': Buffer.from('saknas'), 'sv/index.html': Buffer.from('hem') });
+  expect(checks.map(check => check.route)).toEqual(['/', '/sv/']);
+});
 it('checks current pages and assets plus removed routes without treating headers as content', () => {
   const before = staticChecks({ 'index.html': Buffer.from('old'), 'removed/index.html': Buffer.from('gone'), 'moved/index.html': Buffer.from('redirect') });
   const checks = staticChecks({ 'index.html': Buffer.from('new'), 'image.png': Buffer.from('png'), _headers: Buffer.from('/*\n X-Robots-Tag: noindex'), _redirects: Buffer.from('/moved/ / 301') }, before);

@@ -37,7 +37,7 @@ export async function postprocess(dist: string, publication: { publication_id: s
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const relative = prefix + entry.name;
       if (entry.isDirectory()) await walk(path.join(directory, entry.name), relative + '/');
-      else if (entry.isFile() && relative.endsWith('.html') && relative !== '404.html') routes.push('/' + relative.replace(/index\.html$/, '').replace(/\.html$/, ''));
+      else if (entry.isFile() && relative.endsWith('.html') && relative !== '404.html' && !relative.endsWith('/404.html')) routes.push('/' + relative.replace(/index\.html$/, '').replace(/\.html$/, ''));
     }
   }
   await walk(dist);

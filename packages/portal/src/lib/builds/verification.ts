@@ -32,7 +32,8 @@ export function staticManifestChecks(files: Record<string, { sha256: string; siz
   const checks: StaticCheck[] = [];
   for (const [name, bytes] of Object.entries(files)) {
     assertFilePath(name, { artifact: true });
-    if (['_headers', '_redirects', '404.html'].includes(name)) continue;
+    // Not-found pages, including a language section's <home_path>404.html, answer missing routes.
+    if (['_headers', '_redirects', '404.html'].includes(name) || name.endsWith('/404.html')) continue;
     const route = '/' + (name.endsWith('.html') ? name.replace(/index\.html$/, '').replace(/\.html$/, '') : name);
     checks.push({ route, status: 200, sha256: bytes.sha256, ...(bytes.size === undefined ? {} : { size: bytes.size }) });
   }

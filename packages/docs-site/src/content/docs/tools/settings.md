@@ -283,6 +283,32 @@ has an intentionally opaque origin: the choice is held in memory for the
 current preview document and resets on reload/navigation. A published build
 uses the normal `tr_consent` cookie.
 
+### `language_sections` array
+
+One site can serve several languages from language folders. Each section names
+a language and its home page (its path prefix), and can override the tagline,
+the fallback description and the cookie banner's `text`, `labels` and
+`privacy_policy_url` for pages in that language:
+
+```json
+{
+  "language_sections": [
+    {
+      "language": "sv-SE",
+      "home_path": "/sv/",
+      "cookie_consent": { "privacy_policy_url": "/sv/cookies/" }
+    }
+  ]
+}
+```
+
+`language` is a BCP 47 tag other than the site `language`; `home_path` starts
+and ends with `/` and is not `/`. Pages belong to a section through
+`Page.language`. The section also gives them a home crumb linking to
+`home_path` and a 404 page at `<home_path>404.html`. The list is replaced as a
+whole, and `null` clears it. See
+[Several languages on one site](../../guides/multilingual-sites/).
+
 ## Trusted scriptable fields
 
 `scripts_head`, `scripts_body_end`, `custom_css`, and the consent script fields

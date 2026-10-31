@@ -24,16 +24,16 @@ export function lacksUiTranslation(language: unknown): boolean {
 }
 
 const UI_TEXT = {
-  en: { pagination: 'Pagination', scrollable_table: 'Scrollable table' },
-  sv: { pagination: 'Sidnavigering', scrollable_table: 'Rullbar tabell' },
-  de: { pagination: 'Seitennavigation', scrollable_table: 'Scrollbare Tabelle' },
-  nl: { pagination: 'Paginering', scrollable_table: 'Scrollbare tabel' },
-  nb: { pagination: 'Sidenavigasjon', scrollable_table: 'Rullbar tabell' },
-  fi: { pagination: 'Sivunumerointi', scrollable_table: 'Vieritettävä taulukko' },
-  fr: { pagination: 'Pagination', scrollable_table: 'Tableau défilant' },
-  pl: { pagination: 'Paginacja', scrollable_table: 'Przewijana tabela' },
-  it: { pagination: 'Paginazione', scrollable_table: 'Tabella scorrevole' },
-  es: { pagination: 'Paginación', scrollable_table: 'Tabla desplazable' },
+  en: { pagination: 'Pagination', scrollable_table: 'Scrollable table', home: 'Home' },
+  sv: { pagination: 'Sidnavigering', scrollable_table: 'Rullbar tabell', home: 'Startsida' },
+  de: { pagination: 'Seitennavigation', scrollable_table: 'Scrollbare Tabelle', home: 'Startseite' },
+  nl: { pagination: 'Paginering', scrollable_table: 'Scrollbare tabel', home: 'Home' },
+  nb: { pagination: 'Sidenavigasjon', scrollable_table: 'Rullbar tabell', home: 'Forside' },
+  fi: { pagination: 'Sivunumerointi', scrollable_table: 'Vieritettävä taulukko', home: 'Etusivu' },
+  fr: { pagination: 'Pagination', scrollable_table: 'Tableau défilant', home: 'Accueil' },
+  pl: { pagination: 'Paginacja', scrollable_table: 'Przewijana tabela', home: 'Strona główna' },
+  it: { pagination: 'Paginazione', scrollable_table: 'Tabella scorrevole', home: 'Home' },
+  es: { pagination: 'Paginación', scrollable_table: 'Tabla desplazable', home: 'Inicio' },
 } as const satisfies Record<UiLanguage, Record<string, string>>;
 
 export type UiTextKey = keyof typeof UI_TEXT.en;

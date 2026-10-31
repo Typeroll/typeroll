@@ -107,6 +107,35 @@ describe('settings.language', () => {
   });
 });
 
+describe('settings.language_sections', () => {
+  beforeEach(async () => { await resetDatastore(); });
+  const patch = (token: string, body: unknown) => callRoute(
+    import('../../pages/api/v1/sites/[siteId]/settings'),
+    'PATCH',
+    `http://localhost/api/v1/sites/${SITE}/settings`,
+    { siteId: SITE },
+    { headers: bearer(token), body },
+  );
+  const read = async () => {
+    const { vstore } = await import('../../lib/version-store');
+    return (await vstore.settings(ORG, SITE, MAIN_VERSION_ID)) as { language_sections?: unknown } | null;
+  };
+
+  it('stores normalized sections, rejects invalid ones and clears with null', async () => {
+    const { token } = await setup();
+    expect((await patch(token, { language: 'fi', language_sections: [{ language: 'sv-se', home_path: '/sv/', cookie_consent: { privacy_policy_url: '/sv/cookies/' } }] })).status).toBe(200);
+    expect((await read())?.language_sections).toEqual([{ language: 'sv-SE', home_path: '/sv/', cookie_consent: { privacy_policy_url: '/sv/cookies/' } }]);
+
+    const invalid = await patch(token, { language_sections: [{ language: 'fi', home_path: '/fi/' }] });
+    expect(invalid.status).toBe(400);
+    expect(await invalid.text()).toMatch(/site language/);
+    expect((await patch(token, { language_sections: [{ language: 'sv', home_path: '/' }] })).status).toBe(400);
+
+    expect((await patch(token, { language_sections: null })).status).toBe(200);
+    expect((await read())?.language_sections).toBeUndefined();
+  });
+});
+
 describe('Page.language', () => {
   beforeEach(async () => { await resetDatastore(); });
 

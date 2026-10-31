@@ -1,0 +1,105 @@
+---
+title: Several languages on one site
+description: Serve two or more languages from one Typeroll site with language folders, such as Finnish at / and Swedish under /sv/.
+---
+
+One Typeroll site can serve several languages from language folders on the same
+domain, for example Finnish at `/` and Swedish under `/sv/`. This guide applies
+to Typeroll Cloud and self-hosted Typeroll CMS. When each language has its own
+domain, build one site per domain instead and link the versions with hreflang
+(see the multisite migration recipe).
+
+## How a page gets its language
+
+Every Page has its own `language` (a BCP 47 tag such as `sv-SE`). Pages without
+one use the site `language`. The page language sets `<html lang>`, the search
+index and the built-in interface wording, and it decides which language section
+the page belongs to.
+
+Set `language` on every page outside the site language. Setting it on the
+site-language pages as well makes listings and conditions easier to read.
+
+## Declare the language sections
+
+The site language needs no configuration. Declare each other language once in
+the site settings as a language section: its tag and its home page, which is
+also its path prefix.
+
+```json
+{
+  "language": "fi",
+  "language_sections": [
+    {
+      "language": "sv-SE",
+      "home_path": "/sv/",
+      "tagline": "Flytt utan stress",
+      "default_meta_description": "Flyttfirma i Helsingfors.",
+      "cookie_consent": {
+        "text": "<p>Vi använder kakor för statistik.</p>",
+        "privacy_policy_url": "/sv/cookies/"
+      }
+    }
+  ]
+}
+```
+
+Send it with `update_site_settings` or `PATCH /api/v1/sites/{siteId}/settings`.
+The list is replaced as a whole; `null` removes every section. A page belongs to
+the section whose tag matches its `language` exactly, or else the one with the
+same primary language (`sv` matches `sv-SE`).
+
+A section gives its pages:
+
+- **Home link:** the Breadcrumbs block links its first crumb to the section's
+  home page. On a site with sections the default label follows the page
+  language ("Startsida", "Etusivu"); a label you write yourself is kept.
+- **404 page:** a missing address under `/sv/` gets a Swedish 404 page with the
+  Swedish header and footer and a link to `/sv/`. It is published as
+  `/sv/404.html`, which hosts that serve the nearest 404 page, such as
+  Cloudflare Pages, use automatically. Other addresses get the site's `/404.html`.
+- **Tagline and fallback description:** `tagline` and `default_meta_description`
+  replace the site-wide values on the section's pages, so the Site tagline
+  block and pages without their own meta description use the section's text.
+- **Cookie banner wording:** `text`, `labels` and `privacy_policy_url` for the
+  banner. Without `text` or `labels`, the banner uses its built-in wording in
+  the section's language rather than the site-wide custom text. Without
+  `privacy_policy_url`, it links to the site-wide policy. Whether the banner is
+  on, and which scripts it controls, stays site-wide.
+
+## Header and footer per language
+
+A site has one header and one footer. Put each language's menu in a **Show if…**
+(`template/show_if`) block that tests the page language:
+
+| Variant | Condition                   |
+| ------- | --------------------------- |
+| Swedish | `page.language === "sv-SE"` |
+| Finnish | `page.language !== "sv-SE"` |
+
+Only the matching branch is published on a page; the other is not in the HTML.
+The 404 pages use the same rule: the site's 404 page has no page language, so it
+takes the Finnish branch, and `/sv/404.html` takes the Swedish one.
+
+## Content types, templates and listings
+
+Give each language its own Content type, for example `article-fi` at
+`/muuttovinkit/{slug}` and `article-sv` at `/sv/tips-om-flytt/{slug}`. A
+Content type owns one URL pattern, so the language folders need separate types
+anyway, and each type has its own Page template where headings, button labels
+and the Previous/Next and search labels are written in its language.
+
+A listing then shows one language by selecting its Content type. A listing over
+several types can instead filter on `language` (`filter_field: "language"`,
+`filter_value: "sv-SE"`). A listing has one filter, so filtering on language
+leaves no filter for a category.
+
+## Search and alternates
+
+The Search block uses the page's `<html lang>`: each language gets its own
+search index, and a search on a Swedish page returns Swedish pages.
+
+Link the language versions of each page with `alternates` (hreflang), on all
+sides. Typeroll has no built-in language switcher. To add one, store the
+counterpart's address in a Content type field such as `translation_url` and
+bind a button to `{{page.translation_url}}` inside a **Show if…**
+`page.translation_url`.

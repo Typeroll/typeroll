@@ -64,6 +64,7 @@ export default defineConfig({
             { label: 'Create a Page template', slug: 'guides/page-templates' },
             { label: 'Create your own block type', slug: 'guides/create-block-type' },
             { label: 'Content types and fields', slug: 'tools/content-types' },
+            { label: 'Several languages on one site', slug: 'guides/multilingual-sites' },
             { label: 'Global blocks and section starters', slug: 'tools/reusable-blocks' },
             { label: 'Named styles', slug: 'tools/styles' },
             { label: 'Design tokens', slug: 'guides/design-tokens' },

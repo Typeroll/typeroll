@@ -468,6 +468,14 @@ export interface SiteSettings {
    * `scripts_head` discipline.
    */
   cookie_consent?: CookieConsentSettings;
+  /**
+   * Language sections of a one-site multilingual setup (language-sections.ts).
+   * Pages whose `Page.language` matches a section live under its `home_path`;
+   * the section supplies that language's home link, 404 page, tagline,
+   * fallback description and cookie-banner wording. The site's own `language`
+   * needs no section: its pages use the top-level settings.
+   */
+  language_sections?: import('./language-sections.js').LanguageSection[];
   /** BCP 47 language tag for <html lang>, e.g. "sv", "en", "en-GB". Default "en". */
   language?: string;
   /** Optional Twitter/X handle used for twitter:site card meta (without the @). */

@@ -28,7 +28,7 @@ import { customCssWarnings, customCssWriteError } from '../../../../../lib/custo
 import { getStore } from '../../../../../lib/datastore';
 import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentionError } from '../../../../../lib/form-submissions';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, type SiteSettings } from '@typeroll/shared';
+import { typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
@@ -38,6 +38,8 @@ const TOP_LEVEL = new Set([
   'default_og_image', 'twitter_handle', 'organization',
   // Scriptable surfaces. Trusted because the caller has an API key.
   'scripts_head', 'scripts_body_end', 'custom_css',
+  // Per-language home paths and wording for a one-site multilingual setup.
+  'language_sections',
 ]);
 /** Fields stored on the Site document rather than in versioned settings. */
 const SITE_LEVEL = new Set(['staging_url', 'form_submission_retention_days']);
@@ -196,6 +198,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
 
   const existing = ((await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {}) as Record<string, unknown>;
+  if (body.language_sections !== undefined) {
+    const siteLanguage = typeof body.language === 'string' ? body.language : existing.language as string | undefined;
+    const checked = normalizeLanguageSections(body.language_sections, siteLanguage);
+    if (checked.error) return apiError(checked.error, 400);
+    body.language_sections = checked.sections?.length ? checked.sections : null;
+  }
   const update: Record<string, unknown> = {};
   const unknown_keys: string[] = [];
   for (const [k, v] of Object.entries(body)) {
@@ -210,7 +218,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && (k === 'fonts' || k === 'colors')) delete (update[k] as Record<string, unknown>)[field];
     } else if (TOP_LEVEL.has(k)) {
       // null clears an optional field; the store drops undefined values.
-      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization').includes(k) ? undefined : v;
+      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization', 'language_sections').includes(k) ? undefined : v;
     } else if (SITE_LEVEL.has(k)) {
       continue;
     } else {

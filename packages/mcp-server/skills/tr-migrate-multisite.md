@@ -32,7 +32,7 @@ So:
 | The old family looks like | Build it as |
 |---|---|
 | `example.se`, `example.de`, `example.co.uk` — separate domains | **N Typeroll sites**, one per domain |
-| `example.com/se/`, `example.com/de/` — one domain, language folders | **One site**, using `path` on each page (`/se/om-oss`) |
+| `example.com/se/`, `example.com/de/` — one domain, language folders | **One site**, using `path` and `language` on each page (`/se/om-oss`) and a `language_sections` entry per folder (see the multilingual-sites guide) |
 | A WP multisite on subdomains that the customer wants to consolidate onto one domain | **One site** + redirects from every old subdomain |
 
 Confirm this with the user before creating anything — it's the one decision

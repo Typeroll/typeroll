@@ -132,6 +132,25 @@ export const settingsTools: ToolDef[] = [
           manage_button: z.string().optional(),
         }).optional().describe('Plain-text replacements for the banner heading, buttons and links (max 120 characters each). `manage` is the accessible name and `manage_button` the visible text of the floating button that reopens the banner. Omitted or blank labels follow the page language: Swedish, Norwegian Bokmål, German, Dutch, Finnish, French, Polish, Italian, Spanish, otherwise English. Replaces the whole labels object.'),
       }).optional().describe('Native consent banner configuration. Partial updates preserve omitted fields. Script fields execute in visitor browsers and are accepted under the API key authority.'),
+      language_sections: z.array(z.object({
+        language: z.string().describe('BCP 47 tag matched against Page.language, such as "sv-SE". Not the site language.'),
+        home_path: z.string().describe('The section home page and path prefix, such as "/sv/".'),
+        tagline: z.string().optional(),
+        default_meta_description: z.string().optional(),
+        cookie_consent: z.object({
+          text: z.string().optional().describe('Banner body in this language. May include a policy link.'),
+          privacy_policy_url: z.string().optional().describe('Policy link for this language, such as "/sv/cookies/".'),
+          labels: z.object({
+            title: z.string().optional(),
+            reject: z.string().optional(),
+            necessary: z.string().optional(),
+            accept_all: z.string().optional(),
+            privacy_link: z.string().optional(),
+            manage: z.string().optional(),
+            manage_button: z.string().optional(),
+          }).optional(),
+        }).optional().describe('Banner wording for this language. Without text or labels the banner uses the built-in wording in this language; scripts and enabled stay site-wide.'),
+      })).nullable().optional().describe('One site, several languages: each section is a language whose pages (Page.language) live under home_path. Pages in a section get its home link in breadcrumbs, a 404 page at <home_path>404.html, and its tagline, fallback description and banner wording. Pages in the site language keep the top-level settings. Replaces the whole list; null or [] clears it. Use template/show_if on page.language in the header and footer for per-language menus.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { version, ...body } = args;

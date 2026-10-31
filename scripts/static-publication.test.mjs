@@ -218,6 +218,8 @@ const FULL_SETTINGS = {
   robots_txt: 'User-agent: *', sitewide_noindex: true, sitewide_nofollow: true,
   external_routes: [{ path: '/app', owner: 'Separate deployment' }],
   seo_review: { forbidden_markers: ['TODO'], claims: [{ phrase: 'best', guidance: 'Check' }], notes: ['Note'] },
+  language_sections: [{ language: 'en', home_path: '/en/', tagline: 'English', default_meta_description: 'In English',
+    cookie_consent: { text: 'Cookies', privacy_policy_url: '/en/privacy/', labels: { title: 'Cookies' } } }],
 };
 
 function siteSettingsFields() {
@@ -485,6 +487,10 @@ test('portable source renders typed Pages, form runtime and language metadata wh
   const value = input();
   value.pages[0].html_content = '<h1>Public runtime</h1><x-form id="contact" />';
   value.pages[0].alternates = [{ hreflang: 'sv', href: 'https://sv.example.invalid/' }];
+  // A Swedish language section: its pages keep their language and it gets its own 404 page.
+  value.settings.language = 'fi';
+  value.settings.language_sections = [{ language: 'sv-SE', home_path: '/sv/' }];
+  value.pages.push({ id: 'sv-home', title: 'Svenska', slug: 'sv', path: '/sv', language: 'sv-SE', status: 'published', content_mode: 'html', html_content: '<h1>Svenska</h1>' });
   value.contentTypes = [{ id: 'news', name: 'news', label_singular: 'News', label_plural: 'News', route_template: '/news/{slug}', template: 'news-layout', fields: [{ name: 'summary', label: 'Summary', type: 'text' }, { name: 'internal_notes', type: 'text', rendered: false }] }];
   value.pageTemplates = [{ id: 'news-layout', name: 'news-layout', label: 'News', status: 'published', blocks: [{ id: 'title', type: 'template/page_title', data: { level: 'h1' } }, { id: 'body', type: 'template_content_slot', data: {} }] }];
   value.pages.push({ id: 'article', title: 'Frozen typed article', slug: 'article', content_type: 'news', content_mode: 'blocks', blocks: [{ id: 'copy', type: 'core/prose', data: { html: '<p>Portable article body</p>' } }], status: 'published', fields: { summary: 'Public summary', internal_notes: 'private-value' }, _provenance: { private: 'private-value' } });
@@ -505,6 +511,27 @@ test('portable source renders typed Pages, form runtime and language metadata wh
   assert.match(home, /forms.example.invalid/);
   assert.match(home, /Your name/);
   assert.match(home, /Send request/);
+  const swedish = await fs.readFile(path.join(tmp, 'dist/sv/index.html'), 'utf8');
+  assert.match(swedish, /<html lang="sv-SE"/);
+  const notFound = await fs.readFile(path.join(tmp, 'dist/sv/404.html'), 'utf8');
+  assert.match(notFound, /Sidan hittades inte/);
+  assert.match(notFound, /href="\/sv\/"/);
+  const marker = JSON.parse(await fs.readFile(path.join(tmp, 'dist/.well-known/typeroll/publication.json'), 'utf8'));
+  assert.ok(marker.paths.includes('/sv/') && !marker.paths.some(route => route.endsWith('/404')), 'not-found pages are not publication routes');
+});
+
+test('publication keeps each page language', () => {
+  const value = input();
+  value.pages[0].language = 'sv-SE';
+  assert.equal(projectStaticPublication(value, identity).pages[0].language, 'sv-SE');
+  value.pages[0].language = 7;
+  assert.throws(() => projectStaticPublication(value, identity), /language/);
+});
+
+test('publication rejects a language section without a path prefix', () => {
+  const value = input();
+  value.settings.language_sections = [{ language: 'sv', home_path: '/' }];
+  assert.throws(() => projectStaticPublication(value, identity), /language_sections/);
 });
 
 test('frozen content types preserve mapped-only schema without hidden field mappings', () => {

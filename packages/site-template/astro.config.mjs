@@ -1,6 +1,7 @@
 import { defineConfig } from 'astro/config';
 import fs from 'node:fs';
 import path from 'node:path';
+import { notFoundPages } from './src/lib/not-found-pages.mjs';
 
 function trailingSlashPolicy() {
   const root = process.env.TYPEROLL_FIXTURES_DIR;
@@ -40,4 +41,6 @@ export default defineConfig({
   // Sitemaps and renderer-generated links read the same setting.
   trailingSlash: trailingSlashPolicy(),
   compressHTML: true,
+  // Language sections get their own 404 page at <home_path>404.html.
+  integrations: [notFoundPages()],
 });
