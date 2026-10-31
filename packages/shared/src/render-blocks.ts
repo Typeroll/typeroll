@@ -279,6 +279,13 @@ function expandBlockAlias(
  *      hand off to `renderRepeater()` which loops the source and renders
  *      each item with the configured `item_block`.
  */
+/** Home page of the page's language section, or `/` on a site without one. */
+function sectionHomeHref(site: Record<string, unknown> | undefined, language: unknown): string {
+  const sections = Array.isArray(site?.language_sections) ? site.language_sections as LanguageSection[] : [];
+  const section = languageSectionFor(sections, language);
+  return section ? applyTrailingSlash(section.home_path, (site?.trailing_slash as TrailingSlashPolicy | undefined) ?? 'always') : '/';
+}
+
 export function renderBlock(block: Block, options: RenderBlocksOptions): string {
   // Asset collection uses the same alias defaults and traversal limit.
   const expanded = expandBlockAlias(block, options.registry);
@@ -379,13 +386,14 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     const name = compiled.flatData.text || site?.name || 'Home';
     compiled.flatData.site_logo_html = compiled.flatData.mode !== 'text' && logo
       ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(name)}" />` : escapeHtml(name);
+    // The logo links to the home page of the page's language section.
+    compiled.flatData.site_logo_href = sectionHomeHref(site, options.context?.page?.language);
   }
   if (effectiveBlock.type === 'template/page_breadcrumbs') {
     // On a site with language sections the home crumb is the home page of the
     // page's language, and the untouched default label follows that language.
     const site = options.context?.site;
     const sections = Array.isArray(site?.language_sections) ? site.language_sections as LanguageSection[] : [];
-    const section = languageSectionFor(sections, options.context?.page?.language);
     const authoredLabel = String(compiled.flatData.home_label ?? '').trim();
     const homeLabel = sections.length && (!authoredLabel || authoredLabel === 'Home')
       ? uiText(options.context?.page?.language ?? site?.language, 'home')
@@ -393,7 +401,7 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
     compiled.flatData.breadcrumbs_html = renderBreadcrumbs(
       options.context?.page?.breadcrumbs,
       homeLabel,
-      section ? applyTrailingSlash(section.home_path, (site?.trailing_slash as TrailingSlashPolicy | undefined) ?? 'always') : '/',
+      sectionHomeHref(site, options.context?.page?.language),
     );
   }
   if (effectiveBlock.type === 'core/table_of_contents') {
