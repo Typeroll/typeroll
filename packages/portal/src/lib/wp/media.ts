@@ -4,7 +4,7 @@ import { importStorageStatus, requireImportStorage } from '../media/import-polic
 import { paths, type Media } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { createMediaUpload, finalizeTransferredMedia, storageClient } from '../publishing/media-storage';
-import { durableTransfer, mediaTransfers, transferReservation } from '../media/transfer';
+import { durableTransfer, remoteMediaTransfers } from '../media/transfer';
 import { requiresSvgSanitization, sanitizeTransferredSvg, SvgRejectedError, SVG_MEDIA_TYPE } from '../media/svg-media';
 import { ConnectionError } from '../publishing/connections';
 import { allowedMediaExtensions, withMediaExtension } from '../media/file-types';
@@ -102,7 +102,7 @@ export class WPMediaTransfer {
     // customer account must never silently fall back to the old WordPress host.
     await requireImportStorage(this.orgId);
     return durableTransfer(this.store, paths.site(this.orgId, this.siteId), oldUrl, () =>
-      mediaTransfers.run(new URL(oldUrl).host, transferReservation, () => this.copyPrivate(oldUrl, filename, contentType, altText, width, height)),
+      remoteMediaTransfers.run(new URL(oldUrl).host, 1, () => this.copyPrivate(oldUrl, filename, contentType, altText, width, height)),
       async result => (await this.store.getDoc<Media>(`${paths.media(this.orgId, this.siteId)}/${result.mediaId}`))?.storage?.state === 'ready');
   }
 
@@ -119,7 +119,6 @@ export class WPMediaTransfer {
       const upload = pending ? { mediaId: pending.id, key: pending.storage!.key, cdnUrl: pending.cdn_url } : await createMediaUpload(this.orgId, this.siteId, { filename, contentType, altText, actor: 'wordpress-import' });
       const mediaPath = `${paths.media(this.orgId, this.siteId)}/${upload.mediaId}`;
       await this.store.updateDoc(mediaPath, { source_url: oldUrl, source_aliases: [oldUrl], import_pending: true });
-      if (!pending) { const { requestMediaMigration } = await import('../publishing/media-migration'); await requestMediaMigration(this.orgId); }
       const media = await this.store.getDoc<Media>(mediaPath);
       const r2 = await storageClient(this.orgId, media!.storage!);
       try {
@@ -133,7 +132,16 @@ export class WPMediaTransfer {
       } catch (error) {
         // A source that is not a usable SVG cannot succeed on retry: record why and stop retrying it.
         if (error instanceof SvgRejectedError) await this.store.updateDoc(mediaPath, { import_pending: false, import_rejected: true, import_error: error.message });
-        else if ((await this.store.getDoc<Media>(mediaPath))?.storage?.state !== 'ready') await this.store.updateDoc(mediaPath, { import_pending: true, import_error: 'The source file has not been copied yet. Retry media migration from Publishing.' });
+        else if ((await this.store.getDoc<Media>(mediaPath))?.storage?.state !== 'ready') {
+          await this.store.updateDoc(mediaPath, { import_pending: true, import_error: 'The source file has not been copied yet. Retry media migration from Publishing.' });
+          // A successful import needs no organization-wide migration pass. A
+          // transient failure queues one so the pending copy is retried even if
+          // the caller gives up; a rejected source (4xx) would only fail again.
+          if (!(error instanceof ConnectionError) || error.status >= 500) {
+            const { requestMediaMigration } = await import('../publishing/media-migration');
+            await requestMediaMigration(this.orgId).catch(() => {});
+          }
+        }
         throw error;
       } finally { r2.destroy(); }
     }

@@ -191,6 +191,13 @@ organization API key. Only write access may import; the authenticated site’s
 owning organization determines the destination. For extensionless source URLs,
 provide `filename` and `content_type`. Completed imports are reused on retry.
 
+For many files, send up to four import requests at a time; Typeroll copies up to
+four files from one source host at once. A source path with characters such as
+`ä` is tried as written and in both Unicode forms (NFC and NFD), so send the URL
+as it appears on the old site. Publishing still verifies each file into the
+public site, so the first publication after a large import spends time in
+`preparing_media`.
+
 ## `upload_media_from_url`
 
 Requires verified organization storage. With Core 0.1.97 and MCP 0.44.68 or later, submits the source URL to the customer’s transfer Worker. Neither the portal nor MCP downloads the file body. Returns the stored asset and its stable media URL; private originals require authenticated access.

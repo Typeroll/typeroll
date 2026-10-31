@@ -6,7 +6,7 @@ import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
-import { connectionPath, sealCredentials } from '../../lib/publishing/connections';
+import { ConnectionError, connectionPath, sealCredentials } from '../../lib/publishing/connections';
 import { WPMediaTransfer } from '../../lib/wp/media';
 import { runMigrationPreflight } from '../../lib/migration-preflight';
 
@@ -87,4 +87,20 @@ it('retains pending identity after transfer failure and retries without duplicat
   expect(result.mediaId).toBe(pending[0].id);
   expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(1);
   expect(await getStore().getDoc(`${paths.media('org', 'site')}/${result.mediaId}`)).toMatchObject({ import_pending: false, storage: { state: 'ready' } });
+});
+
+it('queues an organization-wide media migration only after a transient import failure', async () => {
+  await connect();
+  const transfer = () => new WPMediaTransfer('org', 'site', getStore());
+  const requestId = async () => (await getStore().listDocs<{ request_id?: string }>('publishing_media_migrations'))[0]?.request_id;
+  await transfer().ensureUrl(url);
+  const afterAdoption = await requestId();
+  await transfer().ensureUrl('https://wordpress.example.com/uploads/second.png');
+  expect(await requestId()).toBe(afterAdoption);
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('Gone', 422, 'media_source_unavailable'));
+  await expect(transfer().ensureUrl('https://wordpress.example.com/uploads/gone.png')).rejects.toThrow('Gone');
+  expect(await requestId()).toBe(afterAdoption);
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('Interrupted', 503, 'media_transfer_interrupted'));
+  await expect(transfer().ensureUrl('https://wordpress.example.com/uploads/later.png')).rejects.toThrow('Interrupted');
+  expect(await requestId()).not.toBe(afterAdoption);
 });
