@@ -15,7 +15,7 @@ export async function assertVerificationRetry(org: string, site: string, job: Gi
       !publication?.publication_id || !/^[a-f0-9]{64}$/.test(publication.publication_id) ||
       !publication.commit || !/^[a-f0-9]{40}$/.test(publication.commit) || publication.release_branch ||
       !publication.build_task_key || !publication.verification_task_key || !publication.static_checks_key || !publication.probe_checks_key ||
-      !publication.project_prepared || !publication.public_media_prepared || !publication.traffic_applied ||
+      !publication.project_prepared || !publication.public_media_prepared || !(publication.traffic_applied || job.publication_intent === 'domain_prepare') ||
       !publication.candidate_verified_id || publication.candidate_verified_id !== publication.deployment_id ||
       publication.deployment_receipt?.id !== publication.deployment_id || publication.deployment_receipt?.uses_functions !== false ||
       publication.deployment_receipt?.latest_stage?.status !== 'success' || publication.deployment_receipt?.latest_stage?.name !== 'deploy') throw unavailable();

@@ -1100,3 +1100,58 @@ it.each([{ corrected: true, legacy: false }, { corrected: false, legacy: false }
   expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.method && opts.method !== 'GET').every(([path]) => path.endsWith('/purge_cache'))).toBe(true);
   for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct]) expect(mock).not.toHaveBeenCalled();
 });
+
+it('refreshes a stale cached file at the current address during domain preparation, path by path', async () => {
+  const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await prepareFromCurrentPublication();
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  const store = getStore();
+  const pending = await store.getDoc<any>(jobPath);
+  await store.updateDoc(jobPath, { git_publication: { ...pending.git_publication, static_checks_key: 'full', probe_checks_key: 'probes' } });
+  let stale = true;
+  mocks.verify.mockImplementation(async (_org, path, _checks, origin) => {
+    if (!stale || origin !== 'https://old.example.com') return true;
+    await store.updateDoc(path, { static_probe: { origin, route: '/_typeroll/fonts/removed.woff2', expected_status: 404, actual_status: 200, reason: 'status_mismatch', response_headers: { cf_cache_status: 'MISS', age: 22570 } } });
+    return false;
+  });
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { prefixes: ['old.example.com/_typeroll/fonts/removed.woff2'] } });
+  expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.body?.purge_everything)).toHaveLength(0);
+  stale = false;
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval' });
+  expect((await getSiteDomains('org', 'site')).candidate).toMatchObject({ job_id: args.jobId });
+  expect(mocks.push).toHaveBeenCalledTimes(1);
+});
+
+it('lets a domain preparation blocked by a stale cache resume after an approved zone refresh', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await prepareFromCurrentPublication();
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  const store = getStore(), pending = await store.getDoc<any>(jobPath);
+  const publication = { ...pending.git_publication, build_task_key: 'finished-build', verification_task_key: 'finished-verification', static_checks_key: 'full', probe_checks_key: 'probes' };
+  await store.updateDoc(jobPath, { git_publication: publication });
+  let stale = true;
+  mocks.verify.mockImplementation(async (_org, path, _checks, origin) => {
+    if (!stale || origin !== 'https://old.example.com') return true;
+    await store.updateDoc(path, { static_probe: { origin, route: '/_typeroll/fonts/removed.woff2', expected_status: 404, actual_status: 200, reason: 'status_mismatch', response_headers: { cf_cache_status: 'MISS', age: 22570 } } });
+    return false;
+  });
+  let result: string;
+  for (let i = 0; (result = await executeCustomerPublication(args)) === 'waiting' && i < 30; i++);
+  const failed = await store.getDoc<any>(jobPath);
+  expect(failed).toMatchObject({ status: 'failed', failure: { code: 'publication_cache_refresh_required' }, cache_recovery: { state: 'approval_required', hostname: 'old.example.com' } });
+  for (const key of ['finished-build', 'finished-verification']) await store.setDoc(`organizations/org/build_tasks/${key}`, { status: 'completed', identity: { org_id: 'org', site_id: 'site', version_id: 'main', job_id: 'job', publication_id: failed.git_publication.publication_id, commit: failed.git_publication.commit } });
+  const { retryPublicationVerification } = await import('../../lib/publishing/verification-retry');
+  await retryPublicationVerification('org', 'site', 'job', 'main', 'zone');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { purge_everything: true } });
+  stale = false;
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval' });
+  expect(mocks.push).toHaveBeenCalledTimes(1);
+  expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
+});

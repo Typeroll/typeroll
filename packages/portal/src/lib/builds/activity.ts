@@ -7,14 +7,39 @@ import { buildInputPath, readEngineConfiguration, engineConfigurationPath, type 
 import { githubBuildClient, githubBuildRoot, readGithubDispatch } from './github';
 import { enginePath } from './cloudflare';
 
-export async function activeBuilds(org: string) {
+/** How long after its build a publication may still be uploading or verifying. */
+const FINISHING_WINDOW_MS = 2 * 60 * 60_000;
+
+/**
+ * Builds the organization's engine is working on, plus publications whose
+ * build finished but whose own job is still uploading or verifying. A job
+ * stays listed until its deploy reaches a final status, so a caller that waits
+ * for an empty list never starts the next publication early.
+ */
+export async function activeBuilds(org: string, now = Date.now()) {
   const store = getStore();
-  const tasks = await store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'status', op: 'in', value: ['queued', 'running'] }], limit: 20 });
-  return Promise.all(tasks.map(async task => {
+  const [active, finished] = await Promise.all([
+    store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'status', op: 'in', value: ['queued', 'running'] }], limit: 20 }),
+    store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'completed_at', op: '>=', value: now - FINISHING_WINDOW_MS }], limit: 50 }),
+  ]);
+  const activeJobs = new Set(active.map(task => task.identity.job_id));
+  const finishing = (await Promise.all(finished.filter(task => task.status === 'completed' && !activeJobs.has(task.identity.job_id)).map(async task => {
     const input = await store.getDoc<BuildInput>(buildInputPath(org, task.id));
+    if (input?.kind !== 'publication' && input?.kind !== 'static_verification') return null;
+    const job = await store.getDoc<DeployJob>(paths.deploy(org, task.identity.site_id, task.identity.job_id));
+    return job && ['queued', 'running'].includes(job.status) ? { task, input, phase: job.phase ?? null } : null;
+  }))).filter(entry => entry !== null);
+  const seen = new Set<string>();
+  const unique = finishing.filter(({ task }) => !seen.has(task.identity.job_id) && !!seen.add(task.identity.job_id));
+  const entries = [
+    ...await Promise.all(active.map(async task => ({ task, input: await store.getDoc<BuildInput>(buildInputPath(org, task.id)), phase: null as string | null }))),
+    ...unique,
+  ];
+  return Promise.all(entries.map(async ({ task, input, phase }) => {
     const site = input?.kind !== 'qualification' ? await store.getDoc<{ name: string }>(paths.site(org, task.identity.site_id)) : null;
+    const status: 'queued' | 'running' | 'publishing' = task.status === 'completed' ? 'publishing' : task.status as 'queued' | 'running';
     return { key: task.id, job_id: task.identity.job_id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
-      kind: input?.kind, version_id: task.identity.version_id, status: task.status, provider: input?.provider ?? 'cloudflare', attempt: task.attempt, static_verification: input?.kind === 'static_verification' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
+      kind: input?.kind, version_id: task.identity.version_id, status, phase, provider: input?.provider ?? 'cloudflare', attempt: task.attempt, static_verification: input?.kind === 'static_verification' && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
   }));
 }
 

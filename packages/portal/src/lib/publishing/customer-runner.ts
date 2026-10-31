@@ -409,6 +409,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     if (job.verification_retry) {
       if (await applyApprovedCacheRefresh(args.orgId, jobPath, publication)) return await waitForPublicationCondition(jobPath, 'verifying refreshed cache');
+    }
+    // A domain preparation that has not switched traffic resumes its own checkpointed flow, which verifies the current address.
+    if (job.verification_retry && !(preparingDomain && !publication.traffic_applied)) {
       // Recovery keeps the served artifact. A separately approved cache refresh
       // may run here, but never source generation, builds, uploads or DNS.
       const frozen = await readSnapshot(args, publication);
@@ -627,10 +630,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (preparingDomain && args.versionId === 'main' && domains.cutover_approved_revision !== domains.revision) {
       // Main already serves this artifact. Verify the existing address before offering DNS activation.
       const currentHost = savedDomains.active?.website_host ?? fallback;
-      if (!await probePublication(`https://${currentHost}`, '/.well-known/typeroll/publication.json', publication.publication_id) ||
-          (publication.static_checks_key && !await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key ?? publication.static_checks_key, `https://${currentHost}`, !!publication.probe_checks_key))) {
+      const currentOrigin = `https://${currentHost}`;
+      const markerReady = await probePublication(currentOrigin, '/.well-known/typeroll/publication.json', publication.publication_id);
+      if (!markerReady || (publication.static_checks_key && !await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key ?? publication.static_checks_key, currentOrigin, !!publication.probe_checks_key))) {
         await store.updateDoc(jobPath, { phase: 'verifying replacement at the current address' });
-        return await waitForPublicationCondition(jobPath, 'verifying replacement at the current address');
+        // The current address serves this artifact; a stale cached file there gets the same path-scoped refresh as a normal publication.
+        if (markerReady) await recoverPublicationCache(args.orgId, jobPath, publication, currentOrigin);
+        return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'verifying replacement at the current address');
       }
       const previousPreparations = await preparePreviousHosts(args.orgId, group.id, (frozen.previous_website_hosts ?? []).filter((host: string) => !publication?.redirect_hosts?.includes(host) && host !== domains.desired.media_host), publication.website_host, cloudflare, publication.account_id, publication.project);
       const finished = new Date().toISOString();
