@@ -53,8 +53,10 @@ jobs:
           retention-days: 7
           overwrite: true
 
+  # Builds and seals the candidate. Its source tests run beside it in
+  # `source-tests`; the required "Release candidate check" below joins both.
   unit:
-    name: Release candidate check
+    name: Release candidate build
     needs: plan
     runs-on: ubuntu-latest
     steps:
@@ -68,7 +70,7 @@ jobs:
       - run: npm ci
       - name: Validate release candidate
         if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'
-        run: node scripts/oss-release-check.mjs --release-artifacts
+        run: node scripts/oss-release-check.mjs --release-artifacts --skip-tests
       # The reuse lane only rebuilds and seals docs: the artifact names this source SHA.
       - name: Validate documentation candidate
         if: needs.plan.outputs.lane == 'docs' || needs.plan.outputs.lane == 'reuse'
@@ -84,6 +86,48 @@ jobs:
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 30
+
+  # The tests the sequential release check runs, split in two runners.
+  source-tests:
+    name: Source tests (${{ matrix.suite }})
+    needs: plan
+    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [infra, workspaces]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22.23.1'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run infrastructure tests
+        if: matrix.suite == 'infra'
+        run: npm run test:infra
+      - name: Run workspace tests
+        if: matrix.suite == 'workspaces'
+        run: npm run test --workspaces --if-present
+
+  # Keeps the required "Release candidate check": it passes only when the
+  # candidate build passed and its source tests passed or the lane skipped them.
+  candidate:
+    name: Release candidate check
+    needs: [plan, unit, source-tests]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          BUILD: ${{ needs.unit.result }}
+          TESTS: ${{ needs.source-tests.result }}
+        run: |
+          echo "plan=$PLAN build=$BUILD tests=$TESTS"
+          [ "$PLAN" = success ] && [ "$BUILD" = success ] && { [ "$TESTS" = success ] || [ "$TESTS" = skipped ]; }
 
   dependencies:
     name: Verify pinned build dependencies
@@ -148,14 +192,14 @@ jobs:
   # The suite runs on one worker because the datastore is global per server, so
   # each shard gets its own runner, server and fixtures to cut wall-clock time.
   e2e-shard:
-    name: Playwright e2e (${{ matrix.shard }}/3)
+    name: Playwright e2e (${{ matrix.shard }}/4)
     needs: plan
     if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -166,7 +210,7 @@ jobs:
       - name: Install Playwright browsers
         run: npm run test:e2e:install --workspace=@typeroll/portal
       - name: Run Playwright
-        run: npm run test:e2e --workspace=@typeroll/portal -- --shard=${{ matrix.shard }}/3
+        run: npm run test:e2e --workspace=@typeroll/portal -- --shard=${{ matrix.shard }}/4
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

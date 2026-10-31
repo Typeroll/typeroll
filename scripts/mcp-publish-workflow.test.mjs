@@ -39,12 +39,25 @@ test('documentation-only skips are bound to the conservative source plan and sti
 test('the required Playwright e2e check passes only when every shard passed or the lane skipped them', () => {
   const shards = jobSource(testWorkflow, 'e2e-shard');
   assert.match(shards, /fail-fast: false/);
-  assert.match(shards, /shard: \[1, 2, 3\]/);
-  assert.match(shards, /--shard=\$\{\{ matrix\.shard \}\}\/3/);
+  assert.match(shards, /shard: \[1, 2, 3, 4\]/);
+  assert.match(shards, /--shard=\$\{\{ matrix\.shard \}\}\/4/);
   const check = jobSource(testWorkflow, 'e2e');
   assert.match(check, /name: Playwright e2e\n/);
   assert.match(check, /needs: \[plan, e2e-shard\]\n    if: always\(\)/);
   assert.match(check, /\[ "\$PLAN" = success \] && \{ \[ "\$SHARDS" = success \] \|\| \[ "\$SHARDS" = skipped \]; \}/);
+});
+
+test('the required release candidate check joins the candidate build and its parallel source tests', () => {
+  assert.match(jobSource(testWorkflow, 'unit'), /oss-release-check\.mjs --release-artifacts --skip-tests/);
+  const tests = jobSource(testWorkflow, 'source-tests');
+  assert.match(tests, /needs: plan\n    if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'/);
+  assert.match(tests, /suite: \[infra, workspaces\]/);
+  assert.match(tests, /npm run test:infra/);
+  assert.match(tests, /npm run test --workspaces --if-present/);
+  const check = jobSource(testWorkflow, 'candidate');
+  assert.match(check, /name: Release candidate check\n/);
+  assert.match(check, /needs: \[plan, unit, source-tests\]\n    if: always\(\)/);
+  assert.match(check, /\[ "\$BUILD" = success \]/);
 });
 
 test('main reuses only a recorded pull request qualification and still probes dependencies and seals docs', () => {
