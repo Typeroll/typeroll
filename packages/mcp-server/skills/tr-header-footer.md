@@ -123,6 +123,8 @@ visible focus, long labels, no-JavaScript links and no horizontal overflow.
 
 Each entry in `links` (`core/navigation_links` and `core/navigation`) may set
 `link_rel`, for example `nofollow sponsored` on an affiliate or partner link.
+A `core/tabs` choice with a direct `href` accepts `link_rel` and `new_tab` too,
+so a partner banner built from tabs can mark its links the same way.
 
 ## Footer tree and consent
 

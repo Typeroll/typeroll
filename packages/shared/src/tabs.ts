@@ -2,6 +2,7 @@ import type { BlockType } from "./types.js";
 import { pixels } from "./presentation-fields.js";
 import { renderIconHtml } from "./icons.js";
 import { uiLanguage } from "./ui-text.js";
+import { linkTargetAttributes } from "./link-attributes.js";
 import { surfaceColor } from "./surface-presentation.js";
 const esc = (value: unknown) =>
   String(value ?? "").replace(
@@ -55,7 +56,7 @@ export function prepareTabs(
       const href = safeHref(label.href);
       if (href)
         links.push(
-          `<a class="block-tabs-choice" href="${esc(href)}">${icon}${title}</a>`,
+          `<a class="block-tabs-choice" href="${esc(href)}"${linkTargetAttributes(label.link_rel, label.new_tab)}>${icon}${title}</a>`,
         );
       continue;
     }
@@ -170,6 +171,17 @@ export const tabs: BlockType = {
           name: "href",
           type: "text",
           label: "Direct link instead of a tab (optional)",
+        },
+        {
+          name: "link_rel",
+          type: "text",
+          label: "Link relationship (e.g. nofollow sponsored)",
+        },
+        {
+          name: "new_tab",
+          type: "boolean",
+          label: "Open direct link in a new tab",
+          default: false,
         },
       ],
     },

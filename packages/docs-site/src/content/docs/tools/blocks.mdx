@@ -1752,7 +1752,8 @@ and an Extension component.
 
 `core/tabs` accepts up to six `labels` and matching `slots`. A label without
 `href` selects its slot; a label with `href` is a normal link and ignores its
-slot. Labels support `icon`. Tab buttons precede direct links in the strip. Set `choice_flow: "continuous"`
+slot. A direct link accepts `link_rel`, for example `nofollow sponsored` on an
+affiliate link, and `new_tab: true`, exactly as on buttons. Labels support `icon`. Tab buttons precede direct links in the strip. Set `choice_flow: "continuous"`
 to let individual choices wrap together; `grouped` keeps the two groups together.
 `choice_row_gap_px`, `headline_font_size_px` and `headline_line_height` allow
 separate row and headline rhythm.
