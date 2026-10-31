@@ -218,6 +218,8 @@ documentation-only push.
 
 For full candidates, source checks and Playwright run independently on isolated
 runners after scope selection; both must pass before `Release OSS` can start.
+Playwright is split into three shards, each with its own server and fixtures,
+and the required `Playwright e2e` check passes only when every shard passed.
 A third early job downloads
 the pinned Bubblewrap archive and AppArmor profile, rejects redirects/oversize
 responses, and verifies their exact hashes. Availability failures stop before
