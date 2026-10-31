@@ -114,7 +114,7 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'read_organization_build_engine', noSite: true,
-    description: 'Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization. Requires an organization API key. No provider credentials are returned.',
+    description: 'Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization (each with job_id, site_id, kind and status; image preparation jobs are media-…). Requires an organization API key; REST: GET /api/v1/publishing/builds. No provider credentials are returned.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/builds'))),
   },

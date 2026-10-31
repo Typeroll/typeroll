@@ -233,7 +233,7 @@ Deploy each site (`trigger_deploy`), then check what it actually serves.
 **Publish one site at a time.** All sites in an organization share one
 organization build engine, and its runners claim the oldest task in the
 organization. Start the next site's `trigger_deploy` only when the previous
-job is `succeeded` or `failed` and `read_organization_build_engine` shows no
+job is `succeeded` or `failed` and `read_organization_build_engine` (REST: `GET /api/v1/publishing/builds` with an organization API key) shows no
 `active_jobs`. Concurrent publications at best queue; on Core ≤0.2.132 they
 could fail each other with `build_result_missing`.
 

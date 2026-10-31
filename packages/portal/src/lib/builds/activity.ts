@@ -13,7 +13,7 @@ export async function activeBuilds(org: string) {
   return Promise.all(tasks.map(async task => {
     const input = await store.getDoc<BuildInput>(buildInputPath(org, task.id));
     const site = input?.kind !== 'qualification' ? await store.getDoc<{ name: string }>(paths.site(org, task.identity.site_id)) : null;
-    return { key: task.id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
+    return { key: task.id, job_id: task.identity.job_id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
       kind: input?.kind, version_id: task.identity.version_id, status: task.status, provider: input?.provider ?? 'cloudflare', attempt: task.attempt, static_verification: input?.kind === 'static_verification' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
   }));
 }
