@@ -45,6 +45,7 @@ import {
   MAIN_VERSION_ID,
   renderBlocks,
   renderCookieConsent,
+  settingsForLanguage,
   createPageSource,
   DEFAULT_CONTENT_TYPE,
   contentPagePath,
@@ -151,7 +152,8 @@ export async function renderPreview(
 
   const storedSettings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
   const renderVersion = resolveRenderVersion(opts.renderVersion ?? storedSettings.render_version);
-  const settings: SiteSettings = { ...storedSettings, render_version: renderVersion };
+  // A page in a language section previews with that section's wording, as published.
+  const settings: SiteSettings = settingsForLanguage({ ...storedSettings, render_version: renderVersion }, page.language);
   let partials = await vstore.partials(orgId, siteId, versionId);
   if (opts.includeWorkingCopies) {
     const wcs = await listWorkingCopies({ orgId, siteId, versionId });

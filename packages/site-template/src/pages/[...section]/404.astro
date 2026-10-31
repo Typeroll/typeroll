@@ -1,0 +1,20 @@
+---
+// A 404 page per language section, published at <home_path>404.html. Hosts
+// that serve the nearest 404.html, such as Cloudflare Pages, answer a missing
+// /sv/… address with the Swedish page. Astro writes these as
+// <home_path>404/index.html; the not-found-pages integration moves them.
+import NotFound from '../../components/NotFound.astro';
+import { getSiteSettings } from '../../lib/content';
+import type { LanguageSection } from '@typeroll/shared';
+
+export async function getStaticPaths() {
+  const settings = await getSiteSettings();
+  return (settings.language_sections ?? []).map((section: LanguageSection) => ({
+    params: { section: section.home_path.replace(/^\/+|\/+$/g, '') },
+    props: { section },
+  }));
+}
+
+const { section } = Astro.props as { section: LanguageSection };
+---
+<NotFound section={section} />

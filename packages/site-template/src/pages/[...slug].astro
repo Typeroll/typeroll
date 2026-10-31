@@ -46,7 +46,7 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   pageIdentityAttributes,
 } from '@typeroll/shared';
 import type { Block, RenderContext } from '@typeroll/shared';
-import { resolveBreakpointWidths, resolveRenderVersion } from '@typeroll/shared';
+import { resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage } from '@typeroll/shared';
 import { getPageTemplate } from '../lib/content';
 
 import { getChangedSiteRoutes, type PageProps } from '../lib/routes';
@@ -54,7 +54,8 @@ type Props = PageProps;
 export const getStaticPaths = getChangedSiteRoutes;
 
 const props = Astro.props as Props;
-const settings = await getSiteSettings();
+// A page in a language section renders with that section's wording.
+const settings = settingsForLanguage(await getSiteSettings(), props.page.language);
 const iframeAllowedHosts = settings.iframe_allowed_hosts ?? [];
 const renderVersion = resolveRenderVersion(settings.render_version);
 const appsPublic = await getAppsPublic();

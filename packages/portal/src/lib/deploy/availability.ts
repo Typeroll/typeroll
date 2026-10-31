@@ -19,7 +19,7 @@ export async function stampPublication(buildDir: string): Promise<{ id: string; 
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const relative = `${prefix}${entry.name}`;
       if (entry.isDirectory()) await walk(path.join(directory, entry.name), `${relative}/`);
-      else if (entry.isFile() && entry.name.endsWith('.html') && relative !== '404.html') {
+      else if (entry.isFile() && entry.name.endsWith('.html') && entry.name !== '404.html') {
         routes.push(`/${relative.replace(/index\.html$/, '').replace(/\.html$/, '')}`);
       }
     }

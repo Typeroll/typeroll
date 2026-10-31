@@ -56,6 +56,7 @@ import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
 import { uiText } from './ui-text.js';
+import { languageSectionFor, type LanguageSection } from './language-sections.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
 import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
@@ -380,9 +381,19 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
       ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(name)}" />` : escapeHtml(name);
   }
   if (effectiveBlock.type === 'template/page_breadcrumbs') {
+    // On a site with language sections the home crumb is the home page of the
+    // page's language, and the untouched default label follows that language.
+    const site = options.context?.site;
+    const sections = Array.isArray(site?.language_sections) ? site.language_sections as LanguageSection[] : [];
+    const section = languageSectionFor(sections, options.context?.page?.language);
+    const authoredLabel = String(compiled.flatData.home_label ?? '').trim();
+    const homeLabel = sections.length && (!authoredLabel || authoredLabel === 'Home')
+      ? uiText(options.context?.page?.language ?? site?.language, 'home')
+      : authoredLabel || 'Home';
     compiled.flatData.breadcrumbs_html = renderBreadcrumbs(
       options.context?.page?.breadcrumbs,
-      String(compiled.flatData.home_label ?? 'Home'),
+      homeLabel,
+      section ? applyTrailingSlash(section.home_path, (site?.trailing_slash as TrailingSlashPolicy | undefined) ?? 'always') : '/',
     );
   }
   if (effectiveBlock.type === 'core/table_of_contents') {
@@ -1290,16 +1301,19 @@ function substituteFlatFields(
   return out;
 }
 
-function renderBreadcrumbs(raw: unknown, homeLabel: string): string {
+function renderBreadcrumbs(raw: unknown, homeLabel: string, homeHref = '/'): string {
   const candidates = Array.isArray(raw) ? raw : [];
   const crumbs: Array<{ label: string; href: string; current: boolean }> = [
-    { label: homeLabel, href: '/', current: false },
+    { label: homeLabel, href: homeHref, current: false },
   ];
+  const sameRoute = (a: string, b: string) => a.replace(/\/+$/, '') === b.replace(/\/+$/, '');
   for (const candidate of candidates) {
     if (!candidate || typeof candidate !== 'object') continue;
     const item = candidate as Record<string, unknown>;
     const label = String(item.label ?? '').trim();
     if (!label) continue;
+    // A section's home page is already the home crumb.
+    if (homeHref !== '/' && typeof item.href === 'string' && sameRoute(item.href, homeHref)) continue;
     crumbs.push({
       label,
       href: typeof item.href === 'string' ? item.href : '',

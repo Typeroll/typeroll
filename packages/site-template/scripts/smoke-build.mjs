@@ -903,5 +903,64 @@ await (async function nativeCollectionCompositionScenario() {
   });
 })();
 
+// Scenario: one site, two languages. Finnish is the site language at the root
+// and Swedish is a language section under /sv/. Pages in the section get its
+// header and footer variant (show_if on page.language), banner wording, home
+// crumb and a 404 page at /sv/404.html that hosts serve for missing /sv/ paths.
+await (async function languageSectionsScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-lang-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+  const version = join(tmpFixtures, 'organizations', 'default', 'sites', 'default', 'versions', 'main');
+  const settingsPath = join(version, 'settings', 'default.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.language = 'fi';
+  settings.cookie_consent = { enabled: true, text: '<p>FI-BANNER</p>', privacy_policy_url: '/evasteet/' };
+  settings.language_sections = [{
+    language: 'sv-SE', home_path: '/sv/', tagline: 'SV-TAGLINE',
+    cookie_consent: { text: '<p>SV-BANNER</p>', privacy_policy_url: '/sv/cookies/' },
+  }];
+  writeFileSync(settingsPath, JSON.stringify(settings));
+  const html = (id, markup) => ({ id, type: 'core/html', data: { html: markup } });
+  writeFileSync(join(version, 'partials', 'header.json'), JSON.stringify({
+    name: 'Main header', kind: 'header', content_mode: 'blocks', status: 'published',
+    blocks: [
+      { id: 'sv-menu', type: 'template/show_if', data: { condition: 'page.language === "sv-SE"' }, children: [html('sv-menu-html', '<nav>SV-MENU</nav>')] },
+      { id: 'fi-menu', type: 'template/show_if', data: { condition: 'page.language !== "sv-SE"' }, children: [html('fi-menu-html', '<nav>FI-MENU</nav>')] },
+    ],
+  }));
+  const breadcrumbs = { id: 'crumbs', type: 'template/page_breadcrumbs', data: { home_label: 'Home', aria_label: 'Breadcrumbs' } };
+  writeFileSync(join(version, 'pages', 'sv-home.json'), JSON.stringify({
+    title: 'Svenska', slug: 'sv', path: '/sv', language: 'sv-SE', content_mode: 'blocks', status: 'published', content_type: 'page', fields: {},
+    blocks: [html('sv-home-body', '<h1>Svenska</h1>')],
+  }));
+  writeFileSync(join(version, 'pages', 'sv-article.json'), JSON.stringify({
+    title: 'Artikel', slug: 'artikel', path: '/sv/artikel', parent: 'sv-home', language: 'sv-SE', content_mode: 'blocks', status: 'published', content_type: 'page', fields: {},
+    blocks: [breadcrumbs, html('sv-article-body', '<h1>Artikel</h1>')],
+  }));
+
+  await build('language-sections', { TYPEROLL_FIXTURES_DIR: tmpFixtures }, (outDir) => {
+    const sv = readFileSync(join(outDir, 'sv', 'artikel', 'index.html'), 'utf8');
+    const fi = readFileSync(join(outDir, 'about', 'index.html'), 'utf8');
+    if (!sv.includes('lang="sv-SE"')) fail('[language-sections] Swedish page lost its language');
+    if (!sv.includes('SV-MENU') || sv.includes('FI-MENU')) fail('[language-sections] Swedish page did not get only the Swedish header');
+    if (!fi.includes('FI-MENU') || fi.includes('SV-MENU')) fail('[language-sections] Finnish page did not get only the Finnish header');
+    if (!sv.includes('SV-BANNER') || !sv.includes('href="/sv/cookies/"') || sv.includes('FI-BANNER')) fail('[language-sections] Swedish page did not get the Swedish banner');
+    if (!fi.includes('FI-BANNER') || !fi.includes('href="/evasteet/"') || fi.includes('SV-BANNER')) fail('[language-sections] Finnish page did not get the Finnish banner');
+    if (!sv.includes('<a href="/sv/">Startsida</a>')) fail('[language-sections] Swedish home crumb is not "Startsida" linking to /sv/');
+    if (/<a href="\/sv\/?">Svenska<\/a>/.test(sv)) fail('[language-sections] section home page repeated as a crumb');
+    if (!existsSync(join(outDir, 'sv', '404.html')) || existsSync(join(outDir, 'sv', '404'))) fail('[language-sections] section 404 page was not moved to sv/404.html');
+    const notFound = readFileSync(join(outDir, 'sv', '404.html'), 'utf8');
+    if (!notFound.includes('Sidan hittades inte') || !notFound.includes('href="/sv/"') || !notFound.includes('SV-MENU') || !notFound.includes('lang="sv-SE"')) {
+      fail('[language-sections] Swedish 404 lacks its text, home link, header or language');
+    }
+    const rootNotFound = readFileSync(join(outDir, '404.html'), 'utf8');
+    if (!rootNotFound.includes('Sivua ei löydy') || !rootNotFound.includes('FI-MENU')) fail('[language-sections] root 404 is not the Finnish page');
+    log('[language-sections] ✓ per-language header, banner, home crumb and 404');
+  });
+})();
+
 log('OK — all smoke scenarios passed');
 process.exit(0);
