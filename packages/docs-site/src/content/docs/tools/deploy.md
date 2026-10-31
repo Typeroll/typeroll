@@ -226,6 +226,13 @@ returns the existing job; it does not start another verification chain.
 build whose normal public URL still returns old bytes. Inspect `static_probe`
 and `cache_recovery` in `get_deploy_status`; do not start a new build.
 
+A domain preparation checks the files at the current address before it offers
+the switch. When an old file is still cached there, Typeroll refreshes the cache
+for that file's path on that hostname only, as it does for a normal publication.
+If the stale file persists, the job fails with
+`publication_cache_refresh_required` and resumes through the same retry, with
+or without an approved zone refresh. Traffic and DNS stay unchanged.
+
 Without extra arguments, retry remains read-only. An administrator of the owning
 Organization can explicitly approve a zone-wide Cloudflare cache refresh:
 
