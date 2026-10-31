@@ -13,7 +13,7 @@ const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const stringFields = {
   site: ['name', 'domain', 'domain_alias'],
   settings: ['site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'scripts_head', 'scripts_body_end', 'custom_css', 'language', 'twitter_handle', 'default_seo_suffix', 'default_meta_description', 'image_sizes_default', 'default_og_image', 'robots_txt', 'trailing_slash'],
-  page: ['id', 'content_type', 'template', 'title', 'breadcrumb_label', 'slug', 'path', 'parent', 'content_mode', 'html_content', 'custom_css', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'lastmod_override', 'json_ld', 'kind', 'schema_type', 'author', 'image_sizes_default', 'status', 'date_updated', 'date_published'],
+  page: ['id', 'content_type', 'template', 'title', 'breadcrumb_label', 'slug', 'path', 'parent', 'language', 'content_mode', 'html_content', 'custom_css', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'lastmod_override', 'json_ld', 'kind', 'schema_type', 'author', 'image_sizes_default', 'status', 'date_updated', 'date_published'],
   partial: ['id', 'name', 'kind', 'content_mode', 'html_content', 'status', 'date_updated'],
   media: ['id', 'filename', 'cdn_url', 'alt_text', 'title', 'caption', 'mime_type'],
 };
