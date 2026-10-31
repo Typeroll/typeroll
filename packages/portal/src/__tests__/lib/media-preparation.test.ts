@@ -46,9 +46,32 @@ it('prepares only ready private images, retains new uploads and never creates a 
   await runPendingMediaPreparation('org');
   expect(await store.getDoc(`${paths.media('org', 'site')}/image`)).toMatchObject({ preparation: { state: 'ready', source_sha256: 'b'.repeat(64) } });
   expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'queued' });
+  // A request during the round waits for its quiet window before the next round.
   await runPendingMediaPreparation('org');
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'queued' });
+  await releaseDelay(); await runPendingMediaPreparation('org');
   expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'complete' });
   expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+});
+
+it('waits for uploads to go quiet, up to a cap, so a slow import series shares one job', async () => {
+  const { preparationStartAt, PREPARATION_QUIET_MS, PREPARATION_MAX_WAIT_MS } = await import('../../lib/media/preparation');
+  const store = getStore();
+  const job = async () => (await store.listDocs<{ next_at: number; first_requested_at: number }>('media_preparations'))[0]!;
+  const image = (id: string) => store.setDoc(`${paths.media('org', 'site')}/${id}`, { mime_type: 'image/png', sha256: id.padEnd(64, '0'), storage: { provider: 'organization_r2', state: 'ready', key: id } });
+  await image('a'); await requestMediaPreparation('org', 'site', 'a');
+  const first = await job();
+  expect(first.next_at - first.first_requested_at).toBe(PREPARATION_QUIET_MS);
+  // A later upload pushes the start back; the first request still bounds it.
+  await store.updateDoc(`media_preparations/${(first as any).id}`, { first_requested_at: Date.now() - PREPARATION_MAX_WAIT_MS + 1000 });
+  await image('b'); await requestMediaPreparation('org', 'site', 'b');
+  const later = await job();
+  expect(later.next_at).toBeLessThanOrEqual(later.first_requested_at + PREPARATION_MAX_WAIT_MS);
+  expect(later.next_at).toBeLessThan(Date.now() + PREPARATION_QUIET_MS);
+  expect(preparationStartAt(1000, 1000)).toBe(1000 + PREPARATION_QUIET_MS);
+  // An explicit request starts without waiting.
+  await requestMediaPreparation('org', 'site');
+  expect((await job()).next_at).toBeLessThanOrEqual(Date.now());
 });
 
 async function configureEngine() {
@@ -99,7 +122,7 @@ it('uploads arriving during an active batch survive completion, including a chan
   mocks.completed.mockResolvedValue({ task: {}, files: {} });
   await runPendingMediaPreparation('org');
   expect(await store.getDoc(`${paths.media('org', 'site')}/first`)).toMatchObject({ preparation_pending: true });
-  await runPendingMediaPreparation('org');
+  await releaseDelay(); await runPendingMediaPreparation('org');
   const publication = mocks.source.mock.calls[1][0] as any;
   expect(publication.media_manifest.entries.map((entry: any) => [entry.id, entry.sha256])).toEqual([
     ['first', 'c'.repeat(64)], ['second', 'b'.repeat(64)],
@@ -129,7 +152,7 @@ it('finishes a legacy queued library job before switching later uploads to targe
   expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'complete' });
   await store.setDoc(`${paths.media('org', 'site')}/unmarked`, imageDoc('b'));
   await store.setDoc(`${paths.media('org', 'site')}/new`, imageDoc('c'));
-  await requestMediaPreparation('org', 'site', 'new'); await runPendingMediaPreparation('org');
+  await requestMediaPreparation('org', 'site', 'new'); await releaseDelay(); await runPendingMediaPreparation('org');
   expect((mocks.source.mock.calls[1][0] as any).media_manifest.entries.map((entry: any) => entry.id)).toEqual(['new']);
 });
 
