@@ -12,7 +12,7 @@ import { contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 //   - the inventory entry's `excluded` flag
 // so it never goes stale.
 
-import { paths, MAIN_VERSION_ID, isRedirectPattern, isQueryRedirect, matchRedirect, sortRedirectsForEmit } from '@typeroll/shared';
+import { paths, MAIN_VERSION_ID, isRedirectPattern, isQueryRedirect, matchRedirect, sortRedirectsForEmit, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing } from '@typeroll/shared';
 import { vstore } from '../version-store';
 import type {
   ContentType,
@@ -29,7 +29,20 @@ export interface AnalyzedUrl extends MigrationUrl {
   /** When status is migrated or redirected, where the URL resolves on the new site. */
   target?: string;
   matched_page_id?: string;
+  /**
+   * Set when the build itself produces the URL rather than a Page: archive
+   * pagination of a Page with a paginated listing (`/blog/page/2`), or a file
+   * every publication writes (`/favicon.ico`, `/robots.txt`, …). Such a URL
+   * counts as migrated; deployed URL parity still verifies it answers.
+   */
+  generated?: 'archive_pagination' | 'site_file';
 }
+
+/** Files every publication writes at the site root (site-template pages and site icons). */
+export const GENERATED_SITE_FILES: ReadonlySet<string> = new Set([
+  '/favicon.ico', '/robots.txt', '/sitemap.xml', '/sitemap-images.xml', '/llms.txt',
+]);
+const ARCHIVE_PAGE = /^(.*?)\/page\/(\d+)$/;
 
 export interface CoverageSummary {
   total: number;
@@ -426,6 +439,33 @@ export async function analyzeCoverage(
   // than a second opinion about it: most specific first, first match wins.
   const orderedPatterns = sortRedirectsForEmit(patternRules);
 
+  // Archive pagination: the build writes `<page>/page/N` for a Page whose
+  // blocks (with its template) hold a paginated listing (site-template
+  // routes.ts). Read templates and block types only when the inventory holds
+  // such a path.
+  const paginatedBases = new Set<string>();
+  if (inventory.some(entry => !entry.excluded && ARCHIVE_PAGE.test(normalizePath(entry.path)))) {
+    const [templates, blockTypes] = await Promise.all([
+      vstore.pageTemplates(orgId, siteId, versionId),
+      vstore.blockTypes(orgId, siteId, versionId),
+    ]);
+    const registry = buildCoreBlockRegistry();
+    for (const type of blockTypes) if (type?.id) registry.set(type.id, type);
+    const templateBlocks = new Map(templates.filter(template => template.status === 'published').map(template => [template.id, template.blocks ?? []]));
+    for (const [url, page] of pageByUrl) {
+      if (page.content_mode !== 'blocks' || !page.blocks?.length) continue;
+      const template = page.template ? templateBlocks.get(page.template) : undefined;
+      const blocks = template?.length ? composePageWithTemplate(template, page.blocks) : page.blocks;
+      if (findPaginatedListing(blocks, registry)) paginatedBases.add(url);
+    }
+  }
+  const generatedKind = (path: string): AnalyzedUrl['generated'] | undefined => {
+    if (GENERATED_SITE_FILES.has(path)) return 'site_file';
+    const archive = ARCHIVE_PAGE.exec(path);
+    if (archive && Number(archive[2]) >= 2 && paginatedBases.has(archive[1] || '/')) return 'archive_pagination';
+    return undefined;
+  };
+
   const urls: AnalyzedUrl[] = inventory.map((entry) => {
     const path = normalizePath(entry.path);
     let status: UrlStatus;
@@ -449,6 +489,9 @@ export async function analyzeCoverage(
       if (hit) {
         status = 'redirected';
         target = hit;
+      } else if (generatedKind(path)) {
+        status = 'migrated';
+        target = path;
       } else {
         status = draftByUrl.has(path) ? 'matched_draft' : 'unhandled';
         if (status === 'matched_draft') target = path;
@@ -462,6 +505,7 @@ export async function analyzeCoverage(
       status,
       target,
       ...(status === 'matched_draft' ? { matched_page_id: draftByUrl.get(path)!.id } : {}),
+      ...(status === 'migrated' && !pageByUrl.has(path) && generatedKind(path) ? { generated: generatedKind(path) } : {}),
     };
   });
 

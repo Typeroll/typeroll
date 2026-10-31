@@ -44,7 +44,12 @@ The first classifies each inventory entry against the site's current pages and r
 
 Returns the inventory with a live coverage status per entry:
 
-- `migrated` — a Page answers at that path
+- `migrated` — a Page answers at that path, or the build writes it: archive
+  pagination of a published Page with a paginated listing (`/blog/page/2`,
+  marked `generated: "archive_pagination"`) or a root file every publication
+  writes (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `/sitemap-images.xml`,
+  `/llms.txt`, marked `generated: "site_file"`). Deployed URL parity still
+  verifies that these answer.
 - `redirected` — a redirect rule covers it
 - `excluded` — you decided it should 404
 - `matched_draft` — a matching Page exists but is not published; this is not live coverage
