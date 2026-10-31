@@ -164,7 +164,9 @@ publication when the previous job has `succeeded` or `failed` and
 `read_organization_build_engine` shows no `active_jobs`. Scripts read the same
 status with an organization API key from `GET /api/v1/publishing/builds`; each
 active job lists its `job_id` (a deploy id, or `media-…` for image preparation),
-`site_id`, `kind` and `status`. Concurrent
+`site_id`, `kind` and `status`. A publication stays listed with status
+`publishing` after its build, while its files upload and the public deployment
+is verified, until its deploy reaches `succeeded` or `failed`. Concurrent
 publications at best queue; up to Core 0.2.132 they could fail each other with
 `build_result_missing`. That code means the build engine stopped without
 reporting a result: a runner never ran the task, and the content did not cause
