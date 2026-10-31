@@ -19,6 +19,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     accept_all: 'Godkänn alla',
     privacy_link: 'Läs vår integritetspolicy →',
     manage: 'Hantera cookie-inställningar',
+    manage_button: 'Cookies',
   },
   de: {
     text: 'Wir verwenden Cookies, damit die Website funktioniert und um zu verstehen, wie sie genutzt wird. Sie können alle Cookies akzeptieren, nur die notwendigen zulassen oder ablehnen.',
@@ -28,6 +29,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     accept_all: 'Alle akzeptieren',
     privacy_link: 'Datenschutzerklärung lesen →',
     manage: 'Cookie-Einstellungen verwalten',
+    manage_button: 'Cookies',
   },
   nl: {
     text: 'We gebruiken cookies om deze website te laten werken en om te begrijpen hoe die wordt gebruikt. Je kunt alle cookies accepteren, alleen de noodzakelijke toestaan of weigeren.',
@@ -37,6 +39,67 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     accept_all: 'Alles accepteren',
     privacy_link: 'Lees ons privacybeleid →',
     manage: 'Cookie-instellingen beheren',
+    manage_button: 'Cookies',
+  },
+  nb: {
+    text: 'Vi bruker informasjonskapsler for at nettstedet skal fungere og for å forstå hvordan det brukes. Du kan godta alle informasjonskapsler, bare de nødvendige, eller avslå.',
+    title: 'Informasjonskapsler på dette nettstedet',
+    reject: 'Avslå',
+    necessary: 'Bare nødvendige',
+    accept_all: 'Godta alle',
+    privacy_link: 'Les personvernerklæringen vår →',
+    manage: 'Administrer innstillinger for informasjonskapsler',
+    manage_button: 'Cookies',
+  },
+  fi: {
+    text: 'Käytämme evästeitä, jotta sivusto toimii ja jotta ymmärrämme, miten sitä käytetään. Voit hyväksyä kaikki evästeet, sallia vain välttämättömät tai kieltäytyä.',
+    title: 'Evästeet tällä sivustolla',
+    reject: 'Hylkää',
+    necessary: 'Vain välttämättömät',
+    accept_all: 'Hyväksy kaikki',
+    privacy_link: 'Lue tietosuojaselosteemme →',
+    manage: 'Hallitse evästeasetuksia',
+    manage_button: 'Evästeet',
+  },
+  fr: {
+    text: 'Nous utilisons des cookies pour faire fonctionner ce site et comprendre comment il est utilisé. Vous pouvez accepter tous les cookies, n’autoriser que les cookies nécessaires ou les refuser.',
+    title: 'Cookies sur ce site',
+    reject: 'Refuser',
+    necessary: 'Nécessaires uniquement',
+    accept_all: 'Tout accepter',
+    privacy_link: 'Lire notre politique de confidentialité →',
+    manage: 'Gérer les paramètres des cookies',
+    manage_button: 'Cookies',
+  },
+  pl: {
+    text: 'Używamy plików cookie, aby strona działała i aby zrozumieć, jak jest używana. Możesz zaakceptować wszystkie pliki cookie, zezwolić tylko na niezbędne lub odmówić.',
+    title: 'Pliki cookie na tej stronie',
+    reject: 'Odrzuć',
+    necessary: 'Tylko niezbędne',
+    accept_all: 'Zaakceptuj wszystkie',
+    privacy_link: 'Przeczytaj naszą politykę prywatności →',
+    manage: 'Zarządzaj ustawieniami plików cookie',
+    manage_button: 'Cookies',
+  },
+  it: {
+    text: 'Utilizziamo i cookie per far funzionare questo sito e per capire come viene utilizzato. Puoi accettare tutti i cookie, consentire solo quelli necessari o rifiutarli.',
+    title: 'Cookie su questo sito',
+    reject: 'Rifiuta',
+    necessary: 'Solo necessari',
+    accept_all: 'Accetta tutti',
+    privacy_link: 'Leggi la nostra informativa sulla privacy →',
+    manage: 'Gestisci le impostazioni dei cookie',
+    manage_button: 'Cookie',
+  },
+  es: {
+    text: 'Usamos cookies para que este sitio web funcione y para entender cómo se utiliza. Puedes aceptar todas las cookies, permitir solo las necesarias o rechazarlas.',
+    title: 'Cookies en este sitio web',
+    reject: 'Rechazar',
+    necessary: 'Solo necesarias',
+    accept_all: 'Aceptar todas',
+    privacy_link: 'Lee nuestra política de privacidad →',
+    manage: 'Gestionar la configuración de cookies',
+    manage_button: 'Cookies',
   },
   en: {
     text: 'We use cookies to make this website work and to understand how it is used. You can accept all cookies, allow only the necessary ones, or decline.',
@@ -46,10 +109,11 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     accept_all: 'Accept all',
     privacy_link: 'Read our privacy policy →',
     manage: 'Manage cookie settings',
+    manage_button: 'Cookies',
   },
 };
 
-/** Built-in banner language for a BCP 47 tag: Swedish, German, Dutch, otherwise English. */
+/** Built-in banner language for a BCP 47 tag (ui-text.ts UI_LANGUAGES), otherwise English. */
 export function cookieConsentLanguage(language: unknown): CookieConsentLanguage {
   return uiLanguage(language);
 }
@@ -60,7 +124,7 @@ export function cookieConsentDefaultText(language: unknown): string {
 }
 
 export const COOKIE_CONSENT_LABEL_KEYS = [
-  'title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage',
+  'title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button',
 ] as const;
 export const COOKIE_CONSENT_LABEL_MAX_LENGTH = 120;
 
@@ -103,6 +167,7 @@ function consentLabels(consent: CookieConsentSettings, language: unknown): Conse
     accept_all: pick('accept_all'),
     privacy_link: pick('privacy_link'),
     manage: pick('manage'),
+    manage_button: pick('manage_button'),
   };
 }
 
@@ -204,7 +269,7 @@ export function renderCookieConsent(
 </div>
 <button type="button" class="tr-consent__manage" data-tr-open-consent aria-label="${escapeAttr(labels.manage)}">
   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.5" r=".9" fill="currentColor"/><circle cx="10.5" cy="7.5" r=".7" fill="currentColor"/><circle cx="7" cy="10.5" r=".8" fill="currentColor"/></svg>
-  <span>Cookies</span>
+  <span>${escapeText(labels.manage_button)}</span>
 </button>
 <script data-cookie-consent-runtime="1">${buildConsentRuntime(consent.reload_after_consent === true, options.initialChoice)}</script>`;
 }

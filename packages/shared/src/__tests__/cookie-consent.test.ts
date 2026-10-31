@@ -37,7 +37,7 @@ describe('renderCookieConsent', () => {
     }
     expect(german).not.toMatch(/Neka|Godkänn|webbplatsen|integritetspolicy/);
 
-    const english = renderCookieConsent({ enabled: true }, undefined, 'fr');
+    const english = renderCookieConsent({ enabled: true }, undefined, 'cs');
     expect(english).toContain('>Accept all<');
     expect(english).not.toMatch(/Neka|Ablehnen/);
     expect(cookieConsentLanguage(undefined)).toBe('en');

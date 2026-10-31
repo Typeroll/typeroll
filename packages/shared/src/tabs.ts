@@ -24,6 +24,12 @@ const TABS_TEXT = {
   de: { toggle: "Optionen anzeigen", menu: "Optionen" },
   sv: { toggle: "Visa alternativ", menu: "Alternativ" },
   nl: { toggle: "Opties bekijken", menu: "Opties" },
+  nb: { toggle: "Se alternativer", menu: "Alternativer" },
+  fi: { toggle: "Näytä vaihtoehdot", menu: "Vaihtoehdot" },
+  fr: { toggle: "Voir les options", menu: "Options" },
+  pl: { toggle: "Pokaż opcje", menu: "Opcje" },
+  it: { toggle: "Mostra opzioni", menu: "Opzioni" },
+  es: { toggle: "Ver opciones", menu: "Opciones" },
 } as const;
 function tabsLanguage(language: unknown): keyof typeof TABS_TEXT {
   return uiLanguage(language);

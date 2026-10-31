@@ -149,10 +149,14 @@ Cookie consent is a site feature, not a footer widget. Configure it separately:
 }
 ```
 
-The heading, buttons and links follow the page language: Swedish for `sv`,
-German for `de`, Dutch for `nl`, otherwise English. For any other language,
-write `text` and set `labels` (`title`, `reject`, `necessary`, `accept_all`,
-`privacy_link`, `manage`) in that language. The publication's job `warnings`
+The heading, buttons and links follow the page language: Swedish (`sv`),
+Norwegian Bokmål (`nb`, `no`), German (`de`), Dutch (`nl`), Finnish (`fi`),
+French (`fr`), Polish (`pl`), Italian (`it`) and Spanish (`es`), otherwise
+English. For any other language, write `text` and set `labels` (`title`,
+`reject`, `necessary`, `accept_all`, `privacy_link`, `manage`,
+`manage_button`) in that language. `manage` is the accessible name and
+`manage_button` the visible text of the floating button that reopens the
+banner. The publication's job `warnings`
 list any banner wording and built-in control labels that fall back to English.
 
 Use `update_site_settings`, then read settings back. `scripts_necessary` and
