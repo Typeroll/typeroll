@@ -23,6 +23,7 @@ import {
   styleOverrideWarnings,
   unknownBlockDataFields,
   unknownBlockFields,
+  unknownItemFields,
   type Block,
   type BlockTreeWarning,
   type BlockType,
@@ -69,7 +70,9 @@ export async function singleBlockWriteWarnings(
   const data = setValues(write.data);
   const found = data && Object.keys(data).length ? findBlock(blocks, blockId) : null;
   if (data && found) {
-    warnings.push(...blockDataTypeWarnings({ id: blockId, type: found.block.type, data }, registry ?? await siteBlockRegistry(ctx), blockId));
+    const types = registry ?? await siteBlockRegistry(ctx);
+    warnings.push(...blockDataTypeWarnings({ id: blockId, type: found.block.type, data }, types, blockId));
+    warnings.push(...unknownItemFields({ id: blockId, type: found.block.type, data }, types));
   }
   if (found) warnings.push(...blockBehaviorWarnings({ ...found.block, data: { ...found.block.data, ...write.data } }, blockId));
   return warnings;
