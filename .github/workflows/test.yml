@@ -145,11 +145,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  e2e:
-    name: Playwright e2e
+  # The suite runs on one worker because the datastore is global per server, so
+  # each shard gets its own runner, server and fixtures to cut wall-clock time.
+  e2e-shard:
+    name: Playwright e2e (${{ matrix.shard }}/3)
     needs: plan
     if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
@@ -160,13 +166,28 @@ jobs:
       - name: Install Playwright browsers
         run: npm run test:e2e:install --workspace=@typeroll/portal
       - name: Run Playwright
-        run: npm run test:e2e
+        run: npm run test:e2e --workspace=@typeroll/portal -- --shard=${{ matrix.shard }}/3
       - name: Upload Playwright report on failure
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: |
             packages/portal/playwright-report
             packages/portal/test-results
           retention-days: 7
+
+  # Keeps the required "Playwright e2e" check: it passes only when every shard
+  # passed, or when the lane skipped e2e for all of them.
+  e2e:
+    name: Playwright e2e
+    needs: [plan, e2e-shard]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          PLAN: ${{ needs.plan.result }}
+          SHARDS: ${{ needs.e2e-shard.result }}
+        run: |
+          echo "plan=$PLAN shards=$SHARDS"
+          [ "$PLAN" = success ] && { [ "$SHARDS" = success ] || [ "$SHARDS" = skipped ]; }

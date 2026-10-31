@@ -31,10 +31,20 @@ test('main Tests run the repository release-candidate check with complete histor
 test('documentation-only skips are bound to the conservative source plan and still seal the docs artifact', () => {
   assert.match(testWorkflow, /run: node scripts\/source-check-plan.mjs/);
   assert.match(testWorkflow, /Validate documentation candidate[\s\S]*npm run release:plan[\s\S]*npm run security:audit[\s\S]*--docs-only --release-artifacts/);
-  for (const name of ['dependencies', 'e2e']) {
-    const job = testWorkflow.slice(testWorkflow.indexOf(`\n  ${name}:`));
-    assert.match(job, /needs: plan\n    if: needs.plan.outputs.lane != 'docs'/);
+  for (const name of ['dependencies', 'e2e-shard']) {
+    assert.match(jobSource(testWorkflow, name), /needs: plan\n    if: needs.plan.outputs.lane != 'docs'/);
   }
+});
+
+test('the required Playwright e2e check passes only when every shard passed or the lane skipped them', () => {
+  const shards = jobSource(testWorkflow, 'e2e-shard');
+  assert.match(shards, /fail-fast: false/);
+  assert.match(shards, /shard: \[1, 2, 3\]/);
+  assert.match(shards, /--shard=\$\{\{ matrix\.shard \}\}\/3/);
+  const check = jobSource(testWorkflow, 'e2e');
+  assert.match(check, /name: Playwright e2e\n/);
+  assert.match(check, /needs: \[plan, e2e-shard\]\n    if: always\(\)/);
+  assert.match(check, /\[ "\$PLAN" = success \] && \{ \[ "\$SHARDS" = success \] \|\| \[ "\$SHARDS" = skipped \]; \}/);
 });
 
 test('main reuses only a recorded pull request qualification and still probes dependencies and seals docs', () => {
@@ -42,7 +52,7 @@ test('main reuses only a recorded pull request qualification and still probes de
   // Unknown or missing lanes fall back to the complete gate.
   assert.match(job('unit'), /Validate release candidate\n        if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'/);
   assert.match(job('unit'), /Validate documentation candidate\n        if: needs.plan.outputs.lane == 'docs' \|\| needs.plan.outputs.lane == 'reuse'/);
-  assert.match(job('e2e'), /if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'/);
+  assert.match(job('e2e-shard'), /if: needs.plan.outputs.lane != 'docs' && needs.plan.outputs.lane != 'reuse'/);
   assert.match(job('dependencies'), /if: needs.plan.outputs.lane != 'docs'\n/);
   assert.match(job('unit'), /name: docs-\$\{\{ github\.sha \}\}/);
   // Only same-repository full-lane pull request runs record a tree, and never fail on it.
