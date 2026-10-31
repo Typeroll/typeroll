@@ -119,6 +119,13 @@ load. `&consent=necessary` hides the banner and loads only necessary scripts.
 The sandbox itself is unchanged; a widget that needs a first-party origin may
 still need a test publication.
 
+Use the preview for content and layout review. Its page is a nested frame with
+an opaque origin, served from the portal, so third-party iframes often stay
+empty, consent choices, cookies and storage do not persist, analytics cannot be
+verified, fonts load from Google, and DOM or computed-style reads from a
+reviewing browser are limited. Verify those, and any measured design check, on
+the published temporary or test address.
+
 ## `get_page_preview`
 
 Returns one page rendered as a single HTML document in the response body
@@ -148,6 +155,19 @@ Published and unlisted pages can be deployed. Draft and review pages are
 excluded. Unlisted pages use `noindex`; non-main versions and default-domain
 demos also remain out of search indexes. Build times depend on the content,
 provider queue, dependencies and media work.
+
+### One publication at a time per Organization
+
+All Sites in an Organization share one build engine, and its runners take the
+oldest task in the Organization. Publish one Site at a time: start the next
+publication when the previous job has `succeeded` or `failed` and
+`read_organization_build_engine` shows no `active_jobs`. Concurrent
+publications at best queue; up to Core 0.2.132 they could fail each other with
+`build_result_missing`. That code means the build engine stopped without
+reporting a result: a runner never ran the task, and the content did not cause
+it. Publish again once the engine is idle. `retry_deploy_verification` does not
+apply to it, nor to other build failures; it only retries public verification
+of an already-served publication.
 
 Legacy managed and self-hosted publishing can execute builds in the portal's
 configured runtime. Reported server-cost estimates describe that runtime; they

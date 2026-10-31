@@ -1,5 +1,6 @@
 // @ts-ignore -- the validator is plain JavaScript shared with the frozen publication build.
 import { unnamedImageLinks } from '../../../../site-template/src/lib/publication-validation.mjs';
+import { COOKIE_CONSENT_LABEL_KEYS, lacksUiTranslation } from '@typeroll/shared';
 import { ConnectionError } from './connections';
 
 export interface DryRunValidationIssue { code: 'image_link_unnamed'; page: string; href: string; source: 'image_block' | 'html' }
@@ -39,4 +40,27 @@ export function assertDryRunValidation(pages: Array<Record<string, any>>) {
   if (!issues.length) return;
   const first = issues[0];
   throw new ConnectionError(`Publication validation failed: Image link has no accessible name: ${first.href} (${first.page})${issues.length > 1 ? ` and ${issues.length - 1} more` : ''}. Supply meaningful image alt text or link text.`, 422, 'publication_validation_failed', { issues: issues.slice(0, 50) });
+}
+
+/**
+ * Built-in wording that falls back to English because Typeroll has no
+ * translation for a language the publication uses. Non-blocking: the job
+ * reports it so the site can supply its own banner wording.
+ */
+export function publicationLanguageWarnings(publication: { settings?: Record<string, any>; pages?: Array<Record<string, any>> }): string[] {
+  const languages = new Set([publication.settings?.language, ...(publication.pages ?? []).map(page => page.language)]
+    .filter((language): language is string => typeof language === 'string' && Boolean(language.trim())).map(language => language.trim()));
+  const consent = publication.settings?.cookie_consent;
+  const warnings: string[] = [];
+  for (const language of languages) {
+    if (!lacksUiTranslation(language)) continue;
+    warnings.push(`Typeroll has no built-in ${language} interface text, so ${language} pages use English for the labels of archive pagination, scrollable tables, carousels, videos and tabs.`);
+    if (consent?.enabled !== true) continue;
+    const missing = [
+      ...(String(consent.text ?? '').trim() ? [] : ['cookie_consent.text']),
+      ...COOKIE_CONSENT_LABEL_KEYS.filter(key => !String(consent.labels?.[key] ?? '').trim()).map(key => `cookie_consent.labels.${key}`),
+    ];
+    if (missing.length) warnings.push(`The cookie banner shows English on ${language} pages for ${missing.join(', ')}. Save ${language} wording for them in the site settings.`);
+  }
+  return warnings;
 }

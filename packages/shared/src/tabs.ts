@@ -1,6 +1,7 @@
 import type { BlockType } from "./types.js";
 import { pixels } from "./presentation-fields.js";
 import { renderIconHtml } from "./icons.js";
+import { uiLanguage } from "./ui-text.js";
 import { surfaceColor } from "./surface-presentation.js";
 const esc = (value: unknown) =>
   String(value ?? "").replace(
@@ -21,10 +22,10 @@ const TABS_TEXT = {
   en: { toggle: "Explore options", menu: "Options" },
   de: { toggle: "Optionen anzeigen", menu: "Optionen" },
   sv: { toggle: "Visa alternativ", menu: "Alternativ" },
+  nl: { toggle: "Opties bekijken", menu: "Opties" },
 } as const;
 function tabsLanguage(language: unknown): keyof typeof TABS_TEXT {
-  const tag = String(language ?? "");
-  return /^de\b/i.test(tag) ? "de" : /^sv\b/i.test(tag) ? "sv" : "en";
+  return uiLanguage(language);
 }
 
 export function prepareTabs(

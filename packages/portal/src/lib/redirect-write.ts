@@ -18,6 +18,7 @@
 // The deploy runner keeps its belt-and-braces drop for anything that slips
 // through (a page published after the rule was created).
 
+import { createHash } from 'node:crypto';
 import { paths, validateRedirectPattern, pagesShadowedByRedirect, isRedirectPattern, matchRedirect, sortRedirectsForEmit, contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 import type { ContentType, Page, Redirect } from '@typeroll/shared';
 import { vstore } from './version-store';
@@ -25,27 +26,56 @@ import { isLivePageStatus } from './redirect-hygiene';
 
 export type RedirectWarning = { code: 'redirect_chain' | 'redirect_loop'; from_path: string; via: string[]; final_target: string };
 export type RedirectWriteCheck = { ok: true; warnings?: RedirectWarning[] } | { ok: false; error: string };
+export type RedirectWriteResult = { ok: true; id: string; action: 'create' | 'update'; warnings?: RedirectWarning[] } | { ok: false; error: string };
+
+const MAX_REDIRECT_ID = 120;
 
 /**
  * Doc id for a redirect. Patterns need distinct ids from the literal paths
  * they resemble: a naïve `[^a-zA-Z0-9._-] → _` mapping turns `/blogg/*` and
  * `/blogg/:slug` into the same id, so writing the second would silently
- * overwrite the first.
+ * overwrite the first. A source too long for a readable id keeps a readable
+ * prefix and gets a hash of the full path, so long paths that share their
+ * first 120 characters (WordPress image size variants) stay distinct.
  */
 export function redirectDocId(fromPath: string): string {
-  return (
-    fromPath
-      .replace(/^\//, '')
-      .replace(/\?/g, '__q_')
-      .replace(/&/g, '__and_')
-      .replace(/=/g, '__eq_')
-      .replace(/\*/g, '__splat')
-      .replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '__p_$1')
-      .replace(/[\/\\]/g, '_')
-      .replace(/[^a-zA-Z0-9._-]/g, '_')
-      .slice(0, 120) || `r-${Date.now()}`
-  );
+  const readable = readableRedirectId(fromPath);
+  return readable && readable.length <= MAX_REDIRECT_ID ? readable : hashedRedirectDocId(fromPath);
 }
+
+const readableRedirectId = (fromPath: string) =>
+  fromPath
+    .replace(/^\//, '')
+    .replace(/\?/g, '__q_')
+    .replace(/&/g, '__and_')
+    .replace(/=/g, '__eq_')
+    .replace(/\*/g, '__splat')
+    .replace(/:([A-Za-z_][A-Za-z0-9_]*)/g, '__p_$1')
+    .replace(/[\/\\]/g, '_')
+    .replace(/[^a-zA-Z0-9._-]/g, '_');
+
+function hashedRedirectDocId(fromPath: string): string {
+  const hash = createHash('sha256').update(fromPath).digest('hex').slice(0, 16);
+  const prefix = readableRedirectId(fromPath).slice(0, MAX_REDIRECT_ID - hash.length - 1).replace(/[-_.]+$/, '');
+  return prefix ? `${prefix}-${hash}` : `r-${hash}`;
+}
+
+/**
+ * The id a write of `fromPath` uses: the existing rule's id when the source
+ * path already has one, otherwise a new id that no other source path owns.
+ * The readable mapping is lossy (`/a/b` and `/a_b` share `a_b`), so an id
+ * taken by another path falls back to the hashed form instead of replacing
+ * that rule.
+ */
+export function assignRedirectDocId(fromPath: string, taken: ReadonlyMap<string, string>): { id: string; action: 'create' | 'update' } {
+  for (const [id, owner] of taken) if (owner === fromPath) return { id, action: 'update' };
+  for (const id of [redirectDocId(fromPath), hashedRedirectDocId(fromPath)]) {
+    if (!taken.has(id)) return { id, action: 'create' };
+  }
+  throw new Error(`No free redirect id for ${fromPath}`);
+}
+
+const takenRedirectIds = (rules: Redirect[]) => new Map(rules.map(rule => [rule.id, rule.from_path]));
 
 /**
  * Validate a redirect before it is written. Returns a caller-facing error
@@ -57,7 +87,7 @@ export async function checkRedirectWrite(args: {
   versionId: string;
   from_path: string;
   to_path: string;
-}): Promise<RedirectWriteCheck> {
+}): Promise<RedirectWriteResult> {
   const syntax = checkRedirectSyntax(args.from_path, args.to_path);
   if (!syntax.ok) return syntax;
   const context = await loadRedirectWriteContext(args.orgId, args.siteId, args.versionId);
@@ -65,7 +95,8 @@ export async function checkRedirectWrite(args: {
   if (!shadow.ok) return shadow;
   const warnings = redirectChainWarnings([...context.existing.filter(rule => rule.from_path !== args.from_path), { id:'candidate', from_path:args.from_path, to_path:args.to_path, status_code:301 }]);
   if (createsLoop(warnings, args.from_path)) return { ok: false, error: 'Invalid redirect: this rule creates a redirect loop.' };
-  return { ok: true, ...(warnings.length ? { warnings } : {}) };
+  const { id, action } = assignRedirectDocId(args.from_path, takenRedirectIds(context.existing));
+  return { ok: true, id, action, ...(warnings.length ? { warnings } : {}) };
 }
 
 export type RedirectWriteContext = { liveUrls: string[]; existing: Redirect[] };
@@ -138,12 +169,19 @@ export type RedirectBatchResult = {
  */
 export function checkRedirectBatch(context: RedirectWriteContext, rules: RedirectBatchRule[]): { results: RedirectBatchResult[]; warnings: RedirectWarning[] } {
   const byFrom = new Map(context.existing.map(rule => [rule.from_path, rule]));
+  // Ids are reserved in batch order, so two new rules never share one either.
+  const taken = takenRedirectIds(context.existing);
+  const ids = rules.map(rule => {
+    const { id } = assignRedirectDocId(rule.from_path, taken);
+    taken.set(id, rule.from_path);
+    return id;
+  });
   const merged = new Map(byFrom);
-  for (const rule of rules) merged.set(rule.from_path, { ...(byFrom.get(rule.from_path) ?? {}), id: redirectDocId(rule.from_path), ...rule });
+  rules.forEach((rule, index) => merged.set(rule.from_path, { ...(byFrom.get(rule.from_path) ?? {}), id: ids[index]!, ...rule }));
   const warnings = redirectChainWarnings([...merged.values()]);
-  const results = rules.map<RedirectBatchResult>(rule => {
+  const results = rules.map<RedirectBatchResult>((rule, index) => {
     const current = byFrom.get(rule.from_path);
-    const id = current?.id ?? redirectDocId(rule.from_path);
+    const id = ids[index]!;
     const action = !current ? 'create' : current.to_path === rule.to_path && current.status_code === rule.status_code ? 'unchanged' : 'update';
     const check = [checkRedirectSyntax(rule.from_path, rule.to_path), checkRedirectShadow(context, rule.from_path, rule.to_path)].find(result => !result.ok);
     if (check && !check.ok) return { from_path: rule.from_path, id, action, ok: false, error: check.error };

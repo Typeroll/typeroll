@@ -32,6 +32,7 @@ import { buildMediaLookup, transformBodyForSeo, lintBodyForSeo } from './seo-tra
 import { PROVENANCE_KEY, applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
 import { markSiteDirty } from './auto-deploy';
 import { isLivePageStatus, retireRedirectsShadowingUrl } from './redirect-hygiene';
+import { assignRedirectDocId } from './redirect-write';
 
 export interface WcCtx {
   orgId: string;
@@ -291,7 +292,7 @@ async function maybeAutoRedirect(
   if (!from || !to || from === to) return [];
   const existing = await vstore.redirects(ctx.orgId, ctx.siteId, ctx.versionId);
   if (existing.some((r) => r.from_path === from)) return [];
-  const id = from.replace(/[\/\\]/g, '_').replace(/[^a-zA-Z0-9._-]/g, '_') || `r-${Date.now()}`;
+  const { id } = assignRedirectDocId(from, new Map(existing.map((rule) => [rule.id, rule.from_path])));
   await getStore().setDoc(`${paths.redirects(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`, {
     from_path: from, to_path: to, status_code: 301, auto_generated: true,
   });

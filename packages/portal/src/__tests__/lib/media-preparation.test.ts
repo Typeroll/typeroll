@@ -36,6 +36,10 @@ it('prepares only ready private images, retains new uploads and never creates a 
   expect(publication.media_manifest).toMatchObject({ cache_only: true, original_bucket: 'private' });
   expect(publication.media_manifest.entries).toHaveLength(1);
   expect(mocks.enqueue.mock.calls[0][3]).toBe('media_preparation');
+  // Agents can match the running job to the organization's active builds.
+  const running = await mediaPreparationStatus('org', 'site');
+  expect(running).toMatchObject({ state: 'running', build_job_id: mocks.enqueue.mock.calls[0][1].job_id });
+  expect(running?.build_job_id).toMatch(/^media-/);
   expect(await store.listDocs(paths.deploy('org', 'site', 'unused').replace(/\/unused$/, ''))).toHaveLength(0);
   await requestMediaPreparation('org', 'site');
   mocks.completed.mockResolvedValue({ task: {}, files: {} });
@@ -78,8 +82,8 @@ it('finalizing an already prepared image or non-image creates no background work
   const store = await configureEngine();
   await store.setDoc(`${paths.media('org', 'site')}/ready`, { ...imageDoc('a'), preparation: { state: 'ready', source_sha256: 'a'.repeat(64), recipe: 'v2' } });
   await store.setDoc(`${paths.media('org', 'site')}/pdf`, { ...imageDoc('b'), mime_type: 'application/pdf' });
-  await requestMediaPreparation('org', 'site', 'ready');
-  await requestMediaPreparation('org', 'site', 'pdf');
+  expect(await requestMediaPreparation('org', 'site', 'ready')).toBe(false);
+  expect(await requestMediaPreparation('org', 'site', 'pdf')).toBe(false);
   expect(await store.listDocs('media_preparations')).toEqual([]);
   expect(mocks.transport).not.toHaveBeenCalled();
 });

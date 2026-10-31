@@ -8,10 +8,15 @@ train. Do not push `core-v*` or `mcp-v*` tags manually.
 
 ## Version the candidate
 
-- Bump the root version and both Core literals together when portal, Forms,
-  shared runtime, renderer, hosted MCP, or self-host behavior changes.
-- Bump `packages/mcp-server/package.json` and `src/version.ts` together when the
-  standalone MCP package or its shared contract changes.
+Run `npm run release:bump` once the candidate's changes are complete. It reads
+`npm run release:plan`, bumps Core and/or MCP by a patch (or to `--core` /
+`--mcp`), keeps every version literal and the lockfile in lockstep, aligns Core
+with a newer render version, and prints the passing plan. `--dry-run` shows the
+change first.
+
+- Core changes when portal, Forms, shared runtime, renderer, hosted MCP, or
+  self-host behavior changes.
+- MCP changes when the standalone MCP package or its shared contract changes.
 - Documentation-only changes need no package version bump.
 
 Install dependencies once and run focused checks during development. For broad

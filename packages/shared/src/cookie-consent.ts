@@ -1,11 +1,12 @@
 import type { CookieConsentLabels, CookieConsentSettings } from './types.js';
 import { buildConsentRuntime, wrapConsentScripts } from './consent-scripts.js';
+import { uiLanguage, type UiLanguage } from './ui-text.js';
 
 /** Swedish default body text, kept for callers that predate localization. */
 export const DEFAULT_COOKIE_CONSENT_TEXT =
   'Vi använder cookies för att webbplatsen ska fungera och för att förstå hur den används. Du kan välja att godkänna alla cookies, bara de nödvändiga, eller neka.';
 
-export type CookieConsentLanguage = 'sv' | 'de' | 'en';
+export type CookieConsentLanguage = UiLanguage;
 
 type ConsentStrings = Required<CookieConsentLabels> & { text: string };
 
@@ -28,6 +29,15 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Datenschutzerklärung lesen →',
     manage: 'Cookie-Einstellungen verwalten',
   },
+  nl: {
+    text: 'We gebruiken cookies om deze website te laten werken en om te begrijpen hoe die wordt gebruikt. Je kunt alle cookies accepteren, alleen de noodzakelijke toestaan of weigeren.',
+    title: 'Cookies op deze website',
+    reject: 'Weigeren',
+    necessary: 'Alleen noodzakelijke',
+    accept_all: 'Alles accepteren',
+    privacy_link: 'Lees ons privacybeleid →',
+    manage: 'Cookie-instellingen beheren',
+  },
   en: {
     text: 'We use cookies to make this website work and to understand how it is used. You can accept all cookies, allow only the necessary ones, or decline.',
     title: 'Cookies on this website',
@@ -39,12 +49,9 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
   },
 };
 
-/** Built-in banner language for a BCP 47 tag: Swedish, German, otherwise English. */
+/** Built-in banner language for a BCP 47 tag: Swedish, German, Dutch, otherwise English. */
 export function cookieConsentLanguage(language: unknown): CookieConsentLanguage {
-  const tag = String(language ?? '');
-  if (/^sv\b/i.test(tag)) return 'sv';
-  if (/^de\b/i.test(tag)) return 'de';
-  return 'en';
+  return uiLanguage(language);
 }
 
 /** Default body text shown when the site has not written its own. */

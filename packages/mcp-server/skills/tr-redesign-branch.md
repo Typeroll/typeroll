@@ -161,9 +161,15 @@ bulk_replace_text pattern="OldCo" replacement="NewCo" dry_run=false version="<br
 **Self-review is a multi-DIMENSION pass, not a glance — and most of it you
 MEASURE, not eyeball.** Structural checks (copy present, images return 200) are
 NOT a design review; never report "approved" off them. Don't just list the bugs
-you happened to notice — walk every dimension below on the DB-live preview
-(a reused `get_preview_link`; browser tool + DOM reads), fix what you find,
-reload, re-check. No re-deploy between fixes — the preview renders from the DB.
+you happened to notice — walk every dimension below. Use the DB-live preview
+(a reused `get_preview_link`) for content and layout review: fix, reload,
+re-check, no re-deploy between fixes. It is a sandboxed, opaque-origin frame
+served from the portal, so DOM/computed-style reads from your browser tool are
+limited, third-party iframes usually stay empty, and consent, analytics,
+cookies and font loading cannot be verified there (`?consent=all|necessary`
+only pre-answers the banner). Run the measured checks, embeds, consent,
+analytics and fonts on the published temporary/test address of the branch
+after an authorized publish.
 
 **Use `tr-design-review` (`read_skill tr-design-review`) for the HOW** — it has
 the per-dimension measurement snippets (overflow ladder, computed contrast, touch
@@ -241,7 +247,7 @@ link for your own verification:
   details is for your own one-off checks (a new hash each deploy).
 
 Default: review/iterate on the reused DB-live preview; deploy only for the
-compiled output or merge. Wait for an explicit "looks good, ship it."
+compiled output, the published-address checks in step 6, or merge. Wait for an explicit "looks good, ship it."
 
 ### 7. Merge + deploy
 

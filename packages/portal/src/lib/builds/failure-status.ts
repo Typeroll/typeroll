@@ -4,6 +4,8 @@ import { buildTasksPath, queuedBuildExpired, expireQueuedBuild, type BuildTask }
 import { buildInputPath, readEngineConfiguration, type BuildInput } from './state';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { githubBuildClient, readGithubDispatch } from './github';
+import { dispatchPendingBuild } from './jobs';
+import { ConnectionError } from '../publishing/connections';
 import { buildFailureMessage } from './failure-message';
 
 export { buildFailureMessage } from './failure-message';
@@ -34,13 +36,27 @@ export async function refreshBuildFailure(org: string, site: string, job: Deploy
       const input = await store.getDoc<BuildInput>(buildInputPath(org, key));
       const engine = input && await readEngineConfiguration(org, input.provider ?? 'cloudflare');
       if (input && engine && engine.revision === task.engine_revision && (input.dispatch_id || input.dispatch_uncertain)) {
-        const stopped = input.provider === 'github'
-          ? (await readGithubDispatch(await githubBuildClient(engine), engine, input))?.status === 'completed'
-          : input.dispatch_id && (await (await cloudflareClient(org))(`/accounts/${engine.account_id}/builds/builds/${input.dispatch_id}`))?.status === 'stopped';
-        if (stopped) {
-          await store.compareAndUpdateDoc<BuildTask>(taskPath, current => current.status === 'queued' && current.attempt === task!.attempt,
-            { status: 'failed', token_hash: null, error_code: 'build_result_missing', completed_at: now });
-          task = await store.getDoc<BuildTask>(taskPath);
+        if (input.provider === 'github') {
+          // A GitHub run claims only the task it was dispatched for, so a
+          // completed run that never claimed it lost this build.
+          if ((await readGithubDispatch(await githubBuildClient(engine), engine, input))?.status === 'completed') {
+            await store.compareAndUpdateDoc<BuildTask>(taskPath, current => current.status === 'queued' && current.attempt === task!.attempt,
+              { status: 'failed', token_hash: null, error_code: 'build_result_missing', completed_at: now });
+            task = await store.getDoc<BuildTask>(taskPath);
+          }
+        } else if (input.dispatch_id && (await (await cloudflareClient(org))(`/accounts/${engine.account_id}/builds/builds/${input.dispatch_id}`))?.status === 'stopped') {
+          // A shared Cloudflare runner claims the oldest eligible task in the
+          // organization, and Cloudflare may stop a queued build when another
+          // one starts. A stopped dispatch beside a still-unclaimed task means
+          // this build never ran: start a runner for it again (serialized and
+          // bounded by dispatchPendingBuild) instead of reporting a lost result.
+          try { await dispatchPendingBuild(org, key, engine); }
+          catch (error) {
+            if (!(error instanceof ConnectionError)) throw error;
+            await store.compareAndUpdateDoc<BuildTask>(taskPath, current => current.status === 'queued' && current.attempt === task!.attempt,
+              { status: 'failed', token_hash: null, error_code: error.code ?? 'shared_runner_start_failed', completed_at: now });
+            task = await store.getDoc<BuildTask>(taskPath);
+          }
         }
       }
     } catch { /* An unavailable provider is not evidence that a build failed. */ }

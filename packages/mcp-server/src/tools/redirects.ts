@@ -19,6 +19,7 @@ export const redirectTools: ToolDef[] = [
     name: 'create_redirect',
     description:
       'Create a redirect rule, or update the rule that already has this from_path in place (same id, no gap). ' +
+      'The response action says which happened; every distinct from_path gets its own rule, however long. ' +
       'Defaults to 301; pass status_code=302 for a temporary redirect. ' +
       'WILDCARDS: a trailing "*" captures everything under a prefix and ":splat" replays it into the ' +
       'target — `from_path="/category/*", to_path="/blogg/:splat"` retires an entire WordPress taxonomy ' +

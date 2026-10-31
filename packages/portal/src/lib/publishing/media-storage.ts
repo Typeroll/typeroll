@@ -98,9 +98,9 @@ export async function finalizeStoredMedia(orgId: string, siteId: string, mediaId
       const { requestMediaMigration } = await import('./media-migration');
       await requestMediaMigration(orgId);
     }
-    const { requestMediaPreparation } = await import('../media/preparation');
-    await requestMediaPreparation(orgId, siteId, mediaId);
-    return { sha256: media.sha256, size_bytes: media.size_bytes, variants_generated: false, variant_count: 0, variants_pending: true };
+    const { requestMediaPreparation, QUEUED_PREPARATION } = await import('../media/preparation');
+    const queued = await requestMediaPreparation(orgId, siteId, mediaId);
+    return { sha256: media.sha256, size_bytes: media.size_bytes, variants_generated: false, variant_count: 0, variants_pending: true, ...(queued ? { preparation: QUEUED_PREPARATION } : {}) };
   }
   const r2 = await storageClient(orgId, location);
   try {
@@ -144,9 +144,9 @@ async function freezeVerifiedMedia(orgId: string, siteId: string, mediaId: strin
       const { requestMediaMigration } = await import('./media-migration');
       await requestMediaMigration(orgId);
     }
-    const { requestMediaPreparation } = await import('../media/preparation');
-    await requestMediaPreparation(orgId, siteId, mediaId);
-    return { sha256, size_bytes: size, variants_generated: false, variant_count: 0, variants_pending: true };
+    const { requestMediaPreparation, QUEUED_PREPARATION } = await import('../media/preparation');
+    const queued = await requestMediaPreparation(orgId, siteId, mediaId);
+    return { sha256, size_bytes: size, variants_generated: false, variant_count: 0, variants_pending: true, ...(queued ? { preparation: QUEUED_PREPARATION } : {}) };
 }
 
 export async function privateMediaReadUrl(orgId: string, siteId: string, mediaId: string, ttlSeconds = 60) {

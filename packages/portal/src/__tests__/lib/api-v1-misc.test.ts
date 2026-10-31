@@ -317,6 +317,41 @@ describe('redirects endpoints', () => {
     expect(await rules(token)).toEqual([expect.objectContaining({ from_path: '/old', to_path: '/b', status_code: 302 })]);
   });
 
+  const longBase = `/wp-content/uploads/2021/06/${'umzug-zuerich-wohnung-buero-'.repeat(5)}foto`;
+
+  it('POST keeps long source paths that share their first 120 characters as separate rules', async () => {
+    const { token } = await setup();
+    const large = await (await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: `${longBase}-1024x683.jpg`, to_path: '/media/a.jpg' } })).json() as { action: string; redirect: { id: string } };
+    const small = await (await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: `${longBase}-768x512.jpg`, to_path: '/media/b.jpg' } })).json() as { action: string; redirect: { id: string } };
+    expect([large.action, small.action]).toEqual(['create', 'create']);
+    expect(large.redirect.id).not.toBe(small.redirect.id);
+    expect(large.redirect.id.length).toBeLessThanOrEqual(120);
+    expect((await rules(token)).map((rule) => rule.to_path).sort()).toEqual(['/media/a.jpg', '/media/b.jpg']);
+    const again = await (await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: `${longBase}-768x512.jpg`, to_path: '/media/c.jpg' } })).json() as { action: string; redirect: { id: string } };
+    expect(again).toMatchObject({ action: 'update', redirect: { id: small.redirect.id } });
+  });
+
+  it('POST never takes an id owned by another source path', async () => {
+    const { token } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    // `/a/b` and `/a_b` share the readable id `a_b`.
+    await getStore().setDoc(`${paths.redirects(ORG, SITE, 'main')}/a_b`, { from_path: '/a_b', to_path: '/x', status_code: 301 });
+    const created = await (await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: '/a/b', to_path: '/y' } })).json() as { action: string; redirect: { id: string } };
+    expect(created.action).toBe('create');
+    expect(created.redirect.id).not.toBe('a_b');
+    expect((await rules(token)).map((rule) => `${rule.from_path}>${rule.to_path}`).sort()).toEqual(['/a/b>/y', '/a_b>/x']);
+  });
+
+  it('PUT creates every long size variant in one batch', async () => {
+    const { token } = await setup();
+    const variants = ['1024x683', '768x512', '300x200', '150x150'].map((size) => ({ from_path: `${longBase}-${size}.jpg`, to_path: `/media/${size}.jpg` }));
+    const res = await callRoute(index(), 'PUT', url, { siteId: SITE }, { headers: bearer(token), body: { redirects: variants } });
+    const body = await res.json() as { summary: Record<string, number>; results: Array<{ id: string }> };
+    expect(body.summary).toMatchObject({ create: 4, failed: 0 });
+    expect(new Set(body.results.map((result) => result.id)).size).toBe(4);
+    expect((await rules(token)).map((rule) => rule.to_path).sort()).toEqual(variants.map((rule) => rule.to_path).sort());
+  });
+
   it('PATCH changes target and status but keeps id and source path', async () => {
     const { token } = await setup();
     const created = await (await callRoute(index(), 'POST', url, { siteId: SITE }, { headers: bearer(token), body: { from_path: '/wp-content/uploads/a.jpg', to_path: '/media/old-a.jpg' } })).json() as { redirect: { id: string } };

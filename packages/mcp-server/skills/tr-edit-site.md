@@ -68,6 +68,18 @@ for the content type default). `discard_working_copy` throws an unsaved draft
 away. Publishing means saving the draft, `update_page` `status: "published"`
 (applies immediately) and, when the user wants it live now, `trigger_deploy`.
 
+**Publishing and failed deploys.** Poll `get_deploy_status` until the job is
+`succeeded` or `failed`. Every site in an organization shares one build
+engine: publish one site at a time, and start another site's publish only when
+the previous job has finished and `read_organization_build_engine` shows no
+`active_jobs`. `build_result_missing` means the engine stopped without
+reporting a result — a runner never ran the task, not a content problem;
+publish again once the engine is idle. `retry_deploy_verification` only
+retries public verification of an already-served publication
+(`publication_observation_timeout`, `publication_cache_refresh_*`); a build or
+engine-side static verification failure needs a new publish after fixing the
+reported cause.
+
 **Site-wide changes are composition, not a series of page edits.** "Change
 every hero", "a CTA on every product page", "our phone number in every
 footer":

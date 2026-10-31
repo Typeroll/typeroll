@@ -15,8 +15,19 @@ interface Preparation { recipe?: string; full_scan?: boolean; org: string; site:
 const jobPath = (org: string, site: string) => `media_preparations/${sha256(`${org}\0${site}`)}`;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 
+/**
+ * What an upload response says about the image preparation it queued. The
+ * job starts on the organization's shared build engine after a short delay,
+ * coalesced per site, so its id is not known yet when the upload returns.
+ */
+export const QUEUED_PREPARATION = {
+  state: 'queued',
+  runs_on: 'organization_build_engine',
+  status: 'GET media/preparation (MCP get_media_preparation) returns build_job_id once the job starts.',
+} as const;
+
 /** Coalesce upload notifications. Durable scheduling never requires a browser to stay open. */
-export async function requestMediaPreparation(org: string, site: string, mediaId?: string) {
+export async function requestMediaPreparation(org: string, site: string, mediaId?: string): Promise<boolean> {
   const store = getStore(), path = jobPath(org, site);
   if (mediaId) {
     // Finalization names the immutable file it just completed. Never discover
@@ -25,13 +36,14 @@ export async function requestMediaPreparation(org: string, site: string, mediaId
       file => imageTypes.has(file.mime_type ?? '') && file.storage?.provider === 'organization_r2' && file.storage.state === 'ready' && !!file.sha256 &&
         !(file.preparation?.state === 'ready' && file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === MEDIA_RECIPE_VERSION),
       { preparation_pending: true });
-    if (!queued) return;
+    if (!queued) return false;
   }
   const created = await store.createDocIfMissing(path, { org, site, full_scan: !mediaId, state: 'queued', request: randomUUID(), lease: null, lease_until: 0, next_at: Date.now() + 10000 });
   const current = await store.getDoc<Preparation>(path);
   await store.compareAndUpdateDoc<Preparation>(path, value => value.request === current?.request, { request: randomUUID(), state: 'queued', error: null, ...(!mediaId ? { full_scan: true } : current?.state === 'complete' ? { full_scan: false } : {}), ...(current?.state === 'failed' ? { task: null } : {}) });
   const { enqueueMediaMigration } = await import('../publishing/media-migration-queue');
   if (created || !['queued', 'running'].includes(current?.state ?? '')) await enqueueMediaMigration(org, 10000).catch(() => { console.error('[media-preparation] scheduling interrupted; durable work will be recovered'); });
+  return true;
 }
 
 /** Uses the selected customer engine, with private cache grants and no hosting target. */
@@ -104,7 +116,10 @@ export async function mediaPreparationStatus(org: string, site: string) {
   const item = await getStore().getDoc<Preparation>(jobPath(org, site));
   if (!item) return null;
   const task = item.task ? await getStore().getDoc<BuildTask>(`${buildTasksPath(org)}/${item.task}`) : null;
-  return { state: item.state, completed: task?.media_cursor ?? item.completed ?? 0, total: task?.media_total ?? item.total ?? 0, error: item.error ?? null };
+  // The build engine job id lets agents see the job among the organization's active builds.
+  const running = item.state === 'running' && item.task;
+  return { state: item.state, completed: task?.media_cursor ?? item.completed ?? 0, total: task?.media_total ?? item.total ?? 0, error: item.error ?? null,
+    build_job_id: running && item.active_request ? `media-${item.active_request}` : null, build_task: running ? item.task : null };
 }
 
 export async function preparationStillRunning(task: BuildTask) {

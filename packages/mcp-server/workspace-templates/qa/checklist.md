@@ -3,10 +3,16 @@
 - Confirm Organization, Site, Version and deployed/source identity.
 - Run `python3 scripts/typeroll/check_unsaved.py` before trigger_deploy. Review
   and explicitly save authorized Pages and partials; templates save immediately.
+- Publish one Site at a time per Organization (shared build engine): start the
+  next only when the previous job finished and read_organization_build_engine
+  shows no active_jobs.
 - Compare preserved text with capture_text.cjs + compare_text.py and an explicit
   selector. Check intentional additions, source comments and images separately.
 - Inspect desktop/mobile previews and actual hosted output around breakpoints.
   Use shootframe.cjs / shoot_hosted.cjs and inspect full screenshots, not only tiles.
+- Use the signed preview for content/layout review only: it is a sandboxed,
+  opaque-origin frame. Verify third-party embeds, consent, analytics, cookies,
+  fonts and measured design checks on the published test address.
 - Exercise menus, keyboard focus, current links, forms and enabled app states.
   Use card-stacking-check.cjs for whole-card excerpt/media/whitespace targets.
 - Check actual contrast on light/dark/photo backgrounds, image subjects and
@@ -46,6 +52,9 @@ indexing have distinct effects but do not require repeated approval if covered.
   print files, private archive manifest, verified copies and a restore test.
 - [ ] Review ICC-converted derivatives visually; preserve originals separately.
 - [ ] Verify Analytics configuration and actual beacon/cookie behavior after build.
+- [ ] Fonts on the published address: `/_typeroll/fonts/fonts.css` has `@font-face`
+  rules for each chosen family, every font file returns 200, no request goes to
+  fonts.googleapis.com/fonts.gstatic.com, and `document.fonts` shows each family loaded.
 - [ ] Read domain publication intent before deployment; distinguish test-host
   updates, future-host candidates and explicit traffic approval.
 - [ ] Inspect the frozen candidate's noindex/robots output, not only current CMS settings.

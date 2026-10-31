@@ -1,5 +1,6 @@
 import type { BlockType, FieldDefinition } from './types.js';
 import { typographyFields } from './presentation-fields.js';
+import { uiText } from './ui-text.js';
 
 const cellFields: FieldDefinition[] = [
   { name: 'html', type: 'richtext', label: 'Content' },
@@ -68,7 +69,7 @@ ${['h1','h2','h3','h4','h5','h6'].map(level => `[data-block="rich_heading"][data
       { name: 'striped', type: 'boolean', label: 'Alternating row background', default: false },
       { name: 'source', type: 'richtext', label: 'Source / credit' },
     ],
-    template: `<figure data-block="table" data-density="{{density}}" data-borders="{{borders}}" data-striped="{{striped}}"><div class="block-table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table>{{{table_caption_html}}}<tbody>{{{table_rows_html}}}</tbody></table></div><figcaption>{{{source}}}</figcaption></figure>`,
+    template: `<figure data-block="table" data-density="{{density}}" data-borders="{{borders}}" data-striped="{{striped}}"><div class="block-table-scroll" tabindex="0" role="region" aria-label="{{table_scroll_label}}"><table>{{{table_caption_html}}}<tbody>{{{table_rows_html}}}</tbody></table></div><figcaption>{{{source}}}</figcaption></figure>`,
     styles: `[data-block="table"]{margin:1rem 0;min-width:0;max-width:100%}[data-block="table"] .block-table-scroll{overflow-x:auto;max-width:100%}[data-block="table"] table{border-collapse:collapse;width:100%;font:inherit}[data-block="table"] td,[data-block="table"] th{padding:.65rem;border:1px solid var(--color-border,#ddd);vertical-align:top}[data-block="table"] p{margin:0}[data-block="table"] caption{text-align:left;margin-bottom:.5rem}[data-block="table"][data-density="compact"] td,[data-block="table"][data-density="compact"] th{padding:.3rem}[data-block="table"][data-density="relaxed"] td,[data-block="table"][data-density="relaxed"] th{padding:1rem}[data-block="table"][data-borders="rows"] td,[data-block="table"][data-borders="rows"] th{border-width:0 0 1px}[data-block="table"][data-borders="none"] td,[data-block="table"][data-borders="none"] th{border:0}[data-block="table"][data-striped="true"] tr:nth-child(even){background:var(--color-bg-subtle,#f6f6f6)}[data-block="table"] figcaption:empty{display:none}`,
     origin: 'core', created_at: '1970-01-01T00:00:00Z',
   },
@@ -114,7 +115,7 @@ export function safeLinkHref(value: unknown): string {
 }
 
 /** Raw rich text follows the same final customer-HTML sanitizer as prose. */
-export function prepareArticleBlockData(type: string, data: Record<string, unknown>): void {
+export function prepareArticleBlockData(type: string, data: Record<string, unknown>, language?: unknown): void {
   if (type === 'core/container') {
     data.container_kind = data.layout === 'flow' ? 'semantic-container' : 'container';
     data.tag ||= 'div';
@@ -125,6 +126,7 @@ export function prepareArticleBlockData(type: string, data: Record<string, unkno
     if (href) data.container_attributes_html = `href="${escape(href)}"${data.new_tab === true ? ' target="_blank" rel="noopener"' : ''} ${data.container_attributes_html}`.trim();
   }
   if (type === 'core/table') {
+    data.table_scroll_label = uiText(language, 'scrollable_table');
     data.table_caption_html = data.caption ? `<caption>${text(data.caption)}</caption>` : '';
     data.table_rows_html = records(data.rows).map(row => `<tr>${records(row.cells).map(cell => {
       const tag = cell.header === true ? 'th' : 'td';

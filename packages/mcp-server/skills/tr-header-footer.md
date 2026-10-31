@@ -121,6 +121,9 @@ desktop 1280, wide 1536); do not independently hide all links at the menu bounda
 Verify 1023/1024 px, Tab/Shift-Tab, Enter/Space, Escape returning focus,
 visible focus, long labels, no-JavaScript links and no horizontal overflow.
 
+Each entry in `links` (`core/navigation_links` and `core/navigation`) may set
+`link_rel`, for example `nofollow sponsored` on an affiliate or partner link.
+
 ## Footer tree and consent
 
 Use an accessible footer navigation landmark and `core/navigation_links`, not
@@ -145,9 +148,10 @@ Cookie consent is a site feature, not a footer widget. Configure it separately:
 ```
 
 The heading, buttons and links follow the page language: Swedish for `sv`,
-German for `de`, otherwise English. For any other language, write `text` and
-set `labels` (`title`, `reject`, `necessary`, `accept_all`, `privacy_link`,
-`manage`) in that language.
+German for `de`, Dutch for `nl`, otherwise English. For any other language,
+write `text` and set `labels` (`title`, `reject`, `necessary`, `accept_all`,
+`privacy_link`, `manage`) in that language. The publication's job `warnings`
+list any banner wording and built-in control labels that fall back to English.
 
 Use `update_site_settings`, then read settings back. `scripts_necessary` and
 `scripts_optional` execute in visitors' browsers and must be reviewed like

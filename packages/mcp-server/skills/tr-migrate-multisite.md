@@ -228,7 +228,24 @@ A cluster of one is meaningless markup.
 
 ## Phase 7 — Verify BEFORE touching DNS
 
-Deploy each site (`trigger_deploy`), then check what it actually serves:
+Deploy each site (`trigger_deploy`), then check what it actually serves.
+
+**Publish one site at a time.** All sites in an organization share one
+organization build engine, and its runners claim the oldest task in the
+organization. Start the next site's `trigger_deploy` only when the previous
+job is `succeeded` or `failed` and `read_organization_build_engine` shows no
+`active_jobs`. Concurrent publications at best queue; on Core ≤0.2.132 they
+could fail each other with `build_result_missing`.
+
+- `build_result_missing` ("the build engine stopped without reporting a
+  result") means a runner never ran the task. Content did not cause it.
+  Publish that site again once the engine is idle.
+- `retry_deploy_verification` only retries public verification of an
+  already-served publication (`publication_observation_timeout`,
+  `publication_cache_refresh_*`). Build failures and the engine's static
+  verification failures need a new publish after fixing the reported cause.
+
+When a site's job has succeeded, check what it serves:
 
 ```
 verify_migration_urls site_id=<de-site> source_origin="https://example.de" check_source=true
@@ -296,6 +313,8 @@ new canonical build and is not an inventory-only operation):
   path; two markets both have `/kontakt`. One site, one inventory.
 - **Don't build all N sites in parallel from scratch.** Build one, approve,
   replicate. Parallel building multiplies every design mistake by N.
+- **Don't publish the markets in parallel.** One shared build engine serves
+  the organization; publish site by site (Phase 7).
 - **Don't skip the parity check because coverage says 100%.** Coverage is a
   claim about the data; parity is a measurement of the server. They disagree
   exactly when it matters — an unpublished target page, a typo'd path, a

@@ -12,6 +12,10 @@ starting points, not permission to overwrite an approved design.
 - Sections own gutters. Do not erase side padding with `padding: 3rem 0` when
   only vertical spacing is intended. Wrap column-slot contents in a flow
   container with article rhythm when they need vertical block spacing.
+- A narrow/normal/wide container inside an always-column container fills the
+  column only from render version 12; below it, it shrinks to its content
+  (width `wide` does not help). Raise render_version with tr-upgrade-rendering
+  instead of working around it in content.
 - Give cards one clear destination. Use whole_card_link without action_label
   or download actions. Check excerpt, image, whitespace and keyboard activation.
 - Do not fade body text with opacity. Verify actual text/background contrast,
@@ -54,6 +58,12 @@ names, for example `font_size_px: {mobile: "md", desktop: "lg"}`. Read the field
 schema: counts, widths and breakpoints are not spacing steps. Pixel values are
 explicit exceptions, not the default authoring method. Configure scales in
 `design_scales`, then reuse them in role styles and blocks.
+
+Use exact Google Fonts family names. Published sites self-host them by default
+(`fonts.delivery: self_hosted`); a name Google does not serve falls back
+silently, and the preview loads fonts from Google, so check fonts on the
+published address (qa/checklist.md). `delivery: google` sends each visitor's IP
+address to Google: a privacy decision for the owner.
 
 Record deliberate exceptions in `decisions.md`, with source/block, reason and
 review criteria (for example white text on a photograph). Run `lint_design_tokens`

@@ -320,7 +320,7 @@ const domainBlocksArchiving =
       <div class="field">
         <label for="setting-cookie_consent-text">Dialog text (HTML)</label>
         <textarea id="setting-cookie_consent-text" name="cookie_consent.text" rows="3" placeholder="We use cookies to improve your experience. Read more in our &lt;a href=&quot;/privacy&quot;&gt;privacy policy&lt;/a&gt;.">{settings.cookie_consent?.text ?? ''}</textarea>
-        <p class="muted text-sm">Leave empty to use the built-in text in the page language (Swedish, German, otherwise English). You can put <code>&lt;a&gt;</code> links straight in here.</p>
+        <p class="muted text-sm">Leave empty to use the built-in text in the page language (Swedish, German, Dutch, otherwise English). You can put <code>&lt;a&gt;</code> links straight in here.</p>
       </div>
       <div class="field">
         <label for="setting-cookie_consent-privacy_policy_url">Privacy policy URL (optional)</label>
@@ -335,7 +335,7 @@ const domainBlocksArchiving =
         <summary>Banner wording</summary>
         <p class="muted text-sm">
           Buttons, heading and links follow the page language: Swedish, German,
-          otherwise English. Fill in a field only to replace that wording, for
+          Dutch, otherwise English. Fill in a field only to replace that wording, for
           example for another language. Plain text, at most 120 characters.
         </p>
         {[

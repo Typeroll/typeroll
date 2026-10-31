@@ -7,7 +7,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { vstore } from '../../../../../../lib/version-store';
 import { getStore } from '../../../../../../lib/datastore';
 import { paths, pagesRedirectCapacity } from '@typeroll/shared';
-import { checkRedirectBatch, checkRedirectWrite, loadRedirectWriteContext, redirectDocId } from '../../../../../../lib/redirect-write';
+import { checkRedirectBatch, checkRedirectWrite, loadRedirectWriteContext } from '../../../../../../lib/redirect-write';
 import type { RedirectBatchRule } from '../../../../../../lib/redirect-write';
 
 /** One call stays well inside Cloudflare Pages' 2,100-rule limit per site. */
@@ -47,16 +47,16 @@ export const POST: APIRoute = async ({ request, params }) => {
     orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, from_path, to_path,
   });
   if (!check.ok) return apiError(check.error);
-  // The same source path always means the same rule: keep its id.
-  const existing = (await vstore.redirects(ctx.orgId, ctx.siteId, ctx.versionId)).find((rule) => rule.from_path === from_path);
-  const id = existing?.id ?? redirectDocId(from_path);
+  // The same source path always means the same rule and keeps its id; a new
+  // source path never takes an id that another rule owns.
+  const { id, action } = check;
   await getStore().setDoc(`${paths.redirects(ctx.orgId, ctx.siteId, ctx.versionId)}/${id}`, {
     from_path,
     to_path,
     status_code,
     auto_generated: false,
   });
-  return apiResponse(ctx, { redirect: { id, from_path, to_path, status_code }, warnings: check.warnings ?? [] }, 201, body);
+  return apiResponse(ctx, { action, redirect: { id, from_path, to_path, status_code }, warnings: check.warnings ?? [] }, 201, body);
 };
 
 export const PUT: APIRoute = async ({ request, params }) => {

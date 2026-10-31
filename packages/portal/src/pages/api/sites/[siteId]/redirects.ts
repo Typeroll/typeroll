@@ -3,7 +3,7 @@ import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
 import { paths } from '@typeroll/shared';
 import type { Redirect } from '@typeroll/shared';
-import { checkRedirectWrite, redirectDocId } from '../../../../lib/redirect-write';
+import { checkRedirectWrite } from '../../../../lib/redirect-write';
 
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -29,8 +29,7 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     status_code,
     auto_generated: false,
   };
-  const safeId = redirectDocId(from_path);
-  await getStore().setDoc(`${paths.redirects(owner_org_id, site.id, versionId)}/${safeId}`, doc);
+  await getStore().setDoc(`${paths.redirects(owner_org_id, site.id, versionId)}/${check.id}`, doc);
   return redirect(`/app/sites/${site.id}/redirects`);
 };
 
