@@ -164,11 +164,22 @@ Core and rebuilding the site; previously published files remain unchanged.
 ### Built-in interface text
 
 The few words Typeroll writes itself follow the page language (`Page.language`,
-otherwise the site `language`; only the primary subtag counts, so `fr-FR` and
-`fr-CA` both read as `fr`). Every surface below has built-in wording in Swedish
-(`sv`), Norwegian Bokmål (`nb`, `no`), German (`de`), Dutch (`nl`), Finnish
-(`fi`), French (`fr`), Polish (`pl`), Italian (`it`), Spanish (`es`) and
-English (`en`):
+otherwise the site `language`). The primary subtag decides, so `fr-FR` and
+`fr-CA` both read as `fr` and `pt-BR` as `pt`; Chinese also reads the script or
+region. Every surface below has built-in wording in these 50 languages:
+Swedish (`sv`), Norwegian Bokmål (`nb`, `no`), Danish (`da`), German (`de`),
+Dutch (`nl`), Finnish (`fi`), French (`fr`), Polish (`pl`), Italian (`it`),
+Spanish (`es`), Portuguese (`pt`), Russian (`ru`), Ukrainian (`uk`), Czech
+(`cs`), Slovak (`sk`), Hungarian (`hu`), Romanian (`ro`), Bulgarian (`bg`),
+Croatian (`hr`), Serbian (`sr`, Cyrillic), Bosnian (`bs`), Slovenian (`sl`),
+Macedonian (`mk`), Albanian (`sq`), Greek (`el`), Lithuanian (`lt`), Latvian
+(`lv`), Estonian (`et`), Icelandic (`is`), Turkish (`tr`), Azerbaijani (`az`),
+Kazakh (`kk`), Georgian (`ka`), Arabic (`ar`), Hebrew (`he`, `iw`), Persian
+(`fa`), Urdu (`ur`), Hindi (`hi`), Bengali (`bn`), Tamil (`ta`), Thai (`th`),
+Vietnamese (`vi`), Indonesian (`id`, `in`), Malay (`ms`), Japanese (`ja`),
+Korean (`ko`), Chinese Simplified (`zh`, `zh-CN`, `zh-Hans`), Chinese
+Traditional (`zh-Hant`, `zh-TW`, `zh-HK`, `zh-MO`), Catalan (`ca`) and English
+(`en`):
 
 | Surface                    | Built-in text                                                                                                                                                                          |
 | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -177,10 +188,10 @@ English (`en`):
 | Tables                     | accessible name of a horizontally scrollable table                                                                                                                                     |
 | Breadcrumbs                | default label of the first crumb ("Home", "Accueil", "Startsida") on a site with [language sections](../../guides/multilingual-sites/); otherwise "Home" unless you write `home_label` |
 | Video, carousel and rating | play, pause, previous, next and rating labels                                                                                                                                          |
-| 404 page                   | title, message and the link back to the home page (also Danish, `da`)                                                                                                                  |
+| 404 page                   | title, message and the link back to the home page                                                                                                                                      |
 | Cookie banner              | heading, buttons and links ([settings](../settings/))                                                                                                                                  |
 
-Other languages use English. A publication for such a language lists the
+Serbian wording is in Cyrillic; a site in Latin-script Serbian can write its own labels. Other languages, such as Welsh or Swahili, use English. A publication for such a language lists the
 wording that fell back to English in its job `warnings`; a language above
 gives no such warning. Labels you write on a block, and a language section's
 own texts, always win.
