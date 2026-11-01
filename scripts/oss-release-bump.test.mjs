@@ -28,6 +28,7 @@ const FIXTURES = {
   'scripts/oss-release-plan.test.mjs': "  assert.equal(manifest.core_version, '1.2.3');\n  assert.equal(manifest.mcp_version, '4.5.6');\n",
   'packages/mcp-server/package.json': '{\n  "name": "@typeroll/mcp-server",\n  "version": "4.5.6",\n  "license": "MIT"\n}\n',
   'packages/mcp-server/src/version.ts': "// Keep in lockstep with package.json.\nexport const VERSION = '4.5.6';\n",
+  'packages/mcp-server/server.json': '{\n  "name": "io.github.Typeroll/typeroll",\n  "version": "4.5.6",\n  "packages": [\n    {\n      "identifier": "@typeroll/mcp-server",\n      "version": "4.5.6",\n      "transport": {\n        "type": "stdio"\n      }\n    }\n  ]\n}\n',
 };
 
 const readFixture = (file) => {
@@ -64,6 +65,9 @@ test('a Core and MCP bump rewrites every version source and nothing else', () =>
     "  assert.equal(manifest.core_version, '1.2.4');\n  assert.equal(manifest.mcp_version, '4.6.0');\n");
   assert.match(files.get('packages/mcp-server/package.json'), /"version": "4\.6\.0",/);
   assert.match(files.get('packages/mcp-server/src/version.ts'), /VERSION = '4\.6\.0';/);
+  const server = JSON.parse(files.get('packages/mcp-server/server.json'));
+  assert.equal(server.version, '4.6.0');
+  assert.equal(server.packages[0].version, '4.6.0');
 });
 
 test('a Core-only bump leaves MCP sources untouched and edits the lockfile', () => {

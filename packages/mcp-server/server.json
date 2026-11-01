@@ -1,0 +1,47 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.Typeroll/typeroll",
+  "title": "Typeroll CMS",
+  "description": "Build, edit and publish static websites in Typeroll CMS: pages, blocks, media, forms and deploys.",
+  "websiteUrl": "https://typeroll.com/docs/getting-started/connect-your-agent/",
+  "repository": {
+    "url": "https://github.com/Typeroll/typeroll",
+    "source": "github",
+    "subfolder": "packages/mcp-server"
+  },
+  "version": "0.45.101",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "@typeroll/mcp-server",
+      "version": "0.45.101",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "TYPEROLL_API_KEY",
+          "description": "Site or organization API key from the Typeroll portal",
+          "isRequired": true,
+          "isSecret": true
+        },
+        {
+          "name": "TYPEROLL_API_URL",
+          "description": "Portal origin; https://app.typeroll.com for Typeroll Cloud",
+          "default": "https://app.typeroll.com"
+        },
+        {
+          "name": "TYPEROLL_SITE_ID",
+          "description": "Site to work on when the key can access several sites"
+        }
+      ]
+    }
+  ],
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://app.typeroll.com/api/mcp"
+    }
+  ]
+}

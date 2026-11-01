@@ -503,6 +503,12 @@ export interface SiteSettings {
   };
   robots_txt?: string;
   /**
+   * AI crawler preference, written as Content Signals in robots.txt and the
+   * `Content-Signal` response header. Absent means `allow_all` (nothing is
+   * written). See ai-crawlers.ts.
+   */
+  ai_crawler_policy?: 'allow_all' | 'no_training' | 'block_all';
+  /**
    * Emit `noindex` on every HTML document without conflating the
    * indexing directive with robots.txt crawl policy. Useful for staging sites
    * that intentionally use their main version but must never enter search.

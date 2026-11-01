@@ -41,6 +41,22 @@ Record a URL inventory from the existing site and source routing. Use explicit
 Page paths to preserve nested routes or frontmatter-based permalinks. Do not
 assume that a filename alone determines the production URL.
 
+## Launch basics (ask early)
+
+Ask the user for these once, early in the project. Read `read_site_settings` first and ask only for
+what is missing. Each item is optional. Record a skipped item in
+`decisions.md`, so the launch check in the last step holds no surprises.
+
+- **Default share image.** Ask the user to choose or create the image that
+  social networks and chat apps show when a page has no image of its own:
+  upload one (`create_upload_url` or `upload_media_from_url`), pick an existing
+  one (`list_media`), or create one with `tr-imagegen`. Use a 1200×630 px PNG or
+  JPEG and set it as `default_og_image` with `update_site_settings`. Never
+  generate a title card from the page title instead. The user may skip this.
+- **Organization.** The business name, logo and official profile URLs
+  (LinkedIn, Instagram, GitHub and similar). Set `organization` with `same_as`;
+  it becomes the home page's Organization schema.
+
 ## Map the source
 
 - Common frontmatter such as title, slug, author, publication date and SEO maps
@@ -82,3 +98,33 @@ and Typeroll preview, then a fresh authorized static build. Verify every invento
 URL and redirect, canonical/hreflang, sitemap inclusion, noindex state and assets.
 Save working copies before publication. Keep the source host and DNS in place
 until the candidate passes checks and the user authorizes its cutover.
+
+## Launch (required)
+
+A site is not finished until this step has run. Call `read_site_readiness`
+before the production publication and again after it. For every item with the
+status `warning` or `suggestion`, either fix it with the tool its `fix` names,
+or record in `decisions.md` (or the starter's `qa/` folder) why it stays open.
+Tell the user which items remain. A missing default share image is only a
+suggestion; leave it if the user chose to skip it.
+
+The report warns and never blocks a publication. A clean report is not approval
+to publish: publish only when the user has approved it.
+
+Publish only after the URL inventory, `verify_migration_urls` and
+`get_migration_launch_report` pass, and the user approves:
+
+```
+read_site_readiness
+trigger_deploy
+get_deploy_status job_id=<id>
+```
+
+The readiness report does not replace the migration launch report.
+
+Run `read_site_readiness` again after the publication. It reads saved content
+and settings, so confirm the rest on the live site: the AI crawler zone check
+needs the site's website host, and a Search Console property verified by DNS
+is not visible to Typeroll. The
+[launch checklist](https://typeroll.com/docs/guides/launch-checklist/)
+explains every item.

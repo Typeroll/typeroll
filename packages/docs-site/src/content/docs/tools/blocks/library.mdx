@@ -1,0 +1,392 @@
+---
+title: "Block library reference"
+description: "Built-in blocks in detail: content and marketing blocks, video, article content, structured Page fields, repeaters, templates and site search."
+---
+
+Part of the [block reference](../). Changes by Core release are listed in
+[Block changes by Core version](../changelog/).
+
+## The block library
+
+The AI agent calls `list_block_types` first to see the built-in and custom types available on the selected Site. Built-in type IDs are stable; custom types belong to a Site, and each placed block has a separate instance ID. The [catalog](../../../guides/block-library/) lists all 77 built-in types in Core 0.2.77. The sections below explain common groups and their settings:
+
+### Layout primitives
+
+- `core/section` — outer container with width + padding + bg
+- `core/container` — flex container (direction / wrap / gap / align). With
+  `layout: "flow"` it renders one plain element (`tag`: div, section, article,
+  aside, nav, header, footer, main, figure or `a`) with your `css_class`. Set
+  `tag: "a"` and `href` to make the whole container one link, such as a
+  clickable card; only http(s), relative, `#`, `mailto:` and `tel:` targets are
+  kept.
+- `core/grid` — N-column grid that wraps automatically
+- `core/columns` — 2-slot Left/Right container for asymmetric layouts
+- `core/spacer`, `core/divider`
+
+### Content + marketing
+
+- `core/heading`, `core/prose`, `core/button`, `core/image`, `core/icon`, `core/icon_box`
+- `core/hero` (4 layout variants), `core/cta`, `core/feature_row` (gutter-hugging image + text row)
+- `core/accordion`, `core/tabs`, `core/video`, `core/form`, `core/media_card`
+  - `core/accordion`: when every item's title ends with a question mark and has an
+    answer, the page publishes `FAQPage` structured data from the accordion; see
+    [FAQ from accordions](../../../technical/seo-and-indexing/#faq-from-accordions).
+- `core/search` — see [Site search](#site-search) below
+- `core/html` — the raw-HTML escape hatch for one-offs no block covers. Output is sanitised the same way HTML-mode pages are, so it isn't a script vector.
+
+### Video, hero video and ratings (render version 7)
+
+From [render version 7](../../settings/#render-versions) these
+options render; earlier versions ignore them.
+
+- `core/video`: a YouTube or Vimeo page address (`watch?v=`, `youtu.be/`,
+  `shorts/`, `vimeo.com/123`) becomes the provider's embed address, YouTube on
+  its no-cookie host. With `source: "url"` a video file plays in the browser's
+  own player. `poster` (files), `autoplay` (always muted), `loop`, `muted`
+  (files; embeds start muted only when autoplaying), `controls` and
+  `lazy_load` apply, and `title` (default "Video") names the player for
+  screen readers. Embeds are limited to the iframe host allowlist.
+- `core/hero`: `video_url` with a video file plays muted and looping behind
+  the text, with `image` as its poster, a pause button, and nothing at all when
+  the visitor prefers reduced motion. YouTube and Vimeo addresses are not used
+  as background video.
+- `core/testimonial`: `rating` (0–5) shows as whole stars with "Rating: 4 out
+  of 5" ("Betyg: 4 av 5" on Swedish sites) for screen readers. Set
+  `--testimonial-rating-color` to change the star colour.
+
+### Article content and automatic contents
+
+Use `core/table`, `core/list`, `core/image`, `core/video` and formatted headings
+for editable article content. Tables support header cells, spans, colors,
+column widths and horizontal scrolling. Images support original dimensions,
+alignment, a separate mobile image, a link and formatted photo credits.
+
+The mobile image (`mobile_src`) replaces the main image below 640px. To switch
+at another width, set `mobile_src_below` to a breakpoint (`tablet`, `laptop`,
+`desktop` or `wide`). The width comes from the block's `responsive_breakpoints`,
+else the Site's. For example, `laptop` with a laptop width of 768px shows the
+mobile image up to 767px. `mobile_src_below_px` sets an exact width instead
+(320–2560) and takes precedence. Existing images without either field keep the
+640px switch.
+
+An image with a `link` can also set `link_rel`, a space-separated list of link
+relationships such as `nofollow sponsored`, and `new_tab: true` to open the link
+in a new tab. A new tab always adds `noopener noreferrer`. Tokens other than
+plain names are ignored. Images without these fields render as before.
+
+Place **`core/table_of_contents` in the Page template**, next to its
+`template_content_slot`. It derives links from the current Page's headings;
+there is no editable list or source content field. Choose `h2`, `h2-h3` or
+`h2-h4`. Changing, moving or removing a heading updates the generated list.
+Existing heading anchors are preserved and links are present without JavaScript.
+You can choose a plain list or card, indentation, desktop stickiness and
+highlighting of the current heading. On mobile it stays in normal document flow.
+The same block also works inside a Page body.
+
+The Article template starter places its table of contents beside the body on
+larger screens and before the body on mobile. The Two columns block's **Mobile
+order** setting controls this order independently of the desktop layout.
+
+### One main heading and mobile defaults
+
+A Page template that provides an H1 (usually **Page title**)
+owns the Page's main heading. Use H2 for headings in the Page body. The editor's
+Save action and API writes reject a body H1 that duplicates the template title,
+with an explanation of how to fix it. A Page without a template H1 can keep its
+own body H1. HTML-mode Pages also allow only one H1.
+
+Existing content remains editable: preview and static builds render additional
+body H1 headings as H2, preserving their text and anchors. A known template H1
+always takes precedence. The layout does not add another automatic Page title.
+This safeguard does not rewrite saved content; correct the heading level before
+saving a changed body. Custom header/footer HTML should use a non-heading element
+for the site brand.
+
+Repeater grids, including **Page list**, show one column below **768 px** by
+default. Set **Mobile columns** (`mobile_cols`, 1–6) only when multiple columns are
+intentional. An explicitly authored `cols.mobile` is also respected;
+`mobile_cols` takes precedence. At 768 px and wider, the normal `cols` settings
+apply. This listing-specific threshold does not change the general responsive
+breakpoints used by other blocks. Masonry remains an explicit layout choice.
+
+The default content gutter is **1.25 rem** below 768 px and **1.75 rem** above it.
+Full-width section backgrounds still reach the viewport edges, while their
+content has the same gutter. Site CSS can customize `--content-gutter`.
+These shared defaults apply to both Cloud and self-hosted sites after upgrading
+Core and rebuilding the site; previously published files remain unchanged.
+
+### Built-in interface text
+
+The few words Typeroll writes itself follow the page language (`Page.language`,
+otherwise the site `language`). The primary subtag decides, so `fr-FR` and
+`fr-CA` both read as `fr` and `pt-BR` as `pt`; Chinese also reads the script or
+region. Every surface below has built-in wording in these 50 languages:
+Swedish (`sv`), Norwegian Bokmål (`nb`, `no`), Danish (`da`), German (`de`),
+Dutch (`nl`), Finnish (`fi`), French (`fr`), Polish (`pl`), Italian (`it`),
+Spanish (`es`), Portuguese (`pt`), Russian (`ru`), Ukrainian (`uk`), Czech
+(`cs`), Slovak (`sk`), Hungarian (`hu`), Romanian (`ro`), Bulgarian (`bg`),
+Croatian (`hr`), Serbian (`sr`, Cyrillic), Bosnian (`bs`), Slovenian (`sl`),
+Macedonian (`mk`), Albanian (`sq`), Greek (`el`), Lithuanian (`lt`), Latvian
+(`lv`), Estonian (`et`), Icelandic (`is`), Turkish (`tr`), Azerbaijani (`az`),
+Kazakh (`kk`), Georgian (`ka`), Arabic (`ar`), Hebrew (`he`, `iw`), Persian
+(`fa`), Urdu (`ur`), Hindi (`hi`), Bengali (`bn`), Tamil (`ta`), Thai (`th`),
+Vietnamese (`vi`), Indonesian (`id`, `in`), Malay (`ms`), Japanese (`ja`),
+Korean (`ko`), Chinese Simplified (`zh`, `zh-CN`, `zh-Hans`), Chinese
+Traditional (`zh-Hant`, `zh-TW`, `zh-HK`, `zh-MO`), Catalan (`ca`) and English
+(`en`):
+
+| Surface                    | Built-in text                                                                                                                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tabs                       | open/close button (`toggle_label`) and choice-list name (`menu_label`)                                                                                                                 |
+| Pagination                 | accessible name of the page navigation landmark                                                                                                                                        |
+| Tables                     | accessible name of a horizontally scrollable table                                                                                                                                     |
+| Breadcrumbs                | default label of the first crumb ("Home", "Accueil", "Startsida") on a site with [language sections](../../../guides/multilingual-sites/); otherwise "Home" unless you write `home_label` |
+| Video, carousel and rating | play, pause, previous, next and rating labels                                                                                                                                          |
+| 404 page                   | title, message and the link back to the home page                                                                                                                                      |
+| Cookie banner              | heading, buttons and links ([settings](../../settings/))                                                                                                                                  |
+
+Serbian wording is in Cyrillic; a site in Latin-script Serbian can write its own labels. Other languages, such as Welsh or Swahili, use English. A publication for such a language lists the
+wording that fell back to English in its job `warnings`; a language above
+gives no such warning. Labels you write on a block, and a language section's
+own texts, always win.
+
+#### Right-to-left languages
+
+Pages in a right-to-left language (Arabic, Hebrew, Persian, Urdu, Pashto,
+Sindhi, Uyghur, Yiddish, Dhivehi and Kurdish Sorani, or any tag with an Arabic
+or Hebrew script subtag such as `az-Arab`) get `<html dir="rtl">` automatically,
+and the built-in layout mirrors: list and quote indents, table-of-contents
+indents and chevrons, feature-row gutters, page navigation, form toggles,
+carousel arrows and keys, tab arrow keys and the cookie button move to the other
+side. Sides you choose yourself, such as image, divider and caption alignment,
+stay as chosen. Left-to-right pages are unchanged.
+
+### Structured Page fields without empty labels
+
+**Requires template capability `supports_page_field_list`.**
+Cloud and self-hosting use the same block; check the deployed site's capabilities
+before adding it.
+
+Add **Page field list** (`core/field_list`) to a Page template to present typed
+values from the current Page's `fields`. Rows use a 0.7 rem vertical gap, labels use
+font weight 600, and long values wrap to avoid horizontal overflow. Choose the content type's field names;
+leave each label blank to use its schema label. Values stay in the structured
+field editor. Changing and saving a Page field updates preview and the next
+publication without editing the Page body or copying values into rich text.
+
+```json
+{
+  "id": "facts",
+  "type": "core/field_list",
+  "data": {
+    "title": "At a glance",
+    "layout": "two-column",
+    "fields": [
+      { "field": "website" },
+      { "field": "headquarters", "label": "Based in" },
+      { "field": "shipping" },
+      { "field": "regions" }
+    ]
+  }
+}
+```
+
+The example assumes those fields are declared on the Page's content type.
+The block renders a semantic definition list. `stack` is the default layout;
+`two-column` becomes a single column on small screens. The optional heading is
+an H2. Use multiple field-list blocks for independently titled sections.
+
+- Null, missing values, blank strings (including whitespace), and empty lists
+  omit the **whole row**, including its label.
+- If no rows remain, the **whole block and its heading** are omitted from HTML.
+- Number `0` is a value. Boolean rows default to
+  `boolean_display: "property"`: show **Yes** for true and hide false/unset.
+  Choose `boolean_display: "yes-no"` to show both set values. `true_label` and
+  `false_label` let you use labels such as **Ja** / **Nej**. This changes
+  presentation only; false remains a stored value.
+- Text and textarea values are escaped. URLs become HTTP(S) or site-relative
+  links; unsafe URLs are omitted.
+- Select and multiselect fields use `option_labels` when configured, falling
+  back to the stored option. Multiselect values render as a list.
+- `page_ref` and `page_ref_list` resolve to Page titles and links. Missing,
+  unpublished, unlisted or unrouted targets are omitted. Lists preserve the
+  selected order without duplicate links.
+- Unknown fields, unsupported field types, and fields with **`rendered: false`**
+  never render. A private field cannot be exposed by selecting or styling it.
+
+#### Fine-tune an individual row
+
+Each row optionally accepts `html`, `css` and `css_class`. For example:
+
+```json
+{
+  "field": "shipping",
+  "html": "<dt>{{label}}</dt><dd><span class=\"badge\">{{value}}</span></dd>",
+  "css": "padding: 0.75rem; background: #f3f6fa; border-radius: 0.5rem;",
+  "css_class": "shipping-fact"
+}
+```
+
+`html` replaces the contents of that row's wrapper. Keep a `dt` label and `dd`
+value for definition-list semantics. Its only slots are `{{label}}` (escaped
+label) and `{{value}}` (the safely formatted value, including links or lists).
+Place the value slot in element content. No Page expressions or conditionals are
+evaluated, and values are never reinterpreted as template code. Custom markup
+passes through the normal HTML sanitizer; it cannot add scripts or event handlers.
+
+`css` contains CSS declarations applied to that row's wrapper. For more detailed
+selectors, give the row a `css_class` and use the block's existing **Custom CSS**
+setting, for example `.shipping-fact .badge { font-weight: 600; }`.
+Empty and private fields are omitted **before** custom row markup or styles are
+applied; a custom label or placeholder cannot make an empty row visible.
+
+#### Checkbox lists with icons and selected links
+
+A multiselect already renders one selected option per list item. Set
+`item_html` on that field's row to customize each selected option. For example:
+
+```json
+{
+  "field": "delivery_methods",
+  "css_class": "delivery-options",
+  "item_html": "<span class=\"checked-box\" aria-hidden=\"true\">☑</span> <span>{{value}}</span>",
+  "item_links": [{ "value": "local_pickup", "url": "/delivery/local-pickup/" }]
+}
+```
+
+If `local_pickup` has the schema label **Local pickup**, the visitor sees that
+label as a link; other selected options remain plain labels. `item_links`
+uses stored option values for matching. Unsafe link URLs are ignored. You can
+use a custom image inside `item_html` instead of the checkbox character.
+
+Use the block's Custom CSS for the list and icon, for example:
+
+```css
+.delivery-options .field-list-values {
+  list-style: none;
+  padding: 0;
+}
+.delivery-options li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.delivery-options .checked-box {
+  color: #087044;
+}
+```
+
+Within `item_html`, `{{value}}` is the formatted option label (including its
+configured link) and `{{label}}` is the plain escaped option label. The same
+item template can decorate Page references; their links still come from the
+referenced Pages rather than `item_links`. Unselected options never render;
+clearing the field removes the entire row, including its heading and icons.
+This is presentation stored once in the Page template, not copied Page content.
+
+Agents use the existing `list_block_types`, `read_block_type` and `add_block`
+tools with `target: { "kind": "template", "id": "profile" }`. Inspect the content
+type first. Do not generate per-Page facts HTML or a duplicate rich-text field.
+
+### Typography in a Page template
+
+Select the template's **Page content** block to set
+**Body text size (px)**, **Body line height**, and **Paragraph spacing (em)**.
+For example, 16 px with a line height of 1.6 produces 25.6 px lines. Leave a
+field empty to keep the block defaults. The settings apply inside that content
+slot; navigation, related cards and other template content keep their own styles.
+They do not change the saved text or require custom CSS.
+
+### Related Pages
+
+For a curated list, use `core/repeater` with **Source: Pages** and select Pages
+in the desired order. Leave Content type empty to combine articles, checklists
+and other types. **Exclude current Page** removes the page being displayed.
+Missing and unpublished pages are omitted before the item limit is applied.
+
+In a shared Page template, use **Source: Related** and name a Page reference
+field from the Content type. Each Page then supplies its own selection, while
+the template owns the card layout. Use **Backlinks** to list pages referring to
+the current Page. `core/post_card` provides the image, title and link presentation.
+
+### Item-compatible kernels
+
+Designed to tile cleanly inside a repeater — no outer padding, kernel layout. Render fine standalone too.
+
+- `core/testimonial`, `core/team_member`, `core/pricing_plan`, `core/post_card`, `core/logo_item`, `core/step_card`
+
+### Repeater + aliases
+
+The repeater abstraction collapses what used to be a dozen specialised widgets into one primitive. The aliases are author-friendly wrappers:
+
+- `core/gallery` — image grid
+- `core/logo_cloud` — client logos (greyscale by default)
+- `core/testimonials` — testimonial carousel
+
+From render version 7, a repeater with `layout: "carousel"` (testimonials by
+default) has previous and next buttons (`show_arrows`), a dot per item
+(`show_dots`) and, with `autoplay: true`, advances every 5 seconds with a pause
+button. Autoplay stops while the visitor points at or focuses the carousel and
+never runs when they prefer reduced motion. Items scroll in a track inside the
+block; without JavaScript the track still scrolls and the controls stay
+hidden. The controls name themselves in the site language. Styles reach them
+as the repeater's parts `carousel_controls`, `carousel_button` and
+`carousel_dot` (an alias's carousel shares them: `core/repeater.carousel_dot`);
+the current dot is `&[aria-current="true"]` in the dot style's advanced CSS.
+
+Grouped and paginated repeaters render their group titles and archive pager
+next to the repeater element, where parts do not reach, so each has a style
+field: `group_title_style_id` (a heading style on every group title) and
+`pager_link_style_id` (a button style on every page link and the current page,
+`&[aria-current="page"]` for the current one).
+
+- `core/feature_grid` — icon_box grid
+- `core/pricing_table` — pricing_plan grid
+- `core/team_grid` — team_member grid
+- `core/page_list` — Pages of any content type, items become post_cards
+
+The static aliases accept `items: [{...}]`: pass the per-item field values and the renderer expands the alias to a repeater with the right item block. `core/page_list` instead queries saved Pages using `content_type` and its query settings; it does not take a hand-maintained array of article data.
+
+Frozen publications retain static rows against the selected item
+block’s public schema, including card field mappings and grouping labels.
+`rendered: false` fields and unrelated row metadata stay private. A Post Card row
+can use `{ title: "Guide", href: "/guide/" }`; use `item_overrides` for shared
+presentation. Republish sites built with an older Core to restore missing static
+card values. Saved CMS rows do not need to be rewritten.
+
+```
+"Add a feature grid with our three differentiators."
+  → add_block block={type:"core/feature_grid", data:{items:[
+       {icon:"zap", heading:"Fast", text:"<p>...</p>"},
+       {icon:"shield", heading:"Safe", text:"<p>...</p>"},
+       {icon:"smile", heading:"Simple", text:"<p>...</p>"}
+     ]}}
+```
+
+### Template/\* family (dynamic context)
+
+These read from the render context (`page`/`site`/`item`) rather than from authored block data. Used inside Page templates so a blog template can render every post with its own title without per-post copy.
+
+- Page-context: `template/page_title`, `template/page_featured_image`, `template/page_excerpt`, `template/page_date`, `template/page_author`, `template/page_breadcrumbs`
+- Site-context: `template/site_logo`, `template/site_title`, `template/site_tagline`
+- Item-context: `template/page_title`, `template_content_slot`, `template/page_featured_image`
+- Conditional: `template/show_if` (renders children only if a condition is truthy)
+
+## Site search
+
+Add `core/search` to a page and your published site gets working full-text
+search. There is nothing to configure and no third-party service involved:
+
+```
+Add a search box to the header.
+```
+
+At deploy time, if any page uses the block, the built HTML is indexed with
+[Pagefind](https://pagefind.app/) and the index ships as static files alongside
+the site. Search runs entirely in the visitor's browser against that index — no
+search server, no per-query cost, and it works on any static host.
+
+Sites without the block skip the indexing step entirely, so adding search costs
+build time only when you actually use it.
+
+The only field is `placeholder`. The result UI inherits your site's colours
+through the same CSS variables as everything else.

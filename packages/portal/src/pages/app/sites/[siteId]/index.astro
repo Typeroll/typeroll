@@ -7,6 +7,7 @@ import { paths } from '@typeroll/shared';
 import type { Site, Page, SiteSettings, SiteVersion } from '@typeroll/shared';
 import DeployBanner from '../../../../components/DeployBanner.tsx';
 import DeployHistory from '../../../../components/DeployHistory.tsx';
+import SiteReadiness from '../../../../components/SiteReadiness.tsx';
 import { siteDisplayHost, liveBaseFor } from '../../../../lib/site-urls';
 import { domainState, DOMAIN_STATE_LABEL } from '../../../../lib/site-public-urls';
 import { canUseAiChat } from '../../../../lib/ai/organization-ai';
@@ -133,6 +134,8 @@ const hostInfo = siteDisplayHost(site);
       </ul>
     )}
   </div>
+
+  <SiteReadiness client:load siteId={siteId} />
 
   <div class="card" style="margin-top: 1.5rem;">
     <h2 style="font-size: 1.125rem; margin-bottom: 1rem;">Recent deploys</h2>

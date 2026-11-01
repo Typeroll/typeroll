@@ -44,6 +44,9 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   siteContext,
   transformBodyForSeo,
   pageIdentityAttributes,
+  faqPageJsonLd,
+  jsonLdDeclaresType,
+  leadingBackgroundImage,
 } from '@typeroll/shared';
 import type { Block, RenderContext } from '@typeroll/shared';
 import { resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage } from '@typeroll/shared';
@@ -234,9 +237,9 @@ if (bodyHtml && bodyHtml.includes('data-tr-form')) {
 // height for CLS, wraps in <picture>. The html-mode save-time pass
 // already did most of this — running again is idempotent. Block-mode
 // pages get optimised here for the first time.
+// The same tracked lookup also gives SEOHead the share image's size and type.
+const mediaLookup = trackedMediaLookup(buildMediaLookup(await getAllMedia()));
 if (bodyHtml) {
-  const mediaList = await getAllMedia();
-  const mediaLookup = trackedMediaLookup(buildMediaLookup(mediaList));
   // Resolve the responsive-image `sizes` default: page-level overrides the
   // site-wide setting; a per-<img> `sizes` attr still wins over both inside
   // the transform. Block-mode pages reach the transform here for the first
@@ -257,10 +260,17 @@ const ld = props.page.schema_type
   ? buildPageSchema(props.page, settings, canonical)
   : contentType ? buildContentPageSchema({ ...props.page, html_content: bodyHtml ?? '' }, contentType, settings, canonical) : null;
 if (ld) extraJsonLd.push(ld);
+// Accordions whose items are all questions with answers become FAQPage data,
+// unless the page or its content type already declares one.
+const faqLd = jsonLdDeclaresType([props.page.json_ld, ...extraJsonLd], 'FAQPage') ? null : faqPageJsonLd(bodyHtml);
+if (faqLd) extraJsonLd.push(faqLd);
+// A background image in the first section is the likely largest paint, but the
+// browser finds it only after the CSS: preload it from the head.
+const preloadImage = leadingBackgroundImage(bodyHtml);
 if (bodyHtml) bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
 
 ---
-<BaseLayout contentType={contentType} identity={identity} breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd}>
+<BaseLayout contentType={contentType} identity={identity} breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd} mediaByUrl={mediaLookup.byUrl} preloadImage={preloadImage}>
   <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 
   {bodyHtml ? (

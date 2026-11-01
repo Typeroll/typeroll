@@ -141,6 +141,63 @@ Forms in both kinds of preview run in preview mode: they validate and step
 through like the published form and show its success message, but store and
 send nothing. See [Forms in previews](../forms/#forms-in-previews).
 
+## `read_site_readiness`
+
+A site-level launch report built from saved content and settings. Run it
+before launch and after larger changes, then fix each open item or record why
+it stays open. It never blocks a publication and never changes content.
+
+```json
+{
+  "site_id": "...",
+  "checked_at": "2026-11-01T12:00:00.000Z",
+  "summary": { "ok": 15, "suggestions": 3, "warnings": 2 },
+  "items": [
+    {
+      "id": "share_image",
+      "status": "suggestion",
+      "message": "No default share image. Pages without their own image fall back to the logo when shared.",
+      "fix": "Optional: upload or choose a 1200 × 630 px image, or create one with tr-imagegen, and set it as default_og_image.",
+      "guide": "https://typeroll.com/docs/guides/launch-checklist/#share-image"
+    }
+  ]
+}
+```
+
+`status` is `ok`, `suggestion` or `warning`. `details` lists up to 20 affected
+pages or values. Pass `version` to check a branch. The same report is
+available at `GET /api/v1/sites/{siteId}/readiness` and in the portal on the
+site overview.
+
+| Item                                         | Checks                                                                                                                                                                      |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `share_image`                                | `default_og_image` is set (a suggestion when missing), and it and page `og_image` values are not SVG, data URLs or narrower than 600 px                                     |
+| `home_description`                           | The home page at `/` exists and has its own `seo_description`                                                                                                               |
+| `organization`                               | Organization name and logo for structured data                                                                                                                              |
+| `same_as`                                    | Profile links in `organization.same_as` or the social settings                                                                                                              |
+| `favicon`                                    | A favicon is set                                                                                                                                                            |
+| `analytics_consent`                          | Tracking scripts or Integrations tags run only with the cookie banner; a suggestion when no analytics is set up                                                             |
+| `search_console`                             | A Google verification tag in `scripts_head`. DNS verification is not visible to Typeroll, so this stays a suggestion without one                                            |
+| `privacy_page`, `contact_page`               | A published privacy page and a contact page or contact details                                                                                                              |
+| `not_found_page`                             | Always OK: every publication includes a 404 page                                                                                                                            |
+| `indexable_pages`                            | `sitewide_noindex` is off and more than one page can be indexed                                                                                                             |
+| `orphan_pages`                               | Indexable pages that no other page, menu, template or listing links to                                                                                                      |
+| `duplicate_titles`, `duplicate_descriptions` | Titles and descriptions shared by several pages, including pages that fall back to the site description                                                                     |
+| `heading_h1`                                 | Each indexable page renders exactly one H1, counting the page, its template and the header and footer                                                                       |
+| `long_descriptions`                          | Descriptions over 160 characters                                                                                                                                            |
+| `duplicate_fonts`                            | Theme fonts loaded again by custom CSS or `scripts_head`                                                                                                                    |
+| `custom_css_overrides`                       | Custom CSS findings from `lint_design_tokens`: heavy `!important` use, fonts not in the theme, a first-section background image set in CSS, rules on platform block classes |
+| `ai_crawler_zone_conflict`                   | The Cloudflare zone's AI crawler settings against the site's `ai_crawler_policy`                                                                                            |
+| `structured_data`                            | Page JSON-LD missing required properties (FAQPage, Article, Product, SoftwareApplication, Event, Recipe, Organization and similar) or with invalid dates or URLs            |
+
+`ai_crawler_zone_conflict` reads the zone's bot settings only through the
+organization's existing Cloudflare connection, and only when its token already
+has Bot Management Read. Typeroll never asks for that permission for this
+check and never changes zone settings. Without access, the item is a
+suggestion that explains where to check in the Cloudflare dashboard. Blocking
+Training in Cloudflare can also block Googlebot, Bingbot and Applebot, because
+Cloudflare applies the strictest rule to crawlers that do several jobs.
+
 ## How customer publishing works
 
 1. Typeroll freezes the selected Site Version and its saved content.

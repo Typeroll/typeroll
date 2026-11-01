@@ -1,0 +1,129 @@
+---
+title: SEO for your site
+description: What Typeroll does automatically for search engines and AI agents, and the few things only you can decide, from titles and share images to AI crawler settings.
+---
+
+Typeroll writes most of what search engines and AI agents need into every
+publication. Your part is the content and a handful of settings only the site
+owner can decide. This guide covers what to do and how to check it; the
+[SEO and indexing reference](../../technical/seo-and-indexing/) describes each
+output in detail.
+
+Changes reach the live website with the next publication. Updating Typeroll
+does not rewrite an already published site.
+
+## What Typeroll does automatically
+
+| Output                                                                                    | Reference                                                                                                                                                                                               |
+| ----------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Titles, descriptions, canonical URLs, robots directives and `lang`                        | [Titles, descriptions and social previews](../../technical/seo-and-indexing/#titles-descriptions-and-social-previews), [Routes and canonicals](../../technical/seo-and-indexing/#routes-and-canonicals) |
+| Open Graph and X card tags, and a 1200 × 630 PNG copy of an SVG, AVIF or TIFF share image | [Sharing metadata](../../technical/seo-and-indexing/#sharing-metadata)                                                                                                                                  |
+| `Organization`, `WebSite`, `Article`, `BreadcrumbList` and Content type schema            | [Structured data](../../technical/seo-and-indexing/#structured-data)                                                                                                                                    |
+| `FAQPage` from accordions whose items are questions with answers                          | [FAQ from accordions](../../technical/seo-and-indexing/#faq-from-accordions)                                                                                                                            |
+| `robots.txt`, `sitemap.xml`, `sitemap-images.xml` and hreflang                            | [Sitemaps and agent discovery](../../technical/seo-and-indexing/#sitemaps-and-agent-discovery)                                                                                                          |
+| `llms.txt`, `llms-full.txt` and a Markdown version of each page at `<page>/index.md`      | [Sitemaps and agent discovery](../../technical/seo-and-indexing/#sitemaps-and-agent-discovery)                                                                                                          |
+| Early loading of the first content image and a first-section background                   | [Image loading and first paint](../../technical/seo-and-indexing/#image-loading-and-first-paint)                                                                                                        |
+
+Drafts, unlisted and noindex pages are left out of every site file.
+
+## What only you can decide
+
+Check these in the [launch readiness report](../launch-checklist/) first: it
+lists what is missing.
+
+1. **Titles and descriptions.** Open each important page's **Meta** panel in the
+   [editor](../the-editor/). Give each page a title that says what is different
+   about it and a specific meta description under 160 characters. Set
+   **Site settings → SEO → SEO title suffix** once, for example ` — Acme`, and
+   give the home page an explicit SEO title.
+2. **One H1 per page.** A [Page template](../page-templates/) can supply it from
+   the page title. Use H2 and H3 for sections.
+3. **Default share image (optional).** Choose an existing image, upload one, or
+   have your agent create one. Use a 1200 × 630 px PNG or JPEG and enter its
+   address in **Site settings → SEO → Default OpenGraph image URL**. Typeroll
+   does not generate title cards. Give articles and key landing pages their own
+   share image in the Meta panel.
+4. **Organization and profiles.** In **Site settings → SEO**, set the
+   organization name and logo, and list official profiles under **Profile URLs
+   (sameAs)**.
+5. **Icons.** In **Site settings → General**, set the favicon, the Apple touch
+   icon and the 192 × 192 app icon.
+6. **Pages a business needs.** A contact page and, when you use a cookie banner
+   or tracking, a privacy page. Link every page from a menu, a listing or a
+   related page.
+7. **Frequently asked questions.** Put them in an Accordion block, with each
+   item's title phrased as a question ending in a question mark and an answer
+   below it. `FAQPage` structured data then follows automatically.
+8. **AI crawlers.** Decide whether AI services may use the site; see
+   [AI crawlers](#ai-crawlers).
+9. **Search Console.** Verify the site and submit the sitemap; see
+   [Google Search Console](../search-console/).
+
+## AI crawlers
+
+**Site settings → SEO → AI crawlers** sets the site's preference:
+
+- **Allow all** (default): nothing is added.
+- **Allow search and AI answers, not training:** crawlers that only collect
+  training data are disallowed; AI search and answer services can still read
+  and cite the site.
+- **Block AI crawlers, keep search:** AI search and answer agents are
+  disallowed too.
+
+No setting blocks Googlebot, Bingbot or Applebot, which also power ordinary
+search results. The [AI crawlers setting](../../tools/settings/#ai-crawlers)
+lists the exact signals and user agents of each value.
+
+### When the site is on Cloudflare
+
+A Cloudflare zone has its own AI crawler settings under **Security → Settings
+→ Bot traffic**, enforced at Cloudflare's edge regardless of `robots.txt`.
+
+- Make the zone's Search, Training and Agents policies match the site's
+  setting. New Cloudflare zones can block some AI crawlers by default.
+- Blocking **Training** in Cloudflare can also block Googlebot, Bingbot and
+  Applebot, which removes the site from search results. Check search visibility
+  after changing it.
+- Turn off Cloudflare's managed `robots.txt` so the site's own file is the only
+  one.
+
+The readiness item [AI crawler zone conflict](../launch-checklist/#ai-crawler-zone-conflict)
+compares the two when the Cloudflare connection may read the zone's bot
+settings. Typeroll never changes zone settings itself.
+
+## Structured data
+
+Add structured data only for information the page visibly shows.
+
+- **FAQ:** an accordion of questions and answers, as above. For FAQ content in
+  another block, an agent can use `add_faq_schema`.
+- **Products, software and directories:** set the Content type's schema type,
+  such as `Product` or `SoftwareApplication`, and map its fields; see
+  [Products and software](../../technical/seo-and-indexing/#products-and-software).
+- **Recipes and events:** an agent can use `add_recipe_schema` and
+  `add_event_schema`, which validate the input; see
+  [structured data tools](../../tools/pages/#structured-data-tools).
+- **Other types:** an agent writes the page's `json_ld` with `update_page`.
+
+The readiness item [Structured data](../launch-checklist/#structured-data)
+reports JSON-LD that is missing required properties or has invalid dates or
+URLs.
+
+## Working with an AI agent
+
+The bundled `tr-seo` recipe covers the same steps. Ask, for example:
+
+```text
+Run read_site_readiness for this site and go through the SEO items with me.
+Ask me for a default share image and our profile links. Don't publish.
+```
+
+## Check it
+
+1. Run the [launch readiness report](../launch-checklist/) and fix or accept each
+   item.
+2. After the publication, open `/robots.txt`, `/sitemap.xml` and `/llms.txt` on
+   the live address, and a page's `index.md`.
+3. Test a page address in a social network's share preview and in Google's
+   Rich Results Test.
+4. Call `check_site_indexing` to confirm the live robots policy.

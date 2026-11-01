@@ -1,0 +1,106 @@
+---
+title: Agencies and client sites
+description: Run many client websites from one Typeroll Organization, publish each to the right Cloudflare account, give clients access to only their site and hand work over cleanly.
+---
+
+An agency usually builds and maintains many websites for different clients.
+In Typeroll, an **Organization** owns sites and the publishing connections
+they share. This guide shows how to set up client work so that each client
+sees only their own site, each site publishes to the right Cloudflare account,
+and your AI agents can work across all of them.
+
+## Decide who owns each site
+
+Settle this before building, because Typeroll has no transfer of a site from
+one Organization to another.
+
+| Model            | Who owns the site                                                                                | When it fits                                                                           |
+| ---------------- | ------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
+| **Agency-owned** | Your Organization. You [share the site](#give-the-client-access) with the client's Organization. | You host and maintain the site as a service.                                           |
+| **Client-owned** | The client's Organization. The client shares the site with your Organization.                    | The client wants to own the site, its connections and its subscription from the start. |
+
+A shared site follows its **owner's** Cloud access and trial, not the
+collaborating Organization's. If a client may take the site elsewhere later,
+the [content export](../export-and-backup/) works for any owner.
+
+## Publish each client to the right account
+
+Your Organization connects GitHub, Cloudflare and media storage once under
+**Account → Publishing**; see [Connect your accounts](../customer-publishing/).
+Every site reuses those connections.
+
+When a client's sites must publish to the **client's own Cloudflare account**,
+add a **Hosting Group** for that account in the **Hosting Groups** tab, then
+place the client's sites in it. Each Hosting Group owns one Cloudflare hosting
+account and a site address base. GitHub, the build provider, DNS access and
+shared media stay at the Organization level.
+
+- Choose the Hosting Group before a site's first publication. A published site
+  cannot simply switch groups; moving it is a hosting migration.
+- Agents with an organization API key can manage groups with
+  `list_hosting_groups`, `save_hosting_group`, `connect_hosting_group` and
+  `set_site_hosting_group`.
+
+## Give the client access
+
+Give clients access to their site only, not to your whole Organization:
+
+1. The client creates their own Typeroll Organization (signing up includes this
+   step).
+2. On the site, an admin opens **Site settings → Access & AI → Manage
+   sharing** and shares the site with the client's Organization, choosing **read**, **write** (edit
+   content, the default) or **admin**. Agents use `share_site` with the
+   Organization's slug.
+3. The client's people sign in to their own Organization and see the shared
+   site there.
+
+Change or revoke the share at any time with `update_site_share` or
+`revoke_site_share`; revoking ends access immediately. A recipient cannot pass
+the access on.
+
+Inviting a client into **your** Organization instead gives them access to all
+of its sites. Use invitations for your own team; see
+[Teams and roles](../teams-and-roles/).
+
+## Reviews and approvals
+
+- **Previews:** share an expiring preview link of a page or a branch for
+  feedback before anything is published (`get_preview_link`). See
+  [Drafts, saving and review](../../tools/drafts-and-saving/).
+- **Branches:** build a redesign on a branch and merge it only after the
+  client's approval; see [Versions and branches](../../tools/versions/).
+- **Owner answers:** when the client must confirm facts such as prices, opening
+  hours or team members, use [Owner answers and review](../owner-review/). The
+  client approves changes through a private link without signing in.
+
+## Work across many sites with agents
+
+- Create an **organization API key** under **Account → API keys**
+  for an agent that manages several sites, or use a personal connection that
+  has your own access. See [Connect your AI agent](../../getting-started/mcp-server/).
+- Agents select one site at a time and confirm it before writing. Give each
+  client its own [agent workspace](../../getting-started/agent-workspace/) for
+  the brief, decisions and QA.
+- Publish one site at a time per Organization: all sites share the
+  Organization's build engine.
+- `list_organization_analytics` and `set_organization_analytics` turn on the
+  cookieless [Analytics module](../../apps/analytics/) for several sites at once.
+- Run the [launch checklist](../launch-checklist/) on every new client site.
+
+## When a client leaves
+
+- **The client takes the site elsewhere:** download the
+  [content export](../export-and-backup/) for them. The published static files
+  already live in the Cloudflare account of the site's Hosting Group.
+- **The site is retired:** [archive it](../archive-a-site/). Archiving keeps
+  everything readable and the last publication online, and refuses changes.
+- **The collaboration ends on a client-owned site:** the client revokes your
+  Organization's share, which also ends access for your Organization's keys.
+
+## Check it
+
+- `list_site_shares` on each client site shows only the intended
+  Organizations and permissions.
+- `read_site_hosting_group` shows the client's Hosting Group before the first
+  publication.
+- `read_site_readiness` has no open warnings you have not accepted.

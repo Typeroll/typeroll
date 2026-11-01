@@ -88,7 +88,28 @@ function build(label, extraEnv, verifyOutput) {
 }
 
 // Scenario 1: the normal deploy shape — fixtures dir set, no service account.
-await build('fixtures', {});
+// Also pins the AI-agent outputs: llms.txt groups, llms-full.txt, a Markdown
+// file per indexable page announced from its head, and an unchanged robots.txt
+// and sitemap for a site without an AI crawler policy or hreflang.
+await build('fixtures', {}, (outDir) => {
+  const llms = readFileSync(join(outDir, 'llms.txt'), 'utf8');
+  if (!/^## Pages$/m.test(llms) || !llms.includes('(https://smoke.test/llms-full.txt)') || !llms.includes('(https://smoke.test/sitemap.xml)')) fail('[agent-outputs] llms.txt lacks its groups or links');
+  if (!llms.includes('](https://smoke.test/about/)')) fail('[agent-outputs] llms.txt does not list /about/');
+  const full = readFileSync(join(outDir, 'llms-full.txt'), 'utf8');
+  for (const route of ['index.md', 'about/index.md']) {
+    if (!existsSync(join(outDir, route))) fail(`[agent-outputs] missing ${route}`);
+  }
+  const about = readFileSync(join(outDir, 'about', 'index.md'), 'utf8');
+  if (!about.startsWith('# ') || !about.includes('URL: https://smoke.test/about/')) fail('[agent-outputs] about/index.md has no title or URL');
+  if (!full.includes(about.split('\n')[0])) fail('[agent-outputs] llms-full.txt lacks the about page');
+  const aboutHtml = readFileSync(join(outDir, 'about', 'index.html'), 'utf8');
+  if (!aboutHtml.includes('<link rel="alternate" type="text/markdown" href="https://smoke.test/about/index.md">')) fail('[agent-outputs] about page does not announce its Markdown file');
+  const robots = readFileSync(join(outDir, 'robots.txt'), 'utf8');
+  if (/Content-Signal|GPTBot/i.test(robots)) fail('[agent-outputs] robots.txt changed without an AI crawler policy');
+  const sitemap = readFileSync(join(outDir, 'sitemap.xml'), 'utf8');
+  if (!sitemap.startsWith('<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url>')) fail('[agent-outputs] sitemap.xml header changed for a site without hreflang');
+  log('[agent-outputs] ✓ llms.txt, llms-full.txt, Markdown pages, unchanged robots.txt and sitemap');
+});
 
 // Scenario 2 (regression): a deploy build runs on Cloud Run where
 // FIREBASE_SERVICE_ACCOUNT is present in the environment and leaks into the
@@ -128,6 +149,9 @@ await (async function sitewideNoindexScenario() {
           fail(`[sitewide-noindex] ${route} is missing the site-wide noindex meta directive`);
         }
       }
+      if (existsSync(join(outDir, 'index.md')) || existsSync(join(outDir, 'about', 'index.md'))) fail('[sitewide-noindex] Markdown pages were published for a noindex site');
+      if (/^## /m.test(readFileSync(join(outDir, 'llms.txt'), 'utf8'))) fail('[sitewide-noindex] llms.txt lists pages of a noindex site');
+      if (readFileSync(join(outDir, 'index.html'), 'utf8').includes('type="text/markdown"')) fail('[sitewide-noindex] noindex page announces a Markdown file');
     },
   );
 })();
@@ -609,8 +633,9 @@ await (async function directoryRendererScenario() {
       if (hreflangPage.includes('evil.test')) {
         fail('[directory-renderer] malformed hreflang entry reached the head');
       }
-      if ((hreflangPage.match(/rel="alternate"/g) ?? []).length !== 2) {
-        fail('[directory-renderer] expected exactly 2 alternate links (self + de)');
+      // hreflang links only; the page's Markdown alternate is a separate link type.
+      if ((hreflangPage.match(/rel="alternate" hreflang=/g) ?? []).length !== 2) {
+        fail('[directory-renderer] expected exactly 2 hreflang alternate links (self + de)');
       }
 
       log('[directory-renderer] ✓ facets gated + scoped, core/embed JS bundled outside the body');
@@ -972,7 +997,45 @@ await (async function languageSectionsScenario() {
     if (/<html[^>]* dir=/.test(sv) || sv.includes('data-direction') || /<html[^>]* dir=/.test(fi)) fail('[language-sections] a left-to-right page got a direction');
     const arNotFound = readFileSync(join(outDir, 'ar', '404.html'), 'utf8');
     if (!/<html lang="ar" dir="rtl"/.test(arNotFound) || !arNotFound.includes('لم يتم العثور على الصفحة') || !arNotFound.includes('href="/ar/"')) fail('[language-sections] Arabic 404 is not right to left in Arabic');
-    log('[language-sections] ✓ per-language header, banner, home crumb, logo link, 404 and right-to-left Arabic');
+    const llms = readFileSync(join(outDir, 'llms.txt'), 'utf8');
+    if (!llms.includes('## Pages (sv-SE)') || llms.indexOf('## Pages (sv-SE)') < llms.indexOf('## Pages\n') || !llms.includes('](https://smoke.test/sv/artikel/)')) fail('[language-sections] llms.txt does not group the Swedish section after the site language');
+    if (!existsSync(join(outDir, 'sv', 'artikel', 'index.md'))) fail('[language-sections] Swedish page has no Markdown file');
+    log('[language-sections] ✓ per-language header, banner, home crumb, logo link, 404, right-to-left Arabic, llms.txt groups and Markdown');
+  });
+})();
+
+// Scenario: an AI crawler policy and hreflang alternates. robots.txt carries the
+// Content Signal and training-crawler groups without touching search
+// crawlers, and the sitemap lists each page's hreflang cluster.
+await (async function aiCrawlerPolicyScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-ai-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+  const version = join(tmpFixtures, 'organizations', 'default', 'sites', 'default', 'versions', 'main');
+  const settingsPath = join(version, 'settings', 'default.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.ai_crawler_policy = 'no_training';
+  writeFileSync(settingsPath, JSON.stringify(settings));
+  const aboutPath = readdirSync(join(version, 'pages')).filter(name => name.endsWith('.json')).map(name => join(version, 'pages', name))
+    .find(file => JSON.parse(readFileSync(file, 'utf8')).slug === 'about');
+  if (!aboutPath) fail('[ai-crawler-policy] fixture about page not found');
+  const about = JSON.parse(readFileSync(aboutPath, 'utf8'));
+  about.language = 'en';
+  about.alternates = [{ hreflang: 'sv', href: 'https://smoke.test/sv/om/' }];
+  writeFileSync(aboutPath, JSON.stringify(about));
+  await build('ai-crawler-policy', { TYPEROLL_FIXTURES_DIR: tmpFixtures }, (outDir) => {
+    const robots = readFileSync(join(outDir, 'robots.txt'), 'utf8');
+    if (!/User-agent: \*\nContent-Signal: search=yes, ai-input=yes, ai-train=no\n/.test(robots)) fail('[ai-crawler-policy] robots.txt lacks the Content Signal in the wildcard group');
+    if (!robots.includes('User-agent: GPTBot\nDisallow: /')) fail('[ai-crawler-policy] robots.txt does not disallow GPTBot');
+    if (/^User-agent: (Googlebot|Bingbot|Applebot)$/m.test(robots)) fail('[ai-crawler-policy] robots.txt names a search crawler');
+    const tail = robots.trimEnd().split('\n').slice(-2);
+    if (tail[0] !== 'Sitemap: https://smoke.test/sitemap.xml' || tail[1] !== 'Sitemap: https://smoke.test/sitemap-images.xml') fail('[ai-crawler-policy] Sitemap lines are not at the end');
+    const sitemap = readFileSync(join(outDir, 'sitemap.xml'), 'utf8');
+    if (!sitemap.includes('xmlns:xhtml="http://www.w3.org/1999/xhtml"')) fail('[ai-crawler-policy] sitemap lacks the xhtml namespace');
+    if (!sitemap.includes('<xhtml:link rel="alternate" hreflang="sv" href="https://smoke.test/sv/om/"/>') || !sitemap.includes('<xhtml:link rel="alternate" hreflang="en" href="https://smoke.test/about/"/>')) fail('[ai-crawler-policy] sitemap lacks the hreflang cluster');
+    log('[ai-crawler-policy] ✓ Content Signal, training-crawler groups and sitemap hreflang');
   });
 })();
 

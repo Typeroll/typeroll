@@ -52,9 +52,13 @@ interface Props {
    * Course, …). See SEOHead for the contract.
    */
   extraJsonLd?: string[];
+  /** Media records by URL, for the share image's size and type (see SEOHead). */
+  mediaByUrl?: { get(url: string): { width?: number; height?: number; mime_type?: string } | undefined };
+  /** The first section's background image, preloaded because CSS reveals it late. */
+  preloadImage?: string | null;
 }
 
-const { page, contentType, settings, blockCss, blockJs, clientCapabilities, extraJsonLd, apps, extensions, breadcrumbs } = Astro.props;
+const { page, contentType, settings, blockCss, blockJs, clientCapabilities, extraJsonLd, apps, extensions, breadcrumbs, mediaByUrl, preloadImage } = Astro.props;
 const extensionRuntime = extensions?.installations?.length
   ? buildExtensionRuntimeScript(extensions, { analytics: apps?.apps?.analytics?.enabled && typeof apps.apps.analytics.config.event_token === 'string' && typeof apps.apps.analytics.config.event_endpoint === 'string'
       ? { endpoint: apps.apps.analytics.config.event_endpoint, token: apps.apps.analytics.config.event_token, requires_consent: settings.cookie_consent?.enabled === true } : undefined })
@@ -143,7 +147,8 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     {extensionUsesSensitiveUrlContext && <meta name="referrer" content="no-referrer" />}
 
-    <SEOHead contentType={contentType} page={page} settings={settings} extraJsonLd={extraJsonLd} breadcrumbs={breadcrumbs} />
+    <SEOHead contentType={contentType} page={page} settings={settings} extraJsonLd={extraJsonLd} breadcrumbs={breadcrumbs} mediaByUrl={mediaByUrl} />
+    {preloadImage && <link rel="preload" as="image" href={preloadImage} fetchpriority="high" />}
 
     <style set:html={themeStyle} />
     <style set:html={contentWellCss(resolveRenderVersion(settings.render_version))} />

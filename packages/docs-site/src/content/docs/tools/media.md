@@ -232,6 +232,55 @@ the stricter import prerequisite.
 
 Returns this site’s media assets with stable media URLs, filenames and sizes. A stable URL can identify a private original; it is not necessarily a public delivery URL.
 
+## `read_media`
+
+Reads one media item's metadata by `media_id`. Use it to check a single file,
+for example its alt text or variants, without listing the whole library.
+
+## `upload_media_inline`
+
+Uploads an image or PDF from base64 bytes: `filename`, `content_type`,
+`data_base64` and an optional `alt_text`. Use it only for files of a few
+kilobytes. Base64 text that passes through a model can be altered without an
+error, which leaves a file that uploads at the right size but renders broken.
+For anything larger, and always for SVG files, logos and generated images, use
+[direct file uploads](#direct-file-uploads-through-the-api) or
+[`upload_media_from_url`](#upload_media_from_url), then render the result
+before you reference it. Returns `media_id`, `cdn_url` and `filename`.
+
+## `finalize_media`
+
+Call after a successful direct upload of an image. It sets a one-year immutable
+`Cache-Control` on the stored original and generates AVIF and WebP variants if
+they are missing. It is safe to call twice. Pass `expected_sha256` (the SHA-256
+of your source file) so a corrupted transfer is rejected with HTTP 422 instead
+of being cached. The response includes the stored `sha256` and `size_bytes`.
+Truncated SVG files are rejected.
+
+## `finalize_all_media`
+
+Applies the same cache headers and variants to every item in the library that
+lacks them. Use it once on an older site. It runs synchronously, can take
+minutes on a large library and is idempotent.
+
+## `generate_image_variants`
+
+Regenerates the WebP and AVIF variants (320, 640, 1024 and 1920 pixels wide,
+never upscaled) for one image. Non-image files are skipped. Prefer
+`finalize_media` for new uploads; use this tool only to rerun variants.
+
+## `suggest_alt_text_context`
+
+Returns what an agent needs to write alt text for one image: the image URL, a
+prompt tuned for accessibility and search, the site language and the pages that
+use the image, with the nearest heading for each use. It does not generate the
+text. Your agent writes it and saves it with `update_media`.
+
+## `delete_media`
+
+Deletes a media item's record by `media_id`. Check where the file is used
+first; pages that still reference it lose the image.
+
 ## Media URLs
 
 Use the stable URL returned by the media API instead of constructing an address. A URL ending in `/api/sites/{site}/media/{id}/content` requires authenticated Site access because it identifies a private original: a portal session, or the same `Authorization: Bearer` API key (site or organization) as `/api/v1`, which receives a 302 to a short-lived signed address. Typeroll authorizes images temporarily for previews and resolves public delivery URLs during publishing. Public visitors should never need to log in. Use the returned stable URL in:

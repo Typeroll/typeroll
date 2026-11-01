@@ -1,0 +1,173 @@
+---
+title: Build a website with Claude Code
+description: How to build, review and publish a website with Claude Code and Typeroll, from connecting the MCP server to a launch check and your own domain.
+---
+
+Claude Code can build a complete website in Typeroll: the design settings,
+the header and footer, the pages as editable blocks, and the launch checks.
+Typeroll stores the content and publishes a static site to your own
+Cloudflare account, so the result does not depend on Claude Code or on a
+running server. People without Claude Code keep editing in the
+[visual editor](../the-editor/).
+
+This guide takes a new site from an empty account to a live address. The same
+steps work in other MCP clients; see
+[Connect your agent](../../getting-started/connect-your-agent/).
+
+## What you need
+
+- [Claude Code](https://code.claude.com/docs) installed and signed in.
+- A Typeroll account: [Typeroll Cloud](../typeroll-cloud/), which starts with a
+  [30-day trial](../cloud-trial/), or your own
+  [self-hosted portal](../../getting-started/self-hosting-quickstart/).
+- To publish: a GitHub account and a Cloudflare account. You can build and
+  preview before connecting them.
+
+## 1. Create your account and Organization
+
+Sign up at [app.typeroll.com](https://app.typeroll.com/login?mode=signup) and
+name your Organization. The Organization owns your sites and your publishing
+connections.
+
+## 2. Connect Claude Code
+
+Add the hosted MCP server:
+
+```bash
+claude mcp add --transport http typeroll https://app.typeroll.com/api/mcp
+```
+
+Start Claude Code, run `/mcp`, choose `typeroll` and sign in to Typeroll in the
+browser. Select **Allow access**. No API key is copied: the connection has the
+same sites and permissions as you have in the portal, and it expires after 30
+days. For a self-hosted portal, use `https://<your-portal-host>/api/mcp`.
+
+Check the connection with a read-only request:
+
+```text
+List the Typeroll sites available to this connection. Do not change anything.
+```
+
+## 3. Keep the project in a workspace (recommended)
+
+A workspace is a folder, usually a Git repository, where Claude Code keeps the
+brief, the page plan, decisions and QA results. The website itself stays in
+Typeroll. Create one from the
+[site-starter template](https://github.com/Typeroll/site-starter) or generate
+it:
+
+```bash
+npx @typeroll/mcp-server@latest init ./my-site
+cd my-site
+claude
+```
+
+The workspace's `AGENTS.md` tells Claude Code how to work on the site. See
+[Agent workspace](../../getting-started/agent-workspace/).
+
+## 4. Describe the site
+
+Start with the guided interview. Claude Code asks one question at a time and
+records the answers:
+
+```text
+Read AGENTS.md and run the interview in workflows/interview.md for a new
+website for [business], who it is for and what visitors should do.
+```
+
+The interview covers the goal, the audience, the brand, which pages the
+business needs (such as pricing, contact and a privacy policy) and the launch
+basics: an optional default share image, the organization's name, logo and
+profile links, and who manages Google Search Console. The page plan is agreed
+before design work starts.
+
+## 5. Build
+
+Ask Claude Code to build from the brief:
+
+```text
+Create the site in Typeroll from the brief. Follow tr-new-site: settings and
+styles first, then the header and footer, then the pages in the page plan as
+editable blocks. Keep everything as drafts and give me a preview link.
+```
+
+Claude Code reads the `tr-new-site` recipe from the MCP server and works
+through it:
+
+- **Site and settings:** creates the site, then sets colours, fonts, icons and
+  the organization details.
+- **Styles:** named styles for headings, body text, buttons and sections, so
+  editors can change the look in one place.
+- **Header and footer:** built from the native navigation blocks.
+- **Pages:** each page from the plan as blocks, with a title, a meta
+  description and one H1.
+
+Large changes to an existing site belong on a branch, so the live site is
+untouched until you approve; ask for the `tr-redesign-branch` recipe.
+
+## 6. Review
+
+Open the preview link Claude Code shares, check it on a phone and a desktop,
+and ask for changes in plain language. You can also open a page in the
+[editor](../the-editor/) and change it yourself. Edits stay in a working copy
+until they are saved; see [Drafts, saving and review](../../tools/drafts-and-saving/).
+
+```text
+Make the hero heading shorter, use the accent colour for the buttons, and
+show me the changed pages before saving.
+```
+
+## 7. Connect publishing
+
+An Organization owner or admin connects GitHub, Cloudflare and media storage
+once under **Account → Publishing**; every site in the Organization reuses
+them. Claude Code can check the status and explain each step, but signing in to
+GitHub and Cloudflare happens in your browser. See
+[Connect your accounts](../customer-publishing/).
+
+## 8. Launch check and publish
+
+Before the first publication, ask:
+
+```text
+Run read_site_readiness, fix what you can and list what needs my decision.
+Then save the approved pages and publish when I say so.
+```
+
+The [launch readiness report](../launch-checklist/) lists what the site still
+needs to be found and shared, such as a missing share image, duplicate titles
+or pages nothing links to. It never blocks a publication. Claude Code publishes
+only when you approve it; publishing builds the static site on your Cloudflare
+account and gives it a temporary address.
+
+## 9. Use your own domain
+
+When the site looks right on the temporary address, add your domain. Typeroll
+prepares a build for the new address before you switch DNS, so nothing breaks
+during the change. See [Website and media domains](../../publishing/domains/).
+
+## Everyday edits afterwards
+
+Claude Code stays useful after launch: new pages, menu changes, image swaps and
+site-wide text edits. Ask it to read the `tr-edit-site` recipe for these
+tasks. Editors who do not use Claude Code work in the visual editor on the same
+content.
+
+## Troubleshooting
+
+| Symptom                                        | What to do                                                                                                                             |
+| ---------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude Code does not list the `typeroll` tools | Run `/mcp` and sign in again; the connection expires after 30 days.                                                                    |
+| Claude Code asks which site to use             | Expected: confirm the Organization, site and version. Each conversation selects its site explicitly.                                   |
+| A change does not show in the preview          | Unsaved drafts appear only in a preview that includes the working copy; ask Claude Code to save the approved pages.                    |
+| An AI workflow answers `ai_not_enabled`        | The portal's built-in AI needs the Organization's own AI key. Claude Code can do the same work itself with the recipe the error names. |
+| A write is refused after the trial             | See [Cloud trial and access](../cloud-trial/). Reading and exporting still work.                                                       |
+
+## Check it
+
+- The [launch readiness report](../launch-checklist/) has no warnings left
+  that you have not decided to accept.
+- `get_deploy_status` reports the publication as succeeded, and the live
+  address shows the saved content.
+- `check_site_indexing` reports the expected robots policy for the address you
+  launched.

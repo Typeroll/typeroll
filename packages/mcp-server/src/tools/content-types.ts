@@ -5,9 +5,9 @@ const fields = {
   label_singular: z.string().optional(), label_plural: z.string().optional(), fields: schema.optional(),
   page_field_rules: z.record(z.string(), z.object({ label: z.string().optional(), writable_by: z.array(z.enum(['portal', 'owner', 'agent', 'app', 'import'])) })).optional(),
   allowed_templates: z.array(z.string()).nullable().optional().describe('Allowed Page template IDs, including the default. Null allows all compatible templates; an empty list permits no template.'),
-  route_template: z.string().optional(), template: z.string().optional(), schema_type: z.string().optional(),
+  route_template: z.string().optional(), template: z.string().optional(), schema_type: z.string().optional().describe('Schema.org type each Page of this type represents, such as BlogPosting, Product or SoftwareApplication.'),
   schema_field_mode: z.enum(['all', 'mapped']).optional().describe('Use mapped to emit only explicitly mapped fields. Resolve typed references in Page json_ld for complex graphs.'),
-  schema_field_map: z.record(z.string(), z.string()).optional(),
+  schema_field_map: z.record(z.string(), z.string()).optional().describe('Field name to a direct Schema.org property, e.g. {"cover":"image","os":"operatingSystem"}. For Product and SoftwareApplication types, price, priceCurrency, availability and priceValidUntil are published inside offers (an Offer), ratingValue with ratingCount or reviewCount inside aggregateRating, and a brand name as a Brand. A field mapped to image is also the share image.'),
   icon: z.string().optional(), sort_field: z.string().optional(), sort_dir: z.enum(['asc', 'desc']).optional(),
   facets: z.array(z.record(z.string(), z.unknown())).optional(), facet_combinations: z.array(z.tuple([z.string(), z.string()])).optional().describe('Pairs of configured facet field names, not values. Use editable Pages for a curated subset of combinations.'),
 };

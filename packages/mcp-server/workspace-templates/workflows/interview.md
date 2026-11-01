@@ -45,15 +45,24 @@ conversation, not a portal wizard or a new API workflow.
    alone must not change the motif. Save design_intent and asset exceptions in
    brief/migration.md, and the direction in brief/brand.md. A fresh design never
    grants permission to rewrite preserved text.
-5. **Content and behavior** — Page types, shared templates, navigation, forms,
-   downloads, integrations and who will edit them. Identify missing capabilities
-   before scaling up. Save to brief/content-model.md. New websites skip migration
-   preservation choices and establish their brand/content brief here.
+5. **Content and behavior** — Which pages does the business need? Offer the
+   usual set as choices: home, about, services or products, pricing, contact,
+   privacy policy and other legal pages, comparisons with alternatives, and
+   articles. Then page types, shared templates, navigation, forms, downloads,
+   integrations and who will edit them. Write the page plan (title, path,
+   purpose, search intent, status) in brief/content-model.md before any design
+   work starts. Identify missing capabilities before scaling up. New websites
+   skip migration preservation choices and establish their brand/content brief here.
 6. **SEO and continuity** — Markets, search intent, useful topics and existing
    valuable URLs. Record evidence separately from hypotheses in brief/seo.md.
    Confirm metadata policy; text preservation cannot be bypassed as "SEO cleanup".
    Every old public URL must remain or redirect meaningfully regardless of the
    two migration choices. Retiring a URL requires a separate agreed exception.
+   Ask for the launch basics, each optional: a default share image (choose an
+   existing one, upload one or create one with tr-imagegen; never a generated
+   title card), the organization's name, logo and official profile URLs, and
+   who can verify the site in Google Search Console. Save them under
+   "Launch basics" in brief/seo.md, including any the owner skips.
 7. **Owner rules and review** — Non-negotiable copy/design constraints, editing
    roles and who approves prototypes, publication, DNS or messages. Save confirmed
    rules to brief/rules.md. Keep technical access separate from user authorization.

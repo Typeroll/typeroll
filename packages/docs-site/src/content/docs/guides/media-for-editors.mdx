@@ -1,0 +1,88 @@
+---
+title: Images and media for editors
+description: Upload images, write alt text, choose the right size and crop, and replace or remove files safely in Typeroll's media library and editor.
+---
+
+The media library holds a site's images and PDFs. Pages use them through
+blocks such as Image, Hero, Gallery and Card. When a site is published,
+Typeroll creates smaller AVIF and WebP versions of each image, so visitors on
+phones download less. This guide covers the everyday work.
+
+## Upload
+
+Open **Media** for the site and drag files onto the page, or choose them with
+the upload button. You can also pick or upload an image directly from an image
+field in the [editor](../the-editor/).
+
+- **Types:** JPEG, PNG, WebP, AVIF, GIF, SVG, ICO, BMP, TIFF, HEIC, JPEG XL and
+  PDF. See [file names and types](../../tools/media/#file-names-and-types).
+- **Size:** up to 25 MB per file.
+- **SVG:** stored only after it has been cleaned of scripts.
+- **Before publishing setup:** uploads work before GitHub and Cloudflare are
+  connected, but a migration should connect media storage first; see
+  [Connect your accounts](../customer-publishing/#storage-before-importing).
+
+## Choose the right size
+
+Typeroll never enlarges an image. Upload enough pixels for the largest place
+the image is shown:
+
+| Use                             | Recommended size                        |
+| ------------------------------- | --------------------------------------- |
+| Full-width hero                 | 1920 × 1080 px or 1600 × 900 px         |
+| Share image for social networks | 1200 × 630 px PNG or JPEG               |
+| Card thumbnail                  | 800 × 600 px                            |
+| Logo                            | SVG, or PNG at twice the displayed size |
+| Favicon                         | 32 × 32 px PNG or ICO                   |
+
+Larger files are fine: visitors receive a version that fits their screen.
+
+## Write alt text
+
+Alt text describes an image for people who cannot see it and for search
+engines.
+
+- Fill in **Alt text** on the Image block (and the matching field on other
+  image blocks) for every image that carries meaning. Describe what the image
+  shows in its context, in one sentence, without "Image of".
+- Leave it empty for purely decorative images, so screen readers skip them.
+- The media library's own **Alt text** field (open a file to edit it) stores a
+  description with the file. AI agents and imports reuse it; check it when you
+  place the image.
+
+An AI agent can propose alt text with the context of where an image is used
+(`suggest_alt_text_context`); review its suggestions before saving.
+
+## Control the crop
+
+Images that fill a fixed area, such as a hero background, a section background
+or a card, are cropped to fit. Set the **Image focal horizontal position** and
+**Image focal vertical position** (0–100 %) on the Image, Hero, Container and
+Post card blocks to keep the subject in view. Check the result on a phone and a
+desktop; both positions can differ per screen size.
+
+## Rename, replace and remove
+
+- **Rename** a file or change its title and caption in its details panel. The
+  extension must match the file type.
+- **Replace** an image on a page by picking another file in the block. The old
+  file stays in the library.
+- **Delete** a file only when no page uses it: deleting removes it from storage,
+  and pages that still show it break. An AI agent can check where a file is used
+  with `search_pages` before you delete it.
+
+## Share images
+
+The image social networks show for a page comes from the page's **Meta** panel,
+then the site's default share image. SVG, AVIF and TIFF share images are
+published as a PNG copy, but a 1200 × 630 PNG or JPEG gives the best result.
+See [SEO for your site](../seo/).
+
+## Check it
+
+- Preview the page on a phone and a desktop: every image appears, the subject
+  is in view and nothing is blurry.
+- Run the [launch readiness report](../launch-checklist/#share-image) to check
+  the share images.
+- After publishing, open the page and confirm the images load from the site's
+  media address.

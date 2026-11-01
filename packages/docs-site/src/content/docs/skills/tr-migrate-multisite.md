@@ -1,0 +1,389 @@
+---
+title: "Migrate a multisite / multi-domain family to Typeroll"
+description: "Use when migrating SEVERAL sites at once — a WordPress multisite network, a group of country/language sites on different top-level domains, or any batch of related sites moving to Typeroll together. Triggers on \"multisite\", \"network of sites\", \"10 sites\", \"our .se/.de/.co.uk sites\", \"language versions\", \"migrate all our sites\". For a single WordPress site use tr-migrate-wp; for a single non-WP source use tr-import-url."
+editUrl: "https://github.com/typeroll/typeroll/edit/main/packages/mcp-server/skills/tr-migrate-multisite.md"
+sidebar:
+  label: "Migrate a multisite"
+  order: 20
+---
+
+<!-- Generated from packages/mcp-server/skills/tr-migrate-multisite.md by scripts/generate-skill-pages.mjs. Edit the skill, not this page. -->
+
+This is the `tr-migrate-multisite` recipe exactly as the Typeroll MCP server gives it to agents through `list_skills` and `read_skill`. See [Skills and recipes](../overview/) for how agents load recipes.
+
+**Who runs this:** this recipe is for the user's own AI agent (Claude Code, Codex or
+another MCP client) working through MCP and the public API. The portal's built-in
+AI assistant has no migration tools: it does not import, convert or verify sites.
+
+**Before import or reconstruction:** read `tr-migration-evidence` with
+`read_skill`. Choose preserve or renew independently for text and design/images,
+record text_intent and design_intent in the brief and verify one prototype per active template before bulk writes.
+Use standard blocks first, reviewed custom types next, rare documented HTML last.
+All four combinations must preserve or meaningfully redirect every old public URL. That
+shared contract defines acceptance; this recipe only adds source-specific steps.
+
+
+> **The buffer model (draft writes).** Every content write in this recipe
+> (pages, blocks and partials) lands in an unsaved per-doc
+> DRAFT — deploys and plain previews only see SAVED content. For recipe-style
+> build work, pass `save: true` on write calls (the work is pre-approved by
+> the task itself), or run `commit_working_copy` per doc before any
+> `trigger_deploy`. Preview your drafts with `include_working_copy: true`.
+
+## The first decision: one site or many?
+
+**One Typeroll site owns exactly one domain** (plus its apex/www sibling).
+So:
+
+| The old family looks like | Build it as |
+|---|---|
+| `example.se`, `example.de`, `example.co.uk` — separate domains | **N Typeroll sites**, one per domain |
+| `example.com/se/`, `example.com/de/` — one domain, language folders | **One site**, using `path` and `language` on each page (`/se/om-oss`) and a `language_sections` entry per folder (see the multilingual-sites guide) |
+| A WP multisite on subdomains that the customer wants to consolidate onto one domain | **One site** + redirects from every old subdomain |
+
+Confirm this with the user before creating anything — it's the one decision
+that is expensive to reverse (domains, deploys, and analytics all hang off
+it). The rest of this recipe assumes the common case: **N sites, one per
+domain**, sharing a design.
+
+Use personal OAuth with the required Organization permissions or an org-scoped
+API key. Select each Site explicitly and use its returned context; never reuse
+another Site's OAuth context. Keep Site and Version explicit on batch calls.
+
+## Phase 0 — Plan the batch (do this once, in writing)
+
+Produce a table and get the user to confirm it before touching the platform:
+
+| Old URL | Language | New Typeroll site | Domain | Notes |
+|---|---|---|---|---|
+
+**Check platform readiness before the plan is even agreed:**
+
+```
+get_migration_readiness site_id=<any existing site>
+```
+
+Then once per market, with that market's own source:
+
+```
+get_migration_readiness site_id=<de-site> source_url="https://example.de"
+```
+
+Check each target Site: storage is shared per Organization, but Hosting Groups,
+permissions and verification origins can differ. Verified customer storage is
+required before import; GitHub/build/domain readiness is checked separately for
+publication. Do not infer that every Site shares the same blockers.
+
+Ask explicitly:
+- Which text_intent and design_intent apply per Site, each preserve or renew? Which source or approved
+  prototype is the **design reference**? Build that one properly first.
+- Are the sites **translations of each other** (same page structure) or
+  independent? This decides whether hreflang clusters are mechanical or
+  hand-mapped.
+- Any domains being **retired or merged**? Those need HTTP redirects served by the old hostname; DNS itself is not
+  a redirect. Plan that hosting separately.
+
+### Launch basics per market (ask early)
+
+Ask the user for these once per market, during Phase 0. Read `read_site_settings` first and ask only for
+what is missing. Each item is optional. Record a skipped item in
+`decisions.md`, so the launch check in the last step holds no surprises.
+
+- **Default share image.** Ask the user to choose or create the image that
+  social networks and chat apps show when a page has no image of its own:
+  upload one (`create_upload_url` or `upload_media_from_url`), pick an existing
+  one (`list_media`), or create one with `tr-imagegen`. Use a 1200×630 px PNG or
+  JPEG and set it as `default_og_image` with `update_site_settings`. Never
+  generate a title card from the page title instead. The user may skip this.
+- **Organization.** The business name, logo and official profile URLs
+  (LinkedIn, Instagram, GitHub and similar). Set `organization` with `same_as`;
+  it becomes the home page's Organization schema.
+
+## Phase 1 — Inventory EVERY old site, before building anything
+
+Do this for all sites up front. It's cheap, it's the only artefact that tells
+you when you're done, and it stops you discovering an untouched 400-URL blog
+in week three.
+
+For each source site, create the target site first (the inventory lives on
+it):
+
+```
+create_site name="Example DE"
+```
+
+Then walk the source and post what you find:
+
+```
+fetch https://example.de/sitemap.xml            # follow sitemap-index children
+fetch https://example.de/wp-json/wp/v2/pages?per_page=100   # walk X-WP-TotalPages
+```
+
+```
+add_migration_urls site_id=<de-site> source_origin="https://example.de" source="sitemap" urls=[
+  { url: "https://example.de/ueber-uns" },
+  { url: "https://example.de/kontakt" },
+  …
+]
+```
+
+**`source_origin` is not optional in a multisite job.** It rejects URLs from
+another origin, which is the guard that stops domain B's `/kontakt` landing
+in domain A's inventory — where it would silently read as "covered" because
+domain A happens to have a `/kontakt` too.
+
+Add every source you have, each with its own label — they merge per URL:
+- `source="sitemap"` — the sitemap(s)
+- `source="rest"` — WP REST pages/posts/custom types
+- `source="gsc"` — a Search Console export, **with `gsc_clicks`**. This is
+  what makes the coverage report prioritise itself: the 12 URLs carrying all
+  the traffic sort to the top.
+- `source="crawl"` — anything you found by following internal links
+
+Exclude only private/admin/session noise, with reasons. Public tags and archives
+need working routes or relevant redirects, even when omitted from new navigation:
+
+```
+add_migration_urls urls=[{ url: "/wp-admin", excluded: true, notes: "Private source administration" }, { url: "/wp-login.php", excluded: true, notes: "Private source login; not public content" }]
+```
+
+Read it back and note the starting number:
+
+```
+list_migration_urls site_id=<de-site> status="unhandled" limit=50
+```
+
+## Phase 2 — Build the reference site
+
+Follow `tr-migrate-wp` (or `tr-import-url`) for the ONE reference site:
+design, header/footer partials, page templates, block types. Get the user to
+approve it before replicating — every fix you make after this point costs
+N times as much.
+
+## Phase 3 — Replicate the design to the other sites
+
+Replicate only source-validated native recipes and brand settings. Confirm each
+market's template overrides and business workflows independently. Export/import
+custom block types only for specifically reviewed source-specific exceptions,
+not generic corrective blocks or copied tenant CSS.
+
+Then per site:
+- `read_site_settings` on the reference → `update_site_settings` on the
+  target with the same colors/fonts (translate `site_name`, `tagline`,
+  contact details — those are per-market, not shared).
+- Recreate header/footer partials with translated nav labels.
+- Page templates: rebuild with `add_block target={kind:'template', id:…}`.
+
+Set the language per site — it drives `<html lang>`, `og:locale` and
+alt-text generation:
+
+```
+update_site site_id=<de-site> language="de"
+```
+
+## Phase 4 — Preserve each market's business functions
+
+Use the business-function inventory from `tr-migration-evidence`. Some markets
+use native Forms, others an owned lead flow, affiliate destination or partner
+iframe. Do not replace them all with a new contact form. Configure a Form only
+where it is the approved equivalent. Verify each market's recipient, destination,
+language and attribution. Use authorized synthetic tests with a safe recipient;
+record delivery UNVERIFIED when it cannot be tested safely. Never create real
+leads or send mail to third parties as a routine migration test.
+
+Scripts follow tr-migration-evidence, "Scripts, tracking and consent": copy no
+source JavaScript, and carry each market's own analytics and advertising IDs
+over in that site's Integrations app with its cookie banner enabled. Never
+reuse one market's tracking IDs on another.
+
+## Phase 5 — Redirects for everything you didn't preserve
+
+Work the coverage report, not your memory:
+
+```
+list_migration_urls site_id=<de-site> status="unhandled"
+```
+
+For each entry, one of three outcomes — no fourth option:
+
+- It moved → `create_redirect from_path="/alte-seite" to_path="/neue-seite"`
+- It was merged → redirect to the relevant replacement, not the homepage
+- It should exist and doesn't → go back and migrate it
+
+Re-read the list. `unhandled` reaching zero is the exit condition for this
+phase.
+
+Pattern redirects require verified source-to-destination content mappings.
+A category/tag/year shape alone is not proof of equivalent destinations. Check
+expanded artifact size and provider limits, actual slash/query variants and
+that no rule hides a preserved Page. A 200 at the wrong content fails.
+
+## Phase 6 — Wire the hreflang cluster
+
+This is the step that only exists because the family is multi-domain, and the
+one most likely to be skipped. Each page declares its siblings on the other
+domains; the renderer adds the page's own self-reference.
+
+```
+update_page site_id=<se-site> page_id="om-oss" patch={ alternates: [
+  { hreflang: "de", href: "https://example.de/ueber-uns" },
+  { hreflang: "en-GB", href: "https://example.co.uk/about-us" },
+  { hreflang: "x-default", href: "https://example.com/about-us" }
+]}
+```
+
+Rules the search engines actually enforce:
+- **Reciprocal.** Every page in a cluster must list every other one. Write
+  all N sides or the cluster is ignored. `batch_update_pages` is the sane way
+  to do this once you have the mapping table.
+- **One `x-default`** per cluster, pointing at the language selector or the
+  fallback market. Optional, but useful when the family doesn't cover a
+  visitor's language.
+- **Absolute URLs on the final domain** — not the `*.typeroll` fallback
+  subdomain. The cluster is what you want live after cutover, and a fallback
+  URL in there is a leak you'll be cleaning up for months.
+- Invalid entries are **rejected at write time** with the reason. If a write
+  fails, fix the tag/href — don't strip the field to make it pass.
+
+Pages that have no equivalent on the other domains get no alternates at all.
+A cluster of one is meaningless markup.
+
+## Phase 7 — Verify BEFORE touching DNS
+
+Deploy each site (`trigger_deploy`), then check what it actually serves.
+
+**Publish one site at a time.** All sites in an organization share one
+organization build engine, and its runners claim the oldest task in the
+organization. Start the next site's `trigger_deploy` only when the previous
+job is `succeeded` or `failed` and `read_organization_build_engine` (REST: `GET /api/v1/publishing/builds` with an organization API key) shows no
+`active_jobs`. Concurrent publications at best queue; on Core ≤0.2.132 they
+could fail each other with `build_result_missing`.
+
+- `build_result_missing` ("the build engine stopped without reporting a
+  result") means a runner never ran the task. Content did not cause it.
+  Publish that site again once the engine is idle.
+- `retry_deploy_verification` only retries public verification of an
+  already-served publication (`publication_observation_timeout`,
+  `publication_cache_refresh_*`). Build failures and the engine's static
+  verification failures need a new publish after fixing the reported cause.
+
+When a site's job has succeeded, check what it serves:
+
+```
+verify_migration_urls site_id=<de-site> source_origin="https://example.de" check_source=true
+```
+
+This requests every inventory URL against the site's fallback subdomain —
+the real domain still points at the old host, which is exactly why the check
+is possible at all. Verdicts:
+
+| Verdict | Meaning | Action |
+|---|---|---|
+| `ok` | 200 at the same path | none |
+| `ok_redirect` | redirects to a 200 | none; flatten if `hops` > 1 |
+| `missing` | 404/410 | **the gap** — redirect it or migrate it |
+| `broken_redirect` | loop, or chain ending on an error | fix the rule |
+| `error` | 5xx / timeout | inconclusive, re-run |
+
+`check_source=true` also requests the OLD site, so a URL that already 404s
+upstream needs a reviewed retention/retirement decision, including traffic and
+backlinks. Never automatically mark source 404s `excluded`.
+
+Slash-equivalent source URLs are one inventory decision but remain separate
+verification requests through `observed_paths`. Therefore `checked` can exceed
+the normalized inventory size, and a missing slash variant remains a launch
+blocker. Redirect builds cover both source spellings and send internal targets
+to the site's configured trailing-slash style.
+
+Note what the check does NOT catch: it verifies that a URL *resolves*, not
+that the page at the other end is the right content. Review content and SEO
+parity, then record the exact dataset and result with
+`record_migration_seo_acceptance`.
+
+Iterate until `missing` and `broken_redirect` are both zero **on every site**.
+Only after explicit cutover authorization, per site (`add_domain` prepares a
+new canonical build and is not an inventory-only operation):
+
+1. `add_domain` with the intended apex/www canonical; leave `auto_deploy` on
+2. Wait for that canonical/sitemap deploy to succeed, then point DNS
+3. `poll_domain` until verified — there is no separate activation step
+4. Re-run `verify_migration_urls target_origin="https://example.de"` against
+   the real domain, to confirm the cutover kept what the pre-check proved
+5. Submit the new sitemap in Search Console; keep the old property open for
+   a few weeks and watch the 404 report
+6. Rerun the complete, unfiltered URL check and SEO review, then require
+   `get_migration_launch_report` to return `launch_ready: true`
+
+## Phase 8 — Launch (required)
+
+A site is not finished until this step has run. Call `read_site_readiness`
+before the production publication and again after it. For every item with the
+status `warning` or `suggestion`, either fix it with the tool its `fix` names,
+or record in `decisions.md` (or the starter's `qa/` folder) why it stays open.
+Tell the user which items remain. A missing default share image is only a
+suggestion; leave it if the user chose to skip it.
+
+The report warns and never blocks a publication. A clean report is not approval
+to publish: publish only when the user has approved it.
+
+Run it for every site in the family, one site at a time, after Phase 7
+passes and before each site's production publication:
+
+```
+read_site_readiness site_id=<de-site>
+```
+
+The readiness report does not replace `get_migration_launch_report`: a site
+needs both.
+
+Run `read_site_readiness` again after the publication. It reads saved content
+and settings, so confirm the rest on the live site: the AI crawler zone check
+needs the site's website host, and a Search Console property verified by DNS
+is not visible to Typeroll. The
+[launch checklist](https://typeroll.com/docs/guides/launch-checklist/)
+explains every item.
+
+## Definition of done (per site)
+
+- [ ] `get_migration_readiness source_url=<this market's old site>` → `ready: true`, warnings reviewed
+- [ ] `list_migration_urls status="unhandled"` → 0
+- [ ] Complete `verify_migration_urls` → 0 `missing`, 0 `broken_redirect`, 0 `error`, 0 untested variants
+- [ ] `record_migration_seo_acceptance` is accepted for the latest deploy
+- [ ] `get_migration_launch_report` → `launch_ready: true`
+- [ ] `read_site_readiness` run before and after publication; every open item fixed or recorded with a reason
+- [ ] No source JavaScript copied; analytics/advertising via the Integrations app with the cookie banner on (`scripts.status: "clean"` in the launch report)
+- [ ] hreflang cluster written on both/all sides, absolute, final domains
+- [ ] `language` set on the site; `<html lang>` correct in the deployed HTML
+- [ ] Internal links rewritten (no lingering absolute links to the old domain)
+- [ ] Market-specific business functions mapped; authorized synthetic interaction/delivery verified or explicitly UNVERIFIED
+- [ ] Media uploaded to this site's own library (no cross-site `cdn_url`), alt text in this market's language
+- [ ] If cutover is authorized: domain declared, canonical deploy succeeded, DNS verified; sitemap submitted. Otherwise report pre-cutover complete separately.
+
+## Pitfalls specific to this job
+
+- **Don't share one inventory across domains.** Inventory entries key on
+  path; two markets both have `/kontakt`. One site, one inventory.
+- **Don't build all N sites in parallel from scratch.** Build one, approve,
+  replicate. Parallel building multiplies every design mistake by N.
+- **Don't publish the markets in parallel.** One shared build engine serves
+  the organization; publish site by site (Phase 7).
+- **Don't skip the parity check because coverage says 100%.** Coverage is a
+  claim about the data; parity is a measurement of the server. They disagree
+  exactly when it matters — an unpublished target page, a typo'd path, a
+  redirect chain.
+- **Don't point DNS site-by-site on a whim.** Cutting over one market at a
+  time is fine and usually wise, but the hreflang cluster spans markets: a
+  page pointing at a domain that still serves the old site is pointing at
+  content that doesn't match. Either cut over close together, or write the
+  cluster after the last market lands.
+
+## Storage prerequisite
+
+Before reading or importing source content, call `get_import_readiness` (Core
+0.1.95 / MCP 0.44.68 or later). If `ready` is false, stop the import and show the
+returned message and Publishing settings link. The organization must connect
+and verify its own storage first. Do not fall back to draft storage, hotlink
+source images, or use ordinary page-write tools to bypass the import gate.
+Use `upload_media_from_url` for referenced source images; the customer’s
+Cloudflare transfer Worker copies and verifies them directly in R2, independently
+of the GitHub/Cloudflare build-provider choice.

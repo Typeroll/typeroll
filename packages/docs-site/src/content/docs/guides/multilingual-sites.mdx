@@ -16,7 +16,7 @@ one use the site `language`. The page language sets `<html lang>`, the search
 index and the built-in interface wording, and it decides which language section
 the page belongs to. A right-to-left language such as Arabic or Hebrew also
 sets `<html dir="rtl">` and mirrors the built-in layout (see
-[right-to-left languages](../../tools/blocks/#right-to-left-languages)).
+[right-to-left languages](../../tools/blocks/library/#right-to-left-languages)).
 
 Set `language` on every page outside the site language. Setting it on the
 site-language pages as well makes listings and conditions easier to read.
@@ -106,3 +106,11 @@ sides. Typeroll has no built-in language switcher. To add one, store the
 counterpart's address in a Content type field such as `translation_url` and
 bind a button to `{{page.translation_url}}` inside a **Show if…**
 `page.translation_url`.
+
+## Check it
+
+After the next publication, open a page in each language and check its
+`<html lang>`, its hreflang links and the language section's 404 page, for
+example `/sv/404.html`. `/llms.txt` lists each language section in its own
+groups, and `/sitemap.xml` carries the hreflang entries of pages with
+alternates.

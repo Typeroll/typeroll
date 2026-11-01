@@ -165,10 +165,15 @@ One call sets everything:
 ```
 update_site_settings {
   "colors": { ...all 7 tokens },
-  "fonts":  { "heading": "...", "body": "...", "size_base": 16 },
-  "custom_css": "/* optional: utility classes or @keyframes */"
+  "fonts":  { "heading": "...", "body": "...", "size_base": 16 }
 }
 ```
+
+The brand lives in three places that editors can see and change: the
+`colors` and `fonts` settings, the design scales, and named Styles (Step 5b).
+Font families are set only in `fonts`; the platform loads each family once.
+Never load a font again through `custom_css` (`@import`, `@font-face`) or
+`scripts_head`: the readiness item `duplicate_fonts` reports it.
 
 Read back to confirm: `read_site_settings`.
 
@@ -225,11 +230,19 @@ eyebrow, lead, quote, buttons and section rhythm are chosen per block with
 `at.desktop`. Prefer this to custom CSS: editors can see and change styles,
 and every page follows.
 
-## Step 6 — Custom CSS for advanced tokens (optional)
+## Step 6 — Custom CSS only for recorded exceptions
 
-If the brand needs things beyond the 7 base tokens — e.g. a gradient,
-a special border radius, or a branded highlight color — add them via
-`custom_css`:
+Use `custom_css` only for what settings, scales and Styles cannot express,
+and record each rule in `decisions.md` with its reason and the block or
+page it serves. Before writing a rule, check `read_block_type` for a field,
+part or Style that does the same job. Don't override block classes with
+`!important`, restyle every heading or button in CSS, or set a hero's
+background image in CSS: the platform cannot then load that image early, and
+the readiness item `custom_css_overrides` reports it. Use the block's own
+image field instead.
+
+A legitimate exception is a token beyond the 7 base colours, such as a
+gradient, a special border radius or a branded highlight colour:
 
 ```css
 :root {
@@ -363,8 +376,9 @@ temporary/test address:
   is light, white nav text becomes unreadable. Either darken `primary` or
   make the header use `secondary`.
 - **Custom_css is global.** Rules here apply to every page. Keep it to
-  `:root {}` token additions and truly global utilities. Page-specific
-  styles go in the page's HTML `<style>` block.
+  `:root {}` token additions and recorded exceptions. A look that repeats
+  is a named Style; a one-off treatment is a block's `custom_class` with a
+  rule in that Page's `custom_css`.
 - **Font weight on every page.** Two families is fine; a third adds
   measurable LCP impact even when self-hosted. A misspelled family name
   fails silently to the fallback font — verify it as in Step 7.

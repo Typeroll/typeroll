@@ -1,0 +1,173 @@
+---
+title: Connect your agent, client by client
+description: Copy-paste setup for Typeroll's MCP server in Claude, Claude Code, Cursor, VS Code, Codex and ChatGPT, for Typeroll Cloud and self-hosted portals.
+---
+
+Typeroll's MCP server gives an AI agent the same site tools as the portal.
+This page has the exact setup for common clients. For credentials, the local
+process and troubleshooting, see [Connect your AI agent](../mcp-server/).
+
+| Connection | Address or command |
+| --- | --- |
+| Hosted, Typeroll Cloud | `https://app.typeroll.com/api/mcp` |
+| Hosted, self-hosted portal | `https://<your-portal-host>/api/mcp` |
+| Local process (stdio) | `npx -y @typeroll/mcp-server` with `TYPEROLL_API_URL` and `TYPEROLL_API_KEY` |
+
+The hosted server uses MCP Streamable HTTP. You sign in to Typeroll and approve
+access, so no key is copied. Replace the Cloud address with your portal's
+address when you self-host. The examples were checked against each provider's
+documentation on November 1, 2026. Typeroll has not yet recorded an end-to-end
+test in every client; see [Client compatibility](../client-compatibility/).
+
+After connecting, ask the agent a read-only question first:
+
+```text
+List the Typeroll sites available to this connection. Do not change anything.
+```
+
+## Claude (claude.ai and Claude Desktop)
+
+Connectors are added to your Claude account and then work in Claude Desktop too.
+
+1. Open **Customize → Connectors**, select **+ Add**, then **Add custom
+   connector**. On Team and Enterprise plans an owner adds it under
+   **Organization settings → Connectors**, and members then select **Connect**.
+2. Enter the name `Typeroll` and the URL `https://app.typeroll.com/api/mcp`,
+   then select **Continue**.
+3. Keep the detected sign-in settings and choose **Sign in now**.
+4. Sign in to Typeroll and select **Allow access**.
+
+See [Claude's custom connector instructions](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp).
+
+## Claude Code
+
+Hosted server:
+
+```bash
+claude mcp add --transport http typeroll https://app.typeroll.com/api/mcp
+```
+
+Then run `/mcp` inside Claude Code, choose `typeroll` and sign in in the
+browser. Add `--scope user` to use the connection in every project, or
+`--scope project` to share it through the project's `.mcp.json`.
+
+Local process, bound to one site by its API key:
+
+```bash
+claude mcp add --env TYPEROLL_API_URL=https://app.typeroll.com --env TYPEROLL_API_KEY=<your-api-key> --transport stdio typeroll -- npx -y @typeroll/mcp-server
+```
+
+Keep `--transport stdio` between the `--env` options and the server name, and
+everything after `--` unchanged. See [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp).
+
+## Cursor
+
+[Add Typeroll to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=typeroll&config=eyJ1cmwiOiJodHRwczovL2FwcC50eXBlcm9sbC5jb20vYXBpL21jcCJ9)
+opens Cursor with the hosted server filled in. To add it by hand, put this in
+`~/.cursor/mcp.json` (every project) or `.cursor/mcp.json` (one project):
+
+```json
+{
+  "mcpServers": {
+    "typeroll": {
+      "url": "https://app.typeroll.com/api/mcp"
+    }
+  }
+}
+```
+
+Cursor opens the Typeroll sign-in when it first connects. For the local process:
+
+```json
+{
+  "mcpServers": {
+    "typeroll": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@typeroll/mcp-server"],
+      "env": {
+        "TYPEROLL_API_URL": "https://app.typeroll.com",
+        "TYPEROLL_API_KEY": "${env:TYPEROLL_API_KEY}"
+      }
+    }
+  }
+}
+```
+
+See [Cursor's MCP guide](https://cursor.com/docs/context/mcp).
+
+## VS Code
+
+VS Code uses a `servers` map. Add this to the workspace's `.vscode/mcp.json`,
+or run **MCP: Open User Configuration** for every workspace:
+
+```json
+{
+  "servers": {
+    "typeroll": {
+      "type": "http",
+      "url": "https://app.typeroll.com/api/mcp"
+    }
+  }
+}
+```
+
+From a terminal, the same server can be added to your user profile:
+
+```bash
+code --add-mcp '{"name":"typeroll","type":"http","url":"https://app.typeroll.com/api/mcp"}'
+```
+
+Start the server from the MCP view and approve the Typeroll sign-in. See
+[VS Code's MCP configuration reference](https://code.visualstudio.com/docs/agents/reference/mcp-configuration).
+
+## Codex
+
+Add the hosted server to `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.typeroll]
+url = "https://app.typeroll.com/api/mcp"
+```
+
+Then sign in:
+
+```bash
+codex mcp login typeroll
+```
+
+Local process:
+
+```bash
+codex mcp add typeroll --env TYPEROLL_API_URL=https://app.typeroll.com --env TYPEROLL_API_KEY=<your-api-key> -- npx -y @typeroll/mcp-server
+```
+
+See [Codex's MCP documentation](https://developers.openai.com/codex/mcp).
+
+## ChatGPT
+
+ChatGPT connects to remote MCP servers only, so use the hosted address. Custom
+apps need developer mode, and which plans may use write tools changes over time.
+Check OpenAI's current terms for your plan and workspace.
+
+1. Open **Settings → Apps → Advanced settings** and turn on **Developer mode**.
+2. Select **Create app**, name it `Typeroll` and enter
+   `https://app.typeroll.com/api/mcp`.
+3. Choose OAuth sign-in, then sign in to Typeroll and select **Allow access**.
+
+Confirm that editing and publishing tools are available before you rely on
+them. See [OpenAI's developer mode instructions](https://help.openai.com/en/articles/12584461-developer-mode-and-full-mcp-connectors-in-chatgpt-beta).
+
+## Other clients
+
+Any client with MCP Streamable HTTP and OAuth can use the hosted address. A
+client that only sends fixed headers can use `Authorization: Bearer <your-api-key>`
+with an [API key](../mcp-server/#choose-credentials). Never put a key in the URL.
+Clients that launch local processes can use the stdio command above.
+
+## Help your agent read the docs
+
+Point the agent at the [documentation index for agents](../../llms.txt). It
+describes every page and links to plain-text versions, a short overview
+(`llms-small.txt`), focused sets such as the MCP tool reference and the skills,
+and the complete documentation (`llms-full.txt`).

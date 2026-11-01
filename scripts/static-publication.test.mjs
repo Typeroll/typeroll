@@ -215,7 +215,7 @@ const FULL_SETTINGS = {
   }, twitter_handle: '@site',
   default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
   organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },
-  robots_txt: 'User-agent: *', sitewide_noindex: true, sitewide_nofollow: true,
+  robots_txt: 'User-agent: *', ai_crawler_policy: 'no_training', sitewide_noindex: true, sitewide_nofollow: true,
   external_routes: [{ path: '/app', owner: 'Separate deployment' }],
   seo_review: { forbidden_markers: ['TODO'], claims: [{ phrase: 'best', guidance: 'Check' }], notes: ['Note'] },
   language_sections: [{ language: 'en', home_path: '/en/', tagline: 'English', default_meta_description: 'In English',
