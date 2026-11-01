@@ -17,12 +17,13 @@ import { readDomainCutover, requestDomainRollback } from './domain-cutover-journ
 import { ConnectionError } from './connections';
 import { ProviderError } from './providers.mjs';
 import { hiddenLaunchAccepted, launchRobotsFindings, launchRobotsMessage } from './launch-robots';
+import { refreshServingAlarm, servingAlarm, SERVING_CHECK_OFFSETS_MINUTES } from './serving-check';
 
 type Check = { id: string; status: 'ready' | 'waiting' | 'action_required' | 'external'; message: string; details?: unknown };
 
 /** One site-scoped contract for the portal and external agents. No read starts a publication or edits DNS. */
 export async function readDomainGuide(org: string, site: string) {
-  const config = await getSiteDomains(org, site), group = await siteHostingGroup(org, site);
+  const config = await refreshServingAlarm(org, site, await getSiteDomains(org, site)), group = await siteHostingGroup(org, site);
   const checks: Check[] = [];
   const sources = await siteZoneSources(org, site);
   const hosts = await checkPublicationHosts(config.desired, config.dns_mode, sources);
@@ -103,10 +104,16 @@ export async function readDomainGuide(org: string, site: string) {
   const ended = await endedDistribution(org, site, config);
   const previousHosts = await readPreviousHosts(config);
   for (const host of previousHosts) checks.push({ id: `previous:${host.host}`, status: host.status === 'verified' ? 'ready' : host.status === 'pending' ? 'waiting' : 'action_required', message: `${host.host}: ${host.message}` });
+  // Who actually answers the live host. An alarm stands until a later check proves it served again.
+  const serving = config.state === 'live' ? config.serving_check : null;
+  const otherHost = servingAlarm(serving) ? serving : null;
+  if (otherHost) checks.push({ id: `serving:${otherHost.issue.host}`, status: 'action_required', message: otherHost.issue.message, details: { code: otherHost.issue.code, remedy: otherHost.issue.remedy, observed: otherHost.observed ?? null, checked_at: otherHost.checked_at } });
+  else if (serving?.status === 'serving') checks.push({ id: 'serving', status: 'ready', message: `${serving.website_host} serves the current publication (checked ${serving.checked_at}).` });
+  else if (serving) checks.push({ id: 'serving', status: 'waiting', message: `Typeroll re-checks who serves ${serving.website_host} about ${SERVING_CHECK_OFFSETS_MINUTES.join(', ')} minutes after it went live${serving.status === 'inconclusive' ? '; the last check could not reach a conclusion and does not indicate a problem' : ''}.` });
   const canPrepare = checks.filter(check => ['hosting_account', 'host_requirements', 'publishing_ready', 'redirect_capacity', 'candidate_noindex'].includes(check.id)).every(check => check.status !== 'action_required');
   return { ...config, previous_hosts: previousHosts, published_main: publishedMain, can_prepare: canPrepare, elapsed_seconds: job?.started_at ? Math.max(0, Math.round((Date.parse(job.finished_at ?? new Date().toISOString()) - Date.parse(job.started_at)) / 1000)) : null, title: `Move site to ${config.desired.website_host ?? 'your domain'}`, checks,
-    current_phase: config.rollback_status === 'rolled_back' ? 'previous traffic restored' : (job?.phase === 'awaiting domain cutover approval' ? 'Published; DNS switch pending' : job?.phase) ?? ({ unconfigured: 'Save a website address to begin', declared: 'Ready to publish for the new domain', preparing: 'Preparing and checking requirements', ready_to_switch: 'Ready for your approval', distributing: 'Switching and verifying traffic', live: 'Public traffic verified', failed: 'Needs attention', outdated: 'Publish for the new domain to replace this older preparation.' }[config.state]),
-    traffic_live: config.state === 'live', next_action: config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : !lastPublication ? 'publish_first' : noindex.length ? 'resolve_noindex' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : publishedMain ? 'refresh' : 'prepare',
+    current_phase: otherHost ? `Another host is serving ${otherHost.issue.host}` : config.rollback_status === 'rolled_back' ? 'previous traffic restored' : (job?.phase === 'awaiting domain cutover approval' ? 'Published; DNS switch pending' : job?.phase) ?? ({ unconfigured: 'Save a website address to begin', declared: 'Ready to publish for the new domain', preparing: 'Preparing and checking requirements', ready_to_switch: 'Ready for your approval', distributing: 'Switching and verifying traffic', live: 'Public traffic verified', failed: 'Needs attention', outdated: 'Publish for the new domain to replace this older preparation.' }[config.state]),
+    traffic_live: config.state === 'live' && !otherHost, next_action: otherHost ? 'remove_other_host' : config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : !lastPublication ? 'publish_first' : noindex.length ? 'resolve_noindex' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : publishedMain ? 'refresh' : 'prepare',
     cutover: cutover ? { state: cutover.state, deadline_at: cutover.deadline_at, errors: cutover.errors, previous_records: cutover.entries.map(entry => ({ hostname: entry.hostname, records: entry.before })) } : null,
     switch_summary: { website: config.preparation, media: config.media_preparation, redirects: config.redirect_preparations, previous_hosts: config.previous_host_preparations, validation_timeout_minutes: config.validation_timeout_minutes ?? 15,
       interruption: config.preparation?.validation_blocker?.message ?? 'The same main publication already serves at the current address. This step changes DNS without another build or upload. DNS propagation and provider validation can still take time.',

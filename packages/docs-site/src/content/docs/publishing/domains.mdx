@@ -319,10 +319,43 @@ previous addresses again. A warning captured before a redirect propagated can
 therefore become verified without another publication. A failed network check
 is reported as pending; it never changes DNS or redirect rules.
 
+## Another host still answers after the switch
+
+A verified switch is not proof that the domain stays with Typeroll. Some hosts,
+such as Kinsta and WP Engine, attach customer domains to their own Cloudflare
+account as Cloudflare for SaaS custom hostnames. Such a hostname
+[outranks the record in your own zone](https://developers.cloudflare.com/ssl/reference/certificate-and-hostname-priority/),
+so the old host can take the domain back minutes after a correct DNS change.
+
+Typeroll therefore checks who serves the website host again about 2, 10 and 30
+minutes after it goes live, and checks redirect hosts for their 301. Each check
+requests the host and compares its `X-Typeroll-Publication` header (or
+`/.well-known/typeroll/publication.json`) with the current publication. The
+result is `serving_check` in `read_publishing_domains` and the domain guide:
+
+- `serving`: the current publication answers.
+- `other_host`: another provider answers (issue code
+  `domain_served_by_other_host`). `observed.provider_hint` names a likely
+  previous host from a well-known response header, such as `x-kinsta-cache`.
+- `other_publication`: a different Typeroll publication answers (issue code
+  `domain_serving_other_publication`).
+- `inconclusive`: a network or edge error, or a Cloudflare challenge. This never
+  raises or clears an alarm.
+
+While an alarm stands, the domain guide no longer reports traffic as live: its
+`next_action` is `remove_other_host`, and the publication job shows the phase
+`served by another host`. To fix it, remove the domain from the previous host's
+dashboard (for example MyKinsta → Domains); its Cloudflare for SaaS hostname
+outranks your own DNS. Then refresh the domain check: reading the domain
+settings or the guide re-checks a standing alarm, and a successful check clears
+it. The checks only read public responses. Typeroll never changes DNS or rolls
+back the switch because of them.
+
 ## Check it
 
 After the switch, `poll_domain` reports the domain as verified,
-`check_site_indexing` shows the expected robots policy for the new address, and
+`check_site_indexing` shows the expected robots policy for the new address and
+confirms that this site's publication answered, and
 the [launch readiness report](../../guides/launch-checklist/#ai-crawler-zone-conflict)
 can compare the AI crawler setting with the domain's Cloudflare zone. For a
 migration, run `verify_migration_urls` against the real domain as well.

@@ -104,6 +104,19 @@ response headers, HTML robots and robots.txt separately. Also inspect provider
 firewall, bot and access settings when requests are blocked. An HTTP check does
 not prove how a verified search-engine crawler is treated.
 
+Robots findings only describe your site when your site answered. Each target
+therefore reports `serving_publication`, read from the `X-Typeroll-Publication`
+header or `/.well-known/typeroll/publication.json`, together with
+`serving_typeroll` and `provider_hint`, a likely previous host named by a
+well-known response header (for example `x-kinsta-cache` for Kinsta, a WP Engine
+`x-powered-by`, `x-wix-request-id` or a WordPress `wp-json` link). For customer
+publishing the current publication is expected. If another host or another
+publication answers, `serving_typeroll` is `false`, `matches_expected` is
+`false` and an issue says so plainly, while the rest of the report is kept. A
+previous host that uses Cloudflare for SaaS outranks your own DNS until the domain
+is removed from its dashboard; see
+[another host still answers after the switch](../../publishing/domains/#another-host-still-answers-after-the-switch).
+
 In Core 0.2.88, `expectation_reason` explains the policy being checked.
 For customer publishing with no future website host saved, the platform's
 `robots_blocked` protection intentionally requires noindex, even when
