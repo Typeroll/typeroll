@@ -108,8 +108,14 @@ export async function verifyCandidateBatch(plan, cursor, options = {}) {
   if (!Array.isArray(plan.checks) || !Number.isSafeInteger(cursor) || cursor < 0 || cursor > plan.checks.length) throw Error('invalid_verification_cursor');
   const end = Math.min(cursor + 100, plan.checks.length);
   for (let i = cursor; i < end; i += 8) {
-    const results = await Promise.allSettled(plan.checks.slice(i, Math.min(i + 8, end)).map(check => verifyCandidateCheck(plan.origin, check, options)));
-    if (results.some(result => result.status !== 'fulfilled' || !result.value)) throw Error('static_verification_pending');
+    const batch = plan.checks.slice(i, Math.min(i + 8, end));
+    const results = await Promise.allSettled(batch.map(check => verifyCandidateCheck(plan.origin, check, options)));
+    if (results.some(result => result.status !== 'fulfilled' || !result.value)) {
+      // Name the public routes that failed, so the build failure says which file to look at.
+      const failed = results.flatMap((result, index) => result.status === 'fulfilled' && result.value ? [] :
+        [`${batch[index].route} (expected ${batch[index].status}: ${result.status === 'fulfilled' ? 'different status or content' : 'request failed'})`]);
+      throw Object.assign(Error('static_verification_pending'), { output: `Static verification did not match the candidate for: ${failed.join(', ')}` });
+    }
   }
   return { cursor: end, total: plan.checks.length };
 }

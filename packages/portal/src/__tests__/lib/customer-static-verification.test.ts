@@ -75,7 +75,10 @@ it('hashes an 18 MiB response incrementally without collecting it into another f
 
 it('rejects stale files, external redirects and incomplete sibling groups', async () => {
   const fetchImpl = vi.fn(async (url: URL | RequestInfo) => new Response(String(url).endsWith('/bad') ? 'stale' : 'verified'));
-  await expect(verifyCandidateBatch({ origin, checks: [check('/good'), check('/bad'), check('/sibling')] }, 0, { fetchImpl })).rejects.toThrow('static_verification_pending');
+  const failure = await verifyCandidateBatch({ origin, checks: [check('/good'), check('/bad'), check('/sibling')] }, 0, { fetchImpl }).catch(error => error);
+  expect(failure.message).toBe('static_verification_pending');
+  // The build failure names the route, so a mismatch can be found without the private checks file.
+  expect(failure.output).toBe('Static verification did not match the candidate for: /bad (expected 200: different status or content)');
   expect(fetchImpl).toHaveBeenCalledTimes(3);
   fetchImpl.mockImplementation(async () => new Response(null, { status: 302, headers: { Location: 'http://127.0.0.1/' } }));
   expect(await verifyCandidateCheck(origin, check('/'), { fetchImpl })).toBe(false);
