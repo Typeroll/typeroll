@@ -4,7 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import sharp from 'sharp';
-import { prepareMedia, prepareMediaBatch, mediaTransferGroupSize } from './fixtures/static-publication/media.mjs';
+import { prepareMedia, prepareMediaBatch, mediaTransferGroupSize, boundedAll, VARIANT_CONCURRENCY } from './fixtures/static-publication/media.mjs';
 import { mediaReceiptKey } from './fixtures/static-publication/media-receipt.mjs';
 
 const sha = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -102,7 +102,9 @@ test('resumes a process interruption without encoding finished variants again an
   const encode = sharp.prototype.toBuffer; let encoded = 0;
   t.mock.method(sharp.prototype, 'toBuffer', function (...args) { encoded++; return encode.apply(this, args); });
   assert.deepEqual(await prepareMediaBatch(publication, root), { cursor: 1, total: 1 });
-  assert.equal(encoded, 3, 'unfinished 320px AVIF and the two original-width variants need encoding');
+  // Variants of one image run concurrently, so both WebP variants finished
+  // before the AVIF writes failed; only the two AVIF variants need encoding.
+  assert.equal(encoded, 2, 'only the unfinished AVIF variants need encoding');
   encoded = 0;
   await prepareMedia(publication, root);
   assert.equal(encoded, 0, 'the final static build reuses verified encodings');
@@ -455,3 +457,43 @@ test('site icons materialize only their original when the remaining image artifa
   assert.equal(result.files.find(f => !f.reused).path, entry.public_path);
   assert.equal(result.files.filter(f => f.reused).length, 4);
 }, 1, true));
+
+test('a first publication after background preparation promotes cached variants concurrently without encoding', async t => withMediaFixture(async ({ publication, root, writes }) => {
+  // Background preparation fills only the private cache.
+  await prepareMediaBatch(publication, root, 0, { cacheOnly: true });
+  assert.equal([...writes.keys()].filter(key => !key.startsWith('private/')).length, 0, 'preparation publishes nothing');
+  const encode = sharp.prototype.toBuffer; let encoded = 0;
+  t.mock.method(sharp.prototype, 'toBuffer', function (...args) { encoded++; return encode.apply(this, args); });
+  const fixtureFetch = globalThis.fetch; let inFlight = 0, peak = 0, requests = 0;
+  globalThis.fetch = async (url, options) => {
+    inFlight++; requests++; peak = Math.max(peak, inFlight);
+    try { await new Promise(resolve => setTimeout(resolve, 5)); return await fixtureFetch(url, options); }
+    finally { inFlight--; }
+  };
+  assert.deepEqual(await prepareMediaBatch(publication, root), { cursor: 1, total: 1 });
+  globalThis.fetch = fixtureFetch;
+  assert.equal(encoded, 0, 'every variant comes from the private cache');
+  // One image: the original and 8 variants are promoted at once, not one
+  // variant after another, so latency no longer multiplies by the variant count.
+  assert.ok(peak >= Math.min(VARIANT_CONCURRENCY, 8), `expected all 8 variants in flight together, peak was ${peak}`);
+  assert.ok(requests > 0);
+}, 1, true, 1100));
+
+test('boundedAll keeps order, limits concurrency and drains in-flight tasks before failing', async () => {
+  let running = 0, peak = 0;
+  const task = (value, fail = false) => async () => {
+    running++; peak = Math.max(peak, running);
+    await new Promise(resolve => setTimeout(resolve, 5));
+    running--;
+    if (fail) throw new Error(`failed ${value}`);
+    return value;
+  };
+  assert.deepEqual(await boundedAll([task(1), task(2), task(3), task(4), task(5)], 2), [1, 2, 3, 4, 5]);
+  assert.equal(peak, 2);
+  running = 0;
+  const started = [];
+  const tracked = (value, fail) => async () => { started.push(value); return task(value, fail)(); };
+  await assert.rejects(() => boundedAll([tracked(1, true), tracked(2), tracked(3), tracked(4)], 2), /failed 1/);
+  assert.equal(running, 0, 'no task is still running when the error is thrown');
+  assert.ok(!started.includes(4), 'no new task starts after a failure');
+});

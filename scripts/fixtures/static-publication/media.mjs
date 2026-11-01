@@ -81,6 +81,29 @@ async function mediaOperation(step, key, operation) {
 const responseBytes = response => response.mediaBytes !== undefined ? response.mediaBytes : boundedBytes(response.body);
 
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
+/**
+ * Variants of one image promoted at once: all of them, since an image has at
+ * most 10 (5 widths × WebP and AVIF). Entries already overlap in groups, and
+ * variants are smaller than the original the group size reserves for.
+ */
+export const VARIANT_CONCURRENCY = 10;
+/**
+ * Run tasks with bounded concurrency and keep their order. After a failure no
+ * new task starts, but tasks in flight finish before the first error is thrown,
+ * so nothing keeps writing after this entry has failed.
+ */
+export async function boundedAll(tasks, limit) {
+  const results = new Array(tasks.length); let next = 0, failed = false, failure;
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (!failed && next < tasks.length) {
+      const index = next++;
+      try { results[index] = await tasks[index](); }
+      catch (error) { if (!failed) { failed = true; failure = error; } }
+    }
+  }));
+  if (failed) throw failure;
+  return results;
+}
 
 /** Runs on the customer's build machine. No original or generated image is committed to Git. */
 export async function prepareMedia(publication, root, options = {}) {
@@ -248,13 +271,19 @@ export async function prepareMedia(publication, root, options = {}) {
           sameHostFiles.push({ source: destination, path: publicPath });
         }
       }
-      if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
-      for (const alias of options.cacheOnly || options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
-      if (imageTypes.has(entry.mime_type)) {
+      // The original and its variants are independent objects. Promote them
+      // concurrently: a first publication after background preparation copies
+      // every variant from the private cache, and doing that one variant at a
+      // time made it as slow as the preparation itself (Moveria FR-02).
+      const promoteOriginal = async () => {
+        if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
+        for (const alias of options.cacheOnly || options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
+      };
+      const prepareVariants = async () => {
+        if (!imageTypes.has(entry.mime_type)) return;
         const metadata = await mediaOperation('inspect_image', entry.public_key, () => sharp(bytes).metadata());
         media.width = metadata.width; media.height = metadata.height; media.variants = [];
-        for (const { width, slot } of mediaVariantCandidates(metadata.width)) {
-          for (const format of ['webp', 'avif']) {
+        const tasks = mediaVariantCandidates(metadata.width).flatMap(({ width, slot }) => ['webp', 'avif'].map(format => async () => {
             // A receipt is written only after reading back the immutable variant.
             // It binds reuse to the original, exact encoder and transformation recipe.
             const suffix = mediaVariantSuffix(slot, entry.sha256, format);
@@ -305,17 +334,20 @@ export async function prepareMedia(publication, root, options = {}) {
               await savedReceipt.body?.cancel();
               if (!savedReceipt.ok && savedReceipt.status !== 412) throw new Error('media_transfer_interrupted');
             }
-            if (options.cacheOnly) continue;
+            if (options.cacheOnly) return null;
             await store(variant, key, `image/${format}`, publicPath, true, verifiedVariant);
             // A reused variant keeps the receipt, and the encoder, that describe its bytes.
             const receipt = verifiedVariant && receiptBytes ? receiptBytes : Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: variantRecipe, width, format, sha256: hash(variant), size_bytes: variant.length }));
             if (hasReceiptAccess && !options.materializeOnly) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
             for (const alias of options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
-            media.variants.push({ width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix });
-            completedVariants.push({ width, format, sha256: hash(variant), size_bytes: variant.length });
-          }
-        }
-      }
+            return { variant: { width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix }, completed: { width, format, sha256: hash(variant), size_bytes: variant.length } };
+        }));
+        // Results keep candidate order, which the completion receipt checks.
+        for (const result of await boundedAll(tasks, VARIANT_CONCURRENCY)) if (result) { media.variants.push(result.variant); completedVariants.push(result.completed); }
+      };
+      const [original, variants] = await Promise.allSettled([promoteOriginal(), prepareVariants()]);
+      if (original.status === 'rejected') throw original.reason;
+      if (variants.status === 'rejected') throw variants.reason;
       // Publish last: a partial or interrupted preparation never counts as ready.
       if (canComplete && !options.materializeOnly) {
         const receipt = Buffer.from(JSON.stringify({ format: 1, key: completionKey, recipe_sha256: recipeHash,
