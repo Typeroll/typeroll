@@ -109,6 +109,10 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     ai_crawler_policy: ['no_training', 'block_all'].includes(String(form.get('ai_crawler_policy')))
       ? String(form.get('ai_crawler_policy')) as 'no_training' | 'block_all'
       : undefined,
+    // static is the default and is stored as an absent value.
+    header_behavior: ['sticky', 'reveal_on_scroll_up'].includes(String(form.get('header_behavior')))
+      ? String(form.get('header_behavior')) as 'sticky' | 'reveal_on_scroll_up'
+      : undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',
     seo_review,
     external_routes,

@@ -508,6 +508,8 @@ export interface SiteSettings {
    * written). See ai-crawlers.ts.
    */
   ai_crawler_policy?: 'allow_all' | 'no_training' | 'block_all';
+  /** Site header while scrolling: static (default), sticky, or hidden on scroll down and shown compact on scroll up. */
+  header_behavior?: 'static' | 'sticky' | 'reveal_on_scroll_up';
   /**
    * Emit `noindex` on every HTML document without conflating the
    * indexing directive with robots.txt crawl policy. Useful for staging sites

@@ -1,5 +1,6 @@
 ---
 import type { ExtensionIncludeDescriptor, Partial as PartialDoc, RenderContext, SiteSettings } from '@typeroll/shared';
+import { activeHeaderBehavior, withHeaderBehaviorAttribute } from '@typeroll/shared';
 import { getAllPages, renderPartialHtml } from '../lib/content';
 
 interface Props {
@@ -25,13 +26,15 @@ const html: string | null = partial
 // MCP-FEEDBACK-2 reported on get_page_preview.
 const hasHome = (await getAllPages()).some(page => page.path === '/' || ['', 'home', 'index'].includes(page.slug));
 const startsWithHeader = !!html && /^\s*(?:<!--[\s\S]*?-->\s*)*<header(?:\s|>)/i.test(html);
+// Sticky or reveal-on-scroll-up header (site setting); nothing is added when unset.
+const behavior = activeHeaderBehavior(settings.header_behavior) ?? undefined;
 ---
 {html && startsWithHeader ? (
-  <Fragment set:html={html} />
+  <Fragment set:html={withHeaderBehaviorAttribute(html, settings.header_behavior)} />
 ) : html ? (
-  <header class="site-header" set:html={html} />
+  <header class="site-header" data-header-behavior={behavior} set:html={html} />
 ) : (
-  <header class="site-header site-header--default">
+  <header class="site-header site-header--default" data-header-behavior={behavior}>
     <div class="site-header__inner">
       {settings.logo ? (
         <a href={hasHome ? '/' : undefined} class="site-header__logo-link">
