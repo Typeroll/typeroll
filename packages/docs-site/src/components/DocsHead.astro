@@ -11,9 +11,10 @@ const notFound = route.entry.data.title === "404";
 const shareImage = new URL("images/typeroll-docs-share.png", homeUrl).href;
 // The block reference was split into several pages. Old links such as
 // /tools/blocks/#block-parts are sent to the section's new page.
-const blockAnchorRedirect = route.id === "tools/blocks"
-  ? `(function(){var m=${JSON.stringify(movedBlockAnchors)};var t=m[decodeURIComponent(location.hash.slice(1))];if(t)location.replace(t);})();`
-  : null;
+const blockAnchorRedirect =
+  route.id === "tools/blocks"
+    ? `(function(){var m=${JSON.stringify(movedBlockAnchors)};var t=m[decodeURIComponent(location.hash.slice(1))];if(t)location.replace(t);})();`
+    : null;
 const data = home
   ? {
       "@context": "https://schema.org",

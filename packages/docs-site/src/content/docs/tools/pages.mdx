@@ -66,13 +66,13 @@ The page id is derived from its address (`/category/news/diy` becomes `category_
 `get_composition_starter` returns an editable block tree for five common
 marketing pages, built only from core blocks. Nothing is saved by the read.
 
-| `kind`             | Contains                                                                  |
-| ------------------ | ------------------------------------------------------------------------- |
-| `feature_page`     | Hero, benefits grid, how it works with a guide link, FAQ, call to action  |
+| `kind`             | Contains                                                                                      |
+| ------------------ | --------------------------------------------------------------------------------------------- |
+| `feature_page`     | Hero, benefits grid, how it works with a guide link, FAQ, call to action                      |
 | `comparison_page`  | Hero, dated summary with sources, comparison table, when to choose which, FAQ, call to action |
-| `integration_page` | Hero, what you can do, setup steps with a code block, FAQ, call to action |
-| `pricing_page`     | Title, pricing table, plan comparison table, FAQ, call to action          |
-| `use_case_page`    | Hero, problem, how the product helps, example, FAQ, call to action        |
+| `integration_page` | Hero, what you can do, setup steps with a code block, FAQ, call to action                     |
+| `pricing_page`     | Title, pricing table, plan comparison table, FAQ, call to action                              |
+| `use_case_page`    | Hero, problem, how the product helps, example, FAQ, call to action                            |
 
 Pass the returned `blocks` to `create_page` or `update_page`. Every placeholder is
 in square brackets: replace each one, and remove sections you have no real

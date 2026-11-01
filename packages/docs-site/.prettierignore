@@ -1,0 +1,4 @@
+# Generated from packages/mcp-server/skills by scripts/generate-skill-pages.mjs;
+# docs-structure.test.mjs keeps them identical to the generator output.
+src/content/docs/skills/tr-*.md
+src/content/docs/skills/overview.mdx

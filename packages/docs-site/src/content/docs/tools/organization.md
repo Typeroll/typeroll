@@ -244,12 +244,12 @@ publish to. Every Organization has a Default group that uses the Organization's
 own Publishing connection. Media storage and GitHub stay shared across groups.
 See [Connect your accounts](../../guides/customer-publishing/).
 
-| Action                                   | MCP tool                  | Permission       |
-| ---------------------------------------- | ------------------------- | ---------------- |
-| List groups and their connection status  | `list_hosting_groups`     | Organization key |
-| Create or rename a group                 | `save_hosting_group`      | Organization key |
-| Connect or disconnect a group's account  | `connect_hosting_group`   | Organization key |
-| Read a Site's group and eligible groups  | `read_site_hosting_group` | Site key         |
+| Action                                    | MCP tool                  | Permission       |
+| ----------------------------------------- | ------------------------- | ---------------- |
+| List groups and their connection status   | `list_hosting_groups`     | Organization key |
+| Create or rename a group                  | `save_hosting_group`      | Organization key |
+| Connect or disconnect a group's account   | `connect_hosting_group`   | Organization key |
+| Read a Site's group and eligible groups   | `read_site_hosting_group` | Site key         |
 | Move an unpublished Site to another group | `set_site_hosting_group`  | Site admin       |
 
 - `save_hosting_group` takes `name`, `sites_domain` and `dns_mode`, plus `id`
@@ -271,13 +271,13 @@ own Cloudflare or GitHub account. Read its state with
 `read_organization_build_engine`; every change below takes the `revision` from
 that read and needs an organization key.
 
-| Action                                          | MCP tool                                |
-| ----------------------------------------------- | --------------------------------------- |
-| Prepare or update an engine and verify it       | `setup_organization_build_engine`       |
-| Check permissions and qualification             | `check_organization_build_access`       |
-| Check GitHub Actions and Workflows permissions  | `check_organization_github_permissions` |
-| Choose the engine for new publications          | `select_organization_build_provider`    |
-| Cancel an active GitHub build                   | `cancel_organization_build`             |
+| Action                                         | MCP tool                                |
+| ---------------------------------------------- | --------------------------------------- |
+| Prepare or update an engine and verify it      | `setup_organization_build_engine`       |
+| Check permissions and qualification            | `check_organization_build_access`       |
+| Check GitHub Actions and Workflows permissions | `check_organization_github_permissions` |
+| Choose the engine for new publications         | `select_organization_build_provider`    |
+| Cancel an active GitHub build                  | `cancel_organization_build`             |
 
 - `setup_organization_build_engine` prepares the selected provider's engine and
   starts an isolated execution and artifact-transfer check. It does not change
