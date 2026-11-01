@@ -61,21 +61,62 @@ export async function requestMediaMigration(orgId: string, siteId: string) {
   await queueSiteMigration(orgId, siteId);
 }
 
-/**
- * Organization storage or domains changed. The Organization job gives every
- * Site its own job in the background, then prepares the public media domain.
- * A Site whose files are already in place finishes without copying and
- * without a preparation build.
- */
-export async function requestOrganizationMediaMigration(orgId: string) {
+async function queueOrganizationStep(orgId: string, fanOut: boolean) {
   const connection = await getConnection(orgId, 'cloudflare');
   if (!connectionSummary(connection).media_ready) return;
   const store = getStore(), path = organizationPath(orgId);
   await store.createDocIfMissing(path, { org_id: orgId, scope: 'organization', ...NEW_JOB });
+  // A finished request from before per-Site jobs has no scope. Mark it, so a
+  // domain change does not repeat its pass over every Site.
+  await store.compareAndUpdateDoc<Migration>(path, current => current.state === 'complete' && !current.scope, { scope: 'organization', fan_out: false });
+  // A domain-only request never cancels a pending hand-off to every Site.
   await store.compareAndUpdateDoc<Migration>(path, () => true,
-    { state: 'queued', fan_out: true, fan_out_cursor: null, error: null, failures: 0, retry_at: 0, request_id: randomUUID() });
+    { state: 'queued', ...(fanOut ? { fan_out: true, fan_out_cursor: null } : {}), error: null, failures: 0, retry_at: 0, request_id: randomUUID() });
   const { enqueueMediaMigration } = await import('./media-migration-queue');
   await enqueueMediaMigration(orgId);
+}
+
+/**
+ * Organization media storage became ready for the first time. The
+ * Organization job gives every Site its own job in the background; a Site
+ * whose files are already in place finishes without copying and without a
+ * preparation build. Nothing else starts work for every Site.
+ */
+export async function requestOrganizationMediaMigration(orgId: string) {
+  await queueOrganizationStep(orgId, true);
+}
+
+/** The Organization's media host changed: attach it to the public bucket. No Site is touched. */
+export async function requestOrganizationMediaDomain(orgId: string) {
+  await queueOrganizationStep(orgId, false);
+}
+
+/**
+ * Retry only what stopped: failed Site jobs restart, and queued jobs whose
+ * worker is gone are dispatched again. Complete Sites are not read.
+ */
+export async function retryMediaMigration(orgId: string) {
+  const connection = await getConnection(orgId, 'cloudflare');
+  if (!connectionSummary(connection).media_ready) return;
+  const store = getStore(), now = Date.now();
+  const jobs = await store.listDocs<Migration>('publishing_media_migrations', { filters: [{ field: 'org_id', op: '==', value: orgId }] });
+  const { enqueueMediaMigration } = await import('./media-migration-queue');
+  for (const job of jobs) {
+    const siteId = job.scope === 'site' ? job.site_id : undefined;
+    if (job.state === 'failed') {
+      if (siteId) await queueSiteMigration(orgId, siteId);
+      else {
+        // An interrupted hand-off resumes from its cursor.
+        await store.compareAndUpdateDoc<Migration>(organizationPath(orgId), current => current.state === 'failed',
+          { state: 'queued', error: null, failures: 0, retry_at: 0 });
+        await enqueueMediaMigration(orgId);
+      }
+    } else if (['queued', 'running'].includes(job.state) && job.lease_until <= now) {
+      await store.compareAndUpdateDoc<Migration>(siteId ? sitePath(orgId, siteId) : organizationPath(orgId),
+        current => current.request_id === job.request_id && current.lease_until <= Date.now(), { retry_at: 0 });
+      await enqueueMediaMigration(orgId, 0, siteId);
+    }
+  }
 }
 
 type Status = { state: Migration['state']; copied_files: number; copied_bytes: number; pending_files: number; phase: 'copying' | 'updating_references'; error: string | null };
@@ -329,7 +370,7 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
   } finally { clearInterval(heartbeat); }
 }
 
-/** Organization work: the public media domain. A request queued before per-Site jobs is handed to each Site. */
+/** Organization work: the public media domain, and the one-time hand-off to every Site when storage first becomes ready. A request queued before per-Site jobs is handed off too. */
 async function runOrganizationMediaStep(orgId: string, budgetMs = 45_000) {
   const store = getStore(), path = organizationPath(orgId), lease = randomUUID();
   const acquired = await store.compareAndUpdateDoc<Migration>(path,
@@ -354,8 +395,12 @@ async function runOrganizationMediaStep(orgId: string, budgetMs = 45_000) {
           console.warn(`[media-migration] site ${siteId} kept its publishing settings: ${error.code ?? error.status}`);
         });
         await queueSiteMigration(orgId, siteId);
-        if (!await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease,
-          { fan_out_cursor: siteId, lease_until: Date.now() + 120_000 })) return;
+        // A newer request restarted the hand-off: release it to run from its own cursor.
+        if (!await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === acquired.request_id,
+          { fan_out_cursor: siteId, lease_until: Date.now() + 120_000 })) {
+          await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease, { state: 'queued', lease_id: null, lease_until: 0, retry_at: 0 });
+          return;
+        }
         acquired.fan_out_cursor = siteId;
       }
     }
@@ -369,9 +414,10 @@ async function runOrganizationMediaStep(orgId: string, budgetMs = 45_000) {
     }
     const completed = await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === acquired.request_id,
       { scope: 'organization', fan_out: false, fan_out_cursor: null, state: 'complete', cursor: null, pending_files: 0, lease_id: null, lease_until: 0, error: null, failures: 0, retry_at: 0, updated_at: new Date().toISOString() });
-    // A new request arrived while this ran: run once more for it, from the first Site.
+    // A new request arrived while this ran: run once more for it. A hand-off
+    // request reset the cursor itself; a domain request only repeats this step.
     if (!completed) await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease,
-      { scope: 'organization', fan_out: true, fan_out_cursor: null, state: 'queued', cursor: null, lease_id: null, lease_until: 0, retry_at: 0 });
+      { state: 'queued', cursor: null, lease_id: null, lease_until: 0, retry_at: 0 });
   } catch (error) {
     const failures = (acquired.failures ?? 0) + 1;
     const terminal = (error instanceof ConnectionError && error.status < 500) || failures >= 3;

@@ -309,7 +309,7 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
   return getSiteDomains(orgId, siteId);
 }
 
-export async function saveOrganizationDomains(orgId: string, input: Record<string, unknown>, options: { queueMigration?: boolean } = {}) {
+export async function saveOrganizationDomains(orgId: string, input: Record<string, unknown>, options: { prepareMediaDomain?: boolean } = {}) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ConnectionError('Enter domain settings.', 400);
   if (!['automatic', 'external'].includes(String(input.dns_mode))) throw new ConnectionError('Select automatic or external DNS management.', 400);
   const current = await getOrganizationDomains(orgId);
@@ -331,9 +331,11 @@ export async function saveOrganizationDomains(orgId: string, input: Record<strin
     { revision: randomUUID(), default_domain: legacy, sites_domain, media_host, dns_mode: input.dns_mode,
       verified_at: current.media_host === media_host ? current.verified_at : null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
-  if (options.queueMigration !== false) {
-    const { requestOrganizationMediaMigration } = await import('./media-migration');
-    await requestOrganizationMediaMigration(orgId);
+  // Site media does not depend on these hosts. Only a new media host needs
+  // Organization work: attaching it to the public bucket.
+  if (options.prepareMediaDomain !== false && media_host && media_host !== current.media_host) {
+    const { requestOrganizationMediaDomain } = await import('./media-migration');
+    await requestOrganizationMediaDomain(orgId);
   }
   return getOrganizationDomains(orgId);
 }

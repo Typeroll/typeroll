@@ -78,7 +78,7 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'save_organization_media_access', noSite: true,
-    description: 'Save and verify the Cloudflare R2 Access Key ID and Secret Access Key for the prepared media buckets (not the Cloudflare API token). Marks media storage ready, which imports require, and queues media migration. Requires an organization API key and the current Cloudflare revision. Keys are encrypted and never returned.',
+    description: 'Save and verify the Cloudflare R2 Access Key ID and Secret Access Key for the prepared media buckets (not the Cloudflare API token). Marks media storage ready, which imports require. The first activation moves existing media site by site; new keys for ready storage resume only stopped site migrations. Requires an organization API key and the current Cloudflare revision. Keys are encrypted and never returned.',
     inputSchema: { revision: z.string(), access_key_id: z.string(), secret_access_key: z.string() },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/connections/cloudflare', { ...args, action: 'save_media' }))),
   },
@@ -179,7 +179,7 @@ export const domainTools: ToolDef[] = [
   {
     name: 'configure_organization_publishing_domains',
     noSite: true,
-    description: 'Configure organization media and site subdomains using an active domain in the connected Cloudflare account. Attaches the media host to R2, creates its DNS record and queues media migration. Site/version addresses are created at deployment. Requires an organization API key and the current revision. Does not replace existing DNS destinations or existing media hosts. Read organization publishing domains afterward to check HTTPS activation.',
+    description: 'Configure organization media and site subdomains using an active domain in the connected Cloudflare account. Attaches the media host to R2 and creates its DNS record; site media is not touched. Site/version addresses are created at deployment. Requires an organization API key and the current revision. Does not replace existing DNS destinations or existing media hosts. Read organization publishing domains afterward to check HTTPS activation.',
     inputSchema: { revision: z.string(), zone_id: z.string(), media_subdomain: z.string().describe('Short label, for example media.'), sites_subdomain: z.string().describe('Short label, for example sites.') },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/domains', args))),
   },
@@ -199,7 +199,7 @@ export const domainTools: ToolDef[] = [
   {
     name: 'retry_organization_media_migration',
     noSite: true,
-    description: 'Resume verified media migration after fixing account or R2 setup. Source files remain readable; pointer changes require matching hashes. Set prepare_transfer to set up or recheck the transfer worker in the organization Cloudflare account. Requires an organization API key.',
+    description: 'Resume verified media migration after fixing account or R2 setup. Restarts only failed site migrations and stopped jobs; completed sites are not touched. Source files remain readable; pointer changes require matching hashes. Set prepare_transfer to set up or recheck the transfer worker in the organization Cloudflare account. Requires an organization API key.',
     inputSchema: { prepare_transfer: z.boolean().optional() },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/media-migration', args.prepare_transfer ? { action: 'prepare_transfer', recheck: true } : {}))),
   },

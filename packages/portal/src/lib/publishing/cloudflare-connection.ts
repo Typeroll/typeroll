@@ -3,7 +3,7 @@ import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } fro
 import { R2VerificationError, r2Diagnostic, type R2VerificationDiagnostic, type R2VerificationStep } from './r2-verification-error';
 import type { FullSession } from '../access';
 import { isSecretCryptoConfigured } from '../secret-crypto';
-import { ConnectionError, getConnection, saveConnection, sealCredentials, openCredentials } from './connections';
+import { ConnectionError, connectionSummary, getConnection, saveConnection, sealCredentials, openCredentials } from './connections';
 import {
   assertCloudflareResourceAvailable, claimCloudflareResource, cloudflareAccountAccess, generatedCloudflareNames, sharedAccountConfirmation, sharedAccountRefusal, withCloudflareAccountMembership,
 } from './cloudflare-account-claims';
@@ -159,6 +159,9 @@ export async function connectCloudflareMedia(session: FullSession, input: Record
   const credentials = openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', latest.encrypted_credentials);
   await saveConnection(session.orgId, 'cloudflare', latest.revision, {
     media_ready: true, encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', { ...credentials, access_key_id, secret_access_key }) });
-  const { requestOrganizationMediaMigration } = await import('./media-migration');
-  await requestOrganizationMediaMigration(session.orgId);
+  // Only the first activation hands every Site its job. New keys for ready
+  // storage resume what stopped, for example after an expired key.
+  const { requestOrganizationMediaMigration, retryMediaMigration } = await import('./media-migration');
+  if (connectionSummary(current).media_ready) await retryMediaMigration(session.orgId);
+  else await requestOrganizationMediaMigration(session.orgId);
 }

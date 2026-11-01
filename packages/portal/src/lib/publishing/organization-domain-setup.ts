@@ -3,7 +3,6 @@ import { cloudflareClient } from './cloudflare-oauth';
 import { getOrganizationDomains, publicationHostname, saveOrganizationDomains } from './domain-config';
 import { getOrganizationDomainStatus } from './organization-domain-status';
 import { preparePublicMediaDomains } from './media-domain';
-import { requestOrganizationMediaMigration } from './media-migration';
 import { ProviderError } from './providers.mjs';
 
 export interface PublishingZone { id: string; name: string; status: string; type: string }
@@ -46,7 +45,7 @@ function subdomain(value: unknown, field: string) {
   return label;
 }
 
-/** Explicit setup action: validate before saving, attach R2, then queue verified media migration. */
+/** Explicit setup action: validate before saving, then attach the media host to R2. Site media is not touched. */
 export async function setupOrganizationDomains(orgId: string, input: Record<string, unknown>) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ConnectionError('Enter domain settings.', 400);
   const current = await getOrganizationDomains(orgId);
@@ -69,12 +68,11 @@ export async function setupOrganizationDomains(orgId: string, input: Record<stri
       if (records.some((record: { type: string }) => ['A', 'AAAA', 'CNAME', 'NS'].includes(record.type))) throw new ConnectionError(`${media_host} already has a DNS destination. Choose an unused subdomain or prepare a domain cutover; Typeroll has not replaced any records.`, 409, 'media_domain_cutover_required');
     } else if (!attached.enabled || attached.zoneId !== zone.id) throw new ConnectionError('This R2 media domain is disabled or belongs to a different zone. Review its Custom Domains settings in Cloudflare before retrying.', 409, 'media_domain_setup_required');
   } catch (error) { return domainAccessError(error); }
-  await saveOrganizationDomains(orgId, { revision: input.revision, sites_domain, media_host, dns_mode: 'automatic' }, { queueMigration: false });
+  await saveOrganizationDomains(orgId, { revision: input.revision, sites_domain, media_host, dns_mode: 'automatic' }, { prepareMediaDomain: false });
   // A provider failure after saving must return the new revision, so the same button can safely retry.
   let setup_error: string | null = null;
   try {
     await preparePublicMediaDomains(orgId, { account_id: cf.account_id, public_bucket: cf.public_bucket, media_host, website_host: '', site_prefix: '', entries: [] });
-    await requestOrganizationMediaMigration(orgId);
   } catch (error) {
     setup_error = (error instanceof ConnectionError || error instanceof ProviderError) && [401, 403].includes(error.status)
       ? 'Addresses saved, but Cloudflare denied setup. Allow domain access, then select Configure domains again. Your account and R2 settings are retained.'

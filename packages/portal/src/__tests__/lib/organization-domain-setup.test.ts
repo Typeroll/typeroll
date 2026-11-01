@@ -26,11 +26,11 @@ beforeEach(() => {
   vi.mocked(getOrganizationDomainStatus).mockResolvedValue({ ...settings, revision: 'saved', domain_status: { state: 'pending' } } as any);
   provider.mockImplementation(async route => route === `/zones/${zone.id}` ? zone : route.includes('dns_records?') ? [] : null);
 });
-it('uses the connected account, normalizes labels, attaches R2 and queues migration after setup', async () => {
+it('uses the connected account, normalizes labels and attaches R2 without queuing site work', async () => {
   const result = await setupOrganizationDomains('org', input);
-  expect(saveOrganizationDomains).toHaveBeenCalledWith('org', { revision: 'original', sites_domain: 'sites.example.com', media_host: 'media.example.com', dns_mode: 'automatic' }, { queueMigration: false });
+  expect(saveOrganizationDomains).toHaveBeenCalledWith('org', { revision: 'original', sites_domain: 'sites.example.com', media_host: 'media.example.com', dns_mode: 'automatic' }, { prepareMediaDomain: false });
   expect(preparePublicMediaDomains).toHaveBeenCalledWith('org', expect.objectContaining({ account_id: 'account', public_bucket: 'public-media', media_host: 'media.example.com', site_prefix: '', entries: [] }));
-  expect(requestOrganizationMediaMigration).toHaveBeenCalledExactlyOnceWith('org');
+  expect(requestOrganizationMediaMigration).not.toHaveBeenCalled();
   expect(result).toMatchObject({ revision: 'saved', setup_error: null, domain_status: { state: 'pending' } });
 });
 it.each([
@@ -52,7 +52,8 @@ it('reuses the same enabled R2 domain without treating its existing DNS as a con
   provider.mockImplementation(async route => route === `/zones/${zone.id}` ? zone : { enabled: true, zoneId: zone.id });
   await setupOrganizationDomains('org', input);
   expect(provider.mock.calls.some(([route]) => route.includes('dns_records'))).toBe(false);
-  expect(requestOrganizationMediaMigration).toHaveBeenCalled();
+  expect(preparePublicMediaDomains).toHaveBeenCalledOnce();
+  expect(requestOrganizationMediaMigration).not.toHaveBeenCalled();
 });
 it('rejects stale revisions and invalid labels before provider calls', async () => {
   await expect(setupOrganizationDomains('org', { ...input, revision: 'stale' })).rejects.toMatchObject({ code: 'domain_revision_conflict' });
@@ -103,6 +104,6 @@ it('requests additional approval only when the saved OAuth grant lacks domain pe
 it('allows the shared guard to authorize replacement of an unused saved hostname', async () => {
   vi.mocked(getOrganizationDomains).mockResolvedValue({ ...settings, media_host: 'old.example.com' });
   await expect(setupOrganizationDomains('org', input)).resolves.toMatchObject({ setup_error: null });
-  expect(saveOrganizationDomains).toHaveBeenCalledWith('org', expect.objectContaining({ media_host: 'media.example.com' }), { queueMigration: false });
+  expect(saveOrganizationDomains).toHaveBeenCalledWith('org', expect.objectContaining({ media_host: 'media.example.com' }), { prepareMediaDomain: false });
   expect(preparePublicMediaDomains).toHaveBeenCalled();
 });

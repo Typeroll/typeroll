@@ -7,9 +7,9 @@ import { S3Client, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s
 import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
-import { getSiteDomains, saveSiteDomains, getOrganizationDomains, saveOrganizationDomains } from '../../lib/publishing/domain-config';
+import { getSiteDomains, saveSiteDomains, getOrganizationDomains, saveOrganizationDomains, organizationDomainConfigPath } from '../../lib/publishing/domain-config';
 import { connectionPath, sealCredentials } from '../../lib/publishing/connections';
-import { requestMediaMigration, requestOrganizationMediaMigration, runMediaMigrationBatch, executeMediaMigration, mediaMigrationStatus, rewriteMediaReferences } from '../../lib/publishing/media-migration';
+import { requestMediaMigration, requestOrganizationMediaMigration, retryMediaMigration, runMediaMigrationBatch, executeMediaMigration, mediaMigrationStatus, rewriteMediaReferences } from '../../lib/publishing/media-migration';
 import { preparePublicMediaDomains } from '../../lib/publishing/media-domain';
 import { publicationMediaManifest } from '../../lib/publishing/media-manifest';
 vi.mock('../../lib/publishing/media-migration-queue', () => ({ enqueueMediaMigration: vi.fn(async () => {}) }));
@@ -29,7 +29,7 @@ beforeEach(async () => {
     cloudflare: { account_id: 'a'.repeat(32), bucket: 'customer-private', public_bucket: 'customer-public' },
     encrypted_credentials: sealCredentials('org', 'cloudflare', { access_key_id: 'synthetic-key', secret_access_key: 'synthetic-secret' }) });
   const config = await getOrganizationDomains('org');
-  await saveOrganizationDomains('org', { revision: config.revision, sites_domain: 'demos.example.com', media_host: 'media.example.net', dns_mode: 'external' }, { queueMigration: false });
+  await saveOrganizationDomains('org', { revision: config.revision, sites_domain: 'demos.example.com', media_host: 'media.example.net', dns_mode: 'external' }, { prepareMediaDomain: false });
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
@@ -407,4 +407,54 @@ it('gives every site its own job in the background and resumes after the time bu
   await executeMediaMigration('org');
   expect(await siteJobs()).toEqual(['a-site', 'b-site', 'c-site', 'site']);
   expect(preparePublicMediaDomains).toHaveBeenCalledOnce();
+});
+
+it('starts no site work when organization domains change, and prepares only a new media host', async () => {
+  const store = getStore();
+  await store.setDoc(paths.site('org', 'neighbour'), { media_id: 'klmnopqrst', publishing_mode: 'customer_git' });
+  await store.setDoc(`${paths.media('org', 'neighbour')}/other`, fixtureMedia('other'));
+  const { enqueueMediaMigration } = await import('../../lib/publishing/media-migration-queue');
+  vi.mocked(enqueueMediaMigration).mockClear();
+  let config = await getOrganizationDomains('org');
+  await saveOrganizationDomains('org', { revision: config.revision, sites_domain: 'sites.example.com', media_host: 'media.example.net', dns_mode: 'external' });
+  expect(enqueueMediaMigration).not.toHaveBeenCalled();
+  // An organization that had no media host yet adds one.
+  await store.updateDoc(organizationDomainConfigPath('org'), { media_host: null, default_domain: null });
+  expect(await store.listDocs<any>('publishing_media_migrations')).toEqual([]);
+  config = await getOrganizationDomains('org');
+  await saveOrganizationDomains('org', { revision: config.revision, sites_domain: 'sites.example.com', media_host: 'files.example.net', dns_mode: 'external' });
+  expect(vi.mocked(enqueueMediaMigration).mock.calls).toEqual([['org']]);
+  await executeMediaMigration('org');
+  expect(preparePublicMediaDomains).toHaveBeenCalledWith('org', expect.objectContaining({ media_host: 'files.example.net' }));
+  expect((await store.listDocs<any>('publishing_media_migrations')).map(job => [job.scope, job.state])).toEqual([['organization', 'complete']]);
+});
+
+it('does not repeat a finished pre-site-job pass when only the media host changes', async () => {
+  const store = getStore();
+  const legacy = `publishing_media_migrations/${createHash('sha256').update('org').digest('hex')}`;
+  await store.setDoc(legacy, { org_id: 'org', state: 'complete', copied_files: 5, copied_bytes: 15, pending_files: 0, lease_id: null, lease_until: 0, request_id: 'old' });
+  const config = await getOrganizationDomains('org');
+  await saveOrganizationDomains('org', { revision: config.revision, sites_domain: 'demos.example.com', media_host: 'files.example.net', dns_mode: 'external' });
+  await executeMediaMigration('org');
+  expect((await store.listDocs<any>('publishing_media_migrations')).filter(job => job.scope === 'site')).toEqual([]);
+  expect(await store.getDoc<any>(legacy)).toMatchObject({ scope: 'organization', state: 'complete' });
+});
+
+it('retries only failed or abandoned site jobs and reads no other site', async () => {
+  const store = getStore();
+  for (const id of ['done', 'failed', 'stalled', 'untouched']) await store.setDoc(paths.site('org', id), { media_id: `${id}-media`.padEnd(10, 'x'), publishing_mode: 'customer_git' });
+  const job = (id: string) => `publishing_media_migrations/${createHash('sha256').update(`org\0${id}`).digest('hex')}`;
+  const base = { org_id: 'org', scope: 'site', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 };
+  await store.setDoc(job('done'), { ...base, site_id: 'done', state: 'complete', request_id: 'done' });
+  await store.setDoc(job('failed'), { ...base, site_id: 'failed', state: 'failed', error: 'Access denied', failures: 3, request_id: 'failed' });
+  await store.setDoc(`${paths.media('org', 'failed')}/image`, fixtureMedia('image'));
+  await store.setDoc(job('stalled'), { ...base, site_id: 'stalled', state: 'queued', request_id: 'stalled' });
+  await store.setDoc(`${paths.media('org', 'stalled')}/image`, fixtureMedia('image'));
+  const { enqueueMediaMigration } = await import('../../lib/publishing/media-migration-queue');
+  vi.mocked(enqueueMediaMigration).mockClear();
+  await retryMediaMigration('org');
+  expect(vi.mocked(enqueueMediaMigration).mock.calls.map(([, , site]) => site).sort()).toEqual(['failed', 'stalled']);
+  expect(await store.getDoc<any>(job('failed'))).toMatchObject({ state: 'queued', error: null, failures: 0 });
+  expect(await store.getDoc<any>(job('done'))).toMatchObject({ state: 'complete', request_id: 'done' });
+  expect(await store.getDoc<any>(job('untouched'))).toBeNull();
 });
