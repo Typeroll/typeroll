@@ -161,6 +161,30 @@ content has the same gutter. Site CSS can customize `--content-gutter`.
 These shared defaults apply to both Cloud and self-hosted sites after upgrading
 Core and rebuilding the site; previously published files remain unchanged.
 
+### Built-in interface text
+
+The few words Typeroll writes itself follow the page language (`Page.language`,
+otherwise the site `language`; only the primary subtag counts, so `fr-FR` and
+`fr-CA` both read as `fr`). Every surface below has built-in wording in Swedish
+(`sv`), Norwegian Bokmål (`nb`, `no`), German (`de`), Dutch (`nl`), Finnish
+(`fi`), French (`fr`), Polish (`pl`), Italian (`it`), Spanish (`es`) and
+English (`en`):
+
+| Surface                    | Built-in text                                                                                                                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tabs                       | open/close button (`toggle_label`) and choice-list name (`menu_label`)                                                                                                                 |
+| Pagination                 | accessible name of the page navigation landmark                                                                                                                                        |
+| Tables                     | accessible name of a horizontally scrollable table                                                                                                                                     |
+| Breadcrumbs                | default label of the first crumb ("Home", "Accueil", "Startsida") on a site with [language sections](../../guides/multilingual-sites/); otherwise "Home" unless you write `home_label` |
+| Video, carousel and rating | play, pause, previous, next and rating labels                                                                                                                                          |
+| 404 page                   | title, message and the link back to the home page (also Danish, `da`)                                                                                                                  |
+| Cookie banner              | heading, buttons and links ([settings](../settings/))                                                                                                                                  |
+
+Other languages use English. A publication for such a language lists the
+wording that fell back to English in its job `warnings`; a language above
+gives no such warning. Labels you write on a block, and a language section's
+own texts, always win.
+
 ### Structured Page fields without empty labels
 
 **Requires Core 0.2.12 and template capability `supports_page_field_list`.**
@@ -1766,9 +1790,10 @@ Use `headline` for optional inline introductory text and responsive
 `active_font_weight` controls the selected label weight. a collapsed
 input panel does not show an active background.
 The open/close button (`toggle_label`) and the accessible name of the choice list
-(`menu_label`) default to the page language: "Explore options"/"Options" in
-English, "Optionen anzeigen"/"Optionen" in German and "Visa alternativ"/"Alternativ"
-in Swedish. Set them to use your own wording.
+(`menu_label`) default to the page language, for example "Explore options"/"Options"
+in English, "Voir les options"/"Options" in French and "Visa alternativ"/"Alternativ"
+in Swedish (see [built-in interface text](#built-in-interface-text) for every
+language). Set them to use your own wording.
 Arrow keys, Home and End switch tabs without recreating inputs. Set
 `collapse_below: "1025"` and `collapse_mode: "panels"` to keep service choices
 visible while a tap opens/closes the input panel on smaller screens. The default

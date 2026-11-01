@@ -268,7 +268,8 @@ The banner's heading, buttons, privacy link and settings label follow the
 page language (`Page.language`, otherwise the site `language`): Swedish
 (`sv`), Norwegian Bokmål (`nb`, `no`), German (`de`), Dutch (`nl`), Finnish
 (`fi`), French (`fr`), Polish (`pl`), Italian (`it`) and Spanish (`es`),
-otherwise English. The default `text`
+otherwise English (the same languages as the
+[other built-in interface text](../blocks/#built-in-interface-text)). The default `text`
 follows the same rule. A publication for another language reports the wording
 that falls back to English in its job `warnings`. Set `labels` only to replace that wording, for example for another
 language. Its keys are `title`, `reject`, `necessary`, `accept_all`,
