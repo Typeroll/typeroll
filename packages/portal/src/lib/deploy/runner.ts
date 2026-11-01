@@ -29,6 +29,7 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
+  aiContentSignal,
   contentPagePath,
   DEFAULT_CONTENT_TYPE,
   publicContentPage,
@@ -44,7 +45,7 @@ import { partitionShadowedRedirects } from '../redirect-hygiene';
 import { getHostingAdapter } from '../hosting';
 import { isCanonicalReady } from '../site-public-urls';
 import type { DeployResult } from '../hosting';
-import { buildPagesHeaders } from './pages-headers';
+import { buildPagesHeaders, withGlobalHeaders } from './pages-headers';
 import { requiresSvgSanitization } from '../media/file-types';
 import type { SvgMedia } from '../media/svg-media';
 import { liveDeploymentUpdate } from './live-state';
@@ -352,7 +353,10 @@ export async function runDeploy(args: RunDeployArgs): Promise<RunDeployResult> {
   //
   //     X-Content-Type-Options + Referrer-Policy + Permissions-Policy are
   //     baseline hardening; they apply to every response.
-  const headersFile = buildPagesHeaders(process.env.SITES_BASE_DOMAIN);
+  const contentSignal = aiContentSignal(redirectSettings?.ai_crawler_policy);
+  const headersFile = contentSignal
+    ? withGlobalHeaders(buildPagesHeaders(process.env.SITES_BASE_DOMAIN), { 'Content-Signal': contentSignal })
+    : buildPagesHeaders(process.env.SITES_BASE_DOMAIN);
   await fs.promises.writeFile(path.join(buildDir, '_headers'), headersFile);
 
   // 3c. Validate bound Forms before upload. Extension APIs, Forms and app

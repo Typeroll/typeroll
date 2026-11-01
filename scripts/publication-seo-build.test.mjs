@@ -22,12 +22,14 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
         page('dated-article', { kind: 'article', date_published: '2024-05-02T10:01:08Z', date_updated: '2024-05-03T11:01:08+01:00' }),
         page('tokens', { content_mode:'blocks', html_content:undefined, blocks:[{id:'panel',type:'token_panel',data:{background:'surface',gap_px:'lg'}}] }),
         page('legacy-dated-article', { kind: 'article', date_published: '2024-05-02T11:01:08' }),
+        page('faq', { content_mode:'blocks', html_content:undefined, blocks:[{id:'questions',type:'core/accordion',data:{items:[{title:'Is it free?',content:'<p>Yes, <strong>always</strong>.</p>'},{title:'Can I export?',content:'<p>As JSON.</p>'}]}}] }),
       ], contentTypes: [{ id: 'supplier', name: 'supplier', label_singular: 'Supplier', label_plural: 'Companies', route_template: '/companies/{slug}/', schema_type: 'Organization', schema_field_map: { featured_image: 'image', company: 'name' }, fields: [{ name: 'company', type: 'text' }, { name: 'featured_image', type: 'image' }, { name: 'featured_image_alt', type: 'text' }, { name: 'city', type: 'text' }] }],
       forms: [], extensions: [], partials: [], blockTypes: [{id:'token_panel',name:'token_panel',label:'Token panel',container:false,
         schema:[{name:'background',type:'color'},{name:'gap_px',type:'number',css_unit:'px',design_token:'space'}],
         template:'<section data-block="token_panel" style="background:{{background}};padding:var(--gap_px)"><p>Palette and spacing</p></section>'}], pageTemplates: [], media: [], redirects: [],
     };
-    const publication = projectStaticPublication(input, { siteUrl: 'https://example.test', coreCommit: 'a'.repeat(40), publishedAt: '2026-09-18T00:00:00Z', noindex: false });
+    const publication = projectStaticPublication(input, { siteUrl: 'https://example.test', coreCommit: 'a'.repeat(40), publishedAt: '2026-09-18T00:00:00Z', noindex: false,
+      coreBlockTypes: [{ id: 'core/accordion', schema: [{ name: 'items', type: 'array', fields: [{ name: 'title', type: 'text' }, { name: 'content', type: 'richtext' }] }] }] });
     const destination = path.join(temp, slash);
     await createStaticPublicationProject(publication, destination);
     await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
@@ -54,6 +56,9 @@ test('frozen customer publication validates real Astro HTML, resolved routes, ro
     assert.equal(crumbs.length, 1);
     assert.deepEqual(crumbs[0].itemListElement.map(item => item.item), ['https://example.test/', 'https://example.test/companies' + suffix, 'https://example.test/companies/abc' + suffix]);
     assert.ok(!schemas.some(schema => Object.keys(schema).some(key => key.includes('.'))));
+    const faqHtml = await fs.readFile(path.join(destination, 'dist/faq/index.html'), 'utf8');
+    const faq = [...faqHtml.matchAll(/<script type="application\/ld\+json">([^<]+)<\/script>/g)].map(match => JSON.parse(match[1])).filter(schema => schema['@type'] === 'FAQPage');
+    assert.deepEqual(faq.map(schema => schema.mainEntity.map(item => [item.name, item.acceptedAnswer.text])), [[['Is it free?', 'Yes, always.'], ['Can I export?', 'As JSON.']]]);
     const tokenHtml = await fs.readFile(path.join(destination, 'dist/tokens/index.html'),'utf8');
     assert.match(tokenHtml,/--space-lg:2rem/);
     assert.match(tokenHtml,/--space-lg:clamp\(2rem, 1rem \+ 2vw, 4rem\)/);

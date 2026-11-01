@@ -79,5 +79,12 @@ export * from './pages-redirects.js';
 export * from './pages-redirect-limits.mjs';
 export { TOKEN_SCALES, FONT_ROLES, tokenScale, scaleValue, scaleCss, spacingCss, validColor, colorCss, designScalesCss, designScalesError, resolvedDesignScales, responsiveDesignScalesCss, typographyError, TYPOGRAPHY_DEFAULTS, type TypographySettings, type TokenScale, type DesignScales } from './design-tokens.js';
 export * from './design-token-audit.js';
+export * from './site-css-lint.js';
+export * from './json-ld-check.js';
 
 export * from './social-metadata.js';
+export * from './faq-jsonld.js';
+export * from './ai-crawlers.js';
+export * from './page-markdown.js';
+export * from './llms-text.js';
+export * from './page-body-starters.js';

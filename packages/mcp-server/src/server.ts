@@ -26,6 +26,7 @@ import { formTools } from './tools/forms.js';
 import { emailTools } from './tools/email.js';
 import { searchTools } from './tools/search.js';
 import { bulkTools } from './tools/bulk.js';
+import { readinessTools } from './tools/readiness.js';
 import { versionTools } from './tools/versions.js';
 import { deployTools } from './tools/deploy.js';
 import { previewTools } from './tools/preview.js';
@@ -261,6 +262,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     ...developerExtensionTools,
     ...searchTools,
     ...bulkTools,
+    ...readinessTools,
     ...versionTools,
     ...deployTools,
     ...previewTools,

@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import { mediaReceiptKey } from './media-receipt.mjs';
 import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_WIDTHS, mediaVariantCandidates, mediaVariantSuffix } from './media-recipe.mjs';
 import { isSiteIconEntry } from './site-icons.mjs';
+import { isShareImageEntry } from './share-images.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const cache = 'public, max-age=31536000, immutable';
@@ -201,13 +202,15 @@ export async function prepareMedia(publication, root, options = {}) {
           cdn_url: entry.cdn_url + mediaVariantSuffix(variant.width === completed.width ? 'original' : `w${variant.width}`, entry.sha256, variant.format) }));
         // A durable completion receipt replaces library-wide revalidation. Only
         // artifacts included in this static output need downloading and hashing.
-        if (!options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host || isSiteIconEntry(publication, entry))) {
+        // A share image on a separate media host is read locally for its PNG copy, never published on the website host.
+        const shareOnly = !(manifest.delivery === 'static' || manifest.media_host === manifest.website_host || isSiteIconEntry(publication, entry)) && isShareImageEntry(publication, entry);
+        if (!options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host || isSiteIconEntry(publication, entry) || shareOnly)) {
           const artifacts = [{ key: entry.source_key, original: true, sha256: entry.sha256, size_bytes: entry.size_bytes, path: entry.public_path },
             ...completed.variants.map(variant => { const suffix = mediaVariantSuffix(variant.width === completed.width ? 'original' : `w${variant.width}`, entry.sha256, variant.format); return { ...variant, key: entry.public_key + suffix, path: entry.public_path + suffix }; })];
           for (const artifact of artifacts) {
             if (manifest.delivery !== 'static' && manifest.media_host !== manifest.website_host && !artifact.original) continue;
             const reusable = options.reusableFiles?.[artifact.path.slice(1)];
-            if (!(artifact.original && isSiteIconEntry(publication, entry)) && reusable?.sha256 === artifact.sha256 && reusable.size === artifact.size_bytes) {
+            if (!(artifact.original && (isSiteIconEntry(publication, entry) || isShareImageEntry(publication, entry))) && reusable?.sha256 === artifact.sha256 && reusable.size === artifact.size_bytes) {
               sameHostFiles.push({ path: artifact.path, reused: true, sha256: artifact.sha256, size: artifact.size_bytes });
               continue;
             }
@@ -218,7 +221,7 @@ export async function prepareMedia(publication, root, options = {}) {
             if (!bytes || hash(bytes) !== artifact.sha256 || (artifact.size_bytes && bytes.length !== artifact.size_bytes)) throw new Error('Prepared media failed byte verification');
             await fs.mkdir(path.dirname(destination), { recursive: true });
             await fs.writeFile(destination, bytes);
-            sameHostFiles.push({ source: destination, path: artifact.path });
+            sameHostFiles.push({ source: destination, path: artifact.path, ...(shareOnly ? { local_only: true } : {}) });
           }
         }
         return;
@@ -238,14 +241,16 @@ export async function prepareMedia(publication, root, options = {}) {
             if (!verified || hash(verified) !== digest) throw new Error('Published media failed byte verification');
           }
         }
-        if (copyToWebsite && !options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host || (publicPath === entry.public_path && isSiteIconEntry(publication, entry)))) {
+        const sameHost = manifest.delivery === 'static' || manifest.media_host === manifest.website_host || (publicPath === entry.public_path && isSiteIconEntry(publication, entry));
+        const shareOnly = !sameHost && publicPath === entry.public_path && isShareImageEntry(publication, entry);
+        if (copyToWebsite && !options.prepareOnly && (sameHost || shareOnly)) {
           const destination = path.resolve(root, '.publication-media', publicPath.slice(1));
           if (!destination.startsWith(path.resolve(root, '.publication-media') + path.sep)) throw new Error('Invalid media output path');
           const retained = await fs.readFile(destination).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
           if (retained && hash(retained) !== hash(bytes)) throw new Error('Static media paths contain conflicting retained assets');
           await fs.mkdir(path.dirname(destination), { recursive: true });
           await fs.writeFile(destination, bytes);
-          sameHostFiles.push({ source: destination, path: publicPath });
+          sameHostFiles.push({ source: destination, path: publicPath, ...(shareOnly ? { local_only: true } : {}) });
         }
       }
       if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);

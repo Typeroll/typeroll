@@ -440,9 +440,9 @@ describe('platform base CSS has no unreachable opinions', () => {
 });
 
 describe('documented block parts', () => {
-  // docs-site tools/blocks.mdx lists every core block part; this keeps it true.
+  // docs-site tools/blocks/parts.mdx lists every core block part; this keeps it true.
   it('match the block definitions', () => {
-    const docs = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../docs-site/src/content/docs/tools/blocks.mdx'), 'utf8');
+    const docs = readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../../../docs-site/src/content/docs/tools/blocks/parts.mdx'), 'utf8');
     const section = docs.slice(docs.indexOf('### Parts of the core blocks'));
     const lines = section.split('\n');
     const first = lines.findIndex(line => line.startsWith('|'));

@@ -210,6 +210,15 @@ const domainBlocksArchiving =
         <textarea id="setting-robots_txt" name="robots_txt" rows="3" style="font-family: var(--font-mono);">{settings.robots_txt ?? ''}</textarea>
       </div>
       <div class="field">
+        <label for="setting-ai_crawler_policy">AI crawlers</label>
+        <select id="setting-ai_crawler_policy" name="ai_crawler_policy">
+          <option value="allow_all" selected={(settings.ai_crawler_policy ?? 'allow_all') === 'allow_all'}>Allow all (default)</option>
+          <option value="no_training" selected={settings.ai_crawler_policy === 'no_training'}>Allow search and AI answers, not training</option>
+          <option value="block_all" selected={settings.ai_crawler_policy === 'block_all'}>Block AI crawlers, keep search</option>
+        </select>
+        <p class="muted text-sm">Written to robots.txt and the Content-Signal header in the format Cloudflare uses. Googlebot, Bingbot and Applebot are never blocked. If your Cloudflare zone has its own AI bot policy, Cloudflare enforces that policy at the edge.</p>
+      </div>
+      <div class="field">
         <label for="setting-default_seo_suffix">SEO title suffix</label>
         <input id="setting-default_seo_suffix" name="default_seo_suffix" value={settings.default_seo_suffix ?? ''} placeholder=" — Site Name" />
       </div>

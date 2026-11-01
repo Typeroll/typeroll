@@ -105,6 +105,10 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     scripts_head: String(form.get('scripts_head') ?? '') || undefined,
     scripts_body_end: String(form.get('scripts_body_end') ?? '') || undefined,
     robots_txt: String(form.get('robots_txt') ?? '') || undefined,
+    // allow_all is the default and is stored as an absent value.
+    ai_crawler_policy: ['no_training', 'block_all'].includes(String(form.get('ai_crawler_policy')))
+      ? String(form.get('ai_crawler_policy')) as 'no_training' | 'block_all'
+      : undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',
     seo_review,
     external_routes,

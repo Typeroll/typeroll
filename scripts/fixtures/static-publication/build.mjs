@@ -8,6 +8,7 @@ import { build } from 'esbuild';
 import { validatePublicationDirectory } from '../packages/site-template/src/lib/publication-validation.mjs';
 import { prepareMedia } from './media.mjs';
 import { writeSiteIcons, readFrozenIcon } from './site-icons.mjs';
+import { writeShareImages, readFrozenShareImage } from './share-images.mjs';
 import { readPublicationContent } from './content.mjs';
 import { resolvePublicationReferences } from './references.mjs';
 import { createRenderPlan, readRenderCache, MAX_RENDER_CACHE_BYTES, RENDER_CACHE_FORMAT } from '../packages/site-template/src/lib/publication-render-cache.mjs';
@@ -144,11 +145,14 @@ for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values(
   try { await fs.access(destination); throw new Error('Media path collides with a generated page or asset'); }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   // The trusted uploader merges only these current, verified media paths.
-  if (file.reused) continue;
+  // A share image read only for its PNG copy stays on its own media host.
+  if (file.reused || file.local_only) continue;
   await fs.mkdir(path.dirname(destination), { recursive: true });
   await fs.copyFile(file.source, destination);
 }
 await writeSiteIcons(dist, publication.settings, url => readFrozenIcon(publication, sameHostMedia, url));
+// Networks do not show SVG share images: give those pages a PNG copy.
+await writeShareImages(dist, publication, url => readFrozenShareImage(publication, sameHostMedia, url));
 const validation = await validatePublicationDirectory(dist, {
   publication, configurationHash, routes: JSON.parse(await fs.readFile(path.join(work, 'routes.json'), 'utf8')),
   sourceHash: createHash('sha256').update(JSON.stringify(manifest.files)).digest('hex'),

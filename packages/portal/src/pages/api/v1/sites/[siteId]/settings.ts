@@ -28,11 +28,11 @@ import { customCssWarnings, customCssWriteError } from '../../../../../lib/custo
 import { getStore } from '../../../../../lib/datastore';
 import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentionError } from '../../../../../lib/form-submissions';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, type SiteSettings } from '@typeroll/shared';
+import { typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, isAiCrawlerPolicy, AI_CRAWLER_POLICIES, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
-  'default_meta_description', 'language', 'robots_txt', 'image_sizes_default',
+  'default_meta_description', 'language', 'robots_txt', 'ai_crawler_policy', 'image_sizes_default',
   'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'external_routes', 'render_version',
   // Social sharing + Organization JSON-LD, as in the portal Settings form.
   'default_og_image', 'twitter_handle', 'organization',
@@ -55,7 +55,7 @@ const NESTED = new Set(['colors', 'fonts', 'contact', 'social', 'cookie_consent'
  * site administrator.
  */
 const INSTALLATION_REFUSED = new Set([
-  'scripts_head', 'scripts_body_end', 'custom_css', 'robots_txt', 'sitewide_noindex', 'sitewide_nofollow',
+  'scripts_head', 'scripts_body_end', 'custom_css', 'robots_txt', 'ai_crawler_policy', 'sitewide_noindex', 'sitewide_nofollow',
   'staging_url', 'iframe_allowed_hosts', 'external_routes', 'render_version', 'agent_instructions',
   // Deletes visitors' submissions; a data-retention decision for the site's administrators.
   'form_submission_retention_days',
@@ -132,6 +132,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.responsive_breakpoints !== undefined) { const error = responsiveBreakpointsError(body.responsive_breakpoints); if (error) return apiError(error, 400); }
   if (body.trailing_slash !== undefined && !['always', 'never', 'ignore'].includes(String(body.trailing_slash))) {
     return apiError('trailing_slash must be one of: always, never, ignore', 400);
+  }
+  if (body.ai_crawler_policy !== undefined && body.ai_crawler_policy !== null && !isAiCrawlerPolicy(body.ai_crawler_policy)) {
+    return apiError(`ai_crawler_policy must be one of: ${AI_CRAWLER_POLICIES.join(', ')} (or null for the default, allow_all)`, 400);
   }
   if (body.sitewide_noindex !== undefined && typeof body.sitewide_noindex !== 'boolean') {
     return apiError('sitewide_noindex must be boolean', 400);
@@ -218,7 +221,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && (k === 'fonts' || k === 'colors')) delete (update[k] as Record<string, unknown>)[field];
     } else if (TOP_LEVEL.has(k)) {
       // null clears an optional field; the store drops undefined values.
-      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization', 'language_sections').includes(k) ? undefined : v;
+      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization', 'language_sections', 'ai_crawler_policy').includes(k) ? undefined : v;
     } else if (SITE_LEVEL.has(k)) {
       continue;
     } else {
