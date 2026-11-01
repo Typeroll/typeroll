@@ -79,6 +79,13 @@ admin/session noise can be excluded with reasons; retiring a public URL requires
 a separately agreed exception. Query URLs and old hostnames need an explicit
 routing plan: DNS alone does not serve HTTP redirects.
 
+Keep `sitewide_noindex` off during the migration. The temporary address is
+already blocked from indexing by Typeroll, and a forgotten setting would hide
+the launched site. The domain change refuses to prepare or approve a site that
+is set to noindex. Prepare with `confirm_disable_noindex: true` to turn it off
+in the same step, or pass `allow_noindex_launch: true` to launch hidden; see
+[a site set to noindex](../../publishing/domains/#a-site-set-to-noindex-cannot-launch-by-accident).
+
 Check the actual candidate deployment before changing traffic: missing pages,
 redirect loops, broken assets and redirects to unrelated content are failures.
 Visual, content and interaction review remains necessary even when every URL

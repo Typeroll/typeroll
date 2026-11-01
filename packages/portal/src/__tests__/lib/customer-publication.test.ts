@@ -888,6 +888,17 @@ it('reports noindex from the prepared published snapshot rather than later CMS s
   expect((await getSiteDomains('org','site')).candidate).toMatchObject({sitewide_noindex:true,robots_blocked:false});
 });
 
+it('clears authored noindex in the prepared snapshot when preparation was confirmed to disable it', async () => {
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
+  await getStore().updateDoc(paths.settings('org','site'),{sitewide_noindex:true,sitewide_nofollow:true,scripts_head:'<meta name="robots" content="noindex, noarchive">'});
+  await prepareFromCurrentPublication();
+  await getStore().updateDoc(jobPath,{clear_authored_noindex:true});
+  await executeCustomerPublication(args);
+  const frozen=JSON.parse(mocks.push.mock.calls[0][1].files['publication.json']);
+  expect(frozen).toMatchObject({authored_noindex:false,robots_blocked:false});
+  expect(frozen.settings).toMatchObject({sitewide_noindex:false,sitewide_nofollow:false,scripts_head:'<meta name="robots" content="noarchive">'});
+});
+
 it('keeps future origins in normal publications before DNS and refreshes the main receipt', async () => {
   const store=getStore();
   await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});

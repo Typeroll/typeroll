@@ -244,6 +244,8 @@ export async function approveDomainCutover(orgId: string, siteId: string, input:
     if (activeJob && ['queued', 'running'].includes(activeJob.status)) throw new ConnectionError('A publication is in progress. Wait for it to finish, then review the latest publication before switching DNS.', 409, 'publication_in_progress');
   }
   if (['failed', 'live'].includes(current.state)) throw new ConnectionError('Prepare and verify a current candidate before switching traffic.', 409, 'publication_unavailable');
+  // The candidate itself or the settings for later publications must not hide the launched site, unless explicitly allowed.
+  if (current.state !== 'distributing') await (await import('./launch-robots')).assertIndexableLaunch(orgId, siteId, current, input);
   if (current.candidate.job_id) {
     const job = await getStore().getDoc<any>(paths.deploy(orgId, siteId, current.candidate.job_id));
     if (job?.status !== 'running' || job.git_publication?.publication_id !== current.candidate.id) throw new ConnectionError('The prepared publication is no longer available. Prepare the domain change again.', 409, 'publication_unavailable');

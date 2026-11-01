@@ -16,6 +16,7 @@ import { siteHostingGroup } from './hosting-groups';
 import { readDomainCutover, requestDomainRollback } from './domain-cutover-journal';
 import { ConnectionError } from './connections';
 import { ProviderError } from './providers.mjs';
+import { hiddenLaunchAccepted, launchRobotsFindings, launchRobotsMessage } from './launch-robots';
 
 type Check = { id: string; status: 'ready' | 'waiting' | 'action_required' | 'external'; message: string; details?: unknown };
 
@@ -67,17 +68,28 @@ export async function readDomainGuide(org: string, site: string) {
     const readiness = await publishingReadiness(org, site);
     checks.push({ id: 'publishing_ready', status: readiness.ready ? 'ready' : 'action_required', message: readiness.ready ? 'Publishing setup is ready.' : readiness.required.map(item => item.message).join(' '), details: readiness });
   } catch (error) { checks.push({ id: 'publishing_ready', status: 'action_required', message: error instanceof Error ? error.message : 'Publishing setup could not be checked.' }); }
+  let mainSettings: Record<string, unknown> | null = null;
   try {
     const publication = await resolvePublicationVersion(org, site, 'main');
+    mainSettings = (publication.settings ?? {}) as Record<string, unknown>;
     const content = pagesRedirectsFile(publication.redirects, publication.settings ?? {}, { domain: config.desired.website_host ?? undefined });
     checks.push({ id: 'redirect_capacity', status: 'ready', message: 'Redirect rules fit Cloudflare Pages limits after expansion.', details: { ...checkPagesRedirects(content), limits: PAGES_REDIRECT_LIMITS, bytes: Buffer.byteLength(content) } });
   } catch (error) { checks.push({ id: 'redirect_capacity', status: 'action_required', message: error instanceof Error ? error.message : 'The publication could not be exported.' }); }
+  // Authored noindex would hide the site once it moves to its real host. The platform already blocks
+  // indexing of the temporary address, so this is almost always left over from the migration.
+  const robotsFindings = await launchRobotsFindings(org, site, config, { settings: mainSettings }).catch(() => []);
+  const hiddenOnPurpose = robotsFindings.length > 0 && await hiddenLaunchAccepted(org, site, config);
+  const noindex = hiddenOnPurpose ? [] : robotsFindings;
+  if (noindex.length) checks.push({ id: 'candidate_noindex', status: 'action_required', message: launchRobotsMessage(noindex), details: { findings: noindex, override: 'allow_noindex_launch' } });
+  if (hiddenOnPurpose) checks.push({ id: 'candidate_noindex', status: 'ready', message: 'You chose to launch this site hidden from search engines (allow_noindex_launch). Turn indexing on later in Site settings and publish again.', details: { findings: robotsFindings, accepted: true } });
   const inventory = await getStore().listDocs(paths.migrationUrls(org, site));
   if (inventory.length) {
     try {
       const siteRecord = await getStore().getDoc<any>(paths.site(org, site));
       const launch = await buildMigrationLaunchReport({ store: getStore(), orgId: org, siteId: site, versionId: 'main', site: { ...siteRecord, id: site } });
-      checks.push({ id: 'launch_ready', status: launch.launch_ready ? 'ready' : 'action_required', message: launch.launch_ready ? 'Migration launch checks passed.' : launch.issues.map(issue => issue.detail).join(' '), details: launch });
+      const ready = launch.launch_ready && !noindex.length;
+      const issues = [...noindex.length ? ['The site is set to noindex; see candidate_noindex.'] : [], ...launch.issues.map(issue => issue.detail)];
+      checks.push({ id: 'launch_ready', status: ready ? 'ready' : 'action_required', message: ready ? 'Migration launch checks passed.' : issues.join(' '), details: launch });
     } catch { checks.push({ id: 'launch_ready', status: 'waiting', message: 'Migration launch evidence could not be checked. Open Migration and refresh its launch report.' }); }
   }
   const lastPublication = (await getStore().getDoc<any>(`${paths.site(org, site)}/publishing_targets/main`))?.last_publication;
@@ -91,10 +103,10 @@ export async function readDomainGuide(org: string, site: string) {
   const ended = await endedDistribution(org, site, config);
   const previousHosts = await readPreviousHosts(config);
   for (const host of previousHosts) checks.push({ id: `previous:${host.host}`, status: host.status === 'verified' ? 'ready' : host.status === 'pending' ? 'waiting' : 'action_required', message: `${host.host}: ${host.message}` });
-  const canPrepare = checks.filter(check => ['hosting_account', 'host_requirements', 'publishing_ready', 'redirect_capacity'].includes(check.id)).every(check => check.status !== 'action_required');
+  const canPrepare = checks.filter(check => ['hosting_account', 'host_requirements', 'publishing_ready', 'redirect_capacity', 'candidate_noindex'].includes(check.id)).every(check => check.status !== 'action_required');
   return { ...config, previous_hosts: previousHosts, published_main: publishedMain, can_prepare: canPrepare, elapsed_seconds: job?.started_at ? Math.max(0, Math.round((Date.parse(job.finished_at ?? new Date().toISOString()) - Date.parse(job.started_at)) / 1000)) : null, title: `Move site to ${config.desired.website_host ?? 'your domain'}`, checks,
     current_phase: config.rollback_status === 'rolled_back' ? 'previous traffic restored' : (job?.phase === 'awaiting domain cutover approval' ? 'Published; DNS switch pending' : job?.phase) ?? ({ unconfigured: 'Save a website address to begin', declared: 'Ready to publish for the new domain', preparing: 'Preparing and checking requirements', ready_to_switch: 'Ready for your approval', distributing: 'Switching and verifying traffic', live: 'Public traffic verified', failed: 'Needs attention', outdated: 'Publish for the new domain to replace this older preparation.' }[config.state]),
-    traffic_live: config.state === 'live', next_action: config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : !lastPublication ? 'publish_first' : publishedMain ? 'refresh' : 'prepare',
+    traffic_live: config.state === 'live', next_action: config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : !lastPublication ? 'publish_first' : noindex.length ? 'resolve_noindex' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : publishedMain ? 'refresh' : 'prepare',
     cutover: cutover ? { state: cutover.state, deadline_at: cutover.deadline_at, errors: cutover.errors, previous_records: cutover.entries.map(entry => ({ hostname: entry.hostname, records: entry.before })) } : null,
     switch_summary: { website: config.preparation, media: config.media_preparation, redirects: config.redirect_preparations, previous_hosts: config.previous_host_preparations, validation_timeout_minutes: config.validation_timeout_minutes ?? 15,
       interruption: config.preparation?.validation_blocker?.message ?? 'The same main publication already serves at the current address. This step changes DNS without another build or upload. DNS propagation and provider validation can still take time.',
