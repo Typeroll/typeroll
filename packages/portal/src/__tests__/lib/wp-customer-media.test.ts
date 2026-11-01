@@ -89,7 +89,7 @@ it('retains pending identity after transfer failure and retries without duplicat
   expect(await getStore().getDoc(`${paths.media('org', 'site')}/${result.mediaId}`)).toMatchObject({ import_pending: false, storage: { state: 'ready' } });
 });
 
-it('queues an organization-wide media migration only after a transient import failure', async () => {
+it('queues the site media migration only after a transient import failure', async () => {
   await connect();
   const transfer = () => new WPMediaTransfer('org', 'site', getStore());
   const requestId = async () => (await getStore().listDocs<{ request_id?: string }>('publishing_media_migrations'))[0]?.request_id;
@@ -102,5 +102,10 @@ it('queues an organization-wide media migration only after a transient import fa
   expect(await requestId()).toBe(afterAdoption);
   vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('Interrupted', 503, 'media_transfer_interrupted'));
   await expect(transfer().ensureUrl('https://wordpress.example.com/uploads/later.png')).rejects.toThrow('Interrupted');
-  expect(await requestId()).not.toBe(afterAdoption);
+  const afterFailure = await requestId();
+  expect(afterFailure).not.toBe(afterAdoption);
+  // The Site's own migration pass records the failure itself and never requeues its running job.
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('Interrupted', 503, 'media_transfer_interrupted'));
+  await expect(new WPMediaTransfer('org', 'site', getStore(), { queueMigrationOnFailure: false }).ensureUrl('https://wordpress.example.com/uploads/again.png')).rejects.toThrow('Interrupted');
+  expect(await requestId()).toBe(afterFailure);
 });
