@@ -31,6 +31,10 @@ permissions, publishing prerequisites, redirect capacity and candidate together.
 Saving an address is **not** a traffic switch. The card shows the current phase
 and only reports **Live and verified** after public checks succeed.
 
+While a prepared switch waits for your DNS approval, it does not occupy the
+organization's build engine. `read_organization_build_engine` lists it under
+`awaiting_approval`, not `active_jobs`, and other Sites may publish meanwhile.
+
 1. Save the future website/media addresses. This only records intent: it does
    not rebuild, replace the current site or change DNS. Redirect-only changes
    retain the main artifact but require refreshed checks and renewed DNS approval.
