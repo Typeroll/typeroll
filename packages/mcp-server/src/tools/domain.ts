@@ -192,14 +192,14 @@ export const domainTools: ToolDef[] = [
   {
     name: 'read_organization_media_migration',
     noSite: true,
-    description: 'Read progress and actionable failures while original media moves to the organization Cloudflare account. Requires an organization API key.',
+    description: 'Read progress and actionable failures while original media moves to the organization Cloudflare account: overall state with updated_at, each site (state, counts, error, updated_at) and failed_media (site_id, media_id, filename, source_url, code, message, at) for files that could not be copied and were set aside. Fix or delete those files, then retry_organization_media_migration. Requires an organization API key.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/media-migration'))),
   },
   {
     name: 'retry_organization_media_migration',
     noSite: true,
-    description: 'Resume verified media migration after fixing account or R2 setup. Restarts only failed site migrations and stopped jobs; completed sites are not touched. Source files remain readable; pointer changes require matching hashes. Set prepare_transfer to set up or recheck the transfer worker in the organization Cloudflare account. Requires an organization API key.',
+    description: 'Resume verified media migration after fixing account or R2 setup. Restarts only failed site migrations and stopped jobs, giving set-aside files fresh attempts; completed sites are not touched. Source files remain readable; pointer changes require matching hashes. Set prepare_transfer to set up or recheck the transfer worker in the organization Cloudflare account. Requires an organization API key.',
     inputSchema: { prepare_transfer: z.boolean().optional() },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('publishing/media-migration', args.prepare_transfer ? { action: 'prepare_transfer', recheck: true } : {}))),
   },

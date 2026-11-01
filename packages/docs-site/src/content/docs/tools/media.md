@@ -149,6 +149,10 @@ fonts (`.woff`, `.woff2`).
   `render.php.png`. The response's `filename` is the stored name. Types outside
   the table return HTTP 415 with `media_type_unsupported`, and nothing is
   created.
+- A URL import with a `filename` names a new item. When the source URL matches
+  an item the site already has (copied, or an unfinished import of the same
+  URL), that item is returned with its existing name; rename it with
+  `update_media` if needed.
 - Renames are not corrected. `PATCH /api/v1/sites/{siteId}/media/{mediaId}`
   (`update_media`) and the Media library return HTTP 400 with
   `media_extension_mismatch` when a changed `filename` or `public_path` does not

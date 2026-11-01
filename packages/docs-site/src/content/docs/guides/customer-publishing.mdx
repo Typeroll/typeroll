@@ -560,6 +560,17 @@ a new media host is only attached to your public bucket. Saving new storage keys
 or choosing retry restarts only sites whose migration stopped.
 **Publishing → Media storage** shows the totals over all sites.
 
+A file whose source cannot be fetched, for example an image on a host that no
+longer exists, does not hold back the rest of its site. After three attempts, or
+at once when the source refuses it, the file is set aside with its reason and the
+site's job ends as needing attention. `read_organization_media_migration` (or
+`GET /publishing/media-migration`) then lists it under `failed_media` with its
+site, filename, source URL and error, and shows each site's state and
+`updated_at`. Delete or replace those files, or fix their source, then retry: a
+retry gives set-aside files new attempts and restarts only sites that stopped.
+Set-aside files are never published from the old source, and live pages are not
+changed.
+
 ### Large libraries and first publication
 
 Original transfer and publication preparation are separate steps. The background

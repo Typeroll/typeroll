@@ -36,7 +36,9 @@ export class WPMediaTransfer {
   constructor(
     private orgId: string,
     private siteId: string,
-    private store: ReadWriteStore
+    private store: ReadWriteStore,
+    /** The Site's media migration passes false: it records failures itself and must not requeue its own running job. */
+    private options: { queueMigrationOnFailure?: boolean } = {},
   ) {}
 
   /**
@@ -137,7 +139,7 @@ export class WPMediaTransfer {
           // A transient failure queues this Site's migration, so the pending
           // copy is retried even if the caller gives up; a rejected source (4xx)
           // would only fail again. No other Site is read or rebuilt.
-          if (!(error instanceof ConnectionError) || error.status >= 500) {
+          if (this.options.queueMigrationOnFailure !== false && (!(error instanceof ConnectionError) || error.status >= 500)) {
             const { requestMediaMigration } = await import('../publishing/media-migration');
             await requestMediaMigration(this.orgId, this.siteId).catch(() => {});
           }
