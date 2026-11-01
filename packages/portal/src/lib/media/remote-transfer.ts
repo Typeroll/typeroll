@@ -10,6 +10,12 @@ const sign = (secret: string, body: string) => createHmac('sha256', secret).upda
 /** A receipt is accepted only from the authenticated service and for this exact, fresh request. */
 async function requestTransfer(orgId: string, input: Record<string, unknown>, fetchImpl = fetch): Promise<TransferReceipt> {
   const service = await customerTransferService(orgId);
+  const started = Date.now();
+  // Host only: enough to compare sources without logging file names or signed URLs.
+  let sourceHost: string | undefined;
+  try { sourceHost = new URL(String(input.source_url)).host; } catch { /* no source */ }
+  const retrying = (attempt: number, reason: string) =>
+    console.info(JSON.stringify({ event: 'media_transfer_retry', operation: input.operation, source_host: sourceHost, attempt: attempt + 1, reason, elapsed_ms: Date.now() - started }));
   for (let attempt = 0; ; attempt++) {
     const job = { ...input, protocol: 1, id: randomUUID(), expires_at: Date.now() + 90000 }, body = JSON.stringify(job);
     let response: Response;
@@ -17,7 +23,7 @@ async function requestTransfer(orgId: string, input: Record<string, unknown>, fe
       response = await fetchImpl(service.url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(90000),
         headers: { 'Content-Type': 'application/json', 'x-typeroll-signature': sign(service.secret, body) }, body });
     } catch {
-      if (attempt < 2) { await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }
+      if (attempt < 2) { retrying(attempt, 'network'); await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }
       throw new ConnectionError('The media transfer was interrupted. Retry the migration; completed files will be kept.', 503, 'media_transfer_interrupted');
     }
     const reader = response.body?.getReader(); const chunks: Uint8Array[] = []; let size = 0;
@@ -26,7 +32,7 @@ async function requestTransfer(orgId: string, input: Record<string, unknown>, fe
     finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
     const text = Buffer.concat(chunks).toString('utf8');
     if (!response.ok) {
-      if ((response.status === 429 || response.status >= 500) && attempt < 2) { await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }
+      if ((response.status === 429 || response.status >= 500) && attempt < 2) { retrying(attempt, `http_${response.status}`); await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }
       let code: string; try { code = JSON.parse(text).error; } catch { code = 'media_transfer_unavailable'; }
       const descriptions: Record<string, string> = {
         media_source_unavailable: 'The original file could not be downloaded. Check that it is still accessible on the source site and retry.',
@@ -43,7 +49,7 @@ async function requestTransfer(orgId: string, input: Record<string, unknown>, fe
     const receipt = JSON.parse(text) as TransferReceipt;
     if (receipt.protocol !== 1 || receipt.id !== job.id || !/^[a-f0-9]{64}$/.test(receipt.sha256) || !Number.isSafeInteger(receipt.size) || receipt.size < 1 || receipt.size > 25 * 1024 * 1024 ||
         !/^"[^"\r\n]{1,200}"$/.test(receipt.etag) || (input.expected_sha256 && input.expected_sha256 !== receipt.sha256) || (input.expected_size !== undefined && input.expected_size !== receipt.size)) throw new ConnectionError('The copied file does not match its transfer request.', 422, 'media_integrity_failed');
-    console.info(JSON.stringify({ event: 'media_transfer_receipt', operation: input.operation, transferred_bytes: receipt.size, portal_file_bytes: 0 }));
+    console.info(JSON.stringify({ event: 'media_transfer_receipt', operation: input.operation, transferred_bytes: receipt.size, portal_file_bytes: 0, source_host: sourceHost, attempts: attempt + 1, duration_ms: Date.now() - started }));
     return receipt;
   }
 }

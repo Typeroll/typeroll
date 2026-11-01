@@ -37,6 +37,10 @@ export function connectionPath(orgId: string, provider: Provider, groupId = 'def
 
 export async function getConnection(orgId: string, provider: Provider, groupId = 'default'): Promise<Connection> {
   const path = connectionPath(orgId, provider, groupId);
+  // Read first: the record nearly always exists, and a media import looks it
+  // up several times, so the creating transaction runs only for a new organization.
+  const existing = await getStore().getDoc<Connection>(path);
+  if (existing) return existing;
   await getStore().createDocIfMissing(path, { status: 'disconnected', revision: randomUUID() });
   return (await getStore().getDoc<Connection>(path))!;
 }
