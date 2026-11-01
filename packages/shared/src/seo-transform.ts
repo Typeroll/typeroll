@@ -293,9 +293,21 @@ function parseAttrs(raw: string): Record<string, string | undefined> {
   let m: RegExpExecArray | null;
   while ((m = re.exec(raw)) !== null) {
     const key = m[1].toLowerCase();
-    out[key] = m[2] ?? m[3] ?? m[4] ?? '';
+    // Values are stored decoded and escaped once by formatAttr, so a URL
+    // with `&amp;` keeps a single encoding however often the transform runs.
+    out[key] = decodeAttr(m[2] ?? m[3] ?? m[4] ?? '');
   }
   return out;
+}
+
+function decodeAttr(v: string): string {
+  if (!v.includes('&')) return v;
+  return v.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|quot|apos|lt|gt);/gi, (entity, name: string) => {
+    const lower = name.toLowerCase();
+    if (lower.startsWith('#x')) return String.fromCodePoint(parseInt(lower.slice(2), 16));
+    if (lower.startsWith('#')) return String.fromCodePoint(parseInt(lower.slice(1), 10));
+    return ({ amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' } as Record<string, string>)[lower] ?? entity;
+  });
 }
 
 function serializeImg(attrs: Record<string, string | undefined>): string {

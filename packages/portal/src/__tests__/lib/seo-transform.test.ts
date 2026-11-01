@@ -249,3 +249,21 @@ describe('lintBodyForSeo', () => {
     expect(lintBodyForSeo('<a href="/x"></a>').some((w) => /no text content/i.test(w))).toBe(true);
   });
 });
+
+describe('transformBodyForSeo attribute encoding', () => {
+  it('keeps a query string in an image URL encoded exactly once, however often it runs', () => {
+    const html = '<p><img src="https://img.example/w?a=1&amp;b=2" alt="Cover"></p>';
+    const once = transformBodyForSeo(html, buildMediaLookup([]));
+    const twice = transformBodyForSeo(once, buildMediaLookup([]));
+    expect(once).toContain('src="https://img.example/w?a=1&amp;b=2"');
+    expect(twice).toContain('src="https://img.example/w?a=1&amp;b=2"');
+    expect(twice).not.toContain('&amp;amp;');
+  });
+
+  it('matches media by its decoded URL', () => {
+    const media = [{ id: 'm1', cdn_url: 'https://cdn.example/a.png?v=1&s=2', width: 800, height: 600, alt_text: 'Chart' }] as unknown as Media[];
+    const out = transformBodyForSeo('<img src="https://cdn.example/a.png?v=1&amp;s=2">', buildMediaLookup(media));
+    expect(out).toContain('width="800"');
+    expect(out).toContain('alt="Chart"');
+  });
+});
