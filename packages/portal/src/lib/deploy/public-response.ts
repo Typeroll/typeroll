@@ -8,7 +8,7 @@ interface Options { fetchImpl?: typeof fetch; validate?: typeof assertPublicDest
 // the guarded fetch then connects only to an address it validated itself.
 // Redirects are returned to the caller, which keeps them on the same origin.
 const publicationFetch = createSafeFetch({ label: 'Publication URL', maxRedirects: 0, timeoutMs: 15_000, maxBytes: 32 * 1024 * 1024 });
-const missingDns = (error: unknown) => {
+export const missingDns = (error: unknown) => {
   const value = error as { code?: string; cause?: { code?: string } };
   return (value?.cause?.code ?? value?.code) === 'ENOTFOUND';
 };
