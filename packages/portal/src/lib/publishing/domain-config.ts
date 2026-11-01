@@ -51,6 +51,8 @@ export interface DomainConfiguration {
   approved_redirect_preparations?: import('./redirect-hosts').RedirectPreparation[] | null;
   /** Explicit acceptance that the website host is unavailable until Cloudflare validates it after the record change. */
   approved_validation_window?: boolean | null;
+  /** Follow-up checks of who serves the live website host; an alarm stands until a check proves it served again. */
+  serving_check?: import('./serving-check').ServingCheck | null;
 }
 
 /** Effective output origins. Saving future settings is inert; explicit publication selects them. */
