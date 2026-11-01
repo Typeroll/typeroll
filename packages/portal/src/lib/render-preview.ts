@@ -35,6 +35,8 @@ import {
   composePageWithTemplate,
   defaultSiteSettings,
   resolveRenderVersion,
+  languageDirection,
+  directionCss,
   siteStylesCss,
   styleElementText,
   resolveBreakpointWidths,
@@ -560,6 +562,7 @@ function buildHtml(args: {
   bodyAttributes?: Record<string, string>;
 }): string {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, consentPreset, robotsBlocked, banner } = args;
+  const direction = languageDirection(page.language || settings.language || 'en');
   const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
   const f = {
     heading: settings.fonts?.heading ?? 'Inter',
@@ -575,7 +578,7 @@ function buildHtml(args: {
   // <head>. Same sources in the same order, so preview matches the built site.
 
   return `<!doctype html>
-<html lang="${escapeAttr(page.language || settings.language || 'en')}" data-tr-render="${resolveRenderVersion(settings.render_version)}">
+<html lang="${escapeAttr(page.language || settings.language || 'en')}"${direction === 'rtl' ? ' dir="rtl"' : ''} data-tr-render="${resolveRenderVersion(settings.render_version)}">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -601,6 +604,7 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
         : `<link rel="stylesheet" href="${escapeAttr(fontUrl)}">`
     }<style>${WEBFONT_FALLBACK_CSS}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
+${direction === 'rtl' ? `<style data-direction>${directionCss(direction)}</style>` : ''}
 ${siteStyles ? `<style data-site-styles="1">${siteStyles}</style>` : ''}
 ${settings.custom_css ? `<style data-site-css="1">${styleElementText(settings.custom_css)}</style>` : ''}
 ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css)}</style>` : ''}

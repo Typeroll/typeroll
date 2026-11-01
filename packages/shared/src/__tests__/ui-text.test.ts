@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { renderBlock } from '../render-blocks.js';
 import { buildCoreBlockRegistry } from '../core-blocks.js';
 import { renderCookieConsent } from '../cookie-consent.js';
-import { lacksUiTranslation, uiLanguage, uiText } from '../ui-text.js';
+import { lacksUiTranslation, languageDirection, uiLanguage, uiText, UI_LANGUAGES } from '../ui-text.js';
+import { directionCss, RTL_CSS } from '../rtl-css.js';
+import { cookieConsentDefaultText } from '../cookie-consent.js';
+import { notFoundText } from '../not-found-text.js';
+import { blockUiLanguage } from '../block-media.js';
 import type { Block } from '../types.js';
 
 const registry = buildCoreBlockRegistry();
@@ -20,10 +24,41 @@ describe('built-in interface text', () => {
     expect(uiLanguage('DE')).toBe('de');
     expect(uiLanguage('svenska')).toBe('en');
     expect(uiLanguage(undefined)).toBe('en');
-    expect([lacksUiTranslation('cs'), lacksUiTranslation('nl-NL'), lacksUiTranslation('en-GB'), lacksUiTranslation('')]).toEqual([true, false, false, false]);
+    expect([lacksUiTranslation('cy'), lacksUiTranslation('nl-NL'), lacksUiTranslation('en-GB'), lacksUiTranslation('')]).toEqual([true, false, false, false]);
     expect(uiText('nl', 'pagination')).toBe('Paginering');
     expect([uiLanguage('nb-NO'), uiLanguage('no'), uiLanguage('nn-NO'), uiLanguage('fi-FI'), uiLanguage('fr-CH'), uiLanguage('pl'), uiLanguage('it-IT'), uiLanguage('es-ES')]).toEqual(['nb', 'nb', 'en', 'fi', 'fr', 'pl', 'it', 'es']);
     expect([lacksUiTranslation('nb-NO'), lacksUiTranslation('nn-NO')]).toEqual([false, true]);
+  });
+
+  it('reads script and region for Chinese and the withdrawn Hebrew and Indonesian codes', () => {
+    expect(['zh', 'zh-CN', 'zh-Hans', 'zh-SG', 'zh-Hant', 'zh-TW', 'zh-HK', 'zh-Hant-TW', 'zh-Hans-HK', 'ZH-tw'].map(uiLanguage))
+      .toEqual(['zh', 'zh', 'zh', 'zh', 'zh-Hant', 'zh-Hant', 'zh-Hant', 'zh-Hant', 'zh', 'zh-Hant']);
+    expect([uiLanguage('iw'), uiLanguage('in-ID'), uiLanguage('pt-BR'), uiLanguage('sr-RS'), uiLanguage('ca-ES')]).toEqual(['he', 'id', 'pt', 'sr', 'ca']);
+    expect(blockUiLanguage('ja-JP')).toBe('ja');
+  });
+
+  it('has its own wording for every built-in language', () => {
+    expect(UI_LANGUAGES).toHaveLength(50);
+    const english = { text: cookieConsentDefaultText('en'), notFound: notFoundText('en').title, table: uiText('en', 'scrollable_table') };
+    for (const language of UI_LANGUAGES.filter(code => code !== 'en')) {
+      expect(lacksUiTranslation(language)).toBe(false);
+      expect(cookieConsentDefaultText(language)).not.toBe(english.text);
+      expect(notFoundText(language).title).not.toBe(english.notFound);
+      expect(uiText(language, 'scrollable_table')).not.toBe(english.table);
+    }
+  });
+
+  it('reads the writing direction from the language and an explicit script', () => {
+    expect(['ar', 'ar-EG', 'he', 'iw', 'fa-IR', 'ur-PK', 'ps', 'yi', 'az-Arab', 'pa-Arab'].map(languageDirection)).toEqual(Array(10).fill('rtl'));
+    expect(['', undefined, 'en', 'fi', 'sv-SE', 'zh-Hant', 'ku-Latn', 'ar-Latn', 'arn', 'hy'].map(languageDirection)).toEqual(Array(10).fill('ltr'));
+  });
+
+  it('mirrors only existing built-in blocks, and only on right-to-left pages', () => {
+    expect(directionCss('ltr')).toBe('');
+    expect(directionCss('rtl')).toBe(RTL_CSS);
+    const ids = new Set([...registry.values()].flatMap(type => [type.id.split('/').pop(), type.name, ...[...String(type.template ?? '').matchAll(/data-block="([^"]+)"/g)].map(match => match[1])]));
+    for (const block of RTL_CSS.matchAll(/data-block="([^"]+)"/g)) expect(ids, block[1]).toContain(block[1]);
+    for (const rule of RTL_CSS.split('\n').filter(line => !line.startsWith('@media'))) expect(rule.startsWith('[dir="rtl"]'), rule).toBe(true);
   });
 
   it('labels archive pagination in the page language', () => {

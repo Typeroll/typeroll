@@ -30,6 +30,46 @@ const TABS_TEXT = {
   pl: { toggle: "Pokaż opcje", menu: "Opcje" },
   it: { toggle: "Mostra opzioni", menu: "Opzioni" },
   es: { toggle: "Ver opciones", menu: "Opciones" },
+  da: { toggle: "Vis muligheder", menu: "Muligheder" },
+  pt: { toggle: "Ver opções", menu: "Opções" },
+  ru: { toggle: "Показать варианты", menu: "Варианты" },
+  uk: { toggle: "Показати варіанти", menu: "Варіанти" },
+  cs: { toggle: "Zobrazit možnosti", menu: "Možnosti" },
+  sk: { toggle: "Zobraziť možnosti", menu: "Možnosti" },
+  hu: { toggle: "Lehetőségek megjelenítése", menu: "Lehetőségek" },
+  ro: { toggle: "Afișează opțiunile", menu: "Opțiuni" },
+  bg: { toggle: "Покажи опциите", menu: "Опции" },
+  hr: { toggle: "Prikaži opcije", menu: "Opcije" },
+  sr: { toggle: "Прикажи опције", menu: "Опције" },
+  bs: { toggle: "Prikaži opcije", menu: "Opcije" },
+  sl: { toggle: "Prikaži možnosti", menu: "Možnosti" },
+  mk: { toggle: "Прикажи опции", menu: "Опции" },
+  sq: { toggle: "Shiko opsionet", menu: "Opsionet" },
+  el: { toggle: "Εμφάνιση επιλογών", menu: "Επιλογές" },
+  lt: { toggle: "Rodyti parinktis", menu: "Parinktys" },
+  lv: { toggle: "Rādīt iespējas", menu: "Iespējas" },
+  et: { toggle: "Näita valikuid", menu: "Valikud" },
+  is: { toggle: "Sjá valkosti", menu: "Valkostir" },
+  tr: { toggle: "Seçenekleri göster", menu: "Seçenekler" },
+  az: { toggle: "Seçimlərə bax", menu: "Seçimlər" },
+  kk: { toggle: "Нұсқаларды көру", menu: "Нұсқалар" },
+  ka: { toggle: "ვარიანტების ნახვა", menu: "ვარიანტები" },
+  ar: { toggle: "عرض الخيارات", menu: "الخيارات" },
+  he: { toggle: "הצגת אפשרויות", menu: "אפשרויות" },
+  fa: { toggle: "نمایش گزینه‌ها", menu: "گزینه‌ها" },
+  ur: { toggle: "اختیارات دیکھیں", menu: "اختیارات" },
+  hi: { toggle: "विकल्प देखें", menu: "विकल्प" },
+  bn: { toggle: "বিকল্পগুলি দেখুন", menu: "বিকল্পসমূহ" },
+  ta: { toggle: "விருப்பங்களைக் காண்க", menu: "விருப்பங்கள்" },
+  th: { toggle: "ดูตัวเลือก", menu: "ตัวเลือก" },
+  vi: { toggle: "Xem tùy chọn", menu: "Tùy chọn" },
+  id: { toggle: "Lihat opsi", menu: "Opsi" },
+  ms: { toggle: "Lihat pilihan", menu: "Pilihan" },
+  ja: { toggle: "オプションを表示", menu: "オプション" },
+  ko: { toggle: "옵션 보기", menu: "옵션" },
+  zh: { toggle: "查看选项", menu: "选项" },
+  'zh-Hant': { toggle: "查看選項", menu: "選項" },
+  ca: { toggle: "Mostra les opcions", menu: "Opcions" },
 } as const;
 function tabsLanguage(language: unknown): keyof typeof TABS_TEXT {
   return uiLanguage(language);
@@ -296,7 +336,7 @@ ${[576, 768, 769, 1024, 1025].map((width) => `@media(max-width:${width - 1}px){[
  }
  buttons.forEach((button,index)=>{
   button.addEventListener('click',()=>{if(el.dataset.collapseMode==='panels'){const expanded=button.getAttribute('aria-selected')!=='true'||!el.hasAttribute('data-expanded');el.toggleAttribute('data-expanded',expanded);buttons.forEach(item=>item.setAttribute('aria-expanded',String(item===button&&expanded)));}activate(button);});
-  button.addEventListener('keydown',event=>{let next=index;if(event.key==='ArrowRight')next=(index+1)%buttons.length;else if(event.key==='ArrowLeft')next=(index+buttons.length-1)%buttons.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=buttons.length-1;else return;event.preventDefault();activate(buttons[next],true);});
+  button.addEventListener('keydown',event=>{let next=index;const forward=getComputedStyle(button).direction==='rtl'?'ArrowLeft':'ArrowRight';if(event.key===forward)next=(index+1)%buttons.length;else if(event.key==='ArrowLeft'||event.key==='ArrowRight')next=(index+buttons.length-1)%buttons.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=buttons.length-1;else return;event.preventDefault();activate(buttons[next],true);});
  });
  if(buttons.length)activate(buttons.find(button=>button.dataset.idx===el.dataset.default)||buttons[0]);
  const toggle=el.querySelector(':scope > .block-tabs-toggle');

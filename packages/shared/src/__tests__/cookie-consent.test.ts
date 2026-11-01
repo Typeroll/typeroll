@@ -37,9 +37,12 @@ describe('renderCookieConsent', () => {
     }
     expect(german).not.toMatch(/Neka|Godkänn|webbplatsen|integritetspolicy/);
 
-    const english = renderCookieConsent({ enabled: true }, undefined, 'cs');
+    const english = renderCookieConsent({ enabled: true }, undefined, 'cy');
     expect(english).toContain('>Accept all<');
     expect(english).not.toMatch(/Neka|Ablehnen/);
+    const czech = renderCookieConsent({ enabled: true }, undefined, 'cs-CZ');
+    expect(czech).not.toContain('>Accept all<');
+    expect(cookieConsentLanguage('zh-TW')).toBe('zh-Hant');
     expect(cookieConsentLanguage(undefined)).toBe('en');
     expect(cookieConsentLanguage('DE')).toBe('de');
     expect(cookieConsentLanguage('svenska')).toBe('en');

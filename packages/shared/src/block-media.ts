@@ -31,6 +31,46 @@ const TEXT = {
   it: { pause: 'Metti in pausa il video', play: 'Riproduci il video', previous: 'Precedente', next: 'Successivo', item: 'Mostra', pauseSlides: 'Pausa', playSlides: 'Riproduci', carousel: 'Carosello', rating: (value: string) => `Valutazione: ${value} su 5` },
   es: { pause: 'Pausar vídeo', play: 'Reproducir vídeo', previous: 'Anterior', next: 'Siguiente', item: 'Mostrar', pauseSlides: 'Pausar', playSlides: 'Reproducir', carousel: 'Carrusel', rating: (value: string) => `Valoración: ${value} de 5` },
   sv: { pause: 'Pausa video', play: 'Spela video', previous: 'Föregående', next: 'Nästa', item: 'Visa', pauseSlides: 'Pausa', playSlides: 'Spela', carousel: 'Karusell', rating: (value: string) => `Betyg: ${value} av 5` },
+  da: { pause: 'Sæt video på pause', play: 'Afspil video', previous: 'Forrige', next: 'Næste', item: 'Vis', pauseSlides: 'Pause', playSlides: 'Afspil', carousel: 'Karrusel', rating: (value: string) => `Bedømmelse: ${value} ud af 5` },
+  pt: { pause: 'Pausar vídeo', play: 'Reproduzir vídeo', previous: 'Anterior', next: 'Próximo', item: 'Mostrar item', pauseSlides: 'Pausar', playSlides: 'Reproduzir', carousel: 'Carrossel', rating: (value: string) => `Avaliação: ${value} de 5` },
+  ru: { pause: 'Приостановить видео', play: 'Воспроизвести видео', previous: 'Предыдущий слайд', next: 'Следующий слайд', item: 'Показать слайд', pauseSlides: 'Пауза', playSlides: 'Воспроизвести', carousel: 'Карусель', rating: (value: string) => `Оценка: ${value} из 5` },
+  uk: { pause: 'Призупинити відео', play: 'Відтворити відео', previous: 'Попередній', next: 'Наступний', item: 'Перейти до слайда', pauseSlides: 'Пауза', playSlides: 'Відтворити', carousel: 'Карусель', rating: (value: string) => `Оцінка: ${value} з 5` },
+  cs: { pause: 'Pozastavit video', play: 'Přehrát video', previous: 'Předchozí', next: 'Další', item: 'Přejít na snímek', pauseSlides: 'Pozastavit', playSlides: 'Přehrát', carousel: 'Karusel', rating: (value: string) => `Hodnocení: ${value} z 5` },
+  sk: { pause: 'Pozastaviť video', play: 'Prehrať video', previous: 'Predchádzajúca', next: 'Ďalšia', item: 'Prejsť na snímku', pauseSlides: 'Pozastaviť', playSlides: 'Prehrať', carousel: 'Karusel', rating: (value: string) => `Hodnotenie: ${value} z 5` },
+  hu: { pause: 'Videó szüneteltetése', play: 'Videó lejátszása', previous: 'Előző', next: 'Következő', item: 'Dia', pauseSlides: 'Szünet', playSlides: 'Lejátszás', carousel: 'Karusszel', rating: (value: string) => `Értékelés: ${value}/5` },
+  ro: { pause: 'Întrerupe videoclipul', play: 'Redă videoclipul', previous: 'Anterior', next: 'Următor', item: 'Afișează elementul', pauseSlides: 'Pauză', playSlides: 'Redare', carousel: 'Carusel', rating: (value: string) => `Evaluare: ${value} din 5` },
+  bg: { pause: 'Пауза на видеото', play: 'Пусни видеото', previous: 'Предишен', next: 'Следващ', item: 'Покажи елемент', pauseSlides: 'Пауза', playSlides: 'Пусни', carousel: 'Карусел', rating: (value: string) => `Оценка: ${value} от 5` },
+  hr: { pause: 'Pauziraj videozapis', play: 'Reproduciraj videozapis', previous: 'Prethodno', next: 'Sljedeće', item: 'Prikaži stavku', pauseSlides: 'Pauziraj', playSlides: 'Pokreni', carousel: 'Vrtuljak', rating: (value: string) => `Ocjena: ${value} od 5` },
+  sr: { pause: 'Паузирај видео', play: 'Пусти видео', previous: 'Претходно', next: 'Следеће', item: 'Прикажи ставку', pauseSlides: 'Паузирај', playSlides: 'Пусти', carousel: 'Карусел', rating: (value: string) => `Оцена: ${value} од 5` },
+  bs: { pause: 'Pauziraj video', play: 'Pokreni video', previous: 'Prethodno', next: 'Sljedeće', item: 'Slajd', pauseSlides: 'Pauza', playSlides: 'Pokreni', carousel: 'Karusel', rating: (value: string) => `Ocjena: ${value} od 5` },
+  sl: { pause: 'Začasno ustavi videoposnetek', play: 'Predvajaj videoposnetek', previous: 'Prejšnji', next: 'Naslednji', item: 'Prikaži element', pauseSlides: 'Začasno ustavi', playSlides: 'Predvajaj', carousel: 'Vrtiljak', rating: (value: string) => `Ocena: ${value} od 5` },
+  mk: { pause: 'Паузирај го видеото', play: 'Пушти го видеото', previous: 'Претходна', next: 'Следна', item: 'Слајд', pauseSlides: 'Пауза', playSlides: 'Пушти', carousel: 'Карусел', rating: (value: string) => `Оцена: ${value} од 5` },
+  sq: { pause: 'Ndalo videon', play: 'Luaj videon', previous: 'E mëparshmja', next: 'Tjetra', item: 'Sllajdi', pauseSlides: 'Pauzë', playSlides: 'Luaj', carousel: 'Karusel', rating: (value: string) => `Vlerësimi: ${value} nga 5` },
+  el: { pause: 'Παύση βίντεο', play: 'Αναπαραγωγή βίντεο', previous: 'Προηγούμενο', next: 'Επόμενο', item: 'Μετάβαση στη διαφάνεια', pauseSlides: 'Παύση', playSlides: 'Αναπαραγωγή', carousel: 'Καρουζέλ', rating: (value: string) => `Βαθμολογία: ${value} από 5` },
+  lt: { pause: 'Pristabdyti vaizdo įrašą', play: 'Paleisti vaizdo įrašą', previous: 'Ankstesnis', next: 'Kitas', item: 'Rodyti elementą', pauseSlides: 'Pristabdyti', playSlides: 'Paleisti', carousel: 'Karuselė', rating: (value: string) => `Įvertinimas: ${value} iš 5` },
+  lv: { pause: 'Pauzēt video', play: 'Atskaņot video', previous: 'Iepriekšējais', next: 'Nākamais', item: 'Rādīt elementu', pauseSlides: 'Pauzēt', playSlides: 'Atskaņot', carousel: 'Karuselis', rating: (value: string) => `Vērtējums: ${value} no 5` },
+  et: { pause: 'Peata video', play: 'Esita video', previous: 'Eelmine', next: 'Järgmine', item: 'Näita üksust', pauseSlides: 'Peata', playSlides: 'Esita', carousel: 'Karussell', rating: (value: string) => `Hinnang: ${value}/5` },
+  is: { pause: 'Gera hlé á myndbandi', play: 'Spila myndband', previous: 'Fyrri', next: 'Næsta', item: 'Sýna', pauseSlides: 'Hlé', playSlides: 'Spila', carousel: 'Hringekja', rating: (value: string) => `Einkunn: ${value} af 5` },
+  tr: { pause: 'Videoyu duraklat', play: 'Videoyu oynat', previous: 'Önceki', next: 'Sonraki', item: 'Slayt', pauseSlides: 'Duraklat', playSlides: 'Oynat', carousel: 'Slayt gösterisi', rating: (value: string) => `Puan: 5 üzerinden ${value}` },
+  az: { pause: 'Videonu dayandır', play: 'Videonu oynat', previous: 'Əvvəlki', next: 'Növbəti', item: 'Slayd', pauseSlides: 'Dayandır', playSlides: 'Oynat', carousel: 'Karusel', rating: (value: string) => `Reytinq: 5 üzərindən ${value}` },
+  kk: { pause: 'Бейнені кідірту', play: 'Бейнені ойнату', previous: 'Алдыңғы', next: 'Келесі', item: 'Слайд', pauseSlides: 'Кідірту', playSlides: 'Ойнату', carousel: 'Карусель', rating: (value: string) => `Рейтинг: 5-тен ${value}` },
+  ka: { pause: 'ვიდეოს დაპაუზება', play: 'ვიდეოს დაკვრა', previous: 'წინა', next: 'შემდეგი', item: 'სლაიდი', pauseSlides: 'პაუზა', playSlides: 'დაკვრა', carousel: 'კარუსელი', rating: (value: string) => `შეფასება: ${value} 5-დან` },
+  ar: { pause: 'إيقاف الفيديو مؤقتًا', play: 'تشغيل الفيديو', previous: 'السابق', next: 'التالي', item: 'عرض الشريحة', pauseSlides: 'إيقاف مؤقت', playSlides: 'تشغيل', carousel: 'عرض شرائح', rating: (value: string) => `التقييم: ${value} من 5` },
+  he: { pause: 'השהיית הסרטון', play: 'הפעלת הסרטון', previous: 'הקודם', next: 'הבא', item: 'מעבר לשקופית', pauseSlides: 'השהיה', playSlides: 'הפעלה', carousel: 'קרוסלה', rating: (value: string) => `דירוג: ${value} מתוך 5` },
+  fa: { pause: 'مکث ویدیو', play: 'پخش ویدیو', previous: 'قبلی', next: 'بعدی', item: 'نمایش اسلاید', pauseSlides: 'مکث', playSlides: 'پخش', carousel: 'اسلایدر', rating: (value: string) => `امتیاز: ${value} از 5` },
+  ur: { pause: 'ویڈیو روکیں', play: 'ویڈیو چلائیں', previous: 'پچھلا', next: 'اگلا', item: 'سلائیڈ', pauseSlides: 'روکیں', playSlides: 'چلائیں', carousel: 'کیروسل', rating: (value: string) => `ریٹنگ: 5 میں سے ${value}` },
+  hi: { pause: 'वीडियो रोकें', play: 'वीडियो चलाएँ', previous: 'पिछला', next: 'अगला', item: 'आइटम', pauseSlides: 'रोकें', playSlides: 'चलाएँ', carousel: 'कैरूसेल', rating: (value: string) => `रेटिंग: 5 में से ${value}` },
+  bn: { pause: 'ভিডিও থামান', play: 'ভিডিও চালান', previous: 'পূর্ববর্তী', next: 'পরবর্তী', item: 'স্লাইড', pauseSlides: 'থামান', playSlides: 'চালান', carousel: 'ক্যারোসেল', rating: (value: string) => `রেটিং: 5-এর মধ্যে ${value}` },
+  ta: { pause: 'வீடியோவை இடைநிறுத்து', play: 'வீடியோவை இயக்கு', previous: 'முந்தையது', next: 'அடுத்தது', item: 'ஸ்லைடு', pauseSlides: 'இடைநிறுத்து', playSlides: 'இயக்கு', carousel: 'கரோசல்', rating: (value: string) => `மதிப்பீடு: 5-க்கு ${value}` },
+  th: { pause: 'หยุดวิดีโอชั่วคราว', play: 'เล่นวิดีโอ', previous: 'ก่อนหน้า', next: 'ถัดไป', item: 'สไลด์ที่', pauseSlides: 'หยุดชั่วคราว', playSlides: 'เล่น', carousel: 'ภาพสไลด์', rating: (value: string) => `คะแนน: ${value} จาก 5` },
+  vi: { pause: 'Tạm dừng video', play: 'Phát video', previous: 'Trước', next: 'Tiếp theo', item: 'Xem mục', pauseSlides: 'Tạm dừng', playSlides: 'Phát', carousel: 'Trình chiếu', rating: (value: string) => `Đánh giá: ${value} trên 5` },
+  id: { pause: 'Jeda video', play: 'Putar video', previous: 'Sebelumnya', next: 'Berikutnya', item: 'Tampilkan slide', pauseSlides: 'Jeda', playSlides: 'Putar', carousel: 'Korsel', rating: (value: string) => `Penilaian: ${value} dari 5` },
+  ms: { pause: 'Jeda video', play: 'Main video', previous: 'Sebelumnya', next: 'Seterusnya', item: 'Tunjukkan item', pauseSlides: 'Jeda', playSlides: 'Main', carousel: 'Karusel', rating: (value: string) => `Penilaian: ${value} daripada 5` },
+  ja: { pause: '動画を一時停止', play: '動画を再生', previous: '前へ', next: '次へ', item: 'スライド', pauseSlides: '一時停止', playSlides: '再生', carousel: 'カルーセル', rating: (value: string) => `評価：5点中${value}点` },
+  ko: { pause: '동영상 일시정지', play: '동영상 재생', previous: '이전', next: '다음', item: '슬라이드', pauseSlides: '일시정지', playSlides: '재생', carousel: '캐러셀', rating: (value: string) => `평점: 5점 만점에 ${value}점` },
+  zh: { pause: '暂停视频', play: '播放视频', previous: '上一张', next: '下一张', item: '幻灯片', pauseSlides: '暂停', playSlides: '播放', carousel: '轮播', rating: (value: string) => `评分：${value} 分（满分 5 分）` },
+  'zh-Hant': { pause: '暫停影片', play: '播放影片', previous: '上一張', next: '下一張', item: '投影片', pauseSlides: '暫停', playSlides: '播放', carousel: '輪播', rating: (value: string) => `評分：${value} 分（滿分 5 分）` },
+  ca: { pause: 'Posa en pausa el vídeo', play: 'Reprodueix el vídeo', previous: 'Anterior', next: 'Següent', item: 'Mostra l\'element', pauseSlides: 'Pausa', playSlides: 'Reprodueix', carousel: 'Carrusel', rating: (value: string) => `Valoració: ${value} de 5` },
 } as const;
 
 /** http(s) or a root-relative path; anything else is not a media address. */
@@ -210,18 +250,22 @@ window.TyperollBlocks.register('core/repeater', function (el) {
   var pause = controls.querySelector('[data-carousel-pause]');
   var dots = Array.prototype.slice.call(controls.querySelectorAll('[data-carousel-to]'));
   var PAUSE = ${JSON.stringify(PAUSE_ICON)}, PLAY = ${JSON.stringify(PLAY_ICON)};
-  function position(i) { return items[i].offsetLeft - items[0].offsetLeft; }
+  // Distances run from the start edge, so right-to-left tracks (negative
+  // offsets and scrollLeft) use the same arithmetic.
+  var rtl = getComputedStyle(track).direction === 'rtl';
+  function position(i) { var offset = items[i].offsetLeft - items[0].offsetLeft; return rtl ? -offset : offset; }
   function maxScroll() { return track.scrollWidth - track.clientWidth; }
+  function scrolled() { return Math.abs(track.scrollLeft); }
   function current() {
     var best = 0, distance = Infinity;
-    for (var i = 0; i < items.length; i++) { var d = Math.abs(Math.min(position(i), maxScroll()) - track.scrollLeft); if (d < distance - 1) { distance = d; best = i; } }
+    for (var i = 0; i < items.length; i++) { var d = Math.abs(Math.min(position(i), maxScroll()) - scrolled()); if (d < distance - 1) { distance = d; best = i; } }
     return best;
   }
-  function go(i) { track.scrollTo({ left: Math.min(position(Math.max(0, Math.min(items.length - 1, i))), maxScroll()), behavior: reduced ? 'auto' : 'smooth' }); }
+  function go(i) { var distance = Math.min(position(Math.max(0, Math.min(items.length - 1, i))), maxScroll()); track.scrollTo({ left: rtl ? -distance : distance, behavior: reduced ? 'auto' : 'smooth' }); }
   function update() {
     var at = current();
-    if (prev) prev.disabled = track.scrollLeft <= 1;
-    if (next) next.disabled = track.scrollLeft >= maxScroll() - 1;
+    if (prev) prev.disabled = scrolled() <= 1;
+    if (next) next.disabled = scrolled() >= maxScroll() - 1;
     dots.forEach(function (dot, i) { if (i === at) dot.setAttribute('aria-current', 'true'); else dot.removeAttribute('aria-current'); });
   }
   if (prev) prev.addEventListener('click', function () { go(current() - 1); });
@@ -246,7 +290,7 @@ window.TyperollBlocks.register('core/repeater', function (el) {
   el.addEventListener('focusout', function (event) { if (!el.contains(event.relatedTarget)) focused = false; });
   setInterval(function () {
     if (stopped || hovering || focused || document.hidden || !el.isConnected) return;
-    if (track.scrollLeft >= maxScroll() - 1) go(0); else go(current() + 1);
+    if (scrolled() >= maxScroll() - 1) go(0); else go(current() + 1);
   }, 5000);
 });
 `;
