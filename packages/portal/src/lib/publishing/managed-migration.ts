@@ -57,7 +57,7 @@ export async function managedMigrationPlan(orgId: string, siteId: string) {
 /** Explicit per-site opt-in. Connecting organization storage never migrates another managed site. */
 export async function migrateManagedSite(orgId: string, siteId: string, input: Record<string, unknown>) {
   const plan = await managedMigrationPlan(orgId, siteId);
-  if (plan.state === 'migrated') { await requestMediaMigration(orgId); return plan; }
+  if (plan.state === 'migrated') { await requestMediaMigration(orgId, siteId); return plan; }
   if (!input || input.revision !== plan.revision) throw new ConnectionError('Site settings changed. Check the migration again before continuing.', 409, 'managed_migration_changed');
   const store = getStore();
   const jobs = await store.listDocs<DeployJob>(paths.deploys(orgId, siteId));
@@ -74,6 +74,6 @@ export async function migrateManagedSite(orgId: string, siteId: string, input: R
     { publishing_mode: 'customer_git', hosting_group_id: plan.binding.hosting_group_id, hosting_assignment_locked: true,
       publishing_migration: { ...plan.binding, migrated_at: new Date().toISOString() } });
   if (!changed) throw new ConnectionError('Site settings changed. Check the migration again before continuing.', 409, 'managed_migration_changed');
-  await requestMediaMigration(orgId);
+  await requestMediaMigration(orgId, siteId);
   return managedMigrationPlan(orgId, siteId);
 }

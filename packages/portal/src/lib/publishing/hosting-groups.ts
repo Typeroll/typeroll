@@ -50,7 +50,7 @@ export async function saveHostingGroup(orgId: string, input: Record<string, unkn
   const sites_domain = input.sites_domain ? publicationHostname(input.sites_domain) : null;
   if (!['automatic', 'external'].includes(String(input.dns_mode))) throw new ConnectionError('Select automatic or external DNS.', 400);
   if (id === 'default') {
-    await saveOrganizationDomains(orgId, { revision: input.revision, sites_domain, dns_mode: input.dns_mode }, { queueMigration: false });
+    await saveOrganizationDomains(orgId, { revision: input.revision, sites_domain, dns_mode: input.dns_mode }, { prepareMediaDomain: false });
     return getHostingGroup(orgId);
   }
   const path = groupPath(orgId, id);

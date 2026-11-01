@@ -63,8 +63,8 @@ export async function disconnectOrganizationProvider(orgId: string, provider: un
  *                   against Cloudflare before anything is saved.
  *   prepare_media — create or reuse the organization's private and public
  *                   R2 buckets on the connected account.
- *   save_media    — save and verify R2 access keys for those buckets; queues
- *                   media migration.
+ *   save_media    — save and verify R2 access keys for those buckets; the
+ *                   first activation gives every site its media migration.
  */
 export async function applyCloudflareConnectionAction(actor: FullSession, body: Record<string, unknown>) {
   if (body.hosting_group_id !== undefined && hostingGroupId(body.hosting_group_id) !== 'default') {

@@ -52,7 +52,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       { accountId, bucket, accessKeyId, secretAccessKey, publicBase },
       { expectedSha256: typeof body.expected_sha256 === 'string' ? body.expected_sha256 : undefined },
     );
-    await requestMediaMigration(ctx.orgId);
+    await requestMediaMigration(ctx.orgId, ctx.siteId);
     return apiResponse(ctx, { ok: true, result }, 200);
   } catch (e) {
     // Corruption is the CALLER's signal to re-upload — 422, not a server error.

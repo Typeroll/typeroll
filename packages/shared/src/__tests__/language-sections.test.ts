@@ -103,3 +103,22 @@ describe('breadcrumbs in a language section', () => {
     expect(plain).toContain('<a href="/sv/">Svenska</a>');
   });
 });
+
+describe('site logo in a language section', () => {
+  const registry = buildCoreBlockRegistry();
+  const render = (language: string | undefined, sections: unknown = [swedish]) => renderBlock(
+    { id: 'logo', type: 'template/site_logo', data: { height: 'md', link_to_home: true } },
+    { registry, context: { site: { name: 'Moveria', language: 'fi', language_sections: sections }, page: { language } } },
+  );
+
+  it('links to the home page of the page language', () => {
+    expect(render('sv-SE')).toMatch(/<a data-block="site-logo"[^>]* href="\/sv\/"/);
+    expect(render('sv')).toMatch(/ href="\/sv\/"/);
+    expect(render('fi')).toMatch(/<a data-block="site-logo"[^>]* href="\/"/);
+    expect(render(undefined)).toMatch(/ href="\/"/);
+  });
+
+  it('keeps linking to / on sites without sections', () => {
+    expect(render('sv-SE', null)).toMatch(/<a data-block="site-logo"[^>]* href="\/"/);
+  });
+});

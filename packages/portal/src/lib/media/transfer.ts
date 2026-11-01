@@ -32,6 +32,8 @@ export class TransferPool {
   }
 }
 export const mediaTransfers = new TransferPool();
+/** Copies the customer's transfer Worker makes: no file bytes pass through the portal, so only slots count. */
+export const remoteMediaTransfers = new TransferPool(8, 8, 4);
 export const transferReservation = 50 * 1024 * 1024;
 export function retryDelay(value: string | null, attempt: number, now = Date.now()) {
   const seconds = value === null ? NaN : Number(value);

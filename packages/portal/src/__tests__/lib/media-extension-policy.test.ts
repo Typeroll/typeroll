@@ -313,7 +313,7 @@ describe('storage migration', () => {
       objects.set(`${input.bucket}/${input.key}`, { body: MALICIOUS, etag });
       return { protocol: 1, id: 'synthetic', sha256: sha(MALICIOUS), size: MALICIOUS.length, etag };
     });
-    await requestMediaMigration('org'); await runMediaMigrationBatch('org');
+    await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
     const saved = await getStore().getDoc<SvgMedia>(mediaPath(id));
     expect(saved?.storage).toMatchObject({ provider: 'organization_r2', state: 'ready' });
     const stored = objects.get(`customer-private/${saved!.storage!.key}`)!;
@@ -331,7 +331,7 @@ describe('storage migration', () => {
       objects.set(`${input.bucket}/${input.key}`, { body: NOT_SVG, etag: '"worker"' });
       return { protocol: 1, id: 'synthetic', sha256: sha(NOT_SVG), size: NOT_SVG.length, etag: '"worker"' };
     });
-    await requestMediaMigration('org'); await runMediaMigrationBatch('org');
+    await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
     const saved = await getStore().getDoc<SvgMedia>(mediaPath('bad'));
     expect(saved?.storage?.provider).toBe('organization_r2');
     expect(saved?.svg_sanitized).toBeUndefined();

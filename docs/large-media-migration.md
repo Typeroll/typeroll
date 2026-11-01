@@ -6,6 +6,20 @@ key scoped to the site; a leased transfer record stores attempts and completion.
 Organization storage migration retains its cursor and per-file outcomes, verifies
 copies before switching references, and drains independent siblings after failure.
 
+Storage migration is one job per site (`publishing_media_migrations`, keyed by
+organization and site). Site actions (upload, finalize, import retry, managed-site
+opt-in) queue only their own site. Only the first time organization storage
+becomes ready does the organization job hand every site a job, in the worker,
+with a resumable site cursor and time budget. Site media does not depend on the
+organization's hosts: saving domains queues the organization job only when the
+media host changes, and then it only attaches that host to the public bucket.
+New keys for storage that was already ready, and a manual retry, restart failed
+site jobs and redispatch queued jobs whose worker is gone; complete sites are
+not read. A site pass requests a
+preparation build only when it copied files, so unchanged sites never take a
+build-engine slot. A queued organization-wide document from before per-site jobs
+is handed to each site when the worker first runs it.
+
 Transfer concurrency is bounded by file count, a byte reservation and source host.
 Transient HTTP failures reduce concurrency; healthy transfers recover capacity.
 Encoding uses a separate gate. Never increase encoding concurrency to compensate

@@ -43,7 +43,7 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
     const result = await finalizeMedia(owner_org_id, site.id, mediaId, {
       accountId, bucket, accessKeyId, secretAccessKey, publicBase,
     });
-    await requestMediaMigration(owner_org_id);
+    await requestMediaMigration(owner_org_id, site.id);
     return json({ ok: true, result });
   } catch (e) {
     if (e instanceof MediaIntegrityError) return json({ error: e.message }, 422);

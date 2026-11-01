@@ -33,11 +33,21 @@ it('dispatches immediately with the existing signed transport and unique continu
 it('continues immediately on the authenticated worker without creating or publishing a site', async () => {
   mocks.execute.mockResolvedValue(0);
   expect((await run({ kind: 'media_migration', orgId: 'org' })).status).toBe(200);
-  expect(mocks.execute).toHaveBeenCalledExactlyOnceWith('org');
+  expect(mocks.execute).toHaveBeenCalledExactlyOnceWith('org', undefined);
   expect(mocks.createTask).toHaveBeenCalledOnce();
   mocks.execute.mockResolvedValue(null); mocks.createTask.mockClear();
   expect((await run({ kind: 'media_migration', orgId: 'org' })).status).toBe(200);
   expect(mocks.createTask).not.toHaveBeenCalled();
+});
+
+it('runs and continues a site migration only for that site', async () => {
+  mocks.execute.mockResolvedValue(0);
+  expect((await run({ kind: 'media_migration', orgId: 'org', siteId: 'site' })).status).toBe(200);
+  expect(mocks.execute).toHaveBeenCalledExactlyOnceWith('org', 'site');
+  const [continuation] = mocks.createTask.mock.calls.map(([input]) => input.task);
+  expect(JSON.parse(Buffer.from(continuation.httpRequest.body, 'base64').toString())).toEqual({ kind: 'media_migration', orgId: 'org', siteId: 'site' });
+  expect((await run({ kind: 'media_migration', orgId: 'org', siteId: '../other' })).status).toBe(400);
+  expect(mocks.execute).toHaveBeenCalledOnce();
 });
 
 it('hands a queue outage back for retry instead of acknowledging unfinished migration work', async () => {

@@ -927,6 +927,7 @@ await (async function languageSectionsScenario() {
   writeFileSync(join(version, 'partials', 'header.json'), JSON.stringify({
     name: 'Main header', kind: 'header', content_mode: 'blocks', status: 'published',
     blocks: [
+      { id: 'logo', type: 'template/site_logo', data: { mode: 'text', height: 'md', link_to_home: true } },
       { id: 'sv-menu', type: 'template/show_if', data: { condition: 'page.language === "sv-SE"' }, children: [html('sv-menu-html', '<nav>SV-MENU</nav>')] },
       { id: 'fi-menu', type: 'template/show_if', data: { condition: 'page.language !== "sv-SE"' }, children: [html('fi-menu-html', '<nav>FI-MENU</nav>')] },
     ],
@@ -951,14 +952,16 @@ await (async function languageSectionsScenario() {
     if (!fi.includes('FI-BANNER') || !fi.includes('href="/evasteet/"') || fi.includes('SV-BANNER')) fail('[language-sections] Finnish page did not get the Finnish banner');
     if (!sv.includes('<a href="/sv/">Startsida</a>')) fail('[language-sections] Swedish home crumb is not "Startsida" linking to /sv/');
     if (/<a href="\/sv\/?">Svenska<\/a>/.test(sv)) fail('[language-sections] section home page repeated as a crumb');
+    const logoHref = (page) => page.match(/<a data-block="site-logo"[^>]* href="([^"]*)"/)?.[1];
+    if (logoHref(sv) !== '/sv/' || logoHref(fi) !== '/') fail(`[language-sections] logo links to ${logoHref(sv)} on sv and ${logoHref(fi)} on fi`);
     if (!existsSync(join(outDir, 'sv', '404.html')) || existsSync(join(outDir, 'sv', '404'))) fail('[language-sections] section 404 page was not moved to sv/404.html');
     const notFound = readFileSync(join(outDir, 'sv', '404.html'), 'utf8');
-    if (!notFound.includes('Sidan hittades inte') || !notFound.includes('href="/sv/"') || !notFound.includes('SV-MENU') || !notFound.includes('lang="sv-SE"')) {
+    if (!notFound.includes('Sidan hittades inte') || !notFound.includes('href="/sv/"') || !notFound.includes('SV-MENU') || !notFound.includes('lang="sv-SE"') || logoHref(notFound) !== '/sv/') {
       fail('[language-sections] Swedish 404 lacks its text, home link, header or language');
     }
     const rootNotFound = readFileSync(join(outDir, '404.html'), 'utf8');
     if (!rootNotFound.includes('Sivua ei löydy') || !rootNotFound.includes('FI-MENU')) fail('[language-sections] root 404 is not the Finnish page');
-    log('[language-sections] ✓ per-language header, banner, home crumb and 404');
+    log('[language-sections] ✓ per-language header, banner, home crumb, logo link and 404');
   });
 })();
 

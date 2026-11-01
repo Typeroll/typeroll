@@ -140,6 +140,36 @@ describe('checkUrlParity', () => {
     expect(results[0].error).toContain('ETIMEDOUT');
   });
 
+  it('retries timeouts and 5xx at a gentler pace, but not a real 404', async () => {
+    const calls: Record<string, number> = {};
+    const { results, summary } = await checkUrlParity([{ path: '/slow' }, { path: '/busy' }, { path: '/gone' }, { path: '/down' }], {
+      targetOrigin: TARGET,
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const path = new URL(String(input)).pathname;
+        calls[path] = (calls[path] ?? 0) + 1;
+        if (path === '/slow' && calls[path] === 1) throw new Error('The operation was aborted due to timeout');
+        if (path === '/busy' && calls[path] < 3) return new Response(null, { status: 503 });
+        if (path === '/down') throw new Error('ETIMEDOUT');
+        return new Response(null, { status: path === '/gone' ? 404 : 200 });
+      }) as unknown as typeof fetch,
+    });
+    expect(calls).toEqual({ '/slow': 2, '/busy': 3, '/gone': 1, '/down': 3 });
+    expect(Object.fromEntries(results.map(result => [result.path, [result.verdict, result.attempts]]))).toEqual({
+      '/slow': ['ok', 2], '/busy': ['ok', 3], '/gone': ['missing', undefined], '/down': ['error', 3],
+    });
+    expect(summary).toMatchObject({ ok: 2, missing: 1, error: 1 });
+  });
+
+  it('does not retry when most URLs fail, because the host is down', async () => {
+    let calls = 0;
+    const { summary } = await checkUrlParity(Array.from({ length: 80 }, (_, index) => ({ path: `/page-${index}` })), {
+      targetOrigin: TARGET,
+      fetchImpl: (async () => { calls++; throw new Error('ECONNREFUSED'); }) as unknown as typeof fetch,
+    });
+    expect(calls).toBe(80);
+    expect(summary.error).toBe(80);
+  });
+
   it('skips excluded entries without a request', async () => {
     const { results, summary } = await checkUrlParity(
       [{ path: '/wp-admin', excluded: true }],
