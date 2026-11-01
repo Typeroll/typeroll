@@ -160,6 +160,26 @@ describe('checkUrlParity', () => {
     expect(summary).toMatchObject({ ok: 2, missing: 1, error: 1 });
   });
 
+  it('retries a redirect whose next hop timed out, but not a redirect to a real 404', async () => {
+    const calls: Record<string, number> = {};
+    const { results, summary } = await checkUrlParity([{ path: '/old' }, { path: '/moved' }], {
+      targetOrigin: TARGET,
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const path = new URL(String(input)).pathname;
+        calls[path] = (calls[path] ?? 0) + 1;
+        if (path === '/old') return new Response(null, { status: 301, headers: { location: '/new' } });
+        if (path === '/new' && calls[path] === 1) throw new Error('The operation was aborted due to timeout');
+        if (path === '/moved') return new Response(null, { status: 301, headers: { location: '/nowhere' } });
+        return new Response(null, { status: path === '/nowhere' ? 404 : 200 });
+      }) as unknown as typeof fetch,
+    });
+    expect(calls).toEqual({ '/old': 2, '/new': 2, '/moved': 1, '/nowhere': 1 });
+    expect(Object.fromEntries(results.map(result => [result.path, [result.verdict, result.attempts]]))).toEqual({
+      '/old': ['ok_redirect', 2], '/moved': ['missing', undefined],
+    });
+    expect(summary).toMatchObject({ ok_redirect: 1, missing: 1, error: 0 });
+  });
+
   it('does not retry when most URLs fail, because the host is down', async () => {
     let calls = 0;
     const { summary } = await checkUrlParity(Array.from({ length: 80 }, (_, index) => ({ path: `/page-${index}` })), {

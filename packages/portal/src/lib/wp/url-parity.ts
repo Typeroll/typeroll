@@ -214,7 +214,9 @@ async function checkOne(
   for (;;) {
     const attempt = await safeFetch(doFetch, current, timeoutMs, 'manual');
     if (!attempt.ok) {
-      return { ...base, verdict: 'error', status: firstStatus, error: attempt.error };
+      // A failed later hop keeps the first status (a redirect) and has no
+      // final_status; isRetryable treats it as the transient failure it is.
+      return { ...base, verdict: 'error', status: firstStatus, ...(hops > 0 ? { hops, final_url: current } : {}), error: attempt.error };
     }
     const res = attempt.response;
     if (firstStatus === null) firstStatus = res.status;
@@ -481,7 +483,11 @@ async function safeFetch(
 
 /** Timeouts, network errors, rate limits and 5xx can pass; a real 4xx cannot. */
 function isRetryable(result: ParityResult): boolean {
-  return result.verdict === 'error' && (result.status === null || result.status === 429 || result.status >= 500);
+  if (result.verdict !== 'error') return false;
+  // After a redirect, judge the hop that failed: no final status means the
+  // request itself failed (timeout or network error).
+  const status = result.hops ? result.final_status ?? null : result.status;
+  return status === null || status === 429 || status >= 500;
 }
 
 function isRedirect(status: number): boolean {
