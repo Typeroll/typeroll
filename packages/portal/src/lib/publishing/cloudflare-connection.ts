@@ -159,6 +159,6 @@ export async function connectCloudflareMedia(session: FullSession, input: Record
   const credentials = openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', latest.encrypted_credentials);
   await saveConnection(session.orgId, 'cloudflare', latest.revision, {
     media_ready: true, encrypted_credentials: sealCredentials(session.orgId, 'cloudflare', { ...credentials, access_key_id, secret_access_key }) });
-  const { requestMediaMigration } = await import('./media-migration');
-  await requestMediaMigration(session.orgId);
+  const { requestOrganizationMediaMigration } = await import('./media-migration');
+  await requestOrganizationMediaMigration(session.orgId);
 }

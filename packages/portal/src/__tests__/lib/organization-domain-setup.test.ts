@@ -5,13 +5,13 @@ import { getOrganizationDomains, saveOrganizationDomains } from '../../lib/publi
 import { ConnectionError, getConnection, connectionSummary, openCredentials } from '../../lib/publishing/connections';
 import { cloudflareClient } from '../../lib/publishing/cloudflare-oauth';
 import { preparePublicMediaDomains } from '../../lib/publishing/media-domain';
-import { requestMediaMigration } from '../../lib/publishing/media-migration';
+import { requestOrganizationMediaMigration } from '../../lib/publishing/media-migration';
 import { getOrganizationDomainStatus } from '../../lib/publishing/organization-domain-status';
 vi.mock('../../lib/publishing/domain-config', async original => ({ ...await original<any>(), getOrganizationDomains: vi.fn(), saveOrganizationDomains: vi.fn() }));
 vi.mock('../../lib/publishing/connections', async original => ({ ...await original<any>(), getConnection: vi.fn(), connectionSummary: vi.fn(), openCredentials: vi.fn() }));
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: vi.fn() }));
 vi.mock('../../lib/publishing/media-domain', () => ({ preparePublicMediaDomains: vi.fn() }));
-vi.mock('../../lib/publishing/media-migration', () => ({ requestMediaMigration: vi.fn() }));
+vi.mock('../../lib/publishing/media-migration', () => ({ requestOrganizationMediaMigration: vi.fn() }));
 vi.mock('../../lib/publishing/organization-domain-status', () => ({ getOrganizationDomainStatus: vi.fn() }));
 const provider = vi.fn();
 const zone = { id: 'a'.repeat(32), name: 'example.com', status: 'active', type: 'full', account: { id: 'account' } };
@@ -30,7 +30,7 @@ it('uses the connected account, normalizes labels, attaches R2 and queues migrat
   const result = await setupOrganizationDomains('org', input);
   expect(saveOrganizationDomains).toHaveBeenCalledWith('org', { revision: 'original', sites_domain: 'sites.example.com', media_host: 'media.example.com', dns_mode: 'automatic' }, { queueMigration: false });
   expect(preparePublicMediaDomains).toHaveBeenCalledWith('org', expect.objectContaining({ account_id: 'account', public_bucket: 'public-media', media_host: 'media.example.com', site_prefix: '', entries: [] }));
-  expect(requestMediaMigration).toHaveBeenCalledExactlyOnceWith('org');
+  expect(requestOrganizationMediaMigration).toHaveBeenCalledExactlyOnceWith('org');
   expect(result).toMatchObject({ revision: 'saved', setup_error: null, domain_status: { state: 'pending' } });
 });
 it.each([
@@ -52,7 +52,7 @@ it('reuses the same enabled R2 domain without treating its existing DNS as a con
   provider.mockImplementation(async route => route === `/zones/${zone.id}` ? zone : { enabled: true, zoneId: zone.id });
   await setupOrganizationDomains('org', input);
   expect(provider.mock.calls.some(([route]) => route.includes('dns_records'))).toBe(false);
-  expect(requestMediaMigration).toHaveBeenCalled();
+  expect(requestOrganizationMediaMigration).toHaveBeenCalled();
 });
 it('rejects stale revisions and invalid labels before provider calls', async () => {
   await expect(setupOrganizationDomains('org', { ...input, revision: 'stale' })).rejects.toMatchObject({ code: 'domain_revision_conflict' });
@@ -66,7 +66,7 @@ it('enforces the shared media-use guard before attaching a replacement host', as
   vi.mocked(saveOrganizationDomains).mockRejectedValue(new ConnectionError('Existing media must remain available.', 409, 'domain_migration_required'));
   await expect(setupOrganizationDomains('org', input)).rejects.toMatchObject({ code: 'domain_migration_required' });
   expect(preparePublicMediaDomains).not.toHaveBeenCalled();
-  expect(requestMediaMigration).not.toHaveBeenCalled();
+  expect(requestOrganizationMediaMigration).not.toHaveBeenCalled();
 });
 it('returns the saved revision and a precise retry instruction after a denied write', async () => {
   vi.mocked(preparePublicMediaDomains).mockRejectedValue(new ProviderError('Cloudflare', 403));
@@ -74,7 +74,7 @@ it('returns the saved revision and a precise retry instruction after a denied wr
   expect(result.revision).toBe('saved');
   expect(result.setup_error).toContain('Allow domain access');
   expect(result.setup_error).not.toContain('provider detail');
-  expect(requestMediaMigration).not.toHaveBeenCalled();
+  expect(requestOrganizationMediaMigration).not.toHaveBeenCalled();
 });
 it('lists all pages but excludes domains belonging to other accounts', async () => {
   provider.mockImplementation(async route => route.includes('page=1&') ? Array.from({ length: 50 }, (_, i) => ({ ...zone, id: String(i) })) : [{ ...zone, id: 'last' }, { ...zone, account: { id: 'other' } }]);

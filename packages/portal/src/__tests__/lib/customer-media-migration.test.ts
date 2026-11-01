@@ -9,7 +9,7 @@ import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getSiteDomains, saveSiteDomains, getOrganizationDomains, saveOrganizationDomains } from '../../lib/publishing/domain-config';
 import { connectionPath, sealCredentials } from '../../lib/publishing/connections';
-import { requestMediaMigration, runMediaMigrationBatch, mediaMigrationStatus, rewriteMediaReferences } from '../../lib/publishing/media-migration';
+import { requestMediaMigration, requestOrganizationMediaMigration, runMediaMigrationBatch, executeMediaMigration, mediaMigrationStatus, rewriteMediaReferences } from '../../lib/publishing/media-migration';
 import { preparePublicMediaDomains } from '../../lib/publishing/media-domain';
 import { publicationMediaManifest } from '../../lib/publishing/media-manifest';
 vi.mock('../../lib/publishing/media-migration-queue', () => ({ enqueueMediaMigration: vi.fn(async () => {}) }));
@@ -29,7 +29,7 @@ beforeEach(async () => {
     cloudflare: { account_id: 'a'.repeat(32), bucket: 'customer-private', public_bucket: 'customer-public' },
     encrypted_credentials: sealCredentials('org', 'cloudflare', { access_key_id: 'synthetic-key', secret_access_key: 'synthetic-secret' }) });
   const config = await getOrganizationDomains('org');
-  await saveOrganizationDomains('org', { revision: config.revision, sites_domain: 'demos.example.com', media_host: 'media.example.net', dns_mode: 'external' });
+  await saveOrganizationDomains('org', { revision: config.revision, sites_domain: 'demos.example.com', media_host: 'media.example.net', dns_mode: 'external' }, { queueMigration: false });
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 
@@ -44,7 +44,7 @@ it('verifies bytes before switching storage and preserves an edit made while cop
     }
     return { Body: { transformToByteArray: async () => Buffer.from('abc') }, ContentLength: 3 };
   });
-  await requestMediaMigration('org'); await runMediaMigrationBatch('org');
+  await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
   expect(send.mock.calls.filter(([command]) => command instanceof GetObjectCommand)).toHaveLength(0);
   expect(await getStore().getDoc<any>(mediaPath)).toMatchObject({ alt_text: 'Edited during copy', storage: { provider: 'organization_r2', state: 'ready' }, sha256: sha, migration_source: { key: 'original' } });
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 1, copied_bytes: 3 });
@@ -55,7 +55,7 @@ it('does not switch an original whose destination fails byte verification', asyn
   await getStore().setDoc(mediaPath, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, r2_key: 'original', sha256: sha,
     storage: { provider: 'draft_r2', account_id: 'b'.repeat(32), bucket: 'private-drafts', key: 'original', state: 'ready', generation: 'draft' } });
   vi.mocked(copyWithTransferService).mockRejectedValue(new ConnectionError('The copied file does not match the original.', 422, 'media_integrity_failed'));
-  await requestMediaMigration('org'); await runMediaMigrationBatch('org');
+  await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
   expect((await getStore().getDoc<any>(mediaPath)).storage.provider).toBe('draft_r2');
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'failed', copied_files: 0 });
 });
@@ -116,16 +116,17 @@ it('packages media on the website origin and preserves shared aliases and frozen
 it('completes empty organizations immediately without a worker, storage calls or media DNS', async () => {
   const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Storage must not be called'));
   vi.mocked(preparePublicMediaDomains).mockRejectedValue(new Error('Domain is not configured'));
-  await requestMediaMigration('org');
+  await requestMediaMigration('org', 'site');
   const migration = (await getStore().listDocs<any>('publishing_media_migrations'))[0];
   expect(migration).toMatchObject({ state: 'complete', pending_files: 0, copied_files: 0, error: null });
-  await runMediaMigrationBatch('org');
+  await runMediaMigrationBatch('org', 'site');
   expect(send).not.toHaveBeenCalled();
   expect(preparePublicMediaDomains).not.toHaveBeenCalled();
 });
 
 it.each(['queued', 'running', 'failed'])('recovers an empty %s migration on status refresh', async state => {
   const store = getStore();
+  await requestMediaMigration('org', 'site');
   const migration = (await store.listDocs<any>('publishing_media_migrations'))[0];
   await store.updateDoc(`publishing_media_migrations/${migration.id}`, {
     state, lease_id: 'expired-worker', lease_until: 1, pending_files: 0, error: 'Old domain setup failure',
@@ -135,6 +136,7 @@ it.each(['queued', 'running', 'failed'])('recovers an empty %s migration on stat
 
 it('does not clear a live worker lease or mistake unscanned uploads for an empty library', async () => {
   const store = getStore();
+  await requestMediaMigration('org', 'site');
   const migration = (await store.listDocs<any>('publishing_media_migrations'))[0];
   const path = `publishing_media_migrations/${migration.id}`;
   await store.updateDoc(path, { state: 'running', lease_id: 'active', lease_until: Date.now() + 120_000 });
@@ -145,14 +147,16 @@ it('does not clear a live worker lease or mistake unscanned uploads for an empty
 });
 
 it('requeues a late source upload after an empty migration was completed', async () => {
+  await requestMediaMigration('org', 'site');
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete' });
   await getStore().setDoc(`${paths.media('org', 'site')}/late-upload`, { r2_key: 'upload', storage: { provider: 'draft_r2', state: 'ready' } });
-  await requestMediaMigration('org');
+  await requestMediaMigration('org', 'site');
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued' });
 });
 
 it('preserves a new migration request made during the empty scan', async () => {
   const store = getStore();
+  await requestMediaMigration('org', 'site');
   const migration = (await store.listDocs<any>('publishing_media_migrations'))[0];
   const path = `publishing_media_migrations/${migration.id}`;
   await store.updateDoc(path, { state: 'queued', request_id: 'old-request' });
@@ -172,7 +176,8 @@ it('keeps existing managed sites and their media unchanged until explicitly migr
   });
   await getStore().setDoc(`${paths.media('org', 'legacy')}/image`, { filename: 'old.png', r2_key: 'old', cdn_url: 'https://cdn.example.com/old.png' });
   const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Legacy media must remain untouched'));
-  await requestMediaMigration('org'); await runMediaMigrationBatch('org');
+  await requestOrganizationMediaMigration('org'); await executeMediaMigration('org');
+  await runMediaMigrationBatch('org', 'site'); await runMediaMigrationBatch('org', 'legacy');
   expect(send).not.toHaveBeenCalled();
   expect(await getStore().getDoc(paths.site('org', 'legacy'))).toMatchObject({
     publishing_mode: 'managed', domain: 'www.example.com',
@@ -192,8 +197,8 @@ it('dispatches media work immediately instead of waiting for a scheduled publica
   const { enqueueMediaMigration } = await import('../../lib/publishing/media-migration-queue');
   vi.mocked(enqueueMediaMigration).mockClear();
   await getStore().setDoc(`${paths.media('org', 'site')}/image`, fixtureMedia('image'));
-  await requestMediaMigration('org');
-  expect(enqueueMediaMigration).toHaveBeenCalledExactlyOnceWith('org');
+  await requestMediaMigration('org', 'site');
+  expect(enqueueMediaMigration).toHaveBeenCalledExactlyOnceWith('org', 0, 'site');
 });
 
 it('migrates 1,001 originals in consecutive bounded tasks with linear reads and a single reference rewrite', async () => {
@@ -207,10 +212,10 @@ it('migrates 1,001 originals in consecutive bounded tasks with linear reads and 
   vi.spyOn(S3Client.prototype, 'send').mockImplementation(async () => goodBody());
   const list = vi.spyOn(store, 'listDocs');
   const writes = vi.spyOn(store, 'compareAndUpdateDoc');
-  await requestMediaMigration('org');
+  await requestMediaMigration('org', 'site');
   const { executeMediaMigration } = await import('../../lib/publishing/media-migration');
   for (let batch = 0; batch < 11; batch++) {
-    const delay = await executeMediaMigration('org');
+    const delay = await executeMediaMigration('org', 'site');
     // After the copy pass the migration requests image preparation, which
     // starts at once; without a configured engine it waits for setup and the
     // recovery poll resumes it.
@@ -230,12 +235,12 @@ it('rescans a late upload before the cursor even when it arrives between tasks',
   const store = getStore(); const mediaPath = paths.media('org', 'site');
   await store.setDoc(`${mediaPath}/z`, fixtureMedia('z'));
   vi.spyOn(S3Client.prototype, 'send').mockImplementation(async () => goodBody());
-  await requestMediaMigration('org'); await runMediaMigrationBatch('org', 1);
+  await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site', 1);
   await store.setDoc(`${mediaPath}/a`, fixtureMedia('a'));
-  await requestMediaMigration('org');
-  await runMediaMigrationBatch('org');
+  await requestMediaMigration('org', 'site');
+  await runMediaMigrationBatch('org', 'site');
   expect((await mediaMigrationStatus('org'))?.state).toBe('queued');
-  await runMediaMigrationBatch('org');
+  await runMediaMigrationBatch('org', 'site');
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 2, copied_bytes: 6 });
   expect((await store.getDoc<any>(`${mediaPath}/a`)).storage.provider).toBe('organization_r2');
 });
@@ -244,18 +249,18 @@ it('recovers a crash after the copy was saved but before its cursor, without rec
   const store = getStore(); const mediaPath = `${paths.media('org', 'site')}/image`;
   await store.setDoc(mediaPath, fixtureMedia('image'));
   const send = vi.spyOn(S3Client.prototype, 'send').mockImplementation(async () => goodBody());
-  await requestMediaMigration('org');
+  await requestMediaMigration('org', 'site');
   const compare = store.compareAndUpdateDoc.bind(store);
   let crashed = false;
   vi.spyOn(store, 'compareAndUpdateDoc').mockImplementation(async (path, check, patch) => {
     if (!crashed && patch.cursor?.media === 'image') { crashed = true; throw new Error('process interrupted'); }
     return compare(path, check, patch);
   });
-  await runMediaMigrationBatch('org');
+  await runMediaMigrationBatch('org', 'site');
   const job = (await store.listDocs<any>('publishing_media_migrations'))[0];
   expect(job).toMatchObject({ state: 'queued', copied_files: 0, cursor: { media: '' } });
   await store.updateDoc(`publishing_media_migrations/${job.id}`, { retry_at: 0 });
-  await runMediaMigrationBatch('org');
+  await runMediaMigrationBatch('org', 'site');
   expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 1, copied_bytes: 3 });
   expect(send.mock.calls.filter(([command]) => command instanceof CopyObjectCommand)).toHaveLength(1);
   expect(copyWithTransferService).toHaveBeenCalledTimes(1);
@@ -265,11 +270,11 @@ it('retries an interrupted transfer automatically and pauses after three unsucce
   const store = getStore();
   await store.setDoc(`${paths.media('org', 'site')}/image`, fixtureMedia('image'));
   vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('temporary unavailable'));
-  await requestMediaMigration('org');
+  await requestMediaMigration('org', 'site');
   for (let attempt = 1; attempt <= 3; attempt++) {
     const job = (await store.listDocs<any>('publishing_media_migrations'))[0];
     await store.updateDoc(`publishing_media_migrations/${job.id}`, { retry_at: 0 });
-    await runMediaMigrationBatch('org');
+    await runMediaMigrationBatch('org', 'site');
     expect((await mediaMigrationStatus('org'))?.state).toBe(attempt === 3 ? 'failed' : 'queued');
   }
   expect((await mediaMigrationStatus('org'))?.error).toContain('three attempts');
@@ -283,11 +288,11 @@ it('lets only one worker copy while a duplicate delivery observes the active lea
     if (!duplicateChecked) {
       duplicateChecked = true;
       const { executeMediaMigration } = await import('../../lib/publishing/media-migration');
-      expect(await executeMediaMigration('org')).toBeGreaterThan(0);
+      expect(await executeMediaMigration('org', 'site')).toBeGreaterThan(0);
     }
     return goodBody();
   });
-  await requestMediaMigration('org'); await runMediaMigrationBatch('org');
+  await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
   expect(send.mock.calls.filter(([command]) => command instanceof CopyObjectCommand)).toHaveLength(1);
   expect(copyWithTransferService).toHaveBeenCalledTimes(1);
   expect((await mediaMigrationStatus('org'))?.state).toBe('complete');
@@ -330,4 +335,76 @@ it('does not accept an unresolved private URL merely because a matching media ID
     storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: 'original', state: 'ready' } });
   const source = { pages: [{ html: `${oldUrl} https://wrong.example/api/sites/site/media/image/content` }] };
   await expect(publicationMediaManifest('org', 'site', source, 'site.example', undefined, { deferReferences: true })).rejects.toMatchObject({ code: 'media_reference_unresolved' });
+});
+
+it('migrates only the requesting site and queues no work for its neighbours', async () => {
+  const store = getStore();
+  await store.setDoc(paths.site('org', 'neighbour'), { media_id: 'klmnopqrst', publishing_mode: 'customer_git' });
+  await store.setDoc(`${paths.media('org', 'site')}/image`, fixtureMedia('image'));
+  await store.setDoc(`${paths.media('org', 'neighbour')}/other`, fixtureMedia('other'));
+  vi.spyOn(S3Client.prototype, 'send').mockImplementation(async () => goodBody());
+  const { enqueueMediaMigration } = await import('../../lib/publishing/media-migration-queue');
+  vi.mocked(enqueueMediaMigration).mockClear();
+  await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
+  expect(vi.mocked(enqueueMediaMigration).mock.calls.filter(([, , site]) => site !== undefined)).toEqual([['org', 0, 'site']]);
+  expect((await store.getDoc<any>(`${paths.media('org', 'site')}/image`)).storage.provider).toBe('organization_r2');
+  expect((await store.getDoc<any>(`${paths.media('org', 'neighbour')}/other`)).storage.provider).toBe('draft_r2');
+  expect((await store.listDocs<any>('publishing_media_migrations')).map(job => job.site_id)).toEqual(['site']);
+  expect((await store.listDocs<any>('media_preparations')).map(job => job.site)).toEqual(['site']);
+});
+
+it('finishes a site whose files are already in place without queuing a preparation build', async () => {
+  const store = getStore();
+  await store.setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, r2_key: 'k', sha256: sha,
+    storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: 'k', state: 'ready', generation: 'connected' } });
+  const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Storage must not be called'));
+  await requestOrganizationMediaMigration('org'); await executeMediaMigration('org'); await runMediaMigrationBatch('org', 'site');
+  expect(send).not.toHaveBeenCalled();
+  expect(await store.listDocs<any>('media_preparations')).toEqual([]);
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 0 });
+});
+
+it('prepares the media domain in the organization job, not in site jobs', async () => {
+  await getStore().setDoc(`${paths.media('org', 'site')}/image`, fixtureMedia('image'));
+  vi.spyOn(S3Client.prototype, 'send').mockImplementation(async () => goodBody());
+  await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
+  expect(preparePublicMediaDomains).not.toHaveBeenCalled();
+  await requestOrganizationMediaMigration('org'); await executeMediaMigration('org');
+  expect(preparePublicMediaDomains).toHaveBeenCalledOnce();
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued' });
+  await runMediaMigrationBatch('org', 'site');
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 1 });
+});
+
+it('hands an organization-wide request queued before site jobs to each site', async () => {
+  const store = getStore();
+  await store.setDoc(paths.site('org', 'neighbour'), { media_id: 'klmnopqrst', publishing_mode: 'customer_git' });
+  await store.setDoc(`${paths.media('org', 'neighbour')}/other`, fixtureMedia('other'));
+  const legacy = `publishing_media_migrations/${createHash('sha256').update('org').digest('hex')}`;
+  await store.setDoc(legacy, { org_id: 'org', state: 'queued', copied_files: 5, copied_bytes: 15, pending_files: 0, lease_id: null, lease_until: 0, request_id: 'old' });
+  await executeMediaMigration('org');
+  expect(await store.getDoc<any>(legacy)).toMatchObject({ scope: 'organization', state: 'complete' });
+  expect((await store.listDocs<any>('publishing_media_migrations')).filter(job => job.scope === 'site').map(job => [job.site_id, job.state]).sort())
+    .toEqual([['neighbour', 'queued'], ['site', 'complete']]);
+});
+
+it('gives every site its own job in the background and resumes after the time budget', async () => {
+  const store = getStore();
+  for (const id of ['a-site', 'b-site', 'c-site']) {
+    await store.setDoc(paths.site('org', id), { media_id: `${id}-media`.padEnd(10, 'x'), publishing_mode: 'customer_git' });
+    await store.setDoc(`${paths.media('org', id)}/image`, fixtureMedia('image'));
+  }
+  const siteJobs = async () => (await store.listDocs<any>('publishing_media_migrations')).filter(job => job.scope === 'site').map(job => job.site_id).sort();
+  await requestOrganizationMediaMigration('org');
+  expect(await siteJobs()).toEqual([]);
+  const now = Date.now(); let tick = 0;
+  vi.spyOn(Date, 'now').mockImplementation(() => now + (tick++ > 6 ? 60_000 : 0));
+  await executeMediaMigration('org');
+  vi.mocked(Date.now).mockRestore();
+  const partial = await siteJobs();
+  expect(partial.length).toBeGreaterThan(0); expect(partial.length).toBeLessThan(4);
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued' });
+  await executeMediaMigration('org');
+  expect(await siteJobs()).toEqual(['a-site', 'b-site', 'c-site', 'site']);
+  expect(preparePublicMediaDomains).toHaveBeenCalledOnce();
 });

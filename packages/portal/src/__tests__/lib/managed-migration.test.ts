@@ -36,7 +36,7 @@ it('checks without writes and opts in only this site while retaining its previou
   expect(await getStore().getDoc(paths.site('org', 'site'))).toMatchObject({ publishing_mode: 'customer_git', hosting_assignment_locked: true, domain: 'www.example.com', publishing_migration: { project: 'existing-site', previous_deployment_id: 'old-deploy', account_id: account } });
   expect((await getStore().getDoc<any>(paths.site('org', 'other'))).publishing_mode).toBe('managed');
   expect(provider.mock.calls.every(call => call[1]?.method === undefined)).toBe(true);
-  expect(requestMediaMigration).toHaveBeenCalledWith('org');
+  expect(requestMediaMigration).toHaveBeenCalledExactlyOnceWith('org', 'site');
 });
 it('rejects a different account before querying provider projects', async () => {
   vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', 'b'.repeat(32));

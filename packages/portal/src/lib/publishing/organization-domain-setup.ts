@@ -3,7 +3,7 @@ import { cloudflareClient } from './cloudflare-oauth';
 import { getOrganizationDomains, publicationHostname, saveOrganizationDomains } from './domain-config';
 import { getOrganizationDomainStatus } from './organization-domain-status';
 import { preparePublicMediaDomains } from './media-domain';
-import { requestMediaMigration } from './media-migration';
+import { requestOrganizationMediaMigration } from './media-migration';
 import { ProviderError } from './providers.mjs';
 
 export interface PublishingZone { id: string; name: string; status: string; type: string }
@@ -74,7 +74,7 @@ export async function setupOrganizationDomains(orgId: string, input: Record<stri
   let setup_error: string | null = null;
   try {
     await preparePublicMediaDomains(orgId, { account_id: cf.account_id, public_bucket: cf.public_bucket, media_host, website_host: '', site_prefix: '', entries: [] });
-    await requestMediaMigration(orgId);
+    await requestOrganizationMediaMigration(orgId);
   } catch (error) {
     setup_error = (error instanceof ConnectionError || error instanceof ProviderError) && [401, 403].includes(error.status)
       ? 'Addresses saved, but Cloudflare denied setup. Allow domain access, then select Configure domains again. Your account and R2 settings are retained.'

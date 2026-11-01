@@ -332,8 +332,8 @@ export async function saveOrganizationDomains(orgId: string, input: Record<strin
       verified_at: current.media_host === media_host ? current.verified_at : null });
   if (!changed) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
   if (options.queueMigration !== false) {
-    const { requestMediaMigration } = await import('./media-migration');
-    await requestMediaMigration(orgId);
+    const { requestOrganizationMediaMigration } = await import('./media-migration');
+    await requestOrganizationMediaMigration(orgId);
   }
   return getOrganizationDomains(orgId);
 }

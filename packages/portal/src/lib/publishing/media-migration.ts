@@ -14,44 +14,87 @@ import { replacePublicationReferences } from './media-manifest';
 import { requiresSvgSanitization, sanitizeSvgObject, SvgRejectedError, SVG_MEDIA_TYPE, type SvgSanitizedMarker } from '../media/svg-media';
 
 const hash = (input: string | Uint8Array) => createHash('sha256').update(input).digest('hex');
-const migrationPath = (orgId: string) => `publishing_media_migrations/${hash(orgId)}`;
+// Each Site migrates its own library. The Organization document only holds
+// Organization work (the public media domain); before per-Site jobs it was a
+// pass over every Site, which is how an old queued request is recognized.
+const organizationPath = (orgId: string) => `publishing_media_migrations/${hash(orgId)}`;
+const sitePath = (orgId: string, siteId: string) => `publishing_media_migrations/${hash(`${orgId}\0${siteId}`)}`;
 type MigratingMedia = Media & { source_url?: string; import_pending?: boolean };
 interface Cursor { site: string; media: string; phase: 'copying' | 'references' | 'next_site'; reference?: string }
-interface Migration { pass_file_failed?: boolean; pass_request_id?: string; cursor?: Cursor | null; pass_copied?: number; pass_bytes?: number; pass_pending?: number; retry_at?: number; failures?: number; org_id: string; state: 'queued' | 'running' | 'complete' | 'failed'; copied_files: number; copied_bytes: number; pending_files: number; lease_id: string | null; lease_until: number; error?: string | null; request_id?: string }
+interface Migration { scope?: 'organization' | 'site'; site_id?: string; fan_out?: boolean; fan_out_cursor?: string | null; pass_file_failed?: boolean; pass_request_id?: string; cursor?: Cursor | null; pass_copied?: number; pass_bytes?: number; pass_pending?: number; retry_at?: number; failures?: number; org_id: string; state: 'queued' | 'running' | 'complete' | 'failed'; copied_files: number; copied_bytes: number; pending_files: number; lease_id: string | null; lease_until: number; error?: string | null; request_id?: string; updated_at?: string }
+const NEW_JOB = { state: 'queued', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 } as const;
 
-/** Zero counters also describe an unscanned job. Check the records before declaring it empty. */
-async function completeEmptyMigration(orgId: string, current: Migration | null): Promise<Migration | null> {
+/** Zero counters also describe an unscanned job. Check the Site's records before declaring it empty. */
+async function completeEmptySite(orgId: string, siteId: string, current: Migration | null): Promise<Migration | null> {
   if (!current || current.state === 'complete' || current.lease_until > Date.now()) return current;
   const store = getStore();
-  for (const site of await store.listDocs<Site>(paths.sites(orgId))) {
-    if (retainsManagedMedia(site)) continue;
-    if ((await store.listDocs<Media>(paths.media(orgId, site.id), { limit: 1 })).length) return current;
-  }
+  const site = await store.getDoc<Site>(paths.site(orgId, siteId));
+  if (site && !retainsManagedMedia(site) && (await store.listDocs<Media>(paths.media(orgId, siteId), { limit: 1 })).length) return current;
   // A late upload queues a new request after finalization. Never overwrite that
   // request or a worker that acquired the lease while this scan was running.
-  await store.compareAndUpdateDoc<Migration>(migrationPath(orgId),
+  await store.compareAndUpdateDoc<Migration>(sitePath(orgId, siteId),
     value => value.request_id === current.request_id && value.state === current.state &&
       value.lease_id === current.lease_id && value.lease_until <= Date.now(),
     { state: 'complete', pending_files: 0, lease_id: null, lease_until: 0, error: null, updated_at: new Date().toISOString() });
-  return store.getDoc<Migration>(migrationPath(orgId));
+  return store.getDoc<Migration>(sitePath(orgId, siteId));
 }
 
-export async function requestMediaMigration(orgId: string) {
-  const connection = await getConnection(orgId, 'cloudflare');
-  if (!connectionSummary(connection).media_ready) return;
-  for (const site of await getStore().listDocs(paths.sites(orgId))) await adoptCustomerPublishingForMedia(orgId, site.id);
-  await getStore().createDocIfMissing(migrationPath(orgId), { org_id: orgId, state: 'queued', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 });
-  await getStore().compareAndUpdateDoc<Migration>(migrationPath(orgId), () => true, { state: 'queued', error: null, failures: 0, retry_at: 0, request_id: randomUUID() });
-  const current = await completeEmptyMigration(orgId, await getStore().getDoc<Migration>(migrationPath(orgId)));
+async function queueSiteMigration(orgId: string, siteId: string) {
+  const store = getStore(), path = sitePath(orgId, siteId);
+  await store.createDocIfMissing(path, { org_id: orgId, site_id: siteId, scope: 'site', ...NEW_JOB });
+  await store.compareAndUpdateDoc<Migration>(path, () => true, { state: 'queued', error: null, failures: 0, retry_at: 0, request_id: randomUUID() });
+  const current = await completeEmptySite(orgId, siteId, await store.getDoc<Migration>(path));
   if (current?.state !== 'complete') {
     const { enqueueMediaMigration } = await import('./media-migration-queue');
-    await enqueueMediaMigration(orgId);
+    await enqueueMediaMigration(orgId, 0, siteId);
   }
 }
 
-export async function mediaMigrationStatus(orgId: string) {
-  const current = await completeEmptyMigration(orgId, await getStore().getDoc<Migration>(migrationPath(orgId)));
-  return current ? { state: current.state, copied_files: current.copied_files, copied_bytes: current.copied_bytes, pending_files: current.pending_files, phase: current.cursor?.phase === 'references' ? 'updating_references' : 'copying', error: current.error ?? null } : null;
+/**
+ * Move one Site's library to organization storage. Only that Site is read,
+ * copied or prepared: an action on one Site never queues work for another.
+ */
+export async function requestMediaMigration(orgId: string, siteId: string) {
+  const connection = await getConnection(orgId, 'cloudflare');
+  if (!connectionSummary(connection).media_ready) return;
+  await adoptCustomerPublishingForMedia(orgId, siteId);
+  await queueSiteMigration(orgId, siteId);
+}
+
+/**
+ * Organization storage or domains changed. The Organization job gives every
+ * Site its own job in the background, then prepares the public media domain.
+ * A Site whose files are already in place finishes without copying and
+ * without a preparation build.
+ */
+export async function requestOrganizationMediaMigration(orgId: string) {
+  const connection = await getConnection(orgId, 'cloudflare');
+  if (!connectionSummary(connection).media_ready) return;
+  const store = getStore(), path = organizationPath(orgId);
+  await store.createDocIfMissing(path, { org_id: orgId, scope: 'organization', ...NEW_JOB });
+  await store.compareAndUpdateDoc<Migration>(path, () => true,
+    { state: 'queued', fan_out: true, fan_out_cursor: null, error: null, failures: 0, retry_at: 0, request_id: randomUUID() });
+  const { enqueueMediaMigration } = await import('./media-migration-queue');
+  await enqueueMediaMigration(orgId);
+}
+
+type Status = { state: Migration['state']; copied_files: number; copied_bytes: number; pending_files: number; phase: 'copying' | 'updating_references'; error: string | null };
+
+/** The Organization's media status, summed over its Site jobs. */
+export async function mediaMigrationStatus(orgId: string): Promise<Status | null> {
+  const listed = await getStore().listDocs<Migration>('publishing_media_migrations', { filters: [{ field: 'org_id', op: '==', value: orgId }] });
+  const jobs = await Promise.all(listed.map(async job => job.site_id && job.state !== 'complete' ? await completeEmptySite(orgId, job.site_id, job) ?? job : job));
+  if (!jobs.length) return null;
+  const has = (state: Migration['state']) => jobs.some(job => job.state === state);
+  const failed = jobs.find(job => job.state === 'failed' && job.error) ?? jobs.find(job => job.error);
+  return {
+    state: has('running') ? 'running' : has('queued') ? 'queued' : has('failed') ? 'failed' : 'complete',
+    copied_files: jobs.reduce((sum, job) => sum + (job.copied_files ?? 0), 0),
+    copied_bytes: jobs.reduce((sum, job) => sum + (job.copied_bytes ?? 0), 0),
+    pending_files: jobs.reduce((sum, job) => sum + (job.pending_files ?? 0), 0),
+    phase: jobs.some(job => job.state === 'running' && job.cursor?.phase === 'references') ? 'updating_references' : 'copying',
+    error: failed?.error ?? null,
+  };
 }
 
 async function contentDocumentPaths(orgId: string, siteId: string) {
@@ -90,10 +133,10 @@ export async function rewriteMediaReferences(orgId: string, siteId: string, repl
 class MediaIntegrityError extends Error {}
 class MigrationLeaseLost extends Error {}
 
-/** A cursor and a lease bound every task; a retry reads only the unfinished part of the library. */
-export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budgetMs = 45_000) {
-  const store = getStore(); const path = migrationPath(orgId); const lease = randomUUID();
-  await completeEmptyMigration(orgId, await store.getDoc<Migration>(path));
+/** A cursor and a lease bound every task; a retry reads only the unfinished part of the Site's library. */
+export async function runMediaMigrationBatch(orgId: string, siteId: string, maxFiles = 100, budgetMs = 45_000) {
+  const store = getStore(); const path = sitePath(orgId, siteId); const lease = randomUUID();
+  await completeEmptySite(orgId, siteId, await store.getDoc<Migration>(path));
   const acquired = await store.compareAndUpdateDoc<Migration>(path,
     current => ['queued', 'running'].includes(current.state) && current.lease_until < Date.now() && (current.retry_at ?? 0) <= Date.now(),
     { state: 'running', lease_id: lease, lease_until: Date.now() + 120_000 });
@@ -125,9 +168,10 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
     const destination = { provider: 'organization_r2' as const, account_id: connection.cloudflare.account_id, bucket: connection.cloudflare.bucket };
     const target = await storageClient(orgId, destination);
     try {
-      const sites = (await store.listDocs<Site>(paths.sites(orgId))).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+      const site = await store.getDoc<Site>(paths.site(orgId, siteId));
+      const sites = site ? [{ ...site, id: siteId }] : [];
       for (const site of sites) {
-        if (retainsManagedMedia(site) || (cursor && (site.id < cursor.site || (site.id === cursor.site && cursor.phase === 'next_site')))) continue;
+        if (retainsManagedMedia(site) || cursor?.phase === 'next_site') continue;
         if (!cursor || cursor.site !== site.id) await checkpoint({ site: site.id, media: '', phase: 'copying' });
         if (cursor!.phase === 'copying') {
           for (;;) {
@@ -248,20 +292,18 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
           }
           await checkpoint({ ...cursor!, reference: referencePath });
         }
-        const { requestMediaPreparation } = await import('../media/preparation');
-        await requestMediaPreparation(orgId, site.id);
+        // Only newly copied files need preparing; files already in place keep
+        // theirs, so a pass with nothing to move queues no build.
+        if (copied > 0) {
+          const { requestMediaPreparation } = await import('../media/preparation');
+          await requestMediaPreparation(orgId, site.id);
+        }
         await checkpoint({ site: site.id, media: '', phase: 'next_site' });
       }
     } finally { target.destroy(); }
     if (fileFailure) {
       await store.compareAndUpdateDoc<Migration>(path, value => value.lease_id === lease, { cursor: null, ...counters(), pending_files: pending });
       throw fileFailure;
-    }
-    const organization = await getOrganizationDomains(orgId);
-    if (organization.media_host && connection.cloudflare.public_bucket) {
-      const { preparePublicMediaDomains } = await import('./media-domain');
-      await preparePublicMediaDomains(orgId, { account_id: connection.cloudflare.account_id, public_bucket: connection.cloudflare.public_bucket,
-        media_host: organization.media_host, website_host: '', site_prefix: '', entries: [] });
     }
     const completed = await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === passRequest,
       { state: pending ? 'queued' : 'complete', pending_files: pending, ...counters(), cursor: null,
@@ -287,14 +329,79 @@ export async function runMediaMigrationBatch(orgId: string, maxFiles = 100, budg
   } finally { clearInterval(heartbeat); }
 }
 
-/** Called only by trusted workers. Returns a delay for continued work, or null when finished. */
-export async function executeMediaMigration(orgId: string): Promise<number | null> {
-  await runMediaMigrationBatch(orgId);
+/** Organization work: the public media domain. A request queued before per-Site jobs is handed to each Site. */
+async function runOrganizationMediaStep(orgId: string, budgetMs = 45_000) {
+  const store = getStore(), path = organizationPath(orgId), lease = randomUUID();
+  const acquired = await store.compareAndUpdateDoc<Migration>(path,
+    current => ['queued', 'running'].includes(current.state) && current.lease_until < Date.now() && (current.retry_at ?? 0) <= Date.now(),
+    { state: 'running', lease_id: lease, lease_until: Date.now() + 120_000 });
+  if (!acquired) return;
+  const deadline = Date.now() + budgetMs;
+  try {
+    // A document without scope was queued as one pass over every Site.
+    if (acquired.fan_out || acquired.scope !== 'organization') {
+      const sites = (await store.listDocs<Site>(paths.sites(orgId))).map(site => site.id).sort();
+      for (const siteId of sites) {
+        if (acquired.fan_out_cursor && siteId <= acquired.fan_out_cursor) continue;
+        if (Date.now() >= deadline) {
+          await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease, { state: 'queued', lease_id: null, lease_until: 0, retry_at: 0 });
+          return;
+        }
+        // One Site's settings conflict must not hold back the others; its own
+        // job still runs and skips media the Site keeps on managed hosting.
+        await adoptCustomerPublishingForMedia(orgId, siteId).catch(error => {
+          if (!(error instanceof ConnectionError)) throw error;
+          console.warn(`[media-migration] site ${siteId} kept its publishing settings: ${error.code ?? error.status}`);
+        });
+        await queueSiteMigration(orgId, siteId);
+        if (!await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease,
+          { fan_out_cursor: siteId, lease_until: Date.now() + 120_000 })) return;
+        acquired.fan_out_cursor = siteId;
+      }
+    }
+    const connection = await getConnection(orgId, 'cloudflare');
+    if (!connectionSummary(connection).media_ready || !connection.cloudflare) throw new ConnectionError('Media access is unavailable. Check R2 access in Publishing.', 409, 'media_not_ready');
+    const organization = await getOrganizationDomains(orgId);
+    if (organization.media_host && connection.cloudflare.public_bucket) {
+      const { preparePublicMediaDomains } = await import('./media-domain');
+      await preparePublicMediaDomains(orgId, { account_id: connection.cloudflare.account_id, public_bucket: connection.cloudflare.public_bucket,
+        media_host: organization.media_host, website_host: '', site_prefix: '', entries: [] });
+    }
+    const completed = await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === acquired.request_id,
+      { scope: 'organization', fan_out: false, fan_out_cursor: null, state: 'complete', cursor: null, pending_files: 0, lease_id: null, lease_until: 0, error: null, failures: 0, retry_at: 0, updated_at: new Date().toISOString() });
+    // A new request arrived while this ran: run once more for it, from the first Site.
+    if (!completed) await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease,
+      { scope: 'organization', fan_out: true, fan_out_cursor: null, state: 'queued', cursor: null, lease_id: null, lease_until: 0, retry_at: 0 });
+  } catch (error) {
+    const failures = (acquired.failures ?? 0) + 1;
+    const terminal = (error instanceof ConnectionError && error.status < 500) || failures >= 3;
+    await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === acquired.request_id,
+      { state: terminal ? 'failed' : 'queued', lease_id: null, lease_until: 0, failures, retry_at: terminal ? 0 : Date.now() + failures * 5_000,
+        error: error instanceof ConnectionError ? error.message
+          : terminal ? 'Media domain setup paused after three attempts. Check R2 access in Publishing and retry.'
+          : 'Media domain setup was interrupted. Retrying automatically.' });
+    await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease,
+      { state: 'queued', lease_id: null, lease_until: 0, retry_at: 0 });
+  }
+}
+
+const activeDelay = (current: Migration | null) => !current || !['queued', 'running'].includes(current.state) ? null
+  : Math.max(0, (current.retry_at ?? 0) - Date.now(), current.lease_until - Date.now());
+
+/**
+ * Called only by trusted workers. With a Site, runs that Site's migration;
+ * without, the Organization step and pending media preparation. Returns a
+ * delay for continued work, or null when finished.
+ */
+export async function executeMediaMigration(orgId: string, siteId?: string): Promise<number | null> {
+  if (siteId) {
+    await runMediaMigrationBatch(orgId, siteId);
+    return activeDelay(await getStore().getDoc<Migration>(sitePath(orgId, siteId)));
+  }
+  await runOrganizationMediaStep(orgId);
   const { runPendingMediaPreparation } = await import('../media/preparation');
   const preparing = await runPendingMediaPreparation(orgId);
-  const current = await getStore().getDoc<Migration>(migrationPath(orgId));
-  if (!current || !['queued', 'running'].includes(current.state)) return preparing ? 10000 : null;
-  return Math.max(0, (current.retry_at ?? 0) - Date.now(), current.lease_until - Date.now());
+  return activeDelay(await getStore().getDoc<Migration>(organizationPath(orgId))) ?? (preparing ? 10000 : null);
 }
 
 /** Cron is recovery only on Cloud Tasks; portable workers call this on each poll. */
@@ -305,9 +412,11 @@ export async function runPendingMediaMigrations() {
     filters: [{ field: 'state', op: 'in', value: ['queued', 'running'] }],
   })) {
     if (migration.lease_until > Date.now() || (migration.retry_at ?? 0) > Date.now()) continue;
+    const siteId = migration.scope === 'site' ? migration.site_id : undefined;
     if ((process.env.DEPLOY_QUEUE ?? 'in_process') === 'cloud_tasks') {
       const { enqueueMediaMigration } = await import('./media-migration-queue');
-      await enqueueMediaMigration(migration.org_id);
-    } else await runMediaMigrationBatch(migration.org_id);
+      await enqueueMediaMigration(migration.org_id, 0, siteId);
+    } else if (siteId) await runMediaMigrationBatch(migration.org_id, siteId);
+    else await runOrganizationMediaStep(migration.org_id);
   }
 }

@@ -74,7 +74,7 @@ export async function createMediaUpload(orgId: string, siteId: string, input: { 
     if (!base) throw new ConnectionError('The administrator must configure the public portal address.', 503);
     if (destination.provider === 'organization_r2' && await adoptCustomerPublishingForMedia(orgId, siteId)) {
       const { requestMediaMigration } = await import('./media-migration');
-      await requestMediaMigration(orgId);
+      await requestMediaMigration(orgId, siteId);
     }
     const cdnUrl = `${base}/api/sites/${encodeURIComponent(siteId)}/media/${id}/content`;
     await getStore().createDocIfMissing(`${paths.media(orgId, siteId)}/${id}`, {
@@ -96,7 +96,7 @@ export async function finalizeStoredMedia(orgId: string, siteId: string, mediaId
     if (expectedSha256 && expectedSha256.toLowerCase() !== media.sha256) throw new ConnectionError('The stored image does not match expected_sha256.', 422, 'media_integrity_failed');
     if (location.provider === 'draft_r2') {
       const { requestMediaMigration } = await import('./media-migration');
-      await requestMediaMigration(orgId);
+      await requestMediaMigration(orgId, siteId);
     }
     const { requestMediaPreparation, QUEUED_PREPARATION } = await import('../media/preparation');
     const queued = await requestMediaPreparation(orgId, siteId, mediaId);
@@ -142,7 +142,7 @@ async function freezeVerifiedMedia(orgId: string, siteId: string, mediaId: strin
     if (!changed) throw new ConnectionError('Media storage changed during upload verification. Retry finalizing the upload.', 409, 'media_revision_conflict');
     if (location.provider === 'draft_r2') {
       const { requestMediaMigration } = await import('./media-migration');
-      await requestMediaMigration(orgId);
+      await requestMediaMigration(orgId, siteId);
     }
     const { requestMediaPreparation, QUEUED_PREPARATION } = await import('../media/preparation');
     const queued = await requestMediaPreparation(orgId, siteId, mediaId);

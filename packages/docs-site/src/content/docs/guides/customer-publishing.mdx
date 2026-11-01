@@ -551,6 +551,13 @@ connection are handled without switching them to an unverified destination.
 Progress and retry instructions appear in Publishing. Existing source files are
 retained while older publications may still need them.
 
+From Core 0.2.137 each site migrates on its own. An upload, import or
+migration on one site never reads, copies or rebuilds media of another site in
+the Organization. Connecting or changing organization storage or domains gives
+every site its own job; a site whose files are already in place finishes without
+copying and without a preparation build. **Publishing → Media storage** shows
+the totals over all sites.
+
 ### Large libraries and first publication
 
 Original transfer and publication preparation are separate steps. The background

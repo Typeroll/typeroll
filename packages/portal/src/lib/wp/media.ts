@@ -134,12 +134,12 @@ export class WPMediaTransfer {
         if (error instanceof SvgRejectedError) await this.store.updateDoc(mediaPath, { import_pending: false, import_rejected: true, import_error: error.message });
         else if ((await this.store.getDoc<Media>(mediaPath))?.storage?.state !== 'ready') {
           await this.store.updateDoc(mediaPath, { import_pending: true, import_error: 'The source file has not been copied yet. Retry media migration from Publishing.' });
-          // A successful import needs no organization-wide migration pass. A
-          // transient failure queues one so the pending copy is retried even if
-          // the caller gives up; a rejected source (4xx) would only fail again.
+          // A transient failure queues this Site's migration, so the pending
+          // copy is retried even if the caller gives up; a rejected source (4xx)
+          // would only fail again. No other Site is read or rebuilt.
           if (!(error instanceof ConnectionError) || error.status >= 500) {
             const { requestMediaMigration } = await import('../publishing/media-migration');
-            await requestMediaMigration(this.orgId).catch(() => {});
+            await requestMediaMigration(this.orgId, this.siteId).catch(() => {});
           }
         }
         throw error;
