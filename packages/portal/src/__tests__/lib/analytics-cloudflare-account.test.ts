@@ -104,6 +104,21 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe('customer publishing: the Organization’s Cloudflare account', () => {
+  it('names the per-account site limit when Cloudflare refuses a new site (ES-02, code 10014)', async () => {
+    await customerSite();
+    await oauthConnection(ANALYTICS_SCOPES);
+    const full = Array.from({ length: 10 }, (_, i) => site(String(i).repeat(32), String(i + 1).repeat(32), `site${i}.example`));
+    const cf = cloudflare(call => call.method === 'POST' && call.url.endsWith(`/accounts/${ORG_ACCOUNT}/rum/site_info`)
+      ? Response.json({ success: false, errors: [{ code: 10014 }] }, { status: 409 })
+      : call.url.includes('/rum/site_info/list') ? ok(full, { result_info: { total_pages: 1 } }) : undefined);
+
+    const result = await save({}, cf.fetchImpl);
+
+    expect(result.setup).toMatchObject({ status: 'action_required', code: 'analytics_site_limit' });
+    expect(result.setup?.message).toContain('codes 10014');
+    expect(result.setup?.next_step).toContain('Remove a Web Analytics site');
+  });
+
   it('provisions the Web Analytics site in the Default hosting account and never touches the installation account', async () => {
     await customerSite();
     await oauthConnection(ANALYTICS_SCOPES);
