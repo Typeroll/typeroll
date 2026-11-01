@@ -8,7 +8,7 @@ import { parseArgs } from "node:util";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 
-export function releaseCheckCommands({ docsOnly = false } = {}) {
+export function releaseCheckCommands({ docsOnly = false, skipTests = false } = {}) {
   const docs = [
     [npm, ["run", "check", "--workspace=@typeroll/docs-site"]],
     [npm, ["run", "format:check", "--workspace=@typeroll/docs-site"]],
@@ -23,7 +23,8 @@ export function releaseCheckCommands({ docsOnly = false } = {}) {
     docs[0],
     docs[1],
     [npm, ["run", "typecheck"]],
-    [npm, ["test"]],
+    // CI runs the tests in parallel jobs beside this check (--skip-tests).
+    ...(skipTests ? [] : [[npm, ["test"]]]),
     [process.execPath, ["scripts/publication-upgrade-check.mjs"]],
     [process.execPath, ["scripts/build-static-publication-template.mjs"]],
     [npm, ["run", "build"]],
@@ -31,7 +32,7 @@ export function releaseCheckCommands({ docsOnly = false } = {}) {
 }
 
 export function runReleaseChecks(options = {}) {
-  for (const [command, args] of releaseCheckCommands(options)) {
+  for (const [command, args] of releaseCheckCommands({ docsOnly: options.docsOnly, skipTests: options.skipTests })) {
     console.log(`\n> ${command} ${args.join(" ")}`);
     const result = spawnSync(command, args, {
       cwd: root,
@@ -58,7 +59,8 @@ if (
     options: {
       "release-artifacts": { type: "boolean", default: false },
       "docs-only": { type: "boolean", default: false },
+      "skip-tests": { type: "boolean", default: false },
     },
   });
-  runReleaseChecks({ docsOnly: values["docs-only"], releaseArtifacts: values["release-artifacts"] });
+  runReleaseChecks({ docsOnly: values["docs-only"], skipTests: values["skip-tests"], releaseArtifacts: values["release-artifacts"] });
 }
