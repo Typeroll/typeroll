@@ -218,8 +218,12 @@ documentation-only push.
 
 For full candidates, source checks and Playwright run independently on isolated
 runners after scope selection; both must pass before `Release OSS` can start.
-Playwright is split into three shards, each with its own server and fixtures,
+Playwright is split into four shards, each with its own server and fixtures,
 and the required `Playwright e2e` check passes only when every shard passed.
+The release check runs as `oss-release-check.mjs --skip-tests` beside two source
+test jobs (infrastructure and workspace tests); the required `Release candidate
+check` passes only when the build and both test jobs passed. Locally the script
+without `--skip-tests` remains the complete sequential gate.
 A third early job downloads
 the pinned Bubblewrap archive and AppArmor profile, rejects redirects/oversize
 responses, and verifies their exact hashes. Availability failures stop before

@@ -23,6 +23,11 @@ test("the release check validates every publishable surface in fail-fast order",
   ]);
 });
 
+test("CI can leave the tests to its parallel jobs without dropping any other step", () => {
+  const all = descriptions();
+  assert.deepEqual(descriptions({ skipTests: true }), all.filter((step) => step !== "npm test"));
+});
+
 test("the docs preflight uses the same format and build commands", () => {
   assert.deepEqual(descriptions({ docsOnly: true }), [
     "npm run check --workspace=@typeroll/docs-site",
