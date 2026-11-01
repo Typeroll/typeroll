@@ -196,6 +196,17 @@ wording that fell back to English in its job `warnings`; a language above
 gives no such warning. Labels you write on a block, and a language section's
 own texts, always win.
 
+#### Right-to-left languages
+
+Pages in a right-to-left language (Arabic, Hebrew, Persian, Urdu, Pashto,
+Sindhi, Uyghur, Yiddish, Dhivehi and Kurdish Sorani, or any tag with an Arabic
+or Hebrew script subtag such as `az-Arab`) get `<html dir="rtl">` automatically,
+and the built-in layout mirrors: list and quote indents, table-of-contents
+indents and chevrons, feature-row gutters, page navigation, form toggles,
+carousel arrows and keys, tab arrow keys and the cookie button move to the other
+side. Sides you choose yourself, such as image, divider and caption alignment,
+stay as chosen. Left-to-right pages are unchanged.
+
 ### Structured Page fields without empty labels
 
 **Requires Core 0.2.12 and template capability `supports_page_field_list`.**

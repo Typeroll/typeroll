@@ -14,7 +14,9 @@ domain, build one site per domain instead and link the versions with hreflang
 Every Page has its own `language` (a BCP 47 tag such as `sv-SE`). Pages without
 one use the site `language`. The page language sets `<html lang>`, the search
 index and the built-in interface wording, and it decides which language section
-the page belongs to.
+the page belongs to. A right-to-left language such as Arabic or Hebrew also
+sets `<html dir="rtl">` and mirrors the built-in layout (see
+[right-to-left languages](../../tools/blocks/#right-to-left-languages)).
 
 Set `language` on every page outside the site language. Setting it on the
 site-language pages as well makes listings and conditions easier to read.

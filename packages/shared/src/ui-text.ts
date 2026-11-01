@@ -34,6 +34,21 @@ export function uiLanguage(language: unknown): UiLanguage {
   return UI_LANGUAGE_ALIASES[primary] ?? 'en';
 }
 
+const RTL_LANGUAGES: ReadonlySet<string> = new Set(['ar', 'arc', 'ckb', 'dv', 'fa', 'he', 'iw', 'ks', 'ps', 'sd', 'syr', 'ug', 'ur', 'yi']);
+const RTL_SCRIPTS: ReadonlySet<string> = new Set(['adlm', 'arab', 'hebr', 'mand', 'nkoo', 'rohg', 'syrc', 'thaa']);
+
+/**
+ * Writing direction of a BCP 47 tag for `<html dir>`. An explicit script
+ * subtag decides (`az-Arab` is right-to-left, `ku-Latn` is not); otherwise the
+ * language does.
+ */
+export function languageDirection(language: unknown): 'rtl' | 'ltr' {
+  const subtags = String(language ?? '').trim().toLowerCase().split('-');
+  const script = subtags.slice(1).find(subtag => /^[a-z]{4}$/.test(subtag));
+  if (script) return RTL_SCRIPTS.has(script) ? 'rtl' : 'ltr';
+  return RTL_LANGUAGES.has(subtags[0]) ? 'rtl' : 'ltr';
+}
+
 /** True when a language is named but has no built-in translation. */
 export function lacksUiTranslation(language: unknown): boolean {
   const tag = String(language ?? '').trim();

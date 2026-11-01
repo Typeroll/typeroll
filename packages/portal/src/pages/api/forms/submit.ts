@@ -42,7 +42,7 @@ import { assertOrganizationAccess, OrganizationAccessError } from '../../../lib/
 
 import type { APIRoute } from 'astro';
 import { getStore } from '../../../lib/datastore';
-import { paths, safeFormRedirectUrl, FORM_PREVIEW_FIELD, formMessage } from '@typeroll/shared';
+import { paths, safeFormRedirectUrl, FORM_PREVIEW_FIELD, formMessage, languageDirection } from '@typeroll/shared';
 import type { Form, Site } from '@typeroll/shared';
 import { completedRetentionFields, siteSubmissionRetentionDays } from '../../../lib/form-submissions';
 import {
@@ -416,10 +416,10 @@ function htmlPage(
     ? [outcome.message ?? formMessage('thanks', lang)]
     : (outcome.errors ?? [outcome.error ?? formMessage('failed', lang)]);
   const back = backUrl
-    ? `<p><a href="${escapeHtml(backUrl)}">&larr; ${escapeHtml(new URL(backUrl).hostname)}</a></p>`
+    ? `<p><a href="${escapeHtml(backUrl)}">${languageDirection(lang) === 'rtl' ? '&rarr;' : '&larr;'} ${escapeHtml(new URL(backUrl).hostname)}</a></p>`
     : '';
   const html = `<!doctype html>
-<html lang="${escapeHtml(lang)}">
+<html lang="${escapeHtml(lang)}"${languageDirection(lang) === 'rtl' ? ' dir="rtl"' : ''}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

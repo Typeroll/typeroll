@@ -921,7 +921,7 @@ await (async function languageSectionsScenario() {
   settings.language_sections = [{
     language: 'sv-SE', home_path: '/sv/', tagline: 'SV-TAGLINE',
     cookie_consent: { text: '<p>SV-BANNER</p>', privacy_policy_url: '/sv/cookies/' },
-  }];
+  }, { language: 'ar', home_path: '/ar/' }];
   writeFileSync(settingsPath, JSON.stringify(settings));
   const html = (id, markup) => ({ id, type: 'core/html', data: { html: markup } });
   writeFileSync(join(version, 'partials', 'header.json'), JSON.stringify({
@@ -940,6 +940,12 @@ await (async function languageSectionsScenario() {
   writeFileSync(join(version, 'pages', 'sv-article.json'), JSON.stringify({
     title: 'Artikel', slug: 'artikel', path: '/sv/artikel', parent: 'sv-home', language: 'sv-SE', content_mode: 'blocks', status: 'published', content_type: 'page', fields: {},
     blocks: [breadcrumbs, html('sv-article-body', '<h1>Artikel</h1>')],
+  }));
+
+  // Arabic is written right to left: its pages get dir="rtl" and the mirror stylesheet.
+  writeFileSync(join(version, 'pages', 'ar-home.json'), JSON.stringify({
+    title: 'العربية', slug: 'ar', path: '/ar', language: 'ar', content_mode: 'blocks', status: 'published', content_type: 'page', fields: {},
+    blocks: [html('ar-home-body', '<h1>العربية</h1>')],
   }));
 
   await build('language-sections', { TYPEROLL_FIXTURES_DIR: tmpFixtures }, (outDir) => {
@@ -961,7 +967,12 @@ await (async function languageSectionsScenario() {
     }
     const rootNotFound = readFileSync(join(outDir, '404.html'), 'utf8');
     if (!rootNotFound.includes('Sivua ei löydy') || !rootNotFound.includes('FI-MENU')) fail('[language-sections] root 404 is not the Finnish page');
-    log('[language-sections] ✓ per-language header, banner, home crumb, logo link and 404');
+    const ar = readFileSync(join(outDir, 'ar', 'index.html'), 'utf8');
+    if (!/<html lang="ar" dir="rtl"/.test(ar) || !ar.includes('<style data-direction>')) fail('[language-sections] Arabic page is not right to left');
+    if (/<html[^>]* dir=/.test(sv) || sv.includes('data-direction') || /<html[^>]* dir=/.test(fi)) fail('[language-sections] a left-to-right page got a direction');
+    const arNotFound = readFileSync(join(outDir, 'ar', '404.html'), 'utf8');
+    if (!/<html lang="ar" dir="rtl"/.test(arNotFound) || !arNotFound.includes('لم يتم العثور على الصفحة') || !arNotFound.includes('href="/ar/"')) fail('[language-sections] Arabic 404 is not right to left in Arabic');
+    log('[language-sections] ✓ per-language header, banner, home crumb, logo link, 404 and right-to-left Arabic');
   });
 })();
 

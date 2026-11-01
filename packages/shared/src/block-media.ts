@@ -250,18 +250,22 @@ window.TyperollBlocks.register('core/repeater', function (el) {
   var pause = controls.querySelector('[data-carousel-pause]');
   var dots = Array.prototype.slice.call(controls.querySelectorAll('[data-carousel-to]'));
   var PAUSE = ${JSON.stringify(PAUSE_ICON)}, PLAY = ${JSON.stringify(PLAY_ICON)};
-  function position(i) { return items[i].offsetLeft - items[0].offsetLeft; }
+  // Distances run from the start edge, so right-to-left tracks (negative
+  // offsets and scrollLeft) use the same arithmetic.
+  var rtl = getComputedStyle(track).direction === 'rtl';
+  function position(i) { var offset = items[i].offsetLeft - items[0].offsetLeft; return rtl ? -offset : offset; }
   function maxScroll() { return track.scrollWidth - track.clientWidth; }
+  function scrolled() { return Math.abs(track.scrollLeft); }
   function current() {
     var best = 0, distance = Infinity;
-    for (var i = 0; i < items.length; i++) { var d = Math.abs(Math.min(position(i), maxScroll()) - track.scrollLeft); if (d < distance - 1) { distance = d; best = i; } }
+    for (var i = 0; i < items.length; i++) { var d = Math.abs(Math.min(position(i), maxScroll()) - scrolled()); if (d < distance - 1) { distance = d; best = i; } }
     return best;
   }
-  function go(i) { track.scrollTo({ left: Math.min(position(Math.max(0, Math.min(items.length - 1, i))), maxScroll()), behavior: reduced ? 'auto' : 'smooth' }); }
+  function go(i) { var distance = Math.min(position(Math.max(0, Math.min(items.length - 1, i))), maxScroll()); track.scrollTo({ left: rtl ? -distance : distance, behavior: reduced ? 'auto' : 'smooth' }); }
   function update() {
     var at = current();
-    if (prev) prev.disabled = track.scrollLeft <= 1;
-    if (next) next.disabled = track.scrollLeft >= maxScroll() - 1;
+    if (prev) prev.disabled = scrolled() <= 1;
+    if (next) next.disabled = scrolled() >= maxScroll() - 1;
     dots.forEach(function (dot, i) { if (i === at) dot.setAttribute('aria-current', 'true'); else dot.removeAttribute('aria-current'); });
   }
   if (prev) prev.addEventListener('click', function () { go(current() - 1); });
@@ -286,7 +290,7 @@ window.TyperollBlocks.register('core/repeater', function (el) {
   el.addEventListener('focusout', function (event) { if (!el.contains(event.relatedTarget)) focused = false; });
   setInterval(function () {
     if (stopped || hovering || focused || document.hidden || !el.isConnected) return;
-    if (track.scrollLeft >= maxScroll() - 1) go(0); else go(current() + 1);
+    if (scrolled() >= maxScroll() - 1) go(0); else go(current() + 1);
   }, 5000);
 });
 `;

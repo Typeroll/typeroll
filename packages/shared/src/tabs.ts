@@ -336,7 +336,7 @@ ${[576, 768, 769, 1024, 1025].map((width) => `@media(max-width:${width - 1}px){[
  }
  buttons.forEach((button,index)=>{
   button.addEventListener('click',()=>{if(el.dataset.collapseMode==='panels'){const expanded=button.getAttribute('aria-selected')!=='true'||!el.hasAttribute('data-expanded');el.toggleAttribute('data-expanded',expanded);buttons.forEach(item=>item.setAttribute('aria-expanded',String(item===button&&expanded)));}activate(button);});
-  button.addEventListener('keydown',event=>{let next=index;if(event.key==='ArrowRight')next=(index+1)%buttons.length;else if(event.key==='ArrowLeft')next=(index+buttons.length-1)%buttons.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=buttons.length-1;else return;event.preventDefault();activate(buttons[next],true);});
+  button.addEventListener('keydown',event=>{let next=index;const forward=getComputedStyle(button).direction==='rtl'?'ArrowLeft':'ArrowRight';if(event.key===forward)next=(index+1)%buttons.length;else if(event.key==='ArrowLeft'||event.key==='ArrowRight')next=(index+buttons.length-1)%buttons.length;else if(event.key==='Home')next=0;else if(event.key==='End')next=buttons.length-1;else return;event.preventDefault();activate(buttons[next],true);});
  });
  if(buttons.length)activate(buttons.find(button=>button.dataset.idx===el.dataset.default)||buttons[0]);
  const toggle=el.querySelector(':scope > .block-tabs-toggle');

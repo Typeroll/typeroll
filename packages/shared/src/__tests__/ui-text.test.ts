@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { renderBlock } from '../render-blocks.js';
 import { buildCoreBlockRegistry } from '../core-blocks.js';
 import { renderCookieConsent } from '../cookie-consent.js';
-import { lacksUiTranslation, uiLanguage, uiText, UI_LANGUAGES } from '../ui-text.js';
+import { lacksUiTranslation, languageDirection, uiLanguage, uiText, UI_LANGUAGES } from '../ui-text.js';
+import { directionCss, RTL_CSS } from '../rtl-css.js';
 import { cookieConsentDefaultText } from '../cookie-consent.js';
 import { notFoundText } from '../not-found-text.js';
 import { blockUiLanguage } from '../block-media.js';
@@ -45,6 +46,19 @@ describe('built-in interface text', () => {
       expect(notFoundText(language).title).not.toBe(english.notFound);
       expect(uiText(language, 'scrollable_table')).not.toBe(english.table);
     }
+  });
+
+  it('reads the writing direction from the language and an explicit script', () => {
+    expect(['ar', 'ar-EG', 'he', 'iw', 'fa-IR', 'ur-PK', 'ps', 'yi', 'az-Arab', 'pa-Arab'].map(languageDirection)).toEqual(Array(10).fill('rtl'));
+    expect(['', undefined, 'en', 'fi', 'sv-SE', 'zh-Hant', 'ku-Latn', 'ar-Latn', 'arn', 'hy'].map(languageDirection)).toEqual(Array(10).fill('ltr'));
+  });
+
+  it('mirrors only existing built-in blocks, and only on right-to-left pages', () => {
+    expect(directionCss('ltr')).toBe('');
+    expect(directionCss('rtl')).toBe(RTL_CSS);
+    const ids = new Set([...registry.values()].flatMap(type => [type.id.split('/').pop(), type.name, ...[...String(type.template ?? '').matchAll(/data-block="([^"]+)"/g)].map(match => match[1])]));
+    for (const block of RTL_CSS.matchAll(/data-block="([^"]+)"/g)) expect(ids, block[1]).toContain(block[1]);
+    for (const rule of RTL_CSS.split('\n').filter(line => !line.startsWith('@media'))) expect(rule.startsWith('[dir="rtl"]'), rule).toBe(true);
   });
 
   it('labels archive pagination in the page language', () => {
