@@ -208,6 +208,19 @@ Upload the hero image from https://unsplash.com/... as the OG image for the home
 
 The AI agent uses this when importing content from external sources (WordPress, Squarespace, etc.) to transfer images through Typeroll’s media storage.
 
+### Import rate
+
+`upload_media_batch_from_urls` runs four imports at a time, and the portal
+allows at most four concurrent transfers per source host. Each file costs a
+few seconds of fixed portal work plus the transfer itself: the Worker downloads
+the original, writes it to storage and reads it back to verify its checksum. The
+rate therefore depends mostly on file size and on how fast the source host
+answers. Web-sized images from a fast CDN typically import at 40–50 files a
+minute; large originals, slow hosts or hosts that throttle automated requests
+are slower. Network errors, 429 and 5xx answers are retried up to twice inside
+one call, so a call that succeeds may still have waited. Image preparation runs
+afterwards as its own job and is not part of this rate.
+
 ## `upload_media_from_base64`
 
 Uploads an image provided as a base64-encoded string. Useful when the image is generated locally or provided as a data URI.
