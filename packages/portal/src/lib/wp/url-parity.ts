@@ -22,7 +22,7 @@ import { safeFetch as guardedFetch } from '../net/safe-fetch';
 // Every network call goes through the injected `fetchImpl` so the classifier
 // is testable without a network.
 
-import { applyTrailingSlash, paths } from '@typeroll/shared';
+import { applyTrailingSlash, embeddedQueryRedirectTarget, paths } from '@typeroll/shared';
 import type { DeployJob, Redirect } from '@typeroll/shared';
 import type { TrailingSlashPolicy } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
@@ -66,6 +66,9 @@ export interface ParityResult {
   gsc_clicks?: number;
   /** Requests made for this path when an inconclusive result was retried. */
   attempts?: number;
+  /** A query-string rule moved the visitor on with the published inline
+   *  script, not an HTTP redirect. Browsers and Google follow it; it is not a 301. */
+  client_redirect?: true;
 }
 
 export interface ParitySummary {
@@ -210,9 +213,12 @@ async function checkOne(
   let current = join(targetOrigin, entry.path);
   let hops = 0;
   let firstStatus: number | null = null;
+  let clientRedirect = false;
 
   for (;;) {
-    const attempt = await safeFetch(doFetch, current, timeoutMs, 'manual');
+    // Query-string rules are published as an inline script in the document
+    // that answers the path (or 404.html), so read the body for those URLs.
+    const attempt = await safeFetch(doFetch, current, timeoutMs, 'manual', hasQuery(current));
     if (!attempt.ok) {
       // A failed later hop keeps the first status (a redirect) and has no
       // final_status; isRetryable treats it as the transient failure it is.
@@ -243,6 +249,22 @@ async function checkOne(
       continue;
     }
 
+    const scripted = attempt.body !== undefined && (res.ok || res.status === 404)
+      ? embeddedQueryRedirectTarget(attempt.body, current)
+      : null;
+    if (scripted) {
+      hops++;
+      if (hops > maxHops) {
+        return { ...base, verdict: 'broken_redirect', status: firstStatus, hops, final_url: current, client_redirect: true, error: 'too many hops (loop?)' };
+      }
+      if (scripted === current) {
+        return { ...base, verdict: 'broken_redirect', status: firstStatus, hops, final_url: current, client_redirect: true, error: 'self-referential redirect' };
+      }
+      clientRedirect = true;
+      current = scripted;
+      continue;
+    }
+
     // Terminal response.
     const canonicalOnly = hops > 0 && res.ok && isCanonicalSlashRedirect(
       entry.path,
@@ -260,6 +282,7 @@ async function checkOne(
       verdict,
       status: firstStatus,
       ...(hops > 0 ? { hops, final_status: res.status, final_url: current } : {}),
+      ...(clientRedirect ? { client_redirect: true as const } : {}),
       ...(verdict === 'error' ? { error: [401,403,429].includes(res.status) ? `Verifier access blocked (HTTP ${res.status}). Allow the Typeroll-URL-Parity verifier in the host's access/bot policy and retry this check; this does not prove a missing page or actual crawler access.` : `unexpected status ${res.status}` } : {}),
     };
   }
@@ -437,20 +460,55 @@ export async function recordRedirectVerification(
 }
 
 type FetchAttempt =
-  | { ok: true; response: Response }
+  | { ok: true; response: Response; body?: string }
   | { ok: false; error: string };
+
+/** Enough for any page head, where the query redirect script sits. */
+const BODY_LIMIT = 1024 * 1024;
+
+function hasQuery(url: string): boolean {
+  try { return new URL(url).search.length > 1; } catch { return false; }
+}
+
+async function readLimited(res: Response): Promise<string | undefined> {
+  if (!res.body) return undefined;
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let text = '';
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      text += decoder.decode(value, { stream: true });
+      if (size >= BODY_LIMIT) break;
+    }
+  } catch {
+    return text || undefined;
+  } finally {
+    void reader.cancel().catch(() => {});
+  }
+  return text;
+}
 
 async function safeFetch(
   doFetch: typeof fetch,
   url: string,
   timeoutMs: number,
   redirect: RequestRedirect,
+  readBody = false,
 ): Promise<FetchAttempt> {
+  const finish = async (res: Response): Promise<FetchAttempt> => {
+    if (readBody && !isRedirect(res.status)) return { ok: true, response: res, body: await readLimited(res) };
+    void res.body?.cancel?.().catch(() => {});
+    return { ok: true, response: res };
+  };
   try {
     // GET, not HEAD: static hosts (Cloudflare Pages included) and CDNs are
     // less consistent about HEAD, and a 405 on HEAD would read as a broken
-    // URL. We never read the body, so the cost is the response headers plus
-    // an aborted stream.
+    // URL. Only URLs with a query string read the body (capped), to find the
+    // published query redirect script; others cost headers plus an aborted stream.
     const init: RequestInit = {
       method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(timeoutMs),
       headers: { 'user-agent': 'Typeroll-URL-Parity/1.0' },
@@ -458,15 +516,14 @@ async function safeFetch(
     if (doFetch === publicationFetch) {
       if (url.startsWith('https://')) {
         const checked = await publicationResponse(new URL(url), init);
-        try { return { ok: true, response: checked.response }; } finally { await checked.close(); }
+        try { return await finish(checked.response); } finally { await checked.close(); }
       }
       // Plain-http origins (often the old WordPress source) get the same
       // public-destination guard; 'follow' re-checks every redirect hop.
       const res = await guardedFetch(url, { ...init, redirect }, {
         allowHttp: true, privateNetwork: 'self_hosted_opt_in', label: 'Parity URL', timeoutMs, maxBytes: 1024 * 1024,
       });
-      void res.body?.cancel?.().catch(() => {});
-      return { ok: true, response: res };
+      return await finish(res);
     }
     const res = await doFetch(url, {
       method: 'GET',
@@ -474,8 +531,7 @@ async function safeFetch(
       signal: AbortSignal.timeout(timeoutMs),
       headers: { 'user-agent': 'Typeroll-URL-Parity/1.0' },
     });
-    void res.body?.cancel?.().catch(() => {});
-    return { ok: true, response: res };
+    return await finish(res);
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
