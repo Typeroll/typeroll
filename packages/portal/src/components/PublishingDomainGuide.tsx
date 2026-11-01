@@ -26,13 +26,13 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
     const timer = setInterval(() => { void load().catch(err => setError(err.message)); }, 15000);
     return () => clearInterval(timer);
   }, [endpoint, guide?.state]);
-  async function action(action: string) {
+  async function action(action: string, extra: Record<string, unknown> = {}) {
     if (!guide) return;
     setBusy(true); setError(''); setNotice('');
     try {
       let result: { reused_candidate?: boolean; already_running?: boolean } = {};
       if (action !== 'check') {
-        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, revision: guide.revision, candidate_id: guide.candidate?.id, ...(action === 'approve' ? { accept_validation_window: accept, validation_timeout_minutes: 15 } : {}) }) });
+        const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, revision: guide.revision, candidate_id: guide.candidate?.id, ...(action === 'approve' ? { accept_validation_window: accept, validation_timeout_minutes: 15 } : {}), ...extra }) });
         const body = await response.json(); if (!response.ok) throw new Error(body.error || 'The domain action failed.');
         result = body;
       }
@@ -62,6 +62,13 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
       {guide?.next_action === 'prepare' && <p>This republishes the last published content with the new website and media addresses, replacing the site at its current address. Newer unpublished edits are excluded. DNS changes separately afterward; links using the new addresses may not work until then.</p>}
       {guide?.next_action === 'refresh' && <button type="button" className="btn" disabled={busy} onClick={() => void action('prepare')}>Refresh domain setup</button>}
       {guide?.next_action === 'prepare' && <button type="button" className="btn btn-primary" disabled={busy || guide.can_prepare === false} onClick={() => void action('prepare')}>Publish for the new domain</button>}
+      {guide?.next_action === 'resolve_noindex' && <div className="stack" role="region" aria-label="Search engine visibility">
+        <p>{guide.checks.find(check => check.id === 'candidate_noindex')?.message ?? 'This site tells search engines not to index it.'}</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '.75rem' }}>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void action('prepare', { confirm_disable_noindex: true })}>Turn off noindex and publish for the new domain</button>
+          <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Keep the site hidden from search engines on the new domain? You can turn indexing on later in Site settings and publish again.')) void action('prepare', { allow_noindex_launch: true }); }}>Keep it hidden on purpose</button>
+        </div>
+      </div>}
       {guide?.next_action === 'approve' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setReview(true)}>Review traffic switch</button>}
       {guide?.cutover && guide.cutover.state !== 'rolled_back' && <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Restore the DNS records saved before this traffic switch? Later external edits will be reported instead of overwritten.')) void action('rollback'); }}>Restore previous traffic</button>}
     </div>
