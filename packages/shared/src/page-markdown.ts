@@ -7,6 +7,7 @@
 // and scripts. Header and footer partials are not part of it.
 
 import type { Block, ContentType, Page } from './types.js';
+import { pagesShadowedByRedirect } from './redirect-patterns.js';
 
 export interface PageMarkdownOptions {
   /** Absolute URL of the page; relative links and images resolve against it. */
@@ -354,4 +355,24 @@ export function pageMarkdown(page: Page, options: PageMarkdownOptions): string {
   // Repeated headings next to each other (a hero repeating the page title).
   const deduped = out.filter((part, index) => index === 0 || part.replace(/^#+\s*/, '') !== out[0]!.replace(/^#+\s*/, '') || !/^#/.test(part));
   return `${deduped.join('\n\n').replace(/\n{3,}/g, '\n\n').trim()}\n`;
+}
+
+/**
+ * Markdown routes (`/blog/index.md`) that an emitted redirect rule would
+ * capture. Cloudflare Pages applies `_redirects` before static files, so a
+ * rule such as `/blog/:slug` answers `/blog/index.md` with its redirect and
+ * the file can never be read. Those files are left out of a publication.
+ */
+export function markdownRoutesShadowedByRedirects(routes: Iterable<string>, redirects: Array<{ from_path: string; to_path: string }>): Set<string> {
+  const list = [...routes];
+  const shadowed = new Set<string>();
+  for (const rule of redirects) for (const route of pagesShadowedByRedirect(rule.from_path, rule.to_path, list)) shadowed.add(route);
+  return shadowed;
+}
+
+const MARKDOWN_ALTERNATE = /<link rel="alternate" type="text\/markdown" href="[^"]*"\s*\/?>/;
+
+/** Remove a page's announcement of its Markdown rendition, when that file is left out. */
+export function withoutMarkdownAlternate(html: string): string {
+  return html.replace(MARKDOWN_ALTERNATE, '');
 }

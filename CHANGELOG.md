@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.139 / MCP 0.45.103 (candidate)
+
+- Fix domain preparation failing verification when a redirect rule captures a
+  per-page Markdown file (for example `/blog/:slug` and `/blog/index.md`).
+  Cloudflare Pages applies redirects before files, so such Markdown files are
+  now left out of the publication and no longer announced by their page.
+- The build engine's static verification names the routes that did not match
+  (takes effect after a build engine update).
+
 ## 0.2.138 / MCP 0.45.102 (candidate)
 
 - Built-in interface text (tabs, pagination, tables, breadcrumbs, media

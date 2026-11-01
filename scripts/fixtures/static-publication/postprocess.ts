@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { bundleBlockAssets } from './source/bundle-blocks';
 import { buildSearchIndexIfUsed } from './source/search-index';
-import { aiContentSignal, applyQueryRedirects, pagesRedirectsFile, pagesShadowedByRedirect, pageRobots } from '@typeroll/shared';
+import { aiContentSignal, applyQueryRedirects, markdownRoutesShadowedByRedirects, pagesRedirectsFile, pagesShadowedByRedirect, pageRobots, withoutMarkdownAlternate } from '@typeroll/shared';
 import type { Redirect, TrailingSlashPolicy } from '@typeroll/shared';
 import { buildPagesHeaders, withGlobalHeaders } from './source/pages-headers';
 import { vendorExtensionAssets } from './source/extensions/assets';
@@ -34,12 +34,13 @@ export async function postprocess(dist: string, publication: { publication_id: s
     headers += `\nhttps://${host}/*\n  X-Robots-Tag: noindex, nofollow\n`;
   }
   await fs.writeFile(path.join(dist, '_headers'), headers);
-  const routes: string[] = [];
+  const routes: string[] = [], markdownRoutes: string[] = [];
   async function walk(directory: string, prefix = '') {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const relative = prefix + entry.name;
       if (entry.isDirectory()) await walk(path.join(directory, entry.name), relative + '/');
       else if (entry.isFile() && relative.endsWith('.html') && relative !== '404.html' && !relative.endsWith('/404.html')) routes.push('/' + relative.replace(/index\.html$/, '').replace(/\.html$/, ''));
+      else if (entry.isFile() && (relative === 'index.md' || relative.endsWith('/index.md'))) markdownRoutes.push('/' + relative);
     }
   }
   await walk(dist);
@@ -48,6 +49,16 @@ export async function postprocess(dist: string, publication: { publication_id: s
   await fs.writeFile(path.join(dist, marker), JSON.stringify({ id: publication.publication_id, paths: routes.length ? routes.sort() : ['/' + marker] }));
   const livePaths = new Set(routes);
   const safeRedirects = (publication.redirects ?? []).filter(rule => !pagesShadowedByRedirect(rule.from_path, rule.to_path, livePaths).length);
+  // Pages applies _redirects before static files: a rule such as /blog/:slug would
+  // answer /blog/index.md with its redirect. Leave such Markdown files out and
+  // stop announcing them, so the publication never lists a file it cannot serve.
+  for (const route of markdownRoutesShadowedByRedirects(markdownRoutes, safeRedirects)) {
+    const file = path.join(dist, route.slice(1));
+    await fs.rm(file, { force: true });
+    const html = path.join(path.dirname(file), 'index.html');
+    const text = await fs.readFile(html, 'utf8').catch(() => null);
+    if (text !== null) await fs.writeFile(html, withoutMarkdownAlternate(text));
+  }
   const redirects = pagesRedirectsFile(safeRedirects, publication.settings, publication.site);
   if (redirects) await fs.writeFile(path.join(dist, '_redirects'), redirects);
   await applyQueryRedirects(safeRedirects, {
