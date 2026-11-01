@@ -4,7 +4,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
-import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
+import { MAIN_VERSION_ID, paths, groupQueryRedirects, injectQueryRedirectScript } from '@typeroll/shared';
 import type { Redirect } from '@typeroll/shared';
 import { checkUrlParity, recordRedirectVerification, runSiteParityCheck } from '../../lib/wp/url-parity';
 import type { Site } from '@typeroll/shared';
@@ -14,15 +14,21 @@ const SITE = 'mysite';
 const TARGET = 'https://mysite.sites.example.com';
 
 /** Build a fetch that answers from a routing table keyed on full URL. */
-function fakeFetch(routes: Record<string, { status: number; location?: string }>): typeof fetch {
+function fakeFetch(routes: Record<string, { status: number; location?: string; body?: string }>): typeof fetch {
   return (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input.toString();
     const hit = routes[url];
     if (!hit) throw new Error(`unexpected fetch: ${url}`);
     const headers = new Headers();
     if (hit.location) headers.set('location', hit.location);
-    return new Response(null, { status: hit.status, headers });
+    return new Response(hit.body ?? null, { status: hit.status, headers });
   }) as unknown as typeof fetch;
+}
+
+/** A published document carrying query rules, exactly as the build embeds them. */
+function documentWithQueryRules(rules: Array<{ from_path: string; to_path: string }>): string {
+  const embedded = [...groupQueryRedirects(rules).values()].flat();
+  return injectQueryRedirectScript('<!doctype html><html><head><title>x</title></head><body></body></html>', embedded)!;
 }
 
 describe('checkUrlParity', () => {
@@ -105,6 +111,56 @@ describe('checkUrlParity', () => {
     });
     expect(results[0].verdict).toBe('missing');
     expect(results[0].hops).toBe(1);
+  });
+
+  it('follows a query-string rule published in 404.html as a client redirect', async () => {
+    const notFound = documentWithQueryRules([{ from_path: '/category/uncategorized/?lang=en', to_path: '/consigli/' }]);
+    const { results, summary } = await checkUrlParity([{ path: '/category/uncategorized/?lang=en' }], {
+      targetOrigin: TARGET,
+      fetchImpl: fakeFetch({
+        [`${TARGET}/category/uncategorized/?lang=en`]: { status: 404, body: notFound },
+        [`${TARGET}/consigli/`]: { status: 200 },
+      }),
+    });
+    expect(results[0]).toMatchObject({
+      verdict: 'ok_redirect', status: 404, hops: 1, final_status: 200,
+      final_url: `${TARGET}/consigli/`, client_redirect: true,
+    });
+    expect(summary.missing).toBe(0);
+  });
+
+  it('follows a query-string rule embedded in an existing page', async () => {
+    const home = documentWithQueryRules([{ from_path: '/?p=12', to_path: '/consigli/trasloco/' }]);
+    const { results } = await checkUrlParity([{ path: '/?p=12' }], {
+      targetOrigin: TARGET,
+      fetchImpl: fakeFetch({
+        [`${TARGET}/?p=12`]: { status: 200, body: home },
+        [`${TARGET}/consigli/trasloco/`]: { status: 200 },
+      }),
+    });
+    expect(results[0]).toMatchObject({ verdict: 'ok_redirect', hops: 1, client_redirect: true });
+  });
+
+  it('still reports a query URL as missing when no published rule matches it', async () => {
+    const notFound = documentWithQueryRules([{ from_path: '/category/uncategorized/?lang=de', to_path: '/consigli/' }]);
+    const { results } = await checkUrlParity([{ path: '/category/uncategorized/?lang=en' }], {
+      targetOrigin: TARGET,
+      fetchImpl: fakeFetch({ [`${TARGET}/category/uncategorized/?lang=en`]: { status: 404, body: notFound } }),
+    });
+    expect(results[0].verdict).toBe('missing');
+    expect(results[0].client_redirect).toBeUndefined();
+  });
+
+  it('reports a query rule whose target is not published as missing', async () => {
+    const notFound = documentWithQueryRules([{ from_path: '/old/?lang=en', to_path: '/gone/' }]);
+    const { results } = await checkUrlParity([{ path: '/old/?lang=en' }], {
+      targetOrigin: TARGET,
+      fetchImpl: fakeFetch({
+        [`${TARGET}/old/?lang=en`]: { status: 404, body: notFound },
+        [`${TARGET}/gone/`]: { status: 404, body: notFound },
+      }),
+    });
+    expect(results[0]).toMatchObject({ verdict: 'missing', hops: 1, client_redirect: true });
   });
 
   it('detects a redirect loop instead of hanging', async () => {
