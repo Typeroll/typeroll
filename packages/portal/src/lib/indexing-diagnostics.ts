@@ -2,12 +2,63 @@ import { checkPreviousHost, type PreviousHost } from './publishing/previous-host
 import type { Site, SiteSettings } from '@typeroll/shared';
 import { publicUrlsFor } from './site-public-urls';
 import { assertPublicDestination } from './extensions/public-http';
-import { createSafeFetch, parseOutboundUrl } from './net/safe-fetch';
+import { parseOutboundUrl } from './net/safe-fetch';
+import { missingDns, publicationResponse } from './deploy/public-response';
 
-// Default transport: public HTTPS only, pinned to the validated address, no
-// redirect following (probeTarget follows and validates hops itself) and a
-// bounded body.
-const diagnosticsFetch = createSafeFetch({ label: 'Indexing diagnostic URL', maxRedirects: 0, timeoutMs: 15_000, maxBytes: 2 * 1024 * 1024 });
+const BODY_LIMIT = 2 * 1024 * 1024;
+
+// Default transport: the publication checker. Public HTTPS only, pinned to a
+// validated address, no redirect following (probeTarget follows and validates
+// hops itself). A site host created minutes ago can still be cached as
+// missing by the portal's resolver; the checker then confirms it through
+// public DNS instead of failing with ENOTFOUND.
+const diagnosticsFetch: typeof fetch = async (input, init) => {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  const { response, close } = await publicationResponse(url, init ?? {});
+  try {
+    const body = init?.method === 'HEAD' || [101, 204, 205, 304].includes(response.status) ? null : await readLimited(response);
+    return new Response(body, { status: response.status, statusText: response.statusText, headers: response.headers });
+  } finally {
+    await close();
+  }
+};
+
+async function readLimited(response: Response): Promise<ArrayBuffer | null> {
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > BODY_LIMIT) break;
+      chunks.push(value);
+    }
+  } finally {
+    void reader.cancel().catch(() => {});
+  }
+  const joined = Buffer.concat(chunks);
+  return joined.buffer.slice(joined.byteOffset, joined.byteOffset + joined.byteLength) as ArrayBuffer;
+}
+
+/** The publication checker validates every address itself, including a host
+ *  only public DNS knows yet, so a missing local DNS answer is not final here. */
+async function validateForPublicationChecker(url: URL): Promise<void> {
+  try {
+    await assertPublicDestination(url);
+  } catch (error) {
+    if (!missingDns(error)) throw error;
+  }
+}
+
+const NOT_RESOLVABLE = 'The host does not resolve in DNS yet. A new site address can take a few minutes to appear; run the check again shortly.';
+
+function describeFailure(error: unknown, fallback: string): string {
+  if (missingDns(error)) return NOT_RESOLVABLE;
+  return error instanceof Error ? error.message : fallback;
+}
 
 export type IndexingTargetKind = 'fallback' | 'production';
 
@@ -105,7 +156,7 @@ async function probeTarget(
   opts: SiteIndexingDiagnosticOptions,
 ): Promise<IndexingTargetDiagnostic> {
   const fetchImpl = opts.fetchImpl ?? diagnosticsFetch;
-  const validate = opts.validateDestination ?? assertPublicDestination;
+  const validate = opts.validateDestination ?? (opts.fetchImpl ? assertPublicDestination : validateForPublicationChecker);
   const timeoutMs = opts.timeoutMs ?? 10_000;
   const root = new URL('/', ensureTrailingSlash(target.origin));
   const robotsUrl = new URL('/robots.txt', root);
@@ -114,7 +165,7 @@ async function probeTarget(
   try {
     await validate(root);
   } catch (error) {
-    issues.push(error instanceof Error ? error.message : 'The target is not a public destination.');
+    issues.push(describeFailure(error, 'The target is not a public destination.'));
     return emptyDiagnostic(target, issues);
   }
 
@@ -221,7 +272,7 @@ async function safeFetch(
     }
     throw new Error('Indexing diagnostic redirect loop.');
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error) };
+    return { error: describeFailure(error, String(error)) };
   }
 }
 

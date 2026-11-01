@@ -77,6 +77,17 @@ describe('indexing diagnostics', () => {
     expect(report.issues.join(' ')).toContain('X-Robots-Tag');
   });
 
+  it('reports a host that does not resolve yet instead of a bare ENOTFOUND', async () => {
+    const notFound = Object.assign(new Error('getaddrinfo ENOTFOUND demo.sites.example.test'), { code: 'ENOTFOUND' });
+    const report = await diagnoseSiteIndexing({ ...site, domain: undefined, domain_status: undefined }, { site_name: 'Demo' } as never, {
+      fetchImpl: mockFetch as typeof fetch,
+      validateDestination: async () => { throw notFound; },
+    });
+    expect(report.ready).toBe(false);
+    expect(report.targets[0].issues).toEqual([expect.stringContaining('does not resolve in DNS yet')]);
+    expect(JSON.stringify(report)).not.toContain('getaddrinfo');
+  });
+
   it('parses common metadata and robots.txt shapes', () => {
     expect(extractRobotsMeta("<meta content='NOINDEX, FOLLOW' name='robots'>")).toBe('NOINDEX, FOLLOW');
     expect(blocksAllCrawlers('User-agent: Googlebot\nDisallow: /\nUser-agent: *\nAllow: /')).toBe(false);
