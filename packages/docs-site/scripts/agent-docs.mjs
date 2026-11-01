@@ -7,7 +7,12 @@ import remarkGfm from 'remark-gfm';
 const markdown = unified().use(remarkParse).use(remarkGfm).use(remarkStringify);
 const text = node => node.value ?? node.children?.map(text).join('') ?? '';
 
-export function agentDocuments(input, pages) {
+/**
+ * Split a starlight-llms-txt export into one section per page, with absolute
+ * links and a source line. `complete: false` accepts a subset of the pages
+ * (llms-small.txt and the focused sets); every section must still be a known page.
+ */
+export function agentDocuments(input, pages, { complete = true } = {}) {
   const byTitle = new Map(pages.map(page => [page.title, page]));
   assert.equal(byTitle.size, pages.length, 'Agent export requires unique page titles to match the plugin output');
   const tree = markdown.parse(input.replace(/^<SYSTEM>[^\n]*<\/SYSTEM>\s*\n/, ''));
@@ -26,8 +31,8 @@ export function agentDocuments(input, pages) {
       assert.fail('Unexpected content before the first exported page');
     }
   }
-  assert.equal(sections.length, pages.length, 'Agent export must include every public documentation page');
-  assert.equal(new Set(sections.map(section => section.page.url)).size, pages.length, 'Agent export repeats a page');
+  if (complete) assert.equal(sections.length, pages.length, 'Agent export must include every public documentation page');
+  assert.equal(new Set(sections.map(section => section.page.url)).size, sections.length, 'Agent export repeats a page');
   return sections.map(({ page, nodes }) => {
     function resolveLinks(node) {
       if (['link', 'image', 'definition'].includes(node.type)) node.url = new URL(node.url, page.url).href;

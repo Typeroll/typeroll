@@ -169,3 +169,47 @@ export async function applyQueryRedirects(
   }
   return report;
 }
+
+const EMBEDDED_PREFIX = '<script data-typeroll-query-redirects="1">(function(){var r=';
+const EMBEDDED_SUFFIX = ',s=new URLSearchParams';
+
+/** Rules that `queryRedirectScript` embedded in a published HTML document. */
+export function readEmbeddedQueryRedirects(html: string): EmbeddedRule[] {
+  const rules: EmbeddedRule[] = [];
+  let from = 0;
+  for (;;) {
+    const start = html.indexOf(EMBEDDED_PREFIX, from);
+    if (start < 0) return rules;
+    const dataStart = start + EMBEDDED_PREFIX.length;
+    const end = html.indexOf(EMBEDDED_SUFFIX, dataStart);
+    if (end < 0) return rules;
+    try {
+      const parsed: unknown = JSON.parse(html.slice(dataStart, end));
+      if (Array.isArray(parsed)) {
+        for (const rule of parsed) {
+          if (rule && typeof rule.p === 'string' && typeof rule.t === 'string' && rule.q && typeof rule.q === 'object') rules.push(rule as EmbeddedRule);
+        }
+      }
+    } catch { /* not ours, or damaged: ignore */ }
+    from = end;
+  }
+}
+
+/**
+ * Where the published script in `html` sends a visitor who opened `url`, or
+ * null when no embedded rule matches. Mirrors `queryRedirectScript` exactly.
+ */
+export function embeddedQueryRedirectTarget(html: string, url: string): string | null {
+  if (!html.includes('data-typeroll-query-redirects')) return null;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return null; }
+  let path = normalizeQueryRedirectPath(parsed.pathname);
+  try { path = decodeURI(path); } catch { /* keep the raw path */ }
+  for (const rule of readEmbeddedQueryRedirects(html)) {
+    if (rule.p !== path) continue;
+    if (Object.entries(rule.q).every(([key, value]) => parsed.searchParams.get(key) === value)) {
+      try { return new URL(rule.t, parsed).toString(); } catch { return null; }
+    }
+  }
+  return null;
+}

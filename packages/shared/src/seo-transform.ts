@@ -21,6 +21,8 @@ interface MediaLookupEntry {
   width?: number;
   height?: number;
   alt?: string;
+  /** Media type, used for the share image's og:image:type. */
+  mime_type?: string;
   /** Pre-generated AVIF/WebP/JPEG variants at responsive widths, produced
    *  by `lib/image-variants.ts` and stored on the Media doc. When present,
    *  the transform emits a `<picture>` block with `<source>` for each
@@ -41,6 +43,7 @@ export function buildMediaLookup(media: Media[]): MediaLookup {
       width: m.width,
       height: m.height,
       alt: m.alt_text,
+      mime_type: m.mime_type,
       variants: m.variants,
     });
   }
@@ -106,13 +109,21 @@ export function transformBodyForSeo(
     const insidePicture = lastOpen > lastClose;
 
     const attrs = parseAttrs(attrsRaw);
-    const index = imgIndex++;
+    // Logos and small icons are never the largest paint; they keep their
+    // own loading and do not use up the leading slots.
+    const candidate = isLcpCandidate(attrs, html, offset);
+    const index = candidate ? imgIndex++ : Infinity;
     const isLeading = index < 2; // first ~2 imgs probably above-the-fold
 
-    // 1. loading / decoding defaults.
+    // 1. loading / decoding defaults. Block templates mark their images
+    //    lazy; the first visual image overrides that, since a lazy LCP
+    //    image waits for layout before it starts loading.
+    if (isLeading && attrs.loading === 'lazy') attrs.loading = 'eager';
     if (!('loading' in attrs)) attrs.loading = isLeading ? 'eager' : 'lazy';
     if (!('decoding' in attrs)) attrs.decoding = 'async';
-    if (isLeading && !('fetchpriority' in attrs)) attrs.fetchpriority = 'high';
+    if (isLeading && attrs.loading !== 'lazy' && !('fetchpriority' in attrs)) attrs.fetchpriority = 'high';
+    // High priority on a lazy image contradicts itself; lazy wins.
+    if (attrs.loading === 'lazy' && attrs.fetchpriority === 'high') delete attrs.fetchpriority;
 
     // 2. width/height + alt injection from Media lookup.
     const src = attrs.src;
@@ -233,6 +244,48 @@ export function lintBodyForSeo(html: string): string[] {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
 
+/** Logo blocks whose images are never a page's largest paint. */
+const LOGO_BLOCK = /<[a-z][^>]*\bdata-block="(?:logo_item|logo_grid|logo_cloud|site_logo|logo)"[^>]*>(?:(?!<\/?(?:div|section|figure|li)\b)[\s\S])*$/i;
+
+/**
+ * Whether an <img> can be the largest contentful paint: not a logo block's
+ * image, not explicitly decorative-small (both dimensions 96 px or less), and
+ * not hidden from everyone.
+ */
+function isLcpCandidate(attrs: Record<string, string | undefined>, html: string, offset: number): boolean {
+  const width = Number(attrs.width), height = Number(attrs.height);
+  if (width > 0 && height > 0 && width <= 96 && height <= 96) return false;
+  if (attrs.hidden !== undefined) return false;
+  if (/\b(?:site-logo|block-logo-link|tr-logo)\b/.test(attrs.class ?? '')) return false;
+  const before = html.slice(Math.max(0, offset - 600), offset);
+  if (/class="[^"]*\bblock-logo-link\b[^"]*"[^>]*>\s*$/i.test(before)) return false;
+  return !LOGO_BLOCK.test(before);
+}
+
+/**
+ * The background image of the page's first section, when that section shows
+ * one, so the head can preload it. Only the opening tags before the first
+ * heading, paragraph or image count: a background further down the page is not
+ * above the fold. Hero blocks show their background only in the full-image
+ * layout and CTA blocks only in the background position.
+ */
+export function leadingBackgroundImage(html: string | null | undefined): string | null {
+  if (!html) return null;
+  const firstContent = html.search(/<(?:h[1-6]|p|img|picture|video|iframe)\b/i);
+  const head = firstContent === -1 ? html.slice(0, 20_000) : html.slice(0, firstContent);
+  for (const tag of head.matchAll(/<[a-z][a-z0-9-]*\b[^>]*\bdata-block="([a-z_-]+)"[^>]*>/gi)) {
+    const kind = tag[1]!.toLowerCase();
+    const style = tag[0].match(/\bstyle="([^"]*)"/i)?.[1] ?? '';
+    const url = style.match(/--bg-image:url\(([^)]*)\)/)?.[1]?.trim().replace(/^(['"])(.*)\1$/, '$2').replace(/&amp;/g, '&') ?? '';
+    if (!url || /^(?:data|javascript):/i.test(url)) continue;
+    const shown = kind === 'container' || kind === 'semantic-container'
+      || (kind === 'hero' && style.includes('--layout:full-image'))
+      || (kind === 'cta' && /\bdata-image-pos="background"/i.test(tag[0]));
+    if (shown) return url;
+  }
+  return null;
+}
+
 function parseAttrs(raw: string): Record<string, string | undefined> {
   const out: Record<string, string | undefined> = {};
   // Quoted, then unquoted, then bare boolean.
@@ -240,9 +293,21 @@ function parseAttrs(raw: string): Record<string, string | undefined> {
   let m: RegExpExecArray | null;
   while ((m = re.exec(raw)) !== null) {
     const key = m[1].toLowerCase();
-    out[key] = m[2] ?? m[3] ?? m[4] ?? '';
+    // Values are stored decoded and escaped once by formatAttr, so a URL
+    // with `&amp;` keeps a single encoding however often the transform runs.
+    out[key] = decodeAttr(m[2] ?? m[3] ?? m[4] ?? '');
   }
   return out;
+}
+
+function decodeAttr(v: string): string {
+  if (!v.includes('&')) return v;
+  return v.replace(/&(#x[0-9a-f]+|#[0-9]+|amp|quot|apos|lt|gt);/gi, (entity, name: string) => {
+    const lower = name.toLowerCase();
+    if (lower.startsWith('#x')) return String.fromCodePoint(parseInt(lower.slice(2), 16));
+    if (lower.startsWith('#')) return String.fromCodePoint(parseInt(lower.slice(1), 10));
+    return ({ amp: '&', quot: '"', apos: "'", lt: '<', gt: '>' } as Record<string, string>)[lower] ?? entity;
+  });
 }
 
 function serializeImg(attrs: Record<string, string | undefined>): string {

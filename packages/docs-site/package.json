@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "prebuild": "npm run sync:extension-schema",
+    "prebuild": "npm run sync:extension-schema && npm run check:skill-pages",
     "build": "astro build",
     "preview": "astro preview",
     "check": "npm run check:extension-schema && astro check",
@@ -15,7 +15,9 @@
     "postbuild": "node scripts/write-agent-docs.mjs && node scripts/check-built-docs.mjs",
     "build:subdirectory": "node scripts/build-subdirectory.mjs",
     "prepare:migration": "node scripts/prepare-migration.mjs",
-    "test": "node --test scripts/agent-docs.test.mjs"
+    "test": "node --test scripts/*.test.mjs",
+    "generate:skill-pages": "node scripts/generate-skill-pages.mjs",
+    "check:skill-pages": "node scripts/generate-skill-pages.mjs --check"
   },
   "dependencies": {
     "@astrojs/starlight": "^0.41.10",
@@ -31,5 +33,5 @@
     "prettier": "^3.5.0",
     "prettier-plugin-astro": "^0.14.0"
   },
-  "description": "Typeroll CMS documentation – guides for editing, publishing, integrations and self-hosting."
+  "description": "Typeroll CMS documentation \u2013 guides for editing, publishing, integrations and self-hosting."
 }

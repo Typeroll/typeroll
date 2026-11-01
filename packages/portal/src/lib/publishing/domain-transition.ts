@@ -13,6 +13,8 @@ import { assertPublishingReady } from './readiness';
 import { ConnectionError } from './connections';
 import { readDomainCutover } from './domain-cutover-journal';
 import { assertHostChecks, siteHostChecks } from './host-checks';
+import { assertIndexableLaunch, indexableSettings } from './launch-robots';
+import { vstore } from '../version-store';
 
 /**
  * Whether a "distributing" switch has already ended: its job finished and no traffic journal is
@@ -47,8 +49,13 @@ export async function prepareDomainTransition(orgId: string, siteId: string, inp
   if (domains.revision !== input.revision) throw new ConnectionError('Domain settings changed. Reload before preparing.', 409, 'domain_revision_conflict');
   if (domains.state === 'distributing') throw new ConnectionError('The traffic switch is already in progress.', 409, 'domain_cutover_in_progress');
   if (!target?.last_publication?.snapshot_job_id) throw new ConnectionError('Publish the site once before preparing a domain-only change. Normal publication uses the current or temporary address.', 409, 'first_publication_required');
+  // Authored noindex/nofollow would hide the launched site; only an explicit allow_noindex_launch keeps it.
+  // confirm_disable_noindex turns it off and builds a new, indexable candidate instead.
+  const clearNoindex = (await assertIndexableLaunch(orgId, siteId, domains, input, { disable: true })).length > 0;
+  // The deliberate choice to launch hidden is kept on the preparation job, so approval honours it too.
+  const hidden = input.allow_noindex_launch === true;
   const candidateJob = jobs.find(job => job.id === domains.candidate?.job_id && job.status === 'running' && (job as any).git_publication?.publication_id === domains.candidate?.id);
-  if (candidateJob && !['live', 'failed', 'outdated'].includes(domains.state) && domains.published?.publication_id === domains.candidate?.id && domains.candidate?.id === target.last_publication.publication_id && domains.candidate && domains.candidate.revision === domainPublicationRevision(domains) && domains.preparation && domains.desired.website_host) {
+  if (candidateJob && !clearNoindex && !['live', 'failed', 'outdated'].includes(domains.state) && domains.published?.publication_id === domains.candidate?.id && domains.candidate?.id === target.last_publication.publication_id && domains.candidate && domains.candidate.revision === domainPublicationRevision(domains) && domains.preparation && domains.desired.website_host) {
     const group = await siteHostingGroup(orgId, siteId);
     const publication = (candidateJob as any).git_publication;
     const refresh = async (prepared: NonNullable<DomainConfiguration['preparation']>) => {
@@ -70,20 +77,32 @@ export async function prepareDomainTransition(orgId: string, siteId: string, inp
       { preparation, media_preparation: media, previous_host_preparations: previousPreparations, redirect_preparations: redirects.length ? redirects : null,
         state: redirects.some(item => redirectApprovalBlocker(item)) || (preparation.validation_blocker && !validationWindowAllowed(preparation)) || (!preparation.certificate_ready && preparation.has_existing_traffic !== false && !validationWindowAllowed(preparation)) || (media && !media.certificate_ready && media.has_existing_traffic !== false) ? 'preparing' : 'ready_to_switch' });
     if (!changed) throw new ConnectionError('Domain settings changed. Reload before preparing.', 409, 'domain_revision_conflict');
+    if (hidden) await store.updateDoc(paths.deploy(orgId, siteId, candidateJob.id), { allow_noindex_launch: true });
     return { job_id: domains.candidate.job_id ?? null, already_running: false, reused_candidate: true, candidate_id: domains.candidate.id };
   }
-  const existing = domains.state !== 'outdated' && domains.published?.publication_id === domains.candidate?.id && domains.candidate?.id === target.last_publication.publication_id
+  const existing = !clearNoindex && domains.state !== 'outdated' && domains.published?.publication_id === domains.candidate?.id && domains.candidate?.id === target.last_publication.publication_id
     ? jobs.find(job => job.id === domains.candidate?.job_id && ['queued', 'running'].includes(job.status)) : null;
-  if (existing) return { job_id: existing.id, already_running: true };
+  if (existing) {
+    if (hidden) await store.updateDoc(paths.deploy(orgId, siteId, existing.id), { allow_noindex_launch: true });
+    return { job_id: existing.id, already_running: true };
+  }
   const active = jobs.find(job => job.version_id === 'main' && ['queued', 'running'].includes(job.status) && job.phase !== 'awaiting domain cutover approval');
   if (active) return { job_id: active.id, already_running: true };
   // A host Cloudflare cannot serve (apex outside an active zone, pending zone) fails here, not after a build.
   assertHostChecks(await siteHostChecks(orgId, siteId, domains));
   await assertPublishingReady(orgId, siteId);
+  if (clearNoindex) {
+    // Later publications stay indexable too. The candidate itself is cleared by the job flag below,
+    // because a domain-only build republishes the frozen snapshot rather than current settings.
+    const settings = ((await vstore.settings(orgId, siteId, 'main')) ?? {}) as Record<string, unknown>;
+    const cleared = indexableSettings(settings);
+    if (!cleared) throw new ConnectionError('scripts_head contains a robots noindex tag that Typeroll cannot remove precisely. Remove it in Site settings, publish, then prepare the domain change.', 409, 'candidate_noindex_head');
+    await vstore.writeSettings(orgId, siteId, 'main', { sitewide_noindex: false, sitewide_nofollow: false, ...cleared.scripts_head !== settings.scripts_head ? { scripts_head: cleared.scripts_head as string } : {} });
+  }
   const jobId = await store.addDoc(paths.deploys(orgId, siteId), { version_id: 'main', environment: 'production', status: 'queued', started_at: new Date().toISOString(),
     triggered_by: 'domain preparation', publication_intent: 'domain_prepare', domain_revision: domainPublicationRevision(domains),
-    source_publication: target.last_publication });
+    source_publication: target.last_publication, ...clearNoindex ? { clear_authored_noindex: true } : {}, ...hidden ? { allow_noindex_launch: true } : {} });
   try { await getDeployQueue().enqueue({ orgId, siteId, jobId, versionId: 'main', environment: 'production' }); }
   catch { await store.updateDoc(paths.deploy(orgId, siteId, jobId), { status: 'failed', phase: 'enqueue_failed', finished_at: new Date().toISOString(), error: 'Could not queue domain preparation. Retry from Publishing.' }); throw new ConnectionError('Could not queue domain preparation. Retry from Publishing.', 502); }
-  return { job_id: jobId, already_running: false };
+  return { job_id: jobId, already_running: false, ...clearNoindex ? { noindex_disabled: true } : {} };
 }

@@ -1,0 +1,108 @@
+---
+title: Export and backup
+description: Download a site's complete content as JSON, mirror its media, build it yourself with the open-source renderer, and back up a whole self-hosted installation.
+---
+
+Your content stays yours. Every site can be exported at any time, including
+during a read-only period after a Cloud trial, and the export builds with the
+open-source renderer without Typeroll Cloud. A self-hosted installation also
+has an encrypted backup of everything.
+
+## What the content export contains
+
+The export is a zip file with the site's content as JSON:
+
+- Site settings, Pages, Content types, Page templates and partials.
+- Forms, redirects, block types and the media records.
+- `export-manifest.json` with the export's format version, the site and
+  version, the time, and a flat list of every media URL, including image
+  variants.
+
+The files use the same layout the open-source site renderer builds from, under
+`organizations/<organization>/sites/<site>/`.
+
+Not included:
+
+- **Media files themselves.** They stay in your media storage; the manifest
+  lists their addresses so you can download them.
+- **Form submissions, API keys and integration secrets.**
+- **Revision history, users and Organization settings.**
+
+A generated Git repository used for publishing is not a backup of the CMS.
+
+## Download an export
+
+- **Portal:** **Site settings → Advanced → Export your content → Download
+  content export**.
+- **API:** with a key that has admin permission on the site:
+
+  ```bash
+  curl -H "Authorization: Bearer $TYPEROLL_API_KEY" -o site-export.zip \
+    https://app.typeroll.com/api/v1/sites/<siteId>/export
+  ```
+
+  Add `?version=<id>` to export a branch as it would be published. For a
+  self-hosted portal, use its address instead of `app.typeroll.com`.
+
+Exports need admin permission: editors and Organizations a site is shared with
+at read or write level cannot download one.
+
+## Mirror the media
+
+The manifest's media list is enough for a simple download script, for example:
+
+```bash
+unzip site-export.zip -d site-export
+mkdir -p media && cd media
+node -e "for (const url of require('../site-export/export-manifest.json').media_urls) console.log(url)" \
+  | xargs -n 1 curl -fsSLO
+```
+
+`curl -O` names each file after the last part of its address. Keep the
+manifest with the files so each one can be matched to its original address.
+
+## Build the site from an export
+
+The export is a working local site for the open-source renderer in
+[Typeroll/typeroll](https://github.com/typeroll/typeroll):
+
+```bash
+git clone https://github.com/typeroll/typeroll
+cd typeroll
+npm ci
+TYPEROLL_FIXTURES_DIR=/path/to/site-export \
+TYPEROLL_ORG_ID=<organization> TYPEROLL_SITE_ID=<site> \
+TYPEROLL_SITE_URL=https://www.example.com \
+npm run build --workspace=@typeroll/site-template
+```
+
+The result is a static site in `packages/site-template/dist`. Images keep
+pointing at your media storage until you mirror them and change their
+addresses.
+
+## Regular backups
+
+- **Typeroll Cloud:** schedule the export API, for example nightly, and store
+  the zip files and mirrored media where your other backups live. The
+  published website and its media already live in your own Cloudflare account.
+- **Self-hosted:** the operator's backup covers every site, user and media file
+  in one encrypted snapshot, with a verified restore. See
+  [Backups and disaster recovery](../self-hosting/#backups-and-disaster-recovery).
+  Test a restore at least quarterly.
+
+## Leaving Typeroll Cloud
+
+Published static sites stay on your hosting account when Cloud access ends; see
+[Cloud trial and access](../cloud-trial/). Download the export during the
+read and export period, then build it yourself as above or recreate it in
+another Typeroll installation.
+
+There is no import of an export zip into another site through the portal or
+API. A self-hosted operator can place the exported files in the installation's
+data store, or an AI agent can recreate the content through the API.
+
+## Check it
+
+- Open `export-manifest.json` and confirm the site, version and export time.
+- Count the Pages in the export against the site's page list.
+- Build the export locally and open a few pages.

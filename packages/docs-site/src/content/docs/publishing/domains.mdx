@@ -31,6 +31,10 @@ permissions, publishing prerequisites, redirect capacity and candidate together.
 Saving an address is **not** a traffic switch. The card shows the current phase
 and only reports **Live and verified** after public checks succeed.
 
+While a prepared switch waits for your DNS approval, it does not occupy the
+organization's build engine. `read_organization_build_engine` lists it under
+`awaiting_approval`, not `active_jobs`, and other Sites may publish meanwhile.
+
 1. Save the future website/media addresses. This only records intent: it does
    not rebuild, replace the current site or change DNS. Redirect-only changes
    retain the main artifact but require refreshed checks and renewed DNS approval.
@@ -214,6 +218,32 @@ Normal publication remains available while DNS waits. It retains the new
 addresses and refreshes the main receipt. Read the latest receipt before approval;
 a stale approval is rejected. See [publication destination](../../guides/customer-publishing/#future-hosts-and-the-publication-destination).
 
+### A site set to noindex cannot launch by accident
+
+You do not need `sitewide_noindex` while a site is built or migrated on its
+temporary address: Typeroll already blocks indexing there with
+`X-Robots-Tag: noindex`, and that block ends when the site moves to its own
+website host.
+
+Once a website host is saved, the domain check reports the blocker
+`candidate_noindex` when search engines would still be told to skip the site:
+`sitewide_noindex` or `sitewide_nofollow` in Site settings, a robots `noindex`
+meta tag in `scripts_head`, or the same in the last publication or the prepared
+candidate. `next_action` is then `resolve_noindex`, and the migration launch
+check is not ready. Preparing and approving the change fail with HTTP 409 and
+`candidate_noindex`. The domain guide in Publishing offers both choices:
+
+- **Launch indexable (usual):** **Turn off noindex and publish for the new
+  domain**, or prepare with `confirm_disable_noindex: true`. This turns off
+  `sitewide_noindex` and `sitewide_nofollow` in Site settings, removes `noindex`
+  and `nofollow` from a robots meta tag in `scripts_head` (other directives
+  stay), and builds the candidate indexable in the same step, with no separate
+  publication. If the robots tag cannot be changed precisely, preparation stops
+  with `candidate_noindex_head`; remove the tag in Site settings and publish first.
+- **Launch hidden on purpose:** **Keep it hidden on purpose**, or prepare with
+  `allow_noindex_launch: true`, for example for an intranet-like site. The
+  choice is stored with the preparation, so approval accepts it without the flag.
+
 Because the candidate rebuilds the last publication exactly, preparation stops
 with HTTP 409 and `media_svg_unsanitized` when that publication still contains
 an SVG stored before Typeroll sanitized SVG files (Core 0.2.113). Publish the
@@ -288,3 +318,11 @@ From Core 0.2.120, opening Publishing or checking the domain guide probes the
 previous addresses again. A warning captured before a redirect propagated can
 therefore become verified without another publication. A failed network check
 is reported as pending; it never changes DNS or redirect rules.
+
+## Check it
+
+After the switch, `poll_domain` reports the domain as verified,
+`check_site_indexing` shows the expected robots policy for the new address, and
+the [launch readiness report](../../guides/launch-checklist/#ai-crawler-zone-conflict)
+can compare the AI crawler setting with the domain's Cloudflare zone. For a
+migration, run `verify_migration_urls` against the real domain as well.

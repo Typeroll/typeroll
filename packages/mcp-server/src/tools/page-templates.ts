@@ -5,8 +5,8 @@ const fields = {
   blocks: z.array(z.any()).optional(), status: z.enum(['draft', 'published']).optional(),
 };
 export const pageTemplateTools: ToolDef[] = [
-  { name: 'get_composition_starter', description: 'Read one native editable starting block tree without saving. Choose a Page template, header/footer or archive. Replace sample navigation and map profile field_list fields before saving with the normal Page/template/partial tools. Existing content is never replaced by this read.', inputSchema: {
-    kind: z.enum(['header', 'footer', 'archive', 'custom', 'article', 'blog', 'checklist', 'team', 'events', 'products', 'profile', 'landing']),
+  { name: 'get_composition_starter', description: 'Read one native editable starting block tree without saving. Choose a Page template, header/footer or archive, or a Page body for a common marketing page: feature_page, comparison_page (with a comparison table), integration_page, pricing_page (plan table and plan comparison) or use_case_page. Page bodies go into create_page/update_page blocks; replace every [bracketed placeholder] and remove sections you have no real content for. Replace sample navigation and map profile field_list fields before saving with the normal Page/template/partial tools. Existing content is never replaced by this read.', inputSchema: {
+    kind: z.enum(['header', 'footer', 'archive', 'custom', 'article', 'blog', 'checklist', 'team', 'events', 'products', 'profile', 'landing', 'feature_page', 'comparison_page', 'integration_page', 'pricing_page', 'use_case_page']),
     content_type: z.string().optional(), title: z.string().optional(), version: versionParam,
   }, handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, 'composition-starters', args))) },
   { name: 'list_page_templates', description: 'List reusable Page templates in the selected version, including inherited templates.', inputSchema: { version: versionParam },

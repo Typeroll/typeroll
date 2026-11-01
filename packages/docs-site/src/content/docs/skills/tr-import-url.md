@@ -1,0 +1,235 @@
+---
+title: "Import content from a non-WordPress site"
+description: "Use when the user wants to import or migrate content from a non-WordPress website — a Squarespace site, a Wix site, a static HTML site, a Webflow export, or any URL the user points at. Also triggers on \"copy content from\", \"rebuild this site\", \"import from Squarespace/Wix/Webflow\", or \"make it look like this site\". For WordPress sources use tr-migrate-wp instead."
+editUrl: "https://github.com/typeroll/typeroll/edit/main/packages/mcp-server/skills/tr-import-url.md"
+sidebar:
+  label: "Import from URL"
+  order: 22
+---
+
+<!-- Generated from packages/mcp-server/skills/tr-import-url.md by scripts/generate-skill-pages.mjs. Edit the skill, not this page. -->
+
+This is the `tr-import-url` recipe exactly as the Typeroll MCP server gives it to agents through `list_skills` and `read_skill`. See [Skills and recipes](../overview/) for how agents load recipes.
+
+**Who runs this:** this recipe is for the user's own AI agent (Claude Code, Codex or
+another MCP client) working through MCP and the public API. The portal's built-in
+AI assistant has no migration tools: it does not import, convert or verify sites.
+
+**Before import or reconstruction:** read `tr-migration-evidence` with
+`read_skill`. Choose preserve or renew independently for text and design/images,
+record text_intent and design_intent in the brief and verify one prototype per active template before bulk writes.
+Use standard blocks first, reviewed custom types next, rare documented HTML last.
+All four combinations must preserve or meaningfully redirect every old public URL. That
+shared contract defines acceptance; this recipe only adds source-specific steps.
+
+
+> **The buffer model (draft writes).** Every content write in this recipe
+> (pages, blocks and partials) lands in an unsaved per-doc
+> DRAFT — deploys and plain previews only see SAVED content. For recipe-style
+> build work, pass `save: true` on write calls (the work is pre-approved by
+> the task itself), or run `commit_working_copy` per doc before any
+> `trigger_deploy`. Preview your drafts with `include_working_copy: true`.
+
+
+## When to use this vs tr-migrate-wp
+
+| Source | Use |
+|---|---|
+| WordPress with `/wp-json` accessible | `tr-migrate-wp` |
+| WordPress with REST disabled | This skill (scrape HTML) |
+| Squarespace, Wix, Webflow, static HTML | This skill |
+| CSV / spreadsheet data | This skill (skip scraping, just parse) |
+| Any URL the user points at | This skill |
+
+## Preconditions
+
+- Target Site and Version are selected through OAuth or a scoped API key.
+- Run `get_import_readiness` before importing content or media; verify the
+  Organization storage first. Build shared header/footer against the chosen brief.
+- Source URL(s) accessible (check with a quick `fetch`; if blocked, mention
+  it and ask the user for an HTML export or screenshot).
+
+## Recipe
+
+### 1. Inventory the source site
+
+Fetch the homepage and build a URL list:
+
+```
+fetch <source-url>                    # root HTML
+fetch <source-url>/sitemap.xml        # XML sitemap if it exists
+```
+
+Parse `<a href>` links to discover internal pages. Build a list:
+- Homepage
+- Top-level pages (About, Services, Contact, etc.)
+- Any sub-pages that look important
+
+Exclude private/session/admin URLs deliberately. Inventory public pagination and
+query routes and keep them working or map relevant redirects. Do not silently retire public routes.
+
+**Map source styling to named styles.** A class the source uses for a
+recurring treatment (`.eyebrow`, `.lead`, `.btn-outline`, `.section-dark`)
+becomes a site style with `create_style` and is applied with `style_id`. A
+small label directly above a heading is an eyebrow style, not a heading of its
+own: put it in the heading block's `eyebrow` field (and a line under the
+heading in `subtitle`). Never carry classed raw HTML into text blocks to keep a
+look: the editor cannot edit it, and the next render version may not keep it.
+Build such sections with heading, text, image and button blocks; Typeroll does
+not convert HTML into blocks.
+
+### 2. Measure the source and protect existing target work
+
+```
+read_site_settings
+read_partial partial_id="header"
+list_pages limit=5
+```
+
+Read existing target data to avoid overwriting work. Compare prototypes to the
+source when design_intent is preserve, or to the agreed new design when it is renew. Review text separately. Validate
+standard/custom blocks using `tr-migration-evidence` before mass writes.
+
+### 3. Fetch and clean each source page
+
+For each URL:
+
+**a. Fetch the HTML.**
+```
+fetch <page-url>
+```
+
+If the site returns a bot-block (Cloudflare, 403, or clearly JS-only
+SPA output), note it. Tell the user: "This page blocked direct fetching.
+Can you provide the page source or an HTML export?"
+
+**b. Extract the main content.**
+
+Inventory shared navigation/header/footer, consent and runtime features first;
+map them to reusable partials or supported runtimes before excluding them from
+individual Page bodies.
+Keep: `<main>`, `<article>`, the largest content region.
+
+Clean the HTML:
+- Strip platform-specific classes: `sqsrte-*`, `wf-*`, `et_*`,
+  `elementor-*`, `fl-*`, `divi-*`, `vc_*`
+- Remove empty `<div>`, `<span>`, `<section>` wrappers (no class, no content)
+- Unwrap redundant nesting: `<div><p>text</p></div>` → `<p>text</p>`
+- Keep: `<h1>`–`<h6>`, `<p>`, `<ul>`, `<ol>`, `<img>`, `<a>`, `<table>`,
+  `<blockquote>`, `<figure>`, `<figcaption>`, `<strong>`, `<em>`
+- Fix headings: ensure exactly one `<h1>` per page (the page title)
+
+**c. Transfer images.** For each `<img src>`:
+```
+upload_media_from_url url="<source-img-url>" alt="..."
+```
+Replace the src with the returned CDN URL. Classify tracking pixels separately. Preserve meaningful decorative images and
+icons. A required file that fails transfer blocks acceptance; do not silently
+omit it. Inventory PDFs, download hrefs, srcsets and backgrounds as well.
+
+**d. Adapt to the target's design.**
+Use standard blocks first, then reusable custom types with editable fields.
+Review appearance and text independently according to design_intent and text_intent;
+compare each preserved dimension to the source and each renewed dimension to its approved brief. Raw HTML is the documented last resort.
+
+### 4. Create pages as drafts
+
+```
+create_page title="Om oss" slug="om-oss"
+            path="/om-oss/" blocks=[<reviewed block tree>]
+            content_mode="blocks" status="draft"
+            seo_title="Om oss — Acme"
+            seo_description="..."
+```
+
+Always draft first. The user signs off before publishing.
+
+### 5. Handle redirects
+
+If the source URLs differ from the target slugs, create redirects:
+
+```
+create_redirect from_path="/about" to_path="/om-oss"
+create_redirect from_path="/services.html" to_path="/tjanster"
+```
+
+### 6. Preview with the user
+
+```
+get_preview_link
+```
+
+Walk through every imported page with the user. Common issues:
+- Heading hierarchy wrong (two H1s, or H3 used where H2 belongs)
+- Images missing alt text
+- Squarespace column layouts that don't work without their grid system
+- Embedded forms or maps that need re-setup
+
+### 7. Publish + deploy
+
+After approval, save working copies and confirm publishing readiness:
+```
+batch_update_pages updates=[
+  {page_id: "om-oss",  patch: {status: "published"}},
+  {page_id: "tjanster", patch: {status: "published"}}
+]
+trigger_deploy
+get_deploy_status job_id=<id>
+verify_migration_urls
+get_migration_launch_report
+```
+
+This is candidate verification, not permission to change traffic DNS. Every old
+public URL must serve its content or a relevant redirect before cutover.
+
+## Platform-specific notes
+
+### Squarespace
+- Main content is inside `.content-wrapper` or `[data-section-theme]` blocks
+- Portfolio images are usually high-resolution originals in `/universal/images/`
+- JSON-LD is Squarespace's own schema — strip it
+- Gallery blocks → standard image/gallery layouts, or a reusable custom type
+
+### Wix
+- Wix sites are React SPAs — `fetch` returns an empty shell
+- Ask the user for the Wix site's "Export to HTML" (available in some plans)
+  or take screenshots for reference
+- Best path: get content from the user (text + image files), rebuild clean
+
+### Webflow
+- Usually fetchable; clean output
+- Classes like `w-container`, `w-row`, `w-col-*` can be stripped
+- Webflow CMS items are server-rendered — they appear in the HTML
+
+### Static HTML / old sites
+- Often the cleanest import. Fetch, strip nav/footer, keep body.
+- Rebuild table-based layouts with layout blocks; keep actual tabular data as tables
+
+## Pitfalls
+
+- **Don't import `<style>` blocks from the source site.** They reference
+  external fonts, resets, and classes that don't exist in the target.
+  Strip all `<style>` tags from source HTML and rewrite styles in the
+  target's conventions.
+- **Don't break the single-H1 rule.** Many source sites have no H1 or
+  several. Fix it.
+- **Squarespace/Wix forms.** They won't work after import — the backend
+  is vendor-locked. Create a Typeroll form instead: `create_form`.
+- **Scripts and tracking.** Never copy the source's JavaScript. Carry
+  analytics and advertising tags (GA4, GTM, Meta Pixel and others) over by
+  ID in the Integrations app, with the cookie banner enabled so they wait for
+  consent; never paste the vendor snippet into `scripts_head`. See
+  tr-migration-evidence, "Scripts, tracking and consent".
+- **Videos.** YouTube/Vimeo embeds are fine (`<iframe>` is allowed).
+  Hosted MP4s need re-uploading if the source URL won't persist.
+
+## Storage prerequisite
+
+Before reading or importing source content, call `get_import_readiness` (Core
+0.1.95 / MCP 0.44.68 or later). If `ready` is false, stop the import and show the
+returned message and Publishing settings link. The organization must connect
+and verify its own storage first. Do not fall back to draft storage, hotlink
+source images, or use ordinary page-write tools to bypass the import gate.
+Use `upload_media_from_url` for referenced source images; the customer’s
+Cloudflare transfer Worker copies and verifies them directly in R2, independently
+of the GitHub/Cloudflare build-provider choice.

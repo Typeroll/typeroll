@@ -149,6 +149,10 @@ fonts (`.woff`, `.woff2`).
   `render.php.png`. The response's `filename` is the stored name. Types outside
   the table return HTTP 415 with `media_type_unsupported`, and nothing is
   created.
+- A URL import with a `filename` names a new item. When the source URL matches
+  an item the site already has (copied, or an unfinished import of the same
+  URL), that item is returned with its existing name; rename it with
+  `update_media` if needed.
 - Renames are not corrected. `PATCH /api/v1/sites/{siteId}/media/{mediaId}`
   (`update_media`) and the Media library return HTTP 400 with
   `media_extension_mismatch` when a changed `filename` or `public_path` does not
@@ -208,6 +212,19 @@ Upload the hero image from https://unsplash.com/... as the OG image for the home
 
 The AI agent uses this when importing content from external sources (WordPress, Squarespace, etc.) to transfer images through Typeroll’s media storage.
 
+### Import rate
+
+`upload_media_batch_from_urls` runs four imports at a time, and the portal
+allows at most four concurrent transfers per source host. Each file costs a
+few seconds of fixed portal work plus the transfer itself: the Worker downloads
+the original, writes it to storage and reads it back to verify its checksum. The
+rate therefore depends mostly on file size and on how fast the source host
+answers. Web-sized images from a fast CDN typically import at 40–50 files a
+minute; large originals, slow hosts or hosts that throttle automated requests
+are slower. Network errors, 429 and 5xx answers are retried up to twice inside
+one call, so a call that succeeds may still have waited. Image preparation runs
+afterwards as its own job and is not part of this rate.
+
 ## `upload_media_from_base64`
 
 Uploads an image provided as a base64-encoded string. Useful when the image is generated locally or provided as a data URI.
@@ -227,6 +244,55 @@ the stricter import prerequisite.
 ## `list_media`
 
 Returns this site’s media assets with stable media URLs, filenames and sizes. A stable URL can identify a private original; it is not necessarily a public delivery URL.
+
+## `read_media`
+
+Reads one media item's metadata by `media_id`. Use it to check a single file,
+for example its alt text or variants, without listing the whole library.
+
+## `upload_media_inline`
+
+Uploads an image or PDF from base64 bytes: `filename`, `content_type`,
+`data_base64` and an optional `alt_text`. Use it only for files of a few
+kilobytes. Base64 text that passes through a model can be altered without an
+error, which leaves a file that uploads at the right size but renders broken.
+For anything larger, and always for SVG files, logos and generated images, use
+[direct file uploads](#direct-file-uploads-through-the-api) or
+[`upload_media_from_url`](#upload_media_from_url), then render the result
+before you reference it. Returns `media_id`, `cdn_url` and `filename`.
+
+## `finalize_media`
+
+Call after a successful direct upload of an image. It sets a one-year immutable
+`Cache-Control` on the stored original and generates AVIF and WebP variants if
+they are missing. It is safe to call twice. Pass `expected_sha256` (the SHA-256
+of your source file) so a corrupted transfer is rejected with HTTP 422 instead
+of being cached. The response includes the stored `sha256` and `size_bytes`.
+Truncated SVG files are rejected.
+
+## `finalize_all_media`
+
+Applies the same cache headers and variants to every item in the library that
+lacks them. Use it once on an older site. It runs synchronously, can take
+minutes on a large library and is idempotent.
+
+## `generate_image_variants`
+
+Regenerates the WebP and AVIF variants (320, 640, 1024 and 1920 pixels wide,
+never upscaled) for one image. Non-image files are skipped. Prefer
+`finalize_media` for new uploads; use this tool only to rerun variants.
+
+## `suggest_alt_text_context`
+
+Returns what an agent needs to write alt text for one image: the image URL, a
+prompt tuned for accessibility and search, the site language and the pages that
+use the image, with the nearest heading for each use. It does not generate the
+text. Your agent writes it and saves it with `update_media`.
+
+## `delete_media`
+
+Deletes a media item's record by `media_id`. Check where the file is used
+first; pages that still reference it lose the image.
 
 ## Media URLs
 

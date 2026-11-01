@@ -38,6 +38,8 @@ export interface InternalLinkReport {
   unpublished_targets: Array<{ from: string; href: string; resolved_path: string; page_id: string }>;
   routes: number;
   resources_scanned: number;
+  /** Resolved internal links by source, only with `includeLinks` (used for orphan-page checks). */
+  links?: Array<{ from: string; path: string }>;
 }
 
 interface LinkSource { label: string; value: unknown; basePath: string }
@@ -50,6 +52,7 @@ export async function checkInternalLinks(args: {
   siteId: string;
   versionId: string;
   site: Site & { id: string };
+  includeLinks?: boolean;
 }): Promise<InternalLinkReport> {
   const { store, orgId, siteId, versionId } = args;
   const [pages, partials, contentTypes, templates, redirects, media, settings] = await Promise.all([
@@ -113,6 +116,7 @@ export async function checkInternalLinks(args: {
   let validLinks = 0;
   let redirectedLinks = 0;
   const unique = new Set<string>();
+  const links: Array<{ from: string; path: string }> = [];
   for (const source of sources) {
     for (const href of new Set(extractHrefs(source.value))) {
       const parsed = internalPath(href, internalOrigins, source.basePath);
@@ -127,6 +131,7 @@ export async function checkInternalLinks(args: {
       if (resolved.ok) {
         validLinks++;
         if (resolved.redirected) redirectedLinks++;
+        else if (args.includeLinks) links.push({ from: source.label, path: parsed });
       } else if (drafts.has(resolved.path) && ['missing_route','broken_redirect'].includes(resolved.reason)) {
         unpublished.push({ from: source.label, href, resolved_path: resolved.path, page_id: drafts.get(resolved.path)! });
       } else {
@@ -146,6 +151,7 @@ export async function checkInternalLinks(args: {
     draft_sources: allPages.filter(page => page.status !== 'published' && page.status !== 'unlisted').map(page => `page:${page.id}`),
     routes: routes.size,
     resources_scanned: sources.length,
+    ...(args.includeLinks ? { links } : {}),
   };
 }
 

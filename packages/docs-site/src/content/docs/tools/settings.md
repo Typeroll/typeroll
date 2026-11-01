@@ -58,35 +58,69 @@ permission receives HTTP 403. Over REST this is
 
 ### Top-level fields
 
-| Field                      | Type     | Description                                                      |
-| -------------------------- | -------- | ---------------------------------------------------------------- |
-| `site_name`                | string   | Display name of the site                                         |
-| `tagline`                  | string   | Short description, used in SEO and the footer                    |
-| `language`                 | string   | BCP 47 language tag: `"sv"`, `"en"`, `"de"`, etc.                |
-| `logo`                     | string   | CDN URL for the site logo                                        |
-| `favicon`                  | string   | CDN URL for the favicon                                          |
-| `apple_touch_icon`         | string   | 180px Apple touch icon                                           |
-| `icon_192`                 | string   | 192px application icon                                           |
-| `default_seo_suffix`       | string   | Appended to page titles in `<title>`: `" — Acme Studio"`         |
-| `default_meta_description` | string   | Site-wide description fallback                                   |
-| `default_og_image`         | string   | Fallback `og:image` URL for pages without their own              |
-| `twitter_handle`           | string   | X/Twitter handle for `twitter:site`; a leading `@` is removed    |
-| `organization`             | object   | Organization JSON-LD; see [`organization`](#organization-object) |
-| `staging_url`              | string   | Staging environment URL, reported as `urls.staging`              |
-| `trailing_slash`           | string   | `always`, `never`, or `ignore`                                   |
-| `iframe_allowed_hosts`     | string[] | Exact hosts allowed in embedded content                          |
-| `image_sizes_default`      | string   | Default responsive-image `sizes` hint                            |
-| `robots_txt`               | string   | Full content of robots.txt                                       |
-| `sitewide_noindex`         | boolean  | Emit `noindex,nofollow` on every HTML page                       |
-| `scripts_head`             | string   | Trusted markup/scripts inserted in `<head>`                      |
-| `scripts_body_end`         | string   | Trusted markup/scripts inserted before `</body>`                 |
-| `custom_css`               | string   | Site-wide CSS                                                    |
-| `render_version`           | integer  | Platform render version; see [Render versions](#render-versions) |
+| Field                      | Type     | Description                                                                          |
+| -------------------------- | -------- | ------------------------------------------------------------------------------------ |
+| `site_name`                | string   | Display name of the site                                                             |
+| `tagline`                  | string   | Short description, used in SEO and the footer                                        |
+| `language`                 | string   | BCP 47 language tag: `"sv"`, `"en"`, `"de"`, etc.                                    |
+| `logo`                     | string   | CDN URL for the site logo                                                            |
+| `favicon`                  | string   | CDN URL for the favicon                                                              |
+| `apple_touch_icon`         | string   | 180px Apple touch icon                                                               |
+| `icon_192`                 | string   | 192px application icon                                                               |
+| `default_seo_suffix`       | string   | Appended to page titles in `<title>`: `" — Acme Studio"`                             |
+| `default_meta_description` | string   | Site-wide description fallback                                                       |
+| `default_og_image`         | string   | Fallback `og:image` URL for pages without their own                                  |
+| `twitter_handle`           | string   | X/Twitter handle for `twitter:site`; a leading `@` is removed                        |
+| `organization`             | object   | Organization JSON-LD; see [`organization`](#organization-object)                     |
+| `staging_url`              | string   | Staging environment URL, reported as `urls.staging`                                  |
+| `trailing_slash`           | string   | `always`, `never`, or `ignore`                                                       |
+| `iframe_allowed_hosts`     | string[] | Exact hosts allowed in embedded content                                              |
+| `image_sizes_default`      | string   | Default responsive-image `sizes` hint                                                |
+| `robots_txt`               | string   | Full content of robots.txt                                                           |
+| `ai_crawler_policy`        | string   | `allow_all` (default), `no_training` or `block_all`; see [AI crawlers](#ai-crawlers) |
+| `sitewide_noindex`         | boolean  | Emit `noindex,nofollow` on every HTML page                                           |
+| `scripts_head`             | string   | Trusted markup/scripts inserted in `<head>`                                          |
+| `scripts_body_end`         | string   | Trusted markup/scripts inserted before `</body>`                                     |
+| `custom_css`               | string   | Site-wide CSS                                                                        |
+| `render_version`           | integer  | Platform render version; see [Render versions](#render-versions)                     |
 
 An empty string clears `default_og_image`, `twitter_handle` and `staging_url`;
 `null` does too. `staging_url` is stored on the site rather than in versioned
 settings, so a branch cannot reroute it: it is written the same way whichever
 `version` you pass, and trailing slashes are dropped.
+
+### AI crawlers
+
+`ai_crawler_policy` states the site's preference for AI crawlers. It uses the
+[Content Signals](https://contentsignals.org) vocabulary that Cloudflare uses
+for its managed robots.txt, so the site and a Cloudflare zone describe the same
+choices in the same terms.
+
+| Value         | robots.txt and `Content-Signal` header  | Disallowed user agents                                                                                                                                                                                 |
+| ------------- | --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `allow_all`   | Nothing is added (the default)          | None                                                                                                                                                                                                   |
+| `no_training` | `search=yes, ai-input=yes, ai-train=no` | Training-only crawlers: GPTBot, ClaudeBot, Google-Extended, Applebot-Extended, CCBot, Bytespider, meta-externalagent, cohere-training-data-crawler, AI2Bot                                             |
+| `block_all`   | `search=yes, ai-input=no, ai-train=no`  | The training crawlers, plus AI search and user agents: OAI-SearchBot, ChatGPT-User, Claude-SearchBot, Claude-User, PerplexityBot, Perplexity-User, DuckAssistBot, MistralAI-User, meta-externalfetcher |
+
+- Googlebot, Bingbot and Applebot are never listed. They also index the site
+  for ordinary search, and blocking them removes it from search results.
+- The signal goes into the `User-agent: *` group of `/robots.txt`, after your
+  own `robots_txt` text is applied. A group you wrote for an agent yourself
+  wins: the policy does not add a second group for it.
+- Published Cloudflare Pages sites also send a `Content-Signal` response header
+  with the same value. Hosts that ignore the `_headers` file, such as a
+  self-hosted export served elsewhere, get the robots.txt lines only.
+- `null` resets the setting to `allow_all`. An Extension credential cannot
+  change it.
+
+robots.txt is a request that well-behaved crawlers follow, not access control.
+A Cloudflare zone can also have its own AI bot policy, which Cloudflare enforces
+at the edge regardless of robots.txt. If the zone blocks training crawlers,
+Cloudflare also blocks crawlers that do both search and training, such as
+Googlebot, which can remove the site from search. Keep the zone policy and this
+setting consistent, and turn off Cloudflare's managed robots.txt if you want
+the site's file to be the only one. The change applies when the site is
+published again.
 
 ### Form submission retention
 
@@ -265,10 +299,9 @@ settings route and MCP tool:
 ```
 
 The banner's heading, buttons, privacy link and settings label follow the
-page language (`Page.language`, otherwise the site `language`): Swedish
-(`sv`), Norwegian Bokmål (`nb`, `no`), German (`de`), Dutch (`nl`), Finnish
-(`fi`), French (`fr`), Polish (`pl`), Italian (`it`) and Spanish (`es`),
-otherwise English. The default `text`
+page language (`Page.language`, otherwise the site `language`) in the 50
+languages listed under [built-in interface text](../blocks/library/#built-in-interface-text),
+for example French, Japanese, Arabic and Chinese, otherwise English. The default `text`
 follows the same rule. A publication for another language reports the wording
 that falls back to English in its job `warnings`. Set `labels` only to replace that wording, for example for another
 language. Its keys are `title`, `reject`, `necessary`, `accept_all`,
@@ -451,20 +484,20 @@ sites start on the latest version.
 The preview reflects the change at once; the live site changes at the next
 deploy. Sites created before render versions existed render with version 1.
 
-| Version | What changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1       | Baseline: block markup and platform CSS as in Core 0.2.56.                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 2       | Heading eyebrow and subtitle are grouped with the heading (`<hgroup>`), take named styles and are never faded. A custom class on a heading or button block lands on the `<h2>` or link itself, so `.my-class .block-heading-text` becomes `.my-class`. Text on primary-coloured buttons is black or white, whichever reads better.                                                                                                                                                                 |
-| 3       | Theme tokens that blocks reference (`--color-bg`, `--color-bg-subtle`, `--color-border`, `--color-secondary-fg`) come from the site palette. Subtle panels such as table headers, code and tabs use the Surface colour instead of a fixed light grey, borders stay visible on dark backgrounds, and text on secondary-coloured buttons is black or white, whichever reads better.                                                                                                                  |
-| 4       | Lists in core blocks render: accordion items (with **Default open**), pricing plan features and team member social links. An icon without a link no longer sits in an empty link, a team member card is a link only when it has one, and a container set to link without an address renders as a plain container, so icons and cards work inside linked items.                                                                                                                                     |
-| 5       | Multi-step forms: the button reads "Continue" ("Fortsätt" on Swedish sites) on every step but the last, which keeps the form's submit text; a "Back" button returns to the previous step with the answers kept; a step that starts with a form heading no longer also shows its step title. See [Multi-step forms](../forms/#multi-step-forms).                                                                                                                                                    |
-| 6       | Text uses the browser's default font smoothing and text rendering. Earlier versions set `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every page, which on macOS draws dark text on a light background thinner and lighter than other sites at the same weight. Choose **Typography → Font smoothing → Antialiased** (`fonts.smoothing`) to keep the thinner rendering, for example for light text on a dark background; the choice applies on every version.  |
-| 7       | Video, ratings and carousels: `core/video` embeds YouTube (no-cookie) and Vimeo addresses and plays video files with poster, autoplay, loop, muted, controls and lazy loading; a hero plays a video file as a muted background with a pause button; a testimonial rating shows as stars; carousels get previous/next buttons, dots and optional autoplay with pause. Nothing moves for visitors who prefer reduced motion. See [Blocks](../blocks/#video-hero-video-and-ratings-render-version-7). |
-| 8       | Text on primary, secondary and accent (buttons, badges, tabs, call-to-action sections) is black or white by APCA instead of the WCAG 2 ratio. On mid-dark saturated colours such as teal, green or medium blue, near-black text becomes white, which reads better: white on `#00a19c` is APCA Lc 63.9 against Lc 44 for `#111827`. A text colour chosen in `colors.on_*` applies on every version and does not change. See [Text on theme colours](#text-on-theme-colours).                        |
-| 9       | A container with a shadow (`shadow: "subtle"` or `"header"`) is raised above the blocks after it (`position: relative; z-index: 10`), so the next block's background or image no longer covers the shadow, and menus that open from a shadowed header land above the next block. A sticky container keeps z-index 100. The container becomes the containing block of its absolutely positioned content. The header shadow is `0 2px 6px` instead of `0 2px 5px`. See [Blocks](../blocks/).         |
-| 10      | Fluid typography and spacing scales, proportional editorial heading margins, no role margin on component titles or opening headings, and a configurable prose measure.                                                                                                                                                                                                                                                                                                                             |
-| 11      | Editorial headings keep their rhythm inside columns and grids; navigation link groups keep 44px touch targets without an extra vertical gap.                                                                                                                                                                                                                                                                                                                                                       |
-| 12      | A container with width narrow, normal or wide inside a container that is a column at every breakpoint fills it up to its maximum width and stays centered, instead of shrinking to its content (an archive with one card is as wide as one with many). Column containers carry `data-column-only="true"`; rows are unchanged.                                                                                                                                                                      |
+| Version | What changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1       | Baseline: block markup and platform CSS as in Core 0.2.56.                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| 2       | Heading eyebrow and subtitle are grouped with the heading (`<hgroup>`), take named styles and are never faded. A custom class on a heading or button block lands on the `<h2>` or link itself, so `.my-class .block-heading-text` becomes `.my-class`. Text on primary-coloured buttons is black or white, whichever reads better.                                                                                                                                                                         |
+| 3       | Theme tokens that blocks reference (`--color-bg`, `--color-bg-subtle`, `--color-border`, `--color-secondary-fg`) come from the site palette. Subtle panels such as table headers, code and tabs use the Surface colour instead of a fixed light grey, borders stay visible on dark backgrounds, and text on secondary-coloured buttons is black or white, whichever reads better.                                                                                                                          |
+| 4       | Lists in core blocks render: accordion items (with **Default open**), pricing plan features and team member social links. An icon without a link no longer sits in an empty link, a team member card is a link only when it has one, and a container set to link without an address renders as a plain container, so icons and cards work inside linked items.                                                                                                                                             |
+| 5       | Multi-step forms: the button reads "Continue" ("Fortsätt" on Swedish sites) on every step but the last, which keeps the form's submit text; a "Back" button returns to the previous step with the answers kept; a step that starts with a form heading no longer also shows its step title. See [Multi-step forms](../forms/#multi-step-forms).                                                                                                                                                            |
+| 6       | Text uses the browser's default font smoothing and text rendering. Earlier versions set `-webkit-font-smoothing: antialiased` and `text-rendering: optimizeLegibility` on every page, which on macOS draws dark text on a light background thinner and lighter than other sites at the same weight. Choose **Typography → Font smoothing → Antialiased** (`fonts.smoothing`) to keep the thinner rendering, for example for light text on a dark background; the choice applies on every version.          |
+| 7       | Video, ratings and carousels: `core/video` embeds YouTube (no-cookie) and Vimeo addresses and plays video files with poster, autoplay, loop, muted, controls and lazy loading; a hero plays a video file as a muted background with a pause button; a testimonial rating shows as stars; carousels get previous/next buttons, dots and optional autoplay with pause. Nothing moves for visitors who prefer reduced motion. See [Blocks](../blocks/library/#video-hero-video-and-ratings-render-version-7). |
+| 8       | Text on primary, secondary and accent (buttons, badges, tabs, call-to-action sections) is black or white by APCA instead of the WCAG 2 ratio. On mid-dark saturated colours such as teal, green or medium blue, near-black text becomes white, which reads better: white on `#00a19c` is APCA Lc 63.9 against Lc 44 for `#111827`. A text colour chosen in `colors.on_*` applies on every version and does not change. See [Text on theme colours](#text-on-theme-colours).                                |
+| 9       | A container with a shadow (`shadow: "subtle"` or `"header"`) is raised above the blocks after it (`position: relative; z-index: 10`), so the next block's background or image no longer covers the shadow, and menus that open from a shadowed header land above the next block. A sticky container keeps z-index 100. The container becomes the containing block of its absolutely positioned content. The header shadow is `0 2px 6px` instead of `0 2px 5px`. See [Blocks](../blocks/).                 |
+| 10      | Fluid typography and spacing scales, proportional editorial heading margins, no role margin on component titles or opening headings, and a configurable prose measure.                                                                                                                                                                                                                                                                                                                                     |
+| 11      | Editorial headings keep their rhythm inside columns and grids; navigation link groups keep 44px touch targets without an extra vertical gap.                                                                                                                                                                                                                                                                                                                                                               |
+| 12      | A container with width narrow, normal or wide inside a container that is a column at every breakpoint fills it up to its maximum width and stays centered, instead of shrinking to its content (an archive with one card is as wide as one with many). Column containers carry `data-column-only="true"`; rows are unchanged.                                                                                                                                                                              |
 
 ## Site-specific responsive widths (Core 0.2.28)
 

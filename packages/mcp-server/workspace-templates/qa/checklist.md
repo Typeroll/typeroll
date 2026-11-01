@@ -28,6 +28,22 @@
 - Check publishing readiness and migration launch report. Passing technical
   validation does not prove visual/editorial completeness or grant launch approval.
 
+## Launch
+
+Run this before the first production publication, again after it, and after
+major changes. The report covers the whole site; it warns and never blocks.
+
+- [ ] Run `read_site_readiness` on the confirmed Site and Version.
+- [ ] Fix each `warning` and `suggestion` with the tool its `fix` names, or
+  record in decisions.md why it stays open. A missing default share image is a
+  suggestion; leave it when the owner chose to skip it.
+- [ ] Save the result as qa/launch-readiness.md: date, Site, Version, deployed
+  revision, each open item with its decision, and the next review date.
+- [ ] After publication, run it again. It reads saved content and settings, so
+  confirm in Search Console itself that the property is verified and the
+  sitemap is submitted, and record the date in brief/seo.md.
+- [ ] Keep `get_migration_launch_report` as the separate gate for migrations.
+
 Commands/dependencies/limits: scripts/README.md. Design: workflows/design.md.
 Follow existing owner authorization; test publication, traffic cutover and
 indexing have distinct effects but do not require repeated approval if covered.

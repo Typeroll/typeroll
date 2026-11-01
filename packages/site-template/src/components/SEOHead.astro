@@ -1,7 +1,8 @@
 ---
 import type { BreadcrumbItem, ContentType, Page, PostalAddress, SiteSettings } from '@typeroll/shared';
-import { socialMetadata, resolveAlternates, pageRobots, schemaDate, breadcrumbJsonLd as buildBreadcrumbJsonLd } from '@typeroll/shared';
-import { isVersionRobotsBlocked } from '../lib/content';
+import { socialMetadata, resolveAlternates, pageRobots, schemaDate, shareImageType, isSocialImageType, breadcrumbJsonLd as buildBreadcrumbJsonLd } from '@typeroll/shared';
+import { isVersionRobotsBlocked, urlFor } from '../lib/content';
+import { markdownPathFor } from '../lib/agent-pages';
 
 interface Props {
   page: Page;
@@ -18,9 +19,15 @@ interface Props {
    * the single place that has to know about </script> escaping.
    */
   extraJsonLd?: string[];
+  /**
+   * Media records by URL, used for the share image's width, height and type.
+   * Pages that rendered a body pass their tracked lookup so a partial build
+   * notices when the image changes.
+   */
+  mediaByUrl?: { get(url: string): { width?: number; height?: number; mime_type?: string } | undefined };
 }
 
-const { page, contentType, settings, extraJsonLd, breadcrumbs = [] } = Astro.props;
+const { page, contentType, settings, extraJsonLd, breadcrumbs = [], mediaByUrl } = Astro.props;
 const publishedDate = schemaDate(page.date_published);
 const modifiedDate = schemaDate(page.date_updated);
 
@@ -42,6 +49,14 @@ const canonical = page.canonical_url || new URL(Astro.url.pathname, Astro.site).
 const social = socialMetadata(page, settings, contentType, new URL(Astro.url.pathname, Astro.site).href);
 const ogImage = social.image;
 const ogImageAlt = social.imageAlt;
+// Size and type let networks lay out the card before fetching the image. A
+// non-raster image (SVG) is replaced by a PNG copy when the publication is
+// built (scripts/share-images.mjs), which writes these tags itself.
+const ogImageMedia = ogImage ? mediaByUrl?.get(ogImage) : undefined;
+const ogImageType = ogImage ? shareImageType(ogImage, ogImageMedia?.mime_type) : '';
+const ogImageMeta = ogImage && isSocialImageType(ogImageType)
+  ? { type: ogImageType, width: ogImageMedia?.width, height: ogImageMedia?.height }
+  : null;
 const language = page.language || settings.language || 'en';
 const locale = social.locale;
 
@@ -55,6 +70,14 @@ const alternates = resolveAlternates(page.alternates, canonical, language);
 // (branches default to blocked).
 const versionBlocked = await isVersionRobotsBlocked();
 const robots = pageRobots(page, settings, versionBlocked);
+
+function safeDecode(value: string): string { try { return decodeURI(value); } catch { return value; } }
+// The page's Markdown rendition for AI agents (see pages/[...mdpath]). Only
+// the page's own address carries it: not archive pages, facets or noindex.
+const ownPath = urlFor(page, settings.trailing_slash);
+const markdownHref = page.status === 'published' && !page.id.startsWith('facet--') && !/\bnoindex\b/.test(robots) && !settings.sitewide_noindex && (Astro.url.pathname === ownPath || safeDecode(Astro.url.pathname) === ownPath)
+  ? new URL(markdownPathFor(ownPath), Astro.site).toString()
+  : null;
 
 // Twitter site handle — used for both site and (in absence of an author
 // override) creator. Stored without the leading @.
@@ -193,6 +216,7 @@ const breadcrumbJsonLd = breadcrumbSchema();
 {alternates.map((a) => (
   <link rel="alternate" hreflang={a.hreflang} href={a.href} />
 ))}
+{markdownHref && <link rel="alternate" type="text/markdown" href={markdownHref} />}
 
 <meta property="og:title" content={social.title} />
 <meta property="og:description" content={social.description} />
@@ -201,6 +225,9 @@ const breadcrumbJsonLd = breadcrumbSchema();
 <meta property="og:locale" content={locale} />
 <meta property="og:site_name" content={settings.site_name} />
 {ogImage && <meta property="og:image" content={ogImage} />}
+{ogImageMeta && <meta property="og:image:type" content={ogImageMeta.type} />}
+{ogImageMeta?.width && ogImageMeta.height && <meta property="og:image:width" content={String(ogImageMeta.width)} />}
+{ogImageMeta?.width && ogImageMeta.height && <meta property="og:image:height" content={String(ogImageMeta.height)} />}
 {ogImage && ogImageAlt && <meta property="og:image:alt" content={ogImageAlt} />}
 
 {isArticle && publishedDate && (

@@ -9,6 +9,8 @@ import { enginePath } from './cloudflare';
 
 /** How long after its build a publication may still be uploading or verifying. */
 const FINISHING_WINDOW_MS = 2 * 60 * 60_000;
+/** A built and verified domain switch waiting for its owner's DNS approval. */
+const AWAITING_APPROVAL_PHASE = 'awaiting domain cutover approval';
 
 /**
  * Builds the organization's engine is working on, plus publications whose
@@ -17,6 +19,17 @@ const FINISHING_WINDOW_MS = 2 * 60 * 60_000;
  * for an empty list never starts the next publication early.
  */
 export async function activeBuilds(org: string, now = Date.now()) {
+  return (await buildActivity(org, now)).active_jobs;
+}
+
+/**
+ * Active builds, plus domain switches that are built and verified and only wait
+ * for DNS approval. Those no longer use the build engine or the organization
+ * queue, and their site's publishing lock is released, so another site may
+ * publish while they wait. They are listed apart so callers that wait for an
+ * empty `active_jobs` don't hold other sites back.
+ */
+export async function buildActivity(org: string, now = Date.now()) {
   const store = getStore();
   const [active, finished] = await Promise.all([
     store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'status', op: 'in', value: ['queued', 'running'] }], limit: 20 }),
@@ -31,16 +44,21 @@ export async function activeBuilds(org: string, now = Date.now()) {
   }))).filter(entry => entry !== null);
   const seen = new Set<string>();
   const unique = finishing.filter(({ task }) => !seen.has(task.identity.job_id) && !!seen.add(task.identity.job_id));
+  const awaiting = unique.filter(entry => entry.phase === AWAITING_APPROVAL_PHASE);
   const entries = [
     ...await Promise.all(active.map(async task => ({ task, input: await store.getDoc<BuildInput>(buildInputPath(org, task.id)), phase: null as string | null }))),
-    ...unique,
+    ...unique.filter(entry => entry.phase !== AWAITING_APPROVAL_PHASE),
   ];
-  return Promise.all(entries.map(async ({ task, input, phase }) => {
+  const siteName = async (siteId: string) => (await store.getDoc<{ name: string }>(paths.site(org, siteId)))?.name ?? siteId;
+  const awaitingApproval = await Promise.all(awaiting.map(async ({ task }) => ({ key: task.id, job_id: task.identity.job_id, site_id: task.identity.site_id,
+    site_name: await siteName(task.identity.site_id), version_id: task.identity.version_id, status: 'awaiting_approval' as const, phase: AWAITING_APPROVAL_PHASE })));
+  const jobs = await Promise.all(entries.map(async ({ task, input, phase }) => {
     const site = input?.kind !== 'qualification' ? await store.getDoc<{ name: string }>(paths.site(org, task.identity.site_id)) : null;
     const status: 'queued' | 'running' | 'publishing' = task.status === 'completed' ? 'publishing' : task.status as 'queued' | 'running';
     return { key: task.id, job_id: task.identity.job_id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
       kind: input?.kind, version_id: task.identity.version_id, status, phase, provider: input?.provider ?? 'cloudflare', attempt: task.attempt, static_verification: input?.kind === 'static_verification' && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
   }));
+  return { active_jobs: jobs, awaiting_approval: awaitingApproval };
 }
 
 export async function cancelGithubTask(org: string, key: string) {

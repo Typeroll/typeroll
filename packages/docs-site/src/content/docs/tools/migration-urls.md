@@ -80,6 +80,24 @@ URL. The API still supports intentional retirement, but using it for public
 content needs a separately agreed exception; exclusion is not a shortcut to
 launch readiness.
 
+## `update_migration_urls`
+
+Applies one patch to many inventory entries in a single request. Select entries
+with either `ids` (up to 2,000) or `where: { source }`, never both, and send the
+change as `patch`. Use it for migration-wide decisions, such as marking every
+guessed WordPress redirect URL as an intentional 404, instead of hundreds of
+single updates. The answer has matched, updated and unchanged counts, unknown
+ids and the refreshed coverage summary.
+
+## `import_gsc_performance`
+
+Imports per-URL clicks and impressions from Google Search Console into the
+inventory. Pass `property` (with optional `months`) for a direct Search Console
+query, or `csv` with an exported report as the fallback. `source_origin` names
+the old site's origin. URL fragments are stripped, metrics for the same URL are
+summed, and URLs not yet in the inventory are added as unhandled. See below for
+what to do when Search Console denies access.
+
 ## `repair_migration_plain_text`
 
 Older WordPress imports can contain encoded entities or HTML tags in fields
@@ -108,7 +126,15 @@ The pre-cutover check. Requests every inventory URL against the deployed site an
 | `broken_redirect` | a loop, or a chain ending badly              |
 | `error`           | 5xx or timeout — inconclusive, run it again  |
 
-A timeout, network error, 429 or 5xx is retried up to twice more at a slower pace with a longer timeout; `attempts` on a result shows how many requests it took. When more than 60 URLs and more than a quarter of all URLs fail, the host is treated as down and the errors are reported without retries.
+A redirect rule whose `from_path` has a query string, such as `/?p=12` or
+`/category/news/?lang=en`, is published as a small script in the page that
+answers its path, or in `404.html` when no page does. The check reads that
+script and follows it, so the URL counts as `ok_redirect` with
+`client_redirect: true` and `status` showing what the server itself answered
+(200 or 404). Browsers and Google follow these redirects, but they are not a
+301; a rule on a plain path is, so prefer one when the query adds nothing.
+
+A timeout, network error, 429 or 5xx, including one on a later hop of a redirect, is retried up to twice more at a slower pace with a longer timeout; `attempts` appears only on a result that took more than one request and shows how many it took. When more than 60 URLs and more than a quarter of all URLs fail, the host is treated as down and the errors are reported without retries.
 
 By default it tests the site's fallback subdomain, which is the right target **while your real domain still points at the old host**. That's the point: you find and fix the gaps before anything is switched over, with the old site still serving.
 

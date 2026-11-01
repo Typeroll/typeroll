@@ -40,7 +40,7 @@ export interface AnalyzedUrl extends MigrationUrl {
 
 /** Files every publication writes at the site root (site-template pages and site icons). */
 export const GENERATED_SITE_FILES: ReadonlySet<string> = new Set([
-  '/favicon.ico', '/robots.txt', '/sitemap.xml', '/sitemap-images.xml', '/llms.txt',
+  '/favicon.ico', '/robots.txt', '/sitemap.xml', '/sitemap-images.xml', '/llms.txt', '/llms-full.txt',
 ]);
 const ARCHIVE_PAGE = /^(.*?)\/page\/(\d+)$/;
 

@@ -1,0 +1,89 @@
+---
+title: Google Search Console
+description: Verify a Typeroll site in Google Search Console, submit its sitemap, read what Google reports, and use the data during a migration.
+---
+
+[Google Search Console](https://search.google.com/search-console) shows how
+Google crawls and indexes a site and which searches lead to it. Typeroll
+writes the sitemap and indexing signals; verifying the site and reading the
+reports happen in Search Console with your own Google account.
+
+## 1. Choose a property type
+
+| Property                                               | Covers                                      | Verification                                                       |
+| ------------------------------------------------------ | ------------------------------------------- | ------------------------------------------------------------------ |
+| **Domain** (recommended), for example `example.com`    | Every subdomain and both `http` and `https` | A DNS TXT record at your DNS provider                              |
+| **URL prefix**, for example `https://www.example.com/` | Only addresses under that prefix            | A `<meta>` tag in the site's head, or another method Google offers |
+
+Use the domain your visitors will see. A temporary Typeroll address is
+replaced when you [switch to your own domain](../../publishing/domains/), and
+it is kept out of search on purpose.
+
+## 2. Verify
+
+**Domain property:** add the TXT record Google shows at your DNS provider, for
+example in the Cloudflare dashboard under **DNS → Records**, then select
+**Verify** in Search Console. DNS changes can take a while to be visible.
+
+**URL-prefix property with the HTML tag method:**
+
+1. Copy the `<meta name="google-site-verification" …>` tag from Search Console.
+2. In Typeroll, open **Site settings → Advanced** and paste the tag into
+   **`<head>` scripts**. This field needs admin permission on the site.
+3. Save and publish the site, then select **Verify** in Search Console.
+
+Keep the tag in place; removing it can end the verification. Typeroll's
+[launch readiness report](../launch-checklist/#search-console) recognizes the
+tag. It cannot see a DNS verification, so that item stays a suggestion for
+Domain properties.
+
+## 3. Submit the sitemap
+
+In Search Console, open **Sitemaps** and submit `sitemap.xml`. Typeroll lists
+every published, indexable page in it, and the image sitemap
+`sitemap-images.xml` is referenced from `robots.txt`. Large sites get a sitemap
+index automatically. You only need to submit the sitemap once; Google reads it
+again on its own after each publication.
+
+[Bing Webmaster Tools](https://www.bing.com/webmasters) can import a verified
+site and its sitemap from Search Console.
+
+## 4. Read the reports
+
+- **Pages:** which addresses are indexed and why others are not. A page you set
+  to noindex appears here as excluded, as intended.
+- **Performance:** searches, clicks, impressions and positions per page.
+- **URL inspection:** how Google sees one address, and a request to index it
+  after a change.
+
+If pages are missing, compare with Typeroll's own checks: the
+[launch readiness report](../launch-checklist/) for site-level gaps and
+`check_site_indexing` for the robots policy of the live address. See also
+[SEO and indexing](../../technical/seo-and-indexing/).
+
+## Use Search Console data in a migration
+
+When you move a site to Typeroll, the old site's Search Console data shows
+which addresses carry traffic. An AI agent can import it into the site's URL
+inventory with `import_gsc_performance`:
+
+- Paste a **Pages** CSV export from Search Console (`csv` and `source_origin`).
+- Or query a property directly (`property`, for example
+  `sc-domain:example.com`). On Typeroll Cloud this requires that the
+  platform's Search Console service account has read access to the property;
+  the error message names the account to add. Self-hosted portals configure
+  their own service account in `GOOGLE_SEARCH_CONSOLE_CREDENTIALS`.
+
+The addresses with the most clicks then rise to the top of the migration work
+list. See the [migration SEO checklist](../migration-seo-checklist/).
+
+After a domain change, keep the old property and watch its **Pages** report
+for errors for a few weeks.
+
+## Check it
+
+- Search Console shows the property as verified and the sitemap as
+  successfully read.
+- The [launch readiness](../launch-checklist/#search-console) item is `ok` for a
+  meta-tag verification, or recorded as done for a DNS verification.
+- **URL inspection** of the home page reports that it can be indexed.

@@ -1,0 +1,90 @@
+---
+title: Migrate from Astro
+description: Move an Astro site, including Content Collections and Markdown or MDX content, into editable Typeroll Pages while keeping every URL, the design and the media.
+---
+
+Use an [AI agent](../../getting-started/mcp-server/) and the bundled
+`tr-migrate-astro` recipe to move an existing Astro project into Typeroll. The
+agent is your own, such as Claude Code or Codex; the portal's built-in AI
+assistant has no migration tools. There is no automatic importer for Astro
+projects: the agent reads the project's source and rebuilds it with Typeroll's
+tools.
+
+Typeroll publishes static sites built with Astro, so the output stays a fast
+static site. What changes is where the content lives: in Typeroll Pages that
+editors can change in the [visual editor](../the-editor/), instead of files
+in a repository.
+
+Start with [Choose your migration approach](../migration-approach/): preserve
+or renew the text, and preserve or renew the design, independently. Every old
+public URL must keep working or redirect to relevant content.
+
+## How Astro maps to Typeroll
+
+| In the Astro project                                                                                | In Typeroll                                                                            |
+| --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| A Content Collection schema (`src/content.config.ts`, or `src/content/config.ts` in older projects) | A [Content type](../../tools/content-types/) with custom fields                        |
+| An entry in a collection                                                                            | A Page of that Content type                                                            |
+| A page in `src/pages/`                                                                              | A Page                                                                                 |
+| Common frontmatter: title, slug, date, author, description                                          | The Page's own title, path, dates, author and SEO fields                               |
+| Other frontmatter fields                                                                            | The Content type's custom fields                                                       |
+| Markdown body                                                                                       | Native blocks in the Page body                                                         |
+| MDX components                                                                                      | Matching blocks or reviewed custom block types; never dropped silently                 |
+| A shared layout                                                                                     | A [Page template](../page-templates/), header and footer partials                      |
+| Files in `public/` and imported images                                                              | Media in the site's media library                                                      |
+| Dynamic routes and permalinks                                                                       | Content type URL patterns or explicit Page paths                                       |
+| Integrations, client scripts and server endpoints                                                   | Separate decisions: Forms, Extensions or the Integrations app behind the cookie banner |
+
+## Before you start
+
+- Give the agent access to the Astro project's source, for example by running
+  it in a checkout of the repository.
+- Create or select the target site and connect
+  [media storage](../customer-publishing/#storage-before-importing) before
+  transferring images.
+- List every public URL of the current site from its sitemap and routing; the
+  agent records them in the URL inventory.
+
+## Migration steps
+
+1. **Inventory.** The agent reads the routing, content loaders, schemas,
+   frontmatter, layouts, components, styles and public assets, and records the
+   URL inventory with `add_migration_urls`.
+2. **Readiness.** `get_migration_readiness` must pass before content is
+   imported.
+3. **Branch.** The agent creates a [version](../../tools/versions/) for the
+   migration and uses it on every call.
+4. **Model.** Content types, Page templates, header and footer first, then one
+   prototype page per layout for your review.
+5. **Content.** One Page per source page or collection entry, as drafts.
+   References between entries are resolved in a second pass.
+6. **Media.** Images are uploaded to the media library and references rewritten,
+   keeping alt text, captions and dimensions.
+7. **Listings.** An archive page uses a Page list block filtered by Content type;
+   pagination and sorting are block settings.
+8. **Redirects.** Every URL that changes gets a redirect.
+
+A prompt to start with:
+
+```text
+Migrate the Astro project in this repository to the Typeroll site [name].
+Read tr-migration-evidence and tr-migrate-astro first. Inventory the routes,
+collections and layouts, propose the Content types and URL mapping, and build
+one prototype per layout as drafts before importing everything.
+```
+
+## Verify and launch
+
+- Compare the old and new site at desktop and mobile widths: long and short
+  bodies, code, tables, images, embedded components and related links.
+- Publish a test build to the temporary address and run `verify_migration_urls`
+  against every inventory URL.
+- Follow the [migration SEO checklist](../migration-seo-checklist/) and the
+  [launch checklist](../launch-checklist/).
+- Keep the Astro site and its DNS in place until the new site passes and you
+  approve the switch; see [Website and media domains](../../publishing/domains/).
+
+## Check it
+
+`get_migration_launch_report` returns `launch_ready: true` for the latest
+deployment, and `read_site_readiness` lists no warnings you have not accepted.

@@ -7,6 +7,7 @@ import sharp from 'sharp';
 import { mediaReceiptKey } from './media-receipt.mjs';
 import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_WIDTHS, mediaVariantCandidates, mediaVariantSuffix } from './media-recipe.mjs';
 import { isSiteIconEntry } from './site-icons.mjs';
+import { isShareImageEntry } from './share-images.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const cache = 'public, max-age=31536000, immutable';
@@ -81,6 +82,29 @@ async function mediaOperation(step, key, operation) {
 const responseBytes = response => response.mediaBytes !== undefined ? response.mediaBytes : boundedBytes(response.body);
 
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
+/**
+ * Variants of one image promoted at once: all of them, since an image has at
+ * most 10 (5 widths × WebP and AVIF). Entries already overlap in groups, and
+ * variants are smaller than the original the group size reserves for.
+ */
+export const VARIANT_CONCURRENCY = 10;
+/**
+ * Run tasks with bounded concurrency and keep their order. After a failure no
+ * new task starts, but tasks in flight finish before the first error is thrown,
+ * so nothing keeps writing after this entry has failed.
+ */
+export async function boundedAll(tasks, limit) {
+  const results = new Array(tasks.length); let next = 0, failed = false, failure;
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, async () => {
+    while (!failed && next < tasks.length) {
+      const index = next++;
+      try { results[index] = await tasks[index](); }
+      catch (error) { if (!failed) { failed = true; failure = error; } }
+    }
+  }));
+  if (failed) throw failure;
+  return results;
+}
 
 /** Runs on the customer's build machine. No original or generated image is committed to Git. */
 export async function prepareMedia(publication, root, options = {}) {
@@ -201,13 +225,15 @@ export async function prepareMedia(publication, root, options = {}) {
           cdn_url: entry.cdn_url + mediaVariantSuffix(variant.width === completed.width ? 'original' : `w${variant.width}`, entry.sha256, variant.format) }));
         // A durable completion receipt replaces library-wide revalidation. Only
         // artifacts included in this static output need downloading and hashing.
-        if (!options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host || isSiteIconEntry(publication, entry))) {
+        // A share image on a separate media host is read locally for its PNG copy, never published on the website host.
+        const shareOnly = !(manifest.delivery === 'static' || manifest.media_host === manifest.website_host || isSiteIconEntry(publication, entry)) && isShareImageEntry(publication, entry);
+        if (!options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host || isSiteIconEntry(publication, entry) || shareOnly)) {
           const artifacts = [{ key: entry.source_key, original: true, sha256: entry.sha256, size_bytes: entry.size_bytes, path: entry.public_path },
             ...completed.variants.map(variant => { const suffix = mediaVariantSuffix(variant.width === completed.width ? 'original' : `w${variant.width}`, entry.sha256, variant.format); return { ...variant, key: entry.public_key + suffix, path: entry.public_path + suffix }; })];
           for (const artifact of artifacts) {
             if (manifest.delivery !== 'static' && manifest.media_host !== manifest.website_host && !artifact.original) continue;
             const reusable = options.reusableFiles?.[artifact.path.slice(1)];
-            if (!(artifact.original && isSiteIconEntry(publication, entry)) && reusable?.sha256 === artifact.sha256 && reusable.size === artifact.size_bytes) {
+            if (!(artifact.original && (isSiteIconEntry(publication, entry) || isShareImageEntry(publication, entry))) && reusable?.sha256 === artifact.sha256 && reusable.size === artifact.size_bytes) {
               sameHostFiles.push({ path: artifact.path, reused: true, sha256: artifact.sha256, size: artifact.size_bytes });
               continue;
             }
@@ -218,7 +244,7 @@ export async function prepareMedia(publication, root, options = {}) {
             if (!bytes || hash(bytes) !== artifact.sha256 || (artifact.size_bytes && bytes.length !== artifact.size_bytes)) throw new Error('Prepared media failed byte verification');
             await fs.mkdir(path.dirname(destination), { recursive: true });
             await fs.writeFile(destination, bytes);
-            sameHostFiles.push({ source: destination, path: artifact.path });
+            sameHostFiles.push({ source: destination, path: artifact.path, ...(shareOnly ? { local_only: true } : {}) });
           }
         }
         return;
@@ -238,23 +264,31 @@ export async function prepareMedia(publication, root, options = {}) {
             if (!verified || hash(verified) !== digest) throw new Error('Published media failed byte verification');
           }
         }
-        if (copyToWebsite && !options.prepareOnly && (manifest.delivery === 'static' || manifest.media_host === manifest.website_host || (publicPath === entry.public_path && isSiteIconEntry(publication, entry)))) {
+        const sameHost = manifest.delivery === 'static' || manifest.media_host === manifest.website_host || (publicPath === entry.public_path && isSiteIconEntry(publication, entry));
+        const shareOnly = !sameHost && publicPath === entry.public_path && isShareImageEntry(publication, entry);
+        if (copyToWebsite && !options.prepareOnly && (sameHost || shareOnly)) {
           const destination = path.resolve(root, '.publication-media', publicPath.slice(1));
           if (!destination.startsWith(path.resolve(root, '.publication-media') + path.sep)) throw new Error('Invalid media output path');
           const retained = await fs.readFile(destination).catch(error => { if (error.code === 'ENOENT') return null; throw error; });
           if (retained && hash(retained) !== hash(bytes)) throw new Error('Static media paths contain conflicting retained assets');
           await fs.mkdir(path.dirname(destination), { recursive: true });
           await fs.writeFile(destination, bytes);
-          sameHostFiles.push({ source: destination, path: publicPath });
+          sameHostFiles.push({ source: destination, path: publicPath, ...(shareOnly ? { local_only: true } : {}) });
         }
       }
-      if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
-      for (const alias of options.cacheOnly || options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
-      if (imageTypes.has(entry.mime_type)) {
+      // The original and its variants are independent objects. Promote them
+      // concurrently: a first publication after background preparation copies
+      // every variant from the private cache, and doing that one variant at a
+      // time made it as slow as the preparation itself (Moveria FR-02).
+      const promoteOriginal = async () => {
+        if (!options.cacheOnly) await store(bytes, entry.public_key, entry.mime_type, entry.public_path);
+        for (const alias of options.cacheOnly || options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(bytes, alias.key, entry.mime_type, new URL(alias.url).pathname, false);
+      };
+      const prepareVariants = async () => {
+        if (!imageTypes.has(entry.mime_type)) return;
         const metadata = await mediaOperation('inspect_image', entry.public_key, () => sharp(bytes).metadata());
         media.width = metadata.width; media.height = metadata.height; media.variants = [];
-        for (const { width, slot } of mediaVariantCandidates(metadata.width)) {
-          for (const format of ['webp', 'avif']) {
+        const tasks = mediaVariantCandidates(metadata.width).flatMap(({ width, slot }) => ['webp', 'avif'].map(format => async () => {
             // A receipt is written only after reading back the immutable variant.
             // It binds reuse to the original, exact encoder and transformation recipe.
             const suffix = mediaVariantSuffix(slot, entry.sha256, format);
@@ -305,17 +339,20 @@ export async function prepareMedia(publication, root, options = {}) {
               await savedReceipt.body?.cancel();
               if (!savedReceipt.ok && savedReceipt.status !== 412) throw new Error('media_transfer_interrupted');
             }
-            if (options.cacheOnly) continue;
+            if (options.cacheOnly) return null;
             await store(variant, key, `image/${format}`, publicPath, true, verifiedVariant);
             // A reused variant keeps the receipt, and the encoder, that describe its bytes.
             const receipt = verifiedVariant && receiptBytes ? receiptBytes : Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: variantRecipe, width, format, sha256: hash(variant), size_bytes: variant.length }));
             if (hasReceiptAccess && !options.materializeOnly) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
             for (const alias of options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
-            media.variants.push({ width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix });
-            completedVariants.push({ width, format, sha256: hash(variant), size_bytes: variant.length });
-          }
-        }
-      }
+            return { variant: { width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix }, completed: { width, format, sha256: hash(variant), size_bytes: variant.length } };
+        }));
+        // Results keep candidate order, which the completion receipt checks.
+        for (const result of await boundedAll(tasks, VARIANT_CONCURRENCY)) if (result) { media.variants.push(result.variant); completedVariants.push(result.completed); }
+      };
+      const [original, variants] = await Promise.allSettled([promoteOriginal(), prepareVariants()]);
+      if (original.status === 'rejected') throw original.reason;
+      if (variants.status === 'rejected') throw variants.reason;
       // Publish last: a partial or interrupted preparation never counts as ready.
       if (canComplete && !options.materializeOnly) {
         const receipt = Buffer.from(JSON.stringify({ format: 1, key: completionKey, recipe_sha256: recipeHash,

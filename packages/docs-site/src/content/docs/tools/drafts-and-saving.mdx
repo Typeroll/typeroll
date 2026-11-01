@@ -89,10 +89,16 @@ through the draft layer.
 - Reads return the **draft view** plus `has_unsaved_changes`.
 - Block write tools in MCP answer with the changed block and
   `has_unsaved_changes`, true while the draft differs from the saved content
-  (see [compact write answers](../blocks/#compact-write-answers-core-0279)).
+  (see [compact write answers](../blocks/#compact-write-answers)).
 - Commit with `commit_working_copy`, or pass `save: true` on the write call to
   write and commit in one step.
 - `discard_working_copy` drops the draft; `read_working_copy` inspects it.
+- `get_change_summary` describes a page draft before you save it: the changed
+  page fields (`meta_changed`) and the block changes (`block_changes`: added,
+  removed, changed and moved blocks, with the changed field names). Use it to
+  tell the owner what you edited, or to see what another editor left in the
+  draft. Pair it with `get_preview_link` and `include_working_copy` for the
+  visual check.
 
 Commit always runs through one code path, so every surface behaves identically:
 revision snapshot, SEO transform, HTML sanitisation, and redirect hygiene

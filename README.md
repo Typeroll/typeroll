@@ -1,11 +1,51 @@
 # Typeroll CMS
 
-Typeroll CMS is an open-source CMS for static websites, with AI-agent workflows
-and a client-friendly visual editor for managing multiple client sites.
+**The open-source CMS for AI agents.** Build and edit websites with Claude,
+ChatGPT, Cursor or Codex over MCP, let clients edit in a visual editor, and
+publish fast static Astro sites to your own Cloudflare or GitHub account.
 
-Freelancers and web agencies can build and manage client websites with their own
-AI agents, then give clients access to edit content in the browser. Organizations
-can also use Typeroll CMS to manage their own websites. Self-host or use Typeroll Cloud.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![npm](https://img.shields.io/npm/v/@typeroll/mcp-server?label=%40typeroll%2Fmcp-server)](https://www.npmjs.com/package/@typeroll/mcp-server)
+
+[Website](https://typeroll.com) · [Documentation](https://typeroll.com/docs/) ·
+[Connect your agent](https://typeroll.com/docs/getting-started/connect-your-agent/) ·
+[Docs for agents (llms.txt)](https://typeroll.com/docs/llms.txt)
+
+![The Typeroll editor with a page canvas and block inspector](packages/docs-site/public/images/editor-desktop.png)
+
+## Try it in 60 seconds
+
+Connect your agent to Typeroll Cloud (a 30-day trial, no card) and ask it to
+build a site. In Claude Code:
+
+```sh
+claude mcp add --transport http typeroll https://app.typeroll.com/api/mcp
+```
+
+Then run `/mcp`, sign in, and ask: *"Create a website for my studio with a home,
+services and contact page, then show me a preview."* Setup for Claude,
+ChatGPT, Cursor, VS Code and Codex is on the
+[connection page](https://typeroll.com/docs/getting-started/connect-your-agent/).
+The [build with Claude Code](https://typeroll.com/docs/guides/build-with-claude-code/)
+guide walks through a full site, from the first page to a custom domain.
+
+## Why Typeroll
+
+- **Agent-first.** 260 MCP tools and step-by-step recipes (skills) for new
+  sites, WordPress and Astro migrations, branding, SEO and launch checks.
+- **Clients can edit.** A visual block editor with drafts, previews and owner
+  review, so non-technical editors never touch code.
+- **Static and yours.** Sites compile to static Astro output and publish to
+  your own Cloudflare or GitHub account. No lock-in; export at any time.
+- **SEO and AI search built in.** Sitemaps, hreflang, structured data,
+  `llms.txt`, per-page Markdown, an AI crawler policy and a launch readiness
+  report on every site.
+- **Open source.** Self-host it, or use Typeroll Cloud for unlimited sites and
+  users.
+
+Freelancers and web agencies use Typeroll to build and manage client websites
+with their own AI agents and give clients access to edit content in the
+browser. Organizations use it to manage their own websites.
 
 The repository contains the editor, public API, MCP server, Forms backend,
 Extension runtime, static renderer, and self-hosting adapters as open-source
@@ -43,7 +83,7 @@ wp-helper-plugin/         Read-only WordPress migration helper
 examples/                Extension examples
 ```
 
-## Quick start
+## Run the CMS locally
 
 To build or migrate **your own website** with an AI agent, start from the public
 [site-starter template](https://github.com/Typeroll/site-starter) and follow the

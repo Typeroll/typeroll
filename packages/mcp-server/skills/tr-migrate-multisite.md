@@ -77,6 +77,22 @@ Ask explicitly:
 - Any domains being **retired or merged**? Those need HTTP redirects served by the old hostname; DNS itself is not
   a redirect. Plan that hosting separately.
 
+### Launch basics per market (ask early)
+
+Ask the user for these once per market, during Phase 0. Read `read_site_settings` first and ask only for
+what is missing. Each item is optional. Record a skipped item in
+`decisions.md`, so the launch check in the last step holds no surprises.
+
+- **Default share image.** Ask the user to choose or create the image that
+  social networks and chat apps show when a page has no image of its own:
+  upload one (`create_upload_url` or `upload_media_from_url`), pick an existing
+  one (`list_media`), or create one with `tr-imagegen`. Use a 1200×630 px PNG or
+  JPEG and set it as `default_og_image` with `update_site_settings`. Never
+  generate a title card from the page title instead. The user may skip this.
+- **Organization.** The business name, logo and official profile URLs
+  (LinkedIn, Instagram, GitHub and similar). Set `organization` with `same_as`;
+  it becomes the home page's Organization schema.
+
 ## Phase 1 — Inventory EVERY old site, before building anything
 
 Do this for all sites up front. It's cheap, it's the only artefact that tells
@@ -292,6 +308,35 @@ new canonical build and is not an inventory-only operation):
 6. Rerun the complete, unfiltered URL check and SEO review, then require
    `get_migration_launch_report` to return `launch_ready: true`
 
+## Phase 8 — Launch (required)
+
+A site is not finished until this step has run. Call `read_site_readiness`
+before the production publication and again after it. For every item with the
+status `warning` or `suggestion`, either fix it with the tool its `fix` names,
+or record in `decisions.md` (or the starter's `qa/` folder) why it stays open.
+Tell the user which items remain. A missing default share image is only a
+suggestion; leave it if the user chose to skip it.
+
+The report warns and never blocks a publication. A clean report is not approval
+to publish: publish only when the user has approved it.
+
+Run it for every site in the family, one site at a time, after Phase 7
+passes and before each site's production publication:
+
+```
+read_site_readiness site_id=<de-site>
+```
+
+The readiness report does not replace `get_migration_launch_report`: a site
+needs both.
+
+Run `read_site_readiness` again after the publication. It reads saved content
+and settings, so confirm the rest on the live site: the AI crawler zone check
+needs the site's website host, and a Search Console property verified by DNS
+is not visible to Typeroll. The
+[launch checklist](https://typeroll.com/docs/guides/launch-checklist/)
+explains every item.
+
 ## Definition of done (per site)
 
 - [ ] `get_migration_readiness source_url=<this market's old site>` → `ready: true`, warnings reviewed
@@ -299,6 +344,7 @@ new canonical build and is not an inventory-only operation):
 - [ ] Complete `verify_migration_urls` → 0 `missing`, 0 `broken_redirect`, 0 `error`, 0 untested variants
 - [ ] `record_migration_seo_acceptance` is accepted for the latest deploy
 - [ ] `get_migration_launch_report` → `launch_ready: true`
+- [ ] `read_site_readiness` run before and after publication; every open item fixed or recorded with a reason
 - [ ] No source JavaScript copied; analytics/advertising via the Integrations app with the cookie banner on (`scripts.status: "clean"` in the launch report)
 - [ ] hreflang cluster written on both/all sides, absolute, final domains
 - [ ] `language` set on the site; `<html lang>` correct in the deployed HTML

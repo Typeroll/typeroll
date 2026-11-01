@@ -1,4 +1,4 @@
-import { activeBuilds, cancelGithubTask } from './activity';
+import { buildActivity, cancelGithubTask } from './activity';
 import { randomUUID } from 'node:crypto';
 import { getStore } from '../datastore';
 import { ConnectionError } from '../publishing/connections';
@@ -29,7 +29,7 @@ export async function readBuildSettings(org: string) {
     }
   }
   // Keep the existing top-level selected-engine fields for older API clients.
-  return { ...engines[selection.provider], selection, engines, active_jobs: await activeBuilds(org) };
+  return { ...engines[selection.provider], selection, engines, ...await buildActivity(org) };
 }
 export async function configureBuildSettings(org: string, input: Record<string, unknown>) {
   if (input.provider !== undefined && input.provider !== 'cloudflare' && input.provider !== 'github') throw new ConnectionError('Choose Cloudflare or GitHub.', 400);

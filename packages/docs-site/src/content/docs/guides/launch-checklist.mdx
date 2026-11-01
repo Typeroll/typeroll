@@ -1,0 +1,261 @@
+---
+title: Launch checklist
+description: Check a site before it goes live with the launch readiness report, then fix or consciously accept each item, from the share image to AI crawler settings.
+---
+
+The launch readiness report lists what a site still needs to be found, shared
+and understood. Each item is either a **warning** or a **suggestion**, with a
+one-line fix and a link to its section on this page. Nothing in the report
+blocks a publication, and a clean report is not approval to publish.
+
+Run it before the first production publication, again after it, and after
+larger changes such as a redesign or a migration.
+
+## Read the report
+
+- **Portal:** on the site's overview page, select **Check readiness** in the
+  **Launch readiness** panel. The report runs when you ask for it, not after
+  every publication.
+- **AI agent:** ask it to run `read_site_readiness`. The
+  [bundled recipes](../../skills/overview/) for new sites, migrations and
+  redesigns end with this step.
+- **API:** `GET /api/v1/sites/{siteId}/readiness`, with any key that can read
+  the site. Add `?version=<id>` to check a branch.
+
+The response looks like this:
+
+```json
+{
+  "site_id": "acme",
+  "checked_at": "2026-11-01T10:00:00.000Z",
+  "summary": { "ok": 14, "suggestions": 4, "warnings": 2 },
+  "items": [
+    {
+      "id": "share_image",
+      "status": "suggestion",
+      "message": "No default share image. Pages without their own image fall back to the logo when shared.",
+      "fix": "Optional: upload or choose a 1200 × 630 px image, or create one with tr-imagegen, and set it as default_og_image.",
+      "guide": "https://typeroll.com/docs/guides/launch-checklist/#share-image"
+    }
+  ]
+}
+```
+
+`details` lists up to 20 affected pages or values when an item has them. The
+[tool reference](../../tools/deploy/#read_site_readiness) summarizes what each
+item checks.
+
+The report reads the saved content and settings of the selected version, not
+the live website. Unsaved working copies are not included. Confirm items that
+depend on services outside Typeroll, such as Search Console, in those
+services.
+
+For each warning or suggestion, either fix it or record why it stays open, for
+example in your [agent workspace](../../getting-started/agent-workspace/)'s
+`decisions.md`. A suggestion you decide against is a valid outcome.
+
+## Share image
+
+The image social networks and chat apps show when someone shares a page that
+has no image of its own. Without one, the site logo is used, which rarely makes
+a good card.
+
+- **Suggestion** when no default share image is set. It is optional.
+- **Warning** when the default or a page's share image will not show as a card:
+  an SVG, an inline data URL, or an image narrower than 600 px.
+
+**Fix:** choose an existing image, upload one, or ask your agent to create one
+with the `tr-imagegen` recipe. Use a 1200 × 630 px PNG or JPEG and enter its
+address in **Site settings → SEO → Default OpenGraph image URL**
+(`default_og_image`). Typeroll does not
+generate title cards. An SVG, AVIF or TIFF share image from the media library
+is published as a 1200 × 630 PNG copy, contained on the theme's background
+colour.
+
+## Home description
+
+The home page's meta description is the text search engines most often show
+for the site's name.
+
+- **Warning** when there is no published home page at `/`, or no description
+  at all.
+- **Suggestion** when the home page uses the site-wide fallback description.
+
+**Fix:** write a specific **Meta description** for the home page in the editor's
+Meta panel, saying what the site offers.
+
+## Organization
+
+The name and logo in the home page's Organization structured data, which
+search engines use for the brand's knowledge panel.
+
+**Fix:** set **Organization name** and a square PNG or JPEG **Logo URL** in
+**Site settings → SEO** (`organization.name`, `organization.logo`). Without them, the site name
+and site logo are used.
+
+## Same as
+
+Links to the organization's official profiles, which connect the website to
+the brand elsewhere. They are written as `sameAs` in the Organization schema.
+
+**Fix:** add official profiles such as LinkedIn, GitHub, Instagram or Wikipedia
+to **Site settings → SEO → Profile URLs (sameAs)** (`organization.same_as`),
+one per line.
+
+## Favicon
+
+**Warning** when no favicon is set: browsers and Google search results then show
+a generic icon.
+
+**Fix:** upload a square icon and enter its address in **Site settings →
+General → Favicon URL**. Add the 180 × 180 Apple touch icon and the
+192 × 192 app icon at the same time.
+
+## Analytics consent
+
+- **Warning** when third-party tags in the Integrations app, or known tracking
+  scripts in the custom code fields, load without a cookie banner.
+- **Suggestion** when no analytics is set up, so visits and AI referrals are
+  not measured.
+
+**Fix:** turn on the cookieless [Analytics module](../../apps/analytics/), or
+load tags through [Integrations](../../apps/integrations/) with the cookie
+banner on, so they wait for consent.
+
+## Search Console
+
+Typeroll cannot see whether a site is verified in Google Search Console when
+the verification uses DNS, so this item is a suggestion until a verification
+`<meta>` tag is present in **Site settings → Advanced → `<head>` scripts**.
+
+**Fix:** follow [Google Search Console](../search-console/) to verify the site and
+submit `/sitemap.xml`.
+
+## Privacy page
+
+- **Warning** when the site uses a cookie banner, Integrations or tracking
+  scripts and no privacy or cookie policy page is found.
+- **Suggestion** otherwise.
+
+**Fix:** publish a privacy page, link it in the footer and enter its address
+as the cookie banner's **Privacy policy URL** in **Site settings →
+Integrations** (`cookie_consent.privacy_policy_url`).
+
+## Contact page
+
+**Suggestion** when no contact page or contact details are found.
+
+**Fix:** publish a contact page, for example with a [form](../../apps/forms/),
+or fill in the contact details in Site settings.
+
+## Not found page
+
+Every publication includes a 404 page with the site's header and footer, and
+one per [language section](../multilingual-sites/). This item is always `ok`
+and is listed so the checklist is complete.
+
+## Indexable pages
+
+- **Warning** when the whole site is set to noindex (`sitewide_noindex`).
+- **Suggestion** when only one page can be indexed. One page can rank for only
+  a few searches.
+
+**Fix:** turn off site-wide noindex in **Site settings → SEO** when the site is
+ready to be found. Give
+each product, service or common question its own page.
+
+## Orphan pages
+
+**Warning** for indexable pages that no other page, menu or listing links to.
+Visitors and crawlers have no way to reach them.
+
+**Fix:** link each listed page from a related page, a menu or a listing block.
+
+## Duplicate titles
+
+**Warning** when several pages share the same title.
+
+**Fix:** give each page a title that says what is different about it. Set the
+**SEO title** when the visible title must stay the same.
+
+## Duplicate descriptions
+
+**Warning** when several pages share a meta description, or several pages fall
+back to the site-wide description.
+
+**Fix:** write a specific **Meta description** for each page.
+
+## Heading H1
+
+**Warning** for pages with no H1 or more than one. The count includes the
+page's template and the header and footer.
+
+**Fix:** give each page exactly one H1 that names its topic and use H2 for
+sections. A Site title block in the header should not be an H1.
+
+## Long descriptions
+
+**Warning** for meta descriptions longer than 160 characters, which search
+results may cut off.
+
+**Fix:** put the key point first and keep the description under 160
+characters.
+
+## Duplicate fonts
+
+**Warning** when a theme font is loaded again, for example by an `@import` or
+`@font-face` in custom CSS or a link in the head code. The theme already loads
+the fonts chosen in Site settings once; a second load slows every page.
+
+**Fix:** remove the extra load and choose the font in Site settings → Design.
+
+## Custom CSS overrides
+
+**Warning** when custom CSS works against the theme: heavy `!important` use,
+fonts that are not in the theme, a background image on the first section, or
+rules on the platform's block classes.
+
+**Fix:** ask your agent to run `lint_design_tokens`. Each finding names the
+[named style](../../tools/styles/), [design token](../design-tokens/) or block
+setting that replaces the rule. A hero image set in the block's own image
+field loads early; one set in CSS cannot.
+
+## AI crawler zone conflict
+
+The site's **AI crawlers** setting in **Site settings → SEO**
+(`ai_crawler_policy`) decides what Typeroll
+writes in `robots.txt` and the `Content-Signal` header: `allow_all` (the
+default), `no_training` or `block_all`. A Cloudflare zone has its own AI crawler
+settings, which are enforced at Cloudflare's edge and win over `robots.txt`.
+
+The report compares the two when the site has a website host in a connected
+Cloudflare account and the connection's existing token already has Bot
+Management Read. Typeroll never asks for that permission for this check and
+never changes zone settings.
+
+- **Warning** when the zone's settings contradict the site's policy.
+- **Suggestion** when the comparison was not possible, for example without a
+  Cloudflare connection or permission to read bot settings.
+
+**Fix:** in the Cloudflare dashboard, under **Security → Settings → Bot
+traffic**, make the AI crawler policies (Search, Training, Agents) and the
+managed `robots.txt` match the site's policy. Blocking **Training** in
+Cloudflare can also block Googlebot, Bingbot and Applebot, because Cloudflare
+applies the strictest rule to crawlers with several purposes. See
+[SEO for your site](../seo/#ai-crawlers).
+
+## Structured data
+
+**Warning** for page JSON-LD that is missing required properties or has invalid
+dates or URLs.
+
+**Fix:** add the missing properties or correct the values. Remove structured
+data that does not match what the page shows. The
+[SEO guide](../seo/#structured-data) lists what Typeroll generates for you.
+
+## Check it
+
+Run the report again after fixing items and after the publication. The summary
+shows how many warnings and suggestions remain. For migrations,
+`get_migration_launch_report` remains the separate gate for URL continuity and
+content parity; see the [migration SEO checklist](../migration-seo-checklist/).

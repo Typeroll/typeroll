@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.138 / MCP 0.45.102 (candidate)
+
+- Built-in interface text (tabs, pagination, tables, breadcrumbs, media
+  controls, 404 page, cookie banner) in 50 languages, and right-to-left pages
+  get `dir="rtl"` with a mirrored built-in layout.
+- Launch readiness: `read_site_readiness` and a portal readiness check, an
+  `ai_crawler_policy` site setting expressed as Content Signals, per-page
+  Markdown, `llms-full.txt`, sitemap hreflang and sitemap index, FAQ JSON-LD
+  from question accordions, share-image derivatives, CSS and JSON-LD linting.
+- Domain launches refuse a site still set to noindex unless overridden, and
+  can turn noindex off in the same step.
+- URL parity retries a redirect whose later hop timed out, and follows
+  query-string redirects published as inline scripts, including from 404.html.
+- Media: migration failures are set aside instead of blocking, publication
+  copies an original and its variants concurrently, body image URLs with a
+  query string are encoded once, and imports make fewer database calls and log
+  per-transfer timings.
+- Builds report jobs awaiting approval separately from active jobs. Indexing
+  diagnostics confirm a new site host through public DNS.
+- Docs: 11 new guides, generated skill pages, a split block reference, a
+  smaller `llms-small.txt` and an MCP Registry `server.json`.
+
 ## 0.2.116 / MCP 0.45.87 (candidate)
 
 - Publish for a new domain replaces main at the current address before DNS

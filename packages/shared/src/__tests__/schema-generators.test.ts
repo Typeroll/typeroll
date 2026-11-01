@@ -211,3 +211,39 @@ it('explicitly maps Page dates without leaking other fields in mapped mode', () 
   expect(missing).not.toHaveProperty('datePublished');
   expect(missing).not.toHaveProperty('dateModified');
 });
+
+describe('buildContentPageSchema product and software offers', () => {
+  const type = (schema_type: string, schema_field_map?: Record<string, string>): ContentType => ({
+    id: 'apps', name: 'apps', label_singular: 'App', label_plural: 'Apps', fields: [], route_template: '/apps/{slug}',
+    created_at: '2024-01-01', schema_type, schema_field_map, schema_field_mode: 'mapped',
+  });
+  it('nests price and rating of a SoftwareApplication in Offer and AggregateRating', () => {
+    const page = makePage({ id: 'app', title: 'Typeroll', summary: 'A CMS', os: 'Web', category: 'BusinessApplication', price: '0', currency: 'EUR', stars: 4.6, votes: 12 });
+    const schema = JSON.parse(buildContentPageSchema(page, type('SoftwareApplication', {
+      title: 'name', summary: 'description', os: 'operatingSystem', category: 'applicationCategory',
+      price: 'price', currency: 'priceCurrency', stars: 'ratingValue', votes: 'ratingCount',
+    }), site, 'https://x/apps/app/')!);
+    expect(schema).toEqual({
+      '@context': 'https://schema.org', '@type': 'SoftwareApplication', url: 'https://x/apps/app/',
+      name: 'Typeroll', description: 'A CMS', operatingSystem: 'Web', applicationCategory: 'BusinessApplication',
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR', url: 'https://x/apps/app/' },
+      aggregateRating: { '@type': 'AggregateRating', ratingValue: 4.6, ratingCount: 12 },
+    });
+  });
+  it('uses the built-in Product names, wraps a brand name and drops a rating without a count', () => {
+    const page = makePage({ id: 'p', title: 'Chair', price: 120, price_currency: 'SEK', brand: 'Acme', rating: 5 });
+    const schema = JSON.parse(buildContentPageSchema(page, { ...type('Product'), schema_field_mode: 'all' }, site, 'https://x/p/')!);
+    expect(schema.offers).toEqual({ '@type': 'Offer', price: 120, priceCurrency: 'SEK', url: 'https://x/p/' });
+    expect(schema.brand).toEqual({ '@type': 'Brand', name: 'Acme' });
+    expect(schema.aggregateRating).toBeUndefined();
+    expect(schema.price).toBeUndefined();
+    expect(schema.ratingValue).toBeUndefined();
+  });
+  it('keeps an authored offers object and leaves other types flat', () => {
+    const offers = { '@type': 'AggregateOffer', lowPrice: 1, highPrice: 9, priceCurrency: 'EUR' };
+    const product = JSON.parse(buildContentPageSchema(makePage({ id: 'p', title: 'X', offers, price: 5 }), { ...type('Product', { title: 'name', offers: 'offers', price: 'price' }) }, site, 'https://x/p/')!);
+    expect(product.offers).toEqual(offers);
+    const event = JSON.parse(buildContentPageSchema(makePage({ id: 'e', title: 'Talk', price: 5 }), type('Event', { title: 'name', price: 'price' }), site, 'https://x/e/')!);
+    expect(event.price).toBe(5);
+  });
+});

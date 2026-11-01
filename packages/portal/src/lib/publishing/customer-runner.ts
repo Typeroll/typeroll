@@ -38,6 +38,7 @@ import { retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaM
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
 import { DerivationError, runBuildDerivations } from './build-derivation';
+import { indexableSettings } from './launch-robots';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { preparePublicMediaDomains } from './media-domain';
 import { recordPublishingOrigin } from './runtime-origins';
@@ -91,7 +92,7 @@ async function pendingRedirect(jobPath: string, publication: GitPublication, pre
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication };
+export type GitJob = DeployJob & { cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication; clear_authored_noindex?: boolean };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -282,6 +283,14 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         // the published content frozen. Resuming this job never changes its renderer.
         frozen.core_commit = process.env.TYPEROLL_SOURCE_SHA ?? prior.core_commit;
         frozen.robots_blocked = args.versionId !== 'main' || host === fallbackHost;
+        // confirm_disable_noindex: the person turned authored noindex off while preparing, so the
+        // republished snapshot must be indexable on the real host without another publication.
+        if (job.clear_authored_noindex === true) {
+          const cleared = indexableSettings(frozen.settings ?? {});
+          if (!cleared) throw new ConnectionError('scripts_head contains a robots noindex tag that Typeroll cannot remove precisely. Remove it in Site settings, publish, then prepare the domain change.', 409, 'candidate_noindex_head');
+          frozen.settings = cleared;
+          frozen.authored_noindex = false;
+        }
         frozen.settings.sitewide_noindex = frozen.robots_blocked || frozen.authored_noindex === true;
       } else {
         const resolved = await resolvePublicationVersion(args.orgId, args.siteId, args.versionId);

@@ -35,6 +35,9 @@ export const VERSION_SOURCES = {
   mcp: [
     { file: 'packages/mcp-server/package.json', pattern: /^( {2}"version": ")([^"]+)(",?)$/m },
     { file: 'packages/mcp-server/src/version.ts', pattern: /^(export const VERSION = ')([^']+)(';)$/m },
+    // MCP Registry metadata: the server version and its npm package version.
+    { file: 'packages/mcp-server/server.json', pattern: /^( {2}"version": ")([^"]+)(",?)$/m },
+    { file: 'packages/mcp-server/server.json', pattern: /^( {6}"version": ")([^"]+)(",?)$/m },
     { file: 'scripts/oss-release-plan.test.mjs', pattern: /(assert\.equal\(manifest\.mcp_version, ')([^']+)('\);)/ },
   ],
 };

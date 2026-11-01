@@ -80,6 +80,18 @@ above instead: edit the token in Cloudflare, then enable Analytics again.
 Approving permissions turns Analytics on for no Site. Measurement is chosen
 per Site.
 
+### Read a Site's insights
+
+`get_site_insights` returns the last 7, 30 or 90 days (`days`) for one Site:
+traffic, visits referred by AI assistants, and conversion events grouped by
+event, destination, source and campaign. Traffic comes from Cloudflare Web
+Analytics in the account the beacon belongs to; conversions come from
+validated click events. The traffic `status` is `ok`, `no_data` for a linked
+site without visits, or a reason such as `app_disabled`, `not_configured`,
+`no_site_tag`, `connection_required`, `access_required`, `account_mismatch` or
+`provider_error`, with `code`, `message`, `next_step` and `settings_url`.
+Conversion data can be present even when traffic is unavailable.
+
 ### Choose Sites across the Organization
 
 **Publishing → Analytics** lists the Organization's Sites with Analytics on or

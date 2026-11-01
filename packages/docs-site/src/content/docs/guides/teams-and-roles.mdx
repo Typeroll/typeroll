@@ -1,0 +1,79 @@
+---
+title: Teams and roles
+description: Invite people to an Organization, understand what owners, admins and editors can do, and give agents and other Organizations scoped access.
+---
+
+People work in a Typeroll **Organization**. Its members share the
+Organization's sites and publishing connections, and each member has a role.
+Access for other companies and for automated agents uses separate, narrower
+mechanisms described below.
+
+## Roles
+
+| Role       | Who has it                               | On the Organization's sites                                         | In the Organization                                        |
+| ---------- | ---------------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------- |
+| **Owner**  | The person who created the Organization  | Everything, including publishing, settings and domains              | Publishing connections, organization API keys, invitations |
+| **Admin**  | Members given the admin role             | The same as an owner                                                | The same as an owner                                       |
+| **Editor** | Everyone who joins through an invitation | Edit and save content: pages, blocks, partials, templates and media | Nothing administrative                                     |
+
+An editor cannot publish a site, change Site settings, manage API keys or
+sharing, change domains, create or merge branches, configure forms, email or
+apps, or download the content export. An owner or admin publishes the work.
+
+Organizations created before roles were enforced treat every member as an
+admin until enforcement is turned on for them.
+
+There is no screen for changing a member's role or removing a member in this
+release. On Typeroll Cloud, ask Typeroll support. On a self-hosted portal, the
+operator changes the member record.
+
+## Invite people
+
+Each invitation is a link for joining the Organization as an **editor**. It is
+single use unless you allow more, expires after 7 days by default (1–30 days),
+and can be limited to one email address.
+
+Invitations are created through the API or an AI agent connected with the
+Organization's access:
+
+```text
+Create an invitation to our Typeroll Organization for anna@example.com,
+valid for 14 days, and give me the link.
+```
+
+The agent calls `create_organization_invite`. Send the link to the person
+yourself. They open it, sign in or create an account, and join. People who
+already joined keep their membership if the invitation is later revoked.
+
+- `list_organization_invites` shows each invitation's state: active, used,
+  expired or revoked. It never shows the link again.
+- `revoke_organization_invite` stops a link immediately.
+
+The API routes are described in
+[Organization, access and workflow tools](../../tools/organization/#invite-people-to-the-organization).
+
+## Give another company access to one site
+
+Don't invite a client or a partner into your Organization: membership covers
+all of its sites. Share the one site with their Organization instead, from
+**Site settings → Access & AI → Manage sharing**, with **read**, **write** or
+**admin** permission. See [Agencies and client sites](../agencies/#give-the-client-access).
+
+## Give agents and scripts access
+
+| Access                     | Use it for                                              | Where                                                                                        |
+| -------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Personal AI connection** | Your own AI agent, with exactly your access             | Connect the hosted MCP server and sign in; see [Personal AI connections](../ai-connections/) |
+| **Site API key**           | A script or agent for one site                          | **Site settings → Access & AI → External access**                                            |
+| **Organization API key**   | An agent that manages many sites or publishing settings | **Account → API keys**, owners and admins only                                               |
+
+API keys are shown once when they are created and are never available through
+the API or MCP. Revoke a key from the same page as soon as it is no longer
+needed. See [Connect your AI agent](../../getting-started/mcp-server/#choose-credentials).
+
+## Check it
+
+- `list_organization_invites` lists no active invitation you did not intend.
+- `list_organization_api_keys` and each site's `list_api_keys` show only keys
+  that are still in use.
+- `list_site_shares` on each site shows only the intended Organizations.

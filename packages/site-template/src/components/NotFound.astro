@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
 import { getAllPages, getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings, urlFor } from '../lib/content';
-import { collectBlockAssets, globalBlockSourceFromPartials, resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage, siteContext } from '@typeroll/shared';
+import { collectBlockAssets, globalBlockSourceFromPartials, notFoundText, resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage, siteContext } from '@typeroll/shared';
 import type { Block, LanguageSection, Page, RenderContext } from '@typeroll/shared';
 
 interface Props {
@@ -48,26 +48,9 @@ const { css: blockCss, js: blockJs } = collectBlockAssets(
 // The 404 has no real page, but partials may bind {{site.*}}, so they still
 // need a context. `page` below is the synthetic doc declared underneath.
 
-// Localize the 404 body to the site's language. Falls back to English
-// for anything not in the table. Add more as needed — the language
-// code comes from settings.language (BCP-47), so 'sv', 'sv-SE',
-// 'en-GB' all work via the first-two-letter lookup.
-type Strings = { title: string; body: string; back: string };
-const TRANSLATIONS: Record<string, Strings> = {
-  en: { title: 'Page not found', body: "Sorry, that page doesn't exist.", back: 'Back to home' },
-  sv: { title: 'Sidan hittades inte', body: 'Tyvärr finns inte den sidan.', back: 'Tillbaka till startsidan' },
-  no: { title: 'Siden ble ikke funnet', body: 'Beklager, den siden finnes ikke.', back: 'Tilbake til forsiden' },
-  nb: { title: 'Siden ble ikke funnet', body: 'Beklager, den siden finnes ikke.', back: 'Tilbake til forsiden' },
-  da: { title: 'Siden blev ikke fundet', body: 'Beklager, den side findes ikke.', back: 'Tilbage til forsiden' },
-  de: { title: 'Seite nicht gefunden', body: 'Entschuldigung, diese Seite existiert nicht.', back: 'Zur Startseite' },
-  fr: { title: 'Page introuvable', body: "Désolé, cette page n'existe pas.", back: "Retour à l'accueil" },
-  es: { title: 'Página no encontrada', body: 'Lo sentimos, esa página no existe.', back: 'Volver al inicio' },
-  nl: { title: 'Pagina niet gevonden', body: 'Sorry, die pagina bestaat niet.', back: 'Terug naar de startpagina' },
-  fi: { title: 'Sivua ei löydy', body: 'Valitettavasti sivua ei ole olemassa.', back: 'Takaisin etusivulle' },
-};
-const langTag = (section?.language || settings.language || 'en').toLowerCase();
-const lang2 = langTag.split('-')[0];
-const t = TRANSLATIONS[lang2] ?? TRANSLATIONS.en;
+// The 404 body follows the section's or the site's language, English when
+// Typeroll has no built-in wording for it.
+const t = notFoundText(section?.language || settings.language);
 
 const homePath = section?.home_path ?? '/';
 const page: Page = {

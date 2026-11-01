@@ -134,6 +134,25 @@ const DEFAULT_FIELD_MAPS: Record<string, Record<string, string>> = {
     image: 'image',
     sku: 'sku',
     brand: 'brand',
+    price: 'price',
+    price_currency: 'priceCurrency',
+    currency: 'priceCurrency',
+    rating: 'ratingValue',
+    rating_count: 'ratingCount',
+    review_count: 'reviewCount',
+  },
+  SoftwareApplication: {
+    title: 'name',
+    description: 'description',
+    image: 'image',
+    operating_system: 'operatingSystem',
+    application_category: 'applicationCategory',
+    price: 'price',
+    price_currency: 'priceCurrency',
+    currency: 'priceCurrency',
+    rating: 'ratingValue',
+    rating_count: 'ratingCount',
+    review_count: 'reviewCount',
   },
   Event: {
     title: 'name',
@@ -256,6 +275,38 @@ export function buildContentPageSchema(
     };
   }
 
+  if (OFFER_TYPES.has(schemaType)) nestCommerceProperties(obj, canonical);
+
   const trimmed = trimToObj(obj);
   return trimmed ? JSON.stringify(trimmed) : null;
+}
+
+/** Types whose price and rating Google reads only from a nested Offer and AggregateRating. */
+const OFFER_TYPES = new Set(['Product', 'SoftwareApplication', 'WebApplication', 'MobileApplication', 'VideoGame']);
+const OFFER_PROPERTIES = ['price', 'priceCurrency', 'availability', 'priceValidUntil'] as const;
+const RATING_PROPERTIES = ['ratingValue', 'ratingCount', 'reviewCount', 'bestRating', 'worstRating'] as const;
+
+/**
+ * Content type fields map to flat properties (`price`, `ratingValue`), but
+ * schema.org nests them: price in `offers` (an Offer) and ratings in
+ * `aggregateRating`. A value the field already authored as an object is kept.
+ */
+function nestCommerceProperties(obj: SchemaObj, canonical: string): void {
+  const take = (keys: readonly string[]) => {
+    const out: SchemaObj = {};
+    for (const key of keys) {
+      const value = obj[key];
+      delete obj[key];
+      if (value == null || value === '' || typeof value === 'object') continue;
+      out[key] = value;
+    }
+    return out;
+  };
+  const offer = take(OFFER_PROPERTIES);
+  if (obj.offers == null && offer.price !== undefined) obj.offers = { '@type': 'Offer', ...offer, url: canonical };
+  const rating = take(RATING_PROPERTIES);
+  if (obj.aggregateRating == null && rating.ratingValue !== undefined && (rating.ratingCount !== undefined || rating.reviewCount !== undefined)) {
+    obj.aggregateRating = { '@type': 'AggregateRating', ...rating };
+  }
+  if (typeof obj.brand === 'string' && obj.brand) obj.brand = { '@type': 'Brand', name: obj.brand };
 }

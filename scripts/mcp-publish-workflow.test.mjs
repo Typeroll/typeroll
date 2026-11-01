@@ -219,9 +219,11 @@ test('the release train has no default token grant and each job requests only it
   assert.deepEqual(permissions('plan'), { contents: 'read', actions: 'read' });
   assert.deepEqual(permissions('core'), { contents: 'write', packages: 'write', actions: 'read' });
   assert.deepEqual(permissions('mcp'), { contents: 'write', 'id-token': 'write' });
+  assert.deepEqual(permissions('registry'), { contents: 'read', 'id-token': 'write' });
   assert.deepEqual(permissions('docs'), { contents: 'read', actions: 'read' });
   assert.deepEqual(permissions('manifest'), { contents: 'read' });
-  assert.equal(workflow.match(/id-token: write/g).length, 1);
+  // OIDC only for npm Trusted Publishing and the MCP Registry namespace proof.
+  assert.equal(workflow.match(/id-token: write/g).length, 2);
   assert.doesNotMatch(workflow, /attestations: write/);
 });
 
@@ -241,4 +243,20 @@ test('documentation deploys with the locked uploader dependencies and no install
   assert.match(docs, /cp packages\/portal\/src\/lib\/builds\/uploader-lock\.json "\$DEPLOYER\/package-lock\.json"/);
   assert.match(docs, /npm ci --prefix "\$DEPLOYER" --ignore-scripts/);
   assert.match(docs, /"\$WRANGLER" deploy --config packages\/docs-site\/wrangler\.jsonc/);
+});
+
+test('the MCP Registry listing follows npm, uses a verified pinned publisher and is idempotent', () => {
+  const job = jobSource(workflow, 'registry');
+  assert.match(job, /continue-on-error: true/);
+  assert.match(job, /needs: \[plan, mcp\]/);
+  assert.match(job, /needs\.plan\.outputs\.publish_mcp == 'true'/);
+  assert.match(job, /inputs\.dry_run != true/);
+  assert.match(job, /MCP_PUBLISHER_VERSION: v\d+\.\d+\.\d+\n/);
+  assert.doesNotMatch(job, /releases\/latest/);
+  assert.match(job, /cosign verify-blob/);
+  assert.match(job, /--certificate-identity "https:\/\/github\.com\/modelcontextprotocol\/registry\/\.github\/workflows\/release\.yml@refs\/tags\/\$\{MCP_PUBLISHER_VERSION\}"/);
+  assert.match(job, /test "\$NAME" = "\$\(jq -r \.mcpName package\.json\)"/);
+  assert.match(job, /versions\/\$MCP_VERSION/);
+  assert.match(job, /mcp-publisher" login github-oidc/);
+  assert.ok(job.indexOf('listed=true') < job.indexOf('mcp-publisher" publish'));
 });

@@ -151,6 +151,22 @@ batch_read_pages page_ids=[<2-3 representative ids>]   # see actual conventions
 Don't skip this. Imposing a stranger's design on a customer's site is
 the biggest avoidable mistake.
 
+### 2b. Launch basics (ask early)
+
+Ask the user for these once, early in the project. Read `read_site_settings` first and ask only for
+what is missing. Each item is optional. Record a skipped item in
+`decisions.md`, so the launch check in the last step holds no surprises.
+
+- **Default share image.** Ask the user to choose or create the image that
+  social networks and chat apps show when a page has no image of its own:
+  upload one (`create_upload_url` or `upload_media_from_url`), pick an existing
+  one (`list_media`), or create one with `tr-imagegen`. Use a 1200×630 px PNG or
+  JPEG and set it as `default_og_image` with `update_site_settings`. Never
+  generate a title card from the page title instead. The user may skip this.
+- **Organization.** The business name, logo and official profile URLs
+  (LinkedIn, Instagram, GitHub and similar). Set `organization` with `same_as`;
+  it becomes the home page's Organization schema.
+
 ### 3. Normalize shared data before importing page bodies
 
 Read taxonomy definitions and paginated terms from the helper's `/taxonomies`
@@ -343,11 +359,23 @@ Record `fidelity: { desktop, mobile, shared_data, integrations, evidence }` with
 The launch report requires this evidence in Core 0.2.5.
 Never mark an unavailable integration or uninspected screenshot as accepted.
 
-### 7. Ship
+### 7. Launch and ship (required)
+
+A site is not finished until this step has run. Call `read_site_readiness`
+before the production publication and again after it. For every item with the
+status `warning` or `suggestion`, either fix it with the tool its `fix` names,
+or record in `decisions.md` (or the starter's `qa/` folder) why it stays open.
+Tell the user which items remain. A missing default share image is only a
+suggestion; leave it if the user chose to skip it.
+
+The report warns and never blocks a publication. A clean report is not approval
+to publish: publish only when the user has approved it.
 
 When the user signs off:
 
 ```
+read_site_readiness
+
 # Bulk-publish drafts that look right
 batch_update_pages updates=[{page_id, patch:{status:"published"}}, ...]
 
@@ -355,6 +383,16 @@ batch_update_pages updates=[{page_id, patch:{status:"published"}}, ...]
 trigger_deploy
 get_deploy_status job_id=<id>    # poll
 ```
+
+The readiness report does not replace `get_migration_launch_report`: URL
+parity and SEO acceptance remain the migration's own launch gate.
+
+Run `read_site_readiness` again after the publication. It reads saved content
+and settings, so confirm the rest on the live site: the AI crawler zone check
+needs the site's website host, and a Search Console property verified by DNS
+is not visible to Typeroll. The
+[launch checklist](https://typeroll.com/docs/guides/launch-checklist/)
+explains every item.
 
 ## Pitfalls
 
@@ -364,7 +402,7 @@ get_deploy_status job_id=<id>    # poll
   have been served at `/2024/01/foo-bar/` due to the permalink
   structure. The full URL is what users see in Google; preserve that,
   not the bare slug.
-- **Image bandwidth.** R2 upload is metered. Use `find_pages_matching`
+- **Image bandwidth.** R2 upload is metered. Use `search_pages`
   contains="<old-domain>" on already-imported content to spot images
   that weren't transferred.
 - **Plugin JavaScript.** Never copy scripts from plugins, the theme or

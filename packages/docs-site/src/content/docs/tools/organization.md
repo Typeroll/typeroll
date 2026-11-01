@@ -14,6 +14,13 @@ Site it owns, and the share's permission on Sites shared into it. Routes below
 `/api/v1/organization/` and `/api/v1/publishing/` need an organization key; a
 site key gets `403`.
 
+## Organizations you belong to
+
+`list_organizations` lists the Organizations you belong to and your role in
+each. Site work starts with `list_sites` and, on a personal connection,
+`select_site`. Organization administration always takes an explicit
+`organization_id`.
+
 ## API keys
 
 | Action                     | MCP tool                      | API route below `/api/v1`                | Permission        |
@@ -229,6 +236,75 @@ authorization. Its `permissions` (and `cloudflare_permissions` in
 missing scopes and the one **Approve update** that adds them; see
 [Cloudflare permissions](../../guides/customer-publishing/#cloudflare-permissions). Every code is explained in
 [Cloudflare connection troubleshooting](../../guides/cloudflare-troubleshooting/).
+
+## Hosting Groups
+
+A Hosting Group is a Cloudflare account and site address base that Sites
+publish to. Every Organization has a Default group that uses the Organization's
+own Publishing connection. Media storage and GitHub stay shared across groups.
+See [Connect your accounts](../../guides/customer-publishing/).
+
+| Action                                    | MCP tool                  | Permission       |
+| ----------------------------------------- | ------------------------- | ---------------- |
+| List groups and their connection status   | `list_hosting_groups`     | Organization key |
+| Create or rename a group                  | `save_hosting_group`      | Organization key |
+| Connect or disconnect a group's account   | `connect_hosting_group`   | Organization key |
+| Read a Site's group and eligible groups   | `read_site_hosting_group` | Site key         |
+| Move an unpublished Site to another group | `set_site_hosting_group`  | Site admin       |
+
+- `save_hosting_group` takes `name`, `sites_domain` and `dns_mode`, plus `id`
+  and `revision` when updating. It does not move existing Sites, media or
+  traffic.
+- `connect_hosting_group` takes `action`, `hosting_group_id` and the `revision`
+  from `list_hosting_groups`, plus `account_id` and `api_token` when connecting.
+  The hosting token needs no R2 access. Credentials are encrypted and never
+  returned. A Cloudflare account another Organization already uses cannot be
+  joined with an API key (`claimed_by_other_organization`).
+- `set_site_hosting_group` takes `hosting_group_id` and the
+  `previous_group_id` from `read_site_hosting_group`. A published Site, or one
+  with an active build, needs a hosting migration instead and is rejected.
+
+## Build engines
+
+Publications are built by an organization build engine in the Organization's
+own Cloudflare or GitHub account. Read its state with
+`read_organization_build_engine`; every change below takes the `revision` from
+that read and needs an organization key.
+
+| Action                                         | MCP tool                                |
+| ---------------------------------------------- | --------------------------------------- |
+| Prepare or update an engine and verify it      | `setup_organization_build_engine`       |
+| Check permissions and qualification            | `check_organization_build_access`       |
+| Check GitHub Actions and Workflows permissions | `check_organization_github_permissions` |
+| Choose the engine for new publications         | `select_organization_build_provider`    |
+| Cancel an active GitHub build                  | `cancel_organization_build`             |
+
+- `setup_organization_build_engine` prepares the selected provider's engine and
+  starts an isolated execution and artifact-transfer check. It does not change
+  the default provider. Read the engine status until verification finishes.
+- `check_organization_build_access` returns the exact permissions or
+  qualification steps still missing. It does not enable builds. Omitting
+  `provider` checks Cloudflare.
+- `check_organization_github_permissions` checks a connected GitHub account
+  without reconnecting. It tells an update the owner can approve apart from
+  permissions Typeroll has not requested yet. For a missing or failing
+  connection use `diagnose_organization_github_connection`.
+- `select_organization_build_provider` switches new publications to a verified
+  engine. Builds already started keep their provider, source and version.
+- `cancel_organization_build` cancels an active GitHub build by its `key` from
+  `active_jobs`. The attempt can no longer publish. Completed builds cannot be
+  cancelled.
+
+### Move an older managed site to Git publishing
+
+`check_managed_site_migration` verifies that a static site still on managed
+Pages hosting can move to connected Git publishing: the original hosting
+account, project, domain and the shared build engine. It returns a `revision`
+and the previous live deployment, and changes nothing.
+`migrate_managed_site_publishing` then moves the site using that `revision`.
+It needs site admin permission, keeps the original hosting project, live domain
+and old media URLs, and queues verified media copying. It does not deploy:
+publish once the media migration has finished.
 
 ## Analytics across Sites
 

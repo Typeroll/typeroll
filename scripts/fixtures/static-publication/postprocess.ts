@@ -2,14 +2,14 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { bundleBlockAssets } from './source/bundle-blocks';
 import { buildSearchIndexIfUsed } from './source/search-index';
-import { applyQueryRedirects, pagesRedirectsFile, pagesShadowedByRedirect, pageRobots } from '@typeroll/shared';
+import { aiContentSignal, applyQueryRedirects, pagesRedirectsFile, pagesShadowedByRedirect, pageRobots } from '@typeroll/shared';
 import type { Redirect, TrailingSlashPolicy } from '@typeroll/shared';
 import { buildPagesHeaders, withGlobalHeaders } from './source/pages-headers';
 import { vendorExtensionAssets } from './source/extensions/assets';
 import { vendorThemeFonts, writeFrozenThemeFonts, type FrozenThemeFonts } from './source/extensions/theme-fonts';
 import type { ExtensionRuntimeSnapshot } from '@typeroll/shared';
 
-export async function postprocess(dist: string, publication: { publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; trailing_slash?: TrailingSlashPolicy; fonts?: { heading?: string; body?: string; mono?: string; delivery?: 'self_hosted' | 'google' } }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot; theme_fonts?: FrozenThemeFonts }) {
+export async function postprocess(dist: string, publication: { publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; ai_crawler_policy?: string; trailing_slash?: TrailingSlashPolicy; fonts?: { heading?: string; body?: string; mono?: string; delivery?: 'self_hosted' | 'google' } }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot; theme_fonts?: FrozenThemeFonts }) {
   await bundleBlockAssets(dist);
   await buildSearchIndexIfUsed(dist);
   if (publication.extensions?.installations?.length) await vendorExtensionAssets(dist, publication.extensions);
@@ -24,6 +24,8 @@ export async function postprocess(dist: string, publication: { publication_id: s
   let headers = withGlobalHeaders(buildPagesHeaders(), {
     'X-Typeroll-Publication': publication.publication_id,
     ...((publication.settings.sitewide_noindex || publication.settings.sitewide_nofollow || publication.robots_blocked) ? { 'X-Robots-Tag': pageRobots({}, publication.settings, publication.robots_blocked) } : {}),
+    // Cloudflare (Markdown for Agents) treats an origin Content-Signal header as authoritative.
+    ...(aiContentSignal(publication.settings.ai_crawler_policy) ? { 'Content-Signal': aiContentSignal(publication.settings.ai_crawler_policy)! } : {}),
   });
   headers += '\nhttps://:project.pages.dev/*\n  X-Robots-Tag: noindex, nofollow\n';
   headers += '\nhttps://:version.:project.pages.dev/*\n  X-Robots-Tag: noindex, nofollow\n';
