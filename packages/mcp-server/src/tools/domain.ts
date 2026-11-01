@@ -114,7 +114,7 @@ export const domainTools: ToolDef[] = [
   },
   {
     name: 'read_organization_build_engine', noSite: true,
-    description: 'Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization (each with job_id, site_id, kind and status: queued, running, or publishing while a built publication uploads and verifies; image preparation jobs are media-…). A job stays listed until its deploy reaches a final status. Requires an organization API key; REST: GET /api/v1/publishing/builds. No provider credentials are returned.',
+    description: 'Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization (each with job_id, site_id, kind and status: queued, running, or publishing while a built publication uploads and verifies; image preparation jobs are media-…). A job stays listed until its deploy reaches a final status, except a domain switch that is built and verified and only waits for DNS approval: it is listed under awaiting_approval, uses no build capacity, and does not block other sites from publishing. Requires an organization API key; REST: GET /api/v1/publishing/builds. No provider credentials are returned.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/builds'))),
   },

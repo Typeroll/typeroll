@@ -4,7 +4,7 @@ import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { buildTasksPath } from '../../lib/builds/queue';
 import { buildInputPath } from '../../lib/builds/state';
-import { activeBuilds } from '../../lib/builds/activity';
+import { activeBuilds, buildActivity } from '../../lib/builds/activity';
 
 beforeEach(async () => { makeTmpFixtures(); await resetDatastore(); });
 
@@ -34,4 +34,15 @@ it('keeps a publication listed after its build until its deploy reaches a final 
   expect(await activeBuilds('org', now)).toEqual([expect.objectContaining({ key: publishing, job_id: 'job-uploading', status: 'publishing', phase: 'verifying', kind: 'publication' })]);
   await store.updateDoc(paths.deploy('org', 'site', 'job-uploading'), { status: 'succeeded' });
   expect(await activeBuilds('org', now)).toEqual([]);
+});
+
+it('lists a domain switch that only waits for DNS approval apart from active jobs', async () => {
+  const store = getStore(), now = Date.now();
+  await store.setDoc(paths.site('org', 'fi'), { name: 'Finland' });
+  const key = 'f'.repeat(64);
+  await store.setDoc(`${buildTasksPath('org')}/${key}`, { identity: { org_id: 'org', site_id: 'fi', version_id: 'main', job_id: 'switch-1' }, status: 'completed', completed_at: now - 60_000, attempt: 1 });
+  await store.setDoc(buildInputPath('org', key), { kind: 'publication', provider: 'cloudflare' });
+  await store.setDoc(paths.deploy('org', 'fi', 'switch-1'), { status: 'running', phase: 'awaiting domain cutover approval' });
+  expect(await activeBuilds('org', now)).toEqual([]);
+  expect(await buildActivity('org', now)).toEqual({ active_jobs: [], awaiting_approval: [expect.objectContaining({ key, job_id: 'switch-1', site_id: 'fi', site_name: 'Finland', status: 'awaiting_approval' })] });
 });

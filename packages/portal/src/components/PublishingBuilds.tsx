@@ -185,6 +185,9 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
       <div><strong>{job.site_name}</strong><span>{job.version_id} · {job.provider === 'github' ? 'GitHub Actions' : 'Cloudflare'} · {job.status === 'publishing' ? 'Uploading and verifying' : job.status === 'running' ? 'Building' : 'Queued'}</span>{job.static_verification && <span role="status">Verifying static files: {job.static_verification.completed} of {job.static_verification.total} checked on your build account. Continues automatically; you can close this page.</span>}{job.media_preparation && job.media_preparation.completed < job.media_preparation.total && <span role="status">Preparing media: {job.media_preparation.completed} of {job.media_preparation.total} files ready. Continues automatically; you can close this page.</span>}</div>
       {job.provider === 'github' && job.status !== 'publishing' && <button className="btn btn--secondary" disabled={busy} onClick={() => void manage('cancel', job.key)} aria-label={`Cancel build for ${job.site_name}`}>Cancel build</button>}
     </li>)}</ul></section>}
+    {!!settings?.awaiting_approval?.length && <section className="publishing-builds__activity" aria-label="Domain switches waiting for approval"><h3>Waiting for domain approval</h3><ul>{settings.awaiting_approval.map(job => <li key={job.key}>
+      <div><strong>{job.site_name}</strong><span>{job.version_id} · Built and verified. Waiting for your DNS approval; other sites can publish meanwhile.</span></div>
+    </li>)}</ul></section>}
     {error && <p role="alert">{error}</p>}
     {notice && <p role="status" className="publishing-builds__notice">{notice}</p>}
     {!notice && !error && engine?.issue && !needsToken && !readyToSetUp && !verifying && <p>{engine.issue.message}</p>}
