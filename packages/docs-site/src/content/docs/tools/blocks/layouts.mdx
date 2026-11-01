@@ -1,0 +1,538 @@
+---
+title: "Layouts, navigation and cards"
+description: "Menus, article cards, starting layouts, gradients, interactive cards, footers, navigation inputs, image framing and migration design controls."
+---
+
+Part of the [block reference](../). Changes by Core release are listed in
+[Block changes by Core version](../changelog/).
+
+## Block menus and article cards
+
+`core/navigation_menu` provides two editable block slots: **Desktop / shared**
+(slot 0) and optional **Mobile override** (slot 1). Leave slot 1 empty to reuse the
+same content, or build a completely different mobile layout. Use shared partials
+for reusable parts rather than copying link values. `core/navigation_links`
+provides semantic link lists with color, text size, weight, spacing and direction;
+combine them with native containers and headings. The same blocks work in footers.
+
+`collapse_below` accepts `576`, `768`, `769`, `1024` or `never` (strings); default `1024`
+means modal below 1024px and inline at 1024px and above. The modal preserves the
+header position, locks background interaction, contains keyboard focus, closes on
+Escape, link activation or desktop transition, and restores focus on dismissal.
+Without JavaScript, the appropriate menu content remains available in the page.
+The simpler `core/navigation` remains available for flat inline/disclosure menus.
+
+```json
+{
+  "id": "main-menu",
+  "type": "core/navigation_menu",
+  "data": { "collapse_below": "768", "aria_label": "Main navigation" },
+  "slots": [
+    [
+      {
+        "id": "desktop-links",
+        "type": "core/navigation_links",
+        "data": {
+          "direction": "row",
+          "links": [{ "label": "Services", "href": "/services/" }]
+        }
+      }
+    ],
+    [
+      {
+        "id": "mobile-links",
+        "type": "core/navigation_links",
+        "data": {
+          "font_size_px": 28,
+          "color": "#075696",
+          "links": [{ "label": "Explore services", "href": "/services/" }]
+        }
+      }
+    ]
+  ]
+}
+```
+
+`core/post_card` retains natural image proportions by default. Set `image_fit:
+"cover"` explicitly when cropping is intended. Optional responsive
+`image_height_px`, `title_size_px`, `title_line_height`, `title_weight`,
+`body_padding_px` and `radius_px` control article-card proportions. Set
+`appearance: "card"` for a joined image and panel, and `shadow` to `default`,
+`none` or `subtle`. `whole_card_link: true` creates one stretched title link when
+there is no secondary action and the title and URL are present. A download or
+separate page action disables that whole-card mode; anchors are never nested.
+
+Horizontal cards use `layout: "row"` with `image_width_percent` (10–70, default 40).
+Missing media leaves no empty image column. `action_label` adds a separate page
+link, and `download_style: "outline"` presents the mapped download URL as a
+bordered action. These controls work in standalone cards, page lists and repeaters.
+`core/icon.size_px` provides a responsive numeric icon size.
+
+Presentation field maps still use the standard breakpoints: tablet 640, laptop
+1024, desktop 1280 and wide 1536px. A menu's `collapse_below` changes only its
+behavior threshold, **not** those style buckets. Source layouts changing at
+576/768px require an explicit capability gap or deliberate accepted mapping;
+six sampled widths are not proof of all intermediate widths. Do not hide an
+unsupported source breakpoint with undocumented CSS.
+
+`template_content_slot.max_width: "full"` adds no implicit gutter when typography
+is set. Narrow, normal and wide slots retain their declared content widths.
+Nested page blocks remain responsible for their own spacing.
+
+`collapse_below: "769"` keeps the mobile menu through 768px, then switches at
+769px. `toggle_size_px` sizes the open/close icons independently of their minimum
+44px hit area. Link groups accept `font: "body"` or `"heading"` to use the site's
+font choices. Each link may include an `icon`; `icon_size_px` and `icon_gap_px`
+separate its size and spacing from the label. SVG icons and emoji both honor
+`core/icon.size_px`.
+
+## Coherent starting layouts
+
+Native defaults and editable starters depend on Site capabilities. Check `supports_composition_starters` and
+`supports_default_presentation_contract` in Site capabilities. Availability depends on the installed Core version. Existing saved
+Page templates and partials are never replaced automatically.
+
+In **Templates → New template → Starting layout**, choose **Article** for a body
+with a generated outline, **Profile** for a title, optional image/summary and
+structured facts, or **Landing** for a title frame followed by full-width body
+sections. Blog, checklist, team, events, products and a basic title/body layout
+remain available. A Content type chooses its default template; each Page can use
+another allowed template. Templates do not own or duplicate the Page's data.
+
+Agents can read one editable composition without writing:
+
+```text
+get_composition_starter kind="profile"
+get_composition_starter kind="header"
+get_composition_starter kind="archive" content_type="articles" title="Guides"
+```
+
+`get_composition_starter` also returns Page bodies for common marketing pages:
+`feature_page`, `comparison_page` (with a comparison table), `integration_page`,
+`pricing_page` (plan table and plan comparison) and `use_case_page`. Put them in
+`create_page` or `update_page` `blocks`, replace every [bracketed placeholder]
+and remove sections without real content.
+
+The equivalent authenticated read is
+`GET /api/v1/sites/{siteId}/composition-starters?kind=profile`.
+Header/footer starters contain a sample Home link: replace it with real site
+navigation. The header uses separate desktop and mobile link trees in the native
+menu. Archive starters include a title, breadcrumbs and responsive Page cards. Their
+media frame is deliberately 240px high with `contain`: the full subject stays
+visible without a portrait stretching the entire card row. Ordinary Image block
+defaults remain intrinsic.
+The Profile facts list starts empty: add rows mapped to the actual Content type's
+public fields. No field names are guessed and no data is copied into rich text.
+Save the resulting tree using the normal Page/template/partial tools. Read-only
+starter retrieval does not create or replace any document.
+
+### Spacing belongs to the surrounding layout
+
+- **Section** owns the full-width background, vertical separation, inner content
+  width and horizontal gutter. New Page starters supply this frame.
+- **Container** groups children. Its default horizontal and vertical padding is
+  now `none`, so nested groups do not compound gutters. Set padding explicitly
+  for a panel that needs its own interior space.
+- **Article flow** owns heading separation. It uses `--heading-space-before`
+  (2rem) and `--heading-space-after` (0.65rem), and removes leading/trailing space
+  at the body edges. Standalone headings do not add arbitrary outer margins.
+- **Cards** own their interior spacing. Images retain their complete subject
+  unless an explicit crop/ratio is chosen. Missing image/date/author/excerpt
+  blocks leave no empty node. Field lists omit missing rows and empty sections.
+
+Theme tokens and deliberate block overrides remain available. Exact measurements
+are under **Advanced settings**; common presentation choices are under
+**Appearance**. Both start collapsed. **Reset** removes the authored override or
+restores the block default. Required content fields remain visible.
+
+Formatted headings (`core/rich_heading`) support linked rich text with the same
+responsive size, line height, weight, font and alignment controls as ordinary
+headings. Its links follow the site's Link style (`--link-decoration`) unless
+the block sets `link_decoration` (`inherit`, `none` or `underline`) and
+`link_hover_decoration` (`inherit`, `none` or `underline`), for example
+`link_decoration: "none"` with `link_hover_decoration: "underline"` for a
+category heading that links to its page while body links stay underlined. The
+focus outline stays visible either way. A container with rounded corners clips child backgrounds only when
+`overflow: "clip"` is explicitly selected; the default remains `visible` for
+menus, focus and other overflowing content. Mobile menus include an inner inset;
+`panel_padding: "none"` deliberately removes it. PDF text links use the theme's
+primary color and an underline, while authored color and outlined styles win.
+
+### Existing-site review before publishing
+
+For existing Containers with omitted `padding_x` or `padding_y`, the next build
+uses the new zero-padding default. To preserve the old appearance, explicitly
+save `padding_x: "md"` and/or `padding_y: "md"` for the missing axes before
+publishing (previously 2rem horizontal and 4rem vertical). Existing pixel or token
+overrides are not changed. Review both new and existing compositions in a Version;
+never replace a saved template with a starter as an upgrade procedure.
+
+Check long titles, empty optional fields, portrait/landscape media, zero/one/many
+listing results, mobile navigation and keyboard focus. Review an actual static
+build as well as preview. A new Core revision invalidates affected rendered HTML;
+customer sites are not republished automatically.
+
+## Gradients, interactive cards and compact footers
+
+Check the
+`supports_surface_feedback_and_gradients` capability before using these controls.
+The block schemas returned by API/MCP and the native editor expose the same fields.
+
+### Two-color surface gradients
+
+Both Section and Container accept an optional object:
+
+```json
+{
+  "background_gradient": { "from": "#f8fbff", "to": "#e8f4fc", "angle": 135 }
+}
+```
+
+The stops are at 0% and 100%; the angle is 0–360 degrees (default 135).
+Use actual colors, RGB/HSL values or simple theme references such as
+`var(--color-primary)`. Both colors are required. Incomplete or invalid direct
+renderer input emits no gradient; API clients should follow the returned field schema.
+Gradients take precedence over a Container background image. Remove the gradient
+object to restore its image/solid background. Nested blocks do not inherit the
+parent gradient. Solid defaults remain unchanged. Container `overflow: "clip"`
+can intentionally clip nested panels to its rounded corners. Section dividers
+still use the separate solid background color; gradients do not recolor them.
+
+### Hover, keyboard focus and touch feedback
+
+Linked Post Cards have subtle theme-colored feedback without moving, resizing or
+changing link destinations. Optional `hover_background`, `hover_border_color`
+and `hover_color` set the interactive surface, border marking and text colors.
+These settings work on standalone cards and in `page_list`/Repeater
+`item_overrides`. An inset focus ring remains visible in clipped groups.
+Hover applies only on hover-capable devices; pressed links and keyboard focus
+also get feedback. Reduced-motion preferences disable color transitions.
+
+An outlined PDF action inverts its colors by default. Use `download_color`
+for the resting text/border and `download_hover_background` /
+`download_hover_color` for the interactive pair. The default pair uses the
+resting download color and `var(--color-on-primary,#fff)`; check contrast when
+choosing a pale brand color. Plain PDF links keep their underline and no button
+background. Neither option wraps a second action inside a whole-card link.
+
+### Compact desktop footer links
+
+`core/navigation_links.density` is `comfortable` by default. For long footer
+lists, choose `compact-desktop`: links use a minimum 24px height and zero default
+vertical padding at widths of at least 1024px with a fine, hover-capable pointer.
+Other viewports and touch devices retain at least 44px. Authored padding/gap
+values take precedence. A dense vertical footer can use:
+
+```json
+{
+  "density": "compact-desktop",
+  "direction": "column",
+  "font_size_px": 14.4,
+  "line_height": 1.1,
+  "gap_px": 4,
+  "padding_y_px": 0
+}
+```
+
+The editable Footer starter selects this density; existing saved footers and
+primary menus do not change density automatically. Review long labels, keyboard
+focus and grouping, then publish the chosen Site version to include the changes
+in static output. Upgrading Core alone does not republish customer websites.
+
+### Long heading words
+
+Native Heading and Page Title wrap long words inside their
+content well, including centered flex layouts. Authored font sizes stay unchanged;
+a long word can break across lines instead of widening the page. Check the saved
+preview and republished output at your smallest supported viewport.
+
+### Space before and after an image
+
+`core/image.spacing_before_px` and `spacing_after_px` set the space above and
+below the image in pixels (0–480), per breakpoint like Container padding:
+
+```json
+{
+  "type": "core/image",
+  "data": { "src": "…", "spacing_after_px": { "mobile": 123, "laptop": 83 } }
+}
+```
+
+In normal page flow the distance to the next block is the larger of this value
+and that block's own space before it, as with CSS margins. In a Container, Grid
+or Columns slot with a gap, the gap is added. Unset leaves the surrounding
+spacing unchanged. The px fields take precedence over `style_overrides.spacing_before`
+and `spacing_after`, which accept one value for every breakpoint.
+
+### Image framing and shared article scales
+
+Image keeps the entire original visible by default. For intentional art direction,
+`core/image.scale_percent` enlarges the image **inside** a clipped frame (100–200%).
+The frame grows with the image's intrinsic height; it does not crop vertically.
+Supply `original_width` and `original_height` to reserve that space before loading.
+Caption and keyboard focus stay outside the clip. Keep the original SVG and alt text.
+
+For a centered illustration at 120% through 576px and 100% above it:
+
+```json
+{
+  "id": "illustration",
+  "type": "core/image",
+  "data": {
+    "src": "https://media.example.com/illustration.svg",
+    "alt": "Packing a moving box",
+    "original_width": 600,
+    "original_height": 150,
+    "scale_percent": { "mobile": 120, "tablet": 100 },
+    "focal_x": 50,
+    "responsive_breakpoints": {
+      "tablet": 577,
+      "laptop": 769,
+      "desktop": 1024,
+      "wide": 1280
+    }
+  }
+}
+```
+
+`fit` and `aspect_ratio` are responsive on Image. Post Card exposes responsive
+`image_fit` and `image_aspect`. Both offer `focal_x` and `focal_y` (0–100): horizontal
+framing and the focal point inside a fixed-aspect/cover image. A vertical focal
+point has no visible effect on an uncropped intrinsic-height image. These controls
+also work on Post Cards inside repeaters and page lists via `item_overrides`.
+
+Set `h1_size_px` through `h6_size_px` on the Page content slot to define one shared
+body heading scale, including formatted headings and headings in nested containers.
+For example, `h2_size_px: {mobile:24, tablet:28, laptop:32}` with slot viewport
+widths `{tablet:481, laptop:769, desktop:1024, wide:1280}` gives three exact sizes.
+Individual headings can still override `font_size_px`. Optional responsive
+`heading_before_px` and `heading_after_px` tune spacing where `rhythm: "article"`
+is applied. Containers can scope the same controls to a section. Omitted values
+retain existing defaults; the page title outside the slot is unaffected.
+
+Breadcrumbs retain an ordered list and the current-page indicator, but flow inline:
+a long current title continues in the remaining line space and wraps naturally.
+Use `breadcrumb_label` only when a shorter label is editorially appropriate.
+Heading alignment is responsive in the editor, preview and static publication.
+`align: "match-parent"` (Inherit from container) follows the surrounding text
+alignment instead of forcing left, for headings inside centred cards.
+
+### Recognizable text links
+
+Native rich-text links are underlined with a small offset, including when the
+theme resets anchor decoration. This covers prose, lists, table cells/captions/
+sources, image captions, rich headings, card body text, hero/callout text,
+testimonials, biographies, steps, feature text, form help and consent text.
+Keyboard focus remains visible and long URLs can wrap. Native button, navigation,
+card-title and image-wrapper links retain their own styles.
+
+Existing static sites need a new publication to receive these defaults. An
+explicit custom stylesheet can still override them; remove old blanket anchor
+resets when they conflict with readable text links.
+
+### Navigation inputs and service tabs
+
+`core/navigation_form` collects a few
+initial values and navigates to another page. It does **not** submit a lead,
+call a provider, send email, or require an app installation. Use `core/form`
+for the later submission, with its own consent, validation and provider setup.
+
+```json
+{
+  "id": "quote-start",
+  "type": "core/navigation_form",
+  "data": {
+    "destination": "/quote/",
+    "handoff_key": "quote-start",
+    "button_label": "Continue",
+    "columns": { "mobile": "1", "laptop": "3" },
+    "fields": [
+      {
+        "name": "address",
+        "label": "Address",
+        "kind": "text",
+        "required": true
+      },
+      { "name": "area", "label": "Area", "kind": "number" }
+    ]
+  }
+}
+```
+
+Use native `text`, `number` or `select` fields. Select options have `value`
+and `label`. Labels are accessible even with `show_labels: false`.
+`gap_px`, `input_height_px`, `font_size_px`, `radius_px` and input/button
+colors control presentation. `font` selects `inherit`, `body` or `heading`.
+Use `line_height`, `input_padding_x_px`, `input_padding_y_px`,
+`input_border_width_px` and `input_border_color` for native input styling.
+`button_nowrap`, `button_padding_x_px` and `button_padding_y_px` control
+tight continue buttons; verify the longest label at the narrowest width.
+`button_font_weight` (100–900, responsive, default 600) sets the button text
+weight. `button_icon` adds an icon after the label: a core icon name (`core_icon_names` in Site capabilities)
+such as `arrow-right`, or text such as `→`. It is hidden from assistive
+technology, so the label alone names the action. `button_icon_size_px`
+(responsive) sizes it and `button_icon_gap_px` sets the space after the label
+(default 0.4em). Without an icon the button markup is unchanged.
+Number fields support `min`, `max` and positive `step` constraints.
+`columns` includes the continue button.
+For unequal widths use `column_widths`, such as `"1fr 180px"` or
+`"2fr 2fr 1fr 1fr"`. A field's `column` and `row`, plus `button_column`
+and `button_row`, accept responsive values. Columns accept `auto`, `full`,
+`1`–`6`, `span 2` or `span 3`; rows accept `auto` or `1`–`6`.
+Use local `responsive_breakpoints` when the component needs different widths.
+Keep visual placement consistent with a sensible DOM/keyboard reading order.
+
+The destination must be a path on the **same origin**, without query parameters
+or a fragment. Values are never added to the URL. The latest handoff is stored
+in that browser tab and accepted for at most 15 minutes: up to 32 named fields, 512 characters
+each. Do not use it for secrets. The packet is removed when consumed or replaced; an unused expired packet can
+remain until another handoff or the tab closes. Closing the tab discards its session storage;
+blocked storage or disabled JavaScript still permits navigation, but not prefill.
+This is not persistent draft storage or cross-domain form integration.
+
+### Address suggestions
+
+A `text` field with `suggest_address: true` offers address suggestions as the
+visitor types, and carries the chosen address's parts to the destination
+alongside the text. Set the block's `address_country` to a two-letter code to
+restrict results. The suggestion language follows the site's content language.
+
+This needs a **Google Places browser key** on the site: open the Integrations
+app and fill in _Google Places — Browser API key_. Restrict that key by HTTP
+referrer in the Google Cloud console — it is a public key that ships to every
+visitor by design, exactly as it does on any site using the widget directly.
+The provider script loads only on pages that have a field asking for it, once
+per page however many fields ask, and it is held by the site's cookie-consent
+gate as a `functional` integration.
+
+The suggestion field looks like the block's other fields: the
+same border, radius, height, padding, background, text colour, font, size and
+placeholder colour, from the block's own input settings, at every breakpoint.
+It follows the site's colour scheme, so a light site keeps a light field in a
+browser set to dark mode, and it keeps a magnifier icon in the field's text
+colour. The suggestion list uses the block's font, and the Maps API's own Roboto
+and Google Sans stylesheets are not loaded. Focus ring, keyboard selection and
+the handoff are unchanged. The Maps JavaScript API loads from Google's
+`quarterly` release channel, so Google's changes to the element arrive once a
+quarter rather than weekly.
+
+The field reads these CSS custom properties, which `core/navigation_form` sets
+from its settings; site CSS can override them on the block or a field:
+`--tr-field-min-height`, `--tr-field-padding-x`, `--tr-field-padding-y`,
+`--tr-field-border-width`, `--tr-field-border-color`, `--tr-field-radius`,
+`--tr-field-background`, `--tr-field-color`, `--tr-field-icon-color` and
+`--tr-field-icon-size`. The placeholder colour is the browser's default, as on
+the plain fields; Google's element offers no supported way to change it.
+
+With no key configured, or a key that fails validation, the field is an
+ordinary text input. Navigation and the handoff still work. That is also what
+you see in the editor canvas and in preview, which cannot run a provider
+script — so a field showing no suggestions there is expected, not a fault.
+Check a published page.
+
+A selected address also sends its components under `<field>_street`,
+`<field>_street_number`, `<field>_postal_code`, `<field>_locality` and
+`<field>_country`. Name receiving fields to match to prefill them. Editing the
+text after choosing a suggestion drops the components, so the destination never
+receives parts describing a different address from the one on screen.
+
+```json
+{
+  "name": "address_from",
+  "label": "Moving from",
+  "kind": "text",
+  "required": true,
+  "suggest_address": true
+}
+```
+
+To display the defaults on the destination, use another `core/navigation_form`
+with `mode: "receive"`, the same `handoff_key`, and an explicit `fields` list.
+It renders editable inputs without a continue/submission button and consumes
+matching defaults once. Unknown fields, expired values and mismatched destination
+paths are rejected. A provider integration must deliberately adopt these defaults
+and validate them again; placing a receive block beside an unrelated form does
+not automatically populate or submit that form.
+
+An installed Extension component can adopt them instead (Extension runtime
+0.43.0, `supports_extension_page_handoff`). If the component supports it and its installation was granted
+`page_handoff:read`, the component shows a **Prefill from navigation inputs**
+field: set it to the navigation form's `handoff_key` (block data
+`page_handoff_key`). The component then receives the typed values and address
+parts through [`context.handoff`](/docs/extensions/frontend/#receive-values-from-a-navigation-form).
+
+From the same release, the handoff also works in preview links: the preview
+shell carries it to the next preview page for both a receiving navigation form
+and an Extension component.
+
+`core/tabs` accepts up to six `labels` and matching `slots`. A label without
+`href` selects its slot; a label with `href` is a normal link and ignores its
+slot. A direct link accepts `link_rel`, for example `nofollow sponsored` on an
+affiliate link, and `new_tab: true`, exactly as on buttons. Labels support `icon`. Tab buttons precede direct links in the strip. Set `choice_flow: "continuous"`
+to let individual choices wrap together; `grouped` keeps the two groups together.
+`choice_row_gap_px`, `headline_font_size_px` and `headline_line_height` allow
+separate row and headline rhythm.
+Use `headline` for optional inline introductory text and responsive
+`headline_full_width` to move it onto its own row. Native choice controls include
+`font`, `line_height`, `choice_min_height_px` (at least 24 px),
+`choice_padding_x_px`, `choice_padding_y_px`, `choice_radius_px`,
+`choice_icon_size_px` and `style: "plain"` for borderless choices.
+`choice_color`, `active_background` and `active_color` control colors;
+`active_font_weight` controls the selected label weight. a collapsed
+input panel does not show an active background.
+The open/close button (`toggle_label`) and the accessible name of the choice list
+(`menu_label`) default to the page language: "Explore options"/"Options" in
+English, "Optionen anzeigen"/"Optionen" in German and "Visa alternativ"/"Alternativ"
+in Swedish. Set them to use your own wording.
+Arrow keys, Home and End switch tabs without recreating inputs. Set
+`collapse_below: "1025"` and `collapse_mode: "panels"` to keep service choices
+visible while a tap opens/closes the input panel on smaller screens. The default
+`collapse_mode: "all"` uses a separate disclosure button. `never` keeps content
+expanded. Without JavaScript, slot content and direct links remain available.
+
+### Missing card images and compact footer links
+
+`core/post_card` can use `missing_image: "placeholder"`
+with `placeholder_icon`, `placeholder_background`, `placeholder_color` and
+responsive `placeholder_icon_size_px`. Missing, null, empty and whitespace-only
+images use the decorative panel; real images retain their original presentation.
+`show_image: false` still hides both. Existing image height/aspect settings control
+the panel geometry. The default remains `missing_image: "omit"`. Set these once
+on the shared card or `item_overrides` of a listing/repeater; do not manufacture
+featured images on every Page. Linked placeholders use the card title as their
+accessible name, and the decorative icon is hidden from assistive technology.
+
+For compact footer lists, `core/navigation_links` supports `density: "compact"`
+at all widths and responsive `link_min_height_px` (minimum 24 px). For example,
+24 px link height, zero vertical padding and a 4 px gap produce a 28 px rhythm
+for one-line links; wrapped labels can grow. Comfortable navigation remains
+44 px by default, and `compact-desktop` retains its previous desktop behavior.
+
+## Migration design controls
+
+Read the current schema with `read_block_type` before
+writing fields; responsive values use `mobile`, `tablet`, `laptop`, `desktop`
+and `wide` keys.
+
+- `core/columns.content_gap_px` controls spacing between blocks **inside** each
+  slot; `gap_px` controls spacing **between** columns. The slot gap defaults to
+  the theme block gap (24px, or 32px from 1280px) and adds to individual block
+  margins. Set `content_gap_px: 0` to remove it; responsive overrides are supported.
+- `core/section.padding_y` accepts responsive presets. Use vertical padding for
+  vertical changes; CSS `padding` shorthand always affects horizontal sides too.
+- `template/site_logo.mode: "text"` renders a styled text wordmark. `text`
+  overrides the site name; `image` can override the image for one header/footer.
+- `core/image.never_upscale: true` keeps small images within their intrinsic width.
+  Contain/crop and responsive framing remain separate choices.
+- `core/hero` supports `focal_x`, `focal_y`, `image_fit`, `aspect_ratio`,
+  `text_vertical` and `text_align`. Full-image headings inherit the surface color.
+  Background containers also support focal points and `background_fit`.
+- `core/post_card.image_alt` supplies the image description. Listing cards can
+  map `image_alt_field`; an empty decorative image retains the link-title fallback.
+- `core/video.click_to_load: true` shows an accessible button instead of loading
+  a YouTube/Vimeo iframe immediately. An optional `poster` is loaded normally;
+  choose a locally hosted poster to avoid contacting a provider before activation.
+  No remote thumbnail is fetched automatically. This is not a consent manager.
+
+Check actual mobile and desktop rendering, especially text on photographs. A
+solid-color contrast warning cannot certify a photograph, gradient or custom CSS.

@@ -47,6 +47,11 @@ The AI agent reads the current header, makes the targeted change, then calls `re
 
 Returns all partials with their IDs and a content preview.
 
+## `delete_partial`
+
+Deletes a free global block by `partial_id`, optionally on a `version`. The
+header and footer are layout blocks and cannot be deleted.
+
 ## Navigation lives in the header partial
 
 The site's navigation is part of the `header` partial — not in any individual page. Ask the agent to add a navigation link when the Page belongs in the menu. Creating a Page does not itself require a new header link.

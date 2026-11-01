@@ -391,6 +391,76 @@ jobs:
           git tag -a "$MCP_TAG" -m "Release $MCP_TAG"
           git push origin "$MCP_TAG"
 
+  # Lists the released MCP package in the official MCP Registry
+  # (registry.modelcontextprotocol.io). GitHub OIDC proves the
+  # io.github.Typeroll/* namespace; the registry also checks that the npm
+  # package's mcpName matches server.json, so this runs after npm publishing.
+  registry:
+    name: Publish to the MCP Registry
+    needs: [plan, mcp]
+    # A registry outage must not turn a finished Core release red; the next
+    # release publishes the missing version, and the job log shows the failure.
+    continue-on-error: true
+    if: >-
+      needs.plan.outputs.publish_mcp == 'true' &&
+      (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      MCP_PUBLISHER_VERSION: v1.8.1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.source_sha }}
+      - name: Check server.json against the released package
+        id: listing
+        env:
+          MCP_VERSION: ${{ needs.plan.outputs.mcp_version }}
+        working-directory: packages/mcp-server
+        run: |
+          set -euo pipefail
+          NAME=$(jq -r .name server.json)
+          test "$NAME" = "$(jq -r .mcpName package.json)"
+          test "$(jq -r .version server.json)" = "$MCP_VERSION"
+          test "$(jq -r '.packages[0].version' server.json)" = "$MCP_VERSION"
+          ENCODED=$(jq -rn --arg name "$NAME" '$name | @uri')
+          STATUS=$(curl --silent --output /dev/null --write-out '%{http_code}' "https://registry.modelcontextprotocol.io/v0.1/servers/$ENCODED/versions/$MCP_VERSION")
+          case "$STATUS" in
+            200) echo "$NAME $MCP_VERSION is already listed."; echo 'listed=true' >> "$GITHUB_OUTPUT" ;;
+            404) echo 'listed=false' >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::The MCP Registry answered HTTP $STATUS for $NAME $MCP_VERSION."; exit 1 ;;
+          esac
+      - name: Install cosign
+        if: steps.listing.outputs.listed != 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Download and verify mcp-publisher
+        if: steps.listing.outputs.listed != 'true'
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          arch="$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+          archive="mcp-publisher_${os}_${arch}.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            "$archive"
+          tar xzf "$archive" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+      - name: Publish server.json with GitHub OIDC
+        if: steps.listing.outputs.listed != 'true'
+        working-directory: packages/mcp-server
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/mcp-publisher" login github-oidc
+          "$RUNNER_TEMP/mcp-publisher" publish
+
   docs:
     name: Publish public documentation
     if: github.event_name != 'workflow_dispatch' || inputs.dry_run != true

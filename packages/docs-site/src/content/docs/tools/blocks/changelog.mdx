@@ -1,0 +1,46 @@
+---
+title: "Block changes by Core version"
+description: "When block features and behaviour arrived, by Core release, for self-hosted installations that run an older Core."
+---
+
+The block reference pages describe the current behaviour. This page records
+the Core release that introduced each change, so a self-hosted installation on
+an older Core can tell what it supports. Typeroll Cloud always runs the current
+release. Check `get_site_capabilities` and `read_block_type` on the connected
+site rather than relying on a version number alone.
+
+Behaviour that depends on a site's [render version](../../settings/#render-versions)
+is described on the reference pages themselves, because it changes per site.
+
+| Core | Change | Section |
+| --- | --- | --- |
+| 0.2.103 | Migration design controls. | [Layouts, navigation and cards](../layouts/#migration-design-controls) |
+| 0.2.80 | Focus outlines stay visible on category headings that link to their page. | [Responsive settings and presentation](../responsive/#category-headers-and-menus) |
+| 0.2.79 | Video, hero video and rating options (render version 7). | [Block library](../library/#video-hero-video-and-ratings-render-version-7) |
+| 0.2.79 | Compact answers from block write tools. | [Blocks Tools](../#compact-write-answers) |
+| 0.2.79 | Navigation form button icons. | [Layouts, navigation and cards](../layouts/#navigation-inputs-and-service-tabs) |
+| 0.2.79 | Address suggestion fields match the block’s other inputs. | [Layouts, navigation and cards](../layouts/#address-suggestions) |
+| 0.2.79 | Warnings for unknown data fields. | [Blocks Tools](../#unknown-data-fields) |
+| 0.2.79 | Warnings for wrongly typed field values. | [Blocks Tools](../#field-types) |
+| 0.2.78 | Editors can activate block-type JS through personal OAuth and the block-type editor. | [Block parts and site block types](../parts/#site-block-types) |
+| 0.2.73 | Image spacing before and after. | [Layouts, navigation and cards](../layouts/#space-before-and-after-an-image) |
+| 0.2.73 | Preview writes the page identity attributes too. | [Blocks Tools](../#page-identity-in-built-markup) |
+| 0.2.48 | Write warnings. | [Blocks Tools](../#write-warnings) |
+| 0.2.47 | Page identity `data-*` attributes on `<body>`. | [Blocks Tools](../#page-identity-in-built-markup) |
+| 0.2.40 | Navigation form block (MCP 0.45.33). | [Layouts, navigation and cards](../layouts/#navigation-inputs-and-service-tabs) |
+| 0.2.40 | Post card placeholders for missing images. | [Layouts, navigation and cards](../layouts/#missing-card-images-and-compact-footer-links) |
+| 0.2.36 | Underlined rich-text links. | [Layouts, navigation and cards](../layouts/#recognizable-text-links) |
+| 0.2.35 | Image framing and shared article scales. | [Layouts, navigation and cards](../layouts/#image-framing-and-shared-article-scales) |
+| 0.2.34 | Frozen publications keep static repeater rows against the item block’s public schema. | [Block library](../library/#repeater--aliases) |
+| 0.2.34 | Heading and Page title wrap long words inside their content well. | [Layouts, navigation and cards](../layouts/#long-heading-words) |
+| 0.2.33 | Two-colour gradients, interactive card feedback and compact footers (MCP 0.45.27). | [Layouts, navigation and cards](../layouts/#gradients-interactive-cards-and-compact-footers) |
+| 0.2.32 | Independent component controls (template capability 0.48.0); not available in Core 0.2.31. | [Responsive settings and presentation](../responsive/#independent-component-controls) |
+| 0.2.32 | Improved native defaults and editable starters (MCP 0.45.26). | [Layouts, navigation and cards](../layouts/#coherent-starting-layouts) |
+| 0.2.28 | Native presentation controls (MCP schemas from 0.45.24). Existing sites are republished to use the new renderer. | [Responsive settings and presentation](../responsive/#native-presentation-controls) |
+| 0.2.25 | Optional block dimensions without custom CSS. | [Responsive settings and presentation](../responsive/#precise-native-presentation) |
+| 0.2.14 | Boolean field rows default to `boolean_display: "property"`. Core 0.2.12–0.2.13 showed both set booleans as True/False. | [Block library](../library/#structured-page-fields-without-empty-labels) |
+| 0.2.14 | Shared responsive defaults and CSS order. | [Responsive settings and presentation](../responsive/#responsive-defaults-and-css-order) |
+| 0.2.13 | A Page template H1 owns the Page’s main heading; a duplicate body H1 is rejected. | [Block library](../library/#one-main-heading-and-mobile-defaults) |
+| 0.2.13 | Page field list spacing, label weight and wrapping of long values. | [Block library](../library/#structured-page-fields-without-empty-labels) |
+| 0.2.12 | Page field list block (`supports_page_field_list`). | [Block library](../library/#structured-page-fields-without-empty-labels) |
+| 0.2.2 | Body text size, line height and paragraph spacing on a template’s Page content block. | [Block library](../library/#typography-in-a-page-template) |

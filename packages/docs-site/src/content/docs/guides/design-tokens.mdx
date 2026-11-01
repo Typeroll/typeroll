@@ -81,6 +81,20 @@ includes the same **non-blocking** findings. Unsaved drafts are not included.
 CSS checking is heuristic: it cannot prove that dynamically constructed CSS or
 third-party styles follow the palette. Suggestions require visual review.
 
+`css_findings` lists custom CSS that works against the theme, each with the
+platform feature that does the same job:
+
+| Code                                 | Finding                                                                               | Use instead                                                            |
+| ------------------------------------ | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `css_important_overuse`              | 10 or more `!important` declarations in one stylesheet                                | Site settings, named Styles and block settings                         |
+| `css_font_not_in_theme`              | A font family that is not the heading, body or mono font                              | Set it as a theme font and use the font role                           |
+| `css_duplicate_font_load`            | A theme font loaded again by `@font-face`, `@import` or a font link in `scripts_head` | Remove it; the theme loads its fonts once                              |
+| `css_first_section_background_image` | The first section's background image comes from custom CSS, so it loads late          | The section's background image setting or an image or cover block      |
+| `css_block_class_override`           | Rules on platform classes such as `.block-*`, `[data-block]` or `.site-header`        | A named Style, the block's settings, or the header and footer partials |
+
+`read_site_readiness` summarizes the same findings in its
+`custom_css_overrides` and `duplicate_fonts` items.
+
 The [site starter](https://github.com/Typeroll/site-starter) contains
 `scripts/typeroll/color_tokens.py`. Run a dry run first:
 
@@ -184,3 +198,10 @@ size, including browser text-size preferences. Prose defaults to the configured
 line length; explicit block widths remain authoritative. The preview uses
 saved role styles with unsaved controls and disables font downloads for
 isolation. Always check the full site with its actual webfonts before publishing.
+
+## Check it
+
+Run `lint_design_tokens`. Its findings, including `css_findings` for custom CSS
+that works against the theme, should be fixed or recorded as deliberate
+exceptions. The [launch readiness report](../launch-checklist/#custom-css-overrides)
+shows the same CSS findings for the whole site.

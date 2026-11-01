@@ -4,6 +4,7 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import { docsTarget } from './docs-target.mjs';
+import { SMALL_BUDGET } from './llms-config.mjs';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,10 +58,14 @@ for (const file of htmlFiles) {
     assert.ok(pageText.length > 100, 'Page text is empty');
     const edit = html.match(/https:\/\/github\.com\/typeroll\/typeroll\/edit\/main\/([^"<>]+)/)?.[1];
     assert.ok(edit && existsSync(path.join(repository, edit)), `Edit link must resolve to a real source file: ${edit}`);
-    assert.equal((edit.match(/src\/content\/docs/g) ?? []).length, 1, 'Edit path is duplicated');
+    if (route.startsWith('/skills/tr-')) assert.match(edit, /^packages\/mcp-server\/skills\/tr-[a-z0-9-]+\.md$/, 'Skill pages are edited at their MCP skill source');
+    else assert.equal((edit.match(/src\/content\/docs/g) ?? []).length, 1, 'Edit path is duplicated');
     const jsonLd = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/g)]
       .filter(([, tag]) => attrs(tag).type === 'application/ld+json').map(([, , json]) => JSON.parse(json));
     assert.equal(jsonLd.length, 1, 'Expected one structured-data block');
+    const ogImage = meta.find(tag => tag.property === 'og:image')?.content;
+    assert.equal(ogImage, `${target.publicUrl}images/typeroll-docs-share.png`, 'Expected the PNG share image');
+    assert.ok(existsSync(localFile(new URL(ogImage))), 'Share image file is missing');
     if (route === '/') {
       assert.equal(jsonLd[0]['@type'], 'SoftwareApplication');
       assert.equal(jsonLd[0].name, 'Typeroll CMS');
@@ -74,7 +79,8 @@ for (const file of htmlFiles) {
       assert.equal(jsonLd[0].itemListElement.at(-1).item, pageUrl(route));
       assert.match(html, /aria-label="Breadcrumb"/);
     }
-    for (const [, raw] of html.matchAll(/(?:href|src)="([^"<>]+)"/g)) {
+    // Attributes of real tags only; escaped example markup in code is text.
+    for (const [, raw] of html.matchAll(/<[a-z][^<>]*?\s(?:href|src)="([^"<>]+)"/g)) {
       const url = new URL(decode(raw), pageUrl(route));
       if (url.origin !== origin) continue;
       if (target.base !== '/' && url.pathname === '/') continue;
@@ -91,12 +97,16 @@ assert.doesNotMatch(robots, /Disallow:\s*\/\s*$/m);
 assert.ok(read(path.join(dist, 'sitemap-index.xml')).includes(`${target.publicUrl}sitemap-0.xml`));
 assert.doesNotMatch(sitemap, /<loc>[^<]*\/404\/?<\/loc>/);
 const markdown = unified().use(remarkParse).use(remarkGfm);
-for (const name of ['llms.txt', 'llms-full.txt', 'llms-small.txt', ...htmlFiles.filter(file => file.endsWith('index.html')).map(file => path.relative(dist, file).replace(/\.html$/, '.txt'))]) {
+const customSets = existsSync(path.join(dist, '_llms-txt')) ? readdirSync(path.join(dist, '_llms-txt')).filter(file => file.endsWith('.txt')).map(file => `_llms-txt/${file}`) : [];
+assert.ok(customSets.length >= 5, 'Focused llms sets are missing');
+for (const name of ['llms.txt', 'llms-full.txt', 'llms-small.txt', ...customSets, ...htmlFiles.filter(file => file.endsWith('index.html')).map(file => path.relative(dist, file).replace(/\.html$/, '.txt'))]) {
   const content = read(path.join(dist, name));
   assert.ok(content.length > 200, `${name} is empty`);
   if (name.startsWith('llms')) assert.match(content, /Typeroll CMS/);
   assert.doesNotMatch(content, /Build sites with Claude/);
   assert.doesNotMatch(content, /<SYSTEM>/);
+  assert.doesNotMatch(content, /Section titled/, `${name}: heading anchor text leaked into agent text`);
+  if (name.startsWith('llms') || name.startsWith('_llms-txt/')) assert.ok(read(path.join(dist, 'llms.txt')).includes(name === 'llms.txt' ? '# Typeroll CMS' : name.replace(/^_llms-txt\//, '')), `${name} is not linked from llms.txt`);
   function checkLinks(node) {
     if (['link', 'image', 'definition'].includes(node.type)) {
       assert.match(node.url, /^[a-z][a-z\d+.-]*:/i, `${name}: agent link must be absolute: ${node.url}`);
@@ -110,6 +120,12 @@ for (const name of ['llms.txt', 'llms-full.txt', 'llms-small.txt', ...htmlFiles.
   checkLinks(markdown.parse(content));
 }
 assert.match(read(path.join(dist, 'llms-full.txt')), /Migrate from Wix/);
+const smallSize = Buffer.byteLength(read(path.join(dist, 'llms-small.txt')));
+assert.ok(smallSize <= SMALL_BUDGET, `llms-small.txt is ${smallSize} bytes; the budget is ${SMALL_BUDGET}. Exclude more reference pages in scripts/llms-config.mjs`);
+const index = read(path.join(dist, 'llms.txt'));
+assert.match(index, /app\.typeroll\.com\/api\/mcp/, 'llms.txt must name the MCP server');
+assert.ok(index.includes(`${target.publicUrl}getting-started/connect-your-agent/`), 'llms.txt must link the client setup page');
+assert.ok([...index.matchAll(/^- \[[^\]]+\]\([^)]+index\.txt\): \S/gm)].length >= htmlFiles.length - 5, 'llms.txt pages need descriptions');
 assert.equal(failures.length, 0, failures.join('\n'));
 console.log(`Verified ${htmlFiles.length} HTML files: titles, canonicals, indexing, edit links, structured data, internal links, assets and agent documentation.`);
 

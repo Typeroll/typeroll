@@ -61,6 +61,24 @@ Creates a new page. Required: `title`. Pass `content_type` and `fields` for arti
 
 The page id is derived from its address (`/category/news/diy` becomes `category_news_diy`). Pass `id` to choose it yourself, for example to keep `parent` or filter values stable during a migration: 1–100 letters, digits, dots, underscores or hyphens. An id that is already in use fails with 409; a supplied id is never replaced.
 
+### Starting from a marketing page layout
+
+`get_composition_starter` returns an editable block tree for five common
+marketing pages, built only from core blocks. Nothing is saved by the read.
+
+| `kind`             | Contains                                                                  |
+| ------------------ | ------------------------------------------------------------------------- |
+| `feature_page`     | Hero, benefits grid, how it works with a guide link, FAQ, call to action  |
+| `comparison_page`  | Hero, dated summary with sources, comparison table, when to choose which, FAQ, call to action |
+| `integration_page` | Hero, what you can do, setup steps with a code block, FAQ, call to action |
+| `pricing_page`     | Title, pricing table, plan comparison table, FAQ, call to action          |
+| `use_case_page`    | Hero, problem, how the product helps, example, FAQ, call to action        |
+
+Pass the returned `blocks` to `create_page` or `update_page`. Every placeholder is
+in square brackets: replace each one, and remove sections you have no real
+content for, such as an example without a measurable outcome. The FAQ is an
+ordinary Accordion, so it shows the questions on the page.
+
 ### Importing structured answers
 
 Core **0.2.95** / MCP **0.45.74** add low-priority imports in Cloud and self-hosted
@@ -278,6 +296,17 @@ Over the REST API this is `POST /api/v1/sites/{siteId}/pages/batch-read`, taking
 It reads **accepted content**. A page with an uncommitted working copy is
 returned as it was last saved, not as it currently reads in the editor — so use
 `read_page` when you need to tell a draft from accepted content.
+
+## `resolve_page_url`
+
+Finds the Page behind a URL or path on the selected site and version, including
+addresses created by Content type routes. Pass `url` and optionally `version`.
+It never fetches the URL and refuses addresses on other sites. A `#fragment`
+points to a place on the returned page, not to a separate page.
+
+```
+Which page is https://example.com/blog/moving-tips/ ?
+```
 
 ## `search_pages`
 

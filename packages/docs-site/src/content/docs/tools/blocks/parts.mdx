@@ -1,0 +1,417 @@
+---
+title: "Block parts and site block types"
+description: "Style the parts of built-in and site block types, and how site block types behave in the editor, API and publication."
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+
+Part of the [block reference](../). Changes by Core release are listed in
+[Block changes by Core version](../changelog/).
+
+## Site block types
+
+When the library doesn't fit, an editor or site administrator builds a block type for the site:
+composed from existing blocks (recommended) or with its own markup, with
+editable fields, repeating groups and scoped CSS. See
+[Site block types](../../custom-block-types/).
+
+<Aside type="caution">
+  **Block JavaScript runs in every visitor's browser.** Through MCP and the API,
+  `create_block_type` and `update_block_type` accept a `script` field, and
+  `core/embed` accepts `js`, under your API key's authority — the same
+  content-authoring permission. This is also available to
+  editors through personal OAuth and in the portal's block-type editor ("Activate
+  JS"). The write is stored as sent and recorded in the API audit log like any
+  other change. Review scripts like deployed code, and never paste script you
+  copied from untrusted content without reading it first. A `<script>` tag in
+  page or block markup is still removed by the sanitizer, whichever credential
+  wrote it.
+</Aside>
+
+The in-portal chat assistant is the one exception: it writes block JavaScript
+only when the site has **Allow AI to write block scripts** enabled. A site admin
+sets that in **Settings → Custom code**, or with `update_site`
+(`ai_scripts_enabled: true`) / `PATCH /api/v1/sites/{siteId}`. The setting has
+no effect on API keys or MCP.
+
+Core blocks (id starts with `core/`) are managed in platform code and can't be
+changed. A block type in use cannot be deleted; `find_pages_using_block_type`
+lists where it is used.
+
+## Block parts
+
+A **part** is a named element inside a block that a [named style](../../styles/)
+can style: the links in a formatted heading, a hero's heading or buttons. It
+replaces CSS against the block's markup (`[data-block="rich_heading"] a`) with
+a style the editor shows, that follows the site's palette and is checked for
+contrast. `read_block_type` returns a type's `parts`:
+
+```json
+{
+  "id": "core/rich_heading",
+  "parts": [
+    { "name": "link", "label": "Links", "selector": "a", "target": "link" }
+  ]
+}
+```
+
+Each part has a `target`, the kind of style that fits it (`text`, `heading`,
+`list`, `button`, `container`, `link` or `image`); only styles that can be
+chosen for that kind apply.
+
+### Parts of the core blocks
+
+| Block                                             | Part                | Element                                      | Style kind | Chosen per block with |
+| ------------------------------------------------- | ------------------- | -------------------------------------------- | ---------- | --------------------- |
+| Accordion (`core/accordion`)                      | `item`              | Item (render v4)                             | container  | `part_styles`         |
+|                                                   | `title`             | Item title (render v4)                       | text       | `part_styles`         |
+|                                                   | `panel`             | Item content (render v4)                     | text       | `part_styles`         |
+| Breadcrumbs (`template/page_breadcrumbs`)         | `item`              | Items                                        | text       | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+|                                                   | `current`           | Current page                                 | text       | `part_styles`         |
+| Button (`core/button`)                            | `link`              | Button                                       | button     | `style_id`            |
+| Checkbox group (`form/checkbox_group`)            | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `choice`            | Choice row                                   | container  | `part_styles`         |
+|                                                   | `choice_mark`       | Choice mark                                  | container  | `part_styles`         |
+|                                                   | `choice_label`      | Choice text                                  | text       | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Consent checkbox (`form/consent`)                 | `choice`            | Checkbox row                                 | container  | `part_styles`         |
+|                                                   | `choice_mark`       | Checkbox                                     | container  | `part_styles`         |
+|                                                   | `text`              | Consent text                                 | text       | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| CTA (`core/cta`)                                  | `eyebrow`           | Eyebrow                                      | text       | `part_styles`         |
+|                                                   | `heading`           | Heading                                      | heading    | `part_styles`         |
+|                                                   | `subheading`        | Subheading                                   | text       | `part_styles`         |
+|                                                   | `primary_button`    | Primary button                               | button     | `part_styles`         |
+|                                                   | `secondary_button`  | Secondary button                             | button     | `part_styles`         |
+|                                                   | `actions`           | Button row                                   | container  | `part_styles`         |
+| Date field (`form/date`)                          | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `input`             | Input                                        | container  | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Email field (`form/email`)                        | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `input`             | Input                                        | container  | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Expandable help (`form/help`)                     | `summary`           | Question                                     | text       | `part_styles`         |
+|                                                   | `body`              | Help content                                 | text       | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+| Feature row (`core/feature_row`)                  | `eyebrow`           | Eyebrow                                      | text       | `part_styles`         |
+|                                                   | `heading`           | Heading                                      | heading    | `part_styles`         |
+|                                                   | `text`              | Text                                         | text       | `part_styles`         |
+|                                                   | `primary_button`    | Primary button                               | button     | `part_styles`         |
+|                                                   | `secondary_button`  | Secondary button                             | button     | `part_styles`         |
+|                                                   | `media`             | Image                                        | image      | `part_styles`         |
+|                                                   | `layout`            | Image and text columns                       | container  | `part_styles`         |
+|                                                   | `actions`           | Button row                                   | container  | `part_styles`         |
+| Form section heading (`form/heading`)             | `heading`           | Heading                                      | heading    | `part_styles`         |
+|                                                   | `description`       | Intro line                                   | text       | `part_styles`         |
+| Formatted heading (`core/rich_heading`)           | `link`              | Links                                        | link       | `part_styles`         |
+| Heading (`core/heading`)                          | `eyebrow`           | Eyebrow                                      | text       | `eyebrow_style_id`    |
+|                                                   | `text`              | Heading                                      | heading    | `style_id`            |
+|                                                   | `subtitle`          | Subtitle (render v2)                         | text       | `subtitle_style_id`   |
+| Hero (`core/hero`)                                | `eyebrow`           | Eyebrow                                      | text       | `part_styles`         |
+|                                                   | `heading`           | Heading                                      | heading    | `part_styles`         |
+|                                                   | `subheading`        | Subheading                                   | text       | `part_styles`         |
+|                                                   | `primary_button`    | Primary button                               | button     | `part_styles`         |
+|                                                   | `secondary_button`  | Secondary button                             | button     | `part_styles`         |
+|                                                   | `media`             | Image                                        | image      | `part_styles`         |
+|                                                   | `layout`            | Text and image columns                       | container  | `part_styles`         |
+|                                                   | `actions`           | Button row                                   | container  | `part_styles`         |
+|                                                   | `overlay`           | Image overlay                                | container  | `part_styles`         |
+| Icon Box (`core/icon_box`)                        | `icon`              | Icon                                         | container  | `part_styles`         |
+|                                                   | `heading`           | Heading                                      | heading    | `part_styles`         |
+|                                                   | `text`              | Body text                                    | text       | `part_styles`         |
+|                                                   | `link`              | Link                                         | link       | `part_styles`         |
+| Image (`core/image`)                              | `frame`             | Image frame                                  | image      | `part_styles`         |
+|                                                   | `image`             | Image                                        | image      | `part_styles`         |
+|                                                   | `caption`           | Caption                                      | text       | `part_styles`         |
+|                                                   | `caption_link`      | Caption links                                | link       | `part_styles`         |
+| List (`core/list`)                                | `list`              | List                                         | list       | `part_styles`         |
+|                                                   | `item`              | Items                                        | text       | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+| Logo (`core/logo_item`)                           | `logo`              | Logo image                                   | image      | `part_styles`         |
+| Media card (`core/media_card`)                    | `body`              | Text column                                  | container  | `part_styles`         |
+|                                                   | `heading`           | Heading                                      | heading    | `part_styles`         |
+|                                                   | `text`              | Text                                         | text       | `part_styles`         |
+|                                                   | `button`            | Button                                       | button     | `part_styles`         |
+|                                                   | `media`             | Image                                        | image      | `part_styles`         |
+| Navigation (`core/navigation`)                    | `list`              | Link list                                    | list       | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+|                                                   | `current_link`      | Current page link                            | link       | `part_styles`         |
+|                                                   | `toggle`            | Menu button                                  | button     | `part_styles`         |
+| Navigation inputs (`core/navigation_form`)        | `field`             | Field                                        | container  | `part_styles`         |
+|                                                   | `label`             | Labels                                       | text       | `part_styles`         |
+|                                                   | `input`             | Inputs                                       | container  | `part_styles`         |
+|                                                   | `button`            | Button                                       | button     | `part_styles`         |
+|                                                   | `button_icon`       | Button icon                                  | text       | `part_styles`         |
+| Navigation links (`core/navigation_links`)        | `link`              | Links                                        | link       | `part_styles`         |
+|                                                   | `current_link`      | Link to the current page                     | link       | `part_styles`         |
+|                                                   | `icon`              | Link icons                                   | text       | `part_styles`         |
+| Number field (`form/number`)                      | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `input`             | Input                                        | container  | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Page author (`template/page_author`)              | `avatar`            | Avatar                                       | image      | `part_styles`         |
+|                                                   | `prefix`            | Prefix                                       | text       | `part_styles`         |
+|                                                   | `name`              | Author name                                  | text       | `part_styles`         |
+| Page field list (`core/field_list`)               | `title`             | Heading                                      | heading    | `part_styles`         |
+|                                                   | `list`              | Field list                                   | list       | `part_styles`         |
+|                                                   | `row`               | Row                                          | container  | `part_styles`         |
+|                                                   | `label`             | Field label                                  | text       | `part_styles`         |
+|                                                   | `value`             | Field value                                  | text       | `part_styles`         |
+|                                                   | `values`            | Value list                                   | list       | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+| Phone field (`form/phone`)                        | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `input`             | Input                                        | container  | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Post Card (`core/post_card`)                      | `image`             | Image or placeholder                         | image      | `part_styles`         |
+|                                                   | `image_link`        | Image link                                   | link       | `part_styles`         |
+|                                                   | `placeholder_icon`  | Placeholder icon                             | text       | `part_styles`         |
+|                                                   | `title`             | Title                                        | heading    | `part_styles`         |
+|                                                   | `title_link`        | Title link                                   | link       | `part_styles`         |
+|                                                   | `title_icon`        | Title icon                                   | text       | `part_styles`         |
+|                                                   | `excerpt`           | Excerpt                                      | text       | `part_styles`         |
+|                                                   | `meta`              | Date and author                              | text       | `part_styles`         |
+|                                                   | `action`            | Page action link                             | link       | `part_styles`         |
+|                                                   | `download`          | Download link                                | link       | `part_styles`         |
+| Previous / next page (`template/page_navigation`) | `previous_link`     | Previous link                                | button     | `part_styles`         |
+|                                                   | `next_link`         | Next link                                    | button     | `part_styles`         |
+|                                                   | `label`             | Previous and Next labels                     | text       | `part_styles`         |
+|                                                   | `title`             | Page titles                                  | text       | `part_styles`         |
+| Pricing Plan (`core/pricing_plan`)                | `badge`             | Badge                                        | text       | `part_styles`         |
+|                                                   | `name`              | Plan name                                    | heading    | `part_styles`         |
+|                                                   | `price`             | Price                                        | text       | `part_styles`         |
+|                                                   | `period`            | Period                                       | text       | `part_styles`         |
+|                                                   | `description`       | Tagline                                      | text       | `part_styles`         |
+|                                                   | `features`          | Feature list                                 | list       | `part_styles`         |
+|                                                   | `included_feature`  | Included feature (render v4)                 | text       | `part_styles`         |
+|                                                   | `excluded_feature`  | Excluded feature (render v4)                 | text       | `part_styles`         |
+|                                                   | `button`            | Button                                       | button     | `part_styles`         |
+| Radio group (`form/radio_group`)                  | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `choice`            | Choice row                                   | container  | `part_styles`         |
+|                                                   | `choice_mark`       | Choice mark                                  | container  | `part_styles`         |
+|                                                   | `choice_label`      | Choice text                                  | text       | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Repeater (`core/repeater`)                        | `carousel_controls` | Carousel controls (render v7)                | container  | `part_styles`         |
+|                                                   | `carousel_button`   | Carousel arrow and pause buttons (render v7) | button     | `part_styles`         |
+|                                                   | `carousel_dot`      | Carousel dots (render v7)                    | button     | `part_styles`         |
+| Search (`core/search`)                            | `input`             | Search field                                 | text       | `part_styles`         |
+|                                                   | `message`           | Result count                                 | text       | `part_styles`         |
+|                                                   | `result_link`       | Result titles                                | link       | `part_styles`         |
+|                                                   | `result_excerpt`    | Result excerpts                              | text       | `part_styles`         |
+|                                                   | `more_button`       | More results button                          | button     | `part_styles`         |
+|                                                   | `note`              | Unavailable note                             | text       | `part_styles`         |
+| Select (`form/select`)                            | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `input`             | Input                                        | container  | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Site logo (`template/site_logo`)                  | `logo`              | Logo image                                   | image      | `part_styles`         |
+| Slider (`form/slider`)                            | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `value`             | Value                                        | text       | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Step Card (`core/step_card`)                      | `marker`            | Number and icon row                          | container  | `part_styles`         |
+|                                                   | `number`            | Step number                                  | text       | `part_styles`         |
+|                                                   | `icon`              | Icon                                         | text       | `part_styles`         |
+|                                                   | `title`             | Title                                        | heading    | `part_styles`         |
+|                                                   | `text`              | Description                                  | text       | `part_styles`         |
+| Table (`core/table`)                              | `table`             | Table                                        | container  | `part_styles`         |
+|                                                   | `caption`           | Caption                                      | text       | `part_styles`         |
+|                                                   | `header_cell`       | Header cells                                 | text       | `part_styles`         |
+|                                                   | `cell`              | Cells                                        | text       | `part_styles`         |
+|                                                   | `even_row`          | Even rows (stripes)                          | container  | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+|                                                   | `source`            | Source / credit                              | text       | `part_styles`         |
+| Table of contents (`core/table_of_contents`)      | `title`             | Title                                        | text       | `part_styles`         |
+|                                                   | `list`              | List                                         | list       | `part_styles`         |
+|                                                   | `item`              | Item                                         | text       | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+|                                                   | `current_link`      | Current link                                 | link       | `part_styles`         |
+| Tabs and links (`core/tabs`)                      | `headline`          | Inline headline                              | text       | `part_styles`         |
+|                                                   | `strip`             | Choice row                                   | container  | `part_styles`         |
+|                                                   | `choice`            | Tabs and links                               | button     | `part_styles`         |
+|                                                   | `choice_icon`       | Choice icons                                 | text       | `part_styles`         |
+|                                                   | `toggle`            | Open/close button                            | button     | `part_styles`         |
+|                                                   | `panel`             | Panels                                       | container  | `part_styles`         |
+| Team Member (`core/team_member`)                  | `card`              | Card                                         | container  | `part_styles`         |
+|                                                   | `photo`             | Photo                                        | image      | `part_styles`         |
+|                                                   | `body`              | Text panel                                   | container  | `part_styles`         |
+|                                                   | `name`              | Name                                         | heading    | `part_styles`         |
+|                                                   | `role`              | Role                                         | text       | `part_styles`         |
+|                                                   | `bio`               | Bio                                          | text       | `part_styles`         |
+|                                                   | `socials`           | Social links list                            | list       | `part_styles`         |
+|                                                   | `social_link`       | Social link (render v4)                      | link       | `part_styles`         |
+| Testimonial (`core/testimonial`)                  | `quote`             | Quote                                        | text       | `part_styles`         |
+|                                                   | `rating`            | Rating (render v7)                           | text       | `part_styles`         |
+|                                                   | `attribution`       | Attribution row                              | text       | `part_styles`         |
+|                                                   | `avatar`            | Avatar                                       | image      | `part_styles`         |
+|                                                   | `name`              | Name                                         | text       | `part_styles`         |
+|                                                   | `role`              | Role and company                             | text       | `part_styles`         |
+|                                                   | `logo`              | Company logo                                 | image      | `part_styles`         |
+| Text (`core/prose`)                               | `heading_1`         | Heading 1                                    | heading    | `part_styles`         |
+|                                                   | `heading_2`         | Heading 2                                    | heading    | `part_styles`         |
+|                                                   | `heading_3`         | Heading 3                                    | heading    | `part_styles`         |
+|                                                   | `heading_4`         | Heading 4                                    | heading    | `part_styles`         |
+|                                                   | `link`              | Links                                        | link       | `part_styles`         |
+|                                                   | `list`              | Lists                                        | list       | `part_styles`         |
+|                                                   | `list_item`         | List items                                   | text       | `part_styles`         |
+|                                                   | `quote`             | Quotes                                       | text       | `part_styles`         |
+|                                                   | `code`              | Inline code                                  | text       | `part_styles`         |
+|                                                   | `code_block`        | Code blocks                                  | text       | `part_styles`         |
+|                                                   | `table_header`      | Table header cells                           | text       | `part_styles`         |
+|                                                   | `table_cell`        | Table cells                                  | text       | `part_styles`         |
+|                                                   | `image`             | Images                                       | image      | `part_styles`         |
+| Text area (`form/textarea`)                       | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `input`             | Input                                        | container  | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Text field (`form/text`)                          | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `input`             | Input                                        | container  | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Toggle (`form/toggle`)                            | `choice`            | Toggle row                                   | container  | `part_styles`         |
+|                                                   | `track`             | Switch                                       | container  | `part_styles`         |
+|                                                   | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Two columns (`core/columns`)                      | `left_column`       | Left column                                  | container  | `part_styles`         |
+|                                                   | `right_column`      | Right column                                 | container  | `part_styles`         |
+| URL field (`form/url`)                            | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `input`             | Input                                        | container  | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+| Video (`core/video`)                              | `player`            | Player                                       | image      | `part_styles`         |
+|                                                   | `facade`            | Video placeholder (click-to-load)            | button     | `part_styles`         |
+|                                                   | `facade_label`      | Load video label                             | button     | `part_styles`         |
+| Yes / No answer (`form/boolean`)                  | `label`             | Label                                        | text       | `part_styles`         |
+|                                                   | `choice`            | Answer row                                   | container  | `part_styles`         |
+|                                                   | `choice_mark`       | Answer mark                                  | container  | `part_styles`         |
+|                                                   | `clear_button`      | Clear answer button                          | button     | `part_styles`         |
+|                                                   | `help`              | Help text                                    | text       | `part_styles`         |
+|                                                   | `error`             | Error message                                | text       | `part_styles`         |
+
+Every core block with presentational CSS of its own declares its parts, and
+`read_block_type` lists them. Where a block already had a style field for an
+element (a heading's eyebrow, a button's link, a card's surface through
+`style_id`), that field chooses the part's style on one block. This table is
+checked against the block definitions in the test suite.
+
+### Choose a style for a part on one block
+
+In the editor: select the block, then **Appearance → Part styles**. Through MCP
+or the API: the block's `part_styles` data, a map from part name to style id.
+Every block type with a part that has no style field of its own gets this field
+automatically.
+
+```
+update_block page_id=… block_id=… data={ part_styles: { heading: "hero-title", primary_button: "button-pill" } }
+```
+
+Like other object fields, `update_block` replaces the whole map rather than
+merging it, so send every part you want to keep; `null` removes the map. A
+chosen style replaces the site-wide style for that part on this block.
+
+`add_block` and `update_block` refuse a write with `400`, writing nothing,
+when:
+
+| Code                    | When                                                                                                                                                                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `unknown_field`         | The block has no such part, or the part has its own style field. The path is `data.part_styles.<part>`, and the suggestions name the closest parts or the field to use (`eyebrow_style_id`). See [Unknown data fields](#unknown-data-fields-core-0279). |
+| `unknown_style`         | The site has no style with that id. `suggestions` lists styles of the part's kind.                                                                                                                                                                      |
+| `style_target_mismatch` | The style cannot be chosen for the part's kind. `suggestions` lists styles that can.                                                                                                                                                                    |
+| `part_style_contrast`   | The style's text fails both APCA and WCAG 2 AA on the part's background.                                                                                                                                                                                |
+
+The style issues are listed in `part_style_issues`, each with its `path`,
+`part` and `style_id`. A value that is not a style id at all is a
+`field_type_mismatch` warning, and a contrast that misses only its APCA level a
+`part_style_contrast` warning. Page, partial and batch writes, which carry a
+whole tree, store the tree and return all of these as `warnings`.
+
+The background a part is measured on is the block's own background colour
+where it has one (a hero's `background`), else the colour the block paints
+behind the part (the primary colour behind a primary button), else the site
+background. Layout parts and the overlay hold no text and are not measured.
+
+### Apply a style to a part on every block
+
+A style's `parts` (**Block parts** in the style editor) lists parts as
+`<block type>.<part>`, and the style then applies to that part of every block
+of the type:
+
+```
+update_style style_id="quiet-link" targets=["link"] parts=["core/rich_heading.link"]
+```
+
+A part takes one site-wide style, and the style's `targets` must include the
+part's kind. A reference the site's block types do not have is refused with the
+closest names. Precedence, from lowest: the block's own look and fields, the
+default role style, the part style (the block's `part_styles` choice, else the
+site-wide one), and a style class on the element itself (a heading's
+`eyebrow_style_id`, a button's `style_id`). See
+[Style parts of a block](../../styles/#style-parts-of-a-block).
+
+Part styles change nothing on a site that does not set one: the published
+markup and CSS stay the same, and no render version is involved.
+
+### Parts on site block types
+
+A [site block type](../../custom-block-types/) declares its own parts in `parts`
+with `create_block_type` or `update_block_type` (which replaces the list):
+
+```json
+{
+  "name": "price_card",
+  "label": "Price card",
+  "schema": [
+    { "name": "title", "type": "text", "label": "Title" },
+    { "name": "price", "type": "text", "label": "Price" }
+  ],
+  "template": "<div class=\"price-card\"><h3 class=\"price-card-title\">{{title}}</h3><p class=\"price-card-price\">{{price}}</p></div>",
+  "parts": [
+    {
+      "name": "title",
+      "label": "Title",
+      "selector": ".price-card-title",
+      "target": "heading"
+    },
+    {
+      "name": "price",
+      "label": "Price",
+      "selector": ".price-card-price",
+      "target": "text",
+      "background": "surface"
+    }
+  ]
+}
+```
+
+| Property             | Meaning                                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `name`               | `a-z`, `0-9` and `_`, up to 32 characters, starting with a letter; unique in the type. Do not rename a part in use: `part_styles` and styles refer to it.                            |
+| `label`              | Shown in the editor.                                                                                                                                                                 |
+| `selector`           | The part's element(s) relative to the block: tags, classes, attributes, structural pseudo-classes (`:first-child`, `:nth-child(2)`) and combinators, up to four separated by commas. |
+| `target`             | The kind of style that fits: `text`, `heading`, `list`, `button`, `container`, `link` or `image`.                                                                                    |
+| `style_field`        | A `style` field of the type that already chooses the part's style on each block. `part_styles` then leaves the part out.                                                             |
+| `color`              | The colour token of the part's text in the block's CSS, for contrast checks. Default `text`.                                                                                         |
+| `background`         | The colour token behind the part, for contrast checks. Default the site background.                                                                                                  |
+| `background_field`   | A `color` field of the type that holds the background behind the part.                                                                                                               |
+| `decorative`         | `true` for a part without text of its own (an overlay, a layout row): its style is not checked for contrast.                                                                         |
+| `min_render_version` | The render version from which the element exists.                                                                                                                                    |
+
+Selectors may not contain braces, `;`, `@`, comments, pseudo-elements
+(`::before`) or state pseudo-classes such as `:hover` and `:focus`: hover comes
+from the style. A selector that starts with `>` selects a child of the block
+element (`> .gallery-item`); in a block that holds other blocks, anchor every
+part that way so it never reaches into a nested block. Where two parts overlap
+(all links, and the link to the current page), the part listed later wins. A
+type has at most 16 parts. A selector class that the template
+never writes is reported as a warning, because the part would match nothing.
+The type gets the `part_styles` field automatically when a part has no
+`style_field`, so do not declare a field of that name yourself. Parts are for
+template types; a composed type's inner blocks keep their own parts.

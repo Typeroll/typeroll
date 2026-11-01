@@ -1,0 +1,73 @@
+---
+title: Self-hosting quickstart
+description: Run Typeroll CMS on your own computer in a few minutes with sample content, then choose the production setup that fits.
+---
+
+Typeroll CMS is open source (MIT). This page gets the portal running on your
+computer with sample content, without any cloud account. It is for evaluation
+and development; the [self-hosting guide](../../guides/self-hosting/) covers
+production.
+
+## What you need
+
+- [Node.js](https://nodejs.org) 22.12 or later
+- Git
+
+## Run it locally
+
+```bash
+git clone https://github.com/typeroll/typeroll
+cd typeroll
+npm ci
+npm run dev:portal
+```
+
+Open [http://localhost:4321](http://localhost:4321). You are signed in as a
+development user with the sample sites in
+`packages/site-template/fixtures/`. The local **fixtures backend** stores
+everything as JSON files instead of a database, so no Firebase project is
+needed.
+
+Try the main workflows:
+
+- Open a site, edit a page in the visual editor and save it.
+- Change colours and fonts in **Site settings → Design**.
+- Run the static site renderer on its own with the sample content:
+
+  ```bash
+  npm run dev:site
+  ```
+
+## Connect an AI agent locally
+
+Create a site API key in **Site settings → Access & AI → External access**,
+then start the local MCP process against your portal from a client on the same
+computer, such as Claude Code or Cursor:
+
+```bash
+TYPEROLL_API_URL=http://localhost:4321 TYPEROLL_API_KEY=<your-api-key> npx -y @typeroll/mcp-server
+```
+
+Your client normally launches this command itself; see
+[Connect your agent](../connect-your-agent/). Hosted assistants such as
+claude.ai connect from the provider's servers and cannot reach `localhost`.
+
+## Choose a production setup
+
+| Setup                                                                                                | When it fits                                              | Guide                                                                               |
+| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| **Reference profile** on Google Cloud: Cloud Run, Firebase and Cloud Tasks, with no always-on server | Production, the setup Typeroll qualifies every release on | [Plan the reference profile](../../guides/self-hosting/#plan-the-reference-profile) |
+| **Portable Compose fallback** with Docker                                                            | Evaluation on a server, or hosting outside Google Cloud   | [Portable Compose fallback](../../guides/self-hosting/#portable-compose-fallback)   |
+| **Typeroll Cloud**                                                                                   | You want the same CMS without running it                  | [Using Typeroll Cloud](../../guides/typeroll-cloud/)                                |
+
+Every production setup needs Firebase Authentication and Firestore, and a
+Cloudflare account with R2 for media and Pages for the published sites. Use a
+tagged Core release and its published image digest, never a moving tag.
+
+## Check it
+
+- `http://localhost:4321` shows the sample sites, and a saved edit survives a
+  page reload.
+- For a production installation, `/api/healthz`, `/api/readyz` and
+  `/api/version` on the portal answer successfully; see
+  [Apply and verify the reference profile](../../guides/self-hosting/#apply-and-verify-the-reference-profile).

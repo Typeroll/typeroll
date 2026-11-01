@@ -41,6 +41,19 @@ Verify a primary/surface change in a test Version across header, footer, cards,
 menus and buttons, then restore the test settings. Do not republish automatically.
 
 
+## Express the brand through settings, not CSS
+
+Brand colours belong in `colors`, font families in `fonts`, sizes and spacing
+in the design scales, and recurring looks in named Styles. Editors can see and
+change all of these, and every page follows them. Use `custom_css` only for an
+exception recorded in `decisions.md`, and never to load a font a second time,
+restyle all headings or buttons, or set a hero background image. Run
+`lint_design_tokens` and check the readiness items `duplicate_fonts` and
+`custom_css_overrides` in `read_site_readiness` before launch.
+
+The CSS variables below are for those recorded exceptions, HTML-mode pages and
+template markup.
+
 A reference for the *default* design that ships with new Typeroll sites.
 The customer may have replaced it — always inspect the actual header partial
 (`read_partial partial_id="header"`) and an existing page before assuming any

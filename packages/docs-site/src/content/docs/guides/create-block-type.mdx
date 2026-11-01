@@ -169,7 +169,7 @@ Custom markup is sanitized; putting a script tag in it does not enable JavaScrip
 A separate `script` property is executable code and needs deliberate code review.
 The unsaved block preview does not execute scripts, so verify interactions in
 an appropriate test deployment as well. See the
-[script permission rules](../../tools/blocks/#site-block-types).
+[script permission rules](../../tools/blocks/parts/#site-block-types).
 
 ## Maintain and share the type
 
@@ -186,3 +186,10 @@ blocked; replace its instances first.
 For a new type, an AI agent can propose its schema, composition and responsive
 behavior from your brief, then validate it and show a preview. Inspect existing
 uses before changing a shared definition. See [Personal AI connections](../ai-connections/).
+
+## Check it
+
+`validate_block_type` reports no errors for the definition, and
+`preview_block_type` renders it with sample data at the widths you support.
+Before changing a type that is already in use, `find_pages_using_block_type`
+lists the Pages to review.

@@ -1,0 +1,93 @@
+---
+title: Website migration SEO checklist
+description: Keep search traffic when you move a website to Typeroll, with a URL inventory, redirects, a parity check against the new deployment and a launch gate before switching DNS.
+---
+
+A website migration loses search traffic when old addresses stop answering,
+when content or metadata changes without a decision, or when the switch happens
+before anyone checked the new site. Typeroll keeps a URL inventory for each
+site and checks the actual deployment, so each of these risks has a tool. This
+checklist applies to every source: WordPress, Squarespace, Wix, Webflow, Astro
+and others.
+
+Start with [Choose your migration approach](../migration-approach/) and the
+guide for your source. The tools below are described in
+[Migration URL tools](../../tools/migration-urls/).
+
+## Before you build
+
+- [ ] **Readiness.** `get_migration_readiness` passes for the target site and
+      the old site's address. It catches missing media storage and a source
+      that blocks requests.
+- [ ] **Search data.** Export the old site's top pages from Google Search
+      Console, or let an agent import them with `import_gsc_performance`; see
+      [Google Search Console](../search-console/#use-search-console-data-in-a-migration).
+- [ ] **URL inventory.** Every public address of the old site is in the
+      inventory: from its sitemap (`import_sitemap`), Search Console, a crawl
+      and the source's own routing (`add_migration_urls`). Include images and
+      files that other sites link to.
+- [ ] **Text and design decisions.** Record whether text and design are
+      preserved or renewed. Titles, descriptions and headings change only by
+      decision, not as a side effect.
+- [ ] **Benchmarks.** Note current traffic, rankings for the most important
+      searches and the number of indexed pages, so you can compare after launch.
+
+## While you build
+
+- [ ] **Same addresses where possible.** Keep each page's path with an explicit
+      Page `path` or a Content type URL pattern.
+- [ ] **Redirects for every changed address.** Each moved page gets a permanent
+      redirect to its closest replacement, not to the home page.
+      `list_migration_urls status="unhandled"` is the work list until it is
+      empty.
+- [ ] **Metadata.** SEO titles, meta descriptions, share titles and images,
+      canonical URLs and noindex settings are carried over or deliberately
+      changed. Compare source and target HTML with the workspace's
+      `compare_seo.py`.
+- [ ] **Structured data.** Article dates and authors, FAQ, product and
+      organization data are present on the new pages; see
+      [SEO for your site](../seo/#structured-data).
+- [ ] **Internal links.** Links in the content point to the new addresses, not
+      to the old domain or to redirects. `check_internal_links` finds broken
+      saved links.
+- [ ] **Media.** Images are transferred to the site's own media storage, with
+      their alt text. Nothing loads from the old host.
+- [ ] **Languages.** Language versions keep their hreflang links on all sides.
+
+## Before switching DNS
+
+- [ ] **Publish to the temporary address.** Verification needs a real
+      deployment; drafts are not checked.
+- [ ] **Every old address answers.** `verify_migration_urls` requests every
+      inventory address against the new deployment: no `missing`, no
+      `broken_redirect`, no unresolved `error`. Large inventories use the
+      `url_parity` workflow.
+- [ ] **Content and SEO parity reviewed.** Record the comparison with
+      `record_migration_seo_acceptance`.
+- [ ] **Launch gate.** `get_migration_launch_report` returns
+      `launch_ready: true` for the latest deployment. A new deployment makes
+      earlier evidence stale; run the checks again.
+- [ ] **Site-level basics.** The [launch readiness report](../launch-checklist/)
+      has no open warnings you have not accepted.
+- [ ] **Indexing on the real domain.** The new site is prepared for its final
+      address before traffic moves; see
+      [Website and media domains](../../publishing/domains/).
+
+## After switching DNS
+
+- [ ] Run `verify_migration_urls` again against the real domain.
+- [ ] Call `check_site_indexing` and confirm the live site is indexable.
+- [ ] Submit the new sitemap in Search Console and request indexing of the
+      most important pages.
+- [ ] Keep the old site's Search Console property and watch its **Pages**
+      report for errors for a few weeks.
+- [ ] Compare traffic and rankings with the benchmarks after two and six weeks.
+      Some movement in the first weeks is normal.
+- [ ] Keep the old host until the owner approves its retirement, and archive
+      original files privately first.
+
+## Check it
+
+`get_migration_launch_report` shows `launch_ready: true` for the deployment
+that is live, and a second `verify_migration_urls` run against the real domain
+reports no missing addresses.

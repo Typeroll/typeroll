@@ -80,6 +80,24 @@ URL. The API still supports intentional retirement, but using it for public
 content needs a separately agreed exception; exclusion is not a shortcut to
 launch readiness.
 
+## `update_migration_urls`
+
+Applies one patch to many inventory entries in a single request. Select entries
+with either `ids` (up to 2,000) or `where: { source }`, never both, and send the
+change as `patch`. Use it for migration-wide decisions, such as marking every
+guessed WordPress redirect URL as an intentional 404, instead of hundreds of
+single updates. The answer has matched, updated and unchanged counts, unknown
+ids and the refreshed coverage summary.
+
+## `import_gsc_performance`
+
+Imports per-URL clicks and impressions from Google Search Console into the
+inventory. Pass `property` (with optional `months`) for a direct Search Console
+query, or `csv` with an exported report as the fallback. `source_origin` names
+the old site's origin. URL fragments are stripped, metrics for the same URL are
+summed, and URLs not yet in the inventory are added as unhandled. See below for
+what to do when Search Console denies access.
+
 ## `repair_migration_plain_text`
 
 Older WordPress imports can contain encoded entities or HTML tags in fields

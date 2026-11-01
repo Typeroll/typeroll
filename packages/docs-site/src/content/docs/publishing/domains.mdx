@@ -314,3 +314,11 @@ From Core 0.2.120, opening Publishing or checking the domain guide probes the
 previous addresses again. A warning captured before a redirect propagated can
 therefore become verified without another publication. A failed network check
 is reported as pending; it never changes DNS or redirect rules.
+
+## Check it
+
+After the switch, `poll_domain` reports the domain as verified,
+`check_site_indexing` shows the expected robots policy for the new address, and
+the [launch readiness report](../../guides/launch-checklist/#ai-crawler-zone-conflict)
+can compare the AI crawler setting with the domain's Cloudflare zone. For a
+migration, run `verify_migration_urls` against the real domain as well.

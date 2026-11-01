@@ -80,6 +80,11 @@ A normal build emits `/robots.txt` with a permissive default and references to
 crawl rules; the renderer ensures the generated sitemap references are present.
 A version with `robots_blocked` instead emits `Disallow: /`.
 
+`settings.ai_crawler_policy` adds a Content Signal and disallow groups for AI
+crawlers, in the vocabulary Cloudflare uses; the default adds nothing. See
+[AI crawlers](../../tools/settings/#ai-crawlers) for the values, the agents each
+one lists, and how it interacts with a Cloudflare zone's own AI bot policy.
+
 Crawl permission in robots.txt and indexability in HTML are different settings.
 If you want a public Page crawled but excluded from results, use noindex; blocking
 fetches can prevent crawlers from reading that directive.
@@ -124,10 +129,31 @@ A build emits:
 - **`/sitemap.xml`:** published, indexable Page routes using the publication's
   origin and slash policy. Drafts, review content, unlisted Pages and noindex
   Pages are excluded. Site-wide or version indexing restrictions suppress entries.
+  A Page with `alternates` also lists its hreflang cluster as `xhtml:link`
+  entries. A site with more than 45,000 addresses gets a sitemap index at
+  `/sitemap.xml` that points to `/sitemap-1.xml`, `/sitemap-2.xml` and so on.
 - **`/sitemap-images.xml`:** eligible Page image references, grouped by the resolved Page URL (including content-type routes and explicit paths). Includes public image fields such as a featured image, OG images, HTML body images and image fields in nested blocks, slots and Page templates. Responsive image sources and `srcset` candidates are included and duplicates are removed per Page. Drafts, unlisted Pages, noindex Pages, private fields and unused media-library files are excluded; a blocked preview/version or site-wide noindex produces an empty image sitemap. Each Page includes at most 1,000 image URLs. CSS-only backgrounds and client-generated images are not discovered. Rebuild the site after upgrading Core to regenerate this file; a portal update alone does not change an existing publication.
-- **`/llms.txt`:** a text map of published, listed Pages with titles, URLs and
-  descriptions; Page-level noindex content is excluded. This is discovery data,
-  not authentication or a guarantee that an AI service will use it.
+- **`/llms.txt`:** a Markdown map of the site for AI assistants, following
+  [llmstxt.org](https://llmstxt.org). It lists published, listed, indexable
+  Pages with titles, URLs and descriptions, grouped by Content type (using its
+  plural label), with each language section in its own groups after the site
+  language. It links the sitemap and `/llms-full.txt`.
+- **`/llms-full.txt`:** the Markdown of every Page in `llms.txt`, in the same
+  order, in one file of at most about 1 MB. Pages past that size are listed as
+  links to their own Markdown files.
+- **`<page>/index.md`:** a Markdown version of each Page in `llms.txt`, for
+  example `/about/index.md` and `/index.md` for the home page. It holds the
+  Page's title, description, address, date, language, public custom fields and
+  the text of its blocks: headings, paragraphs, lists, links, images with alt
+  text, tables, and accordion questions with their answers. Layout, decoration,
+  navigation, forms, embeds, custom HTML blocks and the header and footer are
+  left out. Each Page announces its file with
+  `<link rel="alternate" type="text/markdown">`.
+
+The same rules apply to all three: unlisted and noindex Pages are left out, and
+a robots-blocked version or a site-wide noindex publishes no Markdown files and
+an `llms.txt` without Pages. They are discovery data, not authentication or a
+guarantee that an AI service will use them.
 
 `Page.lastmod_override` can supply a sitemap date. An empty string suppresses
 `lastmod`; otherwise the renderer uses the available updated/published timestamp.
@@ -146,6 +172,7 @@ that syntactically valid XML establishes complete image coverage.
 | `Article`           | Pages with `kind: "article"`; title, dates, author and available image/description                                                                                              |
 | `BreadcrumbList`    | Non-home routes, using resolved breadcrumbs and the intended canonical for the final item                                                                                       |
 | Content type schema | The type's `schema_type`, field mode and supported field map                                                                                                                    |
+| `FAQPage`           | Pages whose Accordion blocks hold questions and answers (see [FAQ from accordions](#faq-from-accordions))                                                                       |
 | Custom JSON-LD      | Explicit `Page.json_ld`, for information genuinely represented by that Page. FAQ, recipe and event pages: the [structured data tools](../../tools/pages/#structured-data-tools) |
 
 The visible breadcrumbs and generated schema use resolved routes, including
@@ -178,11 +205,81 @@ Mapped mode does not add `articleBody`, publisher or unmapped fields. Existing
 custom date-field mappings remain supported. Page date mapping is available from
 Core 0.2.121; republish static sites after upgrading.
 
+### Products and software
+
+For a Content type with `schema_type` `Product` or `SoftwareApplication`
+(including `WebApplication`, `MobileApplication` and `VideoGame`), map fields
+to flat properties and the renderer nests them the way schema.org expects:
+
+- `price`, `priceCurrency`, `availability` and `priceValidUntil` become an
+  `offers` Offer, with the Page's canonical URL. A price is required for the
+  Offer.
+- `ratingValue` with `ratingCount` or `reviewCount` (and optional `bestRating`
+  and `worstRating`) becomes an `aggregateRating`. A rating without a count is
+  left out.
+- A plain `brand` name becomes a `Brand`.
+
+```json
+{
+  "schema_type": "SoftwareApplication",
+  "schema_field_mode": "mapped",
+  "schema_field_map": {
+    "title": "name",
+    "summary": "description",
+    "os": "operatingSystem",
+    "category": "applicationCategory",
+    "price": "price",
+    "currency": "priceCurrency"
+  }
+}
+```
+
+Without a map, `Product` and `SoftwareApplication` read the field names
+`price`, `price_currency` (or `currency`), `rating`, `rating_count` and
+`review_count`, and `SoftwareApplication` also `operating_system` and
+`application_category`. A field that already holds an `offers` or
+`aggregateRating` object is published as it is.
+
+### FAQ from accordions
+
+A Page whose Accordion blocks hold questions and answers gets `FAQPage`
+JSON-LD automatically. An accordion counts only when every item's title ends
+with a question mark (`?`, `？` or `؟`) and has a nonempty answer, so a
+specification list in an accordion is not marked up as FAQ. Answers are
+published as plain text. Only the published page body is read: an accordion
+in a hidden condition branch, the header or the footer is not included.
+
+When the Page's `json_ld` or its Content type schema already declares
+`FAQPage`, nothing is added, so the type is never emitted twice. To mark up FAQ
+content that is not in an accordion, use `add_faq_schema`.
+
 A Site's structured contact address uses `street_address`, `postal_code`,
 `address_locality`, `address_region` and `address_country`. The renderer converts
 these to Schema.org's PostalAddress keys in the homepage Organization object.
 A plain address string is not expanded into invented structured fields.
 For more complex Page-specific graphs, author and review explicit JSON-LD.
+
+## Image loading and first paint
+
+The renderer prepares the page body for a fast largest paint:
+
+- **Images.** The first two content images load eagerly, and get
+  `fetchpriority="high"` unless they set their own priority, even when a block
+  template marks its image `loading="lazy"`. Later images load lazily. Logo
+  blocks, images inside logo links and images of 96×96 px or smaller do not
+  count as the first images. An image is never both lazy and high priority.
+- **Backgrounds.** When the page's first section shows a background image
+  (a Section or container background, a Hero in the full-image layout, or a
+  Call to action with its image as background), the head preloads it with
+  `<link rel="preload" as="image" fetchpriority="high">`. A background further
+  down the page is not preloaded.
+- **Fonts.** The theme's heading, body and mono fonts load once, without
+  blocking rendering. Custom CSS or `scripts_head` that loads a theme font again
+  is reported by the publication checks rather than removed, since its weights
+  or styles may differ from the theme's.
+
+These rules apply when the site is published again; an already published site
+is not rewritten.
 
 ## Language alternatives
 
@@ -230,6 +327,15 @@ mapped to `image` in `schema_field_map`, then the site's `default_og_image`,
 then its logo. For a mapped field such as `featured_image`, its public
 `featured_image_alt` field provides the description. `seo_image_alt` overrides
 that description. Private (`rendered: false`) fields are never exposed.
+
+Social networks do not show SVG, AVIF or TIFF share images. When the selected
+image is one of these and comes from the site's media library, the publication
+build renders a 1200×630 PNG copy and points `og:image` and `twitter:image` at
+it. The image is contained, never cropped, on the theme's background colour,
+and the copy is published at `/_assets/share/`. The original stays the page
+image everywhere else. A raster share image from the media library also gets
+`og:image:type`, `og:image:width` and `og:image:height`. For the best card,
+choose a 1200×630 PNG or JPEG as `default_og_image` and as Page images.
 
 Language-only tags use a likely region (`sv` → `sv_SE`); explicit regions are
 preserved (`de-AT` → `de_AT`, `en-GB` → `en_GB`). Changes require a new site
