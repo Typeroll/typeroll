@@ -6,7 +6,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Window } from 'happy-dom';
 import { buildExtensionPreviewShell } from '../../lib/extensions/preview-shell';
-import { buildPreviewNavigationBridgeScript } from '../../lib/preview-navigation-bridge';
+import { buildPreviewNavigationBridgeScript, offsitePreviewUrl } from '../../lib/preview-navigation-bridge';
 
 const BRIDGE_ID = '12345678-1234-1234-1234-123456789abc';
 const ORIGIN = 'https://app.typeroll.com';
@@ -110,5 +110,95 @@ describe('frame-side preview bridge for native blocks', () => {
     await expect(taken).resolves.toBe(PACKET);
     expect(posted).toContainEqual({ ...CHANNEL, action: 'handoff.remove', key: 'moving' });
     await expect(bridge.takeHandoff('moving')).resolves.toBeNull();
+  });
+});
+
+describe('off-site links in the preview frame', () => {
+  const FRAME = `${ORIGIN}/preview/site/start/?t=ticket&frame=1&bridge=${BRIDGE_ID}`;
+
+  it('opens other origins and portal pages outside the preview root in a new tab', () => {
+    expect(offsitePreviewUrl('https://typeroll.com/docs/blocks/reusable/', FRAME, '/preview/site'))
+      .toBe('https://typeroll.com/docs/blocks/reusable/');
+    expect(offsitePreviewUrl(`${ORIGIN}/login?mode=signup`, FRAME, '/preview/site')).toBe(`${ORIGIN}/login?mode=signup`);
+    expect(offsitePreviewUrl('//cdn.example.test/file.pdf', FRAME, '/preview/site')).toBe('https://cdn.example.test/file.pdf');
+    expect(offsitePreviewUrl('http://example.test/', FRAME, '/preview/site/')).toBe('http://example.test/');
+    // Another site's preview is not this site.
+    expect(offsitePreviewUrl(`${ORIGIN}/preview/sites/x/`, FRAME, '/preview/site')).toBe(`${ORIGIN}/preview/sites/x/`);
+  });
+
+  it('leaves in-site, hash, mailto, tel and script links alone', () => {
+    for (const href of [
+      `${ORIGIN}/preview/site/about/?t=ticket`,
+      `${ORIGIN}/preview/site`,
+      '/preview/site/media/m1?token=ticket',
+      '#pricing',
+      '?page=2',
+      'mailto:hello@example.test',
+      'tel:+46123456',
+      'javascript:void(0)',
+      'data:text/html,hi',
+      'http://[bad',
+    ]) expect(offsitePreviewUrl(href, FRAME, '/preview/site'), href).toBeNull();
+  });
+
+  function clickFrame(html: string, init?: { metaKey?: boolean; ctrlKey?: boolean; shiftKey?: boolean }) {
+    const { posted } = frame();
+    const browser = windows[windows.length - 1]!;
+    browser.document.body.innerHTML = html;
+    const anchor = browser.document.querySelector('a')!;
+    const event = new browser.MouseEvent('click', { bubbles: true, cancelable: true, button: 0, ...init });
+    anchor.dispatchEvent(event);
+    return { posted, prevented: event.defaultPrevented };
+  }
+
+  it('asks the shell to open an off-site link and keeps the frame on the page', () => {
+    const { posted, prevented } = clickFrame('<a href="https://typeroll.com/docs/">Reusable blocks</a>');
+    expect(prevented).toBe(true);
+    expect(posted).toEqual([{ ...CHANNEL, action: 'site.open', url: 'https://typeroll.com/docs/' }]);
+  });
+
+  it('keeps in-site links on site.navigate and leaves explicit targets, downloads and modifier clicks to the browser', () => {
+    expect(clickFrame('<a href="/preview/site/about/?t=ticket">About</a>').posted)
+      .toEqual([{ ...CHANNEL, action: 'site.navigate', path: '/about/' }]);
+    for (const [html, init] of [
+      ['<a href="https://typeroll.com/" target="_blank">x</a>', undefined],
+      ['<a href="https://typeroll.com/" download>x</a>', undefined],
+      ['<a href="https://typeroll.com/">x</a>', { metaKey: true }],
+      ['<a href="https://typeroll.com/">x</a>', { ctrlKey: true }],
+      ['<a href="https://typeroll.com/">x</a>', { shiftKey: true }],
+      ['<a href="mailto:hello@example.test">x</a>', undefined],
+      ['<a href="#top">x</a>', undefined],
+    ] as const) {
+      const { posted, prevented } = clickFrame(html, init);
+      expect(posted.filter((message) => message.action === 'site.open'), html).toEqual([]);
+      if (!html.includes('#top')) expect(prevented, html).toBe(false);
+    }
+  });
+});
+
+describe('preview shell opens off-site links', () => {
+  function shellWithOpen() {
+    const opened: unknown[][] = [];
+    const parts = shell();
+    parts.browser.open = ((...args: unknown[]) => { opened.push(args); return null; }) as typeof parts.browser.open;
+    return { ...parts, opened };
+  }
+
+  it('opens http(s) URLs from its frame in a new tab without an opener', () => {
+    const { send, opened } = shellWithOpen();
+    send({ action: 'site.open', url: 'https://typeroll.com/docs/' });
+    expect(opened).toEqual([['https://typeroll.com/docs/', '_blank', 'noopener,noreferrer']]);
+  });
+
+  it('ignores other schemes, malformed URLs and messages from anything but its frame', () => {
+    const { send, opened } = shellWithOpen();
+    send({ action: 'site.open', url: 'javascript:alert(1)' });
+    send({ action: 'site.open', url: 'data:text/html,hi' });
+    send({ action: 'site.open', url: '/relative' });
+    send({ action: 'site.open', url: 42 });
+    send({ action: 'site.open', url: `https://typeroll.com/${'x'.repeat(8200)}` });
+    send({ action: 'site.open', url: 'https://typeroll.com/' }, { origin: 'https://evil.example' });
+    send({ action: 'site.open', url: 'https://typeroll.com/' }, { source: {} });
+    expect(opened).toEqual([]);
   });
 });

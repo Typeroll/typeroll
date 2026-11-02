@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.141 / MCP 0.45.105 (candidate)
+
+- Preview links: a link to another site, or to a portal page outside the
+  preview, opens in a new tab instead of a browser error page inside the
+  preview frame. The preview stays on its page; in-site, `#hash`, `mailto:`
+  and `tel:` links, links with a `target` or `download`, and modifier-clicks
+  behave as before. Published sites are unchanged.
+
 ## 0.2.140 / MCP 0.45.104 (candidate)
 
 - Render version 13: a container that is a column at every breakpoint keeps
