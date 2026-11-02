@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.142 / MCP 0.45.106 (candidate)
+
+- Preview links: the browser's Back button returns to the previous preview
+  page. A click inside the preview added a second, frame-only history entry,
+  so Back first went back inside the frame and left the address on the newer
+  page. The preview frame now moves in place and each page is one entry.
+
 ## 0.2.141 / MCP 0.45.105 (candidate)
 
 - A domain switch goes live only when Cloudflare reports the website host's
