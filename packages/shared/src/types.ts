@@ -1925,7 +1925,7 @@ export type WorkflowType =
   | 'url_parity'
   | 'rebuild_deploy';
 
-export type WorkflowStatus = 'pending' | 'running' | 'paused_for_review' | 'completed' | 'failed';
+export type WorkflowStatus = 'pending' | 'running' | 'paused_for_review' | 'completed' | 'failed' | 'cancelled';
 
 export interface Workflow {
   id: string;

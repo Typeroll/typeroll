@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.141 / MCP 0.45.105 (candidate)
+
+- Workflow runs stopped by a portal restart no longer report `running` for
+  ever. Runs record `heartbeat_at` on every step write and about every 30
+  seconds during a long step; a read (`get_workflow`, `list_workflows`, the
+  API or the portal) closes a run that has been `running` without a heartbeat
+  for over 10 minutes as `failed` with `failure_code: "workflow_interrupted"`,
+  conditionally, so a live or completing run wins. New `cancelled` status:
+  `cancel_workflow` (MCP), `POST /api/v1/sites/{site}/workflows/{id}/cancel`
+  and a Cancel button on the run page stop a pending, running or paused run,
+  with the permission starting its type needs.
+
 ## 0.2.140 / MCP 0.45.104 (candidate)
 
 - Render version 13: a container that is a column at every breakpoint keeps

@@ -11,6 +11,10 @@ import { ok, versionParam, withErrorBoundary, type ToolDef } from './helpers.js'
 // work itself with the named recipe instead of retrying.
 const AI_WORKFLOWS = 'AI workflows — site_planning, content_generation, content_improvement and schema_markup — call the model with the Organization\'s own AI key and need AI access for this Site; without it the run fails with failure_code "ai_not_enabled" (failure_reason: the AI assistant is not enabled for this site). Do not retry or work around it: you are an AI agent, so do the same work yourself and tell the user you did — site_planning: tr-new-site (propose the page structure, get approval, then build); content_generation: tr-content-write (draft page); content_improvement: tr-content-write on the weakest published pages (thin text, missing seo_title/seo_description, stale), as unsaved drafts for review; schema_markup: tr-seo step 5 (add_faq_schema, add_recipe_schema, add_event_schema or json_ld). seo_audit still runs without AI and returns its issue list unprioritized. Enabling the portal AI is the Organization owner\'s or admin\'s choice, never a prerequisite for you.';
 
+// Runs execute in the portal process; a restart (a deploy) stops them. Reads
+// close a run with no heartbeat for 10 minutes as workflow_interrupted.
+const INTERRUPTED = 'failure_code "workflow_interrupted" means the run stopped making progress (no heartbeat for over 10 minutes, usually because the service restarted) and will not continue: tell the user, then start_workflow again; work saved before it stopped stays saved. A run that is still running keeps a recent heartbeat_at, however slowly it progresses.';
+
 const WORKFLOW_TYPES = [
   'migration', 'site_planning', 'seo_audit', 'content_improvement', 'link_check',
   'performance_audit', 'content_generation', 'schema_markup', 'url_parity', 'rebuild_deploy',
@@ -19,7 +23,7 @@ const WORKFLOW_TYPES = [
 export const workflowTools: ToolDef[] = [
   {
     name: 'list_workflows',
-    description: 'List the workflow types this Site can run (label, description, steps, required_permission) and its most recent runs with status. Read only. Migration, site planning and URL parity pause for review; check get_workflow for paused_for_review. Site planning, content generation, content improvement and schema markup need the Organization\'s AI key for this Site (see start_workflow).',
+    description: 'List the workflow types this Site can run (label, description, steps, required_permission) and its most recent runs with status. Read only. Migration, site planning and URL parity pause for review; check get_workflow for paused_for_review. A run left running after a service restart is reported failed with failure_code workflow_interrupted. Site planning, content generation, content improvement and schema markup need the Organization\'s AI key for this Site (see start_workflow).',
     inputSchema: { limit: z.number().int().min(1).max(100).optional() },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, 'workflows', args.limit ? { limit: args.limit } : undefined))),
   },
@@ -36,7 +40,7 @@ export const workflowTools: ToolDef[] = [
   },
   {
     name: 'get_workflow',
-    description: 'Read one workflow run: status (pending | running | paused_for_review | completed | failed), current step, progress, log, review_message/review_data when paused, results, failure_reason and failure_code (newer Core; older Core reports failure_reason only). Credential config is masked. failure_code "ai_not_enabled" (or a failure_reason saying the AI assistant is not enabled for this site) means the Site has no portal AI access: do the work yourself with the recipe named in start_workflow instead of retrying.',
+    description: 'Read one workflow run: status (pending | running | paused_for_review | completed | failed | cancelled), current step, progress, log, review_message/review_data when paused, results, failure_reason and failure_code (newer Core; older Core reports failure_reason only). Credential config is masked. failure_code "ai_not_enabled" (or a failure_reason saying the AI assistant is not enabled for this site) means the Site has no portal AI access: do the work yourself with the recipe named in start_workflow instead of retrying. ' + INTERRUPTED,
     inputSchema: { workflow_id: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, `workflows/${encodeURIComponent(args.workflow_id)}`))),
   },
@@ -45,6 +49,12 @@ export const workflowTools: ToolDef[] = [
     description: 'Approve the review gate of a run that is paused_for_review; it resumes from the next step in the background. Show the user review_message and review_data from get_workflow and get their approval first — approval is theirs to give, not the tool\'s. Write permission; any other status returns 409.',
     inputSchema: { workflow_id: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, `workflows/${encodeURIComponent(args.workflow_id)}/approve`))),
+  },
+  {
+    name: 'cancel_workflow',
+    description: 'Cancel a run that is pending, running or paused_for_review; it is recorded as status cancelled and continues no further (a step already in flight may finish its current work, but nothing more is recorded; changes it already saved stay). Use it when the user wants to stop a run or start over. Needs the permission that starting the type needs (write; admin for rebuild_deploy). A finished run (completed, failed, cancelled) returns 409. Returns the cancelled run.',
+    inputSchema: { workflow_id: z.string() },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, `workflows/${encodeURIComponent(args.workflow_id)}/cancel`))),
   },
   {
     name: 'create_site_and_migrate',

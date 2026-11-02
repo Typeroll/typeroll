@@ -1,24 +1,18 @@
 ---
 import AppLayout from '../../../../../layouts/AppLayout.astro';
-import { getStore } from '../../../../../lib/datastore';
-import { paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 import { workflows as registry } from '../../../../../lib/workflows/registry';
-import type { WorkflowRecord } from '../../../../../lib/workflows/types';
 import { loadSiteContext } from '../../../../../lib/access';
+import { listSiteWorkflows } from '../../../../../lib/workflows/service';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
 const { session, site, owner_org_id: orgId } = ctx;
 const siteId = site.id;
 
-const store = getStore();
-
-const allWorkflows = await store.listDocs<WorkflowRecord>(paths.workflows(orgId));
-const recent = allWorkflows
-  .filter((w) => w.site_id === siteId)
-  .sort((a, b) => (b.started_at ?? '').localeCompare(a.started_at ?? ''))
-  .slice(0, 20);
+// Through the service, so a run whose process stopped executing it shows as
+// failed (workflow_interrupted) rather than running for ever.
+const recent = await listSiteWorkflows(orgId, siteId, 20);
 ---
 <AppLayout title={`Workflows — ${site.name}`} siteId={siteId}>
   <div class="app-header">
@@ -79,6 +73,7 @@ const recent = allWorkflows
     .badge--running { background: rgba(245,158,11,0.12); color: var(--color-accent); }
     .badge--paused_for_review { background: rgba(59,130,246,0.12); color: #1d4ed8; }
     .badge--failed { background: rgba(220,38,38,0.12); color: var(--color-danger); }
+    .badge--cancelled { background: rgba(120,113,108,0.12); color: var(--color-text-muted); }
     .badge--pending { background: rgba(120,113,108,0.12); color: var(--color-text-muted); }
   </style>
 </AppLayout>
