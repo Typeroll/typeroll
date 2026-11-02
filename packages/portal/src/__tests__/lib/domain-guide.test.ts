@@ -10,10 +10,16 @@ vi.mock('../../lib/publishing/readiness', () => ({ publishingReadiness: mocks.re
 vi.mock('../../lib/publishing/publication-version', () => ({ resolvePublicationVersion: async () => ({ redirects: [], settings: {} }) }));
 vi.mock('../../lib/publishing/cloudflare-capabilities', () => ({ cloudflarePermissionReport: async () => ({ capabilities: [] }) }));
 vi.mock('../../lib/migration-launch-report', () => ({ buildMigrationLaunchReport: mocks.launch }));
-import { readDomainGuide } from '../../lib/publishing/domain-guide';
+// Public host observations never reach the network; by default they fail (inconclusive).
+const network = vi.hoisted(() => ({ respond: (() => { throw new TypeError('no network in tests'); }) as (url: URL, init?: RequestInit) => Response }));
+vi.mock('../../lib/net/safe-fetch', async load => ({ ...await load<object>(), createSafeFetch: () => (async (input: string | URL, init?: RequestInit) => network.respond(new URL(String(input)), init)) as typeof fetch }));
+vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => mocks.provider }));
+vi.mock('../../lib/publishing/hosting-dns', () => ({ hostingDns: async () => ({ provider: mocks.provider, accountId: 'account', groupId: 'default' }) }));
+import { domainGuideAction, readDomainGuide } from '../../lib/publishing/domain-guide';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); vi.clearAllMocks();
+  network.respond = () => { throw new TypeError('no network in tests'); };
   mocks.ready.mockResolvedValue({ ready: true, required: [] });
   mocks.launch.mockResolvedValue({ launch_ready: false, issues: [{ detail: 'Verify the remaining legacy URLs.' }] });
   mocks.provider.mockImplementation(async route => route.startsWith('/zones?') ? [{ id: 'zone', name: 'example.com', status: 'active', account: { id: 'account' }, name_servers: ['ns1.example.net', 'ns2.example.net'] }] : [{ certificate_status: 'active', hosts: ['example.com', '*.example.com'] }]);
@@ -92,4 +98,58 @@ it('does not read as a healthy live domain while another host serves it', async 
   const guide=await readDomainGuide('org','site');
   expect(guide).toMatchObject({state:'live',traffic_live:false,next_action:'remove_other_host',current_phase:'Another host is serving example.com'});
   expect(guide.checks.find(check=>check.id==='serving:example.com')).toMatchObject({status:'action_required',message:issue.message,details:{code:'domain_served_by_other_host',remedy:issue.remedy}});
+});
+
+it('reports a live host whose Pages custom domain is not active and retries validation on request (CH-07)', async () => {
+  const {siteDomainConfigPath}=await import('../../lib/publishing/domain-config');
+  const config=await getSiteDomains('org','site');
+  const route='/accounts/account/pages/projects/proj/domains/example.com';
+  let pages: Record<string, unknown>={status:'deactivated',validation_data:{method:'http',status:'deactivated'}};
+  mocks.provider.mockImplementation(async (path: string, options?: { method?: string }) => {
+    if (path===route) { if (options?.method==='PATCH') pages={status:'pending'}; return pages; }
+    if (path.startsWith('/zones?')) return [{ id: 'zone', name: 'example.com', status: 'active', account: { id: 'account' }, name_servers: ['ns1.example.net', 'ns2.example.net'] }];
+    if (path.startsWith('/zones/zone/dns_records')) { if (options?.method) throw new Error('DNS must never be written'); return [{ id: 'dns', type: 'CNAME', name: 'example.com', content: 'proj.pages.dev', proxied: true }]; }
+    return [{ certificate_status: 'active', hosts: ['example.com', '*.example.com'] }];
+  });
+  const issue={code:'pages_domain_not_active',host:'example.com',status:'deactivated',retryable:true,remedy:'Remove it from the previous host.',message:'The Cloudflare Pages custom domain example.com is deactivated, not active.'};
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{state:'live',active:config.desired,published:{hosts:config.desired,dns_mode:'automatic',publication_id:'pub',job_id:'job'},
+    serving_check:{status:'inconclusive',publication_id:'pub',website_host:'example.com',job_id:'job',live_at:new Date().toISOString(),checked_at:new Date().toISOString(),next_check_at:null,hosts:[],observed:null,issue:null,
+      pages_domain:{host:'example.com',status:'deactivated',validation_method:'http',validation_status:'deactivated',error_message:null,checked_at:new Date().toISOString(),retried_at:null,retry:null},pages_issue:issue}});
+  await getStore().setDoc(paths.deploy('org','site','job'),{status:'succeeded',phase:'Pages custom domain not active'});
+  await getStore().setDoc(`${paths.site('org','site')}/publishing_targets/main`,{last_publication:{publication_id:'pub',snapshot_job_id:'job',account_id:'account',project:'proj',hosting_group_id:'default'}});
+  const guide=await readDomainGuide('org','site');
+  expect(guide).toMatchObject({state:'live',traffic_live:false,next_action:'retry_validation',current_phase:'Cloudflare Pages does not serve example.com (custom domain deactivated)'});
+  expect(guide.checks.find(check=>check.id==='pages_domain:example.com')).toMatchObject({status:'action_required',message:issue.message,details:{code:'pages_domain_not_active',status:'deactivated',retryable:true}});
+  // Reading never retries validation.
+  expect(mocks.provider.mock.calls.some(([, options])=>options?.method)).toBe(false);
+
+  network.respond = () => new Response(null, { status: 522 });
+  const retried=await domainGuideAction('org','site',{action:'retry_validation'}) as Awaited<ReturnType<typeof readDomainGuide>>;
+  expect(mocks.provider.mock.calls.filter(([path, options])=>path===route&&options?.method==='PATCH')).toHaveLength(1);
+  expect(retried.serving_check).toMatchObject({pages_domain:{status:'pending',retry:'requested'},pages_issue:{status:'pending'}});
+  expect(retried.next_action).toBe('retry_validation');
+  // Idempotent: an immediate repeat does not retry again.
+  await domainGuideAction('org','site',{action:'retry_validation'});
+  expect(mocks.provider.mock.calls.filter(([path, options])=>path===route&&options?.method==='PATCH')).toHaveLength(1);
+
+  pages={status:'active'};
+  network.respond = () => new Response(null, { headers: { 'x-typeroll-publication': 'pub' } });
+  const healed=await domainGuideAction('org','site',{action:'retry_validation'}) as Awaited<ReturnType<typeof readDomainGuide>>;
+  expect(healed).toMatchObject({traffic_live:true,next_action:'none'});
+  expect(healed.checks.find(check=>check.id==='pages_domain:example.com')).toMatchObject({status:'ready'});
+});
+it('rejects a validation retry for a host that is not live', async () => {
+  await expect(domainGuideAction('org','site',{action:'retry_validation'})).rejects.toMatchObject({code:'pages_validation_not_applicable'});
+});
+it('warns before the switch that a previous Cloudflare for SaaS host must release the domain (CH-07)', async () => {
+  const {siteDomainConfigPath}=await import('../../lib/publishing/domain-config');
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{state:'ready_to_switch',candidate:{id:'cand',job_id:'job'},
+    preparation:{hostname:'example.com',provider_status:'pending',certificate_ready:false,requirements:[],dns_fingerprint:'f',action:'complete_validation',has_existing_traffic:true,validation_blocker:null}});
+  network.respond = () => new Response(null, { status: 200, headers: { 'x-kinsta-cache': 'HIT' } });
+  const guide=await readDomainGuide('org','site');
+  expect(guide.checks.find(check=>check.id==='previous_host_saas:example.com')).toMatchObject({status:'external',details:{code:'previous_host_saas_hostname',provider:{provider:'kinsta'}}});
+  expect(guide.switch_summary.previous_host).toMatchObject({code:'previous_host_saas_hostname',message:expect.stringContaining('right before or right after approving the switch')});
+  // A warning only: it never blocks preparation.
+  expect(guide.checks.find(check=>check.id==='host_requirements')?.status).toBe('ready');
+  expect(guide.can_prepare).toBe(true);
 });

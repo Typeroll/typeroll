@@ -48,12 +48,17 @@ export function providerHint(...sources: Array<Headers | null | undefined>): Pro
   return null;
 }
 
+/** Where the customer removes a domain at a Cloudflare for SaaS host. */
+export function providerDashboard(hint: ProviderHint | null): string {
+  return PROVIDER_RULES.find(rule => rule.provider === hint?.provider)?.dashboard ?? 'MyKinsta → Domains';
+}
+
 /** Plain remedy text for a host answered by someone other than Typeroll. */
 export function otherHostRemedy(hint: ProviderHint | null): string {
   if (hint && !hint.cloudflare_for_saas) {
     return `Remove the domain from ${hint.name} and check that its DNS records point to Typeroll.`;
   }
-  const dashboard = PROVIDER_RULES.find(rule => rule.provider === hint?.provider)?.dashboard ?? 'MyKinsta → Domains';
+  const dashboard = providerDashboard(hint);
   return `Remove the domain from the previous host's dashboard (for example ${dashboard}); its Cloudflare for SaaS hostname outranks your own DNS.`;
 }
 

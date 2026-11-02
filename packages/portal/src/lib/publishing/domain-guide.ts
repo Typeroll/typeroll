@@ -7,7 +7,7 @@ import { getStore } from '../datastore';
 import { getSiteDomains, saveSiteDomains, approveDomainCutover } from './domain-config';
 import { domainChangeImpact } from './domain-impact';
 import { endedDistribution, prepareDomainTransition } from './domain-transition';
-import { checkPublicationHosts, siteZoneSources } from './host-checks';
+import { checkPublicationHosts, previousHostSaasCheck, previousHostSwitchPending, siteZoneSources } from './host-checks';
 import { findZone } from './domain-provider';
 import { publishingReadiness } from './readiness';
 import { resolvePublicationVersion } from './publication-version';
@@ -17,7 +17,7 @@ import { readDomainCutover, requestDomainRollback } from './domain-cutover-journ
 import { ConnectionError } from './connections';
 import { ProviderError } from './providers.mjs';
 import { hiddenLaunchAccepted, launchRobotsFindings, launchRobotsMessage } from './launch-robots';
-import { refreshServingAlarm, servingAlarm, SERVING_CHECK_OFFSETS_MINUTES } from './serving-check';
+import { pagesDomainAlarm, refreshServingAlarm, retryPagesValidation, servingAlarm, SERVING_CHECK_OFFSETS_MINUTES } from './serving-check';
 
 type Check = { id: string; status: 'ready' | 'waiting' | 'action_required' | 'external'; message: string; details?: unknown };
 
@@ -29,6 +29,12 @@ export async function readDomainGuide(org: string, site: string) {
   const hosts = await checkPublicationHosts(config.desired, config.dns_mode, sources);
   checks.push({ id: 'hosting_account', status: sources.some(source => source.account === 'hosting') ? 'ready' : 'action_required', message: sources.some(source => source.account === 'hosting') ? 'The Hosting Group account is connected.' : 'Connect Cloudflare in Organization → Publishing.', details: { hosting_group_id: group.id, account_id: sources.find(source => source.account === 'hosting')?.accountId ?? null } });
   checks.push({ id: 'host_requirements', status: hosts.blockers.length ? 'action_required' : hosts.warnings.length ? 'waiting' : config.desired.website_host ? 'ready' : 'action_required', message: hosts.blockers[0]?.message ?? hosts.warnings[0]?.message ?? (config.desired.website_host ? 'The website and redirect hosts are supported.' : 'Save the future website address.'), details: hosts });
+  // A previous host's Cloudflare for SaaS hostname blocks Pages validation until it is removed there (CH-07).
+  const saasHost = previousHostSwitchPending(config) ? await previousHostSaasCheck(config.desired.website_host!) : null;
+  if (saasHost) {
+    hosts.warnings.push(saasHost);
+    checks.push({ id: `previous_host_saas:${saasHost.host}`, status: 'external', message: saasHost.message, details: { code: saasHost.code, provider: saasHost.provider } });
+  }
   for (const host of hosts.hosts) {
     const source = sources.find(source => source.account === host.zone?.account);
     if (!source || !host.zone) continue;
@@ -109,14 +115,21 @@ export async function readDomainGuide(org: string, site: string) {
   const otherHost = servingAlarm(serving) ? serving : null;
   if (otherHost) checks.push({ id: `serving:${otherHost.issue.host}`, status: 'action_required', message: otherHost.issue.message, details: { code: otherHost.issue.code, remedy: otherHost.issue.remedy, observed: otherHost.observed ?? null, checked_at: otherHost.checked_at } });
   else if (serving?.status === 'serving') checks.push({ id: 'serving', status: 'ready', message: `${serving.website_host} serves the current publication (checked ${serving.checked_at}).` });
-  else if (serving) checks.push({ id: 'serving', status: 'waiting', message: `Typeroll re-checks who serves ${serving.website_host} about ${SERVING_CHECK_OFFSETS_MINUTES.join(', ')} minutes after it went live${serving.status === 'inconclusive' ? '; the last check could not reach a conclusion and does not indicate a problem' : ''}.` });
+  else if (serving) checks.push({ id: 'serving', status: 'waiting', message: `Typeroll re-checks who serves ${serving.website_host} about ${SERVING_CHECK_OFFSETS_MINUTES.join(', ')} minutes after it went live, then daily${serving.status === 'inconclusive' ? '; the last check could not reach a conclusion and does not indicate a problem' : ''}.` });
+  // Pages serves the host only while its custom domain is active.
+  const pagesDown = pagesDomainAlarm(serving) ? serving : null;
+  if (pagesDown) checks.push({ id: `pages_domain:${pagesDown.pages_issue.host}`, status: 'action_required', message: pagesDown.pages_issue.message,
+    details: { code: pagesDown.pages_issue.code, status: pagesDown.pages_issue.status, retryable: pagesDown.pages_issue.retryable, remedy: pagesDown.pages_issue.remedy, pages_domain: pagesDown.pages_domain ?? null } });
+  else if (serving?.pages_domain?.status === 'active') checks.push({ id: `pages_domain:${serving.pages_domain.host}`, status: 'ready', message: `The Cloudflare Pages custom domain ${serving.pages_domain.host} is active (checked ${serving.pages_domain.checked_at}).` });
   const canPrepare = checks.filter(check => ['hosting_account', 'host_requirements', 'publishing_ready', 'redirect_capacity', 'candidate_noindex'].includes(check.id)).every(check => check.status !== 'action_required');
   return { ...config, previous_hosts: previousHosts, published_main: publishedMain, can_prepare: canPrepare, elapsed_seconds: job?.started_at ? Math.max(0, Math.round((Date.parse(job.finished_at ?? new Date().toISOString()) - Date.parse(job.started_at)) / 1000)) : null, title: `Move site to ${config.desired.website_host ?? 'your domain'}`, checks,
-    current_phase: otherHost ? `Another host is serving ${otherHost.issue.host}` : config.rollback_status === 'rolled_back' ? 'previous traffic restored' : (job?.phase === 'awaiting domain cutover approval' ? 'Published; DNS switch pending' : job?.phase) ?? ({ unconfigured: 'Save a website address to begin', declared: 'Ready to publish for the new domain', preparing: 'Preparing and checking requirements', ready_to_switch: 'Ready for your approval', distributing: 'Switching and verifying traffic', live: 'Public traffic verified', failed: 'Needs attention', outdated: 'Publish for the new domain to replace this older preparation.' }[config.state]),
-    traffic_live: config.state === 'live' && !otherHost, next_action: otherHost ? 'remove_other_host' : config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : !lastPublication ? 'publish_first' : noindex.length ? 'resolve_noindex' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : publishedMain ? 'refresh' : 'prepare',
+    current_phase: otherHost ? `Another host is serving ${otherHost.issue.host}` : pagesDown ? `Cloudflare Pages does not serve ${pagesDown.pages_issue.host} (custom domain ${pagesDown.pages_issue.status})` : config.rollback_status === 'rolled_back' ? 'previous traffic restored' : (job?.phase === 'awaiting domain cutover approval' ? 'Published; DNS switch pending' : job?.phase) ?? ({ unconfigured: 'Save a website address to begin', declared: 'Ready to publish for the new domain', preparing: 'Preparing and checking requirements', ready_to_switch: 'Ready for your approval', distributing: 'Switching and verifying traffic', live: 'Public traffic verified', failed: 'Needs attention', outdated: 'Publish for the new domain to replace this older preparation.' }[config.state]),
+    traffic_live: config.state === 'live' && !otherHost && !pagesDown, next_action: otherHost ? 'remove_other_host' : pagesDown ? (pagesDown.pages_issue.retryable ? 'retry_validation' : 'prepare') : config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : !lastPublication ? 'publish_first' : noindex.length ? 'resolve_noindex' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : publishedMain ? 'refresh' : 'prepare',
     cutover: cutover ? { state: cutover.state, deadline_at: cutover.deadline_at, errors: cutover.errors, previous_records: cutover.entries.map(entry => ({ hostname: entry.hostname, records: entry.before })) } : null,
     switch_summary: { website: config.preparation, media: config.media_preparation, redirects: config.redirect_preparations, previous_hosts: config.previous_host_preparations, validation_timeout_minutes: config.validation_timeout_minutes ?? 15,
       interruption: config.preparation?.validation_blocker?.message ?? 'The same main publication already serves at the current address. This step changes DNS without another build or upload. DNS propagation and provider validation can still take time.',
+      previous_host: saasHost ? { code: saasHost.code, message: saasHost.message, provider: saasHost.provider } : null,
+      pages_validation: 'After the switch, Typeroll marks the website host live only when its Cloudflare Pages custom domain is active. It retries validation while the domain is pending or deactivated; if the domain is not active by the deadline, the switch fails with pages_domain_not_active and the previous DNS is restored.',
       rollback: config.dns_mode === 'automatic' ? 'Typeroll records the previous DNS and restores it on failed verification or deadline. This does not restore an older site publication. Later external edits stop automatic restoration and are reported.' : 'Your DNS administrator or agent applies and restores external DNS. Typeroll verifies the result.' } };
 }
 
@@ -128,6 +141,15 @@ export async function domainGuideAction(org: string, site: string, input: Record
     case 'prepare': return prepareDomainTransition(org, site, input);
     case 'approve': return approveDomainCutover(org, site, input);
     case 'rollback': return requestDomainRollback(org, site, await getSiteDomains(org, site), input);
-    default: throw new ConnectionError('Choose check, preview, save, prepare, approve or rollback.', 400, 'invalid_domain_action');
+    case 'retry_validation': {
+      // Idempotent: one check now, with Cloudflare's validation retry when the live host's Pages domain is pending or deactivated.
+      const config = await getSiteDomains(org, site);
+      if (config.state !== 'live') throw new ConnectionError(config.state === 'distributing'
+        ? 'The traffic switch in progress already retries Cloudflare Pages validation. Wait for it to finish.'
+        : 'Retry validation applies to a live website host. Prepare and approve the domain change first.', 409, 'pages_validation_not_applicable');
+      await retryPagesValidation(org, site);
+      return readDomainGuide(org, site);
+    }
+    default: throw new ConnectionError('Choose check, preview, save, prepare, approve, rollback or retry_validation.', 400, 'invalid_domain_action');
   }
 }

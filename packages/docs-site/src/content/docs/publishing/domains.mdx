@@ -85,7 +85,7 @@ An old preview-branch preparation cannot activate traffic under this flow. Choos
 and publish for the domain again; the previous DNS journal is not reused.
 
 Agents use `guide_publishing_domain_change` (`check`, `preview`, `save`, `prepare`,
-`approve`, `rollback`) at `POST /api/v1/sites/{siteId}/publishing/domain-guide`.
+`approve`, `rollback`, `retry_validation`) at `POST /api/v1/sites/{siteId}/publishing/domain-guide`.
 `onboard_publishing_domain_zone` uses the organization-scoped
 `POST /api/v1/publishing/domain-onboarding` endpoint for zone creation and reviewed
 DNS scans. Site-only credentials cannot administer organization zones. The
@@ -258,6 +258,32 @@ record without that acceptance. See
 [switch an apex from an existing host](../../guides/customer-publishing/#switch-an-apex-from-an-existing-host)
 and the [full domain-change procedure](../../guides/customer-publishing/#prepare-a-domain-change-before-switching-traffic).
 
+### A previous host that holds the domain in Cloudflare for SaaS
+
+Some hosts, such as Kinsta and WP Engine, attach customer domains to their own
+Cloudflare account as Cloudflare for SaaS custom hostnames. While such a
+hostname exists, it answers the domain instead of your zone's record, and
+Cloudflare Pages cannot validate the domain even after the record points at
+Pages. After a while Pages gives up and marks the custom domain `deactivated`;
+it does not try again on its own.
+
+Once a prepared switch has existing traffic, the domain check therefore asks
+who answers the website host. When a Cloudflare for SaaS host answers, the
+guide shows the check `previous_host_saas:<host>`, `host_checks` in
+`read_publishing_domains` carries the warning `previous_host_saas_hostname`
+with the provider, and the switch review repeats it under
+`switch_summary.previous_host`. It is a warning, not a blocker: remove the
+domain from the previous host (for example MyKinsta → Domains) right before or
+right after approving the switch, inside the validation window.
+
+The switch goes live only when Cloudflare reports the website host's Pages
+custom domain as `active`. Until then the job waits with the Pages status in its
+message and asks Cloudflare to retry validation (at most every five minutes)
+once the record points at the Pages project. A domain that Cloudflare blocks,
+or that is not active by the agreed deadline, fails the switch with
+`pages_domain_not_active`, and automatic DNS is restored as for any failed
+switch.
+
 ## Use your own AI agent
 
 The API and MCP return the same domain requirements as the UI. An agent with
@@ -342,14 +368,40 @@ result is `serving_check` in `read_publishing_domains` and the domain guide:
 - `inconclusive`: a network or edge error, or a Cloudflare challenge. This never
   raises or clears an alarm.
 
+After these three checks, Typeroll checks a live website host once a day.
+A site that went live before these checks existed gets them the next time its
+domain settings or guide are read.
+
+Each check also reads the website host's Cloudflare Pages custom domain, in
+`serving_check.pages_domain`. Pages serves the host only while that domain is
+`active`; otherwise visitors typically get HTTP 522, which the public check alone
+cannot tell apart from an outage. When it is not active,
+`serving_check.pages_issue` carries the issue code `pages_domain_not_active`
+with the Pages status and remedy, the domain guide shows the check
+`pages_domain:<host>` with `next_action` `retry_validation`, and the publication
+job shows the phase `Pages custom domain not active`. When the status is
+`pending` or `deactivated` and the host's DNS already points at the Pages
+project, the check asks Cloudflare to retry validation (at most once per check
+and every five minutes). This is how a domain recovers by itself once a
+previous host releases it. A Pages read that fails (a network error, rate limit
+or missing permission) never raises or clears this issue.
+
+To retry now, choose **Retry validation** in Publishing or call
+`guide_publishing_domain_change` with `action: "retry_validation"`. It is
+idempotent: it re-checks the host and, when the Pages domain is pending or
+deactivated and DNS points at the project, asks Cloudflare to retry validation.
+Repeated calls within a minute do not retry again. It applies only to a live
+website host and never changes DNS.
+
 While an alarm stands, the domain guide no longer reports traffic as live: its
 `next_action` is `remove_other_host`, and the publication job shows the phase
 `served by another host`. To fix it, remove the domain from the previous host's
 dashboard (for example MyKinsta → Domains); its Cloudflare for SaaS hostname
 outranks your own DNS. Then refresh the domain check: reading the domain
 settings or the guide re-checks a standing alarm, and a successful check clears
-it. The checks only read public responses. Typeroll never changes DNS or rolls
-back the switch because of them.
+it. The checks only read public responses and provider status; their only
+provider write is Cloudflare's validation retry for the Pages custom domain.
+Typeroll never changes DNS or rolls back the switch because of them.
 
 ## Check it
 

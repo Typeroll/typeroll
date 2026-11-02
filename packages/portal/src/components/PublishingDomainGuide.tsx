@@ -2,7 +2,7 @@ import PublishingDomainOnboarding from './PublishingDomainOnboarding';
 import { useEffect, useState } from 'react';
 
 type Guide = { previous_hosts?: Array<{ host: string; target_host: string; mode: 'redirect' | 'noindex'; status: string; message: string }>; title: string; revision: string; state: string; current_phase: string; traffic_live: boolean; next_action: string; can_prepare?: boolean; published_main?: boolean; elapsed_seconds?: number | null; candidate?: { id: string }; cutover?: { state: string; errors: string[] } | null; checks: Array<{ id: string; status: string; message: string }>;
-  preparation?: { validation_blocker?: { resolution: string } }; switch_summary: { interruption: string; rollback: string; validation_timeout_minutes: number }; };
+  preparation?: { validation_blocker?: { resolution: string } }; switch_summary: { interruption: string; rollback: string; validation_timeout_minutes: number; previous_host?: { message: string } | null }; };
 
 /** A single visible journey; polling only refreshes status and never advances a traffic action. */
 export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
@@ -37,7 +37,7 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
         result = body;
       }
       await load(); setReview(false); setAccept(false);
-      setNotice(action === 'check' ? 'Checks refreshed. Review the current status below.' : action === 'prepare' ? result.reused_candidate ? 'Domain setup refreshed. The same main publication is retained; no build or DNS change was started.' : result.already_running ? 'Publication is already in progress. Follow its status here; no duplicate build was started.' : 'Publishing for the new domain started. This replaces the site at its current address. DNS is unchanged.' : action === 'rollback' ? 'Restoration requested. Typeroll checks for intervening DNS edits before restoring.' : 'Switch approved. This is not live until public verification succeeds.');
+      setNotice(action === 'check' ? 'Checks refreshed. Review the current status below.' : action === 'prepare' ? result.reused_candidate ? 'Domain setup refreshed. The same main publication is retained; no build or DNS change was started.' : result.already_running ? 'Publication is already in progress. Follow its status here; no duplicate build was started.' : 'Publishing for the new domain started. This replaces the site at its current address. DNS is unchanged.' : action === 'rollback' ? 'Restoration requested. Typeroll checks for intervening DNS edits before restoring.' : action === 'retry_validation' ? 'Cloudflare Pages validation was checked and retried where needed. Review the current status below.' : 'Switch approved. This is not live until public verification succeeds.');
     } catch (err) { setError(err instanceof Error ? err.message : 'The domain action failed.'); }
     finally { setBusy(false); }
   }
@@ -69,11 +69,12 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
           <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Keep the site hidden from search engines on the new domain? You can turn indexing on later in Site settings and publish again.')) void action('prepare', { allow_noindex_launch: true }); }}>Keep it hidden on purpose</button>
         </div>
       </div>}
+      {guide?.next_action === 'retry_validation' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void action('retry_validation')}>Retry validation</button>}
       {guide?.next_action === 'approve' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setReview(true)}>Review traffic switch</button>}
       {guide?.cutover && guide.cutover.state !== 'rolled_back' && <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Restore the DNS records saved before this traffic switch? Later external edits will be reported instead of overwritten.')) void action('rollback'); }}>Restore previous traffic</button>}
     </div>
     {review && guide && <div className="stack" role="region" aria-label="Review traffic switch">
-      <h4>Switch DNS to the current publication</h4><p>{guide.switch_summary.interruption}</p><p>{guide.switch_summary.rollback}</p>
+      <h4>Switch DNS to the current publication</h4><p>{guide.switch_summary.interruption}</p>{guide.switch_summary.previous_host && <p role="note"><strong>Previous host:</strong> {guide.switch_summary.previous_host.message}</p>}<p>{guide.switch_summary.rollback}</p>
       <p>Automatic validation window: 15 minutes from the traffic change. DNS propagation may outlast a rollback.</p>
       {needsWindow && <label><input type="checkbox" checked={accept} onChange={event => setAccept(event.target.checked)} /> I accept that the website may be unavailable until Cloudflare validates it.</label>}
       <button type="button" className="btn btn-primary" disabled={busy || !!needsWindow && !accept} onClick={() => void action('approve')}>Approve and switch traffic</button>

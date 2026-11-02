@@ -499,11 +499,20 @@ it.each(['live', 'timeout', 'manual rollback'])('switches one reviewed record af
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(records[0]).toMatchObject({ type: 'CNAME', content: `${project}.pages.dev`, proxied: true });
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'waiting for Cloudflare to validate www.example.com after the approved switch',
-    verification_message: expect.stringContaining('Previous destination: A www.example.com 192.0.2.10 (DNS only)') });
+    verification_message: expect.stringContaining('Previous destination: A www.example.com 192.0.2.10 (DNS only)'),
+    // CH-07: the host is not live while its Pages custom domain is pending; validation is retried once the record points at Pages.
+    pages_domain: { host: 'www.example.com', status: 'pending', retried_at: expect.any(String) } });
+  expect((await store.getDoc<any>(jobPath)).verification_message).toContain('Cloudflare Pages custom domain www.example.com is pending');
+  const retries = () => mocks.cloudflare.mock.calls.filter(([route, options]) => route.endsWith(`/pages/projects/${project}/domains/www.example.com`) && options?.method === 'PATCH').length;
+  expect(retries()).toBe(1);
+  // Rate-limited: the next attempt reads the status again without another retry.
+  await executeCustomerPublication(args);
+  expect(retries()).toBe(1);
   if (outcome === 'timeout') {
     await store.updateDoc(`${paths.site('org', 'site')}/domain_cutovers/${prepared.candidate!.id}`, { deadline_at: Date.now() - 1 });
     await executeCustomerPublication(args);
-    expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'domain_cutover_timeout' } });
+    expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'pages_domain_not_active' },
+      error: expect.stringContaining('www.example.com was still pending, not active') });
     expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10', proxied: false });
     expect(await getSiteDomains('org', 'site')).toMatchObject({ active, rollback_status: 'rolled_back' });
     return;
@@ -525,6 +534,74 @@ it.each(['live', 'timeout', 'manual rollback'])('switches one reviewed record af
     expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10', proxied: false });
     expect(await getSiteDomains('org', 'site')).toMatchObject({ active, rollback_status: 'rolled_back' });
   }
+});
+
+it('does not mark the host live while its Pages custom domain is deactivated, even when something answers it (CH-07)', async () => {
+  const store = getStore();
+  const active = { website_host: 'old.example.com', media_host: null, media_path_prefix: '' };
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active });
+  await prepareFromCurrentPublication();
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch);
+  // A previous host's Cloudflare for SaaS hostname keeps answering, so the public probe alone would pass.
+  mocks.probe.mockResolvedValue(true);
+  let pages: Record<string, unknown> = { status: 'pending', validation_data: { method: 'http' }, verification_data: { error_message: 'CNAME record not set' } };
+  const records: Array<Record<string, unknown>> = [{ id: 'existing', type: 'A', name: 'www.example.com', content: '192.0.2.10', proxied: false }];
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/domains/')) return pages;
+    if (route === '/zones/zone/dns_records/existing' && ['PATCH', 'PUT'].includes(options?.method)) { records.splice(0, 1, { id: 'existing', ...options.body }); return {}; }
+    if (route.includes('/dns_records') && !options?.method) return records;
+    return provider(route, options);
+  });
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  const prepared = await getSiteDomains('org', 'site');
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: prepared.revision, approved_preparation: prepared.preparation, approved_validation_window: true });
+  pages = { status: 'deactivated', validation_data: { method: 'http', status: 'deactivated' } };
+  await executeCustomerPublication(args);
+  await executeCustomerPublication(args);
+  complete('main');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(records[0]).toMatchObject({ type: 'CNAME', content: `${project}.pages.dev`, proxied: true });
+  const job = await store.getDoc<any>(jobPath);
+  expect(job).toMatchObject({ status: 'running', pages_domain: { status: 'deactivated', retried_at: expect.any(String) } });
+  expect(job.verification_message).toContain('MyKinsta → Domains');
+  expect((await getSiteDomains('org', 'site')).state).not.toBe('live');
+  expect(mocks.cloudflare.mock.calls.filter(([route, options]) => route.endsWith('/domains/www.example.com') && options?.method === 'PATCH')).toHaveLength(1);
+  // Cloudflare blocks the hostname: the switch stops and the reviewed record is restored.
+  pages = { status: 'blocked' };
+  await executeCustomerPublication(args);
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'pages_domain_not_active' }, error: expect.stringContaining('is blocked, not active') });
+  expect(records[0]).toMatchObject({ type: 'A', content: '192.0.2.10', proxied: false });
+  expect(await getSiteDomains('org', 'site')).toMatchObject({ active, rollback_status: 'rolled_back' });
+});
+
+it('marks the host live once Cloudflare reports its Pages custom domain active after a retry', async () => {
+  const store = getStore();
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await prepareFromCurrentPublication();
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch);
+  mocks.probe.mockResolvedValue(true);
+  let status = 'active';
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/domains/')) { if (options?.method === 'PATCH') status = 'pending'; return { status }; }
+    return provider(route, options);
+  });
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  const prepared = await getSiteDomains('org', 'site');
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { cutover_approved_revision: prepared.revision, approved_preparation: prepared.preparation });
+  status = 'deactivated';
+  await executeCustomerPublication(args);
+  await executeCustomerPublication(args);
+  complete('main');
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'waiting for Cloudflare Pages to validate www.example.com', pages_domain: { status: 'pending', retried_at: expect.any(String) } });
+  status = 'active';
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', phase: 'live', pages_domain: { status: 'active' } });
+  expect((await getSiteDomains('org', 'site')).state).toBe('live');
 });
 
 it('explains the observed verification failure when the observation window expires', async () => {

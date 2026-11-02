@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.141 / MCP 0.45.105 (candidate)
+
+- A domain switch goes live only when Cloudflare reports the website host's
+  Pages custom domain as `active`. While it is pending or deactivated, Typeroll
+  asks Cloudflare to retry validation once the record points at the Pages
+  project; a domain that is blocked or not active by the deadline fails the
+  switch with `pages_domain_not_active` and restores automatic DNS. Previously a
+  host still answered by a previous provider could be marked live while Pages
+  had no active binding.
+- Serving checks read the Pages custom domain too, continue daily after the
+  first 30 minutes, and retry validation for a pending or deactivated domain
+  (at most once per check and every five minutes). A domain that is not active
+  shows `pages_domain_not_active` with the remedy, `next_action`
+  `retry_validation` and the job phase `Pages custom domain not active`. Sites
+  that went live earlier get these checks on their next domain read.
+- `guide_publishing_domain_change` takes `action: "retry_validation"` (and
+  Publishing shows **Retry validation**): an idempotent re-check of the live
+  host that asks Cloudflare to retry Pages validation, never a DNS change.
+- Before a switch, a website host still answered by a Cloudflare for SaaS host
+  such as Kinsta shows the warning `previous_host_saas_hostname`: remove the
+  domain there right before or right after approving, inside the validation
+  window.
+
 ## 0.2.140 / MCP 0.45.104 (candidate)
 
 - Render version 13: a container that is a column at every breakpoint keeps
