@@ -132,6 +132,14 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Such column containers carry data-column-only="true". Rows, and containers that become rows at some breakpoint, are unchanged.',
     ],
   },
+  {
+    version: 13, core_version: '0.2.140', title: 'Long words stay on small screens',
+    changes: [
+      'A container that is a column at every breakpoint keeps its children on one line (flex-wrap: nowrap). Before, a child with a long word, address or inline code wider than the screen made every child and the page that wide, so phones scrolled sideways.',
+      'Paragraphs, list items and headings in Text blocks, and the Heading block\'s heading, eyebrow and subtitle, break a word that does not fit on a line. Code blocks in Text scroll inside the text column.',
+      'Navigation links can have a group label: a visible title above the links that also names the list for screen readers. Lists without a label render as before.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

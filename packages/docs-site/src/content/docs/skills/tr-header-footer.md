@@ -127,6 +127,14 @@ desktop 1280, wide 1536); do not independently hide all links at the menu bounda
 Verify 1023/1024 px, Tab/Shift-Tab, Enter/Space, Escape returning focus,
 visible focus, long labels, no-JavaScript links and no horizontal overflow.
 
+To divide the mobile panel into groups, put one `core/navigation_links` per
+group in the second slot and give each a `group_label` (render version 13),
+for example `"group_label": "Product"`. The label is shown above the links,
+names the list for screen readers and takes the site's Eyebrow style (or
+`group_label_style_id`). Do not insert Text blocks or headings as group titles
+or style them with site CSS. Read `read_site_settings` → `render.version`
+first; below 13, raise it with `tr-upgrade-rendering`.
+
 Each entry in `links` (`core/navigation_links` and `core/navigation`) may set
 `link_rel`, for example `nofollow sponsored` on an affiliate or partner link.
 A `core/tabs` choice with a direct `href` accepts `link_rel` and `new_tab` too,

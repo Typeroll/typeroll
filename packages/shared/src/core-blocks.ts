@@ -169,6 +169,35 @@ ${EMPTY_OUTLINE_COLUMN_CSS}
   created_at: ISO_EPOCH,
 };
 
+const PROSE_STYLES = `
+[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, var(--body-leading-text, 1.65))); font-size: var(--font_size_px, var(--page-body-font-size, var(--body-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem)))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
+[data-block="prose"][data-w="narrow"] { max-width: 38rem; margin-inline: auto; }
+[data-block="prose"][data-w="wide"] { max-width: 60rem; margin-inline: auto; }
+[data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
+[data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
+[data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
+[data-block="prose"][data-font="mono"] { font-family:var(--font-mono,monospace); }
+[data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: var(--h1-size, clamp(1.75rem, 1rem + 3.5vw, 3.5rem)); line-height: var(--h1-leading, 1.15); }
+[data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: var(--h2-size, clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem)); line-height: var(--h2-leading, 1.2); }
+[data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: var(--h3-size, clamp(1.25rem, 0.75rem + 2vw, 1.75rem)); line-height: var(--h3-leading, 1.25); }
+[data-block="prose"] h4 { margin: 1.5em 0 0.5em; font-size: var(--h4-size, clamp(1.125rem, 0.75rem + 1vw, 1.375rem)); line-height: var(--h4-leading, 1.3); }
+[data-block="prose"] ul, [data-block="prose"] ol { margin: 0 0 1em 1.5em; }
+[data-block="prose"] a { color: var(--link-color, var(--color-primary, currentColor)); overflow-wrap: anywhere; text-decoration:var(--link-decoration, underline); text-underline-offset:.15em; }
+[data-block="prose"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
+[data-block="prose"] img { max-width: 100%; height: auto; }
+[data-block="prose"] table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+[data-block="prose"] th, [data-block="prose"] td { padding: 0.5rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
+`.trim();
+
+/**
+ * The site reset sets `overflow-wrap: break-word` on paragraphs and headings.
+ * It breaks a long word only when the line is laid out, not when a flex line,
+ * grid track or shrink-to-fit box measures its content, so one long word, URL
+ * or inline code span set that box's minimum width. `anywhere` lowers it.
+ */
+const PROSE_BREAK_CSS = `[data-block="prose"] :is(p, li, dt, dd, blockquote, figcaption, h1, h2, h3, h4, h5, h6) { overflow-wrap: anywhere; }
+[data-block="prose"] pre { max-width: 100%; overflow-x: auto; }`;
+
 /**
  * `prose` — a chunk of rich text. The single `html` field is sanitized at
  * save time and emitted raw (triple-brace) so authored formatting survives.
@@ -210,25 +239,11 @@ const prose: BlockType = {
   // Fluid type via clamp() — rubriker och brödtext skalar mellan mobil
   // och desktop utan media queries. Behåller läsbarhet på små skärmar
   // utan att gå för stort på desktop.
-  styles: `
-[data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, var(--body-leading-text, 1.65))); font-size: var(--font_size_px, var(--page-body-font-size, var(--body-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem)))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
-[data-block="prose"][data-w="narrow"] { max-width: 38rem; margin-inline: auto; }
-[data-block="prose"][data-w="wide"] { max-width: 60rem; margin-inline: auto; }
-[data-block="prose"] p { margin: 0 0 var(--paragraph_spacing_px,var(--page-body-paragraph-spacing, 1em)); }
-[data-block="prose"][data-font="body"] { font-family:var(--font-body,inherit); }
-[data-block="prose"][data-font="heading"] { font-family:var(--font-heading,inherit); }
-[data-block="prose"][data-font="mono"] { font-family:var(--font-mono,monospace); }
-[data-block="prose"] h1 { margin: 1.5em 0 0.5em; font-size: var(--h1-size, clamp(1.75rem, 1rem + 3.5vw, 3.5rem)); line-height: var(--h1-leading, 1.15); }
-[data-block="prose"] h2 { margin: 1.5em 0 0.5em; font-size: var(--h2-size, clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem)); line-height: var(--h2-leading, 1.2); }
-[data-block="prose"] h3 { margin: 1.5em 0 0.5em; font-size: var(--h3-size, clamp(1.25rem, 0.75rem + 2vw, 1.75rem)); line-height: var(--h3-leading, 1.25); }
-[data-block="prose"] h4 { margin: 1.5em 0 0.5em; font-size: var(--h4-size, clamp(1.125rem, 0.75rem + 1vw, 1.375rem)); line-height: var(--h4-leading, 1.3); }
-[data-block="prose"] ul, [data-block="prose"] ol { margin: 0 0 1em 1.5em; }
-[data-block="prose"] a { color: var(--link-color, var(--color-primary, currentColor)); overflow-wrap: anywhere; text-decoration:var(--link-decoration, underline); text-underline-offset:.15em; }
-[data-block="prose"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 2px; }
-[data-block="prose"] img { max-width: 100%; height: auto; }
-[data-block="prose"] table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
-[data-block="prose"] th, [data-block="prose"] td { padding: 0.5rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
-`.trim(),
+  styles: PROSE_STYLES,
+  // Version 13: long words, URLs and inline code break inside paragraphs,
+  // list items and headings too, where the site reset's break-word kept
+  // their full width as the block's minimum, and preformatted text scrolls.
+  render_versions: [{ from: 13, styles: `${PROSE_STYLES}\n${PROSE_BREAK_CSS}` }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -247,6 +262,10 @@ const prose: BlockType = {
  * per-page tuning. The plan to address "headings are too big on mobile"
  * is fluid type by default; per-breakpoint overrides come in Phase 2.
  */
+const HEADING_GROUP_CSS = `[data-block="heading"] .block-heading-group { margin: 0; }
+[data-block="heading"] .block-heading-eyebrow { font-size: 0.875rem; font-weight: 600; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.5rem; }
+[data-block="heading"] .block-heading-subtitle { font-size: 1.125rem; line-height: 1.5; margin: 0.5rem 0 0; }`;
+
 /**
  * `text` — one line or paragraph of plain text, escaped, in a chosen element.
  * The building block for composed block types (a card's caption, a label):
@@ -345,9 +364,12 @@ const heading: BlockType = {
   <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>{{#subtitle}}
   <p class="block-heading-subtitle {{subtitle_class}}">{{subtitle}}</p>{{/subtitle}}{{#heading_group}}</hgroup>{{/heading_group}}
 </div>`,
-    styles: headingStyles(`[data-block="heading"] .block-heading-group { margin: 0; }
-[data-block="heading"] .block-heading-eyebrow { font-size: 0.875rem; font-weight: 600; line-height: 1.3; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.5rem; }
-[data-block="heading"] .block-heading-subtitle { font-size: 1.125rem; line-height: 1.5; margin: 0.5rem 0 0; }`),
+    styles: headingStyles(HEADING_GROUP_CSS),
+  }, {
+    // Version 13: the heading element breaks long words as its block does;
+    // the site reset's break-word on h1–h6 kept their full width as minimum.
+    from: 13,
+    styles: `${headingStyles(HEADING_GROUP_CSS)}\n[data-block="heading"] :is(.block-heading-text, .block-heading-eyebrow, .block-heading-subtitle) { overflow-wrap: anywhere; }`,
   }],
   styles: headingStyles(`[data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
 [data-block="heading"] .block-heading-eyebrow:empty { display: none; }`),

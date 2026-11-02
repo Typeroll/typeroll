@@ -427,6 +427,11 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
   }
   if (['core/navigation', 'core/navigation_links'].includes(effectiveBlock.type)) {
     if (!String(compiled.flatData.menu_label ?? '').trim()) compiled.flatData.menu_label = 'Menu';
+    // A blank group label renders the bare list (render version 13).
+    if (effectiveBlock.type === 'core/navigation_links') {
+      compiled.flatData.group_label = String(compiled.flatData.group_label ?? '').trim();
+      compiled.flatData.navigation_label_id = `nav-label-${effectiveBlock.id}`;
+    }
     compiled.flatData.navigation_links_html = renderNavigationLinks(
       effectiveBlock.data?.links,
       options.context?.page,

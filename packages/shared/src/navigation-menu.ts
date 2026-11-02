@@ -92,17 +92,45 @@ window.TyperollBlocks.register('core/navigation_menu', el => {
   origin:'core', created_at:'1970-01-01T00:00:00Z',
 };
 
+const NAVIGATION_LIST_TEMPLATE = `<ul data-block="navigation_links" data-font="{{font}}" data-density="{{density}}" style="--direction:{{direction}};--link_color:{{color}};--font_weight:{{font_weight}}">{{{navigation_links_html}}}</ul>`;
+
+/**
+ * From render version 13 a group label titles the list. The block then wraps
+ * a visible label and the list that names itself after it (aria-labelledby).
+ * The label is not a heading, so a menu repeated on every page adds nothing
+ * to the page outline. It takes the site's Eyebrow style unless another is
+ * chosen. Without a label the block renders the bare list.
+ */
+const LABELLED_NAVIGATION_TEMPLATE = `{{#group_label}}<div data-block="navigation_links" data-labelled="true" data-font="{{font}}" data-density="{{density}}" style="--direction:{{direction}};--link_color:{{color}};--font_weight:{{font_weight}}"><div class="block-nav-label {{group_label_class}}" id="{{navigation_label_id}}">{{group_label}}</div><ul class="block-nav-list" aria-labelledby="{{navigation_label_id}}">{{{navigation_links_html}}}</ul></div>{{/group_label}}{{^group_label}}${NAVIGATION_LIST_TEMPLATE}{{/group_label}}`;
+
+/**
+ * The list's item rules select `li` as a descendant instead of a child, so
+ * they reach the list inside a labelled block too. The block holds no other
+ * list items, and the specificity is unchanged, so a bare list renders as
+ * before and a site's overrides keep applying.
+ */
+const itemsAnyDepth = (css: string) => css.replace(/\] > li\b/g, '] li');
+
+const LABELLED_NAVIGATION_CSS = `[data-block="navigation_links"][data-labelled="true"] { display:block; }
+[data-block="navigation_links"] > .block-nav-list { display:flex;flex-direction:var(--direction,column);flex-wrap:wrap;gap:inherit;list-style:none;margin:0;padding:0;min-width:0; }
+[data-block="navigation_links"] > .block-nav-label { margin:0 0 var(--space-xs,.25rem);font-family:var(--font-body,inherit);font-size:.75rem;font-weight:600;line-height:1.5;letter-spacing:.08em;text-transform:uppercase;color:var(--color-text-light,currentColor);overflow-wrap:anywhere; }
+[data-block="navigation_links"][data-labelled="true"]:not(:first-child) > .block-nav-label { margin-top:var(--space-md,1.25rem); }`;
+
 /** A semantic, styleable link group usable in a menu, footer or repeated item. */
 export const navigationLinks: BlockType = {
   id:'core/navigation_links', name:'navigation_links', label:'Navigation links', icon:'list', category:'content', container:false,
   // The current page's link is declared after the links, so its style wins
   // where both set a property; hover comes from the link style.
   parts:[
-    { name:'link', label:'Links', selector:'> li > a', target:'link' },
-    { name:'current_link', label:'Link to the current page', selector:'> li > a[aria-current="page"]', target:'link' },
-    { name:'icon', label:'Link icons', selector:'> li > a > .block-nav-icon', target:'text', decorative:true },
+    // `li` at any depth: a block with a group label wraps its list.
+    { name:'link', label:'Links', selector:'li > a', target:'link' },
+    { name:'current_link', label:'Link to the current page', selector:'li > a[aria-current="page"]', target:'link' },
+    { name:'icon', label:'Link icons', selector:'li > a > .block-nav-icon', target:'text', decorative:true },
+    { name:'group_label', label:'Group label', selector:'> .block-nav-label', target:'text', style_field:'group_label_style_id', min_render_version:13 },
   ],
   schema:[
+    { name:'group_label', type:'text', label:'Group label', placeholder:'Optional title shown above the links', min_render_version:13 },
+    { name:'group_label_style_id', type:'style', label:'Group label style', style_target:'text', style_default_role:'eyebrow', min_render_version:13 },
     { name:'links', type:'array', label:'Links', fields:[{ name:'label', type:'text', label:'Label', required:true },{ name:'href', type:'url', label:'Link', required:true },{ name:'icon', type:'icon', label:'Icon (optional)' },{ name:'link_rel', type:'text', label:'Link relationship (e.g. nofollow sponsored)' }] },
     { name:'direction', type:'select', label:'Direction', options:['row','column'], default:'column', responsive:true },
     { name:'font', type:'select',label:'Font',options:['inherit','body','heading'],default:'inherit' },
@@ -115,7 +143,7 @@ export const navigationLinks: BlockType = {
     pixels('link_min_height_px','Minimum link height (px)',24,120),
     pixels('gap_px','Gap (px)',0,120), pixels('padding_y_px','Link vertical padding (px)',0,80),
   ],
-  template:`<ul data-block="navigation_links" data-font="{{font}}" data-density="{{density}}" style="--direction:{{direction}};--link_color:{{color}};--font_weight:{{font_weight}}">{{{navigation_links_html}}}</ul>`,
+  template:NAVIGATION_LIST_TEMPLATE,
   styles:`[data-block="navigation_links"] { display:flex;flex-direction:var(--direction,column);flex-wrap:wrap;gap:var(--gap_px,8px);list-style:none;margin:0;padding:0; }
 [data-block="navigation_links"] > li { min-width:0;max-width:100%;list-style:none;margin:0;padding:0; }
 [data-block="navigation_links"] > li::marker { content:''; }
@@ -137,11 +165,12 @@ export const navigationLinks: BlockType = {
 
 // Keep full touch targets without adding a second layer of vertical spacing.
 // Horizontal gaps, explicit gaps and the opt-in compact densities are retained.
-navigationLinks.render_versions = [{
-  from: 11,
-  styles: `${navigationLinks.styles}
+const NAVIGATION_LINKS_V11_CSS = `${navigationLinks.styles}
 [data-block="navigation_links"]:not([data-density="compact"]) { row-gap:var(--gap_px,0px); }
 @media (min-width:1024px) and (hover:hover) and (pointer:fine) {
   [data-block="navigation_links"][data-density="compact-desktop"] { row-gap:var(--gap_px,4px); }
-}`,
-}];
+}`;
+navigationLinks.render_versions = [
+  { from: 11, styles: NAVIGATION_LINKS_V11_CSS },
+  { from: 13, template: LABELLED_NAVIGATION_TEMPLATE, styles: `${itemsAnyDepth(NAVIGATION_LINKS_V11_CSS)}\n${LABELLED_NAVIGATION_CSS}` },
+];

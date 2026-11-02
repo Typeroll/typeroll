@@ -15,6 +15,18 @@ for reusable parts rather than copying link values. `core/navigation_links`
 provides semantic link lists with color, text size, weight, spacing and direction;
 combine them with native containers and headings. The same blocks work in footers.
 
+From render version 13, `core/navigation_links` takes an optional `group_label`:
+a short title shown above the links, for example to divide a mobile panel into
+Product and Resources groups. The list is named after the label for screen
+readers (`aria-labelledby`); the label is not a heading, so a menu repeated on
+every page adds nothing to the page outline. It uses the site's Eyebrow style
+unless `group_label_style_id` names another text style, and otherwise a small
+uppercase label in the site's light text colour (`--color-text-light`). A
+labelled list that follows other content gets space above its label. Without a
+label the block renders the plain list, as before. Below render version 13 the
+field has no effect; raise the version with `tr-upgrade-rendering` instead of
+inserting Text blocks as group titles.
+
 `collapse_below` accepts `576`, `768`, `769`, `1024` or `never` (strings); default `1024`
 means modal below 1024px and inline at 1024px and above. The modal preserves the
 header position, locks background interaction, contains keyboard focus, closes on
@@ -43,9 +55,18 @@ The simpler `core/navigation` remains available for flat inline/disclosure menus
         "id": "mobile-links",
         "type": "core/navigation_links",
         "data": {
+          "group_label": "Services",
           "font_size_px": 28,
           "color": "#075696",
           "links": [{ "label": "Explore services", "href": "/services/" }]
+        }
+      },
+      {
+        "id": "mobile-resources",
+        "type": "core/navigation_links",
+        "data": {
+          "group_label": "Resources",
+          "links": [{ "label": "Guides", "href": "/guides/" }]
         }
       }
     ]
@@ -245,6 +266,19 @@ Native Heading and Page Title wrap long words inside their
 content well, including centered flex layouts. Authored font sizes stay unchanged;
 a long word can break across lines instead of widening the page. Check the saved
 preview and republished output at your smallest supported viewport.
+
+### Long words on small screens (render version 13)
+
+From render version 13, a container that is a column at every breakpoint
+keeps its children on one flex line. Before, a wrapping column sized its line
+to the widest child's narrowest possible width, so one long word, web address
+or inline code span made every child, and the page, wider than a phone screen.
+Paragraphs, list items and headings in `core/prose`, and the heading, eyebrow
+and subtitle of `core/heading`, break a word that does not fit on a line, and
+code blocks in `core/prose` scroll inside the text column. Rows, containers
+that become rows at some breakpoint, and fixed-width children are unchanged.
+Do not add site CSS such as `.my-section > * { min-width: 0; max-width: 100% }`
+for this; upgrade the render version instead.
 
 ### Space before and after an image
 

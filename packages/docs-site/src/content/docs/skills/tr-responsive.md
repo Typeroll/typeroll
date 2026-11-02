@@ -218,6 +218,16 @@ when it is below 12, raise it with `tr-upgrade-rendering` instead of working
 around it in content. Rows, and containers that become rows at some
 breakpoint, are unchanged.
 
+## Long words on small screens (render version 13)
+
+From render version 13 (Core 0.2.140), a container that is a column at every
+breakpoint keeps its children on one line, and Text and Heading blocks break
+a word that does not fit. A long word, URL or inline code span then no longer
+makes every child of the container, and the page, wider than a 375 px screen.
+Below 13, raise the version with `tr-upgrade-rendering` instead of adding site
+CSS such as `.intro > * { min-width: 0; max-width: 100% }`. Rows and
+fixed-width children are unchanged.
+
 ## Native image framing and body heading scales (Core 0.2.35+)
 
 Use `core/image.scale_percent` (100–200, responsive) for deliberate horizontal
