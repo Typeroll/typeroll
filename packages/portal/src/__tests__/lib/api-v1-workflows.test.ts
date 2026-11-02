@@ -50,6 +50,7 @@ const routes = {
   list: () => import('../../pages/api/v1/sites/[siteId]/workflows/index'),
   one: () => import('../../pages/api/v1/sites/[siteId]/workflows/[workflowId]/index'),
   approve: () => import('../../pages/api/v1/sites/[siteId]/workflows/[workflowId]/approve'),
+  cancel: () => import('../../pages/api/v1/sites/[siteId]/workflows/[workflowId]/cancel'),
   migrate: () => import('../../pages/api/v1/sites/create-and-migrate'),
   plan: () => import('../../pages/api/v1/sites/create-and-plan'),
 };
@@ -90,6 +91,37 @@ describe('site workflows through the public API', () => {
     const approved = await call('approve', 'POST', token, { siteId: SITE, workflowId: id });
     expect(approved.status).toBe(202);
     expect(started.resume).toEqual([id]);
+  });
+
+  it('cancels an unfinished run once, with the permission starting it needs', async () => {
+    const token = await key(ORG, SITE);
+    const id = (await call('list', 'POST', token, { siteId: SITE }, { type: 'seo_audit' })).json.workflow_id as string;
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().updateDoc(`${paths.workflows(ORG)}/${id}`, { status: 'running', heartbeat_at: new Date().toISOString() });
+
+    expect((await call('cancel', 'POST', await sharedKey('read'), { siteId: SITE, workflowId: id })).status).toBe(403);
+    const cancelled = await call('cancel', 'POST', token, { siteId: SITE, workflowId: id });
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.json.workflow).toMatchObject({ id, status: 'cancelled', cancelled_by: expect.stringMatching(/^api-key:/) });
+    expect((await call('one', 'GET', token, { siteId: SITE, workflowId: id })).json.workflow.status).toBe('cancelled');
+    const again = await call('cancel', 'POST', token, { siteId: SITE, workflowId: id });
+    expect(again.status).toBe(409);
+    expect(again.json.error).toContain('cancelled');
+    expect((await call('cancel', 'POST', token, { siteId: SITE, workflowId: 'wf_missing' })).status).toBe(404);
+  });
+
+  it('reports a run left running by a restart as failed with workflow_interrupted', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const hourAgo = new Date(Date.now() - 60 * 60_000).toISOString();
+    await getStore().setDoc(`${paths.workflows(ORG)}/wf_1_stuck`, {
+      site_id: SITE, type: 'url_parity', status: 'running', config: {}, current_step: 'check_urls',
+      progress: { total: 630, completed: 606 }, started_at: hourAgo, triggered_by: 'manual', created_by: 'person',
+    });
+    const token = await key(ORG, SITE);
+    const read = await call('one', 'GET', token, { siteId: SITE, workflowId: 'wf_1_stuck' });
+    expect(read.json.workflow).toMatchObject({ status: 'failed', failure_code: 'workflow_interrupted', progress: { completed: 606 } });
+    expect(read.json.workflow.failure_reason).toMatch(/stopped making progress/);
+    expect((await call('list', 'GET', token, { siteId: SITE })).json.workflows[0]).toMatchObject({ id: 'wf_1_stuck', status: 'failed' });
   });
 
   it('masks credential config and hides runs of other sites', async () => {

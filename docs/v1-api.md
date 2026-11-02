@@ -115,7 +115,7 @@ All site routes below start with `/sites/{siteId}`.
 | Insights | site insights and first-party Analytics event reporting |
 | API keys | `GET /api-keys`, `DELETE /api-keys/{keyId}` (site keys; revoking needs site admin; keys are created in the portal) |
 | Sharing | `GET/POST /shares`, `PATCH/DELETE /shares/{shareId}` (site admin) |
-| Workflows | `GET/POST /workflows`, `GET /workflows/{workflowId}`, `POST /workflows/{workflowId}/approve` |
+| Workflows | `GET/POST /workflows`, `GET /workflows/{workflowId}`, `POST /workflows/{workflowId}/approve`, `POST /workflows/{workflowId}/cancel` |
 
 Organization routes need an organization-scoped key; a site-scoped key gets
 `403`:
@@ -571,6 +571,12 @@ further than the caller. Nothing here returns a new secret.
   `409 import_storage_required` until organization import storage is verified.
   Run responses omit internal step state and mask `helper_api_key`. Approving
   works only for a run with status `paused_for_review` (`409` otherwise).
+  `POST /workflows/{workflowId}/cancel` records a pending, running or paused
+  run as `cancelled` (same permission as starting the type; `409` once it has
+  finished). Runs execute in the portal process and record `heartbeat_at`; a
+  read that finds a `running` run without a heartbeat for 10 minutes (the
+  process restarted) marks it `failed` with `failure_code:
+  "workflow_interrupted"`. Start a new run then.
 - **Sites with a first workflow.** `POST /sites/create-and-migrate`
   (`{ name, wp_url, helper_api_key? }`) and `POST /sites/create-and-plan`
   (`{ name, business_description }`) need an organization key and return

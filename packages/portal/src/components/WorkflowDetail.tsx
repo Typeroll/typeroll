@@ -9,10 +9,13 @@ interface Props {
 }
 
 const ACTIVE_STATUSES = new Set<WorkflowRecord['status']>(['pending', 'running']);
+const CANCELLABLE = new Set<WorkflowRecord['status']>(['pending', 'running', 'paused_for_review']);
 
 export default function WorkflowDetail({ siteId, workflowId, initial, stepNames }: Props) {
   const [wf, setWf] = useState<WorkflowRecord>(initial);
   const [approving, setApproving] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   useEffect(() => {
     let stopped = false;
@@ -55,6 +58,20 @@ export default function WorkflowDetail({ siteId, workflowId, initial, stepNames 
     }
   }
 
+  async function cancel() {
+    if (!window.confirm('Cancel this workflow run? Work it has already saved stays saved.')) return;
+    setCancelling(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/sites/${siteId}/workflows/${workflowId}/cancel`, { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data) setWf(data as WorkflowRecord);
+      else setActionError((data as { error?: string } | null)?.error ?? 'Could not cancel the run.');
+    } finally {
+      setCancelling(false);
+    }
+  }
+
   const progress = wf.progress
     ? Math.round((wf.progress.completed / Math.max(wf.progress.total, 1)) * 100)
     : 0;
@@ -69,10 +86,16 @@ export default function WorkflowDetail({ siteId, workflowId, initial, stepNames 
               <span style={{ marginLeft: 12 }} className="muted text-sm">Current step: {wf.current_step}</span>
             )}
           </div>
-          <div className="muted text-sm">
-            {wf.progress && `${wf.progress.completed}/${wf.progress.total} steps`}
+          <div className="row text-sm" style={{ gap: 12 }}>
+            <span className="muted">{wf.progress && `${wf.progress.completed}/${wf.progress.total} steps`}</span>
+            {CANCELLABLE.has(wf.status) && (
+              <button className="btn btn--secondary" onClick={cancel} disabled={cancelling}>
+                {cancelling ? 'Cancelling…' : 'Cancel run'}
+              </button>
+            )}
           </div>
         </div>
+        {actionError && <p className="text-sm" style={{ color: 'var(--color-danger)' }}>{actionError}</p>}
 
         <div style={{ background: 'var(--color-bg)', borderRadius: 8, overflow: 'hidden', height: 8 }}>
           <div
@@ -125,6 +148,15 @@ export default function WorkflowDetail({ siteId, workflowId, initial, stepNames 
         </div>
       )}
 
+      {wf.status === 'cancelled' && (
+        <div className="card">
+          <h3 style={{ fontSize: '1rem' }}>Cancelled</h3>
+          <p className="text-sm muted">
+            {wf.cancelled_at ? `Cancelled ${new Date(wf.cancelled_at).toLocaleString()}.` : 'This run was cancelled.'} Start a new run to try again.
+          </p>
+        </div>
+      )}
+
       {wf.results && Object.keys(wf.results).length > 0 && (
         <div className="card stack">
           <h3 style={{ fontSize: '1rem' }}>Results</h3>
@@ -158,6 +190,7 @@ export default function WorkflowDetail({ siteId, workflowId, initial, stepNames 
         .badge--paused_for_review { background: rgba(59,130,246,0.12); color: #1d4ed8; }
         .badge--failed { background: rgba(220,38,38,0.12); color: var(--color-danger); }
         .badge--pending { background: rgba(120,113,108,0.12); color: var(--color-text-muted); }
+        .badge--cancelled { background: rgba(120,113,108,0.12); color: var(--color-text-muted); }
       `}</style>
     </div>
   );

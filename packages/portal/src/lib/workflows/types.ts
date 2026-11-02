@@ -15,7 +15,14 @@ export interface WorkflowContext {
   state: Record<string, unknown>;
   store: ReadWriteStore;
   log(msg: string): void;
+  /** Also refreshes the run's heartbeat, at most every WORKFLOW_HEARTBEAT_INTERVAL_MS. */
   setProgress(progress: WorkflowProgress): void;
+  /**
+   * Record a sign of life without changing progress (throttled like
+   * setProgress). The engine already beats on a timer while a step runs; a
+   * step may call this from its own long loops.
+   */
+  heartbeat?(): void;
 }
 
 export interface WorkflowProgress {
@@ -72,11 +79,20 @@ export interface WorkflowRecord {
   log?: string[];
   review_message?: string;
   review_data?: Record<string, unknown>;
+  created_at?: string;
   started_at?: string;
+  /**
+   * Last sign of life from the process executing the run: every state write,
+   * and at most every WORKFLOW_HEARTBEAT_INTERVAL_MS during a long step. A
+   * running run without one for WORKFLOW_STALE_AFTER_MS was interrupted.
+   */
+  heartbeat_at?: string;
   completed_at?: string;
   failed_at?: string;
+  cancelled_at?: string;
+  cancelled_by?: string;
   failure_reason?: string;
-  /** Stable code of the error that failed the run, when it has one (e.g. ai_not_enabled). */
+  /** Stable code of the error that failed the run, when it has one (e.g. ai_not_enabled, workflow_interrupted). */
   failure_code?: string;
   triggered_by: 'manual' | 'schedule' | 'webhook' | 'chat';
   created_by: string;

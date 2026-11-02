@@ -6,12 +6,18 @@
 // /approve endpoint re-enters the engine starting from the next step.
 //
 // For now, workflows run inline in the request that triggered them. Long
-// migrations would normally need a queue; that's a later concern.
+// migrations would normally need a queue; that's a later concern. A process
+// that goes away mid-run leaves the run `running`; the engine therefore
+// records heartbeat_at, and reads close a run without one as interrupted
+// (run-lifecycle.ts). Every status write is conditional on the run still
+// being `running`, so a run that was cancelled or closed meanwhile stops at
+// its next write instead of overwriting that outcome.
 
 import { requireImportStorage } from '../media/import-policy';
 import { paths } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { getStore } from '../datastore';
+import { WORKFLOW_HEARTBEAT_INTERVAL_MS } from './run-lifecycle';
 import {
   type StepResult,
   type WorkflowContext,
@@ -20,8 +26,30 @@ import {
   isReviewGate,
 } from './types';
 
+const isRunning = (wf: WorkflowRecord) => wf.status === 'running';
+
 export class WorkflowEngine {
-  constructor(private store: ReadWriteStore = getStore()) {}
+  private readonly now: () => number;
+
+  constructor(private store: ReadWriteStore = getStore(), options: { now?: () => number } = {}) {
+    this.now = options.now ?? Date.now;
+  }
+
+  private iso(): string {
+    return new Date(this.now()).toISOString();
+  }
+
+  /**
+   * Update the run only while it is still running. Returns false when it is
+   * not (cancelled, or closed as interrupted), which ends the run here.
+   */
+  private async whileRunning(wfPath: string, data: Record<string, unknown>): Promise<boolean> {
+    return (await this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, isRunning, { ...data, heartbeat_at: this.iso() })) !== null;
+  }
+
+  private async current(wfPath: string): Promise<WorkflowRecord> {
+    return (await this.store.getDoc<WorkflowRecord>(wfPath))!;
+  }
 
   async create(args: {
     orgId: string;
@@ -32,7 +60,7 @@ export class WorkflowEngine {
     createdBy: string;
   }): Promise<string> {
     if (args.def.type === 'migration') await requireImportStorage(args.orgId);
-    const workflowId = `wf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const workflowId = `wf_${this.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const record: Omit<WorkflowRecord, 'id'> = {
       site_id: args.siteId,
       type: args.def.type,
@@ -45,6 +73,7 @@ export class WorkflowEngine {
       log: [],
       triggered_by: args.triggeredBy,
       created_by: args.createdBy,
+      created_at: this.iso(),
     };
     await this.store.setDoc(`${paths.workflows(args.orgId)}/${workflowId}`, record);
     return workflowId;
@@ -53,10 +82,13 @@ export class WorkflowEngine {
   async start(orgId: string, workflowId: string, def: WorkflowDef): Promise<WorkflowRecord> {
     if (def.type === 'migration') await requireImportStorage(orgId);
     const wfPath = `${paths.workflows(orgId)}/${workflowId}`;
-    await this.store.updateDoc(wfPath, {
+    const startedAt = this.iso();
+    const started = await this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, (wf) => wf.status === 'pending', {
       status: 'running',
-      started_at: new Date().toISOString(),
+      started_at: startedAt,
+      heartbeat_at: startedAt,
     });
+    if (!started) return this.current(wfPath);
     return this.runFrom(orgId, workflowId, def, 0);
   }
 
@@ -70,11 +102,15 @@ export class WorkflowEngine {
       throw new Error(`Cannot resume workflow in status ${wf.status}`);
     }
     const nextIndex = (wf.step_index ?? 0) + 1;
-    await this.store.updateDoc(wfPath, {
+    // Conditional, so a second approval or a cancel in between cannot start
+    // the remaining steps twice or revive a cancelled run.
+    const resumed = await this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, (current) => current.status === 'paused_for_review', {
       status: 'running',
+      heartbeat_at: this.iso(),
       review_message: null,
       review_data: null,
     });
+    if (!resumed) return this.current(wfPath);
     return this.runFrom(orgId, workflowId, def, nextIndex);
   }
 
@@ -91,10 +127,32 @@ export class WorkflowEngine {
       const wf = await this.store.getDoc<WorkflowRecord>(wfPath);
       if (!wf) throw new Error('Workflow disappeared mid-run');
 
-      await this.store.updateDoc(wfPath, {
-        current_step: step.name,
-        step_index: i,
-      });
+      if (!(await this.whileRunning(wfPath, { current_step: step.name, step_index: i }))) {
+        return this.current(wfPath);
+      }
+
+      // Liveness during the step: progress reports carry a heartbeat at most
+      // every WORKFLOW_HEARTBEAT_INTERVAL_MS, and a timer covers steps that
+      // report no progress. Once a heartbeat finds the run no longer running
+      // (cancelled, or closed as interrupted), progress writes stop too.
+      let lastBeat = this.now();
+      let stopped = false;
+      const heartbeatDue = () => {
+        const t = this.now();
+        if (t - lastBeat < WORKFLOW_HEARTBEAT_INTERVAL_MS) return null;
+        lastBeat = t;
+        return new Date(t).toISOString();
+      };
+      const beat = () => {
+        if (stopped) return;
+        const at = heartbeatDue();
+        if (!at) return;
+        this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, isRunning, { heartbeat_at: at })
+          .then((previous) => { if (!previous) stopped = true; })
+          .catch((err) => console.warn(`[workflow ${workflowId}] heartbeat failed:`, err));
+      };
+      const keepalive = setInterval(beat, WORKFLOW_HEARTBEAT_INTERVAL_MS);
+      (keepalive as { unref?: () => void }).unref?.();
 
       const log: string[] = wf.log ?? [];
       const ctx: WorkflowContext = {
@@ -106,10 +164,13 @@ export class WorkflowEngine {
         store: this.store,
         log: (msg: string) => log.push(`[${step.name}] ${msg}`),
         setProgress: (p) => {
+          if (stopped) return;
           // Fire-and-forget progress writes are fine — the next step will
           // re-read the doc and overwrite stale values anyway.
-          void this.store.updateDoc(wfPath, { progress: p });
+          const at = heartbeatDue();
+          void this.store.updateDoc(wfPath, at ? { progress: p, heartbeat_at: at } : { progress: p });
         },
+        heartbeat: beat,
       };
 
       let result: StepResult;
@@ -117,24 +178,25 @@ export class WorkflowEngine {
         if (def.type === 'migration') await requireImportStorage(orgId);
         result = await step.run(ctx);
       } catch (e) {
+        clearInterval(keepalive);
         const msg = e instanceof Error ? e.message : String(e);
         log.push(`[${step.name}] ERROR: ${msg}`);
-        await this.store.updateDoc(wfPath, {
+        await this.whileRunning(wfPath, {
           status: 'failed',
-          failed_at: new Date().toISOString(),
+          failed_at: this.iso(),
           failure_reason: `${step.name}: ${msg}`,
           // A stable code for errors that carry one (e.g. ai_not_enabled), so
           // API and MCP callers need not parse the message.
           ...(failureCode(e) ? { failure_code: failureCode(e) } : {}),
           log,
         });
-        const finalWf = await this.store.getDoc<WorkflowRecord>(wfPath);
-        return finalWf!;
+        return this.current(wfPath);
       }
+      clearInterval(keepalive);
 
       if (isReviewGate(result)) {
         log.push(`[${step.name}] paused for review: ${result.message}`);
-        await this.store.updateDoc(wfPath, {
+        await this.whileRunning(wfPath, {
           status: 'paused_for_review',
           review_message: result.message,
           review_data: result.data ?? {},
@@ -144,15 +206,14 @@ export class WorkflowEngine {
           },
           log,
         });
-        const pausedWf = await this.store.getDoc<WorkflowRecord>(wfPath);
-        return pausedWf!;
+        return this.current(wfPath);
       }
 
       const stateUpdate = result.state ?? {};
       const resultsUpdate = result.results ?? {};
       log.push(`[${step.name}] done`);
 
-      await this.store.updateDoc(wfPath, {
+      const recorded = await this.whileRunning(wfPath, {
         state: { ...(wf.state ?? {}), ...stateUpdate },
         results: { ...(wf.results ?? {}), ...resultsUpdate },
         progress: {
@@ -161,15 +222,15 @@ export class WorkflowEngine {
         },
         log,
       });
+      if (!recorded) return this.current(wfPath);
     }
 
-    await this.store.updateDoc(wfPath, {
+    await this.whileRunning(wfPath, {
       status: 'completed',
       current_step: undefined,
-      completed_at: new Date().toISOString(),
+      completed_at: this.iso(),
     });
-    const finalWf = await this.store.getDoc<WorkflowRecord>(wfPath);
-    return finalWf!;
+    return this.current(wfPath);
   }
 }
 

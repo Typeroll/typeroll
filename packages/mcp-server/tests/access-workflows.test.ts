@@ -155,22 +155,25 @@ describe('workflow tools', () => {
       await s.call('get_workflow', { site_id: 'site', workflow_id: 'wf_1_abc' });
       await s.call('list_workflows', { site_id: 'site', limit: 5 });
       await s.call('approve_workflow', { site_id: 'site', workflow_id: 'wf_1_abc' });
+      await s.call('cancel_workflow', { site_id: 'site', workflow_id: 'wf_1_abc' });
       expect(s.calls.map(c => `${c.method} ${c.url.replace('https://example.test/api/v1/', '')}`)).toEqual([
         'POST sites/site/workflows?version=redesign',
         'GET sites/site/workflows/wf_1_abc',
         'GET sites/site/workflows?limit=5',
         'POST sites/site/workflows/wf_1_abc/approve',
+        'POST sites/site/workflows/wf_1_abc/cancel',
       ]);
       expect(s.calls[0]!.body).toEqual({ type: 'seo_audit' });
     } finally { await s.close(); }
   });
 
-  it('lets a read share inspect runs but not start or approve them', async () => {
+  it('lets a read share inspect runs but not start, approve or cancel them', async () => {
     const s = await session([{ siteId: 'site', permission: 'read' }]);
     try {
       expect((await s.call('get_workflow', { site_id: 'site', workflow_id: 'wf' })).isError).not.toBe(true);
       expect((await s.call('start_workflow', { site_id: 'site', type: 'seo_audit' })).isError).toBe(true);
       expect((await s.call('approve_workflow', { site_id: 'site', workflow_id: 'wf' })).isError).toBe(true);
+      expect((await s.call('cancel_workflow', { site_id: 'site', workflow_id: 'wf' })).isError).toBe(true);
       expect(s.calls).toHaveLength(1);
     } finally { await s.close(); }
   });
