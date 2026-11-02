@@ -121,6 +121,7 @@ under **Workflows** in the portal.
 | Start a workflow           | `start_workflow`   | `POST /sites/{site}/workflows`                       | Write (see below) |
 | Read status and results    | `get_workflow`     | `GET /sites/{site}/workflows/{workflow_id}`          | Read              |
 | Approve a review gate      | `approve_workflow` | `POST /sites/{site}/workflows/{workflow_id}/approve` | Write             |
+| Cancel a run               | `cancel_workflow`  | `POST /sites/{site}/workflows/{workflow_id}/cancel`  | Write (see below) |
 
 `start_workflow` takes `type` and an optional `config` with the same fields as
 the portal form, and returns `workflow_id` with `202`:
@@ -166,16 +167,44 @@ approving a run in any other status returns `409`. Status responses never
 include internal step state, and credential fields such as `helper_api_key` are
 masked.
 
+### Run status
+
+A run is `pending`, `running`, `paused_for_review` (waiting for your approval),
+`completed`, `failed` or `cancelled`. A failed run has a `failure_reason` and,
+when the cause is known, a stable `failure_code`.
+
+Runs execute in the portal process and record `heartbeat_at` while they work,
+about every 30 seconds, even during a long step such as a URL parity check
+of hundreds of addresses. When the portal restarts, for example during a
+deploy, a run in progress stops. The next time anyone reads it (`get_workflow`,
+`list_workflows`, the API or the portal), a run that has been `running` without
+a heartbeat for more than 10 minutes is marked `failed` with `failure_code:
+"workflow_interrupted"` and a reason saying that it stopped making progress.
+It will not continue: start a new run. Work saved before it stopped stays
+saved. Runs paused for review are never closed this way.
+
+`cancel_workflow` (`POST …/cancel`) stops a `pending`, `running` or
+`paused_for_review` run and records it as `cancelled`. A step already in
+progress may finish its current work, but nothing more is recorded, and changes
+it saved stay. Cancelling needs the same permission as starting that type, and
+a finished run returns `409`.
+
 ## Create a Site with its first workflow
 
 The portal's **New site** page offers three starts. All three are available
 with an organization key:
 
-| Start                   | MCP tool                  | API route below `/api/v1`        | Body                                        |
-| ----------------------- | ------------------------- | -------------------------------- | ------------------------------------------- |
-| Blank Site              | `create_site`             | `POST /sites`                    | `name`, optional `domain`                   |
-| Migrate from WordPress  | `create_site_and_migrate` | `POST /sites/create-and-migrate` | `name`, `wp_url`, optional `helper_api_key` |
-| Plan a new site with AI | `create_site_and_plan`    | `POST /sites/create-and-plan`    | `name`, `business_description`              |
+| Start                   | MCP tool                  | API route below `/api/v1`        | Body                                                          |
+| ----------------------- | ------------------------- | -------------------------------- | ------------------------------------------------------------- |
+| Blank Site              | `create_site`             | `POST /sites`                    | `name`, optional `id`, `domain`, `language`                   |
+| Migrate from WordPress  | `create_site_and_migrate` | `POST /sites/create-and-migrate` | `name`, `wp_url`, optional `helper_api_key`, `id`, `language` |
+| Plan a new site with AI | `create_site_and_plan`    | `POST /sites/create-and-plan`    | `name`, `business_description`, optional `id`, `language`     |
+
+These are the only accepted fields: any other field is refused with `400` and
+code `unknown_field`, naming it. `id` and `language` work as in
+[`create_site`](../settings/#create_site): without `id` the Site id is the
+kebab-case name, and a taken `id` answers `409` `site_id_taken`; `language` is a
+BCP 47 tag that sets `<html lang>`, by default `en`.
 
 The two workflow starts return `201` with `site` and `workflow`; follow the run
 with `get_workflow` on the new Site. A migration start checks import storage

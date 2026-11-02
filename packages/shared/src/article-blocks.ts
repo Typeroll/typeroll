@@ -1,6 +1,7 @@
 import type { BlockType, FieldDefinition } from './types.js';
 import { typographyFields } from './presentation-fields.js';
-import { uiText } from './ui-text.js';
+import { languageDirection, uiText } from './ui-text.js';
+import { contentLanguageTag } from './hreflang.js';
 
 const cellFields: FieldDefinition[] = [
   { name: 'html', type: 'richtext', label: 'Content' },
@@ -120,8 +121,20 @@ export function prepareArticleBlockData(type: string, data: Record<string, unkno
     data.container_kind = data.layout === 'flow' ? 'semantic-container' : 'container';
     data.tag ||= 'div';
     const escape = (value: unknown) => text(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character]!);
-    data.container_attributes_html = records(data.attributes).filter(attribute => /^(?:data-[a-z0-9_-]+|aria-[a-z0-9_-]+|role|itemscope|itemtype|itemprop|lang|dir|hidden|title)$/.test(text(attribute.name)))
-      .map(attribute => `${text(attribute.name)}="${escape(attribute.value)}"`).join(' ');
+    // `lang` marks a part of the page written in another language, so every
+    // heading, text, button and image alt inside it is read in that language.
+    // The field wins over a `lang` in additional attributes. `dir` is added
+    // unless the part and the page are both left to right, and never
+    // overrides an authored `dir`. Unset, the markup is unchanged.
+    const lang = contentLanguageTag(data.lang);
+    const attributes = records(data.attributes).filter(attribute => /^(?:data-[a-z0-9_-]+|aria-[a-z0-9_-]+|role|itemscope|itemtype|itemprop|lang|dir|hidden|title)$/.test(text(attribute.name)))
+      .filter(attribute => !lang || text(attribute.name) !== 'lang');
+    data.container_attributes_html = attributes.map(attribute => `${text(attribute.name)}="${escape(attribute.value)}"`).join(' ');
+    if (lang) {
+      const direction = languageDirection(lang);
+      const dir = !attributes.some(attribute => text(attribute.name) === 'dir') && (direction === 'rtl' || languageDirection(language || 'en') === 'rtl') ? ` dir="${direction}"` : '';
+      data.container_attributes_html = `lang="${lang}"${dir} ${data.container_attributes_html}`.trim();
+    }
     const href = data.tag === 'a' ? safeLinkHref(data.href) : '';
     if (href) data.container_attributes_html = `href="${escape(href)}"${data.new_tab === true ? ' target="_blank" rel="noopener"' : ''} ${data.container_attributes_html}`.trim();
   }

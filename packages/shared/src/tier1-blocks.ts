@@ -128,6 +128,9 @@ const container: BlockType = {
     { name: 'html_id', type: 'text', label: 'Anchor ID' },
     { name: 'inline_style', type: 'textarea', label: 'Inline CSS' },
     { name: 'aria_label', type: 'text', label: 'Accessible label' },
+    // BCP 47 tag of a part written in another language than the page, such as
+    // a French column on a Dutch page. Renders `lang` (and `dir` when needed).
+    { name: 'lang', type: 'text', label: 'Language of this part', placeholder: 'fr-BE', help: 'Only when this part is written in another language than the page: a language tag such as fr-BE. Screen readers then read every heading, text, button and image description inside it in that language. Leave empty to use the page language.' },
     { name: 'attributes', type: 'array', label: 'Additional attributes', fields: [{ name: 'name', type: 'text', label: 'Attribute' }, { name: 'value', type: 'text', label: 'Value' }] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['flex', 'flow'], default: 'flex' },
     { name: 'rhythm', type: 'select', label: 'Content spacing', options: ['default', 'article'], default: 'default' },

@@ -32,7 +32,8 @@ import { publicationSourceTree } from './source-tree';
 import { projectStaticPublication } from '../../../../../scripts/lib/static-publication.mjs';
 import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
-import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed } from './domain-provider';
+import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed, findZone } from './domain-provider';
+import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
 import { freezeThemeFonts } from './theme-font-freeze';
 import { retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
@@ -93,7 +94,7 @@ async function pendingRedirect(jobPath: string, publication: GitPublication, pre
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication; clear_authored_noindex?: boolean };
+export type GitJob = DeployJob & { pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication; clear_authored_noindex?: boolean };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -150,6 +151,37 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   let terminal = false;
   let parkedCandidate = false;
   let preparingDomain = job.publication_intent === 'domain_prepare';
+  /** Whether finishing this publication makes its website host newly live. */
+  let liveHostBefore: string | null | undefined;
+  const becomesLive = (publication: GitPublication) => args.versionId === 'main' && !publication.website_host.endsWith('.pages.dev') &&
+    (preparingDomain || liveHostBefore !== publication.website_host);
+  /**
+   * CH-07: read the website host's Pages custom domain before marking it live.
+   * Null when it is active or the read is inconclusive (the public probe still
+   * decides). A pending or deactivated domain gets Cloudflare's validation
+   * retry once the host points at the project (rate-limited); `blocked` stops
+   * the publication, which rolls back an armed traffic switch.
+   */
+  const pagesDomainGate = async (publication: GitPublication, provider: Awaited<ReturnType<typeof cloudflareClient>>, zone?: { provider: any; zoneId: string } | null): Promise<PagesDomainIssue | null> => {
+    const previous = (await store.getDoc<GitJob>(jobPath))?.pages_domain;
+    const host = publication.website_host;
+    const observation = await observePagesDomain(provider, { accountId: publication.account_id, project: publication.project, host,
+      lastRetryAt: previous?.host === host ? previous.retried_at : null,
+      dnsPointsAtProject: async () => {
+        if (zone) return hostPointsAtProject({ host, project: publication.project, branch: publication.branch, zone });
+        const dnsMode = publication.destination?.dns_mode ?? 'automatic';
+        if (dnsMode === 'external') return hostPointsAtProject({ host, project: publication.project, branch: publication.branch });
+        const access = await hostingDns(args.orgId, publication.hosting_group_id ?? 'default', host);
+        const found = await findZone(access.provider, access.accountId, host);
+        return found ? hostPointsAtProject({ host, project: publication.project, branch: publication.branch, zone: { provider: access.provider, zoneId: found.id } }) : null;
+      } });
+    if (!observation.status) return null;
+    await store.updateDoc(jobPath, { pages_domain: observation });
+    const issue = pagesDomainIssue(observation, publication.project);
+    if (issue && observation.retry === 'requested') console.info(JSON.stringify({ event: 'pages_domain_validation_retried', site_id: args.siteId, job_id: args.jobId, host, status: observation.status }));
+    if (issue?.status === 'blocked' || issue?.status === 'missing') throw new ConnectionError(`${issue.message} The website host was not marked live.`, 409, 'pages_domain_not_active', { pages_domain: observation });
+    return issue;
+  };
   const releaseBuildAccess = async () => {
     for (const environment of ['production', 'preview']) await store.compareAndUpdateDoc<any>(`${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`, value => value.job_id === args.jobId, { job_id: null });
   };
@@ -219,7 +251,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     }
     if (job.git_publication) {
       const cutover = await readDomainCutover(args.orgId, args.siteId, job.git_publication.publication_id);
-      if (cutover?.state === 'armed' && cutover.deadline_at <= Date.now()) throw new ConnectionError('The agreed traffic validation window expired. Restoring previous DNS.', 409, 'domain_cutover_timeout');
+      if (cutover?.state === 'armed' && cutover.deadline_at <= Date.now()) {
+        const pages = pagesDomainIssue(job.pages_domain);
+        if (pages) throw new ConnectionError(`The agreed traffic validation window expired while the Cloudflare Pages custom domain ${pages.host} was still ${pages.status}, not active. Restoring previous DNS. ${pages.remedy} Then prepare and approve the switch again.`, 409, 'pages_domain_not_active', { pages_domain: job.pages_domain });
+        throw new ConnectionError('The agreed traffic validation window expired. Restoring previous DNS.', 409, 'domain_cutover_timeout');
+      }
     }
     if (job.verification_retry) await assertVerificationRetry(args.orgId, args.siteId, job, true);
     const buildTask = job.git_publication?.build_task_key
@@ -229,6 +265,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     // Preserve the build's actual failure instead of masking it with the later
     // public-verification timeout after a long media preparation phase.
     if (buildTask && ['failed', 'cancelled'].includes(buildTask.status)) await completedBuild(args.orgId, job.git_publication!.build_task_key!);
+    if (!preparingBuild && Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000 && pagesDomainIssue(job.pages_domain)) {
+      const pages = pagesDomainIssue(job.pages_domain)!;
+      throw new ConnectionError(`Publication verification stopped after 45 minutes: the Cloudflare Pages custom domain ${pages.host} is still ${pages.status}, not active, so the website host was not marked live. ${pages.remedy}`, 409, 'pages_domain_not_active', { pages_domain: job.pages_domain });
+    }
     if (!preparingBuild && Number.isFinite(observationStart) && Date.now() - observationStart > 45 * 60_000) throw new ConnectionError(job.verification_message ? `Publication verification stopped after 45 minutes. ${job.verification_message.replace('Public verification will retry automatically.', '').trim()} Contact support with deployment ${args.jobId}.` : 'Publication verification did not finish within 45 minutes. Check the Cloudflare build and domain status, then retry.', 409, 'publication_observation_timeout');
     if (buildTask && ['queued', 'running'].includes(buildTask.status)) {
       if (buildTask.lease_until > Date.now()) return await waitForBuild(jobPath, args.orgId, job.git_publication!.build_task_key!);
@@ -259,6 +299,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const applyingApprovedDomains = savedDomains.cutover_approved_revision === savedDomains.revision &&
       savedDomains.candidate?.id === job.git_publication?.publication_id;
     const domains = preparingDomain || applyingApprovedDomains ? savedDomains : activePublicationDomains(savedDomains, site?.publishing_migration?.website_host);
+    liveHostBefore = savedDomains.active?.website_host ?? null;
     preparingDomain ||= args.versionId === 'main' && hasPendingPublishedDomains(savedDomains);
     const fallback = `${args.versionId === 'main' ? '' : `v-${digest(args.versionId).slice(0, 8)}-`}${generatedCloudflareNames(args.orgId, args.siteId).site_label}.${group.sites_domain}`;
     if (!preparingDomain && (!domains.desired.website_host || domains.desired.website_host === fallback)) domains.dns_mode = group.dns_mode;
@@ -444,6 +485,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         }
       }
       if (await pendingRedirect(jobPath, publication)) return await waitForPublicationCondition(jobPath, 'retrying public verification');
+      const pages = becomesLive(publication) ? await pagesDomainGate(publication, cloudflare) : null;
+      if (pages) {
+        await store.updateDoc(jobPath, { phase: 'retrying public verification', verification_message: `${pages.message} Public verification will retry automatically.` });
+        return await waitForPublicationCondition(jobPath, 'retrying public verification');
+      }
       await assertLease();
       return await finishPublication(publication, domains, frozen);
     }
@@ -731,15 +777,19 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { phase: 'distributing media', dns_requirements: mediaPreparation.requirements });
       return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
     }
+    // The host is not live while Pages does not serve it, whatever answers it now (CH-07).
+    const pagesPending = becomesLive(publication) ? await pagesDomainGate(publication, cloudflare, dns && preparation.zone_id ? { provider: dns.provider, zoneId: preparation.zone_id } : null) : null;
     // A reachable pages.dev build is evidence, not the customer's public URL.
-    if (!await probePublication(`https://${publication.website_host}`, '/.well-known/typeroll/publication.json', publication.publication_id, { observe: async result => {
+    if (pagesPending || !await probePublication(`https://${publication.website_host}`, '/.well-known/typeroll/publication.json', publication.publication_id, { observe: async result => {
       await store.updateDoc(jobPath, { public_probe: result });
       if (!result.ready) console.info(JSON.stringify({ event: 'customer_publication_pending', site_id: args.siteId, job_id: args.jobId, ...result }));
     } })) {
       const validationWindow = domains.approved_validation_window === true && domains.cutover_approved_revision === domains.revision && !preparation.certificate_ready;
       const restore = (domains.approved_preparation?.previous_records ?? []).map(record => `${record.type} ${record.name} ${record.content} (${record.proxied ? 'proxied' : 'DNS only'})`).join(', ');
-      await store.updateDoc(jobPath, { phase: validationWindow ? `waiting for Cloudflare to validate ${publication.website_host} after the approved switch` : preparation.action === 'verify' ? 'distributing' : 'awaiting domain setup', dns_requirements: preparation.requirements,
-        ...(validationWindow ? { verification_message: `${publication.website_host} now points at Cloudflare Pages and does not answer until Cloudflare validates it. If it is not live within ${domains.validation_timeout_minutes ?? 15} minutes of the traffic switch, Typeroll restores the saved records unless they have been edited since. Previous destination: ${restore || 'no previous record'}. Public verification will retry automatically.` } : {}) });
+      const pagesNote = pagesPending ? ` ${pagesPending.message}` : '';
+      await store.updateDoc(jobPath, { phase: validationWindow ? `waiting for Cloudflare to validate ${publication.website_host} after the approved switch` : pagesPending ? `waiting for Cloudflare Pages to validate ${publication.website_host}` : preparation.action === 'verify' ? 'distributing' : 'awaiting domain setup', dns_requirements: preparation.requirements,
+        ...(validationWindow ? { verification_message: `${publication.website_host} now points at Cloudflare Pages and does not answer until Cloudflare validates it. If it is not live within ${domains.validation_timeout_minutes ?? 15} minutes of the traffic switch, Typeroll restores the saved records unless they have been edited since. Previous destination: ${restore || 'no previous record'}.${pagesNote} Public verification will retry automatically.` }
+          : pagesPending ? { verification_message: `${pagesPending.message} Public verification will retry automatically.` } : {}) });
       return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
     }
     if (publication.static_checks_key) {

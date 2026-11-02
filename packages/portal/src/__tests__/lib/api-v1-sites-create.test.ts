@@ -73,6 +73,56 @@ describe('POST /api/v1/sites', () => {
     expect(header?.status).toBe('published');
   });
 
+  it('saves language at creation in the site and its settings', async () => {
+    await setup();
+    const token = await makeKey(null);
+    const { status, json } = await createSiteReq(token, { name: 'Moveria BE', id: 'moveria-be', language: 'nl-BE' });
+    expect(status).toBe(201);
+    expect(json.site).toMatchObject({ id: 'moveria-be', name: 'Moveria BE', language: 'nl-BE' });
+    const { getStore } = await import('../../lib/datastore');
+    expect(await getStore().getDoc<Site>(paths.site(ORG, 'moveria-be'))).toMatchObject({ language: 'nl-BE' });
+    // The settings language is what sets <html lang>.
+    expect(await getStore().getDoc(paths.settings(ORG, 'moveria-be'))).toMatchObject({ language: 'nl-BE', site_name: 'Moveria BE' });
+  });
+
+  it('defaults to English without a language', async () => {
+    await setup();
+    const { json } = await createSiteReq(await makeKey(null), { name: 'Plain' });
+    expect(json.site.language).toBe('en');
+    const { getStore } = await import('../../lib/datastore');
+    expect(await getStore().getDoc(paths.settings(ORG, 'plain'))).toMatchObject({ language: 'en' });
+    expect((await getStore().getDoc<Site>(paths.site(ORG, 'plain')))?.language).toBeUndefined();
+  });
+
+  it('uses a requested id exactly and answers 409 when it is taken', async () => {
+    await setup();
+    const token = await makeKey(null);
+    const created = await createSiteReq(token, { name: 'Anything', id: 'chosen-id' });
+    expect(created.status).toBe(201);
+    expect(created.json.site.id).toBe('chosen-id');
+    const taken = await createSiteReq(token, { name: 'Other', id: EXISTING_SITE });
+    expect(taken.status).toBe(409);
+    expect(taken.json.code).toBe('site_id_taken');
+    const { getStore } = await import('../../lib/datastore');
+    expect(await getStore().getDoc<Site>(paths.site(ORG, EXISTING_SITE))).toMatchObject({ name: 'Existing' });
+  });
+
+  it.each([
+    [{ name: 'X', language: 'Dutch' }, 'language must be a BCP-47 tag'],
+    [{ name: 'X', language: 'nl_BE' }, 'language must be a BCP-47 tag'],
+    [{ name: 'X', id: 'Has Spaces' }, 'id must be 3-48 lowercase'],
+    [{ name: 'X', id: 'new' }, 'id "new" is reserved'],
+    [{ name: 'X', lang: 'nl-BE' }, 'Unknown field: lang. Accepted fields: name, id, domain, language.'],
+    [{ name: 'X', slug: 'x', theme: 'dark' }, 'Unknown fields: slug, theme.'],
+  ])('400 for %j without creating anything', async (body, message) => {
+    await setup();
+    const { status, json } = await createSiteReq(await makeKey(null), body);
+    expect(status).toBe(400);
+    expect(json.error).toContain(message);
+    const { getStore } = await import('../../lib/datastore');
+    expect((await getStore().listDocs<Site>(paths.sites(ORG))).map(site => site.id)).toEqual([EXISTING_SITE]);
+  });
+
   it('site-scoped key cannot create (403)', async () => {
     await setup();
     const token = await makeKey(EXISTING_SITE);

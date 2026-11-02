@@ -11,6 +11,7 @@ import { getStore } from '../datastore';
 import { requireImportStorage } from '../media/import-policy';
 import { WorkflowEngine } from './engine';
 import { getWorkflowDef, workflows } from './registry';
+import { cancelRun, settleInterruptedRun } from './run-lifecycle';
 import type { WorkflowRecord } from './types';
 import { migrationSourcePolicy, parseOutboundUrl } from '../net/safe-fetch';
 
@@ -77,10 +78,13 @@ export function workflowSummary(wf: WorkflowRecord) {
     review_message: wf.review_message ?? null,
     review_data: wf.review_data ?? null,
     started_at: wf.started_at ?? null,
+    heartbeat_at: wf.heartbeat_at ?? null,
     completed_at: wf.completed_at ?? null,
     failed_at: wf.failed_at ?? null,
     failure_reason: wf.failure_reason ?? null,
     failure_code: wf.failure_code ?? null,
+    cancelled_at: wf.cancelled_at ?? null,
+    cancelled_by: wf.cancelled_by ?? null,
     triggered_by: wf.triggered_by,
     created_by: wf.created_by,
   };
@@ -139,21 +143,30 @@ export async function startSiteWorkflow(input: {
   return { workflowId };
 }
 
-/** Read one run, only if it belongs to this site. */
+const workflowPath = (orgId: string, workflowId: string) => `${paths.workflows(orgId)}/${workflowId}`;
+
+/**
+ * Read one run, only if it belongs to this site. A run whose process stopped
+ * executing it is closed as failed/workflow_interrupted on the way out.
+ */
 export async function readSiteWorkflow(orgId: string, siteId: string, workflowId: string | undefined): Promise<WorkflowRecord | null> {
   if (!workflowId || !WORKFLOW_ID.test(workflowId)) return null;
-  const wf = await getStore().getDoc<WorkflowRecord>(`${paths.workflows(orgId)}/${workflowId}`);
+  const store = getStore();
+  const wf = await store.getDoc<WorkflowRecord>(workflowPath(orgId, workflowId));
   if (!wf || wf.site_id !== siteId) return null;
-  return wf;
+  return settleInterruptedRun(store, workflowPath(orgId, wf.id), wf, Date.now());
 }
 
-/** Most recent runs for a site, newest first — the UI's "Recent runs". */
+/** Most recent runs for a site, newest first — the UI's "Recent runs". Interrupted runs are closed as in readSiteWorkflow. */
 export async function listSiteWorkflows(orgId: string, siteId: string, limit = 20): Promise<WorkflowRecord[]> {
-  const all = await getStore().listDocs<WorkflowRecord>(paths.workflows(orgId));
-  return all
+  const store = getStore();
+  const all = await store.listDocs<WorkflowRecord>(paths.workflows(orgId));
+  const recent = all
     .filter((w) => w.site_id === siteId)
     .sort((a, b) => (b.started_at ?? '').localeCompare(a.started_at ?? ''))
     .slice(0, Math.max(1, Math.min(limit, 100)));
+  const now = Date.now();
+  return Promise.all(recent.map((wf) => settleInterruptedRun(store, workflowPath(orgId, wf.id), wf, now)));
 }
 
 /**
@@ -173,4 +186,31 @@ export async function approveSiteWorkflow(orgId: string, siteId: string, workflo
     console.error(`[workflow ${wf.id}] resume failed:`, err);
   });
   return wf;
+}
+
+/**
+ * Cancel a run that has not finished (pending, running or paused for review).
+ * Cancelling needs the permission that starting this type needs. A running
+ * step finishes its current work in the background, but the engine records
+ * nothing more for the run. Finished runs return 409.
+ */
+export async function cancelSiteWorkflow(input: {
+  orgId: string;
+  siteId: string;
+  workflowId: string | undefined;
+  permission: SharePermission;
+  cancelledBy: string;
+}): Promise<WorkflowRecord> {
+  const wf = await readSiteWorkflow(input.orgId, input.siteId, input.workflowId);
+  if (!wf) throw new WorkflowRequestError('Not found', 404);
+  const required = workflowStartPermission(wf.type);
+  if (!permissionCovers(input.permission, required)) {
+    throw new WorkflowRequestError(`Cancelling a ${wf.type} workflow requires ${required} permission on the site.`, 403);
+  }
+  const cancelled = await cancelRun(getStore(), workflowPath(input.orgId, wf.id), input.cancelledBy, Date.now());
+  if (!cancelled) {
+    const current = await readSiteWorkflow(input.orgId, input.siteId, wf.id);
+    throw new WorkflowRequestError(`Only a pending, running or paused workflow can be cancelled; this one is ${current?.status ?? wf.status}.`, 409);
+  }
+  return cancelled;
 }

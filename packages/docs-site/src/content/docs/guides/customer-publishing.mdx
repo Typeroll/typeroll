@@ -840,28 +840,29 @@ Site API keys need admin permission for domain writes. Organization settings
 require an organization API key. An external agent can use its own Cloudflare
 access to configure DNS and R2 rules, then ask Typeroll to verify them.
 
-| Action                             | MCP tool                                      | API route below `/api/v1`                   |
-| ---------------------------------- | --------------------------------------------- | ------------------------------------------- |
-| Check setup                        | `read_publishing_readiness`                   | `GET /sites/{site}/publishing`              |
-| Read GitHub/Cloudflare connections | `read_organization_publishing_connections`    | `GET /publishing/connections`               |
-| Explain the GitHub connection      | `diagnose_organization_github_connection`     | `GET /publishing/github-diagnosis`          |
-| Explain a Cloudflare connection    | `diagnose_organization_cloudflare_connection` | `GET /publishing/cloudflare-diagnosis`      |
-| Read Analytics for every Site      | `list_organization_analytics`                 | `GET /organization/analytics`               |
-| Turn Analytics on for chosen Sites | `set_organization_analytics`                  | `POST /organization/analytics`              |
-| Disconnect GitHub or Cloudflare    | `disconnect_organization_publishing_provider` | `DELETE /publishing/connections/{provider}` |
-| Connect Cloudflare with a token    | `connect_organization_cloudflare`             | `POST /publishing/connections/cloudflare`   |
-| Prepare media buckets              | `prepare_organization_media_storage`          | `POST /publishing/connections/cloudflare`   |
-| Save R2 media keys                 | `save_organization_media_access`              | `POST /publishing/connections/cloudflare`   |
-| Read site hosts                    | `read_publishing_domains`                     | `GET /sites/{site}/publishing/domains`      |
-| Save future hosts                  | `set_publishing_domains`                      | `PUT /sites/{site}/publishing/domains`      |
-| Prepare last public snapshot       | `prepare_publishing_domain_change`            | `POST /sites/{site}/publishing/prepare`     |
-| Approve verified traffic switch    | `approve_publishing_domain_cutover`           | `POST /sites/{site}/publishing/cutover`     |
-| Read organization domain           | `read_organization_publishing_domains`        | `GET /publishing/domains`                   |
-| Save organization domain           | `set_organization_publishing_domains`         | `PUT /publishing/domains`                   |
-| Read media migration               | `read_organization_media_migration`           | `GET /publishing/media-migration`           |
-| Retry media migration              | `retry_organization_media_migration`          | `POST /publishing/media-migration`          |
-| Read a private image temporarily   | `read_private_media_url`                      | `GET /sites/{site}/media/{media}/content`   |
-| Revoke a preview                   | `revoke_preview_link`                         | `POST /sites/{site}/preview-link/revoke`    |
+| Action                             | MCP tool                                      | API route below `/api/v1`                    |
+| ---------------------------------- | --------------------------------------------- | -------------------------------------------- |
+| Check setup                        | `read_publishing_readiness`                   | `GET /sites/{site}/publishing`               |
+| Read GitHub/Cloudflare connections | `read_organization_publishing_connections`    | `GET /publishing/connections`                |
+| Explain the GitHub connection      | `diagnose_organization_github_connection`     | `GET /publishing/github-diagnosis`           |
+| Explain a Cloudflare connection    | `diagnose_organization_cloudflare_connection` | `GET /publishing/cloudflare-diagnosis`       |
+| Read Analytics for every Site      | `list_organization_analytics`                 | `GET /organization/analytics`                |
+| Turn Analytics on for chosen Sites | `set_organization_analytics`                  | `POST /organization/analytics`               |
+| Disconnect GitHub or Cloudflare    | `disconnect_organization_publishing_provider` | `DELETE /publishing/connections/{provider}`  |
+| Connect Cloudflare with a token    | `connect_organization_cloudflare`             | `POST /publishing/connections/cloudflare`    |
+| Prepare media buckets              | `prepare_organization_media_storage`          | `POST /publishing/connections/cloudflare`    |
+| Save R2 media keys                 | `save_organization_media_access`              | `POST /publishing/connections/cloudflare`    |
+| Read site hosts                    | `read_publishing_domains`                     | `GET /sites/{site}/publishing/domains`       |
+| Save future hosts                  | `set_publishing_domains`                      | `PUT /sites/{site}/publishing/domains`       |
+| Prepare last public snapshot       | `prepare_publishing_domain_change`            | `POST /sites/{site}/publishing/prepare`      |
+| Approve verified traffic switch    | `approve_publishing_domain_cutover`           | `POST /sites/{site}/publishing/cutover`      |
+| Retry Pages domain validation      | `guide_publishing_domain_change`              | `POST /sites/{site}/publishing/domain-guide` |
+| Read organization domain           | `read_organization_publishing_domains`        | `GET /publishing/domains`                    |
+| Save organization domain           | `set_organization_publishing_domains`         | `PUT /publishing/domains`                    |
+| Read media migration               | `read_organization_media_migration`           | `GET /publishing/media-migration`            |
+| Retry media migration              | `retry_organization_media_migration`          | `POST /publishing/media-migration`           |
+| Read a private image temporarily   | `read_private_media_url`                      | `GET /sites/{site}/media/{media}/content`    |
+| Revoke a preview                   | `revoke_preview_link`                         | `POST /sites/{site}/preview-link/revoke`     |
 
 Before enabling Analytics or saving redirect hosts, an agent reads
 `cloudflare_permissions` from `read_organization_publishing_connections` (one

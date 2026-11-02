@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.2.141 / MCP 0.45.105 (candidate)
+
+- A domain switch goes live only when Cloudflare reports the website host's
+  Pages custom domain as `active`. While it is pending or deactivated, Typeroll
+  asks Cloudflare to retry validation once the record points at the Pages
+  project; a domain that is blocked or not active by the deadline fails the
+  switch with `pages_domain_not_active` and restores automatic DNS. Previously a
+  host still answered by a previous provider could be marked live while Pages
+  had no active binding.
+- Serving checks read the Pages custom domain too, continue daily after the
+  first 30 minutes, and retry validation for a pending or deactivated domain
+  (at most once per check and every five minutes). A domain that is not active
+  shows `pages_domain_not_active` with the remedy, `next_action`
+  `retry_validation` and the job phase `Pages custom domain not active`. Sites
+  that went live earlier get these checks on their next domain read.
+- `guide_publishing_domain_change` takes `action: "retry_validation"` (and
+  Publishing shows **Retry validation**): an idempotent re-check of the live
+  host that asks Cloudflare to retry Pages validation, never a DNS change.
+- Before a switch, a website host still answered by a Cloudflare for SaaS host
+  such as Kinsta shows the warning `previous_host_saas_hostname`: remove the
+  domain there right before or right after approving, inside the validation
+  window.
+- Preview links: a link to another site, or to a portal page outside the
+  preview, opens in a new tab instead of a browser error page inside the
+  preview frame. The preview stays on its page; in-site, `#hash`, `mailto:`
+  and `tel:` links, links with a `target` or `download`, and modifier-clicks
+  behave as before. Published sites are unchanged.
+- Workflow runs stopped by a portal restart no longer report `running` for
+  ever. Runs record `heartbeat_at` on every step write and about every 30
+  seconds during a long step; a read (`get_workflow`, `list_workflows`, the
+  API or the portal) closes a run that has been `running` without a heartbeat
+  for over 10 minutes as `failed` with `failure_code: "workflow_interrupted"`,
+  conditionally, so a live or completing run wins. New `cancelled` status:
+  `cancel_workflow` (MCP), `POST /api/v1/sites/{site}/workflows/{id}/cancel`
+  and a Cancel button on the run page stop a pending, running or paused run,
+  with the permission starting its type needs.
+- `core/container` takes an optional `lang` (**Language of this part**), a BCP
+  47 tag checked like language sections (`fr-BE`, `zh-Hant-TW`). It renders as
+  `lang` on the container's element in published HTML and preview, so every
+  heading, text, button and image alt inside is read in that language, such as
+  a French column on a Dutch page. A right-to-left part also gets `dir="rtl"`,
+  and a left-to-right part on a right-to-left page `dir="ltr"`; an authored
+  `dir` attribute is kept. An invalid tag is rejected at write. Without the
+  field the output is unchanged, so no render version is needed.
+- `POST /api/v1/sites` (`create_site`) saves `language` at creation, in the
+  site and in its settings, so `<html lang>` is right from the first build; it
+  is checked like `update_site`'s and defaults to `en`. It also takes an
+  optional `id`, used exactly (409 `site_id_taken` when taken) instead of the
+  id derived from `name`. Unknown fields answer 400 `unknown_field` naming
+  them instead of being dropped. `create-and-migrate` and `create-and-plan`
+  (`create_site_and_migrate`, `create_site_and_plan`) accept the same `id`
+  and `language` and refuse unknown fields the same way; MCP already refused
+  unknown arguments. Responses include the site's `language`, and the docs
+  list every accepted field.
+- Previous website addresses no longer cost one Single Redirect rule each in
+  their shared hosting zone: one `typeroll_previous_t_…` rule per new website
+  host lists every previous address of that site. Older per-host rules keep
+  working, are extended in place and, after go-live, merged only once the
+  merged rule is confirmed. Before approval, `host_checks` warns with
+  `redirect_rule_quota` (full zone, from the zone's plan) or
+  `redirect_permission_missing`, each with a remedy. A redirect write refused
+  during the switch no longer goes live silently: `previous_hosts` and the
+  guide record the issue code, the site still goes live with the old address
+  on noindex, and the new guide action `repair_previous_host_redirects` (MCP,
+  API and the portal's Repair button) re-creates missing redirects of a live
+  site idempotently, without a build or DNS change.
+
 ## 0.2.140 / MCP 0.45.104 (candidate)
 
 - Render version 13: a container that is a column at every breakpoint keeps

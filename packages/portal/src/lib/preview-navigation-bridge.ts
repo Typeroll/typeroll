@@ -31,6 +31,34 @@ export function rewriteInternalHrefs(html: string, root: string, suffix: string)
 }
 
 /**
+ * The URL a click on `href` must open in a new tab instead of in the preview
+ * frame, or null to leave the click alone.
+ *
+ * The frame is sandboxed without top navigation, and other origins (and the
+ * portal's own pages outside the preview root) refuse to be framed, so a
+ * plain off-site link there ends on a browser error page. Only http(s) URLs
+ * outside the preview root qualify: in-site links, `#hash`, `mailto:` and
+ * `tel:` keep their current behaviour.
+ *
+ * Serialized into the frame script with `toString()`, so it must stay
+ * self-contained: no imports, helpers or closures.
+ */
+export function offsitePreviewUrl(href: string, base: string, root: string): string | null {
+  let url: URL;
+  let current: URL;
+  try {
+    url = new URL(href, base);
+    current = new URL(base);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+  const cleanRoot = root.replace(/\/$/, '');
+  const inRoot = url.pathname === cleanRoot || url.pathname.startsWith(`${cleanRoot}/`);
+  return url.origin === current.origin && inRoot ? null : url.href;
+}
+
+/**
  * The frame half of the preview shell bridge for platform code (as opposed to
  * Extension code, whose host runs its own handshake). It keeps internal links
  * inside the shell and gives native blocks the two things an opaque frame
@@ -51,6 +79,7 @@ export function buildPreviewNavigationBridgeScript(opts: PreviewNavigationOption
   return `(function(){"use strict";var config=${config};var channel="typeroll.extension-preview";
 function post(message){message.channel=channel;message.version=1;message.bridge_id=config.bridge.id;parent.postMessage(message,config.bridge.parentOrigin);}
 function previewPath(href){var url;try{url=new URL(href,location.href);}catch(_){return null;}if(url.origin!==location.origin||!(url.pathname===config.root||url.pathname.startsWith(config.root+"/")))return null;var query=new URLSearchParams(url.search);config.authQuery.forEach(function(pair){var values=query.getAll(pair[0]),removed=false;query.delete(pair[0]);values.forEach(function(value){if(!removed&&value===pair[1])removed=true;else query.append(pair[0],value);});});var path=url.pathname.slice(config.root.length)||"/";var suffix=query.toString();return path+(suffix?"?"+suffix:"")+url.hash;}
+var offsite=${offsitePreviewUrl.toString()};
 var handoff=null;
 function handoffState(){if(!handoff)handoff=new Promise(function(resolve){var timer;function finish(state){clearTimeout(timer);removeEventListener("message",receive);resolve(state);}function receive(event){var data=event.data;if(event.source!==parent||event.origin!==config.bridge.parentOrigin||!data||data.channel!==channel||data.version!==1||data.bridge_id!==config.bridge.id||data.action!=="storage.init")return;var state=data.storage&&data.storage.handoff;finish(state&&typeof state==="object"?state:{});}addEventListener("message",receive);timer=setTimeout(function(){finish({});},2000);post({action:"storage.ready"});});return handoff;}
 Object.defineProperty(window,"__TYPEROLL_PREVIEW_BRIDGE__",{value:Object.freeze({
@@ -58,5 +87,5 @@ takeHandoff:function(key){return handoffState().then(function(state){if(!Object.
 storeHandoff:function(key,packet){post({action:"handoff.set",key:String(key),value:String(packet)});},
 navigate:function(href){var path=previewPath(href);if(path===null)return false;post({action:"site.navigate",path:path});return true;}
 })});
-document.addEventListener("click",function(event){if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;var target=event.target;if(!(target instanceof Element))return;var anchor=target.closest("a[href]");if(!anchor||anchor.target&&anchor.target!=="_self"||anchor.hasAttribute("download"))return;var path=previewPath(anchor.href);if(path===null)return;event.preventDefault();post({action:"site.navigate",path:path});},true);})();`;
+document.addEventListener("click",function(event){if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;var target=event.target;if(!(target instanceof Element))return;var anchor=target.closest("a[href]");if(!anchor||anchor.target&&anchor.target!=="_self"||anchor.hasAttribute("download"))return;var path=previewPath(anchor.href);if(path===null){var external=typeof anchor.href==="string"?offsite(anchor.href,location.href,config.root):null;if(external===null)return;event.preventDefault();post({action:"site.open",url:external});return;}event.preventDefault();post({action:"site.navigate",path:path});},true);})();`;
 }

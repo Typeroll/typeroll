@@ -33,10 +33,16 @@ function safeName(value){return typeof value==="string"&&value.length>0&&value.l
 function carry(query){Object.keys(carriedQuery).forEach(function(key){query.set(key,carriedQuery[key]);});}
 function frameUrl(){var path=location.pathname.startsWith(root)?location.pathname.slice(root.length):"/";if(!path.startsWith("/"))path="/"+path;var query=new URLSearchParams(location.search);carry(query);query.set("frame","1");query.set("bridge",bridgeId);return root+path+"?"+query.toString()+location.hash;}
 function navigate(path){if(typeof path!=="string"||!path.startsWith("/")||path.startsWith("//")||path.includes("\\\\"))return;var requested=new URL(path,location.origin);var query=new URLSearchParams(requested.search);carry(query);var suffix=query.toString();var outer=root+requested.pathname+(suffix?"?"+suffix:"")+requested.hash;history.pushState(null,"",outer);frame.src=frameUrl();}
+// An off-site link from the frame opens here, unsandboxed: a popup the frame
+// opened itself would inherit its opaque-origin sandbox and break sign-in
+// and storage on the destination. The click's user activation reaches this
+// ancestor, so the browser's popup blocker still applies.
+function openExternal(href){if(typeof href!=="string"||href.length>8192)return;var url;try{url=new URL(href);}catch(_){return;}if(url.protocol!=="https:"&&url.protocol!=="http:")return;window.open(url.href,"_blank","noopener,noreferrer");}
 addEventListener("popstate",function(){frame.src=frameUrl();});
 addEventListener("message",function(event){var data=event.data;if(event.source!==frame.contentWindow||event.origin!=="null"||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==bridgeId)return;
   if(data.action==="storage.ready"){frame.contentWindow&&frame.contentWindow.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:bridgeId,action:"storage.init",storage:storage},"*");return;}
   if(data.action==="site.navigate"){navigate(data.path);return;}
+  if(data.action==="site.open"){openExternal(data.url);return;}
   // The page handoff of a native navigation form: one slot per tab, as on a
   // published site, where a new handoff replaces any abandoned one.
   if(data.action==="handoff.set"&&typeof data.key==="string"&&/^[a-zA-Z0-9_-]{1,64}$/.test(data.key)&&typeof data.value==="string"&&data.value.length<=20000){try{JSON.parse(data.value);}catch(_){return;}storage.handoff={};storage.handoff[data.key]=data.value;persist();return;}

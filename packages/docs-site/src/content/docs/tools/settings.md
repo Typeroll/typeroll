@@ -402,12 +402,23 @@ anything shipped", use `list_deploys`.
 
 ## `create_site`
 
-Bootstraps a whole new site — takes a name and an optional domain, and
-provisions the hosting project and fallback subdomain.
+Bootstraps a whole new site and provisions the hosting project and fallback
+subdomain. Over REST this is `POST /api/v1/sites`. It accepts these fields and
+answers `400` naming any other field:
+
+| Field      | Required | Meaning                                                                                                                                                                                                                                           |
+| ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | yes      | Display name.                                                                                                                                                                                                                                     |
+| `id`       | no       | Site id: 3–48 lowercase letters, digits and `-`, such as `lakeside-cafe`. Used exactly; `409` with code `site_id_taken` when the Organization already has it. Without it, the id is the kebab-case name, with a random suffix when that is taken. |
+| `domain`   | no       | Real hostname, such as `lakesidecafe.se`. Starts the "point your DNS" flow; it is not live until DNS verifies.                                                                                                                                    |
+| `language` | no       | Content language as a BCP 47 tag, such as `sv` or `nl-BE`, checked like `update_site`'s. Sets `<html lang>` from the first build. Default `en`.                                                                                                   |
 
 ```
-Create a new site called "Lakeside Cafe" for lakesidecafe.se.
+Create a new site called "Lakeside Cafe" in Swedish for lakesidecafe.se.
 ```
+
+The answer is `201` with the new site's `id`, `name`, `domain`, `language` and
+`urls`.
 
 Requires an **org-scoped** API key. A site-scoped key can only reach the one site
 it was issued for, which is the point of the distinction — see

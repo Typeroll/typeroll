@@ -6,17 +6,23 @@ import { cloudflareClient } from './cloudflare-oauth';
 import { siteHostingGroup } from './hosting-groups';
 import { findZone, inactiveZoneMessage, type ZoneSummary } from './domain-provider';
 import { classifyHostname } from '../domain-pair';
+import { observeWebsiteHost, providerDashboard, type ProviderHint } from './serving-host';
 import type { DomainConfiguration, PublicationHosts } from './domain-config';
 
 type Provider = (route: string, options?: { method?: string; body?: unknown; missing?: boolean }) => Promise<any>;
 
 export interface HostCheckItem {
   code: 'apex_zone_required' | 'apex_zone_in_other_account' | 'zone_not_active' | 'domain_zone_required' |
-    'redirect_zone_required' | 'redirect_host_certificate_unavailable' | 'zone_check_unavailable' | 'redirect_outside_cloudflare';
+    'redirect_zone_required' | 'redirect_host_certificate_unavailable' | 'zone_check_unavailable' | 'redirect_outside_cloudflare' |
+    'previous_host_saas_hostname' | import('./previous-hosts').PreviousHostIssueCode;
   severity: 'blocking' | 'warning';
   host: string;
   message: string;
+  /** What resolves it, when the message alone does not say. */
+  remedy?: string;
   zone?: { name: string; status: string; name_servers: string[] };
+  /** The provider that answers the host now, from its response headers. */
+  provider?: ProviderHint;
 }
 
 export interface HostCheck {
@@ -103,6 +109,51 @@ export async function checkPublicationHosts(hosts: PublicationHosts, dnsMode: Do
   return result;
 }
 
+/**
+ * Before a traffic switch: whether the current website host is answered by a
+ * provider that serves customer domains as Cloudflare for SaaS custom
+ * hostnames (for example Kinsta). Such a hostname outranks the zone's own
+ * record, so Cloudflare Pages cannot validate the host while it exists, even
+ * after Typeroll switches the record (CH-07). A warning, not a blocker: the
+ * domain can only be removed there around the switch. Read-only; any failure
+ * to observe returns null.
+ */
+export async function previousHostSaasCheck(host: string, fetchImpl?: typeof fetch): Promise<HostCheckItem | null> {
+  try {
+    const observed = await observeWebsiteHost(host, '', fetchImpl);
+    const hint = observed.provider_hint;
+    if (observed.publication || !hint?.cloudflare_for_saas) return null;
+    return { code: 'previous_host_saas_hostname', severity: 'warning', host, provider: hint,
+      message: `${host} is still answered by ${hint.name} (${hint.evidence}), which attaches customer domains as Cloudflare for SaaS custom hostnames. That hostname outranks your own DNS: Cloudflare Pages cannot validate ${host} while it exists, even after Typeroll switches the record, and gives up after a while (the domain becomes deactivated and visitors get HTTP 522). Remove ${host} from ${providerDashboard(hint)} right before or right after approving the switch, inside the validation window. If it is removed later, retry validation afterwards (guide_publishing_domain_change with action retry_validation).` };
+  } catch {
+    return null;
+  }
+}
+
+/** A switch to the desired website host is still ahead and the host has existing traffic to take over. */
+export function previousHostSwitchPending(config: DomainConfiguration): boolean {
+  const host = config.desired.website_host;
+  return !!host && config.active?.website_host !== host && config.preparation?.hostname === host && config.preparation.has_existing_traffic === true &&
+    ['preparing', 'ready_to_switch', 'distributing'].includes(config.state);
+}
+
+/**
+ * Previous website addresses whose 301 cannot be created within the zone's rule quota or the connection's
+ * permissions, read from the latest preparation. They are warnings: the new website still goes live and the
+ * old address keeps its noindex fallback, but the user sees why before approving the switch.
+ */
+export function previousHostCheckItems(config: Pick<DomainConfiguration, 'state' | 'previous_host_preparations'>): HostCheckItem[] {
+  if (!['preparing', 'ready_to_switch'].includes(config.state)) return [];
+  return (config.previous_host_preparations ?? []).flatMap(item => item.issue
+    ? [{ code: item.issue.code, severity: 'warning' as const, host: item.host, message: item.issue.message, remedy: item.issue.remedy }] : []);
+}
+
+/** Host checks with the previous-address warnings of the current preparation. */
+export function withPreviousHostChecks(checks: HostChecks, config: Pick<DomainConfiguration, 'state' | 'previous_host_preparations'>): HostChecks {
+  const items = previousHostCheckItems(config);
+  return items.length ? { ...checks, warnings: [...checks.warnings, ...items] } : checks;
+}
+
 const cache = new Map<string, { expires: number; value: HostChecks }>();
 
 /** Connected Cloudflare accounts that can show this site's zones, hosting account first. */
@@ -124,10 +175,12 @@ export async function siteZoneSources(orgId: string, siteId: string): Promise<Zo
 /** Host checks for the saved future hosts, briefly cached because settings pages poll. */
 export async function siteHostChecks(orgId: string, siteId: string, config: DomainConfiguration): Promise<HostChecks | null> {
   if (!config.desired.website_host) return null;
-  const key = `${orgId}\0${siteId}\0${config.revision}`;
+  const key = `${orgId}\0${siteId}\0${config.revision}\0${config.state}`;
   const cached = cache.get(key);
   if (cached && cached.expires > Date.now()) return cached.value;
   const value = await checkPublicationHosts(config.desired, config.dns_mode, await siteZoneSources(orgId, siteId));
+  const saas = previousHostSwitchPending(config) ? await previousHostSaasCheck(config.desired.website_host) : null;
+  if (saas) value.warnings.push(saas);
   cache.set(key, { expires: Date.now() + 60_000, value });
   if (cache.size > 500) cache.delete(cache.keys().next().value!);
   return value;
@@ -136,7 +189,7 @@ export async function siteHostChecks(orgId: string, siteId: string, config: Doma
 /** The saved domain settings with structured host checks, as returned by the UI, API and MCP. */
 export async function siteDomainsWithChecks(orgId: string, siteId: string, config: DomainConfiguration, versionId = 'main') {
   let host_checks: HostChecks | null = null;
-  try { host_checks = await siteHostChecks(orgId, siteId, config); }
+  try { const checks = await siteHostChecks(orgId, siteId, config); host_checks = checks && withPreviousHostChecks(checks, config); }
   catch (error) {
     // Reading settings must keep working when Cloudflare is unreachable or a grant expired.
     console.warn(JSON.stringify({ event: 'publishing_host_checks_unavailable', org_id: orgId, site_id: siteId, code: error instanceof ConnectionError ? error.code : 'provider_unavailable' }));

@@ -155,22 +155,25 @@ describe('workflow tools', () => {
       await s.call('get_workflow', { site_id: 'site', workflow_id: 'wf_1_abc' });
       await s.call('list_workflows', { site_id: 'site', limit: 5 });
       await s.call('approve_workflow', { site_id: 'site', workflow_id: 'wf_1_abc' });
+      await s.call('cancel_workflow', { site_id: 'site', workflow_id: 'wf_1_abc' });
       expect(s.calls.map(c => `${c.method} ${c.url.replace('https://example.test/api/v1/', '')}`)).toEqual([
         'POST sites/site/workflows?version=redesign',
         'GET sites/site/workflows/wf_1_abc',
         'GET sites/site/workflows?limit=5',
         'POST sites/site/workflows/wf_1_abc/approve',
+        'POST sites/site/workflows/wf_1_abc/cancel',
       ]);
       expect(s.calls[0]!.body).toEqual({ type: 'seo_audit' });
     } finally { await s.close(); }
   });
 
-  it('lets a read share inspect runs but not start or approve them', async () => {
+  it('lets a read share inspect runs but not start, approve or cancel them', async () => {
     const s = await session([{ siteId: 'site', permission: 'read' }]);
     try {
       expect((await s.call('get_workflow', { site_id: 'site', workflow_id: 'wf' })).isError).not.toBe(true);
       expect((await s.call('start_workflow', { site_id: 'site', type: 'seo_audit' })).isError).toBe(true);
       expect((await s.call('approve_workflow', { site_id: 'site', workflow_id: 'wf' })).isError).toBe(true);
+      expect((await s.call('cancel_workflow', { site_id: 'site', workflow_id: 'wf' })).isError).toBe(true);
       expect(s.calls).toHaveLength(1);
     } finally { await s.close(); }
   });
@@ -184,6 +187,24 @@ describe('workflow tools', () => {
         'POST sites/create-and-migrate', 'POST sites/create-and-plan',
       ]);
       expect(s.calls[0]!.body).toEqual({ name: 'Old Blog', wp_url: 'https://wp.example' });
+    } finally { await s.close(); }
+  });
+
+  it('sends id and language from every site-creating tool and refuses an unknown field before calling the API', async () => {
+    const s = await session();
+    try {
+      for (const [name, args] of [
+        ['create_site', { name: 'Moveria BE' }],
+        ['create_site_and_migrate', { name: 'Old Blog', wp_url: 'https://wp.example' }],
+        ['create_site_and_plan', { name: 'Harbor Bakery', business_description: 'Bakery.' }],
+      ] as const) {
+        expect((await s.call(name, { ...args, id: 'moveria-be', language: 'nl-BE' })).isError, name).not.toBe(true);
+        expect(s.calls.at(-1)!.body, name).toEqual({ ...args, id: 'moveria-be', language: 'nl-BE' });
+        const refused = await s.call(name, { ...args, locale: 'nl-BE' });
+        expect(refused.isError, name).toBe(true);
+        expect(JSON.stringify(refused.content), name).toContain('locale');
+      }
+      expect(s.calls).toHaveLength(3);
     } finally { await s.close(); }
   });
 

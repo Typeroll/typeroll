@@ -5,6 +5,17 @@
 import { z } from 'zod';
 import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
+/** Optional fields every site-creating tool accepts (POST /api/v1/sites and the create-and-* routes). */
+export const newSiteFields = {
+  id: z.string().optional().describe('Optional site id: 3-48 lowercase letters, digits and "-" (e.g. "acme-studio"). Used exactly; 409 site_id_taken when the organization has it. Default: the kebab-case name.'),
+  language: z.string().optional().describe('Optional site content language as a BCP 47 tag (e.g. "en", "sv", "nl-BE"). Default "en". Drives <html lang>; change it later with update_site_settings.'),
+};
+
+/** The arguments that were given: an omitted optional field is not sent. */
+export function definedFields(args: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(args).filter(([, value]) => value !== undefined));
+}
+
 export const siteTools: ToolDef[] = [
   {
     name: 'read_organization_access',
@@ -29,17 +40,18 @@ export const siteTools: ToolDef[] = [
   {
     name: 'create_site',
     description:
-      "Create + bootstrap a NEW site in your org. Seeds default settings, a draft Home page, and a published header/footer so it renders immediately. Requires an ORG-scoped key (a site-scoped key is bound to one existing site and can't mint new ones; you'll get a 403). `name` drives a kebab-case site id; pass `domain` to kick off the \"point your DNS\" flow (never written as a live domain). Returns the new site's id + urls — use that id as `site_id`/`TYPEROLL_SITE_ID` for follow-up calls. After creating, run list_skills → read_skill tr-new-site to bootstrap the design.",
+      "Create + bootstrap a NEW site in your org. Seeds default settings, a draft Home page, and a published header/footer so it renders immediately. Requires an ORG-scoped key (a site-scoped key is bound to one existing site and can't mint new ones; you'll get a 403). Accepts exactly `name`, optional `id`, `domain` and `language`; any other field is refused. Without `id` the site id is the kebab-case `name` (with a random suffix when taken); with `id` that exact id is used, or 409 site_id_taken. `language` is the site's BCP 47 content language (e.g. \"nl-BE\"; default \"en\"), saved at creation so <html lang> is right from the first build. Pass `domain` to kick off the \"point your DNS\" flow (never written as a live domain). Returns the new site's id, language + urls — use that id as `site_id`/`TYPEROLL_SITE_ID` for follow-up calls. After creating, run list_skills → read_skill tr-new-site to bootstrap the design.",
     noSite: true,
     inputSchema: {
-      name: z.string().min(1).describe('Display name. Slugified into the site id.'),
+      name: z.string().min(1).describe('Display name. Slugified into the site id unless `id` is given.'),
+      ...newSiteFields,
       domain: z
         .string()
         .optional()
         .describe('Optional real hostname e.g. "example.com". Starts DNS setup; not set live until DNS verifies.'),
     },
     handler: withErrorBoundary(async (args, { client }) => {
-      const res = await client.rootPost('sites', { name: args.name, domain: args.domain });
+      const res = await client.rootPost('sites', definedFields(args));
       return ok(res);
     }),
   },

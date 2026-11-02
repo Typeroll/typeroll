@@ -1038,6 +1038,7 @@ list_workflows                          → types, config fields, recent runs
 start_workflow type="seo_audit"         → { workflow_id }   (runs in background)
 get_workflow workflow_id=…              → poll until status leaves pending/running
 approve_workflow workflow_id=…          → only when paused_for_review, with consent
+cancel_workflow workflow_id=…           → stop a pending/running/paused run (status cancelled)
 ```
 
 Types: `migration`, `site_planning`, `seo_audit`, `content_improvement`,
@@ -1054,6 +1055,14 @@ organization import storage (`409 import_storage_required` otherwise; nothing
 is created). An AI plan needs the Organization's own AI key with site access
 `all` (`403 ai_not_enabled` otherwise; nothing is created): you can instead
 create a blank site and plan it yourself.
+
+**Interrupted and cancelled runs.** Runs execute in the portal process, so a
+service restart (a deploy) stops them. A run that shows no heartbeat for 10
+minutes is reported `failed` with `failure_code: "workflow_interrupted"`; it
+will not continue. Tell the user and start a new run; work saved before it
+stopped stays saved. A slow run that is still alive keeps a recent
+`heartbeat_at`. `cancel_workflow` stops a pending, running or paused run on the
+user's request and records it as `cancelled`.
 
 **AI workflows without the portal's AI.** `site_planning`,
 `content_generation`, `content_improvement` and `schema_markup` run the
@@ -1308,7 +1317,7 @@ preview.
 | **Guide + skills (playbook)** | `read_guide` (returns this whole guide — the bridge for hosted clients that can't read it off disk), `list_skills`, `read_skill` — the bundled `tr-*.md` recipes (incl. `tr-responsive` for per-breakpoint layout). Call `list_skills` first when a task looks like "build / migrate / redesign a site", then `read_skill name=…`. No API key or site context needed. |
 | **Discovery** | `get_site`, `create_site`, `create_site_and_migrate`, `create_site_and_plan` (org-scoped key only — see below), `update_site` (incl. `ai_scripts_enabled`, admin), `list_versions`, `read_site_settings` |
 | **Site lifecycle** | `archive_site`, `restore_site`, `purge_site_media` (archived sites only, irreversible). Owner-organization admin, as in the portal. |
-| **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent) |
+| **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent), `cancel_workflow` |
 | **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite`, `list_organization_invites`, `revoke_organization_invite` (organization key), `read_organization_ai_settings`, `set_organization_ai_key`, `remove_organization_ai_key`, `set_organization_ai_site_access` (the portal AI chat's own key and Sites; organization key) |
 | **Organization publishing** | `read_organization_publishing_connections`, `diagnose_organization_github_connection`, `diagnose_organization_cloudflare_connection`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |
 | **Insights** | `get_site_insights` — traffic, AI-assistant referrals, and first-party conversion events over 7/30/90 days. Read-only. Traffic is powered by Cloudflare Web Analytics in the account that hosts the site; a non-ok `status` carries a `reason` with the next step. Conversion rows come from validated Analytics attribution `click_event` targets and can be present even when the traffic provider is unavailable. |

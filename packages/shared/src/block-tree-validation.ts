@@ -1,4 +1,5 @@
 import { responsiveBreakpointsError } from './breakpoints.js';
+import { contentLanguageTag } from './hreflang.js';
 /** Validate before normalization or export. Paths identify the exact editable node. */
 export function blockTreeError(value: unknown, root = 'blocks', requireIds = false): string | null {
   const ids = new Set<string>();
@@ -23,6 +24,9 @@ export function blockTreeError(value: unknown, root = 'blocks', requireIds = fal
           const error = responsiveBreakpointsError(data.responsive_breakpoints);
           if (error) return `${at}.${suffix}.${error}`;
         }
+      }
+      if (block.type === 'core/container' && block.data?.lang != null && String(block.data.lang).trim() !== '' && !contentLanguageTag(block.data.lang)) {
+        return `${at}.data.lang must be a BCP 47 language tag such as "fr-BE", or empty to use the page language.`;
       }
       active.add(block);
       if (block.children !== undefined) { const error = visit(block.children, `${at}.children`, depth + 1); if (error) return error; }
