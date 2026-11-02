@@ -18,7 +18,9 @@ The AI agent calls `list_block_types` first to see the built-in and custom types
   aside, nav, header, footer, main, figure or `a`) with your `css_class`. Set
   `tag: "a"` and `href` to make the whole container one link, such as a
   clickable card; only http(s), relative, `#`, `mailto:` and `tel:` targets are
-  kept.
+  kept. `lang` (**Language of this part**) marks a part written in another
+  language than the page; see
+  [a part of a page in another language](#a-part-of-a-page-in-another-language).
 - `core/grid` — N-column grid that wraps automatically
 - `core/columns` — 2-slot Left/Right container for asymmetric layouts
 - `core/spacer`, `core/divider`
@@ -160,6 +162,31 @@ indents and chevrons, feature-row gutters, page navigation, form toggles,
 carousel arrows and keys, tab arrow keys and the cookie button move to the other
 side. Sides you choose yourself, such as image, divider and caption alignment,
 stay as chosen. Left-to-right pages are unchanged.
+
+#### A part of a page in another language
+
+When one part of a page is in another language, such as a French column on a
+Dutch (`nl-BE`) page, put that part in a **Container** (`core/container`) and
+set its `lang` (**Language of this part**) to a BCP 47 tag such as `fr-BE`:
+
+```json
+{ "type": "core/container", "data": { "lang": "fr-BE" }, "children": [ ... ] }
+```
+
+The container's element gets `lang="fr-BE"` in the published HTML and in
+preview, so screen readers read every heading, text, button and image
+description inside it in French. The tag is checked like a language section's:
+a primary language with an optional script and region (`fr`, `fr-BE`,
+`zh-Hant-TW`), stored in canonical casing. Another value is rejected when the
+block is written. Leave `lang` empty to use the page language; the container's
+markup is then unchanged.
+
+A right-to-left part (`ar`, `he`, `fa`, …) also gets `dir="rtl"`, and a
+left-to-right part on a right-to-left page gets `dir="ltr"`. A `dir` you set
+under **Additional attributes** is kept, and `lang` wins over a `lang` written
+there. The mirrored layout of right-to-left pages follows the page language,
+not the part. Use a container for a whole part; for a few words inside a
+paragraph, `<span lang="fr-BE">` in `core/prose` still works.
 
 ### Structured Page fields without empty labels
 

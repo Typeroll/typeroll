@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.141 / MCP 0.45.105 (candidate)
+
+- `core/container` takes an optional `lang` (**Language of this part**), a BCP
+  47 tag checked like language sections (`fr-BE`, `zh-Hant-TW`). It renders as
+  `lang` on the container's element in published HTML and preview, so every
+  heading, text, button and image alt inside is read in that language, such as
+  a French column on a Dutch page. A right-to-left part also gets `dir="rtl"`,
+  and a left-to-right part on a right-to-left page `dir="ltr"`; an authored
+  `dir` attribute is kept. An invalid tag is rejected at write. Without the
+  field the output is unchanged, so no render version is needed.
+
 ## 0.2.140 / MCP 0.45.104 (candidate)
 
 - Render version 13: a container that is a column at every breakpoint keeps

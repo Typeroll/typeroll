@@ -46,6 +46,16 @@ export function isValidHreflangTag(tag: string): boolean {
 }
 
 /**
+ * A content language tag (`fr-BE`, `zh-Hant-TW`) in canonical casing, or ''
+ * when `value` is not one. Same subset as hreflang and language sections,
+ * without `x-default`.
+ */
+export function contentLanguageTag(value: unknown): string {
+  if (typeof value !== 'string' || value.trim().toLowerCase() === 'x-default' || !isValidHreflangTag(value)) return '';
+  return canonicalTag(value);
+}
+
+/**
  * Canonical casing per BCP-47: language lowercase, script Title-case,
  * region UPPERCASE. `en-gb` → `en-GB`, `zh-hant-tw` → `zh-Hant-TW`.
  */
