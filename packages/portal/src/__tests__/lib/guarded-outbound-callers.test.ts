@@ -36,6 +36,7 @@ import { verifyRedirectHost } from '../../lib/publishing/redirect-hosts';
 import { preparePublicMediaDomains } from '../../lib/publishing/media-domain';
 import { probePublication } from '../../lib/deploy/availability';
 import { verifyStaticResponse } from '../../lib/builds/verification';
+import { observeWebsiteHost } from '../../lib/publishing/serving-host';
 
 const network = vi.fn<typeof fetch>();
 beforeEach(() => { guarded.length = 0; network.mockReset(); vi.stubGlobal('fetch', network); });
@@ -74,5 +75,14 @@ it('probes publications and verifies static bytes through the guarded client', a
   expect(guarded).toEqual([
     { url: 'https://www.example.com/', policy: noRedirects },
     { url: 'https://www.example.com/about', policy: noRedirects },
+  ]);
+});
+
+it('checks who serves a live host through the guarded client without following redirects', async () => {
+  network.mockImplementation(async () => new Response(null, { headers: { 'x-typeroll-publication': 'pub' } }));
+  expect(await observeWebsiteHost('www.example.com', 'pub')).toMatchObject({ status: 'serving', publication: 'pub' });
+  expect(guarded).toEqual([
+    { url: 'https://www.example.com/', policy: noRedirects },
+    { url: 'https://www.example.com/.well-known/typeroll/publication.json', policy: noRedirects },
   ]);
 });

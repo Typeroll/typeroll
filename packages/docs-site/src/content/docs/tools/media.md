@@ -298,6 +298,11 @@ first; pages that still reference it lose the image.
 
 Use the stable URL returned by the media API instead of constructing an address. A URL ending in `/api/sites/{site}/media/{id}/content` requires authenticated Site access because it identifies a private original: a portal session, or the same `Authorization: Bearer` API key (site or organization) as `/api/v1`, which receives a 302 to a short-lived signed address. Typeroll authorizes images temporarily for previews and resolves public delivery URLs during publishing. Public visitors should never need to log in. Use the returned stable URL in:
 
+To read a private original from a script, call
+`GET /api/v1/sites/{siteId}/media/{mediaId}/content` with the API key. It
+answers `{ "read_url": "…", "expires_in": 60 }`; fetch `read_url` within a
+minute. The MCP tool `read_private_media_url` returns the same address.
+
 - `<img src>` attributes in page HTML
 - `og_image` and `logo` settings fields
 - Page custom fields of type `image`

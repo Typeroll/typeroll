@@ -511,6 +511,12 @@ it.each(['live', 'timeout', 'manual rollback'])('switches one reviewed record af
   validated = true;
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com', verification_message: null });
+  // Verified once is not served for good: follow-up checks are indexed, not slept on.
+  const { workPath } = await import('../../lib/scheduling/index');
+  const servingWork = await store.getDoc<any>(workPath(siteDomainConfigPath('org', 'site'), 'domain_serving_check'));
+  expect(servingWork).toMatchObject({ kind: 'domain_serving_check', due_at: expect.any(Number) });
+  expect(servingWork.due_at - servingWork.payload.live_at).toBe(2 * 60_000);
+  expect((await getSiteDomains('org', 'site')).serving_check).toMatchObject({ status: 'pending', website_host: 'www.example.com', job_id: 'job' });
   if (outcome === 'manual rollback') {
     await store.updateDoc(siteDomainConfigPath('org', 'site'), { rollback_requested: true, state: 'distributing' });
     await store.updateDoc(jobPath, { status: 'running', phase: 'restoring previous domain traffic' });

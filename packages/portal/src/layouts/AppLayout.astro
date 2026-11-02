@@ -693,7 +693,8 @@ const initials = (session.displayName ?? session.email ?? 'U')
         font-size: 10.5px;
         color: var(--sb-text-dim);
       }
-      .vp__new, .vp__delete {
+      /* The branch actions ship with the picker, not with the dialog they open. */
+      .vp__new, .vp__action, .vp__delete {
         all: unset;
         cursor: pointer;
         display: flex;
@@ -709,7 +710,7 @@ const initials = (session.displayName ?? session.email ?? 'U')
         width: 100%;
         box-sizing: border-box;
       }
-      .vp__new:hover, .vp__delete:hover { background: var(--sb-bg-hover); color: var(--sb-text); }
+      .vp__new:hover, .vp__action:hover, .vp__delete:hover { background: var(--sb-bg-hover); color: var(--sb-text); }
       .vp__new[disabled] { opacity: 0.55; cursor: progress; }
       .vp__new-icon {
         width: 16px; height: 16px;
@@ -719,6 +720,15 @@ const initials = (session.displayName ?? session.email ?? 'U')
         color: var(--sb-text-dim);
       }
       .vp__new:hover .vp__new-icon { color: var(--sb-text); border-color: var(--sb-text); }
+      .vp__action-icon {
+        width: 16px; height: 16px;
+        display: grid; place-items: center;
+        border: 1px solid var(--sb-text-dim);
+        border-radius: 5px;
+        color: var(--sb-text-dim);
+        font-size: 11px;
+      }
+      .vp__action:hover .vp__action-icon { color: var(--sb-text); border-color: var(--sb-text); }
       .vp__delete { color: #f87171; }
       .vp__delete:hover { background: rgba(248,113,113,0.08); color: #fca5a5; }
       .vp__delete-icon { font-size: 12px; }

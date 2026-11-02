@@ -12,7 +12,7 @@ import {
   accountRef, analyticsAccessNextStep, analyticsAccessSettingsUrl, analyticsHostForSite, AnalyticsSetupError, ANALYTICS_SETTINGS_URL, describeAccount, hasScope,
   resolveAnalyticsAccount, type AnalyticsAccount,
 } from './analytics-account';
-import { webAnalyticsApi, WebAnalyticsProviderError, type WebAnalyticsSite } from './web-analytics-api';
+import { UNPROXIED_SITE_LIMIT, webAnalyticsApi, WebAnalyticsProviderError, type WebAnalyticsSite } from './web-analytics-api';
 
 export interface AnalyticsReconciliation {
   /** Config values to merge into the saved app config. */
@@ -61,6 +61,11 @@ export function providerSetupError(error: unknown, account: AnalyticsAccount, pu
         account.owner === 'organization' ? analyticsAccessSettingsUrl(purpose === 'reports' ? 'reports' : 'provision', account) : undefined);
     }
     const codes = error.codes.length ? `, Cloudflare codes ${error.codes.join(', ')}` : '';
+    if (error.kind === 'site_limit') {
+      return new AnalyticsSetupError('analytics_site_limit',
+        `Cloudflare refused to add another Web Analytics site in ${where} (HTTP ${error.status}${codes}). The account already has ${UNPROXIED_SITE_LIMIT} or more sites, and Cloudflare allows ${UNPROXIED_SITE_LIMIT} sites added by hostname per account.`,
+        'Remove a Web Analytics site you no longer use in Cloudflare → Analytics & Logs → Web Analytics, or ask Cloudflare support to raise this soft limit. Then enable Analytics again.', ref);
+    }
     if (error.kind === 'rate_limited') {
       return new AnalyticsSetupError('analytics_provider_rate_limited',
         `Cloudflare rate-limited the Web Analytics request for ${where} (HTTP 429${codes}).`,

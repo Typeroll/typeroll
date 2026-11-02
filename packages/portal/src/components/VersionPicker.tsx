@@ -378,32 +378,6 @@ function SyncDialog({ siteId, branch, action, onClose }: SyncDialogProps) {
             border-top: 1px solid var(--color-border);
             background: var(--color-bg);
           }
-          .vp__action {
-            all: unset;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 9px;
-            padding: 8px 9px;
-            color: var(--sb-text-muted);
-            font-size: 0.82rem;
-            font-weight: 500;
-            border-radius: 7px;
-            width: 100%;
-            box-sizing: border-box;
-            border-top: 1px dashed var(--sb-border);
-          }
-          .vp__action:first-of-type { margin-top: 3px; }
-          .vp__action:hover { background: var(--sb-bg-hover); color: var(--sb-text); }
-          .vp__action-icon {
-            width: 16px; height: 16px;
-            display: grid; place-items: center;
-            border: 1px solid var(--sb-text-dim);
-            border-radius: 5px;
-            color: var(--sb-text-dim);
-            font-size: 11px;
-          }
-          .vp__action:hover .vp__action-icon { color: var(--sb-text); border-color: var(--sb-text); }
         `}</style>
       </div>
     </div>

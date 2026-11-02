@@ -127,9 +127,9 @@ describe('part style CSS', () => {
     // The library lists the current-link style first; its rule still follows every link rule.
     const css = assets([nav], [current, { ...quietLink, parts: ['core/navigation_links.link'] }, loudLink]);
     const at = (needle: string) => css.indexOf(needle);
-    expect(at(':not([data-part-link]) > li > a)')).toBeGreaterThan(-1);
-    expect(at('[data-part-link="loud-link"] > li > a)')).toBeGreaterThan(at(':not([data-part-link]) > li > a)'));
-    expect(at('> li > a[aria-current="page"])')).toBeGreaterThan(at('[data-part-link="loud-link"] > li > a)'));
+    expect(at(':not([data-part-link]) li > a)')).toBeGreaterThan(-1);
+    expect(at('[data-part-link="loud-link"] li > a)')).toBeGreaterThan(at(':not([data-part-link]) li > a)'));
+    expect(at(' li > a[aria-current="page"])')).toBeGreaterThan(at('[data-part-link="loud-link"] li > a)'));
   });
 
   it('skips a part before its render version', () => {

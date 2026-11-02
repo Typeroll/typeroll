@@ -44,7 +44,18 @@ const FILL_COLUMN_CSS = `[data-block="container"][data-column-only="true"] > [da
  * (z-index 2) that form no stacking context of their own, so menus opening
  * from a shadowed header land above the next block.
  */
-const containerStyles = (raised: boolean, fill = false) => `${fill ? FILL_COLUMN_CSS : ''}
+/**
+ * From render version 13 a container that is a column at every breakpoint
+ * lays its children out on one flex line. A wrapping flex container sizes
+ * each line to its widest child's min-content width, so one long word, URL
+ * or inline code span made every child, and the page, wider than a narrow
+ * screen. A single line is as wide as the container. A column only wraps
+ * when it has a fixed height, which no container setting gives it.
+ */
+const SINGLE_LINE_COLUMN_CSS = `[data-block="container"][data-column-only="true"] { flex-wrap:nowrap; }
+`;
+
+const containerStyles = (raised: boolean, fill = false, singleLineColumn = false) => `${fill ? FILL_COLUMN_CSS : ''}${singleLineColumn ? SINGLE_LINE_COLUMN_CSS : ''}
  :is([data-block="container"], [data-block="semantic-container"]) { --surface-gradient:initial;border-radius:var(--radius_px,0px); }
 :is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] { overflow:clip; }
 :is([data-block="container"], [data-block="semantic-container"])[data-overflow="clip"] :focus-visible { outline-offset:-3px; }
@@ -155,7 +166,7 @@ const container: BlockType = {
   // to a real rem value via attribute-selectors against the inline style.
   template: `<{{=tag}} class="{{css_class}}" id="{{html_id}}" aria-label="{{aria_label}}" {{{container_attributes_html}}} data-block="{{container_kind}}" data-shadow="{{shadow}}" data-overflow="{{overflow}}" data-rhythm="{{rhythm}}" data-sticky="{{sticky}}" data-width="{{width}}" data-min-h="{{min_height}}" style="--direction:{{direction}};--wrap:{{wrap}};--gap:{{gap}};--align_main:{{align_main}};--align_cross:{{align_cross}};--padding_y:{{padding_y}};--padding_x:{{padding_x}};--bg:{{background}};--bg-image:url({{background_image}});--background_fit:{{background_fit}};{{surface_gradient_css}}{{inline_style}}">{{children}}</{{=tag}}>`,
   styles: containerStyles(false),
-  render_versions: [{ from: 9, styles: containerStyles(true) }, { from: 12, styles: containerStyles(true, true) }],
+  render_versions: [{ from: 9, styles: containerStyles(true) }, { from: 12, styles: containerStyles(true, true) }, { from: 13, styles: containerStyles(true, true, true) }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };

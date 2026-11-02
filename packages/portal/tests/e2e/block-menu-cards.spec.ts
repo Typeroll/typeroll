@@ -126,3 +126,31 @@ test('removing an open menu releases its document scroll lock',async({page})=>{
   await page.locator('nav').evaluate(el=>el.remove());
   await expect.poll(()=>page.evaluate(()=>document.documentElement.style.overflow)).toBe('');
 });
+test('group labels title the link groups in a mobile panel from render version 13',async({page},info)=>{
+  const group=(id:string,label:string,count:number):Block=>({id,type:'core/navigation_links',data:{group_label:label,direction:'row',links:Array.from({length:count},(_,i)=>({label:`${label} link ${i+1}`,href:`#${id}-${i+1}`}))}});
+  const tree:Block={id:'grouped',type:'core/navigation_menu',data:{collapse_below:'768'},slots:[
+    [{id:'desktop',type:'core/navigation_links',data:{links:[{label:'Overview',href:'#overview'}],direction:'row'}}],
+    [group('product','Product',3),group('resources','Resources',2)],
+  ]};
+  const assets=collectBlockAssets([tree],registry,{renderVersion:13});
+  await page.setViewportSize({width:390,height:844});
+  await page.setContent(`<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${reset}${css}${assets.css}:root{--color-text-light:#4b5563}body{margin:0}header{padding:16px}</style></head><body><header>${sanitizeBody(renderBlocks([tree],{registry,renderVersion:13}))}</header></body></html>`);
+  await page.addScriptTag({content:script});
+  await page.getByRole('button',{name:'Open menu'}).click();
+  const dialog=page.getByRole('dialog');
+  // Each list is named by its visible label; the label is not a heading.
+  await expect(dialog.getByRole('list',{name:'Product'}).getByRole('link')).toHaveCount(3);
+  await expect(dialog.getByRole('list',{name:'Resources'}).getByRole('link')).toHaveCount(2);
+  await expect(dialog.getByRole('heading')).toHaveCount(0);
+  const label=dialog.getByText('Resources',{exact:true});
+  await expect(label).toHaveCSS('text-transform','uppercase');
+  await expect(label).toHaveCSS('color','rgb(75, 85, 99)');
+  // The label sits above its links, with space after the previous group, also in a row list.
+  const labelBox=(await label.boundingBox())!, firstLink=(await dialog.getByRole('link',{name:'Resources link 1'}).boundingBox())!;
+  const previousLink=(await dialog.getByRole('link',{name:'Product link 3'}).boundingBox())!;
+  expect(firstLink.y).toBeGreaterThanOrEqual(labelBox.y+labelBox.height);
+  expect(labelBox.y-(previousLink.y+previousLink.height)).toBeGreaterThanOrEqual(16);
+  expect(await dialog.getByRole('link',{name:'Resources link 2'}).evaluate(a=>getComputedStyle(a).minHeight)).toBe('44px');
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  await page.screenshot({path:info.outputPath('menu-group-labels-390.png')});
+});

@@ -4,6 +4,7 @@ import { publicUrlsFor } from './site-public-urls';
 import { assertPublicDestination } from './extensions/public-http';
 import { parseOutboundUrl } from './net/safe-fetch';
 import { missingDns, publicationResponse } from './deploy/public-response';
+import { markerPublication, otherHostRemedy, providerHint, publicationHeader, PUBLICATION_MARKER, type ProviderHint } from './publishing/serving-host';
 
 const BODY_LIMIT = 2 * 1024 * 1024;
 
@@ -77,6 +78,12 @@ export interface IndexingTargetDiagnostic {
   effective_noindex: boolean;
   robots_txt_status: number | null;
   robots_txt_blocks_all: boolean | null;
+  /** The Typeroll publication that answered (X-Typeroll-Publication, else publication.json), or null. */
+  serving_publication: string | null;
+  /** Whether the expected Typeroll publication answered; null when nothing answered. */
+  serving_typeroll: boolean | null;
+  /** A likely previous host named by a well-known response header. */
+  provider_hint: ProviderHint | null;
   matches_expected: boolean;
   issues: string[];
 }
@@ -183,6 +190,16 @@ async function probeTarget(
   const effectiveNoindex = headerNoindex || metaNoindex;
   const reachable = Boolean(get.response?.ok);
   const robotsBlocksAll = robots.response?.ok ? blocksAllCrawlers(robotsText) : null;
+  // Robots findings only describe this site when its own publication answered.
+  const answered = Boolean(get.response || head.response);
+  let servingPublication = publicationHeader(get.response) ?? publicationHeader(head.response);
+  if (!servingPublication && answered) {
+    const marker = await safeFetch(fetchImpl, new URL(PUBLICATION_MARKER, root), 'GET', timeoutMs, validate);
+    servingPublication = await markerPublication(marker.response);
+  }
+  const hint = providerHint(get.response?.headers, head.response?.headers);
+  const servingTyperoll = !answered ? null : opts.publicationId ? servingPublication === opts.publicationId : servingPublication !== null;
+  const otherServer = Boolean(opts.publicationId) && servingTyperoll === false;
 
   if (!reachable) issues.push(get.error ?? `GET / returned ${get.response?.status ?? 'no response'}.`);
   if (target.expected === 'noindex' && !effectiveNoindex) {
@@ -196,6 +213,12 @@ async function probeTarget(
   }
   if (!robots.response?.ok) {
     issues.push(robots.error ?? `GET /robots.txt returned ${robots.response?.status ?? 'no response'}.`);
+  }
+  if (otherServer && servingPublication) {
+    issues.push(`This address serves Typeroll publication ${servingPublication}, not the current publication ${opts.publicationId}. The robots findings describe that publication. Check that the domain is not attached to another Typeroll site or project and purge stale cache, then run the check again.`);
+  } else if (otherServer) {
+    const source = hint ? ` It looks like ${hint.name} (${hint.evidence}).` : '';
+    issues.push(`This address is not served by Typeroll: the response carries no Typeroll publication.${source} The robots findings above describe that other host, not this site. ${otherHostRemedy(hint)}`);
   }
 
   return {
@@ -213,7 +236,10 @@ async function probeTarget(
     effective_noindex: effectiveNoindex,
     robots_txt_status: robots.response?.status ?? null,
     robots_txt_blocks_all: robotsBlocksAll,
-    matches_expected: target.expected === 'noindex' ? effectiveNoindex : !effectiveNoindex,
+    serving_publication: servingPublication,
+    serving_typeroll: servingTyperoll,
+    provider_hint: hint,
+    matches_expected: !otherServer && (target.expected === 'noindex' ? effectiveNoindex : !effectiveNoindex),
     issues,
   };
 }
@@ -234,6 +260,9 @@ function emptyDiagnostic(
     effective_noindex: false,
     robots_txt_status: null,
     robots_txt_blocks_all: null,
+    serving_publication: null,
+    serving_typeroll: null,
+    provider_hint: null,
     matches_expected: false,
     issues,
   };

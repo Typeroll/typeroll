@@ -1,4 +1,5 @@
 import { readPreviousHosts } from './previous-hosts';
+import { refreshServingAlarm } from './serving-check';
 import { domainPublicationIntent } from './domain-publication-intent';
 import { getConnection, ConnectionError } from './connections';
 import { cloudflareClient } from './cloudflare-oauth';
@@ -140,7 +141,9 @@ export async function siteDomainsWithChecks(orgId: string, siteId: string, confi
     // Reading settings must keep working when Cloudflare is unreachable or a grant expired.
     console.warn(JSON.stringify({ event: 'publishing_host_checks_unavailable', org_id: orgId, site_id: siteId, code: error instanceof ConnectionError ? error.code : 'provider_unavailable' }));
   }
-  return { ...config, previous_hosts: await readPreviousHosts(config), host_checks, next_publication: versionId === 'main' ? domainPublicationIntent(config) : null };
+  // A standing "served by another host" alarm is re-checked on read, so a fixed host clears.
+  const current = await refreshServingAlarm(orgId, siteId, config);
+  return { ...current, previous_hosts: await readPreviousHosts(current), host_checks, next_publication: versionId === 'main' ? domainPublicationIntent(current) : null };
 }
 
 /** Stop before building a candidate that Cloudflare cannot serve. */

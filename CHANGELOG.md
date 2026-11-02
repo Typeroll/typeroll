@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.2.140 / MCP 0.45.104 (candidate)
+
+- Render version 13: a container that is a column at every breakpoint keeps
+  its children on one flex line, and Text and Heading blocks break a word that
+  does not fit. A long word, URL or inline code span no longer makes every
+  child, and the page, wider than a 375 px screen. Rows and fixed-width
+  children are unchanged; older render versions render as before.
+- `core/navigation_links` takes an optional `group_label` (render version 13):
+  a visible title above the links that names the list for screen readers,
+  styled by the site's Eyebrow style or `group_label_style_id`. Lists without
+  a label render as before. Its link part selectors now match items at any
+  depth (`li > a`), with identical output for unlabelled lists.
+- Portal: the version picker's "Promote to main…" and "Reset from main…"
+  buttons are styled before their dialog has been opened.
+- New site setting `header_behavior`: `static` (default), `sticky`, or
+  `reveal_on_scroll_up`, which hides the header on scroll down and brings it
+  back compact on scroll up, with its menu behind the menu button. Its CSS and
+  script are emitted only on sites that use it.
+- Domains are checked about 2, 10 and 30 minutes after going live. When another
+  host (for example a previous host's Cloudflare for SaaS hostname) or another
+  publication answers, the domain shows `served by another host` with the
+  remedy. `check_site_indexing` reports who serves each target and no longer
+  judges another host's pages as the site's.
+- Web Analytics setup answers `analytics_site_limit` when the Cloudflare
+  account has reached its Web Analytics site limit, with the remedy, instead
+  of asking to try again. Docs describe the private media `content` read.
+
 ## 0.2.139 / MCP 0.45.103 (candidate)
 
 - Fix domain preparation failing verification when a redirect rule captures a

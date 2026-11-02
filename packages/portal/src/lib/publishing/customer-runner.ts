@@ -3,6 +3,7 @@ import { refreshBuildFailure } from '../builds/failure-status';
 import { journaledDomainProvider, armDomainCutover, recordDomainCutover, readDomainCutover, completeDomainCutover, rollbackDomainCutover } from './domain-cutover-journal';
 import { domainPublicationRevision } from './domain-config';
 import { assertVerificationRetry } from './verification-retry';
+import { scheduleServingChecks, servingAlarm } from './serving-check';
 import { schedulePublication, waitForBuild, waitForPublicationCondition } from '../scheduling/continuation';
 import { recordPublishedMedia } from './published-media';
 import { ensureGithubMainBranch } from './providers.mjs';
@@ -181,13 +182,19 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const active = { ...domains.desired, website_host: publication.website_host };
       const matchesDesired = samePublicationHosts(currentDomains.desired, active) && sameRedirectHosts(currentDomains.desired, active);
       const outdated = !preparingDomain && currentDomains.candidate && currentDomains.candidate.source_publication_id !== publication.publication_id;
-      await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === currentDomains.revision,
+      const becameLive = preparingDomain || matchesDesired;
+      const savedDomains = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === currentDomains.revision,
         { active, previous_hosts: previousHosts, active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
-          ...(preparingDomain || matchesDesired ? {state: 'live'} : outdated ? {state:'outdated', cutover_approved_revision:null} : {}),
+          ...(becameLive ? {state: 'live'} : outdated ? {state:'outdated', cutover_approved_revision:null} : {}),
           media_aliases: [...currentDomains.media_aliases, ...(currentDomains.active && !currentDomains.media_aliases.some(alias => samePublicationHosts(alias, currentDomains.active!)) ? [currentDomains.active] : [])] });
       if (outdated && currentDomains.candidate?.job_id) await store.compareAndUpdateDoc<any>(paths.deploy(args.orgId, args.siteId, currentDomains.candidate.job_id),
         value => value.status === 'running', {status:'failed',phase:'superseded',finished_at:finished,error:'Newer content was published at the current address. Prepare for domain switch again before changing traffic.'});
       await store.updateDoc(paths.site(args.orgId, args.siteId), { domain: publication.website_host, domain_status: 'live', domain_verified_at: finished });
+      // Verified once is not served for good: another provider can still take the host back
+      // (CH-06). Follow-up checks are durable, read-only and never change DNS.
+      if (savedDomains && becameLive && (preparingDomain || currentDomains.active?.website_host !== publication.website_host || servingAlarm(currentDomains.serving_check))) {
+        await scheduleServingChecks(args.orgId, args.siteId, { publication_id: publication.publication_id, website_host: publication.website_host, job_id: args.jobId });
+      }
     }
     await recordPublishedMedia(args.orgId, args.siteId, frozen.media_manifest?.entries ?? [], { main: args.versionId === 'main' });
     await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
