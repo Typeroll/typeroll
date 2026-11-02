@@ -8,12 +8,20 @@
 //
 // Pauses for review with the gap list rather than completing silently. The
 // whole value is a human looking at "17 URLs will 404" before DNS moves.
+//
+// The check runs in chunks: each chunk requests at most
+// URL_PARITY_CHECKS_PER_CHUNK URLs (fewer when its time budget ends first)
+// and yields the plan with every result so far as its cursor, so a large
+// inventory survives a restart and no URL is requested twice.
 
 import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
-import { runSiteParityCheck } from '../wp/url-parity';
+import { advanceSiteParity, finishSiteParity, planSiteParity, type SiteParityPlan } from '../wp/url-parity';
 import type { UrlStatus } from '../wp/url-inventory';
-import { reviewGate, type WorkflowDef } from './types';
+import { reviewGate, stepYield, type WorkflowDef } from './types';
+
+/** URL requests one chunk starts at most; its time budget usually ends it sooner. */
+export const URL_PARITY_CHECKS_PER_CHUNK = 150;
 
 export const urlParityWorkflow: WorkflowDef = {
   type: 'url_parity',
@@ -25,36 +33,47 @@ export const urlParityWorkflow: WorkflowDef = {
       name: 'check_urls',
       label: 'Request every inventory URL',
       async run(ctx) {
-        const site = await ctx.store.getDoc<Site>(paths.site(ctx.orgId, ctx.siteId));
-        if (!site) throw new Error('Site not found');
-
         const cfg = ctx.config as {
           target_origin?: string;
           source_origin?: string;
           check_source?: string | boolean;
           statuses?: string;
         };
-        const statuses = parseStatuses(cfg.statuses);
-
-        const report = await runSiteParityCheck({
+        const args = {
           store: ctx.store,
           orgId: ctx.orgId,
           siteId: ctx.siteId,
           versionId: MAIN_VERSION_ID,
-          site: { ...site, id: ctx.siteId },
-          targetOrigin: cfg.target_origin?.trim() || undefined,
           sourceOrigin: cfg.source_origin?.trim() || undefined,
           checkSource: cfg.check_source === true || cfg.check_source === 'true',
-          statuses,
-          onProgress: (done, total) => {
+          onProgress: (done: number, total: number) => {
             ctx.setProgress({ total, completed: done });
             if (done % 25 === 0) ctx.log(`Checked ${done}/${total}`);
           },
-        });
+        };
 
-        if (report.inventory_total === 0) {
-          ctx.log('Inventory is empty — nothing to check. Populate it first (migration workflow, or POST /api/v1/sites/{id}/migration-urls).');
+        let plan = ctx.cursor as SiteParityPlan | undefined;
+        if (!plan) {
+          const site = await ctx.store.getDoc<Site>(paths.site(ctx.orgId, ctx.siteId));
+          if (!site) throw new Error('Site not found');
+          plan = await planSiteParity({
+            ...args,
+            site: { ...site, id: ctx.siteId },
+            targetOrigin: cfg.target_origin?.trim() || undefined,
+            statuses: parseStatuses(cfg.statuses),
+          });
+          if (plan.inventory_total === 0) {
+            ctx.log('Inventory is empty — nothing to check. Populate it first (migration workflow, or POST /api/v1/sites/{id}/migration-urls).');
+          }
         }
+
+        const finished = await advanceSiteParity(args, plan, {
+          shouldStop: () => ctx.shouldYield?.() ?? false,
+          maxChecks: URL_PARITY_CHECKS_PER_CHUNK,
+        });
+        if (!finished) return stepYield(plan);
+
+        const report = await finishSiteParity(args, plan);
         ctx.log(
           `Checked ${report.checked} URL(s) against ${report.target_origin}: ` +
           `${report.summary.ok} ok, ${report.summary.ok_redirect} via redirect, ` +

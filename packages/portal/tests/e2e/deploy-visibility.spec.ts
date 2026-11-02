@@ -63,7 +63,8 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       page.once('dialog', (dialog) => dialog.accept());
       const request = page.waitForRequest((request) => request.url().endsWith('/api/sites/default/deploy') && request.method() === 'POST');
       await deploy.click();
-      expect((await request).postDataJSON()).toEqual({ environment: 'production' });
+      // The fixture site has a verified domain, so the confirmed deploy names it.
+      expect((await request).postDataJSON()).toEqual({ environment: 'production', confirm_live_domains: true });
       await expect(page.getByText('Test deployment stopped', { exact: true })).toBeVisible();
       const renderSummary = page.getByText('3 pages rebuilt · 49 reused', { exact: true });
       await expect(renderSummary).toBeVisible();

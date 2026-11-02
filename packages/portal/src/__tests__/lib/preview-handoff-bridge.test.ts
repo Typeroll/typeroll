@@ -23,7 +23,11 @@ function shell() {
   const browser = new Window({ url: `${ORIGIN}/preview/site/start/?t=ticket`, settings: { navigation: { disableChildFrameNavigation: true } } });
   windows.push(browser);
   const replies: Array<Record<string, unknown>> = [];
-  const frameWindow = { postMessage: (message: Record<string, unknown>) => { replies.push(message); } };
+  const replaced: string[] = [];
+  const frameWindow = {
+    postMessage: (message: Record<string, unknown>) => { replies.push(message); },
+    location: { replace: (url: string) => { replaced.push(url); } },
+  };
   Object.defineProperty(browser.HTMLIFrameElement.prototype, 'contentWindow', { get: () => frameWindow });
   const html = buildExtensionPreviewShell({ siteId: 'site', bridgeId: BRIDGE_ID, rootPath: '/preview/site', storageScope: 'ticket', carriedQuery: { t: 'ticket' } });
   browser.document.body.innerHTML = '<iframe id="preview"></iframe>';
@@ -35,7 +39,7 @@ function shell() {
     send({ action: 'storage.ready' });
     return (replies.find((reply) => reply.action === 'storage.init')?.storage as { handoff?: Record<string, string> }).handoff;
   };
-  return { browser, send, init };
+  return { browser, send, init, replaced };
 }
 
 describe('preview shell handoff slot', () => {
@@ -62,6 +66,29 @@ describe('preview shell handoff slot', () => {
     send({ action: 'handoff.set', key: 'moving', value: PACKET }, { origin: 'https://evil.example' });
     send({ action: 'handoff.set', key: 'moving', value: PACKET }, { source: {} });
     expect(init()).toEqual({});
+  });
+});
+
+describe('preview shell navigation history', () => {
+  it('adds one history entry per page so Back returns to the previous page', () => {
+    const { browser, send, replaced } = shell();
+    const frameEl = browser.document.getElementById('preview')!;
+    const initialSrc = frameEl.getAttribute('src');
+    expect(initialSrc).toBe(`/preview/site/start/?t=ticket&frame=1&bridge=${BRIDGE_ID}`);
+    const before = browser.history.length;
+
+    send({ action: 'site.navigate', path: '/pricing/' });
+    expect(browser.history.length).toBe(before + 1);
+    expect(browser.location.pathname).toBe('/preview/site/pricing/');
+    // The frame moves in place instead of adding its own history entry.
+    expect(frameEl.getAttribute('src')).toBe(initialSrc);
+    expect(replaced).toEqual([`/preview/site/pricing/?t=ticket&frame=1&bridge=${BRIDGE_ID}`]);
+
+    // Back: the shell's address changes first and the frame follows it.
+    browser.history.replaceState(null, '', '/preview/site/start/?t=ticket');
+    browser.dispatchEvent(new browser.PopStateEvent('popstate', { state: null }));
+    expect(replaced.at(-1)).toBe(`/preview/site/start/?t=ticket&frame=1&bridge=${BRIDGE_ID}`);
+    expect(frameEl.getAttribute('src')).toBe(initialSrc);
   });
 });
 

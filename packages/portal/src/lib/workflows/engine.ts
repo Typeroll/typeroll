@@ -1,54 +1,132 @@
 // Workflow engine.
 //
 // Runs the steps of a workflow definition in order, persisting state to the
-// datastore after each step. Steps can pause the workflow with reviewGate(...)
-// — the engine writes status=paused_for_review and exits. The portal's
-// /approve endpoint re-enters the engine starting from the next step.
+// datastore. Steps can pause the workflow with reviewGate(...) — the engine
+// writes status=paused_for_review and exits. The portal's /approve endpoint
+// re-enters the engine starting from the next step.
 //
-// For now, workflows run inline in the request that triggered them. Long
-// migrations would normally need a queue; that's a later concern. A process
-// that goes away mid-run leaves the run `running`; the engine therefore
-// records heartbeat_at, and reads close a run without one as interrupted
-// (run-lifecycle.ts). Every status write is conditional on the run still
-// being `running`, so a run that was cancelled or closed meanwhile stops at
-// its next write instead of overwriting that outcome.
+// Runs execute in short chunks, never as a background promise of the request
+// that started them: on Cloud Run with request-based CPU such a promise gets
+// almost no CPU once the response is sent and dies with the instance. start()
+// and resume() only record the run's first chunk and enqueue it on a durable
+// queue (queue.ts); each delivery runs one chunk inside a request of its own.
+// A chunk runs steps until its time budget (WORKFLOW_CHUNK_BUDGET_MS) is
+// spent. A long per-item step yields with a cursor (stepYield) when the budget
+// is spent; the engine persists the cursor and enqueues the next chunk, which
+// continues the step from it, possibly in another process.
+//
+// Every chunk has an id. A delivery runs only while the stored run names its
+// id, under a lease, and commits with a compare-and-update on {id,
+// step_index, cursor, lease owner} that replaces the id. Duplicate and late
+// deliveries (Cloud Tasks is at-least-once) therefore do nothing, and a
+// cancelled run stops at the next chunk boundary. A chunk whose process went
+// away is resumed from its cursor: by the queue's own retry once its lease
+// expires, or by the read that finds the run stale (run-lifecycle.ts).
 
+import { randomUUID } from 'node:crypto';
+import type { WorkflowType } from '@typeroll/shared';
 import { requireImportStorage } from '../media/import-policy';
 import { paths } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { getStore } from '../datastore';
 import { WORKFLOW_HEARTBEAT_INTERVAL_MS } from './run-lifecycle';
+import { workflowChunkQueue, type WorkflowChunkQueue, type WorkflowChunkRef } from './queue';
 import {
   type StepResult,
+  type WorkflowChunk,
   type WorkflowContext,
   type WorkflowDef,
   type WorkflowRecord,
   isReviewGate,
+  isStepYield,
 } from './types';
 
-const isRunning = (wf: WorkflowRecord) => wf.status === 'running';
+/** Time a chunk may start new work for. Items in flight finish after it. */
+export const WORKFLOW_CHUNK_BUDGET_MS = 45_000;
+
+/**
+ * How long a delivery holds its chunk: longer than any chunk takes (its
+ * budget plus the slowest item in flight), so only a chunk whose process
+ * died is ever run again. Equal to the scheduled-work lease.
+ */
+export const WORKFLOW_CHUNK_LEASE_MS = 5 * 60_000;
+
+/** How long a committed chunk may wait for its own delivery before a stale delivery re-sends it. */
+const SUPERSEDED_GRACE_MS = WORKFLOW_HEARTBEAT_INTERVAL_MS;
+
+export type ChunkOutcome =
+  /** The run does not exist. */
+  | 'missing'
+  /** The run is no longer running (completed, failed, cancelled, paused). */
+  | 'not_running'
+  /** Another chunk is current: a duplicate or late delivery. With leaseUntil: retry it then. */
+  | 'superseded'
+  /** The chunk is being executed under another delivery's lease, until leaseUntil. */
+  | 'busy'
+  /** The chunk ran and the next one is enqueued. */
+  | 'continued'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  /** The run was cancelled or taken over while the chunk ran; nothing was committed. */
+  | 'stopped';
+
+export interface WorkflowEngineOptions {
+  now?: () => number;
+  /**
+   * Where chunks go. Default: the durable queue of this deployment. 'inline'
+   * runs them one after another inside start() and resume(), which then
+   * return the finished run (tests and tools).
+   */
+  queue?: WorkflowChunkQueue | 'inline';
+  chunkBudgetMs?: number;
+  /** The definition of a run's type, for chunks delivered without one. */
+  resolveDef?: (type: WorkflowType) => WorkflowDef | Promise<WorkflowDef>;
+}
+
+const defaultResolveDef = async (type: WorkflowType) => (await import('./registry')).getWorkflowDef(type);
 
 export class WorkflowEngine {
   private readonly now: () => number;
+  private readonly queue: WorkflowChunkQueue | null;
+  private readonly inlinePending: WorkflowChunkRef[] = [];
+  private draining = false;
+  private readonly chunkBudgetMs: number;
+  private readonly resolveDef: (type: WorkflowType) => WorkflowDef | Promise<WorkflowDef>;
 
-  constructor(private store: ReadWriteStore = getStore(), options: { now?: () => number } = {}) {
+  constructor(private store: ReadWriteStore = getStore(), options: WorkflowEngineOptions = {}) {
     this.now = options.now ?? Date.now;
+    this.queue = options.queue === 'inline' ? null : options.queue ?? workflowChunkQueue();
+    this.chunkBudgetMs = options.chunkBudgetMs ?? WORKFLOW_CHUNK_BUDGET_MS;
+    this.resolveDef = options.resolveDef ?? defaultResolveDef;
   }
 
-  private iso(): string {
-    return new Date(this.now()).toISOString();
-  }
-
-  /**
-   * Update the run only while it is still running. Returns false when it is
-   * not (cancelled, or closed as interrupted), which ends the run here.
-   */
-  private async whileRunning(wfPath: string, data: Record<string, unknown>): Promise<boolean> {
-    return (await this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, isRunning, { ...data, heartbeat_at: this.iso() })) !== null;
+  private iso(t = this.now()): string {
+    return new Date(t).toISOString();
   }
 
   private async current(wfPath: string): Promise<WorkflowRecord> {
     return (await this.store.getDoc<WorkflowRecord>(wfPath))!;
+  }
+
+  private newChunk(stepIndex: number, cursor: string | null, seq: number): WorkflowChunk {
+    return { id: randomUUID(), step_index: stepIndex, cursor, lease_owner: null, lease_until: 0, resumes: 0, seq };
+  }
+
+  private async dispatch(ref: WorkflowChunkRef): Promise<void> {
+    if (this.queue) await this.queue.enqueue(ref);
+    else this.inlinePending.push(ref);
+  }
+
+  /** Inline mode: run queued chunks until none is left. */
+  private async drainInline(def: WorkflowDef): Promise<void> {
+    if (this.queue || this.draining) return;
+    this.draining = true;
+    try {
+      for (let ref = this.inlinePending.shift(); ref; ref = this.inlinePending.shift()) await this.runChunk(ref, def);
+    } finally {
+      this.draining = false;
+    }
   }
 
   async create(args: {
@@ -79,17 +157,23 @@ export class WorkflowEngine {
     return workflowId;
   }
 
+  /** Mark a pending run running and enqueue its first chunk. */
   async start(orgId: string, workflowId: string, def: WorkflowDef): Promise<WorkflowRecord> {
     if (def.type === 'migration') await requireImportStorage(orgId);
     const wfPath = `${paths.workflows(orgId)}/${workflowId}`;
     const startedAt = this.iso();
+    const chunk = this.newChunk(0, null, 0);
     const started = await this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, (wf) => wf.status === 'pending', {
       status: 'running',
       started_at: startedAt,
       heartbeat_at: startedAt,
+      step_index: 0,
+      chunk,
     });
     if (!started) return this.current(wfPath);
-    return this.runFrom(orgId, workflowId, def, 0);
+    await this.dispatch({ orgId, workflowId, chunkId: chunk.id });
+    await this.drainInline(def);
+    return this.current(wfPath);
   }
 
   /** Continues a paused workflow from the step after the one that paused. */
@@ -102,6 +186,7 @@ export class WorkflowEngine {
       throw new Error(`Cannot resume workflow in status ${wf.status}`);
     }
     const nextIndex = (wf.step_index ?? 0) + 1;
+    const chunk = this.newChunk(nextIndex, null, wf.chunk?.seq ?? 0);
     // Conditional, so a second approval or a cancel in between cannot start
     // the remaining steps twice or revive a cancelled run.
     const resumed = await this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, (current) => current.status === 'paused_for_review', {
@@ -109,32 +194,86 @@ export class WorkflowEngine {
       heartbeat_at: this.iso(),
       review_message: null,
       review_data: null,
+      chunk,
     });
     if (!resumed) return this.current(wfPath);
-    return this.runFrom(orgId, workflowId, def, nextIndex);
+    await this.dispatch({ orgId, workflowId, chunkId: chunk.id });
+    await this.drainInline(def);
+    return this.current(wfPath);
   }
 
-  private async runFrom(
-    orgId: string,
-    workflowId: string,
-    def: WorkflowDef,
-    startIndex: number
-  ): Promise<WorkflowRecord> {
+  /**
+   * Execute one delivered chunk: run steps from the chunk's step and cursor
+   * until the run finishes, pauses, fails, or the chunk's budget is spent,
+   * then commit and enqueue the next chunk. Safe to call with any delivery:
+   * one that is not the run's current chunk does nothing.
+   */
+  async runChunk(ref: WorkflowChunkRef, defArg?: WorkflowDef): Promise<{ outcome: ChunkOutcome; leaseUntil?: number }> {
+    const { orgId, workflowId } = ref;
     const wfPath = `${paths.workflows(orgId)}/${workflowId}`;
+    const wf = await this.store.getDoc<WorkflowRecord>(wfPath);
+    if (!wf) return { outcome: 'missing' };
+    if (wf.status !== 'running') return { outcome: 'not_running' };
+    const chunk = wf.chunk;
+    if (!chunk || chunk.id !== ref.chunkId) {
+      // A duplicate or late delivery. The current chunk's own delivery may
+      // still have been lost between its commit and its enqueue (the process
+      // died there). While another delivery holds the current chunk, or it
+      // was committed moments ago, ask to be retried later; a chunk that
+      // stays idle after that is delivered again (a duplicate is a no-op).
+      if (!chunk) return { outcome: 'superseded' };
+      const t = this.now();
+      if (chunk.lease_until > t) return { outcome: 'superseded', leaseUntil: chunk.lease_until };
+      const idleSince = Date.parse(wf.heartbeat_at ?? '') || 0;
+      if (t - idleSince < SUPERSEDED_GRACE_MS) return { outcome: 'superseded', leaseUntil: idleSince + SUPERSEDED_GRACE_MS };
+      await this.dispatch({ orgId, workflowId, chunkId: chunk.id });
+      return { outcome: 'superseded' };
+    }
+    if (chunk.lease_until > this.now()) return { outcome: 'busy', leaseUntil: chunk.lease_until };
 
-    for (let i = startIndex; i < def.steps.length; i++) {
+    const def = defArg ?? await this.resolveDef(wf.type);
+    const owner = randomUUID();
+    const chunkStart = this.now();
+    const deadline = chunkStart + this.chunkBudgetMs;
+    let current: WorkflowChunk = { ...chunk, lease_owner: owner, lease_until: chunkStart + WORKFLOW_CHUNK_LEASE_MS };
+    const firstStep = def.steps[current.step_index];
+    const claimed = await this.store.compareAndUpdateDoc<WorkflowRecord>(
+      wfPath,
+      (stored) => stored.status === 'running' && stored.chunk?.id === chunk.id && (stored.chunk.lease_until ?? 0) <= chunkStart,
+      { chunk: current, heartbeat_at: this.iso(chunkStart), ...(firstStep ? { current_step: firstStep.name, step_index: current.step_index } : {}) },
+    );
+    if (!claimed) {
+      const now = await this.store.getDoc<WorkflowRecord>(wfPath);
+      if (now?.status === 'running' && now.chunk?.id === chunk.id) return { outcome: 'busy', leaseUntil: now.chunk.lease_until };
+      return { outcome: now?.status === 'running' ? 'superseded' : 'not_running' };
+    }
+
+    /** Commit only while this delivery still holds exactly this chunk. */
+    const holds = (stored: WorkflowRecord) => stored.status === 'running'
+      && stored.chunk?.id === current.id
+      && stored.chunk.step_index === current.step_index
+      && (stored.chunk.cursor ?? null) === current.cursor
+      && stored.chunk.lease_owner === owner;
+    const commit = async (data: Record<string, unknown>): Promise<boolean> =>
+      (await this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, holds, { ...data, heartbeat_at: this.iso() })) !== null;
+
+    let state = wf.state ?? {};
+    let results = wf.results ?? {};
+    const log: string[] = wf.log ?? [];
+
+    for (;;) {
+      const i = current.step_index;
       const step = def.steps[i];
-      const wf = await this.store.getDoc<WorkflowRecord>(wfPath);
-      if (!wf) throw new Error('Workflow disappeared mid-run');
-
-      if (!(await this.whileRunning(wfPath, { current_step: step.name, step_index: i }))) {
-        return this.current(wfPath);
+      if (!step) {
+        return (await commit({ status: 'completed', current_step: undefined, completed_at: this.iso(), chunk: null, log }))
+          ? { outcome: 'completed' } : { outcome: 'stopped' };
       }
 
       // Liveness during the step: progress reports carry a heartbeat at most
       // every WORKFLOW_HEARTBEAT_INTERVAL_MS, and a timer covers steps that
-      // report no progress. Once a heartbeat finds the run no longer running
-      // (cancelled, or closed as interrupted), progress writes stop too.
+      // report no progress. Once a heartbeat finds that this delivery no
+      // longer holds the chunk (cancelled, or resumed elsewhere after an
+      // interruption), progress writes stop and the step is asked to yield.
       let lastBeat = this.now();
       let stopped = false;
       const heartbeatDue = () => {
@@ -147,30 +286,31 @@ export class WorkflowEngine {
         if (stopped) return;
         const at = heartbeatDue();
         if (!at) return;
-        this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, isRunning, { heartbeat_at: at })
+        this.store.compareAndUpdateDoc<WorkflowRecord>(wfPath, holds, { heartbeat_at: at })
           .then((previous) => { if (!previous) stopped = true; })
           .catch((err) => console.warn(`[workflow ${workflowId}] heartbeat failed:`, err));
       };
       const keepalive = setInterval(beat, WORKFLOW_HEARTBEAT_INTERVAL_MS);
       (keepalive as { unref?: () => void }).unref?.();
 
-      const log: string[] = wf.log ?? [];
       const ctx: WorkflowContext = {
         orgId,
         siteId: wf.site_id,
         workflowId,
         config: wf.config,
-        state: wf.state ?? {},
+        state,
         store: this.store,
         log: (msg: string) => log.push(`[${step.name}] ${msg}`),
         setProgress: (p) => {
           if (stopped) return;
-          // Fire-and-forget progress writes are fine — the next step will
-          // re-read the doc and overwrite stale values anyway.
+          // Fire-and-forget progress writes are fine — the step's next
+          // commit overwrites stale values anyway.
           const at = heartbeatDue();
           void this.store.updateDoc(wfPath, at ? { progress: p, heartbeat_at: at } : { progress: p });
         },
         heartbeat: beat,
+        cursor: current.cursor === null ? undefined : JSON.parse(current.cursor),
+        shouldYield: () => stopped || this.now() >= deadline,
       };
 
       let result: StepResult;
@@ -181,56 +321,64 @@ export class WorkflowEngine {
         clearInterval(keepalive);
         const msg = e instanceof Error ? e.message : String(e);
         log.push(`[${step.name}] ERROR: ${msg}`);
-        await this.whileRunning(wfPath, {
+        const failed = await commit({
           status: 'failed',
           failed_at: this.iso(),
           failure_reason: `${step.name}: ${msg}`,
           // A stable code for errors that carry one (e.g. ai_not_enabled), so
           // API and MCP callers need not parse the message.
           ...(failureCode(e) ? { failure_code: failureCode(e) } : {}),
+          chunk: null,
           log,
         });
-        return this.current(wfPath);
+        return { outcome: failed ? 'failed' : 'stopped' };
       }
       clearInterval(keepalive);
 
+      if (isStepYield(result)) {
+        const next = this.newChunk(i, JSON.stringify(result.cursor ?? null), current.seq + 1);
+        if (!(await commit({ chunk: next, log }))) return { outcome: 'stopped' };
+        await this.dispatch({ orgId, workflowId, chunkId: next.id });
+        return { outcome: 'continued' };
+      }
+
       if (isReviewGate(result)) {
         log.push(`[${step.name}] paused for review: ${result.message}`);
-        await this.whileRunning(wfPath, {
+        const paused = await commit({
           status: 'paused_for_review',
           review_message: result.message,
           review_data: result.data ?? {},
-          progress: {
-            total: def.steps.length,
-            completed: i + 1,
-          },
+          progress: { total: def.steps.length, completed: i + 1 },
+          chunk: null,
           log,
         });
-        return this.current(wfPath);
+        return { outcome: paused ? 'paused' : 'stopped' };
       }
 
-      const stateUpdate = result.state ?? {};
-      const resultsUpdate = result.results ?? {};
+      state = { ...state, ...(result.state ?? {}) };
+      results = { ...results, ...(result.results ?? {}) };
       log.push(`[${step.name}] done`);
+      const progress = { total: def.steps.length, completed: i + 1 };
+      const nextStep = def.steps[i + 1];
 
-      const recorded = await this.whileRunning(wfPath, {
-        state: { ...(wf.state ?? {}), ...stateUpdate },
-        results: { ...(wf.results ?? {}), ...resultsUpdate },
-        progress: {
-          total: def.steps.length,
-          completed: i + 1,
-        },
-        log,
-      });
-      if (!recorded) return this.current(wfPath);
+      if (!nextStep) {
+        const completed = await commit({ state, results, progress, status: 'completed', current_step: undefined, completed_at: this.iso(), chunk: null, log });
+        return { outcome: completed ? 'completed' : 'stopped' };
+      }
+
+      if (this.now() >= deadline || stopped) {
+        // Budget spent: the next step starts in a fresh chunk.
+        const next = this.newChunk(i + 1, null, current.seq + 1);
+        if (!(await commit({ state, results, progress, chunk: next, log }))) return { outcome: 'stopped' };
+        await this.dispatch({ orgId, workflowId, chunkId: next.id });
+        return { outcome: 'continued' };
+      }
+
+      // Budget left: continue with the next step under the same lease.
+      const next: WorkflowChunk = { ...this.newChunk(i + 1, null, current.seq + 1), lease_owner: owner, lease_until: this.now() + WORKFLOW_CHUNK_LEASE_MS };
+      if (!(await commit({ state, results, progress, chunk: next, current_step: nextStep.name, step_index: i + 1, log }))) return { outcome: 'stopped' };
+      current = next;
     }
-
-    await this.whileRunning(wfPath, {
-      status: 'completed',
-      current_step: undefined,
-      completed_at: this.iso(),
-    });
-    return this.current(wfPath);
   }
 }
 

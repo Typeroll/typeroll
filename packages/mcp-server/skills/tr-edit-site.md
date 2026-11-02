@@ -67,6 +67,10 @@ section. A Page template is `update_page` `template` (an allowed ID, or null
 for the content type default). `discard_working_copy` throws an unsaved draft
 away. Publishing means saving the draft, `update_page` `status: "published"`
 (applies immediately) and, when the user wants it live now, `trigger_deploy`.
+On a site that serves its live custom domain (`get_publication_impact`
+reports `production: true`), every deploy is a production release: get the
+owner's approval and pass `confirm_live_domains: true`. Review with
+`get_preview_link` `include_working_copy: true` instead of deploying.
 
 **Publishing and failed deploys.** Poll `get_deploy_status` until the job is
 `succeeded` or `failed`. Every site in an organization shares one build

@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.2.142 / MCP 0.45.106 (candidate)
+
+- Long workflow runs finish instead of stopping mid-way. A run no longer
+  executes as background work of the request that started it, which Cloud Run
+  starves of CPU and recycles (`url_parity` on an 810-URL inventory stopped at
+  724/810 and 809/810). It runs in short chunks of at most about 45 seconds of
+  new work, each delivered through the scheduled-work queue (Cloud Tasks to
+  the existing worker route; the self-host worker or process timers without
+  Cloud Tasks). `url_parity`, `link_check`, `performance_audit` and the
+  migration import save their progress and the results gathered so far after
+  every chunk and continue from there, so a restart only delays a run and no
+  URL is checked twice. Every chunk commits with a compare-and-update on its
+  id, so a duplicate delivery does nothing, and a cancelled run stops at the
+  next chunk. A read that finds a running run without a heartbeat for 3
+  minutes resumes it from its saved progress, up to 3 times; only then is it
+  closed as `failed`/`workflow_interrupted`. The API, MCP and status contract
+  are unchanged.
+- Preview links: the browser's Back button returns to the previous preview
+  page. A click inside the preview added a second, frame-only history entry,
+  so Back first went back inside the frame and left the address on the newer
+  page. The preview frame now moves in place and each page is one entry.
+- Publishing to a site's temporary address ends at cutover. Once a site serves
+  its live custom domain, the same publication serves the live domain and the
+  old temporary address, so every deploy is a production release. A deploy
+  of such a site that is not a dry run now needs an explicit acknowledgement:
+  **MCP clients and API callers publishing a cut-over site must pass
+  `confirm_live_domains: true`** to `trigger_deploy` / `POST /deploy` (and in
+  the config of a production `rebuild_deploy` workflow), only after the site
+  owner approved the release. Without it the request returns
+  `409 live_domain_confirmation_required`, naming the live URL, with
+  `live_domains`, `targets` and `production: true`. Sites that are not cut over,
+  dry runs, `get_preview_link` (including `include_working_copy`),
+  `get_publication_impact` and verification retries are unchanged.
+- `get_publication_impact`, every deploy result and the deploy job report
+  where a publication lands: `production`, `live_domains` and `targets` (live
+  domains first, then the temporary address).
+- In the portal, the Publish confirmation names the live domains of a cut-over
+  site, and the publishing menu notes that a deploy publishes to them.
+- The migration recipes (`tr-migrate-wp`, `tr-migrate-multisite`), `tr-edit-site`,
+  the `trigger_deploy` description and the docs say to review a live site with
+  `get_preview_link` (`include_working_copy`) and to treat every deploy after
+  cutover as a production release that needs the owner's approval.
+
 ## 0.2.141 / MCP 0.45.105 (candidate)
 
 - A domain switch goes live only when Cloudflare reports the website host's

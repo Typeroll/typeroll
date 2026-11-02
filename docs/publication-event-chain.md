@@ -47,6 +47,13 @@ The portable Firestore worker reads the same index. Local development uses
 process timers; fixtures and local in-process execution are not production
 crash-durability guarantees.
 
+Workflow runs use the same index for their chunks (`workflow_chunk`, one entry
+per run, source `organizations/{org}/workflows/{id}`). Each chunk does at most
+about 45 seconds of new work, commits its step cursor with a compare-and-update
+on the chunk id, and replaces the entry with the next chunk. A delivery for a
+chunk that is no longer current does nothing; one for a chunk leased by a
+process that died is retried when the lease ends and continues from the cursor.
+
 ## Upgrade
 
 Before enabling the new runtime, drain active publications on the old runtime.

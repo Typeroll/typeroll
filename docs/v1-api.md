@@ -573,10 +573,13 @@ further than the caller. Nothing here returns a new secret.
   works only for a run with status `paused_for_review` (`409` otherwise).
   `POST /workflows/{workflowId}/cancel` records a pending, running or paused
   run as `cancelled` (same permission as starting the type; `409` once it has
-  finished). Runs execute in the portal process and record `heartbeat_at`; a
-  read that finds a `running` run without a heartbeat for 10 minutes (the
-  process restarted) marks it `failed` with `failure_code:
-  "workflow_interrupted"`. Start a new run then.
+  finished). Runs execute in short chunks on the deployment's durable queue
+  and record `heartbeat_at`; a long step such as a URL parity check saves its
+  progress after each chunk, so a service restart only delays it. A read that
+  finds a `running` run without a heartbeat for 3 minutes resumes it from its
+  saved progress, up to 3 times; only a run that still makes no progress is
+  marked `failed` with `failure_code: "workflow_interrupted"`. Start a new run
+  then. A cancelled run stops at the next chunk.
 - **Sites with a first workflow.** `POST /sites/create-and-migrate`
   (`{ name, wp_url, helper_api_key? }`) and `POST /sites/create-and-plan`
   (`{ name, business_description }`) need an organization key and return

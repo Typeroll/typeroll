@@ -10,8 +10,9 @@ if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
 const { session, site, owner_org_id: orgId } = ctx;
 const siteId = site.id;
 
-// Through the service, so a run whose process stopped executing it shows as
-// failed (workflow_interrupted) rather than running for ever.
+// Through the service, so a run whose process stopped executing it is resumed
+// from its saved progress, or shows as failed (workflow_interrupted) once
+// resuming keeps failing, rather than running for ever.
 const recent = await listSiteWorkflows(orgId, siteId, 20);
 ---
 <AppLayout title={`Workflows — ${site.name}`} siteId={siteId}>

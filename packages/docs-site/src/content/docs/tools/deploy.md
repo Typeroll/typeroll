@@ -13,6 +13,44 @@ Deploy the site.
 
 Ask the agent to deploy explicitly after you have reviewed and saved the intended changes.
 
+### Deploys after cutover
+
+Before a site is cut over, a deploy publishes to its temporary, noindexed
+address. Publishing to the temporary address ends at cutover: once the site
+serves its live custom domain, the same publication serves both, so every
+real deploy is a production release.
+
+For such a site, a deploy that is not a dry run must include
+`confirm_live_domains: true`, and only after the site owner approved this
+release. Without it the call is refused with HTTP 409 and the code
+`live_domain_confirmation_required`. The error names the live URLs and
+returns them in `live_domains`, together with `targets` and
+`production: true`, so the agent can show the owner exactly what will
+change:
+
+```json
+{
+  "code": "live_domain_confirmation_required",
+  "error": "This site is live at https://example.com. Deploying publishes the saved content to https://example.com and https://site-….sites.example.net immediately: …",
+  "requires_confirmation": true,
+  "production": true,
+  "live_domains": ["https://example.com"],
+  "targets": ["https://example.com", "https://site-….sites.example.net"]
+}
+```
+
+Every deploy result reports `production`, `live_domains` and `targets` (live
+domains first, then the temporary address), and the deploy job records
+`targets`, `production` and `live_domains_confirmed`. A site that is not cut
+over reports `production: false` with its temporary address and needs no
+acknowledgement. Dry runs, `get_preview_link` (including
+`include_working_copy`) and `get_publication_impact` never need it, and a
+verification retry of an already-confirmed job does not ask again. Use
+`get_preview_link` with `include_working_copy: true` to review changes on a
+live site without publishing. A production `rebuild_deploy` workflow takes the
+same `confirm_live_domains: true` in its config. In the portal, the Publish
+button names the live domains in its confirmation before it publishes.
+
 ### Dry runs
 
 Pass `dry_run: true` to validate without publishing. Customer publishing validates
@@ -24,6 +62,13 @@ as the build would after media preparation. It does not prove that Astro
 compilation succeeds or that the rendered pages pass every other check. Other self-hosted adapters may build
 locally without uploading. Inspect the reported phase; a successful dry run has
 `dry_run: true` and no `deploy_url`.
+
+## `get_publication_impact`
+
+Reports where a deploy lands and which saved public content changed since the
+last verified publication. `production` is `true` when the site is cut over;
+`live_domains` lists its live URLs and `targets` every public URL the
+publication serves, live domains first. It never builds or publishes.
 
 ## `get_deploy_status`
 

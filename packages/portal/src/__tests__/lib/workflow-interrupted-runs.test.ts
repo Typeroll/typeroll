@@ -191,7 +191,7 @@ describe('closing interrupted runs on read', () => {
 
 describe('heartbeat from the engine', () => {
   function engineWith(store: FakeStore, clock: { t: number }) {
-    return new WorkflowEngine(store as unknown as ReadWriteStore, { now: () => clock.t });
+    return new WorkflowEngine(store as unknown as ReadWriteStore, { now: () => clock.t, queue: 'inline' });
   }
   const heartbeats = (store: FakeStore, path: string) =>
     store.writes.filter((w) => w.path === path && w.applied && 'heartbeat_at' in w.data).map((w) => w.data.heartbeat_at as string);

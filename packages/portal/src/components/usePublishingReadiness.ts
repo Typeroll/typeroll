@@ -4,6 +4,8 @@ export interface PublishingSetup {
   ready: boolean;
   mode: 'managed' | 'customer_git';
   required: Array<{ code: string; message: string; settings_url: string }>;
+  /** Where a production deploy lands; production is true once the site serves a live custom domain. */
+  publication?: import('./liveDomainConfirmation').PublicationTargetsView;
 }
 
 /** Fail closed while checking, on errors and when the selected site/version changes. */

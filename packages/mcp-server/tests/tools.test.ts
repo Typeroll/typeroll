@@ -523,4 +523,21 @@ describe('migration feedback inputs', () => {
     await tool.handler(parsed,ctx);
     expect(JSON.parse(ctx.calls[0].body!)).toEqual({allow_unsaved:true});
   });
+  it('forwards the live-domain acknowledgement only as an explicit boolean', async () => {
+    const ctx = setup(() => jsonResponse({ job_id:'job', production:true, live_domains:['https://moveria.es'], targets:['https://moveria.es','https://site-0.sites.moveria.com'] }));
+    const tool = find(deployTools,'trigger_deploy');
+    const schema = z.object(tool.inputSchema!);
+    expect(schema.safeParse({confirm_live_domains:'true'}).success).toBe(false);
+    expect(tool.description).toContain('confirm_live_domains: true');
+    const result = await tool.handler(schema.parse({confirm_live_domains:true}),ctx);
+    expect(JSON.parse(ctx.calls[0].body!)).toEqual({confirm_live_domains:true});
+    expect(JSON.parse((result.content[0] as { text: string }).text)).toMatchObject({ production:true, targets:['https://moveria.es','https://site-0.sites.moveria.com'] });
+  });
+  it('returns the live-domain refusal with its targets to the agent', async () => {
+    const refusal = { code:'live_domain_confirmation_required', error:'This site is live at https://moveria.es.', production:true, live_domains:['https://moveria.es'], targets:['https://moveria.es'] };
+    const ctx = setup(() => jsonResponse(refusal, 409));
+    const result = await find(deployTools,'trigger_deploy').handler({} as never,ctx);
+    expect(result.isError).toBe(true);
+    expect(JSON.parse((result.content[0] as { text: string }).text)).toMatchObject({ status:409, body:refusal });
+  });
 });

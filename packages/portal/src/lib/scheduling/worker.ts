@@ -99,6 +99,16 @@ export async function executeScheduledWork(id: string, generation?: string, now 
         await postpone(path, current.generation, next);
         return result;
       }
+    } else if (current.kind === 'workflow_chunk') {
+      // Written by lib/workflows/queue.ts: one chunk of a workflow run. The
+      // run's own chunk id and lease make stale and duplicate deliveries
+      // harmless; enqueueing the next chunk replaces this entry.
+      const { runScheduledWorkflowChunk } = await import('../workflows/queue');
+      const retryAt = await runScheduledWorkflowChunk(current.source, current.payload);
+      if (retryAt !== null) {
+        await postpone(path, current.generation, retryAt);
+        return result;
+      }
     } else if (current.kind === 'site_publish') {
       const site = await store.getDoc<any>(current.source);
       if (site) {
