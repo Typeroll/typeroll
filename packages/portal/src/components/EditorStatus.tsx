@@ -18,6 +18,7 @@ import { PublishingRequirements } from './PublishingRequirements';
 import { useEffect, useState } from 'react';
 import { useDeployProgress, type DeployProgress } from './useDeployProgress';
 import { BuildFailureDetails } from './BuildFailureDetails';
+import { liveDomainConfirmMessage, postDeploy } from './liveDomainConfirmation';
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error';
 export type PublishStatus = 'draft' | 'review' | 'unlisted' | 'published' | string;
@@ -103,20 +104,21 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgr
   const busy = job?.status === 'queued' || job?.status === 'running';
 
   async function go() {
-    if (busy || !(await refresh())?.ready) return;
-    const message = env === 'production'
+    if (busy) return;
+    const current = await refresh();
+    if (!current?.ready) return;
+    const environment = current.mode === 'customer_git' ? 'production' : env;
+    const live = environment === 'production' && current.publication?.production ? current.publication : null;
+    const message = live ? liveDomainConfirmMessage(live)
+      : environment === 'production'
       ? 'Deploy to your live production site? This rebuilds the static files and uploads them. Visitors will see the new version once it finishes.'
       : 'Deploy to the staging URL? Visitors won\'t see this.';
     if (!confirm(message)) return;
     setErr(null);
     setJob({ status: 'queued', phase: 'starting' });
     try {
-      const res = await fetch(`/api/sites/${siteId}/deploy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: setup?.mode === 'customer_git' ? 'production' : env }),
-      });
-      const data = await res.json();
+      const { res, data, cancelled } = await postDeploy(siteId, { environment, ...(live ? { confirm_live_domains: true } : {}) });
+      if (cancelled) { setJob(null); return; }
       if (!res.ok && data.code === 'publishing_setup_required') {
         await refresh();
         setJob(null);

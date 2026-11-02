@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { WorkflowType } from '@typeroll/shared';
+import { LIVE_DOMAIN_CONFIRMATION_CODE, liveDomainConfirmMessage } from './liveDomainConfirmation';
 
 interface FieldDef {
   name: string;
@@ -123,12 +124,19 @@ export default function StartWorkflow({ siteId, type, importStorage }: Props) {
       config[f.name] = f.type === 'number' ? Number(v) : v;
     }
     try {
-      const res = await fetch(`/api/sites/${siteId}/workflows/start`, {
+      const send = (payload: Record<string, unknown>) => fetch(`/api/sites/${siteId}/workflows/start`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, config }),
+        body: JSON.stringify({ type, config: payload }),
       });
-      const data = await res.json();
+      let res = await send(config);
+      let data = await res.json();
+      // A production rebuild of a cut-over site publishes to its live domain: name it before confirming.
+      if (!res.ok && data.code === LIVE_DOMAIN_CONFIRMATION_CODE && Array.isArray(data.live_domains)) {
+        if (!confirm(liveDomainConfirmMessage(data))) { setBusy(false); return; }
+        res = await send({ ...config, confirm_live_domains: true });
+        data = await res.json();
+      }
       if (!res.ok) throw new Error(data.error ?? 'Failed to start');
       window.location.href = `/app/sites/${siteId}/workflows/${data.workflowId}`;
     } catch (err) {

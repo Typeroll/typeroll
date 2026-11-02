@@ -1891,6 +1891,12 @@ export interface DeployJob {
   warnings?: string[];
   /** True when the build deliberately skipped its hosting upload. */
   dry_run?: boolean;
+  /** Public URLs this publication serves when admitted: live domains first, then the temporary address. */
+  targets?: string[];
+  /** True when the publication reaches a live custom domain (the site is cut over). */
+  production?: boolean;
+  /** The caller acknowledged the live domains with confirm_live_domains: true. */
+  live_domains_confirmed?: boolean;
   started_at: string;
   finished_at?: string;
   triggered_by?: string;

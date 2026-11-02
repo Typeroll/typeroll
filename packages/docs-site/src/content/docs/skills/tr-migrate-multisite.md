@@ -314,6 +314,14 @@ new canonical build and is not an inventory-only operation):
 6. Rerun the complete, unfiltered URL check and SEO review, then require
    `get_migration_launch_report` to return `launch_ready: true`
 
+Publishing to the temporary address ends at each site's cutover. From then on
+one publication serves both the live domain and the old fallback address, so
+every `trigger_deploy` of that site is a production release: review with
+`get_preview_link` (`include_working_copy: true`) or `dry_run: true`, get the
+owner's approval, and pass `confirm_live_domains: true`. Without it the deploy
+is refused with `live_domain_confirmation_required`, naming the live URLs.
+`get_publication_impact` reports `production` and `targets` per site.
+
 ## Phase 8 — Launch (required)
 
 A site is not finished until this step has run. Call `read_site_readiness`

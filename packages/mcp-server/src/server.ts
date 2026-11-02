@@ -222,6 +222,11 @@ The full playbook ships with this server — use it:
    schema_markup, create_site_and_plan) need the Organization's portal AI
    key for the Site. On ai_not_enabled don't retry: do the work yourself
    with the recipe named in start_workflow and tell the user you did.
+10. Publishing to the temporary address ends at cutover. Once a site serves
+   its live custom domain, every trigger_deploy is a production release: get
+   the owner's approval and pass confirm_live_domains: true
+   (get_publication_impact reports production and targets). Review with
+   get_preview_link include_working_copy instead of deploying.
 
 If anything here conflicts with what a tool returns, trust the tool. Every
 tool's own description carries its specifics.

@@ -1,13 +1,20 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ guard: vi.fn(), preview: vi.fn() }));
+const mocks = vi.hoisted(() => ({ guard: vi.fn(), preview: vi.fn(), targets: vi.fn() }));
 vi.mock('../../lib/api-auth', () => ({ requireApiKey: mocks.guard, apiResponse: (_: unknown, value: unknown) => Response.json(value), apiError: (error: string, status: number) => Response.json({ error }, { status }) }));
 vi.mock('../../lib/publishing/impact-preview', () => ({ previewPublicationImpact: mocks.preview }));
+vi.mock('../../lib/publishing/publication-targets', () => ({ publicationTargets: mocks.targets }));
 import { GET } from '../../pages/api/v1/sites/[siteId]/publishing/impact';
-beforeEach(() => { vi.clearAllMocks(); mocks.guard.mockResolvedValue({ ok: true, value: { orgId: 'owner', siteId: 'site', versionId: 'branch' } }); mocks.preview.mockResolvedValue({ comparison: 'verified_snapshot', total: 1, provisional: true, execution: 'automatic', reuse_verified: false }); });
+beforeEach(() => { vi.clearAllMocks(); mocks.guard.mockResolvedValue({ ok: true, value: { orgId: 'owner', siteId: 'site', versionId: 'branch' } }); mocks.preview.mockResolvedValue({ comparison: 'verified_snapshot', total: 1, provisional: true, execution: 'automatic', reuse_verified: false }); mocks.targets.mockResolvedValue({ production: false, live_domains: [], targets: ['https://v-1234abcd-site-0.sites.example.com'] }); });
 const call = (query = '?version=branch') => GET({ request: new Request(`https://portal.example/api/v1/sites/site/publishing/impact${query}`), url: new URL(`https://portal.example/api/v1/sites/site/publishing/impact${query}`), params: { siteId: 'site' } } as any) as Promise<Response>;
 it('uses the authorized owning organization and selected version', async () => {
   expect(await (await call()).json()).toMatchObject({ version_id: 'branch', total: 1, execution: 'automatic' });
   expect(mocks.preview).toHaveBeenCalledWith('owner', 'site', 'branch');
+});
+it('reports where a deploy lands and whether it reaches a live domain', async () => {
+  mocks.guard.mockResolvedValue({ ok: true, value: { orgId: 'owner', siteId: 'site', versionId: 'main' } });
+  mocks.targets.mockResolvedValue({ production: true, live_domains: ['https://moveria.es'], targets: ['https://moveria.es', 'https://site-0.sites.moveria.com'] });
+  expect(await (await call('')).json()).toMatchObject({ version_id: 'main', production: true, live_domains: ['https://moveria.es'], targets: ['https://moveria.es', 'https://site-0.sites.moveria.com'], total: 1 });
+  expect(mocks.targets).toHaveBeenCalledWith('owner', 'site', 'main');
 });
 it('does not read source when the caller lacks site access', async () => {
   mocks.guard.mockResolvedValue({ ok: false, response: new Response(null, { status: 404 }) });

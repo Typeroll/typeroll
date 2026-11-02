@@ -9,7 +9,7 @@ export interface CallableTool {
   effect: ToolEffect;
   invoke: (args: Record<string, unknown>) => Promise<ToolResult>;
 }
-export const COMPACT_INSTRUCTIONS = `Typeroll CMS. Use search_tools to find a task's tools, describe_tool to read one exact schema, then call_read_tool, call_write_tool or call_admin_tool. Discover before you write: identify Site/Version, capabilities and enabled app documentation. Read only the relevant skill or guide section; do not load the full manual by default. Larger changes: create_branch and keep the same version. Working copy, saved content and live output differ. Publishing and other external effects require the user's authorization; tool access alone is not approval.`;
+export const COMPACT_INSTRUCTIONS = `Typeroll CMS. Use search_tools to find a task's tools, describe_tool to read one exact schema, then call_read_tool, call_write_tool or call_admin_tool. Discover before you write: identify Site/Version, capabilities and enabled app documentation. Read only the relevant skill or guide section; do not load the full manual by default. Larger changes: create_branch and keep the same version. Working copy, saved content and live output differ. Publishing and other external effects require the user's authorization; tool access alone is not approval. After cutover a deploy reaches the live domain: it needs the owner's approval and confirm_live_domains: true.`;
 
 /** Stable discovery surface: no dynamic registration or client list-change support needed. */
 export function compactTools(catalog: CallableTool[]): CallableTool[] {

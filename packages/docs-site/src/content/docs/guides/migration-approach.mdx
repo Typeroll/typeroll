@@ -91,6 +91,15 @@ redirect loops, broken assets and redirects to unrelated content are failures.
 Visual, content and interaction review remains necessary even when every URL
 returns a successful response.
 
+Publishing to the temporary address ends at cutover. Once the real domain
+serves the site, one publication serves both the live domain and the old
+temporary address, so every later deploy changes the live website. Review
+changes with `get_preview_link` (`include_working_copy: true`) and treat every
+deploy as a production release that needs the owner's approval: the deploy
+API and `trigger_deploy` refuse it with `live_domain_confirmation_required`
+until the call includes `confirm_live_domains: true`. See
+[deploys after cutover](../../tools/deploy/#deploys-after-cutover).
+
 ## Working with an agent
 
 For structured research answers that people will later correct, use explicit

@@ -9,6 +9,7 @@ import { enginePath } from '../../lib/builds/cloudflare';
 import { connectionPath } from '../../lib/publishing/connections';
 import { organizationDomainConfigPath, siteDomainConfigPath } from '../../lib/publishing/domain-config';
 import { FirestoreDeployQueue, FIRESTORE_DEPLOY_QUEUE_PATH } from '../../lib/deploy/queue';
+import { generatedCloudflareNames } from '../../lib/publishing/cloudflare-account-claims';
 import { POST as deployUi } from '../../pages/api/sites/[siteId]/deploy';
 import { POST as deployApi } from '../../pages/api/v1/sites/[siteId]/deploy';
 vi.mock('../../lib/access', async original => ({ ...await original<typeof import('../../lib/access')>(), requireSiteAccess: async () => ({ ok: true, value: { owner_org_id: 'org', site: { id: 'site' }, versionId: 'main', session: {} } }), requirePermission: () => ({ ok: true }) }));
@@ -132,7 +133,8 @@ it.each([['UI', deployUi], ['API/MCP', deployApi]] as const)('accepts %s normal 
   try {
     await getStore().setDoc(siteDomainConfigPath('org', 'site'), {
       revision: 'future', desired: { website_host: 'pending-zone.example.com', media_host: 'pending-media.example.com', media_path_prefix: '' },
-      active: { website_host: 'current.sites.example.com', media_host: null, media_path_prefix: '' },
+      // The generated temporary address: the site is not cut over, so no live-domain confirmation applies.
+      active: { website_host: `${generatedCloudflareNames('org', 'site').site_label}.sites.example.com`, media_host: null, media_path_prefix: '' },
       dns_mode: 'automatic', active_dns_mode: 'automatic', state: 'preparing', media_aliases: [],
     });
     await getStore().setDoc(paths.deploy('org', 'site', 'candidate'), {

@@ -52,7 +52,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     });
     return apiResponse(ctx, { ok: true, workflow_id: workflowId, type, status: 'running' }, 202, { type });
   } catch (error) {
-    if (error instanceof WorkflowRequestError) return apiError(error.message, error.status, ctx);
+    if (error instanceof WorkflowRequestError) return apiError(error.message, error.status, ctx, { code: error.code, details: error.details });
     if (error instanceof ConnectionError) return connectionFailure(error);
     throw error;
   }
