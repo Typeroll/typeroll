@@ -14,6 +14,18 @@
   depth (`li > a`), with identical output for unlabelled lists.
 - Portal: the version picker's "Promote to main…" and "Reset from main…"
   buttons are styled before their dialog has been opened.
+- New site setting `header_behavior`: `static` (default), `sticky`, or
+  `reveal_on_scroll_up`, which hides the header on scroll down and brings it
+  back compact on scroll up, with its menu behind the menu button. Its CSS and
+  script are emitted only on sites that use it.
+- Domains are checked about 2, 10 and 30 minutes after going live. When another
+  host (for example a previous host's Cloudflare for SaaS hostname) or another
+  publication answers, the domain shows `served by another host` with the
+  remedy. `check_site_indexing` reports who serves each target and no longer
+  judges another host's pages as the site's.
+- Web Analytics setup answers `analytics_site_limit` when the Cloudflare
+  account has reached its Web Analytics site limit, with the remedy, instead
+  of asking to try again. Docs describe the private media `content` read.
 
 ## 0.2.139 / MCP 0.45.103 (candidate)
 
