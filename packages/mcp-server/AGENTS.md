@@ -452,6 +452,14 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   the next only when the previous job has finished and
   `read_organization_build_engine` shows no `active_jobs` (details in
   `tr-edit-site`).
+  **Publishing to the temporary address ends at cutover.** Once a site
+  serves its live custom domain, the same publication serves the live domain
+  and the old temporary address, so every real `trigger_deploy` is a
+  production release. Get the owner's approval and pass
+  `confirm_live_domains: true`; without it the deploy is refused with
+  `live_domain_confirmation_required`, naming the live URLs and `targets`.
+  `get_publication_impact` and the deploy result report `production` and
+  `targets` (live domains first). Dry runs and `get_preview_link` stay free.
   `trigger_deploy dry_run=true` validates frozen source in customer publishing
   without a Git push or external build; it does not prove Astro compilation.
   Other self-hosted adapters may run a local build without upload.

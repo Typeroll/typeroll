@@ -1,6 +1,7 @@
 import { unsavedPublicationTargets } from '../../../../../lib/deploy/unsaved';
 import { retryPublicationVerification } from '../../../../../lib/publishing/verification-retry';
 import { ConnectionError } from '../../../../../lib/publishing/connections';
+import { publicationTargets, requireLiveDomainConfirmation } from '../../../../../lib/publishing/publication-targets';
 // POST /api/v1/sites/{siteId}/deploy
 //
 // Enqueue a deploy of the currently-resolved version (main by default,
@@ -10,6 +11,10 @@ import { ConnectionError } from '../../../../../lib/publishing/connections';
 // Body (optional): { environment: "production" | "staging" }. Default
 // production — staging is reserved for the platform's own internal-test
 // environment and isn't usually relevant to customer sites.
+//
+// A site cut over to a live custom domain publishes to that domain. A real
+// deploy then needs confirm_live_domains: true; without it the call returns
+// 409 live_domain_confirmation_required with the live URLs and targets.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey, requireAnyApiKey } from '../../../../../lib/api-auth';
@@ -30,6 +35,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     environment?: DeployEnvironment;
     dry_run?: boolean;
     allow_unsaved?: boolean; retry_verification_job_id?: string; approve_cache_zone_id?: string;
+    confirm_live_domains?: boolean;
   };
   if (body.retry_verification_job_id !== undefined) {
     try {
@@ -58,6 +64,11 @@ export const POST: APIRoute = async ({ request, params }) => {
 
   const store = getStore();
 
+  // Publishing to the temporary address ends at cutover: the same publication serves the live domain.
+  const targets = await publicationTargets(ctx.orgId, ctx.siteId, ctx.versionId, environment);
+  const unconfirmed = requireLiveDomainConfirmation(targets, { dry_run: dryRun, confirm_live_domains: body.confirm_live_domains });
+  if (unconfirmed) return privateJson(unconfirmed, 409);
+
   const unsaved = await unsavedPublicationTargets(ctx.orgId, ctx.siteId, ctx.versionId);
   if (unsaved.length && body.allow_unsaved !== true) return privateJson({
     code: 'unsaved_content', error: 'Pages or shared blocks have unsaved edits. Save or discard them, or explicitly publish the saved content only.',
@@ -71,6 +82,9 @@ export const POST: APIRoute = async ({ request, params }) => {
     started_at: new Date().toISOString(),
     triggered_by: `api-key:${ctx.keyPrefix}`,
     dry_run: dryRun,
+    targets: targets.targets,
+    production: targets.production,
+    ...(targets.production && !dryRun ? { live_domains_confirmed: true } : {}),
   });
 
   try {
@@ -97,5 +111,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     version_id: ctx.versionId,
     environment,
     dry_run: dryRun,
+    production: targets.production,
+    live_domains: targets.live_domains,
+    targets: targets.targets,
   }, 202, body);
 };

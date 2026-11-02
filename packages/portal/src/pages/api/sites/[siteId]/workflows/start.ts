@@ -33,7 +33,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     });
     return json({ ok: true, workflowId });
   } catch (error) {
-    if (error instanceof WorkflowRequestError) return json({ error: error.message }, error.status);
+    if (error instanceof WorkflowRequestError) return json({ error: error.message, ...(error.code ? { code: error.code, ...error.details } : {}) }, error.status);
     if (error instanceof ConnectionError) return connectionFailure(error);
     throw error;
   }

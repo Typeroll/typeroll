@@ -21,6 +21,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { isPendingDeploy } from './EditorStatus';
 import { useDeployProgress } from './useDeployProgress';
 import type { PublicationImpact } from '../lib/publishing/impact';
+import { liveDomainConfirmMessage, postDeploy } from './liveDomainConfirmation';
 
 export interface StatusOption {
   value: string;
@@ -184,25 +185,27 @@ export default function PublishMenu({
   }, [open, siteId, docUpdatedAt, hasUnsaved]);
 
   async function deploy() {
-    if (busy || !(await refreshSetup())?.ready) return;
-    const message = env === 'production'
+    if (busy) return;
+    const setup = await refreshSetup();
+    if (!setup?.ready) return;
+    const environment = setup.mode === 'customer_git' ? 'production' : env;
+    const live = environment === 'production' && setup.publication?.production ? setup.publication : null;
+    const message = live ? liveDomainConfirmMessage(live)
+      : environment === 'production'
       ? 'Deploy the saved site to production? Visitors see the new version when it finishes.'
       : 'Rebuild and deploy to the staging URL? Visitors won\'t see this.';
     if (!confirm(message)) return;
     setDeployErr(null);
     setJob({ status: 'queued', phase: 'starting' });
     try {
-      let res = await fetch(`/api/sites/${siteId}/deploy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ environment: publishingSetup?.mode === 'customer_git' ? 'production' : env }),
-      });
-      let data = await res.json();
+      const body = { environment, ...(live ? { confirm_live_domains: true } : {}) };
+      let { res, data, cancelled } = await postDeploy(siteId, body);
+      if (cancelled) { setJob(null); return; }
       if (!res.ok && data.code === 'unsaved_content') {
         const targets = (data.unsaved ?? []).map((target: {kind:string;id:string}) => `${target.kind}: ${target.id}`).join('\n');
         if (!confirm(`These edits are not saved:\n${targets}\n\nPublish saved content only? Unsaved edits will remain untouched.`)) { setJob(null); return; }
-        res = await fetch(`/api/sites/${siteId}/deploy`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ environment: publishingSetup?.mode === 'customer_git' ? 'production' : env, allow_unsaved: true }) });
-        data = await res.json();
+        ({ res, data, cancelled } = await postDeploy(siteId, { ...body, allow_unsaved: true }));
+        if (cancelled) { setJob(null); return; }
       }
       if (!res.ok && data.code === 'publishing_setup_required') {
         await refreshSetup();
@@ -392,6 +395,11 @@ export default function PublishMenu({
                     ? `Last deployed ${rel(lastDeployedAt)}.`
                     : ''}
             </p>
+            {publishingSetup?.publication?.production && (publishingSetup.mode === 'customer_git' || env === 'production') && (
+              <p className="pmenu__hint pmenu__hint--warn">
+                Deploying publishes to your live website: {publishingSetup.publication.live_domains.join(', ')}.
+              </p>
+            )}
 
             {busy && job?.verification_message && <p role="status" className="pmenu__hint">{job.verification_message}</p>}
             {job?.seo_report && <details className="pmenu__hint pmenu__validation">

@@ -17,7 +17,7 @@ import type { WorkflowRecord } from './types';
 import { migrationSourcePolicy, parseOutboundUrl } from '../net/safe-fetch';
 
 export class WorkflowRequestError extends Error {
-  constructor(message: string, public status = 400) { super(message); }
+  constructor(message: string, public status = 400, public code?: string, public details?: Record<string, unknown>) { super(message); }
 }
 
 /** Workflow ids as WorkflowEngine.create mints them, plus room for legacy ids. */
@@ -127,6 +127,18 @@ export async function startSiteWorkflow(input: {
       throw new WorkflowRequestError('config.wp_url must be an absolute public http(s) URL');
     }
     await requireImportStorage(input.orgId);
+  }
+  if (def.type === 'rebuild_deploy') {
+    // A production rebuild of a cut-over site is a release to its live domain, like trigger_deploy.
+    const config = (input.config ?? {}) as Record<string, unknown>;
+    const environment = config.environment === 'production' ? 'production' : 'staging';
+    const { publicationTargets, requireLiveDomainConfirmation } = await import('../publishing/publication-targets');
+    const refused = requireLiveDomainConfirmation(await publicationTargets(input.orgId, input.siteId, input.versionId, environment),
+      { confirm_live_domains: config.confirm_live_domains });
+    if (refused) {
+      const { error, code, ...details } = refused;
+      throw new WorkflowRequestError(error, 409, code, details);
+    }
   }
   const engine = new WorkflowEngine(getStore(), { queue: workflowChunkQueue() });
   const workflowId = await engine.create({

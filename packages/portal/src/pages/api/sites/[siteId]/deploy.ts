@@ -1,6 +1,7 @@
 import { unsavedPublicationTargets } from '../../../../lib/deploy/unsaved';
 import { retryPublicationVerification } from '../../../../lib/publishing/verification-retry';
 import { ConnectionError } from '../../../../lib/publishing/connections';
+import { publicationTargets, requireLiveDomainConfirmation } from '../../../../lib/publishing/publication-targets';
 // Deploy entry point.
 //
 // Creates a DeployJob doc, hands the work to the configured DeployQueue,
@@ -34,7 +35,7 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   if (!adminCheck.ok) return adminCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
 
-  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; allow_unsaved?: boolean; retry_verification_job_id?: string; approve_cache_zone_id?: string };
+  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; allow_unsaved?: boolean; retry_verification_job_id?: string; approve_cache_zone_id?: string; confirm_live_domains?: boolean };
   if (body.retry_verification_job_id !== undefined) {
     try {
       if (typeof body.retry_verification_job_id !== 'string') return json({ error: 'Provide a deployment ID.' }, 400);
@@ -74,6 +75,10 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
     // A site with no deploys yet has no collection. Not a reason to refuse.
   }
 
+  // The Publish controls send confirm_live_domains only after a confirmation naming the live domains.
+  const targets = await publicationTargets(owner_org_id, site.id, versionId, environment);
+  const unconfirmed = requireLiveDomainConfirmation(targets, { confirm_live_domains: body.confirm_live_domains });
+  if (unconfirmed) return json(unconfirmed, 409);
 
   const unsaved = await unsavedPublicationTargets(owner_org_id, site.id, versionId);
   if (unsaved.length && body.allow_unsaved !== true) return json({
@@ -87,6 +92,9 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
     status: 'queued',
     started_at: new Date().toISOString(),
     triggered_by: session.email ?? session.userId ?? 'unknown',
+    targets: targets.targets,
+    production: targets.production,
+    ...(targets.production ? { live_domains_confirmed: true } : {}),
   });
 
   try {
@@ -110,7 +118,7 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
     return json({ error: 'Failed to enqueue deploy', detail: e instanceof Error ? e.message : 'unknown' }, 500);
   }
 
-  return json({ ok: true, jobId });
+  return json({ ok: true, jobId, production: targets.production, live_domains: targets.live_domains, targets: targets.targets });
 };
 
 /** Most recent deploy jobs for the site, newest first. Lightweight — just

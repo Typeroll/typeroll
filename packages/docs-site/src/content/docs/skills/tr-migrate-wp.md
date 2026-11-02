@@ -400,6 +400,22 @@ is not visible to Typeroll. The
 [launch checklist](https://typeroll.com/docs/guides/launch-checklist/)
 explains every item.
 
+## After cutover: every deploy is production
+
+Publishing to the temporary address ends at cutover. Once the real domain
+serves the site, one publication serves both the live domain and the old
+`site-*.sites` address, so a deploy you think of as "temporary" changes the
+live website.
+
+- Review changes with `get_preview_link` (`include_working_copy: true`) or
+  `trigger_deploy dry_run=true`. Neither publishes or needs confirmation.
+- Treat every real `trigger_deploy` as a production release: get the owner's
+  approval for it, then pass `confirm_live_domains: true`.
+- `get_publication_impact` and the deploy result report `production` and
+  `targets` (live domains first, then the temporary address). Without the
+  acknowledgement a deploy is refused with `live_domain_confirmation_required`,
+  naming the live URLs. Show them to the owner; never add the flag on your own.
+
 ## Pitfalls
 
 - **Don't publish during migration.** Always import as `draft`. Even

@@ -1029,6 +1029,18 @@ Core 0.2.22 checks the actual frozen build output before activation. See
 warnings, engine updates and schema-mapping migration. Both Cloudflare and GitHub
 builds use the same gate; a failed check keeps the current live site intact.
 
+### Publishing a site that is live on its own domain
+
+Before cutover, publications go to the site's temporary, noindexed address.
+After cutover the same publication serves the live custom domain too, so a
+deploy that is not a dry run requires `confirm_live_domains: true` in the
+deploy API, `trigger_deploy` and a production `rebuild_deploy` workflow.
+Without it the request returns `409 live_domain_confirmation_required` naming
+the live URLs, with `live_domains`, `targets` and `production: true`. In the
+portal, the Publish confirmation names the live domains before it publishes.
+`get_publication_impact` and every deploy result report `production` and
+`targets`. See [deploys after cutover](../../tools/deploy/#deploys-after-cutover).
+
 ### Unsaved work and build progress
 
 From Core 0.2.103, a publication request with unsaved Pages or shared blocks
