@@ -23,12 +23,14 @@ export function trafficFingerprint(records: Array<{ id: string; type: string; co
   return digest(JSON.stringify(records.map(({ id, type, content, proxied, ttl, comment, tags, settings }) => ({ id, type, content, proxied, ttl, comment: comment ?? '', tags: [...tags ?? []].sort(), settings: Object.fromEntries(Object.entries(settings ?? {}).sort(([a], [b]) => a.localeCompare(b))) })).sort((a, b) => a.id.localeCompare(b.id))));
 }
 
-export interface ZoneSummary { id: string; name: string; status: string; name_servers?: string[]; activated_on?: string }
+/** `plan`: Cloudflare's plan id (free, pro, business, enterprise); it sets per-zone rule quotas. */
+export interface ZoneSummary { id: string; name: string; status: string; name_servers?: string[]; activated_on?: string; plan?: string }
 
 function zoneSummary(zone: any): ZoneSummary {
   return { id: String(zone.id), name: String(zone.name), status: String(zone.status ?? 'unknown'),
     ...(Array.isArray(zone.name_servers) ? { name_servers: zone.name_servers.filter((server: unknown) => typeof server === 'string') } : {}),
-    ...(typeof zone.activated_on === 'string' ? { activated_on: zone.activated_on } : {}) };
+    ...(typeof zone.activated_on === 'string' ? { activated_on: zone.activated_on } : {}),
+    ...(typeof zone.plan?.legacy_id === 'string' ? { plan: zone.plan.legacy_id } : {}) };
 }
 
 /** The closest zone for a hostname in one account, whatever its status. */

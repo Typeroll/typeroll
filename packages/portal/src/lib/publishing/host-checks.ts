@@ -14,10 +14,12 @@ type Provider = (route: string, options?: { method?: string; body?: unknown; mis
 export interface HostCheckItem {
   code: 'apex_zone_required' | 'apex_zone_in_other_account' | 'zone_not_active' | 'domain_zone_required' |
     'redirect_zone_required' | 'redirect_host_certificate_unavailable' | 'zone_check_unavailable' | 'redirect_outside_cloudflare' |
-    'previous_host_saas_hostname';
+    'previous_host_saas_hostname' | import('./previous-hosts').PreviousHostIssueCode;
   severity: 'blocking' | 'warning';
   host: string;
   message: string;
+  /** What resolves it, when the message alone does not say. */
+  remedy?: string;
   zone?: { name: string; status: string; name_servers: string[] };
   /** The provider that answers the host now, from its response headers. */
   provider?: ProviderHint;
@@ -135,6 +137,23 @@ export function previousHostSwitchPending(config: DomainConfiguration): boolean 
     ['preparing', 'ready_to_switch', 'distributing'].includes(config.state);
 }
 
+/**
+ * Previous website addresses whose 301 cannot be created within the zone's rule quota or the connection's
+ * permissions, read from the latest preparation. They are warnings: the new website still goes live and the
+ * old address keeps its noindex fallback, but the user sees why before approving the switch.
+ */
+export function previousHostCheckItems(config: Pick<DomainConfiguration, 'state' | 'previous_host_preparations'>): HostCheckItem[] {
+  if (!['preparing', 'ready_to_switch'].includes(config.state)) return [];
+  return (config.previous_host_preparations ?? []).flatMap(item => item.issue
+    ? [{ code: item.issue.code, severity: 'warning' as const, host: item.host, message: item.issue.message, remedy: item.issue.remedy }] : []);
+}
+
+/** Host checks with the previous-address warnings of the current preparation. */
+export function withPreviousHostChecks(checks: HostChecks, config: Pick<DomainConfiguration, 'state' | 'previous_host_preparations'>): HostChecks {
+  const items = previousHostCheckItems(config);
+  return items.length ? { ...checks, warnings: [...checks.warnings, ...items] } : checks;
+}
+
 const cache = new Map<string, { expires: number; value: HostChecks }>();
 
 /** Connected Cloudflare accounts that can show this site's zones, hosting account first. */
@@ -170,7 +189,7 @@ export async function siteHostChecks(orgId: string, siteId: string, config: Doma
 /** The saved domain settings with structured host checks, as returned by the UI, API and MCP. */
 export async function siteDomainsWithChecks(orgId: string, siteId: string, config: DomainConfiguration, versionId = 'main') {
   let host_checks: HostChecks | null = null;
-  try { host_checks = await siteHostChecks(orgId, siteId, config); }
+  try { const checks = await siteHostChecks(orgId, siteId, config); host_checks = checks && withPreviousHostChecks(checks, config); }
   catch (error) {
     // Reading settings must keep working when Cloudflare is unreachable or a grant expired.
     console.warn(JSON.stringify({ event: 'publishing_host_checks_unavailable', org_id: orgId, site_id: siteId, code: error instanceof ConnectionError ? error.code : 'provider_unavailable' }));

@@ -1,4 +1,4 @@
-import { readPreviousHosts } from './previous-hosts';
+import { readPreviousHosts, repairPreviousHostRedirects } from './previous-hosts';
 import { buildMigrationLaunchReport } from '../migration-launch-report';
 import { Resolver } from 'node:dns/promises';
 import { paths, pagesRedirectsFile } from '@typeroll/shared';
@@ -7,7 +7,7 @@ import { getStore } from '../datastore';
 import { getSiteDomains, saveSiteDomains, approveDomainCutover } from './domain-config';
 import { domainChangeImpact } from './domain-impact';
 import { endedDistribution, prepareDomainTransition } from './domain-transition';
-import { checkPublicationHosts, previousHostSaasCheck, previousHostSwitchPending, siteZoneSources } from './host-checks';
+import { checkPublicationHosts, previousHostSaasCheck, previousHostSwitchPending, siteZoneSources, withPreviousHostChecks } from './host-checks';
 import { findZone } from './domain-provider';
 import { publishingReadiness } from './readiness';
 import { resolvePublicationVersion } from './publication-version';
@@ -26,7 +26,7 @@ export async function readDomainGuide(org: string, site: string) {
   const config = await refreshServingAlarm(org, site, await getSiteDomains(org, site)), group = await siteHostingGroup(org, site);
   const checks: Check[] = [];
   const sources = await siteZoneSources(org, site);
-  const hosts = await checkPublicationHosts(config.desired, config.dns_mode, sources);
+  const hosts = withPreviousHostChecks(await checkPublicationHosts(config.desired, config.dns_mode, sources), config);
   checks.push({ id: 'hosting_account', status: sources.some(source => source.account === 'hosting') ? 'ready' : 'action_required', message: sources.some(source => source.account === 'hosting') ? 'The Hosting Group account is connected.' : 'Connect Cloudflare in Organization → Publishing.', details: { hosting_group_id: group.id, account_id: sources.find(source => source.account === 'hosting')?.accountId ?? null } });
   checks.push({ id: 'host_requirements', status: hosts.blockers.length ? 'action_required' : hosts.warnings.length ? 'waiting' : config.desired.website_host ? 'ready' : 'action_required', message: hosts.blockers[0]?.message ?? hosts.warnings[0]?.message ?? (config.desired.website_host ? 'The website and redirect hosts are supported.' : 'Save the future website address.'), details: hosts });
   // A previous host's Cloudflare for SaaS hostname blocks Pages validation until it is removed there (CH-07).
@@ -109,7 +109,10 @@ export async function readDomainGuide(org: string, site: string) {
   const cutover = config.candidate ? await readDomainCutover(org, site, config.candidate.id) : null;
   const ended = await endedDistribution(org, site, config);
   const previousHosts = await readPreviousHosts(config);
-  for (const host of previousHosts) checks.push({ id: `previous:${host.host}`, status: host.status === 'verified' ? 'ready' : host.status === 'pending' ? 'waiting' : 'action_required', message: `${host.host}: ${host.message}` });
+  for (const host of previousHosts) checks.push({ id: `previous:${host.host}`, status: host.status === 'verified' ? 'ready' : host.status === 'pending' ? 'waiting' : 'action_required', message: `${host.host}: ${host.message}`,
+    ...(host.issue || host.next_action ? { details: { code: host.issue?.code ?? null, remedy: host.issue?.remedy ?? null, next_action: host.next_action ?? null } } : {}) });
+  // The site is live; a previous address without its 301 is retried without a build or DNS change.
+  const repairPrevious = config.state === 'live' && previousHosts.some(host => host.mode !== 'redirect' && host.next_action === 'repair_previous_host_redirects');
   // Who actually answers the live host. An alarm stands until a later check proves it served again.
   const serving = config.state === 'live' ? config.serving_check : null;
   const otherHost = servingAlarm(serving) ? serving : null;
@@ -123,8 +126,8 @@ export async function readDomainGuide(org: string, site: string) {
   else if (serving?.pages_domain?.status === 'active') checks.push({ id: `pages_domain:${serving.pages_domain.host}`, status: 'ready', message: `The Cloudflare Pages custom domain ${serving.pages_domain.host} is active (checked ${serving.pages_domain.checked_at}).` });
   const canPrepare = checks.filter(check => ['hosting_account', 'host_requirements', 'publishing_ready', 'redirect_capacity', 'candidate_noindex'].includes(check.id)).every(check => check.status !== 'action_required');
   return { ...config, previous_hosts: previousHosts, published_main: publishedMain, can_prepare: canPrepare, elapsed_seconds: job?.started_at ? Math.max(0, Math.round((Date.parse(job.finished_at ?? new Date().toISOString()) - Date.parse(job.started_at)) / 1000)) : null, title: `Move site to ${config.desired.website_host ?? 'your domain'}`, checks,
-    current_phase: otherHost ? `Another host is serving ${otherHost.issue.host}` : pagesDown ? `Cloudflare Pages does not serve ${pagesDown.pages_issue.host} (custom domain ${pagesDown.pages_issue.status})` : config.rollback_status === 'rolled_back' ? 'previous traffic restored' : (job?.phase === 'awaiting domain cutover approval' ? 'Published; DNS switch pending' : job?.phase) ?? ({ unconfigured: 'Save a website address to begin', declared: 'Ready to publish for the new domain', preparing: 'Preparing and checking requirements', ready_to_switch: 'Ready for your approval', distributing: 'Switching and verifying traffic', live: 'Public traffic verified', failed: 'Needs attention', outdated: 'Publish for the new domain to replace this older preparation.' }[config.state]),
-    traffic_live: config.state === 'live' && !otherHost && !pagesDown, next_action: otherHost ? 'remove_other_host' : pagesDown ? (pagesDown.pages_issue.retryable ? 'retry_validation' : 'prepare') : config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : !lastPublication ? 'publish_first' : noindex.length ? 'resolve_noindex' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : publishedMain ? 'refresh' : 'prepare',
+    current_phase: otherHost ? `Another host is serving ${otherHost.issue.host}` : pagesDown ? `Cloudflare Pages does not serve ${pagesDown.pages_issue.host} (custom domain ${pagesDown.pages_issue.status})` : repairPrevious ? 'Public traffic verified; a previous address still needs its redirect' : config.rollback_status === 'rolled_back' ? 'previous traffic restored' : (job?.phase === 'awaiting domain cutover approval' ? 'Published; DNS switch pending' : job?.phase) ?? ({ unconfigured: 'Save a website address to begin', declared: 'Ready to publish for the new domain', preparing: 'Preparing and checking requirements', ready_to_switch: 'Ready for your approval', distributing: 'Switching and verifying traffic', live: 'Public traffic verified', failed: 'Needs attention', outdated: 'Publish for the new domain to replace this older preparation.' }[config.state]),
+    traffic_live: config.state === 'live' && !otherHost && !pagesDown, next_action: otherHost ? 'remove_other_host' : pagesDown ? (pagesDown.pages_issue.retryable ? 'retry_validation' : 'prepare') : repairPrevious ? 'repair_previous_host_redirects' : config.state === 'live' ? 'none' : config.state === 'distributing' && !ended ? 'wait' : !lastPublication ? 'publish_first' : noindex.length ? 'resolve_noindex' : config.state === 'ready_to_switch' && publishedMain ? 'approve' : publishedMain ? 'refresh' : 'prepare',
     cutover: cutover ? { state: cutover.state, deadline_at: cutover.deadline_at, errors: cutover.errors, previous_records: cutover.entries.map(entry => ({ hostname: entry.hostname, records: entry.before })) } : null,
     switch_summary: { website: config.preparation, media: config.media_preparation, redirects: config.redirect_preparations, previous_hosts: config.previous_host_preparations, validation_timeout_minutes: config.validation_timeout_minutes ?? 15,
       interruption: config.preparation?.validation_blocker?.message ?? 'The same main publication already serves at the current address. This step changes DNS without another build or upload. DNS propagation and provider validation can still take time.',
@@ -150,6 +153,7 @@ export async function domainGuideAction(org: string, site: string, input: Record
       await retryPagesValidation(org, site);
       return readDomainGuide(org, site);
     }
-    default: throw new ConnectionError('Choose check, preview, save, prepare, approve, rollback or retry_validation.', 400, 'invalid_domain_action');
+    case 'repair_previous_host_redirects': return repairPreviousHostRedirects(org, site);
+    default: throw new ConnectionError('Choose check, preview, save, prepare, approve, rollback, retry_validation or repair_previous_host_redirects.', 400, 'invalid_domain_action');
   }
 }

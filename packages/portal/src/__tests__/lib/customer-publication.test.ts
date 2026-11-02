@@ -1113,7 +1113,7 @@ it('finishes legacy previous-host redirects through normal publication after pub
   await executeCustomerPublication(args);
   expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'succeeded' });
   expect(rules).toHaveLength(1);
-  expect(rules[0]).toMatchObject({ expression: `http.host eq "${old}"`, action_parameters: { from_value: { status_code: 301, preserve_query_string: true } } });
+  expect(rules[0]).toMatchObject({ ref: expect.stringMatching(/^typeroll_previous_t_/), expression: `http.host in {"${old}"}`, action_parameters: { from_value: { status_code: 301, preserve_query_string: true } } });
   expect((await getSiteDomains('org', 'site')).previous_hosts).toMatchObject([{ host: old, mode: 'redirect', status: 'verified' }]);
   expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/dns_records') && options?.method)).toBe(false);
   expect(mocks.push).toHaveBeenCalledTimes(1);

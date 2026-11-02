@@ -3,7 +3,7 @@ import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getSiteDomains, saveSiteDomains } from '../../lib/publishing/domain-config';
-const mocks = vi.hoisted(() => ({ provider: vi.fn(), ready: vi.fn(), launch: vi.fn() }));
+const mocks = vi.hoisted(() => ({ provider: vi.fn(), ready: vi.fn(), launch: vi.fn(), previous: vi.fn(), repair: vi.fn() }));
 vi.mock('node:dns/promises', () => ({ Resolver: class { async resolveNs() { return ['ns2.example.net', 'ns1.example.net']; } } }));
 vi.mock('../../lib/publishing/host-checks', async original => ({ ...await original<object>(), siteZoneSources: async () => [{ account: 'hosting', accountId: 'account', provider: mocks.provider }] }));
 vi.mock('../../lib/publishing/readiness', () => ({ publishingReadiness: mocks.ready }));
@@ -15,12 +15,14 @@ const network = vi.hoisted(() => ({ respond: (() => { throw new TypeError('no ne
 vi.mock('../../lib/net/safe-fetch', async load => ({ ...await load<object>(), createSafeFetch: () => (async (input: string | URL, init?: RequestInit) => network.respond(new URL(String(input)), init)) as typeof fetch }));
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => mocks.provider }));
 vi.mock('../../lib/publishing/hosting-dns', () => ({ hostingDns: async () => ({ provider: mocks.provider, accountId: 'account', groupId: 'default' }) }));
+vi.mock('../../lib/publishing/previous-hosts', async original => ({ ...await original<object>(), readPreviousHosts: mocks.previous, repairPreviousHostRedirects: mocks.repair }));
 import { domainGuideAction, readDomainGuide } from '../../lib/publishing/domain-guide';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); vi.clearAllMocks();
   network.respond = () => { throw new TypeError('no network in tests'); };
   mocks.ready.mockResolvedValue({ ready: true, required: [] });
+  mocks.previous.mockResolvedValue([]);
   mocks.launch.mockResolvedValue({ launch_ready: false, issues: [{ detail: 'Verify the remaining legacy URLs.' }] });
   mocks.provider.mockImplementation(async route => route.startsWith('/zones?') ? [{ id: 'zone', name: 'example.com', status: 'active', account: { id: 'account' }, name_servers: ['ns1.example.net', 'ns2.example.net'] }] : [{ certificate_status: 'active', hosts: ['example.com', '*.example.com'] }]);
   await getStore().setDoc(paths.site('org', 'site'), { name: 'Site', publishing_mode: 'customer_git' });
@@ -152,4 +154,36 @@ it('warns before the switch that a previous Cloudflare for SaaS host must releas
   // A warning only: it never blocks preparation.
   expect(guide.checks.find(check=>check.id==='host_requirements')?.status).toBe('ready');
   expect(guide.can_prepare).toBe(true);
+});
+it('offers repair_previous_host_redirects when a live site has a previous address without its 301', async () => {
+  const {siteDomainConfigPath}=await import('../../lib/publishing/domain-config');
+  const config=await getSiteDomains('org','site');
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{state:'live',active:config.desired,published:{hosts:config.desired,dns_mode:'automatic',publication_id:'pub',job_id:'job'}});
+  await getStore().setDoc(paths.deploy('org','site','job'),{status:'succeeded',phase:'published'});
+  await getStore().setDoc(`${paths.site('org','site')}/publishing_targets/main`,{last_publication:{publication_id:'pub',snapshot_job_id:'job'}});
+  const issue={code:'redirect_rule_quota',message:'sites.example.com has 10 of 10 Single Redirect rules.',remedy:'Free a rule, then run repair_previous_host_redirects.'};
+  mocks.previous.mockResolvedValue([{host:'site-1.sites.example.com',target_host:'example.com',mode:'noindex',status:'warning',message:issue.message,issue,next_action:'repair_previous_host_redirects'}]);
+  const guide=await readDomainGuide('org','site');
+  expect(guide).toMatchObject({state:'live',traffic_live:true,next_action:'repair_previous_host_redirects'});
+  expect(guide.checks.find(check=>check.id==='previous:site-1.sites.example.com')).toMatchObject({status:'action_required',details:{code:'redirect_rule_quota',remedy:issue.remedy,next_action:'repair_previous_host_redirects'}});
+  mocks.repair.mockResolvedValue({action:'repair_previous_host_redirects',repaired:[],remaining:[]});
+  expect(await domainGuideAction('org','site',{action:'repair_previous_host_redirects'})).toMatchObject({action:'repair_previous_host_redirects'});
+  expect(mocks.repair).toHaveBeenCalledWith('org','site');
+  mocks.previous.mockResolvedValue([{host:'site-1.sites.example.com',target_host:'example.com',mode:'redirect',status:'verified',message:'301',issue:null,next_action:null}]);
+  expect(await readDomainGuide('org','site')).toMatchObject({next_action:'none'});
+});
+it('puts an inactive Pages custom domain before a missing previous-address redirect', async () => {
+  const {siteDomainConfigPath}=await import('../../lib/publishing/domain-config');
+  const config=await getSiteDomains('org','site');
+  const issue={code:'pages_domain_not_active',host:'example.com',status:'pending',retryable:true,remedy:'Remove it from the previous host.',message:'The Cloudflare Pages custom domain example.com is pending, not active.'};
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{state:'live',active:config.desired,published:{hosts:config.desired,dns_mode:'automatic',publication_id:'pub',job_id:'job'},
+    serving_check:{status:'inconclusive',publication_id:'pub',website_host:'example.com',job_id:'job',live_at:new Date().toISOString(),checked_at:new Date().toISOString(),next_check_at:null,hosts:[],observed:null,issue:null,
+      pages_domain:{host:'example.com',status:'pending',validation_method:'http',validation_status:'pending',error_message:null,checked_at:new Date().toISOString(),retried_at:null,retry:null},pages_issue:issue}});
+  await getStore().setDoc(paths.deploy('org','site','job'),{status:'succeeded',phase:'published'});
+  await getStore().setDoc(`${paths.site('org','site')}/publishing_targets/main`,{last_publication:{publication_id:'pub',snapshot_job_id:'job'}});
+  const redirectIssue={code:'redirect_rule_quota',message:'sites.example.com has 10 of 10 Single Redirect rules.',remedy:'Free a rule, then run repair_previous_host_redirects.'};
+  mocks.previous.mockResolvedValue([{host:'site-1.sites.example.com',target_host:'example.com',mode:'noindex',status:'warning',message:redirectIssue.message,issue:redirectIssue,next_action:'repair_previous_host_redirects'}]);
+  const guide=await readDomainGuide('org','site');
+  expect(guide).toMatchObject({traffic_live:false,next_action:'retry_validation'});
+  expect(guide.checks.find(check=>check.id==='previous:site-1.sites.example.com')).toMatchObject({status:'action_required'});
 });

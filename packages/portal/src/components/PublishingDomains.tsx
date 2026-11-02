@@ -9,7 +9,7 @@ import type { OrganizationDomainStatus as DomainStatus } from '../lib/publishing
 type Preparation = { hostname?: string; validation_blocker?: { code: string; message: string; resolution?: string } | null; certificate_ready: boolean; has_existing_traffic?: boolean; requirements: Array<{ phase: string; type: string; name: string; content: string; status: string }> };
 type RedirectPreparation = Preparation & { hostname: string; target_host: string; action: string; zone_id?: string; blocker?: { code: string; message: string } | null;
   rule: { zone_name: string | null; expression: string; target_url_expression: string; status: string; managed: boolean } };
-type HostCheckItem = { code: string; severity: 'blocking' | 'warning'; host: string; message: string };
+type HostCheckItem = { code: string; severity: 'blocking' | 'warning'; host: string; message: string; remedy?: string };
 type DomainData = {
   domain_status?: DomainStatus;
   media_host_change_allowed?: boolean;
@@ -139,7 +139,7 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
       <strong>Resolve before preparing the domain change</strong>
       <ul>{hostBlockers.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul>
     </div>}
-    {siteId && hostWarnings.length > 0 && <div className="muted"><strong>Check before preparing</strong><ul>{hostWarnings.map(item => <li key={item.code + item.host}>{item.message}</li>)}</ul></div>}
+    {siteId && hostWarnings.length > 0 && <div className="muted"><strong>Check before preparing</strong><ul>{hostWarnings.map(item => <li key={item.code + item.host}>{item.message}{item.remedy ? ` ${item.remedy}` : ''}</li>)}</ul></div>}
     {siteId && data?.next_publication && <p role="status">{data.next_publication.message}</p>}
     {data?.preparation && <details className="stack"><summary>Detailed DNS and redirect instructions</summary>
       <h3>Domain verification</h3>

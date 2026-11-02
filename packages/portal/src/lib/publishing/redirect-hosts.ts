@@ -84,7 +84,7 @@ export function manualRuleMessage(spec: RedirectRuleSpec, host: string, target: 
 }
 
 /** The permission update that lets the connection holding the zone create redirect rules, or null. */
-async function redirectAccessStep(orgId: string, groupId: string): Promise<string | null> {
+export async function redirectAccessStep(orgId: string, groupId: string): Promise<string | null> {
   try {
     const { cloudflarePermissionReport } = await import('./cloudflare-capabilities');
     const report = await cloudflarePermissionReport(orgId, groupId);
