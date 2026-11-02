@@ -24,7 +24,7 @@ function mockFetch(input: string | URL | Request, init?: RequestInit): Promise<R
     return Promise.resolve(new Response('User-agent: *\nAllow: /\n', { status: 200 }));
   }
   const fallback = url.hostname.startsWith('demo.sites.');
-  const headers = fallback ? { 'x-robots-tag': 'noindex, nofollow' } : undefined;
+  const headers = { 'x-typeroll-publication': 'publication', ...(fallback ? { 'x-robots-tag': 'noindex, nofollow' } : {}) };
   const body = init?.method === 'HEAD'
     ? null
     : '<!doctype html><meta content="index,follow" name="robots"><h1>Demo</h1>';
@@ -172,4 +172,56 @@ it('reports previous addresses as redirected or noindex rather than indexable co
     expect(report.ready).toBe(true);
     expect(report.previous_hosts?.[0]).toMatchObject({ host: old, mode: redirect ? 'redirect' : 'noindex', status: redirect ? 'verified' : 'warning' });
   }
+});
+
+describe('whose page the diagnostics read', () => {
+  const customer = { ...site, publishing_mode: 'customer_git' as const, domain: 'moveria.ch' };
+  const options = (fetchImpl: typeof fetch) => ({ publicationId: 'publication', fetchImpl, validateDestination: async () => {} });
+  const robots = () => new Response('User-agent: *\nAllow: /\n');
+  // CH-06: the apex is answered by Kinsta's Cloudflare for SaaS hostname, with WordPress (Yoast) robots meta.
+  const kinsta = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : input.toString());
+    if (url.pathname === '/robots.txt') return robots();
+    const headers = { 'x-kinsta-cache': 'HIT', link: '<https://moveria.ch/wp-json/>; rel="https://api.w.org/"' };
+    if (url.pathname === '/.well-known/typeroll/publication.json') return new Response('<!doctype html>Not found', { status: 404, headers });
+    return new Response(init?.method === 'HEAD' ? null : '<meta name="robots" content="index, follow, max-image-preview:large">', { headers });
+  }) as typeof fetch;
+
+  it('records the serving publication and accepts the expected one', async () => {
+    const report = await diagnoseSiteIndexing(customer, { site_name: 'Demo' } as never, options(mockFetch as typeof fetch));
+    expect(report.ready).toBe(true);
+    expect(report.targets[0]).toMatchObject({ kind: 'production', serving_publication: 'publication', serving_typeroll: true, provider_hint: null, matches_expected: true });
+  });
+
+  it('does not report another host\'s robots meta as this site matching expectations', async () => {
+    const report = await diagnoseSiteIndexing(customer, { site_name: 'Demo' } as never, options(kinsta));
+    expect(report.ready).toBe(false);
+    expect(report.targets[0]).toMatchObject({
+      meta_robots: 'index, follow, max-image-preview:large', effective_noindex: false,
+      serving_publication: null, serving_typeroll: false, matches_expected: false,
+      provider_hint: { provider: 'kinsta', name: 'Kinsta', cloudflare_for_saas: true },
+    });
+    const issue = report.targets[0].issues.join(' ');
+    expect(issue).toContain('not served by Typeroll');
+    expect(issue).toContain('Kinsta (x-kinsta-cache: HIT)');
+    expect(issue).toContain("Remove the domain from the previous host's dashboard (for example MyKinsta → Domains); its Cloudflare for SaaS hostname outranks your own DNS.");
+  });
+
+  it('reports a different publication and falls back to publication.json when the header is absent', async () => {
+    const other = (async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      if (url.pathname === '/robots.txt') return robots();
+      if (url.pathname === '/.well-known/typeroll/publication.json') return Response.json({ id: 'older', paths: ['/'] });
+      return new Response('<h1>Demo</h1>');
+    }) as typeof fetch;
+    const report = await diagnoseSiteIndexing(customer, { site_name: 'Demo' } as never, options(other));
+    expect(report.targets[0]).toMatchObject({ serving_publication: 'older', serving_typeroll: false, matches_expected: false });
+    expect(report.issues.join(' ')).toContain('serves Typeroll publication older, not the current publication publication');
+  });
+
+  it('keeps a transport failure inconclusive about who serves the host', async () => {
+    const report = await diagnoseSiteIndexing(customer, { site_name: 'Demo' } as never, options((async () => { throw new TypeError('fetch failed'); }) as typeof fetch));
+    expect(report.targets[0]).toMatchObject({ reachable: false, serving_publication: null, serving_typeroll: null });
+    expect(report.issues.join(' ')).not.toContain('not served by Typeroll');
+  });
 });

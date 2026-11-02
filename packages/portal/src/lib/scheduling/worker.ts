@@ -90,6 +90,15 @@ export async function executeScheduledWork(id: string, generation?: string, now 
         await postpone(path, current.generation, next);
         return result;
       }
+    } else if (current.kind === 'domain_serving_check') {
+      // Written by lib/publishing/serving-check.ts when a website host goes live;
+      // read-only follow-up checks of who actually answers the host.
+      const { runScheduledServingCheck } = await import('../publishing/serving-check');
+      const next = await runScheduledServingCheck(current.source, current.payload, now.valueOf());
+      if (next !== null) {
+        await postpone(path, current.generation, next);
+        return result;
+      }
     } else if (current.kind === 'site_publish') {
       const site = await store.getDoc<any>(current.source);
       if (site) {

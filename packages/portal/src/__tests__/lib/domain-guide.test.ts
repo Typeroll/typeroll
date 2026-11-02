@@ -79,3 +79,17 @@ it('falls back to the zone activation window when the connection may not read ce
   mocks.provider.mockImplementation(async route => { if (route.startsWith('/zones?')) return [zone(activated)]; throw new ProviderError('Cloudflare', 502); });
   expect(await certificate()).toMatchObject({ status: 'waiting', message: expect.stringContaining('Retry the check') });
 });
+
+it('does not read as a healthy live domain while another host serves it', async () => {
+  const {siteDomainConfigPath}=await import('../../lib/publishing/domain-config');
+  const config=await getSiteDomains('org','site');
+  const issue={code:'domain_served_by_other_host',host:'example.com',remedy:"Remove the domain from the previous host's dashboard (for example MyKinsta → Domains); its Cloudflare for SaaS hostname outranks your own DNS.",message:'example.com is not served by Typeroll.'};
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{state:'live',active:config.desired,published:{hosts:config.desired,dns_mode:'automatic',publication_id:'pub',job_id:'job'},
+    serving_check:{status:'other_host',publication_id:'pub',website_host:'example.com',job_id:'job',live_at:new Date().toISOString(),checked_at:new Date().toISOString(),next_check_at:null,hosts:[],
+      observed:{host:'example.com',publication:null,http_status:200,provider_hint:{provider:'kinsta',name:'Kinsta',evidence:'x-kinsta-cache: HIT',cloudflare_for_saas:true}},issue}});
+  await getStore().setDoc(paths.deploy('org','site','job'),{status:'succeeded',phase:'served by another host'});
+  await getStore().setDoc(`${paths.site('org','site')}/publishing_targets/main`,{last_publication:{publication_id:'pub',snapshot_job_id:'job'}});
+  const guide=await readDomainGuide('org','site');
+  expect(guide).toMatchObject({state:'live',traffic_live:false,next_action:'remove_other_host',current_phase:'Another host is serving example.com'});
+  expect(guide.checks.find(check=>check.id==='serving:example.com')).toMatchObject({status:'action_required',message:issue.message,details:{code:'domain_served_by_other_host',remedy:issue.remedy}});
+});
