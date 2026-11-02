@@ -210,9 +210,10 @@ the full reference + concrete operation recipes.
   SEO/link/performance audits, content generation and improvement, schema
   markup, URL parity, rebuild & deploy), `get_workflow`, `approve_workflow`,
   `cancel_workflow`. Starting needs write; `rebuild_deploy` publishes and needs
-  admin. Approve a review gate only with the user's consent. A run stopped by a
-  service restart is reported `failed` with `failure_code`
-  `workflow_interrupted`; start a new one.
+  admin. Approve a review gate only with the user's consent. Runs continue
+  from their saved progress after a service restart; one that cannot be
+  resumed is reported `failed` with `failure_code` `workflow_interrupted`;
+  start a new one.
 - **Organization publishing connections** —
   `read_organization_publishing_connections` (status, revisions and
   `connect_urls` for the browser-only OAuth steps),

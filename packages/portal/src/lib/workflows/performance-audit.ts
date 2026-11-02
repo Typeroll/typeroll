@@ -2,12 +2,25 @@
 //
 // Runs Google PageSpeed Insights against every published page and stores
 // Core Web Vitals + Lighthouse scores. Requires PAGESPEED_API_KEY (free
-// Google API key) — degrades to a no-op message without it.
+// Google API key) — degrades to a no-op message without it. Each audit can
+// take up to a minute, so the step runs in chunks of at most
+// PERFORMANCE_AUDIT_PAGES_PER_CHUNK pages; the page list, the offset and the
+// results so far are its cursor.
 
 import { paths , MAIN_VERSION_ID } from '@typeroll/shared';
 import { vstore } from '../version-store';
 import type { Page, Site } from '@typeroll/shared';
-import { type WorkflowDef } from './types';
+import { stepYield, type WorkflowDef } from './types';
+
+/** Pages one chunk audits at most; its time budget usually ends it sooner. */
+export const PERFORMANCE_AUDIT_PAGES_PER_CHUNK = 5;
+
+interface AuditCursor {
+  origin: string;
+  pages: Array<{ id: string; slug: string; title: string }>;
+  offset: number;
+  results: PageSpeedResult[];
+}
 
 interface PageSpeedResult {
   page_id: string;
@@ -32,21 +45,28 @@ export const performanceAuditWorkflow: WorkflowDef = {
       label: 'Run PageSpeed Insights',
       async run(ctx) {
         const apiKey = process.env.PAGESPEED_API_KEY;
-        const site = await ctx.store.getDoc<Site>(paths.site(ctx.orgId, ctx.siteId));
-        const origin = site?.domain ? `https://${site.domain}` : null;
-        if (!origin) throw new Error('Site has no domain — set one before running performance audits.');
+        let cursor = ctx.cursor as AuditCursor | undefined;
+        if (!cursor) {
+          const site = await ctx.store.getDoc<Site>(paths.site(ctx.orgId, ctx.siteId));
+          const origin = site?.domain ? `https://${site.domain}` : null;
+          if (!origin) throw new Error('Site has no domain — set one before running performance audits.');
 
-        const pages = await vstore.pages(ctx.orgId, ctx.siteId, MAIN_VERSION_ID);
-        const published = pages.filter((p) => p.status === 'published');
-        ctx.log(`Checking ${published.length} pages on ${origin}`);
+          const pages = await vstore.pages(ctx.orgId, ctx.siteId, MAIN_VERSION_ID);
+          const published = pages.filter((p) => p.status === 'published');
+          ctx.log(`Checking ${published.length} pages on ${origin}`);
 
-        if (!apiKey) {
-          ctx.log('PAGESPEED_API_KEY not set — skipping live audits.');
-          return { results: { skipped: true, reason: 'PAGESPEED_API_KEY not configured' } };
+          if (!apiKey) {
+            ctx.log('PAGESPEED_API_KEY not set — skipping live audits.');
+            return { results: { skipped: true, reason: 'PAGESPEED_API_KEY not configured' } };
+          }
+          cursor = { origin, pages: published.map((p) => ({ id: p.id, slug: p.slug, title: p.title })), offset: 0, results: [] };
         }
+        if (!apiKey) throw new Error('PAGESPEED_API_KEY is no longer configured; start a new run once it is set.');
 
-        const results: PageSpeedResult[] = [];
-        for (let i = 0; i < published.length; i++) {
+        const { origin, pages: published, results } = cursor;
+        const end = Math.min(published.length, cursor.offset + PERFORMANCE_AUDIT_PAGES_PER_CHUNK);
+        let i = cursor.offset;
+        for (; i < end && !(i > cursor.offset && ctx.shouldYield?.()); i++) {
           const p = published[i];
           ctx.setProgress({ total: published.length, completed: i });
           const url = `${origin}/${p.slug === 'home' ? '' : p.slug}`;
@@ -58,6 +78,7 @@ export const performanceAuditWorkflow: WorkflowDef = {
             ctx.log(`Failed for ${url}: ${e instanceof Error ? e.message : e}`);
           }
         }
+        if (i < published.length) return stepYield({ ...cursor, offset: i } satisfies AuditCursor);
 
         const avg = (key: keyof PageSpeedResult) =>
           Math.round(

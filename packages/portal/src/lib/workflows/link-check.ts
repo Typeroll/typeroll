@@ -2,17 +2,28 @@
 //
 // Scans every published page for outbound and internal links, then verifies
 // each one with a HEAD request. Reports broken links with their location so
-// the customer (or AI) can fix them.
+// the customer (or AI) can fix them. Verification runs in chunks of at most
+// LINK_CHECK_LINKS_PER_CHUNK links; the offset and the broken links found so
+// far are its cursor, so no link is checked twice across chunks.
 
 import { paths , MAIN_VERSION_ID } from '@typeroll/shared';
 import { vstore } from '../version-store';
 import type { Page, Site } from '@typeroll/shared';
-import { type WorkflowDef } from './types';
+import { stepYield, type WorkflowDef } from './types';
 import { safeFetch, type OutboundPolicy } from '../net/safe-fetch';
 
 // Links are authored content: check only public http(s) destinations, with
 // every redirect hop re-validated and no response body read.
 const LINK_CHECK_POLICY: OutboundPolicy = { allowHttp: true, label: 'Link', timeoutMs: 10_000, maxBytes: 1024 * 1024 };
+
+/** Links one chunk starts checking at most; its time budget may end it sooner. */
+export const LINK_CHECK_LINKS_PER_CHUNK = 200;
+
+interface VerifyCursor {
+  /** Links before this index have been checked. */
+  offset: number;
+  broken: BrokenLink[];
+}
 
 interface BrokenLink {
   page_id: string;
@@ -55,14 +66,16 @@ export const linkCheckWorkflow: WorkflowDef = {
       label: 'Check each link',
       async run(ctx) {
         const links = ctx.state.links as Array<{ page_id: string; page_title: string; url: string; text: string }>;
-        const broken: BrokenLink[] = [];
+        const saved = ctx.cursor as VerifyCursor | undefined;
+        const broken: BrokenLink[] = saved?.broken ?? [];
         const concurrency = 8;
-        let cursor = 0;
+        let cursor = saved?.offset ?? 0;
+        const end = Math.min(links.length, cursor + LINK_CHECK_LINKS_PER_CHUNK);
 
         const worker = async () => {
           while (true) {
+            if (cursor >= end || ctx.shouldYield?.()) return;
             const i = cursor++;
-            if (i >= links.length) return;
             const link = links[i];
             try {
               const res = await safeFetch(link.url, {
@@ -83,6 +96,12 @@ export const linkCheckWorkflow: WorkflowDef = {
           }
         };
         await Promise.all(Array.from({ length: concurrency }, () => worker()));
+        // Workers stop taking links at the same index, so every link before
+        // `cursor` has been checked once all of them returned.
+        if (cursor < links.length) {
+          ctx.setProgress({ total: links.length, completed: cursor, error: broken.length });
+          return stepYield({ offset: cursor, broken } satisfies VerifyCursor);
+        }
         ctx.log(`${broken.length} broken link(s) out of ${links.length}`);
         return { results: { broken_links: broken, total_links: links.length } };
       },

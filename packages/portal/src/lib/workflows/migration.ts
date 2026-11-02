@@ -29,13 +29,30 @@ import { WPHelperClient, type HelperItem } from '../wp/helper-client';
 import { normalizeWordPressPlainText } from '../wp/plain-text';
 import { wordpressDate } from '../wp/dates';
 import { sameSourceSite } from '../net/safe-fetch';
-import { reviewGate, type WorkflowDef } from './types';
+import { reviewGate, stepYield, type WorkflowDef } from './types';
 import { assignRedirectDocId } from '../redirect-write';
 
 // REST `content.rendered` shorter than this triggers the public-page fallback —
 // page builders sometimes return just shortcode markup that hasn't been
 // expanded, and we'd rather see the actual rendered HTML.
 const THIN_CONTENT_THRESHOLD = 200;
+
+/** Items one extract_content chunk imports at most; its time budget usually ends it sooner. */
+export const MIGRATION_ITEMS_PER_CHUNK = 50;
+
+/**
+ * Progress of extract_content between chunks. The source listing is read
+ * again in each chunk (bodies are too large to keep); items are identified by
+ * `${sourceType}:${id}`, so a reordered listing never skips or repeats one.
+ */
+interface ExtractCursor {
+  processed: string[];
+  done: number;
+  skipped_existing: number;
+  images_moved: number;
+  slug_map: Record<string, string>;
+  conversion_review: Array<{ page_id: string; notes: string[]; html_blocks: number }>;
+}
 
 interface StoredContentTypeRef {
   source_slug: string;
@@ -333,6 +350,9 @@ export const migrationWorkflow: WorkflowDef = {
         const sourceOrigin = new URL(url).origin;
         const helperActive = Boolean(ctx.state.helper_active);
         const helperKey = ctx.state.helper_api_key as string | null;
+        const saved = ctx.cursor as ExtractCursor | undefined;
+        // Logs that describe the whole import are written by its first chunk only.
+        const logOnce = (msg: string) => { if (!saved) ctx.log(msg); };
 
         const transfer = new WPMediaTransfer(
           ctx.orgId,
@@ -343,7 +363,7 @@ export const migrationWorkflow: WorkflowDef = {
         if (!mediaAvailability.configured) {
           throw new Error('Import storage is not ready. Connect and verify organization media storage before importing.');
         } else {
-          ctx.log(`Imported media will be saved to ${mediaAvailability.destination}.`);
+          logOnce(`Imported media will be saved to ${mediaAvailability.destination}.`);
         }
 
         // Ensure an article content type exists so WordPress posts can be
@@ -372,7 +392,7 @@ export const migrationWorkflow: WorkflowDef = {
         const importable = <T extends ProtectableItem>(sourceType: string, items: T[]): T[] => items.filter((item) => {
           if (!isPasswordProtected(item)) return true;
           protectedSkipped.push({ source_type: sourceType, id: item.id, url: item.link });
-          ctx.log(`[${item.slug}] Password-protected in WordPress; not imported. Recreate it or add a redirect for ${String(item.link).slice(0, 200)} before launch.`);
+          logOnce(`[${item.slug}] Password-protected in WordPress; not imported. Recreate it or add a redirect for ${String(item.link).slice(0, 200)} before launch.`);
           return false;
         });
 
@@ -490,13 +510,14 @@ export const migrationWorkflow: WorkflowDef = {
         const targetTypes = new Map((await vstore.contentTypes(ctx.orgId, ctx.siteId, migrationVersion(ctx))).map(type => [type.id, type]));
 
         const total = pages.length + posts.length + customItems.length;
-        ctx.log(`Importing ${pages.length} page(s), ${posts.length} post(s), ${customItems.length} custom-type item(s)…`);
+        logOnce(`Importing ${pages.length} page(s), ${posts.length} post(s), ${customItems.length} custom-type item(s)…`);
 
-        let done = 0;
-        let skippedExisting = 0;
-        const conversionReview: Array<{ page_id: string; notes: string[]; html_blocks: number }> = [];
-        let imagesMoved = 0;
-        const slugMap: Record<string, string> = {};
+        let done = saved?.done ?? 0;
+        let skippedExisting = saved?.skipped_existing ?? 0;
+        const conversionReview: Array<{ page_id: string; notes: string[]; html_blocks: number }> = saved?.conversion_review ?? [];
+        let imagesMoved = saved?.images_moved ?? 0;
+        const slugMap: Record<string, string> = saved?.slug_map ?? {};
+        const processed = new Set(saved?.processed ?? []);
         const sourceRedirectCache = new Map<string, Promise<string>>();
 
         // ── per-page helpers ─────────────────────────────────────────────
@@ -693,7 +714,21 @@ export const migrationWorkflow: WorkflowDef = {
           }
         };
 
-        for (const { item, sourceType, targetType } of entries) await importAndSave(item, sourceType, targetType);
+        let importedThisChunk = 0;
+        for (const { item, sourceType, targetType } of entries) {
+          const key = `${sourceType}:${item.id}`;
+          if (processed.has(key)) continue;
+          if (importedThisChunk >= MIGRATION_ITEMS_PER_CHUNK || (importedThisChunk > 0 && ctx.shouldYield?.())) {
+            ctx.setProgress({ total, completed: done });
+            return stepYield({
+              processed: [...processed], done, skipped_existing: skippedExisting, images_moved: imagesMoved,
+              slug_map: slugMap, conversion_review: conversionReview,
+            } satisfies ExtractCursor);
+          }
+          await importAndSave(item, sourceType, targetType);
+          processed.add(key);
+          importedThisChunk++;
+        }
 
         ctx.log(
           `Import complete. Existing pages preserved: ${skippedExisting}, password-protected items skipped: ${protectedSkipped.length}, shared terms: ${taxonomyPlan.pages.length}, images moved: ${imagesMoved}. Review desktop/mobile layout and integrations before publishing.`

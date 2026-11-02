@@ -173,14 +173,19 @@ A run is `pending`, `running`, `paused_for_review` (waiting for your approval),
 `completed`, `failed` or `cancelled`. A failed run has a `failure_reason` and,
 when the cause is known, a stable `failure_code`.
 
-Runs execute in the portal process and record `heartbeat_at` while they work,
-about every 30 seconds, even during a long step such as a URL parity check
-of hundreds of addresses. When the portal restarts, for example during a
-deploy, a run in progress stops. The next time anyone reads it (`get_workflow`,
-`list_workflows`, the API or the portal), a run that has been `running` without
-a heartbeat for more than 10 minutes is marked `failed` with `failure_code:
-"workflow_interrupted"` and a reason saying that it stopped making progress.
-It will not continue: start a new run. Work saved before it stopped stays
+Runs execute in short chunks of at most about a minute, each in a request of
+its own on the portal's durable queue, and record `heartbeat_at` while they
+work, about every 30 seconds. A long step that works through many items (a URL
+parity check, a link check, a performance audit, a WordPress import) saves
+its progress after every chunk: the results gathered so far and where to
+continue. When the portal restarts, for example during a deploy, the queue
+delivers the interrupted chunk again and the run continues from its saved
+progress, without checking any URL twice. A read (`get_workflow`,
+`list_workflows`, the API or the portal) that finds a `running` run without a
+heartbeat for more than 3 minutes resumes it the same way, up to 3 times in a
+row. Only a run that still makes no progress is marked `failed` with
+`failure_code: "workflow_interrupted"` and a reason saying that it stopped
+making progress: start a new run then. Work saved before it stopped stays
 saved. Runs paused for review are never closed this way.
 
 `cancel_workflow` (`POST …/cancel`) stops a `pending`, `running` or

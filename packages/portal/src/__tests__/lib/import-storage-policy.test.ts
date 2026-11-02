@@ -35,7 +35,7 @@ it('requires the owning organization storage, independently of build provider or
   await expect(requireImportStorage('other-org')).rejects.toMatchObject({ code: 'import_storage_required' });
   expect(await importStorageStatus('org')).toMatchObject({ ready: true });
   const id = await create();
-  expect((await new WorkflowEngine().start('org', id, def)).status).toBe('completed');
+  expect((await new WorkflowEngine(getStore(), { queue: 'inline' }).start('org', id, def)).status).toBe('completed');
   expect(run).toHaveBeenCalledTimes(1);
 });
 
@@ -43,9 +43,9 @@ it('rechecks storage before each step and before resuming a review', async () =>
   await connect();
   const paused: WorkflowDef = { ...def, steps: [{ name: 'review', label: 'Review', run: async () => reviewGate('Review') }, ...def.steps] };
   const id = await create(paused);
-  await new WorkflowEngine().start('org', id, paused);
+  await new WorkflowEngine(getStore(), { queue: 'inline' }).start('org', id, paused);
   await getStore().updateDoc(connectionPath('org', 'cloudflare'), { status: 'disconnected' });
-  await expect(new WorkflowEngine().resume('org', id, paused)).rejects.toMatchObject({ code: 'import_storage_required' });
+  await expect(new WorkflowEngine(getStore(), { queue: 'inline' }).resume('org', id, paused)).rejects.toMatchObject({ code: 'import_storage_required' });
   expect(run).not.toHaveBeenCalled();
   expect(await getStore().getDoc(`${paths.workflows('org')}/${id}`)).toMatchObject({ status: 'paused_for_review' });
 });
