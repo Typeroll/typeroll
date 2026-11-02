@@ -22,6 +22,11 @@
   such as Kinsta shows the warning `previous_host_saas_hostname`: remove the
   domain there right before or right after approving, inside the validation
   window.
+- Preview links: a link to another site, or to a portal page outside the
+  preview, opens in a new tab instead of a browser error page inside the
+  preview frame. The preview stays on its page; in-site, `#hash`, `mailto:`
+  and `tel:` links, links with a `target` or `download`, and modifier-clicks
+  behave as before. Published sites are unchanged.
 
 ## 0.2.140 / MCP 0.45.104 (candidate)
 
