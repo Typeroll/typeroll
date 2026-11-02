@@ -17,6 +17,10 @@
   minutes resumes it from its saved progress, up to 3 times; only then is it
   closed as `failed`/`workflow_interrupted`. The API, MCP and status contract
   are unchanged.
+- Preview links: the browser's Back button returns to the previous preview
+  page. A click inside the preview added a second, frame-only history entry,
+  so Back first went back inside the frame and left the address on the newer
+  page. The preview frame now moves in place and each page is one entry.
 
 ## 0.2.141 / MCP 0.45.105 (candidate)
 
