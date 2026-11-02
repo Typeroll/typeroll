@@ -8,7 +8,10 @@ const API_BASE = 'https://api.cloudflare.com/client/v4';
 const PAGE_SIZE = 100;
 const MAX_PAGES = 20;
 
-export type WebAnalyticsFailure = 'access' | 'rate_limited' | 'unavailable';
+export type WebAnalyticsFailure = 'access' | 'rate_limited' | 'unavailable' | 'site_limit';
+
+/** Cloudflare allows this many Web Analytics sites added by hostname (not proxied) per account; it is a soft limit. */
+export const UNPROXIED_SITE_LIMIT = 10;
 
 export class WebAnalyticsProviderError extends Error {
   constructor(readonly kind: WebAnalyticsFailure, readonly status: number, readonly codes: number[] = []) {
@@ -114,8 +117,11 @@ export function webAnalyticsApi(token: string, accountId: string, fetchImpl: typ
       } catch (error) {
         // A site for this host may already exist in the account: reuse it rather than fail.
         if (error instanceof WebAnalyticsProviderError && (error.status === 409 || error.status === 400)) {
-          const existing = (await listSites()).find((site) => site.hosts.includes(host));
+          const sites = await listSites();
+          const existing = sites.find((site) => site.hosts.includes(host));
           if (existing) return existing;
+          // Cloudflare's refusal (e.g. code 10014) names no reason. A full account is the usual one.
+          if (sites.length >= UNPROXIED_SITE_LIMIT) throw new WebAnalyticsProviderError('site_limit', error.status, error.codes);
         }
         throw error;
       }
