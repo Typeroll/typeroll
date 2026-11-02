@@ -1,7 +1,7 @@
 import PublishingDomainOnboarding from './PublishingDomainOnboarding';
 import { useEffect, useState } from 'react';
 
-type Guide = { previous_hosts?: Array<{ host: string; target_host: string; mode: 'redirect' | 'noindex'; status: string; message: string }>; title: string; revision: string; state: string; current_phase: string; traffic_live: boolean; next_action: string; can_prepare?: boolean; published_main?: boolean; elapsed_seconds?: number | null; candidate?: { id: string }; cutover?: { state: string; errors: string[] } | null; checks: Array<{ id: string; status: string; message: string }>;
+type Guide = { previous_hosts?: Array<{ host: string; target_host: string; mode: 'redirect' | 'noindex'; status: string; message: string; issue?: { code: string; remedy: string } | null }>; title: string; revision: string; state: string; current_phase: string; traffic_live: boolean; next_action: string; can_prepare?: boolean; published_main?: boolean; elapsed_seconds?: number | null; candidate?: { id: string }; cutover?: { state: string; errors: string[] } | null; checks: Array<{ id: string; status: string; message: string }>;
   preparation?: { validation_blocker?: { resolution: string } }; switch_summary: { interruption: string; rollback: string; validation_timeout_minutes: number }; };
 
 /** A single visible journey; polling only refreshes status and never advances a traffic action. */
@@ -30,14 +30,14 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
     if (!guide) return;
     setBusy(true); setError(''); setNotice('');
     try {
-      let result: { reused_candidate?: boolean; already_running?: boolean } = {};
+      let result: { reused_candidate?: boolean; already_running?: boolean; repaired?: string[]; remaining?: unknown[] } = {};
       if (action !== 'check') {
         const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, revision: guide.revision, candidate_id: guide.candidate?.id, ...(action === 'approve' ? { accept_validation_window: accept, validation_timeout_minutes: 15 } : {}), ...extra }) });
         const body = await response.json(); if (!response.ok) throw new Error(body.error || 'The domain action failed.');
         result = body;
       }
       await load(); setReview(false); setAccept(false);
-      setNotice(action === 'check' ? 'Checks refreshed. Review the current status below.' : action === 'prepare' ? result.reused_candidate ? 'Domain setup refreshed. The same main publication is retained; no build or DNS change was started.' : result.already_running ? 'Publication is already in progress. Follow its status here; no duplicate build was started.' : 'Publishing for the new domain started. This replaces the site at its current address. DNS is unchanged.' : action === 'rollback' ? 'Restoration requested. Typeroll checks for intervening DNS edits before restoring.' : 'Switch approved. This is not live until public verification succeeds.');
+      setNotice(action === 'check' ? 'Checks refreshed. Review the current status below.' : action === 'prepare' ? result.reused_candidate ? 'Domain setup refreshed. The same main publication is retained; no build or DNS change was started.' : result.already_running ? 'Publication is already in progress. Follow its status here; no duplicate build was started.' : 'Publishing for the new domain started. This replaces the site at its current address. DNS is unchanged.' : action === 'rollback' ? 'Restoration requested. Typeroll checks for intervening DNS edits before restoring.' : action === 'repair_previous_host_redirects' ? (result.remaining?.length ? 'Some previous addresses still have no redirect. Follow the steps shown for each one, then repair again.' : 'Previous addresses now redirect to the website. No build or DNS change was made.') : 'Switch approved. This is not live until public verification succeeds.');
     } catch (err) { setError(err instanceof Error ? err.message : 'The domain action failed.'); }
     finally { setBusy(false); }
   }
@@ -53,6 +53,7 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
       {guide.previous_hosts.map(host => <div key={host.host} style={{ overflowWrap: 'anywhere' }}>
         <strong>{host.host}</strong><p>{host.status === 'pending' ? 'Not verified' : host.mode === 'redirect' ? `301 → ${host.target_host}` : 'Noindex protection · redirect needs attention'}</p>
         <p className="muted">{host.message}</p>
+        {host.mode !== 'redirect' && host.issue?.remedy && <p className="muted">{host.issue.remedy}</p>}
       </div>)}
     </section>}
     <PublishingDomainOnboarding siteId={siteId} />
@@ -69,6 +70,7 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
           <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Keep the site hidden from search engines on the new domain? You can turn indexing on later in Site settings and publish again.')) void action('prepare', { allow_noindex_launch: true }); }}>Keep it hidden on purpose</button>
         </div>
       </div>}
+      {guide?.next_action === 'repair_previous_host_redirects' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void action('repair_previous_host_redirects')}>Repair previous address redirects</button>}
       {guide?.next_action === 'approve' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setReview(true)}>Review traffic switch</button>}
       {guide?.cutover && guide.cutover.state !== 'rolled_back' && <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Restore the DNS records saved before this traffic switch? Later external edits will be reported instead of overwritten.')) void action('rollback'); }}>Restore previous traffic</button>}
     </div>

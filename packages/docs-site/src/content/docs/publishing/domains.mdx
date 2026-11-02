@@ -85,7 +85,7 @@ An old preview-branch preparation cannot activate traffic under this flow. Choos
 and publish for the domain again; the previous DNS journal is not reused.
 
 Agents use `guide_publishing_domain_change` (`check`, `preview`, `save`, `prepare`,
-`approve`, `rollback`) at `POST /api/v1/sites/{siteId}/publishing/domain-guide`.
+`approve`, `rollback`, `repair_previous_host_redirects`) at `POST /api/v1/sites/{siteId}/publishing/domain-guide`.
 `onboard_publishing_domain_zone` uses the organization-scoped
 `POST /api/v1/publishing/domain-onboarding` endpoint for zone creation and reviewed
 DNS scans. Site-only credentials cannot administer organization zones. The
@@ -318,6 +318,52 @@ From Core 0.2.120, opening Publishing or checking the domain guide probes the
 previous addresses again. A warning captured before a redirect propagated can
 therefore become verified without another publication. A failed network check
 is reported as pending; it never changes DNS or redirect rules.
+
+### Rule quota and missing redirects
+
+Previous addresses usually share one hosting zone, for example every temporary
+`site-….sites.example.com` address in `example.com`. Cloudflare limits the
+Single Redirect rules of a zone by plan (Free: 10, Pro: 25, Business: 50). From
+Core 0.2.141 Typeroll writes one rule per new website host
+(`typeroll_previous_t_…`, expression `http.host in {…}`) and adds every previous
+address of that site to it, instead of one rule per address. A per-host rule
+written by an older release (`typeroll_previous_…`) keeps working: it is extended
+in place, and after go-live several rules for the same site are merged into one.
+The merged rule is written and read back before an older rule is deleted, so an
+address is never left without its redirect. Each site moved out of a shared zone
+still needs one rule there.
+
+Before you approve a switch, `host_checks` (in `read_publishing_domains`) and
+the guide's `host_requirements` check show a warning for a previous address whose
+301 cannot be created:
+
+- `redirect_rule_quota`: the zone's redirect rules are full.
+- `redirect_permission_missing`: the connection cannot read or create redirect
+  rules (Zone → Single Redirect → Edit; OAuth `dynamic-redirect.read` and
+  `dynamic-redirect.write`).
+- `redirect_rule_conflict`: another Typeroll rule already answers for the address.
+
+Each warning has a `remedy`. The warning does not block the switch: the new
+website goes live, and the old address keeps its noindex header. If Cloudflare
+refuses the write during the switch, `previous_hosts` records the issue code and
+message (`redirect_rule_rejected` when the cause is unknown), the guide shows it
+under `previous:<host>`, and `next_action` becomes
+`repair_previous_host_redirects`.
+
+To repair, apply the remedy first: free a rule in Cloudflare → the zone → Rules →
+Redirect Rules, upgrade the zone's plan, or approve the permission update. Then
+select **Repair previous address redirects** in the guide, or call
+`guide_publishing_domain_change` with `action: "repair_previous_host_redirects"`
+(`POST /api/v1/sites/{siteId}/publishing/domain-guide`). The repair works on a
+live site only, without a build or DNS change, and not while a publication runs.
+It reuses an existing rule, so repeating it writes nothing. Hosts that still
+cannot redirect are listed under `remaining` with their issue.
+
+Instead of a zone rule, you can also create a Cloudflare Bulk Redirect yourself:
+source URL `<old host>/`, target URL `https://<new host>/`, status 301 with
+preserve query string, subpath matching and preserve path suffix. Typeroll does
+not request the account permissions for Bulk Redirects, but it verifies the
+public 301 whichever mechanism answers.
 
 ## Another host still answers after the switch
 

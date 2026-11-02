@@ -3,18 +3,20 @@ import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getSiteDomains, saveSiteDomains } from '../../lib/publishing/domain-config';
-const mocks = vi.hoisted(() => ({ provider: vi.fn(), ready: vi.fn(), launch: vi.fn() }));
+const mocks = vi.hoisted(() => ({ provider: vi.fn(), ready: vi.fn(), launch: vi.fn(), previous: vi.fn(), repair: vi.fn() }));
 vi.mock('node:dns/promises', () => ({ Resolver: class { async resolveNs() { return ['ns2.example.net', 'ns1.example.net']; } } }));
 vi.mock('../../lib/publishing/host-checks', async original => ({ ...await original<object>(), siteZoneSources: async () => [{ account: 'hosting', accountId: 'account', provider: mocks.provider }] }));
 vi.mock('../../lib/publishing/readiness', () => ({ publishingReadiness: mocks.ready }));
 vi.mock('../../lib/publishing/publication-version', () => ({ resolvePublicationVersion: async () => ({ redirects: [], settings: {} }) }));
 vi.mock('../../lib/publishing/cloudflare-capabilities', () => ({ cloudflarePermissionReport: async () => ({ capabilities: [] }) }));
 vi.mock('../../lib/migration-launch-report', () => ({ buildMigrationLaunchReport: mocks.launch }));
-import { readDomainGuide } from '../../lib/publishing/domain-guide';
+vi.mock('../../lib/publishing/previous-hosts', async original => ({ ...await original<object>(), readPreviousHosts: mocks.previous, repairPreviousHostRedirects: mocks.repair }));
+import { readDomainGuide, domainGuideAction } from '../../lib/publishing/domain-guide';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); vi.clearAllMocks();
   mocks.ready.mockResolvedValue({ ready: true, required: [] });
+  mocks.previous.mockResolvedValue([]);
   mocks.launch.mockResolvedValue({ launch_ready: false, issues: [{ detail: 'Verify the remaining legacy URLs.' }] });
   mocks.provider.mockImplementation(async route => route.startsWith('/zones?') ? [{ id: 'zone', name: 'example.com', status: 'active', account: { id: 'account' }, name_servers: ['ns1.example.net', 'ns2.example.net'] }] : [{ certificate_status: 'active', hosts: ['example.com', '*.example.com'] }]);
   await getStore().setDoc(paths.site('org', 'site'), { name: 'Site', publishing_mode: 'customer_git' });
@@ -92,4 +94,22 @@ it('does not read as a healthy live domain while another host serves it', async 
   const guide=await readDomainGuide('org','site');
   expect(guide).toMatchObject({state:'live',traffic_live:false,next_action:'remove_other_host',current_phase:'Another host is serving example.com'});
   expect(guide.checks.find(check=>check.id==='serving:example.com')).toMatchObject({status:'action_required',message:issue.message,details:{code:'domain_served_by_other_host',remedy:issue.remedy}});
+});
+
+it('offers repair_previous_host_redirects when a live site has a previous address without its 301', async () => {
+  const {siteDomainConfigPath}=await import('../../lib/publishing/domain-config');
+  const config=await getSiteDomains('org','site');
+  await getStore().updateDoc(siteDomainConfigPath('org','site'),{state:'live',active:config.desired,published:{hosts:config.desired,dns_mode:'automatic',publication_id:'pub',job_id:'job'}});
+  await getStore().setDoc(paths.deploy('org','site','job'),{status:'succeeded',phase:'published'});
+  await getStore().setDoc(`${paths.site('org','site')}/publishing_targets/main`,{last_publication:{publication_id:'pub',snapshot_job_id:'job'}});
+  const issue={code:'redirect_rule_quota',message:'sites.example.com has 10 of 10 Single Redirect rules.',remedy:'Free a rule, then run repair_previous_host_redirects.'};
+  mocks.previous.mockResolvedValue([{host:'site-1.sites.example.com',target_host:'example.com',mode:'noindex',status:'warning',message:issue.message,issue,next_action:'repair_previous_host_redirects'}]);
+  const guide=await readDomainGuide('org','site');
+  expect(guide).toMatchObject({state:'live',traffic_live:true,next_action:'repair_previous_host_redirects'});
+  expect(guide.checks.find(check=>check.id==='previous:site-1.sites.example.com')).toMatchObject({status:'action_required',details:{code:'redirect_rule_quota',remedy:issue.remedy,next_action:'repair_previous_host_redirects'}});
+  mocks.repair.mockResolvedValue({action:'repair_previous_host_redirects',repaired:[],remaining:[]});
+  expect(await domainGuideAction('org','site',{action:'repair_previous_host_redirects'})).toMatchObject({action:'repair_previous_host_redirects'});
+  expect(mocks.repair).toHaveBeenCalledWith('org','site');
+  mocks.previous.mockResolvedValue([{host:'site-1.sites.example.com',target_host:'example.com',mode:'redirect',status:'verified',message:'301',issue:null,next_action:null}]);
+  expect(await readDomainGuide('org','site')).toMatchObject({next_action:'none'});
 });

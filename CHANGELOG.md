@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.141 / MCP 0.45.105 (candidate)
+
+- Previous website addresses no longer cost one Single Redirect rule each in
+  their shared hosting zone: one `typeroll_previous_t_…` rule per new website
+  host lists every previous address of that site. Older per-host rules keep
+  working, are extended in place and, after go-live, merged only once the
+  merged rule is confirmed. Before approval, `host_checks` warns with
+  `redirect_rule_quota` (full zone, from the zone's plan) or
+  `redirect_permission_missing`, each with a remedy. A redirect write refused
+  during the switch no longer goes live silently: `previous_hosts` and the
+  guide record the issue code, the site still goes live with the old address
+  on noindex, and the new guide action `repair_previous_host_redirects` (MCP,
+  API and the portal's Repair button) re-creates missing redirects of a live
+  site idempotently, without a build or DNS change.
+
 ## 0.2.140 / MCP 0.45.104 (candidate)
 
 - Render version 13: a container that is a column at every breakpoint keeps
