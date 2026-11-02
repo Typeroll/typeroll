@@ -139,6 +139,18 @@ const domainBlocksArchiving =
       </div>
       <OnColorFields client:load colors={settings.colors} renderVersion={resolveRenderVersion(settings.render_version)} />
     </div>
+    <div class="card stack" data-settings-section="design" hidden={section !== 'design'}>
+      <h2 style="font-size: 1.125rem;">Header</h2>
+      <div class="field">
+        <label for="setting-header_behavior">Header while scrolling</label>
+        <select id="setting-header_behavior" name="header_behavior">
+          <option value="static" selected={(settings.header_behavior ?? 'static') === 'static'}>Scrolls with the page (default)</option>
+          <option value="sticky" selected={settings.header_behavior === 'sticky'}>Stays at the top</option>
+          <option value="reveal_on_scroll_up" selected={settings.header_behavior === 'reveal_on_scroll_up'}>Hides on scroll down, returns compact on scroll up</option>
+        </select>
+        <p class="muted text-sm">The compact header shows the menu button at every width. Keyboard focus and an open menu keep it visible.</p>
+      </div>
+    </div>
 
     <div class="card stack" data-settings-section="design" hidden={section !== 'design'}>
       <h2 style="font-size: 1.125rem;">Typography</h2>

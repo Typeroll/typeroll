@@ -92,6 +92,8 @@ function build(label, extraEnv, verifyOutput) {
 // file per indexable page announced from its head, and an unchanged robots.txt
 // and sitemap for a site without an AI crawler policy or hreflang.
 await build('fixtures', {}, (outDir) => {
+  const homeHtml = readFileSync(join(outDir, 'index.html'), 'utf8');
+  if (homeHtml.includes('data-header-behavior') || homeHtml.includes('header[data-header-behavior]')) fail('[header-behavior] a static header got behaviour markup');
   const llms = readFileSync(join(outDir, 'llms.txt'), 'utf8');
   if (!/^## Pages$/m.test(llms) || !llms.includes('(https://smoke.test/llms-full.txt)') || !llms.includes('(https://smoke.test/sitemap.xml)')) fail('[agent-outputs] llms.txt lacks its groups or links');
   if (!llms.includes('](https://smoke.test/about/)')) fail('[agent-outputs] llms.txt does not list /about/');
@@ -1036,6 +1038,26 @@ await (async function aiCrawlerPolicyScenario() {
     if (!sitemap.includes('xmlns:xhtml="http://www.w3.org/1999/xhtml"')) fail('[ai-crawler-policy] sitemap lacks the xhtml namespace');
     if (!sitemap.includes('<xhtml:link rel="alternate" hreflang="sv" href="https://smoke.test/sv/om/"/>') || !sitemap.includes('<xhtml:link rel="alternate" hreflang="en" href="https://smoke.test/about/"/>')) fail('[ai-crawler-policy] sitemap lacks the hreflang cluster');
     log('[ai-crawler-policy] ✓ Content Signal, training-crawler groups and sitemap hreflang');
+  });
+})();
+
+// Scenario: header_behavior. A static (default) site gets no attribute, CSS or
+// script; reveal_on_scroll_up marks the header and ships its CSS and runtime.
+await (async function headerBehaviorScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-header-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+  const settingsPath = join(tmpFixtures, 'organizations', 'default', 'sites', 'default', 'versions', 'main', 'settings', 'default.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.header_behavior = 'reveal_on_scroll_up';
+  writeFileSync(settingsPath, JSON.stringify(settings));
+  await build('header-behavior', { TYPEROLL_FIXTURES_DIR: tmpFixtures }, (outDir) => {
+    const html = readFileSync(join(outDir, 'index.html'), 'utf8');
+    if (!/<header[^>]*data-header-behavior="reveal_on_scroll_up"/.test(html)) fail('[header-behavior] the site header is not marked');
+    if (!html.includes('header[data-header-behavior]') || !html.includes("'data-header-compact'")) fail('[header-behavior] CSS or runtime missing');
+    log('[header-behavior] ✓ reveal-on-scroll-up header marked, CSS and runtime shipped');
   });
 })();
 

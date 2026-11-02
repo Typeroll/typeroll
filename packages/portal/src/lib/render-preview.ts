@@ -64,6 +64,10 @@ import {
   pageBreadcrumbs,
   siteContext,
   STICKY_HEADER_RUNTIME_JS,
+  activeHeaderBehavior,
+  withHeaderBehaviorAttribute,
+  HEADER_BEHAVIOR_CSS,
+  HEADER_BEHAVIOR_RUNTIME_JS,
   pageIdentityAttributes,
   type FormBlockOptions,
 } from '@typeroll/shared';
@@ -629,16 +633,18 @@ ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css
 }
 .tr-banner a.tr-banner__btn:hover{background:#fff;color:#1f1f23}
 </style>
+${activeHeaderBehavior(settings.header_behavior) ? `<style data-header-behavior="1">${HEADER_BEHAVIOR_CSS}</style>` : ''}
 ${allowScripts ? settings.scripts_head ?? '' : ''}
 ${cookieConsentHtml && !consentPreset ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>
 <body${Object.entries(args.bodyAttributes ?? {}).map(([name, value]) => ` ${name}="${escapeAttr(value)}"`).join('')}>
 ${banner ? renderBanner(banner) : ''}
-${headerHtml ? (looksLikeSemanticTag(headerHtml, 'header') ? headerHtml : `<header class="site-header">${headerHtml}</header>`) : ''}
+${headerHtml ? withHeaderBehaviorAttribute(looksLikeSemanticTag(headerHtml, 'header') ? headerHtml : `<header class="site-header">${headerHtml}</header>`, settings.header_behavior) : ''}
 <main class="${blocksBody ? 'page-content page-content--blocks' : 'page-content'}">${bodyHtml}</main>
 ${footerHtml ? (looksLikeSemanticTag(footerHtml, 'footer') ? footerHtml : `<footer class="site-footer">${footerHtml}</footer>`) : ''}
 ${previewNavigationBridge ? `<script data-preview-navigation-bridge="1">${previewNavigationBridge}</script>` : ''}
 ${allowScripts ? `<script data-sticky-header="1">${STICKY_HEADER_RUNTIME_JS}</script>` : ''}
+${allowScripts && activeHeaderBehavior(settings.header_behavior) === 'reveal_on_scroll_up' ? `<script data-header-behavior="1">${HEADER_BEHAVIOR_RUNTIME_JS}</script>` : ''}
 ${blockJs ? `<script data-blocks="1">(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();</script>` : ''}
 ${extensionRuntime ? `<script data-extension-runtime="1">${extensionRuntime}</script>` : ''}
 ${editorExtensionRuntime ? `<script data-editor-extension-runtime="1">${editorExtensionRuntime}</script>` : ''}

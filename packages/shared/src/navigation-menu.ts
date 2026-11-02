@@ -64,7 +64,7 @@ window.TyperollBlocks.register('core/navigation_menu', el => {
     for (const [key,value] of Object.entries({ top:rect.top,left:rect.left,width:rect.width,height:rect.height })) dialog.style.setProperty('--menu-toggle-' + key, value + 'px');
   };
   button.addEventListener('click', () => {
-    if (!media.matches || dialog.open) return;
+    if ((!media.matches && !el.closest('[data-header-compact]')) || dialog.open) return;
     position(); scroll.append(content);
     try { dialog.showModal(); } catch { finish(false); return; }
     previousOverflow = document.documentElement.style.overflow;

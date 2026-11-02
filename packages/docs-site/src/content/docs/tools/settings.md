@@ -58,36 +58,55 @@ permission receives HTTP 403. Over REST this is
 
 ### Top-level fields
 
-| Field                      | Type     | Description                                                                          |
-| -------------------------- | -------- | ------------------------------------------------------------------------------------ |
-| `site_name`                | string   | Display name of the site                                                             |
-| `tagline`                  | string   | Short description, used in SEO and the footer                                        |
-| `language`                 | string   | BCP 47 language tag: `"sv"`, `"en"`, `"de"`, etc.                                    |
-| `logo`                     | string   | CDN URL for the site logo                                                            |
-| `favicon`                  | string   | CDN URL for the favicon                                                              |
-| `apple_touch_icon`         | string   | 180px Apple touch icon                                                               |
-| `icon_192`                 | string   | 192px application icon                                                               |
-| `default_seo_suffix`       | string   | Appended to page titles in `<title>`: `" — Acme Studio"`                             |
-| `default_meta_description` | string   | Site-wide description fallback                                                       |
-| `default_og_image`         | string   | Fallback `og:image` URL for pages without their own                                  |
-| `twitter_handle`           | string   | X/Twitter handle for `twitter:site`; a leading `@` is removed                        |
-| `organization`             | object   | Organization JSON-LD; see [`organization`](#organization-object)                     |
-| `staging_url`              | string   | Staging environment URL, reported as `urls.staging`                                  |
-| `trailing_slash`           | string   | `always`, `never`, or `ignore`                                                       |
-| `iframe_allowed_hosts`     | string[] | Exact hosts allowed in embedded content                                              |
-| `image_sizes_default`      | string   | Default responsive-image `sizes` hint                                                |
-| `robots_txt`               | string   | Full content of robots.txt                                                           |
-| `ai_crawler_policy`        | string   | `allow_all` (default), `no_training` or `block_all`; see [AI crawlers](#ai-crawlers) |
-| `sitewide_noindex`         | boolean  | Emit `noindex,nofollow` on every HTML page                                           |
-| `scripts_head`             | string   | Trusted markup/scripts inserted in `<head>`                                          |
-| `scripts_body_end`         | string   | Trusted markup/scripts inserted before `</body>`                                     |
-| `custom_css`               | string   | Site-wide CSS                                                                        |
-| `render_version`           | integer  | Platform render version; see [Render versions](#render-versions)                     |
+| Field                      | Type     | Description                                                                                                  |
+| -------------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `site_name`                | string   | Display name of the site                                                                                     |
+| `tagline`                  | string   | Short description, used in SEO and the footer                                                                |
+| `language`                 | string   | BCP 47 language tag: `"sv"`, `"en"`, `"de"`, etc.                                                            |
+| `logo`                     | string   | CDN URL for the site logo                                                                                    |
+| `favicon`                  | string   | CDN URL for the favicon                                                                                      |
+| `apple_touch_icon`         | string   | 180px Apple touch icon                                                                                       |
+| `icon_192`                 | string   | 192px application icon                                                                                       |
+| `default_seo_suffix`       | string   | Appended to page titles in `<title>`: `" — Acme Studio"`                                                     |
+| `default_meta_description` | string   | Site-wide description fallback                                                                               |
+| `default_og_image`         | string   | Fallback `og:image` URL for pages without their own                                                          |
+| `twitter_handle`           | string   | X/Twitter handle for `twitter:site`; a leading `@` is removed                                                |
+| `organization`             | object   | Organization JSON-LD; see [`organization`](#organization-object)                                             |
+| `staging_url`              | string   | Staging environment URL, reported as `urls.staging`                                                          |
+| `trailing_slash`           | string   | `always`, `never`, or `ignore`                                                                               |
+| `iframe_allowed_hosts`     | string[] | Exact hosts allowed in embedded content                                                                      |
+| `image_sizes_default`      | string   | Default responsive-image `sizes` hint                                                                        |
+| `robots_txt`               | string   | Full content of robots.txt                                                                                   |
+| `ai_crawler_policy`        | string   | `allow_all` (default), `no_training` or `block_all`; see [AI crawlers](#ai-crawlers)                         |
+| `header_behavior`          | string   | `static` (default), `sticky` or `reveal_on_scroll_up`; see [Header while scrolling](#header-while-scrolling) |
+| `sitewide_noindex`         | boolean  | Emit `noindex,nofollow` on every HTML page                                                                   |
+| `scripts_head`             | string   | Trusted markup/scripts inserted in `<head>`                                                                  |
+| `scripts_body_end`         | string   | Trusted markup/scripts inserted before `</body>`                                                             |
+| `custom_css`               | string   | Site-wide CSS                                                                                                |
+| `render_version`           | integer  | Platform render version; see [Render versions](#render-versions)                                             |
 
 An empty string clears `default_og_image`, `twitter_handle` and `staging_url`;
 `null` does too. `staging_url` is stored on the site rather than in versioned
 settings, so a branch cannot reroute it: it is written the same way whichever
 `version` you pass, and trailing slashes are dropped.
+
+### Header while scrolling
+
+`header_behavior` decides what the site header does while a visitor scrolls.
+It applies to the header partial on every page, also in previews.
+
+| Value                 | Behaviour                                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `static` (default)    | The header scrolls away with the page. Nothing is added to the published pages.                                                                  |
+| `sticky`              | The header stays at the top of the window.                                                                                                       |
+| `reveal_on_scroll_up` | The header hides while the visitor scrolls down and returns on the first scroll up. Keyboard focus in the header and an open menu keep it shown. |
+
+Once the page has scrolled past the header, a returning `reveal_on_scroll_up`
+header is compact: it carries `data-header-compact`, and its Navigation menu
+opens from the menu button at every width, not only below the menu's collapse
+width. Style the compact state in custom CSS or a Style, for example to hide a
+secondary link row: `header[data-header-compact] .my-header-links { display: none; }`.
+Visitors who prefer reduced motion get no slide animation.
 
 ### AI crawlers
 
