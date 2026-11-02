@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.141 / MCP 0.45.105 (candidate)
+
+- `POST /api/v1/sites` (`create_site`) saves `language` at creation, in the
+  site and in its settings, so `<html lang>` is right from the first build; it
+  is checked like `update_site`'s and defaults to `en`. It also takes an
+  optional `id`, used exactly (409 `site_id_taken` when taken) instead of the
+  id derived from `name`. Unknown fields answer 400 `unknown_field` naming
+  them instead of being dropped. `create-and-migrate` and `create-and-plan`
+  (`create_site_and_migrate`, `create_site_and_plan`) accept the same `id`
+  and `language` and refuse unknown fields the same way; MCP already refused
+  unknown arguments. Responses include the site's `language`, and the docs
+  list every accepted field.
+
 ## 0.2.140 / MCP 0.45.104 (candidate)
 
 - Render version 13: a container that is a column at every breakpoint keeps

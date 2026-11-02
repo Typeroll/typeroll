@@ -100,10 +100,10 @@ you when you're done, and it stops you discovering an untouched 400-URL blog
 in week three.
 
 For each source site, create the target site first (the inventory lives on
-it):
+it), in its language so `<html lang>` is right from the first build:
 
 ```
-create_site name="Example DE"
+create_site name="Example DE" id="example-de" language="de-DE"
 ```
 
 Then walk the source and post what you find:

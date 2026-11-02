@@ -190,6 +190,27 @@ describe('creating a site with its first workflow', () => {
     expect(await getStore().getDoc<Site>(paths.site(ORG, 'old-blog'))).toBeNull();
   });
 
+  it('saves the requested id and language and refuses unknown fields by name', async () => {
+    await allowAiForNewSites();
+    const token = await key(ORG, null);
+    const res = await call('plan', 'POST', token, {}, { name: 'Moveria', id: 'moveria-be', language: 'nl-BE', business_description: 'Movers.' });
+    expect(res.status).toBe(201);
+    expect(res.json.site).toMatchObject({ id: 'moveria-be', language: 'nl-BE' });
+    const { getStore } = await import('../../lib/datastore');
+    expect(await getStore().getDoc<Site>(paths.site(ORG, 'moveria-be'))).toMatchObject({ language: 'nl-BE' });
+    expect(await getStore().getDoc(paths.settings(ORG, 'moveria-be'))).toMatchObject({ language: 'nl-BE' });
+
+    const unknown = await call('migrate', 'POST', token, {}, { name: 'Old Blog', wp_url: 'https://wp.test', locale: 'nl' });
+    expect(unknown.status).toBe(400);
+    expect(unknown.json).toMatchObject({ code: 'unknown_field', error: 'Unknown field: locale. Accepted fields: name, id, language, wp_url, helper_api_key.' });
+    expect((await call('plan', 'POST', token, {}, { name: 'X', business_description: 'x', language: 'Dutch' })).json.error).toContain('language must be a BCP-47 tag');
+    const taken = await call('plan', 'POST', token, {}, { name: 'Again', id: 'moveria-be', business_description: 'x' });
+    expect(taken.status).toBe(409);
+    expect(taken.json.code).toBe('site_id_taken');
+    expect(await getStore().getDoc<Site>(paths.site(ORG, 'moveria-be'))).toMatchObject({ name: 'Moveria' });
+    expect(started.start).toHaveLength(1);
+  });
+
   it('keeps a site whose id equals the static segment reachable', async () => {
     const { getStore } = await import('../../lib/datastore');
     await getStore().setDoc(paths.site(ORG, 'create-and-plan'), { name: 'Unlucky name', created_at: '2026-01-01' });

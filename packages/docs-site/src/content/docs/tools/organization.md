@@ -171,11 +171,17 @@ masked.
 The portal's **New site** page offers three starts. All three are available
 with an organization key:
 
-| Start                   | MCP tool                  | API route below `/api/v1`        | Body                                        |
-| ----------------------- | ------------------------- | -------------------------------- | ------------------------------------------- |
-| Blank Site              | `create_site`             | `POST /sites`                    | `name`, optional `domain`                   |
-| Migrate from WordPress  | `create_site_and_migrate` | `POST /sites/create-and-migrate` | `name`, `wp_url`, optional `helper_api_key` |
-| Plan a new site with AI | `create_site_and_plan`    | `POST /sites/create-and-plan`    | `name`, `business_description`              |
+| Start                   | MCP tool                  | API route below `/api/v1`        | Body                                                          |
+| ----------------------- | ------------------------- | -------------------------------- | ------------------------------------------------------------- |
+| Blank Site              | `create_site`             | `POST /sites`                    | `name`, optional `id`, `domain`, `language`                   |
+| Migrate from WordPress  | `create_site_and_migrate` | `POST /sites/create-and-migrate` | `name`, `wp_url`, optional `helper_api_key`, `id`, `language` |
+| Plan a new site with AI | `create_site_and_plan`    | `POST /sites/create-and-plan`    | `name`, `business_description`, optional `id`, `language`     |
+
+These are the only accepted fields: any other field is refused with `400` and
+code `unknown_field`, naming it. `id` and `language` work as in
+[`create_site`](../settings/#create_site): without `id` the Site id is the
+kebab-case name, and a taken `id` answers `409` `site_id_taken`; `language` is a
+BCP 47 tag that sets `<html lang>`, by default `en`.
 
 The two workflow starts return `201` with `site` and `workflow`; follow the run
 with `get_workflow` on the new Site. A migration start checks import storage

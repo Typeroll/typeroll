@@ -187,6 +187,24 @@ describe('workflow tools', () => {
     } finally { await s.close(); }
   });
 
+  it('sends id and language from every site-creating tool and refuses an unknown field before calling the API', async () => {
+    const s = await session();
+    try {
+      for (const [name, args] of [
+        ['create_site', { name: 'Moveria BE' }],
+        ['create_site_and_migrate', { name: 'Old Blog', wp_url: 'https://wp.example' }],
+        ['create_site_and_plan', { name: 'Harbor Bakery', business_description: 'Bakery.' }],
+      ] as const) {
+        expect((await s.call(name, { ...args, id: 'moveria-be', language: 'nl-BE' })).isError, name).not.toBe(true);
+        expect(s.calls.at(-1)!.body, name).toEqual({ ...args, id: 'moveria-be', language: 'nl-BE' });
+        const refused = await s.call(name, { ...args, locale: 'nl-BE' });
+        expect(refused.isError, name).toBe(true);
+        expect(JSON.stringify(refused.content), name).toContain('locale');
+      }
+      expect(s.calls).toHaveLength(3);
+    } finally { await s.close(); }
+  });
+
   it('tell an agent without portal AI to do AI workflows itself with the matching recipe', async () => {
     const s = await session();
     try {
