@@ -220,6 +220,7 @@ describe('every core block field changes what renders', () => {
       default:
         if (/_key$/.test(field.name)) return second ? 'sample-key-2' : 'sample-key';
         if (/country/.test(field.name)) return second ? 'no' : 'se';
+        if (field.name === 'lang') return second ? 'de' : 'fr-BE';
         if (/widths$/.test(field.name)) return second ? '2fr 1fr' : '1fr 2fr';
         if (field.name === 'name') return second ? 'data-sample-2' : 'data-sample';
         return `Sample ${field.name}${second ? ' 2' : ''}`;
