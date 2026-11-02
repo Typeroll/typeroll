@@ -119,61 +119,122 @@ const DEFAULTS = {
   maxHops: 5,
 };
 
+/** One request to make: an inventory entry expanded to one observed path. */
+export type ParityCheck = Pick<AnalyzedUrl, 'path' | 'excluded' | 'gsc_clicks'>;
+
 /**
- * Check every URL against the new site. Returns one result per input URL,
- * ordered worst-first so the caller can act on the head of the list.
+ * Resumable progress of a parity check. Plain JSON, so a workflow can persist
+ * it between chunks and continue in another process: the first pass walks
+ * `checks` in order from `next`; retry rounds then walk `pending` from
+ * `pending_next`. A check is never requested again once its result is saved,
+ * except as an inconclusive result in a retry round.
  */
-export async function checkUrlParity(
+export interface ParityProgress {
+  checks: ParityCheck[];
+  /** One slot per check; null until it has been requested. */
+  results: Array<ParityResult | null>;
+  next: number;
+  done: number;
+  /** 0 during the first pass, 1..retryRounds during retries. */
+  round: number;
+  pending: number[] | null;
+  pending_next: number;
+}
+
+/** Expand inventory entries to the paths to request, as checkUrlParity does. */
+export function startParity(
   urls: Array<Pick<AnalyzedUrl, 'path' | 'excluded' | 'gsc_clicks'> & Partial<Pick<AnalyzedUrl, 'full_url' | 'observed_paths'>>>,
-  opts: CheckParityOptions,
-): Promise<{ results: ParityResult[]; summary: ParitySummary }> {
+): ParityProgress {
+  const checks = urls.flatMap((entry) => {
+    const observed = entry.observed_paths?.length ? entry.observed_paths : [entry.path];
+    return [...new Set(observed)].map((path) => ({
+      path,
+      ...(entry.excluded ? { excluded: true } : {}),
+      ...(entry.gsc_clicks !== undefined ? { gsc_clicks: entry.gsc_clicks } : {}),
+    }));
+  });
+  return { checks, results: checks.map(() => null), next: 0, done: 0, round: 0, pending: null, pending_next: 0 };
+}
+
+export interface AdvanceParityOptions extends CheckParityOptions {
+  /** Start no new request once this returns true; requests in flight finish. */
+  shouldStop?: () => boolean;
+  /** Start at most this many requests in this call. */
+  maxChecks?: number;
+}
+
+/**
+ * Advance a parity check by a bounded amount of work, mutating `state`.
+ * Returns true once every check and retry round is done. Requests already
+ * started always finish and are recorded, so `state` is consistent whenever
+ * this returns.
+ */
+export async function advanceParity(state: ParityProgress, opts: AdvanceParityOptions): Promise<boolean> {
   const doFetch = opts.fetchImpl ?? publicationFetch;
   const concurrency = Math.max(1, opts.concurrency ?? DEFAULTS.concurrency);
   const timeoutMs = opts.timeoutMs ?? DEFAULTS.timeoutMs;
   const maxHops = opts.maxHops ?? DEFAULTS.maxHops;
   const skipExcluded = opts.skipExcluded !== false;
   const targetOrigin = stripTrailingSlash(opts.targetOrigin);
+  const { checks, results } = state;
+  const budget = opts.maxChecks ?? Infinity;
+  let started = 0;
+  const stop = () => started >= budget || (opts.shouldStop?.() ?? false);
 
-  const checks = urls.flatMap((entry) => {
-    const paths = entry.observed_paths?.length ? entry.observed_paths : [entry.path];
-    return [...new Set(paths)].map((path) => ({ ...entry, path }));
-  });
-  const results: ParityResult[] = new Array(checks.length);
-  let cursor = 0;
-  let done = 0;
-
-  const worker = async (): Promise<void> => {
-    for (;;) {
-      const i = cursor++;
-      if (i >= checks.length) return;
-      const entry = checks[i];
-      results[i] = entry.excluded && skipExcluded
-        ? { path: entry.path, verdict: 'excluded', status: null, gsc_clicks: entry.gsc_clicks }
-        : await checkOne(entry, { doFetch, targetOrigin, timeoutMs, maxHops, opts });
-      done++;
-      opts.onProgress?.(done, checks.length);
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, checks.length) }, worker));
+  if (state.round === 0) {
+    const worker = async (): Promise<void> => {
+      for (;;) {
+        if (state.next >= checks.length || stop()) return;
+        const i = state.next++;
+        started++;
+        const entry = checks[i];
+        results[i] = entry.excluded && skipExcluded
+          ? { path: entry.path, verdict: 'excluded', status: null, gsc_clicks: entry.gsc_clicks }
+          : await checkOne(entry, { doFetch, targetOrigin, timeoutMs, maxHops, opts });
+        state.done++;
+        opts.onProgress?.(state.done, checks.length);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, checks.length - state.next) }, worker));
+    if (state.next < checks.length) return false;
+    state.round = 1;
+    state.pending = null;
+  }
 
   // A busy host times out a few requests under parallel load and answers them
   // at once when asked again. Retry only inconclusive results, more gently.
   const retryRounds = Math.max(0, opts.retryRounds ?? DEFAULTS.retryRounds);
-  for (let round = 1; round <= retryRounds; round++) {
-    const pending = results.flatMap((result, index) => isRetryable(result) ? [index] : []);
-    // Many failures mean the host is down, not busy: report them without waiting longer.
-    if (!pending.length || pending.length > Math.max(DEFAULTS.retryLimit, checks.length / 4)) break;
-    let next = 0;
+  while (state.round <= retryRounds) {
+    if (state.pending === null) {
+      const pending = results.flatMap((result, index) => result && isRetryable(result) ? [index] : []);
+      // Many failures mean the host is down, not busy: report them without waiting longer.
+      if (!pending.length || pending.length > Math.max(DEFAULTS.retryLimit, checks.length / 4)) break;
+      state.pending = pending;
+      state.pending_next = 0;
+    }
+    const pending = state.pending;
+    const round = state.round;
     const retryWorker = async (): Promise<void> => {
       for (;;) {
-        const index = pending[next++];
-        if (index === undefined) return;
+        if (state.pending_next >= pending.length || stop()) return;
+        const index = pending[state.pending_next++];
+        started++;
         results[index] = { ...await checkOne(checks[index], { doFetch, targetOrigin, timeoutMs: timeoutMs * 2, maxHops, opts }), attempts: round + 1 };
       }
     };
-    await Promise.all(Array.from({ length: Math.min(DEFAULTS.retryConcurrency, pending.length) }, retryWorker));
+    await Promise.all(Array.from({ length: Math.min(DEFAULTS.retryConcurrency, pending.length - state.pending_next) }, retryWorker));
+    if (state.pending_next < pending.length) return false;
+    state.round++;
+    state.pending = null;
   }
+  state.round = retryRounds + 1;
+  state.pending = null;
+  return true;
+}
 
+/** Summarize a finished parity check, worst-first like checkUrlParity. */
+export function finishParity(state: ParityProgress): { results: ParityResult[]; summary: ParitySummary } {
+  const results = state.results.filter((r): r is ParityResult => r !== null);
   const summary: ParitySummary = {
     checked: results.length,
     ok: 0, ok_redirect: 0, missing: 0, broken_redirect: 0, error: 0, excluded: 0,
@@ -190,6 +251,19 @@ export async function checkUrlParity(
   });
 
   return { results, summary };
+}
+
+/**
+ * Check every URL against the new site. Returns one result per input URL,
+ * ordered worst-first so the caller can act on the head of the list.
+ */
+export async function checkUrlParity(
+  urls: Array<Pick<AnalyzedUrl, 'path' | 'excluded' | 'gsc_clicks'> & Partial<Pick<AnalyzedUrl, 'full_url' | 'observed_paths'>>>,
+  opts: CheckParityOptions,
+): Promise<{ results: ParityResult[]; summary: ParitySummary }> {
+  const state = startParity(urls);
+  while (!(await advanceParity(state, opts))) { /* unbounded: runs to the end */ }
+  return finishParity(state);
 }
 
 async function checkOne(
@@ -336,11 +410,22 @@ export interface StoredSiteParityEvidence extends SiteParityReport {
 }
 
 /**
- * End-to-end parity run for one site: read the inventory, hit every URL on
- * the new site, stamp the redirect rules, report. Shared by the workflow
- * (progress-reporting, portal UI) and the v1 route (synchronous, agents).
+ * What a site parity run checks, resolved once at its start. Plain JSON: the
+ * URL parity workflow keeps it, with the progress, between chunks.
  */
-export async function runSiteParityCheck(args: SiteParityArgs): Promise<SiteParityReport> {
+export interface SiteParityPlan {
+  target_origin: string;
+  trailing_slash: TrailingSlashPolicy;
+  expected_checks: number;
+  inventory_total: number;
+  truncated: boolean;
+  /** A status filter narrowed the run; it then leaves no stored evidence. */
+  filtered: boolean;
+  progress: ParityProgress;
+}
+
+/** Resolve the origin and the inventory slice to check, without requesting anything. */
+export async function planSiteParity(args: SiteParityArgs): Promise<SiteParityPlan> {
   const urls = publicUrlsFor(args.site);
   const targetOrigin = stripTrailingSlash(
     args.targetOrigin || urls.fallback || urls.production || '',
@@ -361,37 +446,57 @@ export async function runSiteParityCheck(args: SiteParityArgs): Promise<SitePari
     (total, entry) => total + new Set(entry.observed_paths?.length ? entry.observed_paths : [entry.path]).size,
     0,
   );
+  return {
+    target_origin: targetOrigin,
+    trailing_slash: (await vstore.settings(args.orgId, args.siteId, args.versionId))?.trailing_slash ?? 'always',
+    expected_checks: expectedChecks,
+    inventory_total: inventory.length,
+    truncated: slice.length < filtered.length,
+    filtered: Boolean(args.statuses?.length),
+    progress: startParity(slice),
+  };
+}
 
-  const { results, summary } = await checkUrlParity(slice, {
-    targetOrigin,
+/** Advance a planned site parity run by a bounded amount of work; true once done. */
+export function advanceSiteParity(
+  args: Pick<SiteParityArgs, 'sourceOrigin' | 'checkSource' | 'concurrency' | 'timeoutMs' | 'fetchImpl' | 'onProgress'>,
+  plan: SiteParityPlan,
+  bounds: Pick<AdvanceParityOptions, 'shouldStop' | 'maxChecks'> = {},
+): Promise<boolean> {
+  return advanceParity(plan.progress, {
+    targetOrigin: plan.target_origin,
     sourceOrigin: args.sourceOrigin,
     checkSource: args.checkSource,
     concurrency: args.concurrency,
     timeoutMs: args.timeoutMs,
     fetchImpl: args.fetchImpl,
     onProgress: args.onProgress,
-    trailingSlashPolicy: (await vstore.settings(
-      args.orgId,
-      args.siteId,
-      args.versionId,
-    ))?.trailing_slash ?? 'always',
+    trailingSlashPolicy: plan.trailing_slash,
+    ...bounds,
   });
+}
 
+/** Stamp the redirect rules, store complete evidence and build the report of a finished run. */
+export async function finishSiteParity(
+  args: Pick<SiteParityArgs, 'store' | 'orgId' | 'siteId' | 'versionId'>,
+  plan: SiteParityPlan,
+): Promise<SiteParityReport> {
+  const { results, summary } = finishParity(plan.progress);
   const redirects = await vstore.redirects(args.orgId, args.siteId, args.versionId);
   const redirects_verified = await recordRedirectVerification(
     args.store, args.orgId, args.siteId, args.versionId, redirects, results,
   );
   const report: SiteParityReport = {
-    target_origin: targetOrigin,
+    target_origin: plan.target_origin,
     checked: results.length,
-    expected_checks: expectedChecks,
-    inventory_total: inventory.length,
-    truncated: slice.length < filtered.length,
+    expected_checks: plan.expected_checks,
+    inventory_total: plan.inventory_total,
+    truncated: plan.truncated,
     summary,
     results,
     redirects_verified,
   };
-  if (!args.statuses?.length && !report.truncated) {
+  if (!plan.filtered && !report.truncated) {
     const deploys = await args.store.listDocs<DeployJob>(paths.deploys(args.orgId, args.siteId));
     const latestDeploy = deploys
       .filter((job) => job.version_id === args.versionId && job.status === 'succeeded' && job.dry_run !== true)
@@ -411,6 +516,17 @@ export async function runSiteParityCheck(args: SiteParityArgs): Promise<SitePari
     );
   }
   return report;
+}
+
+/**
+ * End-to-end parity run for one site: read the inventory, hit every URL on
+ * the new site, stamp the redirect rules, report. Used by the v1 route
+ * (synchronous, agents); the workflow runs the same three parts in chunks.
+ */
+export async function runSiteParityCheck(args: SiteParityArgs): Promise<SiteParityReport> {
+  const plan = await planSiteParity(args);
+  while (!(await advanceSiteParity(args, plan))) { /* unbounded: runs to the end */ }
+  return finishSiteParity(args, plan);
 }
 
 /**

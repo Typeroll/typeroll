@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.142 / MCP 0.45.106 (candidate)
+
+- Long workflow runs finish instead of stopping mid-way. A run no longer
+  executes as background work of the request that started it, which Cloud Run
+  starves of CPU and recycles (`url_parity` on an 810-URL inventory stopped at
+  724/810 and 809/810). It runs in short chunks of at most about 45 seconds of
+  new work, each delivered through the scheduled-work queue (Cloud Tasks to
+  the existing worker route; the self-host worker or process timers without
+  Cloud Tasks). `url_parity`, `link_check`, `performance_audit` and the
+  migration import save their progress and the results gathered so far after
+  every chunk and continue from there, so a restart only delays a run and no
+  URL is checked twice. Every chunk commits with a compare-and-update on its
+  id, so a duplicate delivery does nothing, and a cancelled run stops at the
+  next chunk. A read that finds a running run without a heartbeat for 3
+  minutes resumes it from its saved progress, up to 3 times; only then is it
+  closed as `failed`/`workflow_interrupted`. The API, MCP and status contract
+  are unchanged.
+
 ## 0.2.141 / MCP 0.45.105 (candidate)
 
 - A domain switch goes live only when Cloudflare reports the website host's

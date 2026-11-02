@@ -1056,13 +1056,15 @@ is created). An AI plan needs the Organization's own AI key with site access
 `all` (`403 ai_not_enabled` otherwise; nothing is created): you can instead
 create a blank site and plan it yourself.
 
-**Interrupted and cancelled runs.** Runs execute in the portal process, so a
-service restart (a deploy) stops them. A run that shows no heartbeat for 10
-minutes is reported `failed` with `failure_code: "workflow_interrupted"`; it
-will not continue. Tell the user and start a new run; work saved before it
-stopped stays saved. A slow run that is still alive keeps a recent
-`heartbeat_at`. `cancel_workflow` stops a pending, running or paused run on the
-user's request and records it as `cancelled`.
+**Interrupted and cancelled runs.** Runs execute in short chunks on a durable
+queue and save their progress after each chunk, so a service restart (a
+deploy) only delays them: keep polling `get_workflow`. A run without a
+heartbeat for 3 minutes is resumed from its saved progress, up to 3 times;
+only then is it reported `failed` with `failure_code: "workflow_interrupted"`.
+Tell the user and start a new run; work saved before it stopped stays saved. A
+slow run that is still alive keeps a recent `heartbeat_at`. `cancel_workflow`
+stops a pending, running or paused run on the user's request and records it as
+`cancelled`; a running run stops at its next chunk.
 
 **AI workflows without the portal's AI.** `site_planning`,
 `content_generation`, `content_improvement` and `schema_markup` run the

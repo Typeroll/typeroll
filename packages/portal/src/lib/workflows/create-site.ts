@@ -14,6 +14,7 @@ import { requireAiForNewSite } from '../ai/organization-ai';
 import { reserveSite } from '../site-create';
 import { parseNewSiteOptions } from '../site-create-input';
 import { WorkflowEngine } from './engine';
+import { workflowChunkQueue } from './queue';
 import { migrationWorkflow } from './migration';
 import { sitePlanningWorkflow } from './site-planning';
 import { migrationSourcePolicy, parseOutboundUrl } from '../net/safe-fetch';
@@ -105,7 +106,7 @@ export async function createSiteWithWorkflow(input: {
   const config: Record<string, unknown> = request.kind === 'migration'
     ? { wp_url: request.wp_url, ...(request.helper_api_key ? { helper_api_key: request.helper_api_key } : {}) }
     : { business_description: request.business_description };
-  const engine = new WorkflowEngine();
+  const engine = new WorkflowEngine(getStore(), { queue: workflowChunkQueue() });
   const workflowId = await engine.create({
     orgId,
     siteId,
@@ -114,8 +115,11 @@ export async function createSiteWithWorkflow(input: {
     triggeredBy: 'manual',
     createdBy: input.createdBy,
   });
-  engine.start(orgId, workflowId, def).catch((err) => {
-    console.error(`[${request.kind} ${workflowId}] failed:`, err);
+  // Enqueues the first chunk; the run continues in requests of its own.
+  // Awaited, so the enqueue is durable before the response. A failure here
+  // does not undo the site: a read later resumes or closes the run.
+  await engine.start(orgId, workflowId, def).catch((err) => {
+    console.error(`[${request.kind} ${workflowId}] failed to start:`, err);
   });
 
   return { siteId, workflowId, site: { ...(site as Site), id: siteId } };

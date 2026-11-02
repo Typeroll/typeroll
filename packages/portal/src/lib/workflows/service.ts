@@ -11,6 +11,7 @@ import { getStore } from '../datastore';
 import { requireImportStorage } from '../media/import-policy';
 import { WorkflowEngine } from './engine';
 import { getWorkflowDef, workflows } from './registry';
+import { workflowChunkQueue } from './queue';
 import { cancelRun, settleInterruptedRun } from './run-lifecycle';
 import type { WorkflowRecord } from './types';
 import { migrationSourcePolicy, parseOutboundUrl } from '../net/safe-fetch';
@@ -101,10 +102,10 @@ export function resolveWorkflowType(value: unknown): WorkflowType {
 }
 
 /**
- * Create a workflow run for a site and start it in the background. Returns as
- * soon as the run is recorded; callers poll readSiteWorkflow. Migration
- * requires the organization's own import storage and throws the same
- * ConnectionError the UI shows when it is not ready.
+ * Create a workflow run for a site and enqueue its first chunk on the durable
+ * workflow queue. Returns as soon as the run is recorded; callers poll
+ * readSiteWorkflow. Migration requires the organization's own import storage
+ * and throws the same ConnectionError the UI shows when it is not ready.
  */
 export async function startSiteWorkflow(input: {
   orgId: string;
@@ -127,7 +128,7 @@ export async function startSiteWorkflow(input: {
     }
     await requireImportStorage(input.orgId);
   }
-  const engine = new WorkflowEngine();
+  const engine = new WorkflowEngine(getStore(), { queue: workflowChunkQueue() });
   const workflowId = await engine.create({
     orgId: input.orgId,
     siteId: input.siteId,
@@ -136,10 +137,9 @@ export async function startSiteWorkflow(input: {
     triggeredBy: 'manual',
     createdBy: input.createdBy,
   });
-  // Run in the background; the caller polls for status.
-  engine.start(input.orgId, workflowId, def).catch((err) => {
-    console.error(`[workflow ${workflowId}] failed:`, err);
-  });
+  // Records the run as running and enqueues its first chunk; the chunks run
+  // in requests of their own. The caller polls for status.
+  await engine.start(input.orgId, workflowId, def);
   return { workflowId };
 }
 
@@ -147,17 +147,18 @@ const workflowPath = (orgId: string, workflowId: string) => `${paths.workflows(o
 
 /**
  * Read one run, only if it belongs to this site. A run whose process stopped
- * executing it is closed as failed/workflow_interrupted on the way out.
+ * executing it is resumed from its saved chunk on the way out, or closed as
+ * failed/workflow_interrupted when resuming keeps failing.
  */
 export async function readSiteWorkflow(orgId: string, siteId: string, workflowId: string | undefined): Promise<WorkflowRecord | null> {
   if (!workflowId || !WORKFLOW_ID.test(workflowId)) return null;
   const store = getStore();
   const wf = await store.getDoc<WorkflowRecord>(workflowPath(orgId, workflowId));
   if (!wf || wf.site_id !== siteId) return null;
-  return settleInterruptedRun(store, workflowPath(orgId, wf.id), wf, Date.now());
+  return settleInterruptedRun(store, workflowPath(orgId, wf.id), wf, Date.now(), { queue: workflowChunkQueue(), orgId });
 }
 
-/** Most recent runs for a site, newest first — the UI's "Recent runs". Interrupted runs are closed as in readSiteWorkflow. */
+/** Most recent runs for a site, newest first — the UI's "Recent runs". Interrupted runs are settled as in readSiteWorkflow. */
 export async function listSiteWorkflows(orgId: string, siteId: string, limit = 20): Promise<WorkflowRecord[]> {
   const store = getStore();
   const all = await store.listDocs<WorkflowRecord>(paths.workflows(orgId));
@@ -166,12 +167,13 @@ export async function listSiteWorkflows(orgId: string, siteId: string, limit = 2
     .sort((a, b) => (b.started_at ?? '').localeCompare(a.started_at ?? ''))
     .slice(0, Math.max(1, Math.min(limit, 100)));
   const now = Date.now();
-  return Promise.all(recent.map((wf) => settleInterruptedRun(store, workflowPath(orgId, wf.id), wf, now)));
+  const resume = { queue: workflowChunkQueue(), orgId };
+  return Promise.all(recent.map((wf) => settleInterruptedRun(store, workflowPath(orgId, wf.id), wf, now, resume)));
 }
 
 /**
- * Approve the review gate of a paused run and resume it in the background
- * from the next step. Only a run that is paused for review can be approved.
+ * Approve the review gate of a paused run and enqueue its next step on the
+ * durable workflow queue. Only a run that is paused for review can be approved.
  */
 export async function approveSiteWorkflow(orgId: string, siteId: string, workflowId: string | undefined): Promise<WorkflowRecord> {
   const wf = await readSiteWorkflow(orgId, siteId, workflowId);
@@ -181,18 +183,15 @@ export async function approveSiteWorkflow(orgId: string, siteId: string, workflo
   }
   const def = getWorkflowDef(wf.type);
   if (def.type === 'migration') await requireImportStorage(orgId);
-  const engine = new WorkflowEngine();
-  engine.resume(orgId, wf.id, def).catch((err) => {
-    console.error(`[workflow ${wf.id}] resume failed:`, err);
-  });
+  await new WorkflowEngine(getStore(), { queue: workflowChunkQueue() }).resume(orgId, wf.id, def);
   return wf;
 }
 
 /**
  * Cancel a run that has not finished (pending, running or paused for review).
- * Cancelling needs the permission that starting this type needs. A running
- * step finishes its current work in the background, but the engine records
- * nothing more for the run. Finished runs return 409.
+ * Cancelling needs the permission that starting this type needs. A chunk
+ * in progress finishes its current items, but the engine records nothing
+ * more for the run and runs no further chunk. Finished runs return 409.
  */
 export async function cancelSiteWorkflow(input: {
   orgId: string;
