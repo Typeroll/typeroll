@@ -234,8 +234,11 @@ const prose: BlockType = {
     { name: 'font_weight', type: 'select', label: 'Text weight', options: ['inherit', '400', '500', '600', '700'], default: 'inherit', responsive: true },
     { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading', 'mono'], default: 'inherit' },
     { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
+    // Like core/heading's colour. Written on the block itself so no platform
+    // CSS changes: without a value the markup is unchanged on every render version.
+    { name: 'color', type: 'color', label: 'Text color' },
   ],
-  template: `<div data-block="prose" data-w="{{max_width}}" data-font="{{font}}" style="--text_align:{{text_align}};--font_weight:{{font_weight}}">{{{html}}}</div>`,
+  template: `<div data-block="prose" data-w="{{max_width}}" data-font="{{font}}" style="--text_align:{{text_align}};--font_weight:{{font_weight}}{{#color}};color:{{color}}{{/color}}">{{{html}}}</div>`,
   // Fluid type via clamp() — rubriker och brödtext skalar mellan mobil
   // och desktop utan media queries. Behåller läsbarhet på små skärmar
   // utan att gå för stort på desktop.
@@ -284,8 +287,9 @@ const text: BlockType = {
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'text', editor_group: 'content' },
     { name: 'tag', type: 'select', label: 'HTML element', options: ['p', 'span', 'div', 'small', 'strong', 'em'], default: 'p' },
     { name: 'align', type: 'select', label: 'Alignment', options: ['inherit', 'start', 'center', 'end'], default: 'inherit' },
+    { name: 'color', type: 'color', label: 'Text color' },
   ],
-  template: `<{{=tag}} data-block="text" class="block-text" data-align="{{align}}">{{text}}</{{=tag}}>`,
+  template: `<{{=tag}} data-block="text" class="block-text" data-align="{{align}}"{{#color}} style="color:{{color}}"{{/color}}>{{text}}</{{=tag}}>`,
   styles: `
 [data-block="text"] { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
 [data-block="text"][data-align="start"] { text-align: start; }

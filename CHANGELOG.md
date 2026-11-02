@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.143 / MCP 0.45.107 (candidate)
+
+- `core/prose` (Text) and `core/text` (Text line) take an optional `color`
+  (**Text color**), the same field as `core/heading`'s: a palette token such
+  as `on_secondary`, a palette CSS variable or an explicit CSS colour. It is
+  written on the block element (`color:var(--color-on-secondary)`), so a label
+  in a header or menu partial, such as "Get a quote:" on a secondary panel, can
+  be a paragraph with its own size, weight and colour instead of a heading
+  that comes before every Page's H1. Without the field the markup and CSS are
+  unchanged, so no render version is needed. Invalid values warn at write and
+  render nothing; `lint_design_tokens` reports explicit colours as it does for
+  headings.
+
 ## 0.2.141 / MCP 0.45.105 (candidate)
 
 - A domain switch goes live only when Cloudflare reports the website host's
