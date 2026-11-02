@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.140 / MCP 0.45.104 (candidate)
+
+- Render version 13: a container that is a column at every breakpoint keeps
+  its children on one flex line, and Text and Heading blocks break a word that
+  does not fit. A long word, URL or inline code span no longer makes every
+  child, and the page, wider than a 375 px screen. Rows and fixed-width
+  children are unchanged; older render versions render as before.
+- `core/navigation_links` takes an optional `group_label` (render version 13):
+  a visible title above the links that names the list for screen readers,
+  styled by the site's Eyebrow style or `group_label_style_id`. Lists without
+  a label render as before. Its link part selectors now match items at any
+  depth (`li > a`), with identical output for unlabelled lists.
+- Portal: the version picker's "Promote to main…" and "Reset from main…"
+  buttons are styled before their dialog has been opened.
+
 ## 0.2.139 / MCP 0.45.103 (candidate)
 
 - Fix domain preparation failing verification when a redirect rule captures a
