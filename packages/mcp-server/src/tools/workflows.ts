@@ -5,6 +5,7 @@
 
 import { z } from 'zod';
 import { ok, versionParam, withErrorBoundary, type ToolDef } from './helpers.js';
+import { definedFields, newSiteFields } from './sites.js';
 
 // Run by the portal with the Organization's own AI key; without access for the
 // Site the run fails with failure_code ai_not_enabled. The agent then does the
@@ -59,22 +60,24 @@ export const workflowTools: ToolDef[] = [
   {
     name: 'create_site_and_migrate',
     noSite: true,
-    description: 'Create a new Site in the Organization and start a WordPress migration into it, like "Migrate from WordPress" on the portal\'s New site page. Requires an organization API key and verified organization import storage (409 import_storage_required otherwise — nothing is created). Returns site and workflow ids; poll get_workflow with that site_id. Run get_migration_readiness on the new Site if you need the preflight first.',
+    description: 'Create a new Site in the Organization and start a WordPress migration into it, like "Migrate from WordPress" on the portal\'s New site page. Requires an organization API key and verified organization import storage (409 import_storage_required otherwise — nothing is created). Returns site and workflow ids; poll get_workflow with that site_id. Run get_migration_readiness on the new Site if you need the preflight first. Optional `id` and `language` work as in create_site; any other field is refused.',
     inputSchema: {
-      name: z.string().min(1).describe('Site display name; slugified into the Site id.'),
+      name: z.string().min(1).describe('Site display name; slugified into the Site id unless `id` is given.'),
+      ...newSiteFields,
       wp_url: z.string().url().describe('Public WordPress address, e.g. https://oldsite.example.'),
       helper_api_key: z.string().optional().describe('Typeroll Helper plugin key from the WordPress admin, if installed. Stored for the run and never returned.'),
     },
-    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('sites/create-and-migrate', args))),
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('sites/create-and-migrate', definedFields(args)))),
   },
   {
     name: 'create_site_and_plan',
     noSite: true,
-    description: 'Create a new Site in the Organization and start AI site planning from a business description, like "Plan a new site with AI" on the New site page. Requires an organization API key. Needs the Organization\'s own AI key with site access "all" (read_organization_ai_settings); otherwise it answers 403 ai_not_enabled and creates nothing — then create_site a blank Site and plan it yourself with tr-new-site (propose the pages, get the user\'s approval, build), and say that you did; enabling the portal AI is the owner\'s or admin\'s choice, not a prerequisite. The plan pauses for review: read it with get_workflow and approve_workflow only after the user agrees.',
+    description: 'Create a new Site in the Organization and start AI site planning from a business description, like "Plan a new site with AI" on the New site page. Requires an organization API key. Needs the Organization\'s own AI key with site access "all" (read_organization_ai_settings); otherwise it answers 403 ai_not_enabled and creates nothing — then create_site a blank Site and plan it yourself with tr-new-site (propose the pages, get the user\'s approval, build), and say that you did; enabling the portal AI is the owner\'s or admin\'s choice, not a prerequisite. The plan pauses for review: read it with get_workflow and approve_workflow only after the user agrees. Optional `id` and `language` work as in create_site; any other field is refused.',
     inputSchema: {
-      name: z.string().min(1),
+      name: z.string().min(1).describe('Site display name; slugified into the Site id unless `id` is given.'),
+      ...newSiteFields,
       business_description: z.string().min(1).describe('What the business does, for whom, and what sets it apart.'),
     },
-    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('sites/create-and-plan', args))),
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('sites/create-and-plan', definedFields(args)))),
   },
 ];

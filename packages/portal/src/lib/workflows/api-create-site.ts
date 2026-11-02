@@ -10,7 +10,8 @@ import { apiError, apiResponse, requireAnyApiKey } from '../api-auth';
 import { ConnectionError } from '../publishing/connections';
 import { connectionFailure } from '../publishing/http';
 import { publicUrlsFor } from '../site-public-urls';
-import { createSiteWithWorkflow, parseSiteWorkflowRequest, SiteWorkflowInputError } from './create-site';
+import { createSiteWithWorkflow, parseSiteWorkflowRequest, SITE_WORKFLOW_FIELDS, SiteWorkflowInputError } from './create-site';
+import { SiteIdTakenError, unknownFieldsError } from '../site-create-input';
 import { AI_SETTINGS_PATH, AiNotEnabledError } from '../ai/organization-ai';
 
 export function createSiteWithWorkflowRoute(kind: 'migration' | 'site_planning'): APIRoute {
@@ -25,9 +26,11 @@ export function createSiteWithWorkflowRoute(kind: 'migration' | 'site_planning')
     try { body = await request.json(); } catch { body = null; }
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       return apiError(kind === 'migration'
-        ? 'Invalid JSON body. Expected { name, wp_url, helper_api_key? }.'
-        : 'Invalid JSON body. Expected { name, business_description }.', 400, ctx);
+        ? 'Invalid JSON body. Expected { name, wp_url, helper_api_key?, id?, language? }.'
+        : 'Invalid JSON body. Expected { name, business_description, id?, language? }.', 400, ctx);
     }
+    const unknown = unknownFieldsError(body as Record<string, unknown>, SITE_WORKFLOW_FIELDS[kind]);
+    if (unknown) return apiError(unknown, 400, ctx, { code: 'unknown_field' });
     try {
       const parsed = parseSiteWorkflowRequest(kind, body as Record<string, unknown>);
       const { site, workflowId } = await createSiteWithWorkflow({
@@ -36,13 +39,14 @@ export function createSiteWithWorkflowRoute(kind: 'migration' | 'site_planning')
         createdBy: `api-key:${ctx.keyPrefix}`,
       });
       return apiResponse(ctx, {
-        site: { id: site.id, organization_id: ctx.tokenOrgId, name: site.name, urls: publicUrlsFor(site) },
+        site: { id: site.id, organization_id: ctx.tokenOrgId, name: site.name, language: site.language ?? 'en', urls: publicUrlsFor(site) },
         workflow: { id: workflowId, type: kind, status: 'running' },
       }, 201, kind === 'migration'
         ? { name: parsed.name, wp_url: (parsed as { wp_url: string }).wp_url }
         : { name: parsed.name });
     } catch (error) {
       if (error instanceof SiteWorkflowInputError) return apiError(error.message, 400, ctx);
+      if (error instanceof SiteIdTakenError) return apiError(error.message, 409, ctx, { code: error.code });
       if (error instanceof AiNotEnabledError) {
         return apiError(error.message, 403, ctx, { code: error.code, details: { settings_path: AI_SETTINGS_PATH } });
       }

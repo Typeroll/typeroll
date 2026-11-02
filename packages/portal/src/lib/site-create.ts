@@ -18,6 +18,7 @@ import { provisionSiteHosting } from './hosting/site-provisioning';
 import { declareDomainAtCreation } from './site-domain';
 import { newSitePublishingMode } from './publishing/readiness';
 import { getSiteDomains, saveSiteDomains } from './publishing/domain-config';
+import { SiteIdTakenError } from './site-create-input';
 
 export interface CreateSiteInput {
   /** Org that will own the new site. */
@@ -27,6 +28,11 @@ export interface CreateSiteInput {
   /** Optional real hostname. Goes through the domain-declaration flow (CF
    *  Pages register + "point your DNS"), never written as a bare live domain. */
   domain?: string;
+  /** Optional site id, already validated (site-create-input.ts). Without it
+   *  the id is slugified from `name`. */
+  id?: string;
+  /** Optional BCP 47 site language, already validated. Default `en`. */
+  language?: string;
 }
 
 export interface CreateSiteResult {
@@ -34,18 +40,25 @@ export interface CreateSiteResult {
   site: Site & { id: string };
 }
 
-/** Reserve the site document before provisioning or seeding any child data. */
-export async function reserveSite(orgId: string, name: string): Promise<{ siteId: string; site: Omit<Site, 'id'> }> {
-  const baseId = slugify(name) || generateDocId();
+/**
+ * Reserve the site document before provisioning or seeding any child data.
+ * A requested `id` is reserved exactly or not at all (SiteIdTakenError); an id
+ * derived from the name gets a random suffix when it is taken.
+ */
+export async function reserveSite(orgId: string, name: string, options: { id?: string; language?: string } = {}): Promise<{ siteId: string; site: Omit<Site, 'id'> }> {
+  const baseId = options.id || slugify(name) || generateDocId();
   const site: Omit<Site, 'id'> = {
     name,
     publishing_mode: newSitePublishingMode(),
     hosting_group_id: 'default',
     media_id: randomMediaId(),
     hosting_adapter: 'cloudflare',
+    ...(options.language ? { language: options.language } : {}),
     created_at: new Date().toISOString(),
   };
   const store = getStore();
+  if (options.id && !await store.createDocIfMissing(paths.site(orgId, options.id), site)) throw new SiteIdTakenError(options.id);
+  if (options.id) return { siteId: options.id, site };
   let siteId = baseId;
   while (!await store.createDocIfMissing(paths.site(orgId, siteId), site)) {
     siteId = `${baseId}-${randomBytes(6).toString('hex')}`;
@@ -65,7 +78,7 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
   const domain = input.domain?.trim() || undefined;
 
   const store = getStore();
-  const { siteId, site: reservedSite } = await reserveSite(input.orgId, name);
+  const { siteId, site: reservedSite } = await reserveSite(input.orgId, name, { id: input.id, language: input.language });
 
   // Provision only after this request has atomically reserved a new site.
   let hostingConfig: Site['hosting_config'] | undefined;
@@ -98,6 +111,8 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
     ...defaultSiteSettings,
     styles: newSiteStyles(),
     site_name: name,
+    // The settings language drives <html lang>; the site document keeps it too.
+    ...(input.language ? { language: input.language } : {}),
   });
 
   // Default home page in HTML mode.

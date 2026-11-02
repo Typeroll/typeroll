@@ -12,6 +12,7 @@ import { getStore } from '../datastore';
 import { requireImportStorage } from '../media/import-policy';
 import { requireAiForNewSite } from '../ai/organization-ai';
 import { reserveSite } from '../site-create';
+import { parseNewSiteOptions } from '../site-create-input';
 import { WorkflowEngine } from './engine';
 import { migrationWorkflow } from './migration';
 import { sitePlanningWorkflow } from './site-planning';
@@ -19,25 +20,37 @@ import { migrationSourcePolicy, parseOutboundUrl } from '../net/safe-fetch';
 
 export class SiteWorkflowInputError extends Error {}
 
+/** Optional id and language of the new site (site-create-input.ts). */
+interface NewSiteOptions { id?: string; language?: string }
+
 export type SiteWorkflowRequest =
-  | { kind: 'migration'; name: string; wp_url: string; helper_api_key?: string }
-  | { kind: 'site_planning'; name: string; business_description: string };
+  | ({ kind: 'migration'; name: string; wp_url: string; helper_api_key?: string } & NewSiteOptions)
+  | ({ kind: 'site_planning'; name: string; business_description: string } & NewSiteOptions);
+
+/** Every field each public create-with-workflow route accepts. */
+export const SITE_WORKFLOW_FIELDS = {
+  migration: ['name', 'id', 'language', 'wp_url', 'helper_api_key'],
+  site_planning: ['name', 'id', 'language', 'business_description'],
+} as const;
 
 /** Validate the fields the "New site" forms ask for. */
 export function parseSiteWorkflowRequest(kind: 'migration' | 'site_planning', input: Record<string, unknown>): SiteWorkflowRequest {
   const text = (key: string) => (typeof input[key] === 'string' ? (input[key] as string).trim() : '');
   const name = text('name');
+  const parsed = parseNewSiteOptions(input);
+  if (parsed.error !== undefined) throw new SiteWorkflowInputError(parsed.error);
+  const options: NewSiteOptions = { ...(parsed.id ? { id: parsed.id } : {}), ...(parsed.language ? { language: parsed.language } : {}) };
   if (kind === 'migration') {
     const wp_url = text('wp_url');
     if (!name || !wp_url) throw new SiteWorkflowInputError('name and wp_url are required');
     // Host names are re-checked against DNS on every source request.
     try { parseOutboundUrl(wp_url, migrationSourcePolicy()); } catch { throw new SiteWorkflowInputError('wp_url must be an absolute public http(s) URL'); }
     const helper = text('helper_api_key');
-    return { kind, name, wp_url, ...(helper ? { helper_api_key: helper } : {}) };
+    return { kind, name, wp_url, ...(helper ? { helper_api_key: helper } : {}), ...options };
   }
   const business_description = text('business_description');
   if (!name || !business_description) throw new SiteWorkflowInputError('name and business_description required');
-  return { kind, name, business_description };
+  return { kind, name, business_description, ...options };
 }
 
 /**
@@ -58,7 +71,7 @@ export async function createSiteWithWorkflow(input: {
   if (request.kind === 'site_planning') await requireAiForNewSite(orgId);
 
   const store = getStore();
-  const { siteId, site: reservedSite } = await reserveSite(orgId, request.name);
+  const { siteId, site: reservedSite } = await reserveSite(orgId, request.name, { id: request.id, language: request.language });
 
   let hostingConfig: Site['hosting_config'] | undefined;
   try {
@@ -86,7 +99,7 @@ export async function createSiteWithWorkflow(input: {
     created_at: new Date().toISOString(),
   };
   await store.updateDoc(paths.site(orgId, siteId), site);
-  await store.setDoc(paths.settings(orgId, siteId), { ...defaultSiteSettings, styles: newSiteStyles(), site_name: request.name });
+  await store.setDoc(paths.settings(orgId, siteId), { ...defaultSiteSettings, styles: newSiteStyles(), site_name: request.name, ...(request.language ? { language: request.language } : {}) });
 
   const def = request.kind === 'migration' ? migrationWorkflow : sitePlanningWorkflow;
   const config: Record<string, unknown> = request.kind === 'migration'

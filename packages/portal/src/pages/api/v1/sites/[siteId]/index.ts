@@ -8,6 +8,7 @@ import { apiError, requireApiKey, apiResponse } from '../../../../../lib/api-aut
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { getStore } from '../../../../../lib/datastore';
 import { siteLifecycleState } from '../../../../../lib/site-lifecycle';
+import { parseSiteLanguage, SITE_ID_RE } from '../../../../../lib/site-create-input';
 import {
   FallbackHostnameUnavailableError,
   needsFallbackProvisioning,
@@ -16,7 +17,7 @@ import {
 import { paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 
-const SLUG_RE = /^[a-z0-9][a-z0-9-]{1,46}[a-z0-9]$/;
+const SLUG_RE = SITE_ID_RE;
 
 function project(site: Site & { id: string }, versionId: string): Record<string, unknown> {
   return {
@@ -80,11 +81,9 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     update.domain = domain || undefined;
   }
   if (body.language !== undefined) {
-    const lang = String(body.language).trim();
-    if (lang && !/^[a-z]{2,3}(-[A-Za-z0-9]{2,8})?$/.test(lang)) {
-      return apiError('language must be a BCP-47 tag (e.g. "en", "sv", "en-GB")');
-    }
-    update.language = lang || undefined;
+    const parsed = parseSiteLanguage(body.language);
+    if (parsed.error !== undefined) return apiError(parsed.error);
+    update.language = parsed.language || undefined;
   }
   if (body.slug !== undefined) {
     const slug = String(body.slug).trim().toLowerCase();
