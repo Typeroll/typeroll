@@ -28,7 +28,7 @@ export function needsArtifactRetentionEvidence(checks) {
   return checks.some(check => check.status === 404 && (nativeMediaVariant(check.route) || publicDataset(check.route)));
 }
 
-/** Pages may retain retired immutable bundles on the public host for a week.
+/** Pages may retain retired immutable bundles and content-addressed fonts on the public host for a week.
  * The exact candidate still checks their absence. Public checks must continue
  * to verify all current assets, removed Pages, media and unversioned files.
  * Native media variants may remain only when the same original bytes are still
@@ -41,7 +41,10 @@ export function publicStaticChecks(checks, current = checks) {
   const replacesDataset = current.some(check => check.status === 200 && typeof check.sha256 === 'string' && publicDataset(check.route)?.[1] === check.sha256);
   const immutableBundle = route =>
     /^\/_assets\/extensions\/[a-z0-9]+(?:[.-][a-z0-9]+)+\/\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?\/[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+\.(?:css|m?js)$/.test(route) ||
-    /^\/_astro\/[a-zA-Z0-9._-]+[.-][a-zA-Z0-9_-]{8,}\.(?:css|m?js)$/.test(route);
+    /^\/_astro\/[a-zA-Z0-9._-]+[.-][a-zA-Z0-9_-]{8,}\.(?:css|m?js)$/.test(route) ||
+    // Self-hosted theme fonts are named by their content hash. When Google Fonts
+    // serves new bytes, the retired file may stay in the edge cache, unreferenced.
+    /^\/_typeroll\/fonts\/[a-f0-9]{32}\.(?:woff2?|ttf|otf)$/.test(route);
   return checks.filter(check => {
     if (check.status !== 404) return true;
     if (immutableBundle(check.route)) return false;
