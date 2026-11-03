@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Publication verification no longer requires a retired self-hosted theme font
+  (`/_typeroll/fonts/<content hash>.woff2`) to disappear from the public host.
+  When Google Fonts serves new bytes for a family, the next publication gets a
+  new font file. The old file, named by its own hash and no longer referenced,
+  could stay in Cloudflare's edge cache, so the publication failed with
+  `publication_cache_refresh_required` and asked for a zone-wide cache refresh.
+  The exact candidate still checks the file's absence, as for retired script
+  and style bundles.
+
 ## 0.2.146 (candidate)
 
 - Published forms now load live choices from an installed App's option source,

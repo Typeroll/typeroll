@@ -116,11 +116,13 @@ it('allows retired immutable bundles only on public hosts, retaining all candida
     '/_assets/extensions/se.example.widget/0.2.2/lead-form/index.css',
     '/_assets/extensions/se.example.widget/0.2.2/lead-form/index.js',
     '/_astro/index.D4ff2xqW.css',
+    '/_typeroll/fonts/2ed9d3531c262c2389e526091ff8a16f.woff2',
   ].map(route => ({ route, status: 404 as const }));
   const required = [
     '/removed/', '/media/photo.jpg', '/uploads/private.pdf', '/style.css',
     '/_assets/photo.jpg', '/_assets/extensions/se.example.widget/latest/lead-form/index.css',
     '/_assets/extensions/se.example.widget/0.2.2/lead-form/index.html', '/_astro/index.css',
+    '/_typeroll/fonts/fonts.css', '/_typeroll/fonts/inter.woff2', '/_typeroll/fonts/2ed9d3531c262c2389e526091ff8a16f.woff2.map',
   ].map(route => ({ route, status: 404 as const }));
   const current = [check('/.well-known/typeroll/publication.json'), check('/'),
     check('/_assets/extensions/se.example.widget/0.2.3/lead-form/index.css')];
