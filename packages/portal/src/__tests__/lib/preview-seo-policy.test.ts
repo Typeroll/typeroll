@@ -32,3 +32,23 @@ it('preview uses content-type routes, canonical overrides and independent robots
   await store.setDoc(paths.version('org', 'site', 'review'), { name: 'Review', kind: 'branch', base_version_id: 'main', robots_blocked: true });
   expect(await renderPreview('org', 'site', 'abc', 'review')).toContain('content="noindex,nofollow"');
 });
+
+
+it('preview expands the build year in HTML pages and both footer modes', async () => {
+  const { getStore } = await import('../../lib/datastore');
+  const { renderPreview } = await import('../../lib/render-preview');
+  const store = getStore();
+  await store.setDoc(paths.site('org', 'site'), { name: 'Example' });
+  await store.setDoc(paths.settings('org', 'site', 'main'), { site_name: 'Example' });
+  await store.setDoc(paths.page('org', 'site', 'home', 'main'), { id: 'home', slug: '', title: 'Home', status: 'published', content_mode: 'html', html_content: '<h1>Home</h1><p>Year {{site.current_year}}</p>' });
+  for (const content_mode of ['html', 'blocks']) {
+    await store.setDoc(paths.partial('org', 'site', 'footer'), { id: 'footer', kind: 'footer', status: 'published', content_mode,
+      html_content: '<p>Copyright {{site.current_year}} Example</p>',
+      blocks: [{ id: 'copyright', type: 'core/text', data: { text: 'Copyright {{site.current_year}} Example' } }],
+    });
+    const html = await renderPreview('org', 'site', 'home', 'main');
+    expect(html).toContain(`Year ${new Date().getUTCFullYear()}`);
+    expect(html).toContain(`Copyright ${new Date().getUTCFullYear()} Example`);
+    expect(html).not.toContain('{{site.current_year}}');
+  }
+});

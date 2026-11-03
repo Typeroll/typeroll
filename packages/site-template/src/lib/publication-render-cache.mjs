@@ -9,7 +9,7 @@ export const digest = value => createHash('sha256').update(typeof value === 'str
 // server-side plug-ins. They use the same tracked queries and context as core
 // blocks. Merely installing a block type must not depend on every Page.
 /** Build IDs/times identify an attempt, never the renderer's content dependencies. */
-export function createRenderPlan(publication, manifest, runtime = process.version) {
+export function createRenderPlan(publication, manifest, runtime = process.version, year = new Date().getUTCFullYear()) {
   const pages = publication.pages ?? [];
   // The renderer receives exactly these fixture records. Operational snapshots,
   // source hashes and retained media-transfer manifests are not HTML inputs.
@@ -20,7 +20,7 @@ export function createRenderPlan(publication, manifest, runtime = process.versio
   const renderer = Object.fromEntries(Object.entries(manifest.files).filter(([name]) =>
     name !== 'publication.json' && !name.startsWith('content/')));
   const globalKey = digest({ format: RENDER_CACHE_FORMAT, validator: SEO_VALIDATOR_VERSION, runtime, renderer, globals,
-    platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year: new Date().getFullYear() });
+    platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year });
   const keys = Object.fromEntries(pages.map(page => [page.id, {
     key: digest({ globalKey, page }), dependency: 'recorded',
   }]));
@@ -38,7 +38,7 @@ export function createRenderPlan(publication, manifest, runtime = process.versio
   normalized.derived = publication.derived ?? {};
   if (normalized.globals.site?.domain === new URL(publication.site_url).hostname) normalized.globals.site.domain = 'typeroll-website.invalid';
   const domainKey = digest({ normalized, renderer, runtime, format: RENDER_CACHE_FORMAT, validator: SEO_VALIDATOR_VERSION,
-    platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year: new Date().getFullYear() });
+    platform: process.platform, arch: process.arch, locale: Intl.DateTimeFormat().resolvedOptions(), year });
   return { format: RENDER_CACHE_FORMAT, globalKey, keys, origins, domainKey };
 }
 

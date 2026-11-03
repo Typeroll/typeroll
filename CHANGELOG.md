@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.144 / MCP 0.45.108 (candidate)
+
+- `{{site.current_year}}` in text and prose blocks, custom block templates and
+  HTML content (Pages, Page templates, header and footer partials) renders the
+  current UTC year as plain text, e.g. `© 2020–{{site.current_year}} Example`.
+  A publication captures the year once at build start, so every page shows the
+  same year; preview uses the current year. The source keeps the variable. A
+  published site changes year on its next publication, not at midnight; the
+  render cache includes the year, so that publication re-renders every page.
+  The renderer travels with the frozen publication, so no build engine update
+  is needed. Only this reserved variable expands in authored HTML; other
+  `{{...}}` text is left as it is.
+
 ## 0.2.143 / MCP 0.45.107 (candidate)
 
 - `core/prose` (Text) and `core/text` (Text line) take an optional `color`

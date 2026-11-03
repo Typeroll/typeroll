@@ -17,8 +17,12 @@ import type {
   SiteSettings,
   SiteVersion,
 } from '@typeroll/shared';
-import { defaultSiteSettings } from '@typeroll/shared';
+import { defaultSiteSettings, resolveBuildVariables } from '@typeroll/shared';
 import { getStore } from './datastore.js';
+
+// Frozen publication builds pass the year captured before media preparation.
+const publicationYear = Number(process.env.TYPEROLL_BUILD_YEAR ?? new Date().getUTCFullYear());
+export function getBuildYear(): number { return import.meta.env.PROD ? publicationYear : new Date().getUTCFullYear(); }
 
 function ids() {
   const orgId = process.env.TYPEROLL_ORG_ID || 'default';
@@ -427,6 +431,7 @@ export async function renderPartialHtml(
     iframeAllowedHosts?: string[];
   },
 ): Promise<string | null> {
+  context = { ...context, site: { ...context?.site, current_year: getBuildYear() } };
   const { expandExtensionIncludes, expandIncludes, renderBlocks } = await import('@typeroll/shared');
   const { sanitizeBody } = await import('./sanitize.js');
 
@@ -471,7 +476,7 @@ export async function renderPartialHtml(
       }), directives?.iframeAllowedHosts);
     }
     if (expandedHtml) {
-      return sanitizeBody(expandedHtml, directives?.iframeAllowedHosts);
+      return sanitizeBody(resolveBuildVariables(expandedHtml, getBuildYear()), directives?.iframeAllowedHosts);
     }
     return null;
   };

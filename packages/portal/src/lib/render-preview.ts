@@ -63,6 +63,7 @@ import {
   publicContentPage,
   pageBreadcrumbs,
   siteContext,
+  resolveBuildVariables,
   STICKY_HEADER_RUNTIME_JS,
   activeHeaderBehavior,
   withHeaderBehaviorAttribute,
@@ -268,7 +269,7 @@ export async function renderPreview(
       expandIncludes(p.html_content ?? '', freeBlocks),
       extensionSource,
     );
-    return sanitizeBody(expanded, settings.iframe_allowed_hosts);
+    return sanitizeBody(resolveBuildVariables(expanded, renderCtx.site?.current_year), settings.iframe_allowed_hosts);
   };
   let bodyHtml = '';
   let blockCss = '';
@@ -284,7 +285,7 @@ export async function renderPreview(
       ),
       extensionSource,
     );
-    bodyHtml = rewriteIf(sanitizeBody(expanded, settings.iframe_allowed_hosts));
+    bodyHtml = rewriteIf(sanitizeBody(resolveBuildVariables(expanded, renderCtx.site?.current_year), settings.iframe_allowed_hosts));
   } else if (page.content_mode === 'blocks') {
     const tpl = page.template ? await vstore.pageTemplate(orgId, siteId, versionId, page.template) : null;
     const templateBlocks = tpl?.blocks ?? [];
