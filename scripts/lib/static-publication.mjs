@@ -10,6 +10,7 @@ import { externalRoutesError } from '../../packages/shared/src/external-routes.m
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
+const safeFieldName = /^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$/;
 const stringFields = {
   site: ['name', 'domain', 'domain_alias'],
   settings: ['site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'scripts_head', 'scripts_body_end', 'custom_css', 'language', 'twitter_handle', 'default_seo_suffix', 'default_meta_description', 'image_sizes_default', 'default_og_image', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'trailing_slash'],
@@ -134,6 +135,13 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
       projected.show_progress = form.show_progress;
     }
     projected.steps = (form.steps ?? []).map(step => ({ ...projectStrings(step, ['id', 'title', 'render', 'next', 'submit_label']), blocks: projectPublicationBlocks(step.blocks ?? [], definitions) }));
+    // Fields that load live choices: the renderer marks the form, and the browser
+    // asks the forms service, which reads the stored sources. Names only.
+    if (form.option_sources !== undefined) {
+      if (!Array.isArray(form.option_sources) || form.option_sources.length > 20 || form.option_sources.some(source => !safeFieldName.test(source?.field ?? '')))
+        throw new Error('Invalid public field type: option_sources');
+      if (form.option_sources.length) projected.option_sources = form.option_sources.map(source => ({ field: source.field }));
+    }
     return projected;
   });
   const settings = projectStrings(input.settings, stringFields.settings);
