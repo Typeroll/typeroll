@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.145 / MCP 0.45.109 (candidate)
 
 - A media retry on the build engine now waits its own 15-minute queue window.
   It used to keep the first attempt's queue time, so a retry after a slow
