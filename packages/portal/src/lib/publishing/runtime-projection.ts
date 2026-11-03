@@ -23,7 +23,10 @@ export async function publicationRuntime(orgId: string, siteId: string, versionI
       { ...formEmbedInfo(orgId, siteId, form.id), pow_bits: POW_BITS };
     parsePublicHttpsUrl(endpoint.submit_url);
     return { id: form.id, name: form.name, kind: form.kind, submit_text: form.submit_text, success_message: form.success_message, success_redirect_url: form.success_redirect_url,
-      styles: form.styles, steps: form.steps, target: form.target, allow_back: form.allow_back, show_progress: form.show_progress, ...endpoint };
+      styles: form.styles, steps: form.steps, target: form.target, allow_back: form.allow_back, show_progress: form.show_progress,
+      // The renderer marks a form with live choices from this list; the browser then asks
+      // /api/forms/options, which reads the stored sources. Only field names are published.
+      ...(form.option_sources?.length ? { option_sources: form.option_sources.map(source => ({ field: source.field })) } : {}), ...endpoint };
   }));
   const dependencies = [
     ...forms.map(form => ({ kind: 'forms', id: form.id, endpoint: form.submit_url })),

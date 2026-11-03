@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Published forms now load live choices from an installed App's option source,
+  such as Recurring Events' open occurrences. The publication's form snapshot
+  dropped `option_sources`, so the rendered form was not marked for live
+  choices and kept its placeholder option (for example "Loading dates…").
+  Only the field names are published; the source configuration stays in Core,
+  which reads it when the browser asks `/api/forms/options`. The renderer
+  already supported this, so no build engine update is needed.
+
 ## 0.2.145 / MCP 0.45.109 (candidate)
 
 - A media retry on the build engine now waits its own 15-minute queue window.
