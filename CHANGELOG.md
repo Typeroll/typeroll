@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.146 (candidate)
 
 - Published forms now load live choices from an installed App's option source,
   such as Recurring Events' open occurrences. The publication's form snapshot
