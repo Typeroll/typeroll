@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.148 (candidate)
 
 - Customer-engine publications now keep which form fields load live choices.
   Core 0.2.146 added them to the public runtime, but the static publication
