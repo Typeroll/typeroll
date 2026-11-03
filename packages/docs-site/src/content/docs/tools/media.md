@@ -375,6 +375,13 @@ file. Files uploaded while a job runs are prepared together in the next round.
 `prepare_media` starts at once. While a preparation job runs, it occupies the
 Organization's shared build engine like any other build.
 
+A library image whose stored file does not decode, such as a truncated PNG, no
+longer stops the job. Preparation records it as unreadable for those exact
+bytes, skips it and prepares the rest of the library in a new round.
+`get_media_preparation` lists such files in `unreadable_media`. Upload a working
+copy to prepare it again. A storage or timeout failure still stops the job, so
+it can be retried.
+
 ## Responsive image resolution (Core 0.2.37+)
 
 Static publishing and explicit variant generation create AVIF and WebP images

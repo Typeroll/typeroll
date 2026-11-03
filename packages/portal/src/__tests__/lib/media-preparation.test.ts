@@ -4,7 +4,8 @@ import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { connectionPath } from '../../lib/publishing/connections';
 import { engineConfigurationPath } from '../../lib/builds/state';
-import { requestMediaPreparation, runPendingMediaPreparation, mediaPreparationStatus } from '../../lib/media/preparation';
+import { requestMediaPreparation, runPendingMediaPreparation, mediaPreparationStatus, unreadableMedia } from '../../lib/media/preparation';
+import { buildTasksPath } from '../../lib/builds/queue';
 const mocks = vi.hoisted(() => ({ enqueue: vi.fn(async (..._args: any[]) => ({ key: 'task' })), completed: vi.fn(), transport: vi.fn(async () => {}), source: vi.fn(async (publication: unknown) => ({ 'publication.json': JSON.stringify(publication) })) }));
 vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completedBuild: mocks.completed }));
 vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source }));
@@ -177,4 +178,54 @@ it('completing a task from before the recipe rollout does not certify the new re
   await runPendingMediaPreparation('org');
   expect(mocks.enqueue).toHaveBeenCalledTimes(2);
   expect((await store.listDocs('media_preparations'))[0]).toMatchObject({recipe:'v2'});
+});
+
+const decodeFailure = (media: string, overrides: Record<string, unknown> = {}) => ({
+  status: 'failed', error_code: 'media_build_process_exit_1',
+  error_detail: { cause: `Error: vipspng: libpng read error · step=encode_variant media="${media}" file="/prepared/x" object="x.avif" attempts=1`, lines: [] }, ...overrides,
+});
+
+it('skips a library image that does not decode and prepares the rest without it', async () => {
+  const store = await configureEngine();
+  await store.setDoc(`${paths.media('org', 'site')}/broken`, imageDoc('a'));
+  await store.setDoc(`${paths.media('org', 'site')}/logo`, imageDoc('b'));
+  await requestMediaPreparation('org', 'site'); await releaseDelay(); await runPendingMediaPreparation('org');
+  expect((mocks.source.mock.calls[0][0] as any).media_manifest.entries.map((entry: any) => entry.id)).toEqual(['broken', 'logo']);
+  await store.setDoc(`${buildTasksPath('org')}/task`, decodeFailure('broken'));
+  mocks.completed.mockRejectedValueOnce(new Error('The build failed while preparing images and files'));
+  await runPendingMediaPreparation('org');
+  expect(await store.getDoc(`${paths.media('org', 'site')}/broken`)).toMatchObject({ preparation_pending: false, preparation: { state: 'unreadable', source_sha256: 'a'.repeat(64) } });
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'queued', error: null, unreadable_media: ['broken'] });
+  // The next round runs at once, without the image that cannot be read.
+  await runPendingMediaPreparation('org');
+  expect((mocks.source.mock.calls[1][0] as any).media_manifest.entries.map((entry: any) => entry.id)).toEqual(['logo']);
+  mocks.completed.mockResolvedValue({ task: {}, files: {} });
+  await runPendingMediaPreparation('org'); await runPendingMediaPreparation('org');
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'complete', unreadable_media: ['broken'] });
+  // The same bytes are not queued again; a working replacement is.
+  expect(await requestMediaPreparation('org', 'site', 'broken')).toBe(false);
+  await store.updateDoc(`${paths.media('org', 'site')}/broken`, { sha256: 'c'.repeat(64) });
+  expect(await requestMediaPreparation('org', 'site', 'broken')).toBe(true);
+});
+
+it('still fails the job for storage, timeout and unattributed failures', async () => {
+  const store = await configureEngine();
+  await store.setDoc(`${paths.media('org', 'site')}/image`, imageDoc('a'));
+  await requestMediaPreparation('org', 'site'); await releaseDelay(); await runPendingMediaPreparation('org');
+  await store.setDoc(`${buildTasksPath('org')}/task`, decodeFailure('image', { error_code: 'media_media_transfer_interrupted' }));
+  mocks.completed.mockRejectedValueOnce(new Error('failed'));
+  await runPendingMediaPreparation('org');
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'failed', unreadable_media: [] });
+  expect(await store.getDoc(`${paths.media('org', 'site')}/image`)).not.toHaveProperty('preparation');
+  const entries = [{ id: 'image' }];
+  expect(unreadableMedia(decodeFailure('image') as any, entries)).toBe('image');
+  expect(unreadableMedia(decodeFailure('other') as any, entries)).toBeNull();
+  expect(unreadableMedia(decodeFailure('image', { error_code: 'media_build_process_timeout' }) as any, entries)).toBeNull();
+  expect(unreadableMedia(decodeFailure('image', { status: 'queued' }) as any, entries)).toBeNull();
+  const retried = { cause: 'Error: x · step=encode_variant media="image" attempts=3', lines: [] };
+  expect(unreadableMedia(decodeFailure('image', { error_detail: retried }) as any, entries)).toBeNull();
+  const storage = { cause: 'Error: media_transfer_interrupted · step=inspect_image media="image" attempts=1', lines: [] };
+  expect(unreadableMedia(decodeFailure('image', { error_detail: storage }) as any, entries)).toBeNull();
+  const fromLines = { cause: 'Error: Input buffer contains unsupported image format', lines: ['TYPEROLL_MEDIA_FAILURE step=inspect_image media="image" file="/x" object="x" attempts=1'] };
+  expect(unreadableMedia(decodeFailure('image', { error_detail: fromLines }) as any, entries)).toBe('image');
 });

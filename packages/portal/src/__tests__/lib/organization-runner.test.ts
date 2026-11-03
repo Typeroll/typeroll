@@ -231,6 +231,21 @@ it.each(['media_transfer_interrupted', 'build_process_timeout'])('retries %s in 
   }
 });
 
+it('a media retry gets its own queue window instead of expiring on the first attempt\'s', async () => {
+  const { key } = await prepare('publication', 100);
+  const path = `${buildTasksPath(org)}/${key}`;
+  // The first attempt waited 14 minutes in the provider's queue before it was claimed.
+  await getStore().updateDoc(path, { queued_at: Date.now() - 14 * 60_000 });
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  const before = Date.now();
+  expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, stage: 'media', code: 'media_transfer_interrupted' })).status).toBe(200);
+  const task = await getStore().getDoc<any>(path);
+  expect(task).toMatchObject({ status: 'queued', error_code: 'media_media_transfer_interrupted' });
+  expect(task.queued_at).toBeGreaterThanOrEqual(before);
+  const { queuedBuildExpired } = await import('../../lib/builds/queue');
+  expect(queuedBuildExpired(task, Date.now() + 2 * 60_000)).toBe(false);
+});
+
 it('does not retry integrity or rendering errors as media interruptions', async () => {
   const { key } = await prepare('publication', 100);
   const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
