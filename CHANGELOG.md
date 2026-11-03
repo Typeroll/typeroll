@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.147 (candidate)
 
 - Publication verification no longer requires a retired self-hosted theme font
   (`/_typeroll/fonts/<content hash>.woff2`) to disappear from the public host.
