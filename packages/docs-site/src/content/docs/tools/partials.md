@@ -101,7 +101,6 @@ them (`/api/v1/sites/{siteId}/partials/{partialId}/revisions`). A restore puts
 the earlier name and content back as a draft, or saves it with `save: true`.
 See [History and restore](../drafts-and-saving/#history-and-restore).
 
-
 ## Current year in shared content
 
 Available from Core 0.2.144. Use `{{site.current_year}}` in a text or prose
