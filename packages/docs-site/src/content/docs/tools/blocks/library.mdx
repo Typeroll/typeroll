@@ -104,6 +104,28 @@ This safeguard does not rewrite saved content; correct the heading level before
 saving a changed body. Custom header/footer HTML should use a non-heading element
 for the site brand.
 
+A header, footer or menu partial renders before every Page's H1, so a label in
+it, such as "Get a quote:" above contact links in a mobile menu, is not a
+heading. Use `core/prose` with a paragraph and set its size, weight and colour:
+
+```json
+{
+  "type": "core/prose",
+  "data": {
+    "html": "<p>Get a quote:</p>",
+    "font_size_px": 18,
+    "font_weight": "700",
+    "color": "on_secondary"
+  }
+}
+```
+
+`color` on `core/prose` and `core/text` takes the same values as the heading's
+`color`: a palette token (`text`, `primary`, `on_secondary`, …), a palette CSS
+variable or an explicit CSS colour. It is set on the block element, so it wins
+over the colour of the block's style; links and headings inside keep their own
+colours. Without it the output is unchanged on every render version.
+
 Repeater grids, including **Page list**, show one column below **768 px** by
 default. Set **Mobile columns** (`mobile_cols`, 1–6) only when multiple columns are
 intentional. An explicitly authored `cols.mobile` is also respected;

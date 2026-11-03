@@ -135,6 +135,12 @@ names the list for screen readers and takes the site's Eyebrow style (or
 or style them with site CSS. Read `read_site_settings` → `render.version`
 first; below 13, raise it with `tr-upgrade-rendering`.
 
+A header or menu partial renders before every Page's H1, so a label in it that
+is not a navigation group title, such as "Get a quote:" above contact links,
+must not be a `core/heading`. Use `core/prose` with `html: "<p>Get a quote:</p>"`
+and its own `font_size_px`, `font_weight` and `color` (a palette token such as
+`on_secondary` on a secondary panel). `core/text` takes the same `color`.
+
 Each entry in `links` (`core/navigation_links` and `core/navigation`) may set
 `link_rel`, for example `nofollow sponsored` on an affiliate or partner link.
 A `core/tabs` choice with a direct `href` accepts `link_rel` and `new_tab` too,
