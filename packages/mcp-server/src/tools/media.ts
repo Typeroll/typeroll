@@ -64,7 +64,7 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'get_media_preparation',
-    description: 'Read background image preparation progress, including the build_job_id of a running preparation job on the organization build engine. Originals and prepared draft variants remain private. Requires site access.',
+    description: 'Read background image preparation progress, including the build_job_id of a running preparation job on the organization build engine. unreadable_media lists library images whose stored file does not decode; preparation skips them, so upload a working copy. Originals and prepared draft variants remain private. Requires site access.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'media/preparation'))),
   },

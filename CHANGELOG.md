@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- A media retry on the build engine now waits its own 15-minute queue window.
+  It used to keep the first attempt's queue time, so a retry after a slow
+  provider queue expired within minutes and the job reported
+  `build_queue_timeout` instead of the real failure. When a retry does time out
+  in the queue, the message now names the earlier attempt's cause.
+- Background image preparation skips a library image whose stored file does not
+  decode, such as a truncated PNG, instead of failing every image in the Site.
+  The file is recorded as unreadable for those exact bytes and listed in
+  `get_media_preparation` as `unreadable_media`; uploading a working copy
+  prepares it again. Storage and timeout failures still stop the job.
+
 ## 0.2.144 / MCP 0.45.108 (candidate)
 
 - `{{site.current_year}}` in text and prose blocks, custom block templates and

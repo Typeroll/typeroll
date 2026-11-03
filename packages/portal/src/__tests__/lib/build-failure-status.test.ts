@@ -78,3 +78,12 @@ it('carries the validation report when a status read finds a failed publication 
   expect(result).toMatchObject({ status: 'failed', seo_report });
   expect(await getStore().getDoc(jobPath)).toMatchObject({ seo_report });
 });
+
+it('a retry that times out in the queue reports the earlier attempt\'s cause', () => {
+  expect(buildFailureMessage('build_queue_timeout')).toMatch(/did not claim this queued step within 15 minutes/);
+  const cause = 'Error: media_transfer_interrupted · step=read_object media="logo" attempts=3';
+  const message = buildFailureMessage('build_queue_timeout', { cause, lines: [] });
+  expect(message).toContain(`Cause: ${cause}.`);
+  expect(message).toMatch(/earlier attempt failed/);
+  expect(message).toMatch(/\(build_queue_timeout\)$/);
+});

@@ -878,7 +878,8 @@ export interface Media {
   sha256?: string;
   /** Internal preparation queue marker; automatic uploads select only pending records. */
   preparation_pending?: boolean;
-  preparation?: { state: 'ready'; source_sha256: string; recipe: string };
+  /** `unreadable`: the stored file did not decode; background preparation skips these bytes. */
+  preparation?: { state: 'ready' | 'unreadable'; source_sha256: string; recipe: string };
   public_path?: string;
   /**
    * Every address this file has had: original source URLs, earlier storage and

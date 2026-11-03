@@ -150,7 +150,9 @@ export async function runnerRequest(request: Request, org: string, action: strin
       const retryMedia = ((metadata.kind !== 'qualification' && stage === 'media' && ['build_process_timeout', 'media_transfer_interrupted'].includes(code)) ||
         (metadata.kind === 'static_verification' && stage === 'verification' && code === 'static_verification_pending')) && task.attempt < buildAttemptLimit(task);
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),
-        { ...(validation ? { seo_report: validation } : {}), status: retryMedia ? 'queued' : 'failed', token_hash: null, error_code: `${stage}_${code}`, error_detail: diagnostic, lease_until: 0 });
+        // A retry waits its own queue window; keeping the first attempt's queue time
+        // expired it within minutes and replaced the cause with a queue timeout.
+        { ...(validation ? { seo_report: validation } : {}), status: retryMedia ? 'queued' : 'failed', ...(retryMedia ? { queued_at: Date.now() } : {}), token_hash: null, error_code: `${stage}_${code}`, error_detail: diagnostic, lease_until: 0 });
       if (metadata.kind === 'qualification') {
         const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
         if (disabled) await store.updateDoc(enginePath(org, provider), { state: 'error', enabled: false, issue: { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code})${diagnostic?.cause ? `: ${diagnostic.cause}` : ''}. Set up the shared engine again to retry.` } });
