@@ -108,3 +108,15 @@ test('publication keeps per-step button labels and multi-step navigation options
   assert.equal(projected.steps[1].submit_label, undefined);
   assert.throws(() => projectStaticPublication({ ...base, publicRuntime: { forms: [{ ...form, show_progress: 'loud' }] } }, identity), /show_progress/);
 });
+
+test('publication keeps which form fields load live choices, by name only', () => {
+  const form = { id: 'event', name: 'Event', submit_url: 'https://forms.example.invalid/submit', steps: [],
+    option_sources: [{ field: 'occurrence', type: 'extension:inst_1:open-occurrences', config: { series_id: 'private' } }] };
+  const base = { site: { name: 'Example' }, settings: {}, pages: [], partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [] };
+  const [projected] = projectStaticPublication({ ...base, publicRuntime: { forms: [form] } }, identity).forms;
+  assert.deepEqual(projected.option_sources, [{ field: 'occurrence' }]);
+  const [plain] = projectStaticPublication({ ...base, publicRuntime: { forms: [{ ...form, option_sources: [] }] } }, identity).forms;
+  assert.equal(plain.option_sources, undefined);
+  for (const invalid of ['occurrence', [{ field: '../x' }], [{}]])
+    assert.throws(() => projectStaticPublication({ ...base, publicRuntime: { forms: [{ ...form, option_sources: invalid }] } }, identity), /option_sources/);
+});

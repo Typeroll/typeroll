@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.148 (candidate)
+
+- Customer-engine publications now keep which form fields load live choices.
+  Core 0.2.146 added them to the public runtime, but the static publication
+  projection, which allowlists form fields, still dropped `option_sources`, so
+  published forms kept their placeholder option. Only field names are kept,
+  validated and limited to 20.
+
 ## 0.2.147 (candidate)
 
 - Publication verification no longer requires a retired self-hosted theme font
