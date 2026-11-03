@@ -224,6 +224,11 @@ it there.
 
 ### 3. Header + footer partials
 
+From Core 0.2.144, use `{{site.current_year}}` for a copyright footer
+in text/prose blocks or HTML instead of hardcoding the current year. The UTC
+year is frozen at build start; the live site changes on its next publication,
+not automatically at midnight. Preserve literal historical dates.
+
 **Start from the native preset — don't hand-roll navigation.** Read
 `tr-header-footer` and use its `template/site_logo` + `core/navigation_menu` with `core/navigation_links` slots
 composition. The server-rendered landmark, current-page state, no-JS links,
