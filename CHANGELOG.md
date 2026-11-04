@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.151 (candidate)
 
 - MCP connections no longer expire. A connection made by signing in lasts until
   it is revoked in Account → AI connections, or until the person loses access;
