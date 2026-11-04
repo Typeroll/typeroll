@@ -4,7 +4,7 @@ import type { DeployJob } from '@typeroll/shared';
 
 export interface DeployProgress {
   cache_recovery?: CacheRecovery;
-  build_progress?: { status: string; attempt: number; step: string; completed: number; total: number } | null;
+  build_progress?: { status: string; attempt: number; media_continuations?: number; retries?: number; step: string; completed: number; total: number } | null;
   render_report?: DeployJob['render_report'];
   seo_report?: DeployJob['seo_report'];
   id?: string;
