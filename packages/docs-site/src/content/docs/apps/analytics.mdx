@@ -140,19 +140,20 @@ call answers `409` with a `code`, a message and `details.next_step`
 is safe to repeat. A pasted token that cannot be used is refused with `409` and
 `details.saved: false`. `read_app` and the module card show the same `setup`.
 
-| `code`                                       | Meaning and next step                                                                                                               |
-| -------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `analytics_cloudflare_access_required`       | The hosting account's connection may not create sites or read reports. Approve the permission update, or add the token permissions. |
-| `analytics_cloudflare_connection_required`   | The site's Hosting Group has no usable Cloudflare connection. Connect or check it in **Account → Publishing**.                      |
-| `analytics_host_required`                    | The site has no address yet. Set a website host, or a site address base for its Hosting Group.                                      |
-| `analytics_provider_error`                   | Cloudflare did not complete the request. The message names the HTTP status and Cloudflare error codes. Try again.                   |
-| `analytics_provider_rate_limited`            | Cloudflare rate-limited the request. Wait a minute and try again.                                                                   |
-| `analytics_token_not_in_account`             | The pasted token is not in the hosting account. Paste a token from that account, or clear the fields to create one.                 |
-| `analytics_site_tag_mismatch`                | The supplied `site_tag` does not belong to the token. Omit `site_tag`.                                                              |
-| `analytics_site_owned_by_other_organization` | Another Organization sharing the account owns that Web Analytics site. Clear the fields to create one for this site.                |
-| `analytics_account_mismatch`                 | The saved site is in another account than the one hosting the site, for example after leaving managed hosting.                      |
-| `analytics_account_not_configured`           | Managed or self-hosted: the installation has no Cloudflare account configured. Paste a token, or configure the account.             |
-| `analytics_not_provisioned`                  | Enabled earlier without a token. Enable Analytics again to create the Web Analytics site.                                           |
+| `code`                                       | Meaning and next step                                                                                                                                                                               |
+| -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `analytics_cloudflare_access_required`       | The hosting account's connection may not create sites or read reports. Approve the permission update, or add the token permissions.                                                                 |
+| `analytics_cloudflare_connection_required`   | The site's Hosting Group has no usable Cloudflare connection. Connect or check it in **Account → Publishing**.                                                                                      |
+| `analytics_host_required`                    | The site has no address yet. Set a website host, or a site address base for its Hosting Group.                                                                                                      |
+| `analytics_provider_error`                   | Cloudflare did not complete the request. The message names the HTTP status and Cloudflare error codes. Try again.                                                                                   |
+| `analytics_site_limit`                       | The Cloudflare account has 10 Web Analytics sites added by hostname, Cloudflare's per-account limit (for example code 10014). Its administrator frees a site or asks Cloudflare to raise the limit. |
+| `analytics_provider_rate_limited`            | Cloudflare rate-limited the request. Wait a minute and try again.                                                                                                                                   |
+| `analytics_token_not_in_account`             | The pasted token is not in the hosting account. Paste a token from that account, or clear the fields to create one.                                                                                 |
+| `analytics_site_tag_mismatch`                | The supplied `site_tag` does not belong to the token. Omit `site_tag`.                                                                                                                              |
+| `analytics_site_owned_by_other_organization` | Another Organization sharing the account owns that Web Analytics site. Clear the fields to create one for this site.                                                                                |
+| `analytics_account_mismatch`                 | The saved site is in another account than the one hosting the site, for example after leaving managed hosting.                                                                                      |
+| `analytics_account_not_configured`           | Managed or self-hosted: the installation has no Cloudflare account configured. Paste a token, or configure the account.                                                                             |
+| `analytics_not_provisioned`                  | Enabled earlier without a token. Enable Analytics again to create the Web Analytics site.                                                                                                           |
 
 To replace the saved Web Analytics site with a new one in the hosting account,
 send `{"enabled": true, "config": {"beacon_token": "", "site_tag": ""}}`, then

@@ -64,7 +64,9 @@ export function providerSetupError(error: unknown, account: AnalyticsAccount, pu
     if (error.kind === 'site_limit') {
       return new AnalyticsSetupError('analytics_site_limit',
         `Cloudflare refused to add another Web Analytics site in ${where} (HTTP ${error.status}${codes}). The account already has ${UNPROXIED_SITE_LIMIT} or more sites, and Cloudflare allows ${UNPROXIED_SITE_LIMIT} sites added by hostname per account.`,
-        'Remove a Web Analytics site you no longer use in Cloudflare → Analytics & Logs → Web Analytics, or ask Cloudflare support to raise this soft limit. Then enable Analytics again.', ref);
+        account.owner === 'organization'
+          ? 'An administrator of that Cloudflare account must remove a Web Analytics site no longer in use (Cloudflare → Analytics & Logs → Web Analytics) or ask Cloudflare support to raise this soft limit. Then enable Analytics again; nothing changes on the site until then.'
+          : 'The operator of this Typeroll installation owns that Cloudflare account and must free a Web Analytics site or have Cloudflare raise the limit. Contact them, then enable Analytics again; nothing changes on the site until then.', ref);
     }
     if (error.kind === 'rate_limited') {
       return new AnalyticsSetupError('analytics_provider_rate_limited',
