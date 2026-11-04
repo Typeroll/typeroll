@@ -73,6 +73,12 @@ The `link` role supports `hover`, for example
 `a:hover` rule for links throughout the site, including prose, breadcrumbs,
 the table of contents and the consent dialog's privacy link. More specific
 block and part hover rules (buttons, navigation and cards) retain precedence.
+
+It also supports `visited`, a colour only, for example `{ "color": "primary" }`
+to keep visited links in the link colour. It applies to links in text and
+prose; navigation, headings and other blocks keep their own link colours, and
+hover still wins on a visited link. Browsers allow only colours for visited
+links.
 No hover values means no additional hover rule. Palette names are supported.
 
 Available from Core 0.2.121. Existing static sites need to be published again after

@@ -307,7 +307,7 @@ function withRemovals(before: SiteStyle | undefined, after: SiteStyle): Record<s
   }
   return {
     name: after.name, targets: after.targets, description: after.description ?? null, css: after.css ?? null,
-    base: layer(before?.base, after.base), at, hover: after.hover ?? null, parts: after.parts ?? null,
+    base: layer(before?.base, after.base), at, hover: after.hover ?? null, visited: after.visited ?? null, parts: after.parts ?? null,
   };
 }
 

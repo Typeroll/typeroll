@@ -117,7 +117,7 @@ export function auditDesignTokens(input: SiteSettings, sources: DesignTokenSourc
   }
   css(settings.custom_css, 'settings', 'custom_css');
   for (const style of settings.styles ?? []) {
-    for (const [state, props] of [['base', style.base], ['hover', style.hover], ...Object.entries(style.at ?? {})] as const) {
+    for (const [state, props] of [['base', style.base], ['hover', style.hover], ['visited', style.visited], ...Object.entries(style.at ?? {})] as const) {
       if (!props) continue;
       const inspect = (obj: object, prefix: string) => {
         for (const [key,value] of Object.entries(obj)) {

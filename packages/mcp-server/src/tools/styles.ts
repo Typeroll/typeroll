@@ -62,6 +62,7 @@ const styleFields = {
   base: propsSchema.optional(),
   at: atSchema.optional(),
   hover: z.object({ color: color.optional(), background: color.optional(), decoration: z.enum(['none', 'underline']).optional() }).optional(),
+  visited: z.object({ color: color.optional() }).optional().describe('Link role only: the colour of visited links (:visited). Hover still wins on a visited link.'),
   css: z.string().optional().describe('Advanced CSS scoped to the style: bare declarations, or rules where `&` is the style selector (e.g. "&::before { content: \'—\' }"). Prefer structured properties.'),
   parts: z.array(z.string()).optional()
     .describe('Block parts this style applies to SITE-WIDE, on every instance, as "<block type>.<part>" (e.g. "core/rich_heading.link", "core/hero.primary_button"); read_block_type lists a block\'s `parts` with their targets. The style\'s targets must include each part\'s target; a part takes one site-wide style; not for element roles (body, h1–h6, link). Unknown parts are refused with the closest names. Precedence, lowest first: the block\'s own CSS and fields; this site-wide part style, replaced on one block by its `data.part_styles` choice; a style class on the element itself (a heading\'s eyebrow_style_id, a button\'s style_id).'),
@@ -93,7 +94,7 @@ export const styleTools: ToolDef[] = [
   {
     name: 'update_style',
     description:
-      'Update a style. `base`, `hover` and each breakpoint in `at` merge property by property (pass null to remove one); name, targets, description, css and parts replace (parts: [] removes the style from every part). Every page using the style changes at once — tell the user which pages that affects when it matters.',
+      'Update a style. `base`, `hover`, `visited` and each breakpoint in `at` merge property by property (pass null to remove one); name, targets, description, css and parts replace (parts: [] removes the style from every part). Every page using the style changes at once — tell the user which pages that affects when it matters.',
     inputSchema: {
       style_id: z.string(),
       name: styleFields.name.optional(),
@@ -103,6 +104,7 @@ export const styleTools: ToolDef[] = [
       base: z.record(z.string(), z.unknown()).optional().describe('Property patch for base; null removes a property.'),
       at: z.record(z.string(), z.unknown()).optional().describe('Per-breakpoint property patches; null removes a breakpoint or property.'),
       hover: z.record(z.string(), z.unknown()).optional(),
+      visited: z.record(z.string(), z.unknown()).optional(),
       css: z.string().optional(),
       parts: styleFields.parts,
       version: versionParam,
