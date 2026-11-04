@@ -225,3 +225,14 @@ describe('whose page the diagnostics read', () => {
     expect(report.issues.join(' ')).not.toContain('not served by Typeroll');
   });
 });
+
+it('reports a deactivated Cloudflare Pages custom domain on the live host as an error (CH-07)', async () => {
+  const report = await diagnoseSiteIndexing(site, { site_name: 'Demo' } as never, {
+    fetchImpl: mockFetch as typeof fetch, validateDestination: async () => undefined, publicationId: 'publication',
+    pagesIssue: { host: 'www.example.test', status: 'deactivated', message: 'not active', remedy: 'Retry validation in Publishing.' },
+  });
+  expect(report.ready).toBe(false);
+  expect(report.targets.find(target => target.kind === 'production')).toMatchObject({ matches_expected: false,
+    issues: [expect.stringContaining('Cloudflare Pages custom domain www.example.test is deactivated, not active. Retry validation in Publishing.')] });
+  expect(report.targets.find(target => target.kind === 'fallback')?.matches_expected).toBe(true);
+});

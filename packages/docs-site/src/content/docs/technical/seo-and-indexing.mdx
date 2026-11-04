@@ -116,6 +116,10 @@ publication answers, `serving_typeroll` is `false`, `matches_expected` is
 previous host that uses Cloudflare for SaaS outranks your own DNS until the domain
 is removed from its dashboard; see
 [another host still answers after the switch](../../publishing/domains/#another-host-still-answers-after-the-switch).
+When the last serving check found the live website host's Cloudflare Pages
+custom domain pending or deactivated, the production target also has
+`matches_expected: false` and an issue naming that status and the remedy, even
+if the address still answers.
 
 In Core 0.2.88, `expectation_reason` explains the policy being checked.
 For customer publishing with no future website host saved, the platform's

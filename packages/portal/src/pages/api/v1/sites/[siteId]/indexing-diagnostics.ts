@@ -18,6 +18,7 @@ export const GET: APIRoute = async ({ request, params }) => {
   const report = await diagnoseSiteIndexing(ctx.site, settings, {
     robotsBlocked: domains !== null && !domains.desired.website_host,
     previousHosts: domains ? previousHostSummary(domains) : [], publicationId: domains?.published?.publication_id,
+    pagesIssue: domains?.state === 'live' && domains.serving_check?.website_host === domains.published?.hosts.website_host ? domains.serving_check?.pages_issue ?? null : null,
   });
   return apiResponse(ctx, report);
 };
