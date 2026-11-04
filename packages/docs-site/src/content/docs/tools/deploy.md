@@ -87,7 +87,7 @@ under `job`, so read the status from `job.status`, not the top level:
 ```json
 {
   "job": { "status": "running", "warnings": [] },
-  "build_progress": { },
+  "build_progress": {},
   "waiting_for_job_id": null,
   "queue_timeout_seconds": 300,
   "site_urls": { "production": "https://www.example.com" }
