@@ -61,6 +61,8 @@ const CF_RESIZE_WIDTHS = [400, 800, 1200, 1600];
  * per-site) and a per-image `sizes` attribute exist to correct.
  */
 export const DEFAULT_IMAGE_SIZES = '(max-width: 768px) 100vw, 800px';
+/** The first image on a page without a layout estimate: never undersized on retina screens. */
+export const LEADING_IMAGE_SIZES = '100vw';
 
 export interface TransformOptions {
   /** Cloudflare-hosted CDN origin (e.g. "https://cdn.example.com"). When set,
@@ -190,7 +192,11 @@ export function transformBodyForSeo(
     if (!insidePicture && src) {
       const meta = lookup.byUrl.get(src);
       if (meta?.variants && meta.variants.length > 0) {
-        const sizes = attrs.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
+        // The first image is the largest paint and loads eagerly, so it cannot
+        // use `auto`. Without a layout estimate, ask for the full viewport width:
+        // it is then sharp on any screen and density, for a few extra kB once.
+        const fallback = opts.defaultSizes ?? (isLeading ? LEADING_IMAGE_SIZES : DEFAULT_IMAGE_SIZES);
+        const sizes = attrs.sizes ?? layoutSizes(fallback);
         const sources: string[] = [];
         // <source> order matters: browsers pick the first they support.
         // AVIF first (smallest), then WebP, then fall through to <img>.

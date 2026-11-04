@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- The first image on a page asks for the full viewport width (`sizes="100vw"`)
+  when no layout estimate applies. It loads eagerly and cannot use `auto`, so
+  the generic "800px" made a full-width first image soft on wide retina
+  screens. It now gets a variant matching the screen width and density, at the
+  cost of a few extra kB for that one image.
+
 ## 0.2.152 (candidate)
 
 - Fixes for the image changes in 0.2.151, found on moveria.se:
