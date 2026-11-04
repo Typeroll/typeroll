@@ -1,4 +1,5 @@
 import { paths, type DeployJob, type BuildFailureLog } from '@typeroll/shared';
+import { sandboxProcRefused, engineUpdateRequiredMessage } from './failure-message';
 import { getStore } from '../datastore';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { buildTasksPath, type BuildTask } from './queue';
@@ -84,7 +85,8 @@ export async function attachBuildFailureLog(org: string, site: string, job: Depl
   if (job.status !== 'failed' || job.failure?.provider_log) return job;
   const log = await readJobBuildLog(org, site, job);
   if (!log) return job;
-  const error = log.summary && job.error && !job.error.includes(log.summary) ? `${job.error} Build log: ${log.summary}` : job.error;
+  const error = sandboxProcRefused(log.lines ?? []) ? engineUpdateRequiredMessage(job.failure?.code ?? log.error_code ?? 'shared_build_failed')
+    : log.summary && job.error && !job.error.includes(log.summary) ? `${job.error} Build log: ${log.summary}` : job.error;
   const jobPath = paths.deploy(org, site, job.id);
   await getStore().compareAndUpdateDoc<DeployJob>(jobPath, current => current.status === 'failed' && !current.failure?.provider_log,
     { error, failure: { ...(job.failure ?? { stage: job.phase ?? 'building', code: log.error_code ?? 'shared_build_failed' }), provider_log: log } } as Partial<DeployJob>);
