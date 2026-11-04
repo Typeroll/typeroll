@@ -123,16 +123,3 @@ describe('auto with a layout estimate', () => {
     expect(card).toMatch(/<img [^>]*sizes="\(max-width: 900px\) 100vw, 34vw"/);
   });
 });
-
-describe('the site logo', () => {
-  it('asks for the width the logo has at its display height', async () => {
-    const { buildMediaLookup, transformBodyForSeo } = await import('../seo-transform');
-    const variants = [320, 640].flatMap(width => (['avif', 'webp'] as const).map(format => ({ width, format, cdn_url: `https://m.example/logo.png.w${width}.${format}` })));
-    const lookup = buildMediaLookup([{ id: 'l', cdn_url: 'https://m.example/logo.png', width: 705, height: 220, variants }] as never);
-    const html = renderBlocks([{ id: 'logo', type: 'template/site_logo', data: { height: 'md' } }], { registry, context: { site: { logo: 'https://m.example/logo.png', name: 'Moveria' } } as never });
-    expect(html).toContain('data-tr-display-height="40"');
-    const out = transformBodyForSeo(html, lookup, { leadingImage: false });
-    expect(out).toContain('sizes="129px"');
-    expect(out).not.toContain('data-tr-display-height');
-  });
-});

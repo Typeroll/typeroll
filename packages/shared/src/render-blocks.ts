@@ -388,13 +388,8 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     const site = options.context?.site;
     const logo = compiled.flatData.image || site?.logo;
     const name = compiled.flatData.text || site?.name || 'Home';
-    // The logo is shown at a fixed height; the SEO transform turns it into a
-    // `sizes` width from the image's own proportions, so a 40 px high logo
-    // loads a small variant instead of one sized for an 800 px image.
-    const height = Number(compiled.flatData.height_px) > 0 ? Math.round(Number(compiled.flatData.height_px))
-      : ({ sm: 24, md: 40, lg: 64 } as Record<string, number>)[String(compiled.flatData.height ?? 'md')] ?? 40;
     compiled.flatData.site_logo_html = compiled.flatData.mode !== 'text' && logo
-      ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(name)}" data-tr-display-height="${height}" />` : escapeHtml(name);
+      ? `<img src="${escapeHtml(logo)}" alt="${escapeHtml(name)}" />` : escapeHtml(name);
     // The logo links to the home page of the page's language section.
     compiled.flatData.site_logo_href = sectionHomeHref(site, options.context?.page?.language);
   }
