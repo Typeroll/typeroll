@@ -92,6 +92,17 @@ describe('middleware CSRF — exempt paths', () => {
     expect(res.status).toBe(200);
   });
 
+  it('/api/forms/options reaches its form token check from a customer site', async () => {
+    // A published form on the customer's own domain loads its live choices here.
+    const res = await callMiddleware({
+      method: 'POST',
+      pathname: '/api/forms/options',
+      origin: 'https://www.customer.example',
+      contentType: 'application/json',
+    });
+    expect(res.status).toBe(200);
+  });
+
   it('/api/analytics/events reaches its own HMAC and origin checks', async () => {
     const res = await callMiddleware({
       method: 'POST',

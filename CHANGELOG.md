@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.149 (candidate)
+
+- A published form on the customer's domain can load its live choices again.
+  The CSRF origin check rejected `/api/forms/options` from any origin outside
+  the portal allowlist. It is now exempt like `/api/forms/submit`, which it
+  matches in protection: the same signed form token, a per-IP rate limit and
+  read-only public choices.
+
 ## 0.2.148 (candidate)
 
 - Customer-engine publications now keep which form fields load live choices.
