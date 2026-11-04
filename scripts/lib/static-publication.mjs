@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { designScalesError, typographyError } from '../../packages/shared/src/design-scale-validation.mjs';
 import { publicationContentFiles } from '../fixtures/static-publication/content.mjs';
 import fs from 'node:fs/promises';
@@ -99,7 +100,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   assertPublicUrl(siteUrl);
   if (!/^[a-z0-9][a-z0-9-]{0,127}$/.test(versionId)) throw new Error('Invalid publication version ID');
   if (input.versionId !== undefined && input.versionId !== versionId) throw new Error('Publication version mismatch');
-  const gitBranch = versionId === 'main' ? 'main' : `version-${versionId}`;
+  const gitBranch = versionGitBranch(versionId);
   if (!/^[a-f0-9]{40}$/.test(coreCommit) || !Number.isFinite(Date.parse(publishedAt))) throw new Error('Publication identity is required');
   for (const field of ['forms', 'extensions', 'contentTypes']) {
     if (!Array.isArray(input[field])) throw new Error(`Invalid publication ${field}`);
@@ -389,3 +390,20 @@ export async function sealPublicationProject(destination) {
   await fs.writeFile(path.join(destination, 'publication-manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
   return { files: Object.keys(files).length, digest: digest(JSON.stringify(manifest)) };
 }
+
+/**
+ * The Git branch a version publishes from. Cloudflare Pages serves a branch on
+ * an alias shortened to 28 characters, so a long version name keeps its first
+ * characters and ends in a short hash of the full name, within that limit:
+ * two versions can never share one test address, and short names are unchanged.
+ */
+export const PAGES_BRANCH_LABEL_LIMIT = 28;
+export function versionGitBranch(versionId) {
+  if (versionId === 'main') return 'main';
+  const branch = `version-${versionId}`;
+  if (branch.length <= PAGES_BRANCH_LABEL_LIMIT) return branch;
+  const hash = createHash('sha256').update(versionId).digest('hex').slice(0, 6);
+  const head = versionId.slice(0, PAGES_BRANCH_LABEL_LIMIT - 'version-'.length - hash.length - 1).replace(/-+$/, '');
+  return `version-${head}-${hash}`;
+}
+

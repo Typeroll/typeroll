@@ -9,6 +9,13 @@ import sharp from 'sharp';
 // background so a logo is never cropped, and points og:image and
 // twitter:image at it. Everything here runs offline on verified bytes and
 // travels with the frozen publication, so no build engine update is needed.
+//
+// When the publication serves its images from a separate media host, the
+// media stage has already stored each copy there (media.mjs) and recorded it
+// as `share_copy` on the image. Pages then point at that copy, and the
+// /_assets/share/ address an earlier publication used for the same bytes
+// redirects to it. Only without a separate media host, or when no copy was
+// stored, is the copy written into the website itself, as before.
 
 export const SHARE_WIDTH = 1200;
 export const SHARE_HEIGHT = 630;
@@ -143,18 +150,50 @@ const decodeAttr = value => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'")
 const encodeAttr = value => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 const OG_IMAGE = /<meta\s+property="og:image"\s+content="([^"]*)"\s*\/?>/;
 
+/** The copy the media stage stored on the media host for this image, if any. */
+function storedShareCopy(publication, url, kind) {
+  const resolved = publication.reference_mapping?.media?.find(([from]) => from === url)?.[1] ?? url;
+  const entry = publication.media_manifest?.entries.find(candidate => matchesEntry(publication, candidate, url) || candidate.cdn_url === resolved);
+  const item = (publication.media ?? []).find(candidate => candidate.id === entry?.id || (!entry && candidate.cdn_url === resolved));
+  const copy = item?.share_copy;
+  if (copy?.kind !== kind || typeof copy.url !== 'string' || !/^[a-f0-9]{64}$/.test(copy.sha256 ?? '') ||
+      !Number.isSafeInteger(copy.width) || !Number.isSafeInteger(copy.height)) return null;
+  try { if (new URL(copy.url).protocol !== 'https:') return null; } catch { return null; }
+  return copy;
+}
+
+// Pages allows 2000 static redirects; leave room for the publication's own.
+const REDIRECT_BUDGET = 2000;
+const staticRedirects = text => text.split(/\r?\n/).map(line => line.trim()).filter(line => line && !line.startsWith('#'))
+  .filter(line => { const from = line.split(/\s+/)[0]; return !from.includes('*') && !/(^|[/.]):[A-Za-z_]/.test(from); }).length;
+
 /**
  * Rewrite every built page whose og:image is a non-raster publication image
- * to a PNG copy. A copy that cannot be made leaves the page as it was: the
+ * to a PNG copy, and every large raster one to a JPEG copy. A copy that cannot be made leaves the page as it was: the
  * share image is never a reason to fail a publication.
  */
 export async function writeShareImages(dist, publication, readImage, readVariant = async () => null) {
   const background = backgroundColor(publication.settings);
+  const redirectsFile = path.join(dist, '_redirects');
+  const existingRedirects = await fs.readFile(redirectsFile, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
+  let redirectRoom = Math.max(0, REDIRECT_BUDGET - staticRedirects(existingRedirects));
+  const legacy = new Map();
+  /** Use a stored media-host copy; its earlier website address redirects there. Null when none or no redirect room is left. */
+  function stored(url, kind, extension) {
+    const copy = storedShareCopy(publication, url, kind);
+    if (!copy) return null;
+    const from = `/_assets/share/share-${copy.sha256.slice(0, 20)}.${extension}`;
+    if (!legacy.has(from)) {
+      if (!redirectRoom) return null;
+      legacy.set(from, copy.url); redirectRoom--;
+    }
+    return { url: copy.url, width: copy.width, height: copy.height };
+  }
   const rendered = new Map();
   async function shareUrl(url) {
     if (rendered.has(url)) return rendered.get(url);
-    let result = null;
-    try {
+    let result = stored(url, 'card', 'png')?.url ?? null;
+    if (!result) try {
       if (rendered.size < MAX_SHARE_IMAGES) {
         const bytes = await readImage(url);
         if (bytes) {
@@ -175,9 +214,9 @@ export async function writeShareImages(dist, publication, readImage, readVariant
   const derived = new Map();
   async function derivative(url) {
     if (derived.has(url)) return derived.get(url);
-    let result = null;
-    const source = shareDerivativeSource(publication, url);
-    try {
+    let result = stored(url, 'photo', 'jpg');
+    const source = result ? null : shareDerivativeSource(publication, url);
+    if (!result) try {
       if (source && derived.size < MAX_DERIVATIVES) {
         const bytes = await readVariant(source);
         if (bytes && createHash('sha256').update(bytes).digest('hex') === source.sha256) {
@@ -224,5 +263,9 @@ export async function writeShareImages(dist, publication, readImage, readVariant
     }
   }
   await rewrite(dist);
+  if (legacy.size) {
+    const lines = [...legacy].sort(([a], [b]) => a.localeCompare(b)).map(([from, to]) => `${from} ${to} 301`);
+    await fs.writeFile(redirectsFile, `${existingRedirects}${existingRedirects && !existingRedirects.endsWith('\n') ? '\n' : ''}${lines.join('\n')}\n`);
+  }
   return { pages, images: [...rendered.values(), ...derived.values()].filter(Boolean).length };
 }

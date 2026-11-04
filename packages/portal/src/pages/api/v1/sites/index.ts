@@ -82,6 +82,8 @@ export const POST: APIRoute = async ({ request }) => {
   return apiResponse(
     ctx,
     {
+      // `id` at the top level too: the documented "201 with the new site's id".
+      id: site.id,
       site: {
         id: site.id,
         organization_id: ctx.tokenOrgId,

@@ -9,6 +9,7 @@ import { publicationHostname, getSiteDomains } from './domain-config';
 import { findZone } from './domain-provider';
 import { dnsRecordBody } from './domain-cutover-journal';
 import { mapPublicationParts } from './parallel';
+import { ProviderError } from './providers.mjs';
 
 const planPath = (org: string, site: string) => `${paths.org(org)}/publishing_dns_plans/${site}`;
 const supported = new Set(['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA', 'NS']);
@@ -27,7 +28,13 @@ export async function onboardDomainZone(org: string, site: string, input: Record
   if (input.action === 'create_zone') {
     if (zone && zone.name !== name) throw new ConnectionError('This hostname is already covered by an existing zone. Use that zone instead.', 409);
     if (!zone) {
-      await provider('/zones', { method: 'POST', body: { account: { id: account }, name, type: 'full' } });
+      try { await provider('/zones', { method: 'POST', body: { account: { id: account }, name, type: 'full' } }); }
+      catch (error) {
+        // Connect Cloudflare does not request a zone-creation grant, so the connection
+        // check cannot see this. Name the permission instead of a bare provider 403.
+        if (error instanceof ProviderError && error.status === 403) throw new ConnectionError(`Cloudflare refused to create the zone ${name} in account ${account}: this connection may not add domains to the account. Add ${name} yourself in Cloudflare → Add a domain (Free plan is enough), keep the current nameservers, then run create_zone again; Typeroll then uses that pending zone. An API token connection needs Zone → Zone → Edit for all zones of the account.`, 409, 'zone_create_permission_required', { zone_name: name, account_id: account, token_permission: 'Zone → Zone → Edit' });
+        throw error;
+      }
       zone = await findZone(provider, account, name);
     }
     return { zone, account_id: account, next_action: 'scan_dns', message: 'Zone created or already present. Keep the current nameservers until the DNS inventory is reviewed and copied. Typeroll never changes your registrar.' };

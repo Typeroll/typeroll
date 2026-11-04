@@ -89,7 +89,11 @@ Agents use `guide_publishing_domain_change` (`check`, `preview`, `save`, `prepar
 `POST /api/v1/sites/{siteId}/publishing/domain-guide`.
 `onboard_publishing_domain_zone` uses the organization-scoped
 `POST /api/v1/publishing/domain-onboarding` endpoint for zone creation and reviewed
-DNS scans. Site-only credentials cannot administer organization zones. The
+DNS scans. Site-only credentials cannot administer organization zones. Connect
+Cloudflare does not request permission to add domains to the account, so
+`create_zone` can be refused with `zone_create_permission_required`: add the
+domain yourself in Cloudflare (Free plan, keep the nameservers) and run
+`create_zone` again, which then uses that pending zone. The
 existing domain tools remain available. `prepare_publishing_domain_change` now
 performs the explicit main publication, or refreshes setup when that publication
 already exists. `confirm_rebuild` is no longer needed to save future addresses. Traffic approval always needs
@@ -137,6 +141,24 @@ Open **Site settings → Publishing → Website and media addresses**. Enter the
 website host and optional media host. Choose the media path prefix: a separate
 media hostname can use an empty prefix, while sharing the website host can use
 `/media`.
+
+### Media host readiness
+
+A separate media host serves the organization's public R2 bucket through an R2
+custom domain. For a site's own media host, a URL Rewrite Rule in its zone
+prepends the site's namespace (for example `/media/abc123`) to every path. With
+automatic DNS, Typeroll creates both; with external DNS you create them, and
+the publication shows the exact rule.
+
+A publication does not replace the live site, and the media host is not shown
+as live, until Cloudflare reports the custom domain and its certificate as
+active and the host answers over HTTPS with the exact bytes of the publication's
+images, share copies and earlier image addresses. Until then the job stays in
+`distributing media` and names what remains, for example missing public DNS, a
+certificate that is still being issued, a rewrite rule for another namespace, or
+a file that answers 404. The same check shows as `media_delivery` in the domain
+guide. Retrying is safe: Typeroll reuses a custom domain or rule that already
+exists and adds only what is missing; it never replaces a working configuration.
 
 **Redirect hosts** answer every request with a permanent redirect (301) to the
 website host and keep the path and query, for example

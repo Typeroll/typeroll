@@ -24,7 +24,7 @@ interface Props {
    * Pages that rendered a body pass their tracked lookup so a partial build
    * notices when the image changes.
    */
-  mediaByUrl?: { get(url: string): { width?: number; height?: number; mime_type?: string } | undefined };
+  mediaByUrl?: { get(url: string): { width?: number; height?: number; mime_type?: string; alt?: string } | undefined };
 }
 
 const { page, contentType, settings, extraJsonLd, breadcrumbs = [], mediaByUrl } = Astro.props;
@@ -46,7 +46,7 @@ const description =
 
 const canonical = page.canonical_url || new URL(Astro.url.pathname, Astro.site).toString();
 
-const social = socialMetadata(page, settings, contentType, new URL(Astro.url.pathname, Astro.site).href);
+const social = socialMetadata(page, settings, contentType, new URL(Astro.url.pathname, Astro.site).href, url => mediaByUrl?.get(url)?.alt);
 const ogImage = social.image;
 const ogImageAlt = social.imageAlt;
 // Size and type let networks lay out the card before fetching the image. A

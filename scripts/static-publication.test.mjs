@@ -423,7 +423,9 @@ test('a resolved branch cannot accidentally publish its frozen source as main', 
 test('generated branch names accept version suffixes without allowing arbitrary Git refs', () => {
   const versionId = 'a'.repeat(48) + '-2';
   const publication = projectStaticPublication({ ...input(), versionId }, identity);
-  assert.equal(publication.git_branch, `version-${versionId}`);
+  // Long names fit Cloudflare's 28-character branch alias: a prefix and a hash of the full name.
+  assert.match(publication.git_branch, /^version-a{13}-[a-f0-9]{6}$/);
+  assert.equal(projectStaticPublication({ ...input(), versionId: 'qa-2' }, identity).git_branch, 'version-qa-2');
   for (const invalid of ['../main', 'refs/heads/main', 'Design', 'a'.repeat(129)]) {
     assert.throws(() => projectStaticPublication({ ...input(), versionId: invalid }, identity), /version ID/);
   }

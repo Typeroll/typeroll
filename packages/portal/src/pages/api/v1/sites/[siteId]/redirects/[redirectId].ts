@@ -35,7 +35,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const check = await checkRedirectWrite({
     orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, from_path: current.from_path, to_path,
   });
-  if (!check.ok) return apiError(check.error);
+  if (!check.ok) return apiError(check.error, 400, ctx, { code: check.code });
   const { id: _id, ...stored } = current;
   // An edited rule is authored; automatic rule maintenance must not replace it.
   await getStore().setDoc(path, { ...stored, to_path, status_code, auto_generated: false });

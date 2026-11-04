@@ -3367,6 +3367,7 @@ Create a named style. Do this whenever a look could recur — an eyebrow, a lead
 | `base` | body | object | no | Style properties. Mobile-first: `base` applies everywhere, `at.<breakpoint>` from that width up. |
 | `at` | body | object | no | Overrides from each site breakpoint upward (tablet, laptop, desktop, wide). |
 | `hover` | body | object | no |  |
+| `visited` | body | object | no | Link role only: the colour of visited links (:visited). Hover still wins on a visited link. |
 | `css` | body | string | no | Advanced CSS scoped to the style: bare declarations, or rules where `&` is the style selector (e.g. "&amp;::before { content: '—' }"). Prefer structured properties. |
 | `parts` | body | string[] | no | Block parts this style applies to SITE-WIDE, on every instance, as "&lt;block type&gt;.&lt;part&gt;" (e.g. "core/rich_heading.link", "core/hero.primary_button"); read_block_type lists a block's `parts` with their targets. The style's targets must include each part's target; a part takes one site-wide style; not for element roles (body, h1–h6, link). Unknown parts are refused with the closest names. Precedence, lowest first: the block's own CSS and fields; this site-wide part style, replaced on one block by its `data.part_styles` choice; a style class on the element itself (a heading's eyebrow_style_id, a button's style_id). |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
@@ -3377,7 +3378,7 @@ Create a named style. Do this whenever a look could recur — an eyebrow, a lead
 
 Permission: `write`
 
-Update a style. `base`, `hover` and each breakpoint in `at` merge property by property (pass null to remove one); name, targets, description, css and parts replace (parts: [] removes the style from every part). Every page using the style changes at once — tell the user which pages that affects when it matters.
+Update a style. `base`, `hover`, `visited` and each breakpoint in `at` merge property by property (pass null to remove one); name, targets, description, css and parts replace (parts: [] removes the style from every part). Every page using the style changes at once — tell the user which pages that affects when it matters.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -3389,6 +3390,7 @@ Update a style. `base`, `hover` and each breakpoint in `at` merge property by pr
 | `base` | body | object | no | Property patch for base; null removes a property. |
 | `at` | body | object | no | Per-breakpoint property patches; null removes a breakpoint or property. |
 | `hover` | body | object | no |  |
+| `visited` | body | object | no |  |
 | `css` | body | string | no |  |
 | `parts` | body | string[] | no | Block parts this style applies to SITE-WIDE, on every instance, as "&lt;block type&gt;.&lt;part&gt;" (e.g. "core/rich_heading.link", "core/hero.primary_button"); read_block_type lists a block's `parts` with their targets. The style's targets must include each part's target; a part takes one site-wide style; not for element roles (body, h1–h6, link). Unknown parts are refused with the closest names. Precedence, lowest first: the block's own CSS and fields; this site-wide part style, replaced on one block by its `data.part_styles` choice; a style class on the element itself (a heading's eyebrow_style_id, a button's style_id). |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |

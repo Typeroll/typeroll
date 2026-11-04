@@ -46,7 +46,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const check = await checkRedirectWrite({
     orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, from_path, to_path,
   });
-  if (!check.ok) return apiError(check.error);
+  if (!check.ok) return apiError(check.error, 400, ctx, { code: check.code });
   // The same source path always means the same rule and keeps its id; a new
   // source path never takes an id that another rule owns.
   const { id, action } = check;

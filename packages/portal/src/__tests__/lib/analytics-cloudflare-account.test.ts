@@ -116,7 +116,7 @@ describe('customer publishing: the Organization’s Cloudflare account', () => {
 
     expect(result.setup).toMatchObject({ status: 'action_required', code: 'analytics_site_limit' });
     expect(result.setup?.message).toContain('codes 10014');
-    expect(result.setup?.next_step).toContain('Remove a Web Analytics site');
+    expect(result.setup?.next_step).toContain('An administrator of that Cloudflare account must remove a Web Analytics site');
   });
 
   it('provisions the Web Analytics site in the Default hosting account and never touches the installation account', async () => {

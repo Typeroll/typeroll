@@ -1,4 +1,5 @@
 import { findReferences, replaceReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
+import { shareBackground } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import { paths, type Media, type Redirect } from '@typeroll/shared';
 import { createHash } from 'node:crypto';
 import { getStore } from '../datastore';
@@ -142,6 +143,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     media.splice(media.indexOf(item), 1);
   }
   const shareSources = shareImageSourceUrls(content);
+  const byPath = new Map<string, any>();
   const entries = media.map(item => {
     if (!item.storage) throw new ConnectionError('Media storage changed during publishing. Deploy again.', 409, 'media_migration_pending');
     const chosen = item.public_path ? publicMediaPath(item.public_path) : `/${item.sha256!.slice(0, 16)}-${item.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -150,7 +152,15 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     if (safe.renamed) warnings.push(`Media ${item.id} (${item.filename}) is published at ${safe.path} because its name did not match its type ${mediaTypeEssence(item.mime_type) || 'unknown'}.`);
     const relative = safe.path;
     const publicPath = publicMediaPath(`${publicPrefix}${relative}`);
-    if (pathsSeen.has(publicPath)) throw new ConnectionError('Two media files use the same public path. Choose distinct paths before publishing.', 409, 'media_path_collision');
+    const taken = byPath.get(publicPath);
+    if (taken && taken.sha256 === item.sha256 && taken.mime_type === safe.mime_type) {
+      // The same file imported twice (two folders, AT-14): publish it once and point both records at it.
+      for (const url of references(item)) replacements.set(url, taken.cdn_url);
+      if (references(item).some(url => shareSources.has(url))) taken.share_source = true;
+      warnings.push(`Media ${item.id} (${item.filename}) is the same file as ${taken.id} and is published once at ${publicPath}.`);
+      return null;
+    }
+    if (taken || pathsSeen.has(publicPath)) throw new ConnectionError(`Media ${taken?.id ?? 'files'} and ${item.id} are different files with the same public path ${publicPath}. Choose distinct paths before publishing.`, 409, 'media_path_collision');
     pathsSeen.add(publicPath);
     const url = `https://${host}${publicPath}`;
     const publicKey = `${prefix}${sharedHost ? relative : publicPath}`;
@@ -167,12 +177,14 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     for (const alias of item.source_aliases ?? []) replacements.set(alias, url);
     // Existing responsive URLs remain valid aliases; the current build regenerates its own variant list.
     for (const variant of item.variants ?? []) replacements.set(variant.cdn_url, url);
-    return { id: item.id, filename: item.filename, mime_type: safe.mime_type, alt_text: item.alt_text, title: item.title, caption: item.caption,
+    const entry: Record<string, any> = { id: item.id, filename: item.filename, mime_type: safe.mime_type, alt_text: item.alt_text, title: item.title, caption: item.caption,
       cdn_url: url, variants: [], source_key: item.storage.key, sha256: item.sha256, size_bytes: item.size_bytes,
       public_key: publicKey, public_path: publicPath, aliases, ...(svg ? { svg_sanitized: true } : {}),
       // The build's media stage sees no pages, so it learns here which files a page may share.
       ...(references(item).some(url => shareSources.has(url)) ? { share_source: true } : {}) };
-  });
+    byPath.set(publicPath, entry);
+    return entry;
+  }).filter((entry): entry is Record<string, any> => entry !== null);
   for (const warning of warnings) console.warn(`[media-manifest] site ${siteId}: ${warning}`);
   for (const [alias, previousTarget] of previousPublication?.reference_mapping?.media ?? []) {
     const nextTarget = replacements.get(previousTarget);
@@ -190,7 +202,9 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   await markOrganizationMediaHostUsed(orgId, organization);
   return { content: publicContent, media: entries, sourceMedia: media, warnings,
     manifest: { delivery, account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
-      media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix, entries } };
+      media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix,
+      // Share copies on a media host are keyed by their card background, so their exact objects can be granted before the build.
+      ...(entries.some(entry => entry.share_source) ? { share_background: shareBackground(content.settings?.colors?.background) } : {}), entries } };
 }
 
 /** Keep old public routes without preparing identical current files a second time. */
@@ -260,6 +274,27 @@ export function moveWebsiteMediaToMediaHost(retained: any[], current: any): { re
     from_path: `${pathPrefix}/*`, to_path: `https://${host}${hostPath}/:splat`, status_code: 301,
   }) as Redirect & { media_path_prefix: string });
   return { retained: result, redirects };
+}
+
+/**
+ * Point rules that end on a website media path straight at the media host.
+ * Once `/media/*` redirects to the media host, an authored rule such as
+ * `/wp-content/uploads/x.jpg` → `/media/x.jpg` would answer 301 → 301 (AT-08).
+ * Only the frozen copy changes; the stored rules keep their authored target.
+ */
+export function collapseMediaHostChains<T extends Redirect>(redirects: T[], hostRules: Array<Redirect & { media_path_prefix: string }>, websiteHost: string): T[] {
+  if (!hostRules.length) return redirects;
+  const hostRuleIds = new Set(hostRules.map(rule => rule.id));
+  const websiteOrigin = `https://${websiteHost}`;
+  return redirects.map(rule => {
+    if (hostRuleIds.has(rule.id)) return rule;
+    const target = rule.to_path.startsWith(`${websiteOrigin}/`) ? rule.to_path.slice(websiteOrigin.length) : rule.to_path;
+    if (!target.startsWith('/') || target.startsWith('//')) return rule;
+    const hostRule = hostRules.find(candidate => target.startsWith(`${candidate.media_path_prefix}/`));
+    if (!hostRule) return rule;
+    const rest = target.slice(hostRule.media_path_prefix.length + 1);
+    return { ...rule, to_path: hostRule.to_path.replace(/:splat$/, rest) };
+  });
 }
 
 /** Replace retired unsafe bytes with a redirect to the same media record's safe output.

@@ -122,7 +122,7 @@ export async function retryMediaMigration(orgId: string) {
   const { enqueueMediaMigration } = await import('./media-migration-queue');
   for (const job of jobs) {
     const siteId = job.scope === 'site' ? job.site_id : undefined;
-    if (job.state === 'failed') {
+    if (job.state === 'failed' || (job.state === 'complete' && siteId && (job.failed_files ?? 0) > 0)) {
       if (siteId) {
         if (connection.cloudflare) await releaseFailedFiles(orgId, siteId, connection.cloudflare);
         await queueSiteMigration(orgId, siteId);
@@ -411,7 +411,9 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
       throw fileFailure;
     }
     const completed = await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === passRequest,
-      { state: pending ? 'queued' : failedFiles ? 'failed' : 'complete', pending_files: pending, failed_files: failedFiles, ...counters(), cursor: null,
+      // Files that cannot be fetched are set aside with their reason (failed_media);
+      // they do not leave the migration failed (FI-10).
+      { state: pending ? 'queued' : 'complete', pending_files: pending, failed_files: failedFiles, ...counters(), cursor: null,
         lease_id: null, lease_until: 0, failures: 0, retry_at: pending ? Date.now() + 5_000 : 0, updated_at: new Date().toISOString(),
         error: failedFiles ? `${failedFiles} ${failedFiles === 1 ? 'file' : 'files'} could not be copied and ${failedFiles === 1 ? 'was' : 'were'} skipped. Fix or delete ${failedFiles === 1 ? 'it' : 'them'}, then retry media migration.` : null });
     // A late upload or site opt-in may sort before the saved cursor. Finish this

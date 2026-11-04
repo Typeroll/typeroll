@@ -35,8 +35,14 @@ vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completed
 vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload, finalizeDirectUpload: mocks.direct }));
 vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify, verifyCustomerCandidate: mocks.candidateVerification, saveCustomerVerification: mocks.verificationPlan }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
-const mediaDomains = vi.hoisted(() => vi.fn(async () => true));
-vi.mock('../../lib/publishing/media-domain', () => ({ preparePublicMediaDomains: mediaDomains }));
+const mediaReady = (checked = 1) => ({ ready: true as const, scope: 'scope', checked });
+const mediaPending = (issue: string, host = 'media.example.org') => ({ ready: false as const, scope: 'scope', checked: 0,
+  pending: { host, issue, url: `https://${host}/photo.png`, message: `${host} has no public DNS answer yet (${issue}).` } });
+const mediaDomains = vi.hoisted(() => vi.fn(async (..._args: any[]): Promise<any> => ({ ready: true, scope: 'scope', checked: 1 })));
+const mediaVerify = vi.hoisted(() => vi.fn(async (..._args: any[]): Promise<any> => ({ ready: true, scope: 'scope', checked: 1 })));
+// A Pages Git build receives exact R2 grants; their signing is covered by the grant tests.
+vi.mock('../../lib/publishing/r2-build-credentials', () => ({ customerBuildMediaAccess: vi.fn(async () => ({ grant_url: 'https://grants.invalid/grant', sha256: 'd'.repeat(64) })) }));
+vi.mock('../../lib/publishing/media-domain', () => ({ preparePublicMediaDelivery: mediaDomains, verifyPublicMediaDelivery: mediaVerify }));
 const resanitize = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/media/svg-media', async original => ({ ...await original<object>(), resanitizeStoredSvgMedia: resanitize }));
 const redirectProbe = vi.hoisted(() => vi.fn(async () => ({ ok: true, status: 301, location: null as string | null })));
@@ -240,6 +246,48 @@ it('resolves the selected version without writing main and handles provider retr
   expect(await previewPublicationImpact('org', 'site', 'design')).toMatchObject({ total: 0 });
   await getStore().setDoc(paths.partial('org', 'site', 'header', 'main'), { name: 'header', kind: 'header', content_mode: 'html', html_content: '<nav>Inherited</nav>', status: 'published' });
   expect(await previewPublicationImpact('org', 'site', 'design')).toMatchObject({ total: 1, classification: 'site_wide', changes: [{ kind: 'partial', id: 'header' }] });
+});
+
+async function longVersion(id: string) {
+  await getStore().setDoc(paths.version('org', 'site', id), { kind: 'branch', base_version_id: 'main' });
+  await getStore().setDoc(`${paths.pages('org', 'site', id)}/home`, { title: 'Version', slug: '', content_mode: 'html', html_content: '<h1>Version</h1>', status: 'published' });
+  const { getOrganizationDomains, saveOrganizationDomains } = await import('../../lib/publishing/domain-config');
+  const organization = await getOrganizationDomains('org');
+  await saveOrganizationDomains('org', { revision: organization.revision, sites_domain: 'sites.example.com', media_host: 'media.example.net', dns_mode: 'external' });
+  await getStore().updateDoc(jobPath, { version_id: id });
+  return { ...args, versionId: id };
+}
+
+it('gives two long versions distinct branches within Cloudflare\'s 28-character alias, instead of refusing one', async () => {
+  const { versionGitBranch } = await import('../../../../../scripts/lib/static-publication.mjs');
+  const [first, second] = ['seo-sharing-render-refresh-2026-11-04', 'seo-sharing-render-refresh-2026-12-01'].map(versionGitBranch);
+  expect(first).toMatch(/^version-seo-sharing-r-[a-f0-9]{6}$/);
+  expect(first).not.toBe(second);
+  expect(Math.max(first.length, second.length)).toBeLessThanOrEqual(28);
+  expect(versionGitBranch('design')).toBe('version-design');
+  await getStore().setDoc(paths.version('org', 'site', 'seo-sharing-render-refresh-2026-12-01'), { kind: 'branch', base_version_id: 'main' });
+  const versionArgs = await longVersion('seo-sharing-render-refresh-2026-11-04');
+  expect(await executeCustomerPublication(versionArgs)).toBe('waiting');
+  expect(mocks.push.mock.calls[0][1].branch).toBe(first);
+});
+
+it('stops with a clear error when an activated test address does not serve a build its branch alias serves', async () => {
+  const versionArgs = await longVersion('seo-sharing-render-refresh-2026-11-04');
+  expect(await executeCustomerPublication(versionArgs)).toBe('waiting');
+  const { versionGitBranch } = await import('../../../../../scripts/lib/static-publication.mjs');
+  const branch = versionGitBranch('seo-sharing-render-refresh-2026-11-04');
+  complete(branch);
+  mocks.deployment.aliases = [`https://${branch}.${project}.pages.dev`];
+  // The build answers on Cloudflare's addresses; the test address does not.
+  mocks.probe.mockImplementation(async origin => origin.includes('.pages.dev'));
+  expect(await executeCustomerPublication(versionArgs)).toBe('waiting');
+  const waiting = await getStore().getDoc<any>(jobPath);
+  expect(waiting.status).toBe('running');
+  expect(waiting.git_publication.deployment_receipt.aliases).toEqual([`https://${branch}.${project}.pages.dev`]);
+  await getStore().updateDoc(jobPath, { git_publication: { ...waiting.git_publication, candidate_prepared_at: new Date(Date.now() - 11 * 60_000).toISOString() } });
+  await executeCustomerPublication(versionArgs);
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'test_address_unreachable' },
+    error: expect.stringContaining(`answers at https://${branch}.${project}.pages.dev`) });
 });
 
 it('a domain-only preparation reuses the public snapshot and does not publish later saved content', async () => {
@@ -746,20 +794,95 @@ it('attaches and verifies the media host before the deployment replaces the live
   mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
   mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
   // The new media host does not serve the files yet: the live site must stay as it is.
-  mediaDomains.mockResolvedValue(false);
+  mediaDomains.mockResolvedValue(mediaPending('dns_missing'));
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(mediaDomains).toHaveBeenCalledWith('org', expect.objectContaining({ media_host: 'media.example.org', delivery: 'r2' }));
   expect(mocks.direct).not.toHaveBeenCalled();
   expect(mocks.upload).not.toHaveBeenCalled();
-  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'distributing media' });
+  const waiting = await store.getDoc<any>(jobPath);
+  // The job names what remains instead of a bare phase.
+  expect(waiting).toMatchObject({ status: 'running', phase: 'distributing media', media_delivery: { host: 'media.example.org', issue: 'dns_missing' },
+    verification_message: expect.stringContaining('media.example.org has no public DNS answer yet') });
+  expect(waiting.git_publication.public_media_receipt).toBeUndefined();
   // Once it serves them, the deployment goes ahead, and media is not prepared again.
-  mediaDomains.mockClear(); mediaDomains.mockResolvedValue(true);
+  mediaDomains.mockClear(); mediaDomains.mockResolvedValue(mediaReady(3));
   mocks.probe.mockResolvedValue(true); mocks.candidateVerification.mockResolvedValue(true); mocks.verify.mockResolvedValue(true);
   await executeCustomerPublication(args);
   expect(mocks.direct).toHaveBeenCalledTimes(1);
   expect(mediaDomains).toHaveBeenCalledTimes(1);
   expect(mediaDomains.mock.invocationCallOrder[0]).toBeLessThan(mocks.direct.mock.invocationCallOrder[0]!);
-  expect((await store.getDoc<any>(jobPath)).git_publication.public_media_prepared).toBe(true);
+  const done = await store.getDoc<any>(jobPath);
+  expect(done.git_publication.public_media_receipt).toMatchObject({ scope: 'scope', checked: 3 });
+  expect(done.media_delivery).toBeNull();
+});
+
+async function engineJobWithMedia() {
+  const store = getStore();
+  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
+  await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<img src="https://media.example.com/photo.png" alt="Photo">' });
+  await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12,
+    storage: { provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'originals', key: 'photo.png' } });
+  const domains = await getSiteDomains('org', 'site');
+  await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', media_host: 'media.example.org', media_path_prefix: '', dns_mode: 'automatic' });
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'www.example.com', media_host: 'media.example.org', media_path_prefix: '' } });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
+  mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  await store.setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
+  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
+  mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
+  mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
+}
+
+it('does not trust the earlier unchecked media flag when a job resumes', async () => {
+  await engineJobWithMedia();
+  // Core before this fix recorded the flag before preparing media (FC, November 2026).
+  const job = await getStore().getDoc<any>(jobPath);
+  await getStore().updateDoc(jobPath, { git_publication: { ...job.git_publication, public_media_prepared: true } });
+  mediaDomains.mockResolvedValue(mediaPending('domain_pending'));
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(mediaDomains).toHaveBeenCalledTimes(1);
+  expect(mocks.direct).not.toHaveBeenCalled();
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'distributing media', media_delivery: { issue: 'domain_pending' } });
+  expect((await getSiteDomains('org', 'site')).state).not.toBe('live');
+});
+
+it('proves media before a Pages Git build is offered or marked live', async () => {
+  const store = getStore();
+  await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
+  await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<img src="https://media.example.com/photo.png" alt="Photo">' });
+  await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12,
+    storage: { provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'originals', key: 'photo.png' } });
+  const domains = await getSiteDomains('org', 'site');
+  await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', media_host: 'media.example.org', media_path_prefix: '', dns_mode: 'automatic' });
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'www.example.com', media_host: 'media.example.org', media_path_prefix: '' } });
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  complete(); mocks.probe.mockResolvedValue(true);
+  // A certificate that is still being issued: the job waits and says so, the site is not marked live.
+  mediaDomains.mockResolvedValue(mediaPending('certificate_pending'));
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'distributing media', media_delivery: { issue: 'certificate_pending' } });
+  expect(await store.getDoc<any>(paths.site('org', 'site'))).not.toMatchObject({ domain_status: 'live' });
+  mediaDomains.mockResolvedValue(mediaReady(2));
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  const done = await store.getDoc<any>(jobPath);
+  expect(done).toMatchObject({ status: 'succeeded', media_delivery: null, verification_message: null });
+  expect(done.git_publication.public_media_receipt).toMatchObject({ checked: 2 });
+});
+
+it('reports what remains when a failed media upload leaves the host without the file', async () => {
+  await engineJobWithMedia();
+  mediaDomains.mockResolvedValue(mediaPending('not_served'));
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(mocks.direct).not.toHaveBeenCalled();
+  // The observation limit fails the job with the remaining step, never as live.
+  await getStore().updateDoc(jobPath, { observation_started_at: new Date(Date.now() - 46 * 60_000).toISOString() });
+  await getStore().setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() - 46 * 60_000 });
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('media.example.org has no public DNS answer yet (not_served)') });
+  expect(mocks.direct).not.toHaveBeenCalled();
 });
 
 it('requires an engine update before queuing a new shared publication on the legacy supervisor', async () => {
@@ -1298,4 +1421,15 @@ it('lets a domain preparation blocked by a stale cache resume after an approved 
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval' });
   expect(mocks.push).toHaveBeenCalledTimes(1);
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
+});
+
+it('tells the publication that background image preparation stopped and why (SE-07)', async () => {
+  await getStore().setDoc(`media_preparations/${createHash('sha256').update('org\0site').digest('hex')}`, { state: 'failed', error: 'Background preparation stopped. Cause: the runner ran out of time (build_timeout)', error_code: 'build_timeout', failed_task: 'old-task' });
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
+  mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ media_preparation: { state: 'failed', error_code: 'build_timeout', failed_build_task: 'old-task' },
+    warnings: expect.arrayContaining([expect.stringContaining('Background image preparation stopped (build_timeout)')]) });
 });

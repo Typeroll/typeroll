@@ -304,3 +304,20 @@ describe('site-wide link hover', () => {
     }
   });
 });
+
+describe('site-wide visited links (SE-04)', () => {
+  const link: SiteStyle = { id: 'link', name: 'Link', role: 'link', targets: ['link'], base: { color: 'primary' } };
+  it('emits a visited rule before hover, without overriding block link colours', () => {
+    for (const renderVersion of [1, 11]) {
+      const css = siteStylesCss([{ ...link, visited: { color: 'primary' }, hover: { color: '#0056a0' } }], { ...opts, renderVersion });
+      expect(css).toContain(':where(a):visited,:where([data-block="prose"]) a:visited{color:var(--color-primary)}');
+      expect(css.indexOf(':visited')).toBeLessThan(css.indexOf('a:hover'));
+    }
+    expect(siteStylesCss([link], { ...opts, renderVersion: 11 })).not.toContain(':visited');
+  });
+  it('accepts only a colour, and only on the link role', () => {
+    expect(validateSiteStyle({ ...link, visited: { color: '#551a8b' } }).style?.visited).toEqual({ color: '#551a8b' });
+    expect(validateSiteStyle({ ...link, visited: { decoration: 'underline' } }).errors).toContain('visited supports only color');
+    expect(validateSiteStyle({ ...link, role: 'heading', visited: { color: 'primary' } }).errors).toContain('visited applies to the link role only');
+  });
+});

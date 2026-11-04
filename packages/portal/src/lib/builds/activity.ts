@@ -56,7 +56,9 @@ export async function buildActivity(org: string, now = Date.now()) {
     const site = input?.kind !== 'qualification' ? await store.getDoc<{ name: string }>(paths.site(org, task.identity.site_id)) : null;
     const status: 'queued' | 'running' | 'publishing' = task.status === 'completed' ? 'publishing' : task.status as 'queued' | 'running';
     return { key: task.id, job_id: task.identity.job_id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
-      kind: input?.kind, version_id: task.identity.version_id, status, phase, provider: input?.provider ?? 'cloudflare', attempt: task.attempt, static_verification: input?.kind === 'static_verification' && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
+      kind: input?.kind, version_id: task.identity.version_id, status, phase, provider: input?.provider ?? 'cloudflare', attempt: task.attempt,
+      // `attempt` also counts planned media windows; split it so a window never reads as a restart (SE-07).
+      ...buildAttemptParts(task), static_verification: input?.kind === 'static_verification' && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
   }));
   return { active_jobs: jobs, awaiting_approval: awaitingApproval };
 }
@@ -81,4 +83,10 @@ export async function cancelGithubTask(org: string, key: string) {
     const run = await readGithubDispatch(client, config, input);
     if (run && run.status !== 'completed') await client(`${githubBuildRoot(config)}/actions/runs/${run.id}/cancel`, { method: 'POST' });
   } catch { /* The revoked attempt cannot publish, even when GitHub cancellation is unavailable. */ }
+}
+
+/** Planned media windows and retried runs that make up a build task's `attempt`. */
+export function buildAttemptParts(task: { attempt: number; media_batches?: number }) {
+  const media_continuations = Math.min(task.media_batches ?? 0, Math.max(0, task.attempt - 1));
+  return { media_continuations, retries: Math.max(0, task.attempt - 1 - media_continuations) };
 }

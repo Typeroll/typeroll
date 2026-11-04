@@ -102,6 +102,8 @@ export interface SiteIndexingDiagnosticOptions {
   robotsBlocked?: boolean;
   previousHosts?: PreviousHost[];
   publicationId?: string;
+  /** The last recorded Cloudflare Pages custom-domain problem of the live website host, if any. */
+  pagesIssue?: { host: string; status: string; message: string; remedy: string } | null;
   fetchImpl?: typeof fetch;
   validateDestination?: (url: URL) => Promise<void>;
   now?: () => Date;
@@ -132,6 +134,13 @@ export async function diagnoseSiteIndexing(
   }
 
   const targets = await Promise.all(entries.map((entry) => probeTarget(entry, opts)));
+  // A deactivated Pages custom domain can stop serving at any moment, even while a probe still answers.
+  const pages = opts.pagesIssue;
+  for (const target of targets) {
+    if (target.kind !== 'production' || !pages || new URL(target.origin).hostname !== pages.host) continue;
+    target.matches_expected = false;
+    target.issues.push(`The Cloudflare Pages custom domain ${pages.host} is ${pages.status}, not active. ${pages.remedy}`.trim());
+  }
   const issues = targets.flatMap((target) => target.issues.map((issue) => `${target.kind}: ${issue}`));
   const previousHosts: PreviousHost[] = [];
   for (const previous of opts.previousHosts ?? []) {

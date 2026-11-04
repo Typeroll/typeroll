@@ -88,6 +88,8 @@ export interface SiteStyle {
   /** Overrides from each breakpoint upward. */
   at?: Partial<Record<StyleBreakpoint, StyleProps>>;
   hover?: Pick<StyleProps, 'color' | 'background' | 'decoration'>;
+  /** Link role only: colour of visited links. Browsers allow only colours under `:visited`. */
+  visited?: Pick<StyleProps, 'color'>;
   /** Advanced CSS. `&` is the style's selector; only declarations and nested
    *  `&…` rules are allowed. */
   css?: string;
@@ -177,7 +179,7 @@ export function validateSiteStyle(input: unknown): { style?: SiteStyle; errors: 
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { errors: ['style must be an object'] };
   const s = input as Record<string, unknown>;
   const errors: string[] = [];
-  const known = new Set(['id', 'name', 'role', 'targets', 'description', 'base', 'at', 'hover', 'css', 'parts', 'updated_at']);
+  const known = new Set(['id', 'name', 'role', 'targets', 'description', 'base', 'at', 'hover', 'visited', 'css', 'parts', 'updated_at']);
   for (const key of Object.keys(s)) if (!known.has(key)) errors.push(`${key} is not a style field`);
   if (typeof s.id !== 'string' || !STYLE_ID_PATTERN.test(s.id)) errors.push('id must start with a letter and contain only a-z, 0-9 and - (max 48)');
   if (typeof s.name !== 'string' || !s.name.trim() || s.name.length > 80) errors.push('name is required (max 80 characters)');
@@ -197,6 +199,11 @@ export function validateSiteStyle(input: unknown): { style?: SiteStyle; errors: 
   if (s.hover !== undefined) {
     errors.push(...propsErrors(s.hover, 'hover'));
     for (const key of Object.keys((s.hover ?? {}) as object)) if (!['color', 'background', 'decoration'].includes(key)) errors.push(`hover supports only color, background and decoration`);
+  }
+  if (s.visited !== undefined) {
+    errors.push(...propsErrors(s.visited, 'visited'));
+    for (const key of Object.keys((s.visited ?? {}) as object)) if (key !== 'color') errors.push('visited supports only color');
+    if (s.role !== 'link') errors.push('visited applies to the link role only');
   }
   const cssError = cssFieldError(s.css);
   if (cssError) errors.push(cssError);
@@ -219,6 +226,7 @@ export function validateSiteStyle(input: unknown): { style?: SiteStyle; errors: 
       base: (s.base ?? {}) as StyleProps,
       ...(s.at ? { at: s.at as SiteStyle['at'] } : {}),
       ...(s.hover ? { hover: s.hover as SiteStyle['hover'] } : {}),
+      ...(s.visited ? { visited: s.visited as SiteStyle['visited'] } : {}),
       ...(s.css ? { css: s.css as string } : {}),
       ...(Array.isArray(s.parts) && s.parts.length ? { parts: [...new Set(s.parts as string[])] } : {}),
       ...(typeof s.updated_at === 'string' ? { updated_at: s.updated_at } : {}),
@@ -408,6 +416,7 @@ export function styleContrastReport(style: SiteStyle, colors: SiteColors, opts: 
       props = { ...props, ...layer };
       check(at(where), props.color ?? surface.color, props.background ?? surface.background, props, surface.use);
     }
+    if (style.visited?.color) check(at('visited'), style.visited.color, props.background ?? surface.background, props, surface.use);
     if (style.hover?.color || style.hover?.background) {
       check(at('hover'), style.hover.color ?? props.color ?? surface.color, style.hover.background ?? props.background ?? surface.background, props, surface.use);
     }
@@ -632,6 +641,12 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
       for (const bp of STYLE_BREAKPOINTS) if (style.at?.[bp] && emitSpacing(style.at[bp]!)) rules.push(`${media(bp)}{${emitSpacing(style.at[bp]!)}}`);
       // Match ordinary site a:hover rules, without the class-style ID boost.
       // Explicit block/part hover rules retain their higher specificity.
+      // Visited before hover, so hover still wins on a visited link. :where() keeps
+      // block link colours (navigation, headings) as they are, like --link-color.
+      if (role === 'link' && style.visited) {
+        const visited = declarations(style.visited);
+        if (visited.length) rules.push(`:where(a):visited,:where([data-block="prose"]) a:visited{${visited.join(';')}}`);
+      }
       if (role === 'link' && style.hover) {
         const hover = declarations(style.hover);
         // The TOC's active/neutral state has a more specific base colour.

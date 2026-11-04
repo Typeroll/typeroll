@@ -1,5 +1,94 @@
 # Changelog
 
+## 0.2.153 (candidate)
+
+- A media host is reported live only after it serves the publication's files.
+  On fundraiserchart.com a domain preparation reported `media.fundraiserchart.com`
+  as live although neither its DNS record nor its R2 custom domain existed: an
+  earlier Core marked a publication's media as prepared before preparing it, and
+  a resumed job trusted that flag. Publications now record a receipt naming the
+  exact hosts, namespace and files that were proven, and only that receipt
+  counts. Cloudflare must report the R2 custom domain and its certificate as
+  active, and every image, earlier image address and share copy must answer
+  over HTTPS with its exact bytes. Until then the job stays in
+  `distributing media` and `media_delivery` names what remains: missing DNS, a
+  pending certificate, a rewrite rule for another namespace, a missing file or
+  different bytes. The domain guide shows the same check. Retrying after a
+  partial failure adds only what is missing and leaves a working custom domain
+  and rule as they are. Verification retries never provision; they only check.
+- Share copies (og:image) of images served from a separate media host are
+  stored on that host through the ordinary media stage, next to the image in
+  the site's R2 namespace, instead of in the Pages deployment. Their names come
+  from the source image and the copy recipe, with a receipt, so an unchanged
+  copy is reused and never rendered again. The publication checks that the
+  media host serves them before it replaces the live site; a copy that cannot
+  be stored fails the build and keeps the previous publication live. Pages that
+  shared a copy at `/_assets/share/` keep that address working through a 301 to
+  the new copy (within Cloudflare's 2000-redirect limit; beyond it the page
+  keeps its website copy). Sites without a separate media host keep their
+  copies at `/_assets/share/` as before. Older build engines need no update.
+- The first image on a page asks for the full viewport width (`sizes="100vw"`)
+  when no layout estimate applies. It loads eagerly and cannot use `auto`, so
+  the generic "800px" made a full-width first image soft on wide retina
+  screens. It now gets a variant matching the screen width and density, at the
+  cost of a few extra kB for that one image.
+- Lazy images that carry a layout estimate (grid cards, columns) now also get
+  `auto` on their sources. Before, only images without an estimate did, so
+  cards never used their rendered width (found on moveria.se).
+- A version's test address points at the branch alias Cloudflare Pages actually
+  serves. Cloudflare shortens branch names to 28 characters, so a long version
+  such as `seo-sharing-render-refresh-2026-11-04` was served on
+  `version-seo-sharing-render-r.<project>.pages.dev` while Typeroll pointed the
+  test address at the full name and it answered 404. The alias comes from the
+  deployment Cloudflare returned, with Cloudflare's own rule as the fallback.
+  A test-address record Typeroll created against the wrong alias is corrected
+  on the next publication; records Typeroll did not create, and live websites,
+  are never rewritten.
+- A version whose branch would exceed Cloudflare's 28-character alias keeps its
+  first characters and ends in a short hash of its full name, for example
+  `version-seo-sharing-r-3bcd58`. Two versions can never share a test address,
+  and short version names keep their branch.
+- When Cloudflare has activated a version's test address but it still does not
+  serve a build that answers on its branch alias 10 minutes after the build was
+  verified, the publication stops with `test_address_unreachable`, naming the
+  alias to point it at, instead of waiting 45 minutes.
+- Fixes from the Moveria market sites:
+  - `create_redirect`, `upsert_redirects` and redirect edits refuse a rule
+    whose target is the same page in another slash form or letter case, also
+    as an absolute URL on the site's own host, with code `redirect_self`
+    (AT-07). Every refusal now has a stable `code` (`redirect_self`,
+    `redirect_loop`, `redirect_hides_page`, `invalid_redirect`), and warnings
+    name only chains the new rule takes part in.
+  - Redirects that end on a website media path (`/wp-content/…` →
+    `/media/…`) are published straight to the file on the media host, so an
+    old file address answers with one 301 instead of two (AT-08).
+  - A site-wide share image (`default_og_image`, logo) gets `og:image:alt` from
+    its media library alt text, never from the first image in the page body
+    (AT-10).
+  - Two media records with the same bytes and public path are published once,
+    with both references pointing at it, instead of stopping publication with
+    `media_path_collision` (AT-14).
+  - A GitHub 422 when creating the publication tree is retried twice, the last
+    time without reusing blobs (AT-18).
+  - The link style role accepts `visited` (a colour), emitted as `:visited`
+    for links in text and prose (SE-04).
+  - `create_zone` refused by Cloudflare answers `zone_create_permission_required`
+    with the permission and the dashboard fallback (SE-06).
+  - `check_site_indexing` reports a pending or deactivated Pages custom domain
+    on the live host as an issue with `matches_expected: false` (CH-07).
+  - A media migration whose only leftovers are unfetchable sources ends
+    `complete` with them in `failed_media`; a retry restarts those sites too
+    (FI-10).
+  - A publication says when the site's background image preparation stopped,
+    in `job.warnings` and `job.media_preparation`; build activity splits
+    `attempt` into `media_continuations` and `retries` (SE-07).
+  - `analytics_site_limit` says who must act (the account's administrator or
+    the installation's operator) and is documented (ES-02).
+  - `POST /v1/sites` also returns the new site's `id` at the top level (BE-02).
+- The site logo keeps its full-resolution variant: the display-height `sizes`
+  from #160 is withdrawn, since it saved about 0.2 kB per logo and sharpness on
+  high-density screens matters more.
+
 ## 0.2.152 (candidate)
 
 - Fixes for the image changes in 0.2.151, found on moveria.se:

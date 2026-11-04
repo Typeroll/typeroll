@@ -24,3 +24,21 @@ it('grants the exact completion receipt and keeps private preparation unpublishe
     expect(grant.objects).toEqual({});
   } finally { client.destroy(); }
 });
+
+it('grants the exact share copy and receipt of a share image on a separate media host, and nothing on the website host', async () => {
+  const client = new S3Client({ region: 'auto', endpoint: 'https://example.r2.cloudflarestorage.com', forcePathStyle: true, credentials: { accessKeyId: 'synthetic', secretAccessKey: 'synthetic' } });
+  let grant: any;
+  vi.spyOn(client, 'send').mockImplementation(async (command: any) => { grant = JSON.parse(command.input.Body.toString()); return {}; });
+  const entry = { source_key: 'private/media/site/originals/logo.svg', public_key: 'media/site/logo.svg', public_path: '/logo.svg', cdn_url: 'https://media.example.com/logo.svg',
+    sha256: 'a'.repeat(64), mime_type: 'image/svg+xml', share_source: true, aliases: [{ key: 'media/site/old/logo.svg', url: 'https://media.shared.example/old/logo.svg' }] };
+  const manifest = { delivery: 'r2', media_host: 'media.example.com', website_host: 'www.example.com', share_background: '#fbfaf6', account_id: 'a'.repeat(32), site_prefix: 'media/site', original_bucket: 'private', public_bucket: 'public', entries: [entry] };
+  const suffix = `.share-s1.card.${'a'.repeat(16)}.fbfaf6.png`;
+  try {
+    await createBuildMediaGrants(client, manifest, 'b'.repeat(64));
+    expect(Object.keys(grant.objects).filter(key => key.includes('.share-')).sort()).toEqual([
+      entry.public_key + suffix, entry.public_key + suffix + '.receipt.json', 'media/site/old/logo.svg' + suffix].sort());
+    expect(grant.objects[entry.public_key + suffix].headers).toMatchObject({ 'content-type': 'image/png', 'if-none-match': '*' });
+    await createBuildMediaGrants(client, { ...manifest, delivery: 'static', media_host: 'www.example.com' }, 'b'.repeat(64));
+    expect(Object.keys(grant.objects).some(key => key.includes('.share-'))).toBe(false);
+  } finally { client.destroy(); }
+});

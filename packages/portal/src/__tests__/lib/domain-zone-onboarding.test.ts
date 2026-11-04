@@ -57,3 +57,17 @@ it('binds a plan to its connection revision and domain', async () => {
   await expect(onboardDomainZone('org', 'site', { action: 'apply_dns', zone_name: 'example.com', plan_revision: plan.revision, confirm_inventory: true })).rejects.toMatchObject({ code: 'dns_plan_stale' });
   await expect(onboardDomainZone('org', 'site', { action: 'create_zone', zone_name: 'other.com' })).rejects.toMatchObject({ code: 'zone_host_mismatch' });
 });
+it('names the missing permission when Cloudflare refuses to create the zone (SE-06)', async () => {
+  const { ProviderError } = await import('../../lib/publishing/providers.mjs');
+  const base = provider.getMockImplementation()!;
+  provider.mockImplementation(async (route, options) => {
+    if (route.startsWith('/zones?')) return [];
+    if (route === '/zones' && options?.method === 'POST') throw new ProviderError('Cloudflare', 403, [9109]);
+    return base(route, options);
+  });
+  await expect(onboardDomainZone('org', 'site', { action: 'create_zone', zone_name: 'example.com' })).rejects.toMatchObject({
+    status: 409, code: 'zone_create_permission_required', message: expect.stringContaining('Add example.com yourself in Cloudflare') });
+  // A zone added in the dashboard is then picked up without another POST.
+  provider.mockImplementation(async (route, options) => route.startsWith('/zones?') ? [zone] : base(route, options));
+  expect(await onboardDomainZone('org', 'site', { action: 'create_zone', zone_name: 'example.com' })).toMatchObject({ zone: { id: 'zone' }, next_action: 'scan_dns' });
+});

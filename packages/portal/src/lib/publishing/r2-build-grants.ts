@@ -3,7 +3,7 @@ import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { mediaReceiptKey } from '../../../../../scripts/fixtures/static-publication/media-receipt.mjs';
 
-import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_SLOTS, mediaVariantSuffix } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
+import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_SLOTS, mediaVariantSuffix, shareCopyTarget } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 
 /** Grants authorize exact objects and methods, never a bucket, listing, deletion, or parent key. */
 export async function createBuildMediaGrants(client: S3Client, manifest: any, publicationId: string, ttlSeconds = 21600) {
@@ -32,6 +32,9 @@ export async function createBuildMediaGrants(client: S3Client, manifest: any, pu
     }
     if (manifest.cache_only) continue;
     suffixes.push({ suffix: mediaReceiptKey(manifest, entry).slice(entry.public_key.length), mime: 'application/json' });
+    // The og:image copy of a share image on a separate media host, and its receipt.
+    const share = shareCopyTarget(manifest, entry);
+    if (share) suffixes.push({ suffix: share.suffix, mime: share.mime_type }, { suffix: share.suffix + '.receipt.json', mime: 'application/json' });
     for (const base of [entry.public_key, ...(entry.aliases ?? []).map((alias: any) => alias.key)]) {
       if (!base.startsWith(`${manifest.site_prefix}/`) || base.split('/').some((part: string) => part === '..' || part === '.')) throw new Error('Public object escaped publication scope');
       for (const { suffix, mime } of suffixes) {

@@ -116,6 +116,10 @@ publication answers, `serving_typeroll` is `false`, `matches_expected` is
 previous host that uses Cloudflare for SaaS outranks your own DNS until the domain
 is removed from its dashboard; see
 [another host still answers after the switch](../../publishing/domains/#another-host-still-answers-after-the-switch).
+When the last serving check found the live website host's Cloudflare Pages
+custom domain pending or deactivated, the production target also has
+`matches_expected: false` and an issue naming that status and the remedy, even
+if the address still answers.
 
 In Core 0.2.88, `expectation_reason` explains the policy being checked.
 For customer publishing with no future website host saved, the platform's
@@ -344,11 +348,22 @@ that description. Private (`rendered: false`) fields are never exposed.
 Social networks do not show SVG, AVIF or TIFF share images. When the selected
 image is one of these and comes from the site's media library, the publication
 build renders a 1200×630 PNG copy and points `og:image` and `twitter:image` at
-it. The image is contained, never cropped, on the theme's background colour,
-and the copy is published at `/_assets/share/`. The original stays the page
-image everywhere else. A raster share image from the media library also gets
-`og:image:type`, `og:image:width` and `og:image:height`. For the best card,
-choose a 1200×630 PNG or JPEG as `default_og_image` and as Page images.
+it. The image is contained, never cropped, on the theme's background colour.
+A large PNG, JPEG or WebP share image gets a JPEG copy about 1200 pixels wide
+and under about 300 kB. The original stays the page image everywhere else, and
+`og:image:type`, `og:image:width` and `og:image:height` always describe the
+image `og:image` points at.
+
+When the site's images are served from a separate media host (the
+organization's shared host or the site's own), the copies are stored there
+too, next to the image in the site's namespace, and the publication checks that
+the media host serves them before it goes live. Their names are derived from
+the source image and the copy recipe, so an unchanged image keeps its copy and
+its address across publications. An address under `/_assets/share/` that an
+earlier publication used for the same copy redirects to it. Without a separate
+media host, the copy is published on the website at `/_assets/share/`. For the
+best card, choose a 1200×630 PNG or JPEG as `default_og_image` and as Page
+images.
 
 Language-only tags use a likely region (`sv` → `sv_SE`); explicit regions are
 preserved (`de-AT` → `de_AT`, `en-GB` → `en_GB`). Changes require a new site

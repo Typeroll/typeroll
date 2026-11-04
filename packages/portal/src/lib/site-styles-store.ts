@@ -140,10 +140,11 @@ export async function updateStyle(ctx: StyleCtx, id: string, patch: unknown): Pr
   }
   const merged = {
     ...current,
-    ...Object.fromEntries(Object.entries(p).filter(([key]) => !['base', 'at', 'hover', 'updated_at'].includes(key))),
+    ...Object.fromEntries(Object.entries(p).filter(([key]) => !['base', 'at', 'hover', 'visited', 'updated_at'].includes(key))),
     base: p.base === undefined ? current.base : mergeProps(current.base, p.base),
     ...(Object.keys(at).length ? { at } : { at: undefined }),
     ...(p.hover === undefined ? {} : { hover: p.hover === null ? undefined : mergeProps(current.hover, p.hover) }),
+    ...(p.visited === undefined ? {} : { visited: p.visited === null ? undefined : mergeProps(current.visited, p.visited) }),
   };
   for (const key of ['description', 'css', 'role', 'parts'] as const) if ((merged as Record<string, unknown>)[key] === null) delete (merged as Record<string, unknown>)[key];
   const style = parse(JSON.parse(JSON.stringify(merged)));

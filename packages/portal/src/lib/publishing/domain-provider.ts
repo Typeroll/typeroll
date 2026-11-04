@@ -1,4 +1,5 @@
 import { digest } from './providers.mjs';
+import { pagesBranchHost } from './pages-alias';
 import { ConnectionError } from './connections';
 import { publicationHostname } from './domain-config';
 import { assertTrafficNotOwnedByOtherOrganization } from './cloudflare-account-claims';
@@ -82,14 +83,15 @@ function prevalidationBlocker(hostname: string, traffic: DnsRequirement, previou
     message: `Cloudflare Pages validates ${hostname} only after its record points at Pages (Cloudflare reports "CNAME record not set"), and it cannot validate the hostname while the current website keeps serving it. Expect a short window after the switch in which ${hostname} does not answer until Cloudflare finishes validation; Cloudflare does not document how long this takes. Before switching, keep the zone active with DNS-only records and wait until its Universal SSL certificate is active (SSL/TLS → Edge Certificates; Cloudflare issues it 15 minutes to 24 hours after the zone becomes active). ${switchStep} To roll back, restore ${restore}. Retrying the build or reconnecting the account does not change this requirement.` };
 }
 
-function trafficRequirement(hostname: string, project: string, branch: string): DnsRequirement {
-  return { phase: 'traffic', type: 'CNAME', name: hostname,
-    content: `${branch === 'main' ? '' : `${branch}.`}${project}.pages.dev`, proxied: true, status: 'required' };
+function trafficRequirement(hostname: string, project: string, branch: string, deployment?: { aliases?: unknown; short_id?: unknown } | null): DnsRequirement {
+  return { phase: 'traffic', type: 'CNAME', name: hostname, content: pagesBranchHost(project, branch, deployment), proxied: true, status: 'required' };
 }
 
 /** Register the hostname after a verified build, without overwriting existing customer traffic. */
 /** `orgId` is the Organization publishing: a hostname that serves another Organization's Pages project in the same account is never prepared for replacement. */
-export async function preparePagesDomain(provider: Provider, input: { accountId: string; project: string; branch: string; hostname: string; dnsMode: 'automatic' | 'external'; configureTraffic?: boolean; dnsProvider?: Provider; dnsAccountId?: string; orgId?: string }): Promise<DomainPreparation> {
+export async function preparePagesDomain(provider: Provider, input: { accountId: string; project: string; branch: string; hostname: string; dnsMode: 'automatic' | 'external'; configureTraffic?: boolean; dnsProvider?: Provider; dnsAccountId?: string; orgId?: string;
+  /** The verified deployment; its branch alias is the DNS target (Cloudflare shortens long branch names). */
+  deployment?: { aliases?: unknown; short_id?: unknown } | null }): Promise<DomainPreparation> {
   const hostname = publicationHostname(input.hostname);
   if (!/^[a-z0-9-]{1,58}$/.test(input.project) || !/^(main|version-[a-z0-9-]+)$/.test(input.branch)) throw new ConnectionError('Invalid publishing target');
   const root = `/accounts/${input.accountId}/pages/projects/${input.project}/domains`;
@@ -98,7 +100,7 @@ export async function preparePagesDomain(provider: Provider, input: { accountId:
     await provider(root, { method: 'POST', body: { name: hostname } });
     domain = await provider(`${root}/${hostname}`);
   }
-  const traffic = trafficRequirement(hostname, input.project, input.branch);
+  const traffic = trafficRequirement(hostname, input.project, input.branch, input.deployment);
   const requirements: DnsRequirement[] = [];
   const validation = domain.validation_data;
   if (validation?.method === 'txt' && typeof validation.txt_name === 'string' && typeof validation.txt_value === 'string') {
@@ -122,6 +124,19 @@ export async function preparePagesDomain(provider: Provider, input: { accountId:
   result.previous_records = addressRecords.map(({ id, type, name, content, proxied, ttl }: any) => ({ id, type, name, content, proxied, ttl }));
   result.dns_fingerprint = trafficFingerprint(addressRecords);
   if (addressRecords.length === 1 && addressRecords[0].type === 'CNAME' && addressRecords[0].content === traffic.content && addressRecords[0].proxied === true) {
+    traffic.status = 'configured'; result.action = 'verify'; return result;
+  }
+  // A version address Typeroll pointed at another alias of this same project
+  // (a full branch name Cloudflare never served) is corrected in place. It is
+  // Typeroll's own test address, never a customer's live website.
+  const stale = addressRecords.length === 1 ? addressRecords[0] : null;
+  if (input.branch !== 'main' && input.configureTraffic !== false && stale?.type === 'CNAME' && stale.proxied === true
+      && stale.comment === 'Typeroll static publication' && String(stale.content).toLowerCase().replace(/\.$/, '').endsWith(`.${input.project}.pages.dev`)) {
+    await dns(`/zones/${zone.id}/dns_records/${stale.id}`, { method: 'PATCH', body: {
+      type: traffic.type, name: traffic.name, content: traffic.content, proxied: true, ttl: 1, comment: 'Typeroll static publication' } });
+    result.previous_records = [];
+    result.dns_fingerprint = null;
+    result.has_existing_traffic = false;
     traffic.status = 'configured'; result.action = 'verify'; return result;
   }
   if (addressRecords.length) {

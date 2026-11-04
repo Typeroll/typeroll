@@ -54,7 +54,12 @@ export function shareImageIssues(url: string | undefined | null, meta: { mime_ty
   return [];
 }
 /** Resolve sharing metadata from public content only, without storing derived mirrors. */
-export function socialMetadata(page: Page, settings: SiteSettings, type?: ContentType, pageUrl?: string) {
+/**
+ * `mediaAlt` reads the media library's alt text for an image URL. A site-wide
+ * image (default_og_image, logo) is described by its own alt text, never by
+ * whatever image happens to come first in the page body.
+ */
+export function socialMetadata(page: Page, settings: SiteSettings, type?: ContentType, pageUrl?: string, mediaAlt: (url: string) => string | undefined = () => undefined) {
   const field = type?.fields.find(field => field.rendered !== false && type.schema_field_map?.[field.name] === 'image' && text(page.fields?.[field.name]));
   const mappedImage = field ? text(page.fields?.[field.name]) : '';
   const altField = field && type?.fields.find(candidate => candidate.name === `${field.name}_alt` && candidate.rendered !== false);
@@ -69,13 +74,14 @@ export function socialMetadata(page: Page, settings: SiteSettings, type?: Conten
     try { const url = new URL(selectedImage, pageUrl); image = /^https?:$/.test(url.protocol) ? url.href : ''; }
     catch { image = ''; }
   }
+  const libraryAlt = () => image ? text(mediaAlt(image)) || (selectedImage !== image ? text(mediaAlt(selectedImage)) : '') : '';
   const bodyAlt = page.html_content?.match(/<img\b[^>]*\balt=["']([^"']*)["']/i)?.[1] || '';
   return {
     type: page.kind === 'article' || ['Article', 'BlogPosting', 'NewsArticle'].includes(page.schema_type || type?.schema_type || '') ? 'article' : 'website',
     title: text(page.og_title) || documentTitle,
     description: text(page.og_description) || text(page.seo_description) || settings.default_meta_description || settings.tagline || '',
     image,
-    imageAlt: text(page.seo_image_alt) || (!explicitImage && mappedImage ? mappedAlt : bodyAlt),
+    imageAlt: text(page.seo_image_alt) || (explicitImage ? libraryAlt() || bodyAlt : mappedImage ? mappedAlt || libraryAlt() : libraryAlt()),
     locale: ogLocale(page.language || settings.language),
   };
 }
