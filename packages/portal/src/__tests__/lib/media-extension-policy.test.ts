@@ -240,6 +240,24 @@ describe('publication media manifest', () => {
     expect(result.warnings).toHaveLength(3);
   });
 
+  it('publishes the same file imported twice once and rewrites both references (AT-14)', async () => {
+    const bytes = Buffer.from('identical logo bytes');
+    const first = await seed('first', { filename: 'logo.png', mime_type: 'image/png' }, bytes);
+    const second = await seed('second', { filename: 'logo.png', mime_type: 'image/png' }, bytes);
+    const result = await publicationMediaManifest('org', 'site', { html: `<img src="${first}"><img src="${second}">` }, 'site.demos.example.com');
+    expect(result.manifest!.entries.map(entry => entry.id)).toEqual(['first']);
+    const published = result.manifest!.entries[0]!.cdn_url;
+    expect(result.content.html).toBe(`<img src="${published}"><img src="${published}">`);
+    expect(result.warnings).toEqual([expect.stringContaining('second (logo.png) is the same file as first')]);
+  });
+
+  it('still refuses two different files on one public path', async () => {
+    const a = await seed('a', { filename: 'a.png', mime_type: 'image/png', public_path: '/same.png' }, Buffer.from('one'));
+    const b = await seed('b', { filename: 'b.png', mime_type: 'image/png', public_path: '/same.png' }, Buffer.from('two'));
+    await expect(publicationMediaManifest('org', 'site', { html: `<img src="${a}"><img src="${b}">` }, 'site.demos.example.com'))
+      .rejects.toMatchObject({ code: 'media_path_collision', message: expect.stringContaining('a and b are different files') });
+  });
+
   it('keeps passive names unchanged and infers a missing type from them', () => {
     expect(publishableMediaPath('/a/photo.JPG', 'image/jpeg')).toEqual({ path: '/a/photo.JPG', mime_type: 'image/jpeg', renamed: false });
     expect(publishableMediaPath('/a/photo.png', undefined)).toEqual({ path: '/a/photo.png', mime_type: 'image/png', renamed: false });

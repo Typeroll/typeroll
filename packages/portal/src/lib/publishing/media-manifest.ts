@@ -143,6 +143,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     media.splice(media.indexOf(item), 1);
   }
   const shareSources = shareImageSourceUrls(content);
+  const byPath = new Map<string, any>();
   const entries = media.map(item => {
     if (!item.storage) throw new ConnectionError('Media storage changed during publishing. Deploy again.', 409, 'media_migration_pending');
     const chosen = item.public_path ? publicMediaPath(item.public_path) : `/${item.sha256!.slice(0, 16)}-${item.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -151,7 +152,15 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     if (safe.renamed) warnings.push(`Media ${item.id} (${item.filename}) is published at ${safe.path} because its name did not match its type ${mediaTypeEssence(item.mime_type) || 'unknown'}.`);
     const relative = safe.path;
     const publicPath = publicMediaPath(`${publicPrefix}${relative}`);
-    if (pathsSeen.has(publicPath)) throw new ConnectionError('Two media files use the same public path. Choose distinct paths before publishing.', 409, 'media_path_collision');
+    const taken = byPath.get(publicPath);
+    if (taken && taken.sha256 === item.sha256 && taken.mime_type === safe.mime_type) {
+      // The same file imported twice (two folders, AT-14): publish it once and point both records at it.
+      for (const url of references(item)) replacements.set(url, taken.cdn_url);
+      if (references(item).some(url => shareSources.has(url))) taken.share_source = true;
+      warnings.push(`Media ${item.id} (${item.filename}) is the same file as ${taken.id} and is published once at ${publicPath}.`);
+      return null;
+    }
+    if (taken || pathsSeen.has(publicPath)) throw new ConnectionError(`Media ${taken?.id ?? 'files'} and ${item.id} are different files with the same public path ${publicPath}. Choose distinct paths before publishing.`, 409, 'media_path_collision');
     pathsSeen.add(publicPath);
     const url = `https://${host}${publicPath}`;
     const publicKey = `${prefix}${sharedHost ? relative : publicPath}`;
@@ -168,12 +177,14 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     for (const alias of item.source_aliases ?? []) replacements.set(alias, url);
     // Existing responsive URLs remain valid aliases; the current build regenerates its own variant list.
     for (const variant of item.variants ?? []) replacements.set(variant.cdn_url, url);
-    return { id: item.id, filename: item.filename, mime_type: safe.mime_type, alt_text: item.alt_text, title: item.title, caption: item.caption,
+    const entry: Record<string, any> = { id: item.id, filename: item.filename, mime_type: safe.mime_type, alt_text: item.alt_text, title: item.title, caption: item.caption,
       cdn_url: url, variants: [], source_key: item.storage.key, sha256: item.sha256, size_bytes: item.size_bytes,
       public_key: publicKey, public_path: publicPath, aliases, ...(svg ? { svg_sanitized: true } : {}),
       // The build's media stage sees no pages, so it learns here which files a page may share.
       ...(references(item).some(url => shareSources.has(url)) ? { share_source: true } : {}) };
-  });
+    byPath.set(publicPath, entry);
+    return entry;
+  }).filter((entry): entry is Record<string, any> => entry !== null);
   for (const warning of warnings) console.warn(`[media-manifest] site ${siteId}: ${warning}`);
   for (const [alias, previousTarget] of previousPublication?.reference_mapping?.media ?? []) {
     const nextTarget = replacements.get(previousTarget);
