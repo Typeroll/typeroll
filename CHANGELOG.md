@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.2.152 (candidate)
+
+- Fixes for the image changes in 0.2.151, found on moveria.se:
+  - Share copies (SE-10) were never made on customer build engines: the build's
+    media stage reads a publication without its pages, so it could not tell
+    which images pages share. The portal now marks those entries
+    (`share_source`) in the media manifest. This also lets SVG share images on
+    a separate media host get their PNG copy.
+  - Art-directed images (SE-11) were not expanded once the page body had
+    passed the HTML parser, which writes `<source></source>` and escapes `<`.
+    Both forms are now recognised.
+  - Cards in a `core/grid` get a `sizes` from its columns too (SE-09).
+  - Only the first visual image on a page loads eagerly with high priority.
+  - Image sizing no longer depends on knowing each block type. Lazy images get
+    `sizes="auto, …"` on their sources, so browsers that support it use the width the image is
+    actually rendered at, in any core or custom block type. The layout
+    estimate after `auto` is the fallback; any container block type with a
+    `cols` or `columns` field gives its children one. Header and footer
+    partials now get variants, dimensions and sizes too, without taking the
+    page's leading image slot. `auto` is set only on the generated
+    `<source>` elements of a lazy image with known width and height, never on
+    the `<img>`, which browsers would otherwise give a 300×150 placeholder size.
+- Once a publication is done, Typeroll reads the home page once and requests
+  the images it references (og:image, each `<img>`, the first `srcset`
+  candidate) on every host they use. When one does not answer 200, the job
+  shows `images not served` with the first failing address (`media_check`).
+  Nothing is scheduled; server errors and timeouts report nothing.
+- A new media host is attached and serving its files before a publication
+  replaces the live site. Engine publications marked media as prepared as soon
+  as Cloudflare returned a deployment, so a domain preparation that added a site
+  media host published pages pointing at a host that was not attached yet, and
+  their images failed until it was set up.
+
 ## 0.2.151 (candidate)
 
 - MCP connections no longer expire. A connection made by signing in lasts until

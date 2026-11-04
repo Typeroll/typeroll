@@ -53,6 +53,8 @@ function matchesEntry(publication, entry, raw) {
 /** A manifest entry that some page may share and that networks cannot show as it is. */
 export function isShareImageEntry(publication, entry) {
   if (!RASTERIZE.has(essence(entry.mime_type))) return false;
+  // The portal marks share images; the build's media stage has no pages to find them.
+  if (entry.share_source === true) return true;
   for (const source of shareImageSources(publication)) if (matchesEntry(publication, entry, source)) return true;
   return false;
 }
@@ -100,6 +102,7 @@ const MAX_DERIVATIVES = 2_000;
 /** True when some page or the site may share this entry and it is a raster image too large to share as it is. */
 export function needsShareDerivative(publication, entry, width, sizeBytes = entry.size_bytes) {
   if (!RASTER_SHARE.has(essence(entry.mime_type)) || !(Number(sizeBytes) > SHARE_MAX_BYTES || Number(width) > SHARE_WIDTH)) return false;
+  if (entry.share_source === true) return true;
   for (const source of shareImageSources(publication)) if (matchesEntry(publication, entry, source)) return true;
   return false;
 }

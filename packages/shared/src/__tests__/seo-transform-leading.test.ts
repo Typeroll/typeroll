@@ -5,12 +5,12 @@ const empty = buildMediaLookup([]);
 const imgs = (html: string) => html.match(/<img\b[^>]*>/g) ?? [];
 
 describe('leading image loading', () => {
-  it('makes a block image that marks itself lazy eager when it is the first visual image', () => {
+  it('makes only the first visual image eager, even when it marks itself lazy', () => {
     const html = '<span class="block-image-frame"><img src="/a.webp" alt="" loading="lazy" decoding="async" /></span><p>x</p><img src="/b.webp" alt="" loading="lazy" /><img src="/c.webp" alt="" loading="lazy" />';
     const [first, second, third] = imgs(transformBodyForSeo(html, empty));
     expect(first).toContain('loading="eager"');
     expect(first).toContain('fetchpriority="high"');
-    expect(second).toContain('loading="eager"');
+    expect(second).toContain('loading="lazy"');
     expect(third).toContain('loading="lazy"');
     expect(third).not.toContain('fetchpriority');
   });
@@ -74,6 +74,16 @@ describe('art-directed images and distant images', () => {
     expect(sources[3]).not.toContain('media=');
     expect(out.match(/<picture/g)).toHaveLength(1);
     expect(transformBodyForSeo(out, lookup)).toBe(out);
+  });
+
+  it('expands the art-directed picture after an HTML parser rewrote it', () => {
+    const html = '<picture data-tr-art-direction><source media="(width &lt; 768px)" srcset="https://m.example/mob.png"></source><img src="https://m.example/desk.png" sizes="(max-width: 1023px) 100vw, 75vw" alt="Offer" width="755" height="283" loading="lazy" decoding="async" /></picture>';
+    const out = transformBodyForSeo(html, lookup);
+    const sources = out.match(/<source\b[^>]*>/g) ?? [];
+    expect(sources).toHaveLength(5);
+    expect(sources[0]).toContain('media="(width &lt; 768px)" type="image/avif"');
+    expect(sources[4]).toContain('sizes="(max-width: 1023px) 100vw, 75vw"');
+    expect(out).not.toContain('data-tr-art-direction');
   });
 
   it('keeps a second image lazy when it is far below the first', () => {

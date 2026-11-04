@@ -42,6 +42,14 @@
   Apps.
 - Keep customer sites static. Dynamic Forms and Extension requests go directly
   to the runtime owner documented by the public architecture.
+- Do not add recurring background jobs that check or monitor customer websites.
+  Verify a publication once, as part of the publication: before it replaces the
+  live site where possible (for example, a new media host is attached and serves
+  its files before the deployment), otherwise once right after it is done
+  (the image check). Report the result on the publication's job. The existing
+  follow-up checks after a domain switch (`domain_serving_check`) are the only
+  exception; do not extend them or add new ones without the owner's explicit
+  approval.
 - Keep code, identifiers, comments, routes, API fields, tests, and logs in
   English.
 - Never commit credentials, tokens, cookies, personal data, or authenticated

@@ -77,14 +77,18 @@ export interface TransformOptions {
    * rendered width so the browser picks the 320w variant instead of 640w.
    */
   defaultSizes?: string;
+  /**
+   * False for markup outside the page body (header, footer): its images keep
+   * their variants and dimensions but never take the page's leading,
+   * high-priority slot from the body's first image.
+   */
+  leadingImage?: boolean;
 }
 
 /**
  * Transform a page body in place. Returns the modified HTML; never throws.
  * Designed to be cheap (~ms for realistic pages).
  */
-const LEADING_PAIR_DISTANCE = 4_000;
-
 /**
  * A core/image with a mobile image renders `<picture data-tr-art-direction>`
  * with one media-queried `<source>`. Give both images their AVIF and WebP
@@ -93,18 +97,21 @@ const LEADING_PAIR_DISTANCE = 4_000;
  */
 function expandArtDirection(html: string, lookup: MediaLookup, opts: TransformOptions): string {
   if (!html.includes('data-tr-art-direction')) return html;
-  return html.replace(/<picture data-tr-art-direction>\s*<source\b([^>]*)\/?>\s*(<img\b[^>]*\/?>)\s*<\/picture>/gi, (match, sourceRaw: string, img: string) => {
+  // The body may have passed an HTML parser first, which writes `<source></source>`
+  // and escapes `<` in attribute values; accept both forms.
+  return html.replace(/<picture data-tr-art-direction>\s*<source\b([^>]*?)\s*\/?>(?:\s*<\/source>)?\s*(<img\b[^>]*\/?>)\s*<\/picture>/gi, (match, sourceRaw: string, img: string) => {
     const source = parseAttrs(sourceRaw);
     const image = parseAttrs(img.replace(/^<img\b/i, '').replace(/\/?>$/, ''));
-    const media = source.media, mobile = source.srcset ? lookup.byUrl.get(source.srcset) : undefined;
-    const desktop = image.src ? lookup.byUrl.get(image.src) : undefined;
+    const rawMedia = /\bmedia="([^"]*)"/.exec(sourceRaw)?.[1];
+    const mobile = source.srcset ? lookup.byUrl.get(decodeEntities(source.srcset)) : undefined;
+    const desktop = image.src ? lookup.byUrl.get(decodeEntities(image.src)) : undefined;
     const sources: string[] = [];
     for (const fmt of ['avif', 'webp'] as const) {
       const srcset = mobile?.variants?.length ? buildVariantSrcset(mobile.variants, fmt) : null;
-      if (srcset && media) sources.push(`<source media="${escapeAttr(media)}" type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="100vw" />`);
+      if (srcset && rawMedia) sources.push(`<source media="${rawMedia}" type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="auto, 100vw" />`);
     }
     sources.push(`<source${sourceRaw.replace(/\s*\/$/, '')} />`);
-    const sizes = image.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES;
+    const sizes = image.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
     for (const fmt of ['avif', 'webp'] as const) {
       const srcset = desktop?.variants?.length ? buildVariantSrcset(desktop.variants, fmt) : null;
       if (srcset) sources.push(`<source type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="${escapeAttr(sizes)}" />`);
@@ -112,6 +119,8 @@ function expandArtDirection(html: string, lookup: MediaLookup, opts: TransformOp
     return sources.length > 1 ? `<picture>${sources.join('')}${img}</picture>` : match;
   });
 }
+
+const decodeEntities = (value: string) => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 
 export function transformBodyForSeo(
   html: string,
@@ -121,14 +130,13 @@ export function transformBodyForSeo(
   if (!html) return html;
   html = expandArtDirection(html, lookup, opts);
   let imgIndex = 0;
-  let firstLeadingOffset = -1;
 
   // Single pass over <img> tags. Don't re-wrap an <img> that is already
   // inside a <picture> — whether one WE emitted on a previous pass
   // (idempotency) or one the AUTHOR hand-wrote to opt out of the generic
   // sizes (e.g. custom media-queried <source>s). Re-wrapping produced
   // invalid nested <picture> markup — see the autopilot.se field report.
-  return html.replace(/<img\b([^>]*)\/?>/gi, (match, attrsRaw, offset) => {
+  const out = html.replace(/<img\b([^>]*)\/?>/gi, (match, attrsRaw, offset) => {
     // Are we inside an open <picture>? Find the nearest preceding picture
     // boundary across the WHOLE prefix (not a fixed 200-char window — an
     // author's <picture> with several long media-queried <source>s pushes
@@ -145,17 +153,17 @@ export function transformBodyForSeo(
     // own loading and do not use up the leading slots.
     const candidate = isLcpCandidate(attrs, html, offset);
     const index = candidate ? imgIndex++ : Infinity;
-    // The first visual image is the likely largest paint. A second one counts
-    // only when it sits close to the first (a hero pair), not far down the
-    // page after a short article.
-    if (index === 0) firstLeadingOffset = offset;
-    const isLeading = index === 0 || (index === 1 && offset - firstLeadingOffset < LEADING_PAIR_DISTANCE);
+    // Only the first visual image is the likely largest paint. Every later
+    // image loads lazily: an eager second image (a banner after a short
+    // article, the next card) competes with it for bandwidth.
+    const isLeading = index === 0 && opts.leadingImage !== false;
 
     // 1. loading / decoding defaults. Block templates mark their images
     //    lazy; the first visual image overrides that, since a lazy LCP
     //    image waits for layout before it starts loading.
     if (isLeading && attrs.loading === 'lazy') attrs.loading = 'eager';
-    if (!('loading' in attrs)) attrs.loading = isLeading ? 'eager' : 'lazy';
+    // Header and footer images keep their own loading: they are usually above the fold.
+    if (!('loading' in attrs) && opts.leadingImage !== false) attrs.loading = isLeading ? 'eager' : 'lazy';
     if (!('decoding' in attrs)) attrs.decoding = 'async';
     if (isLeading && attrs.loading !== 'lazy' && !('fetchpriority' in attrs)) attrs.fetchpriority = 'high';
     // High priority on a lazy image contradicts itself; lazy wins.
@@ -182,7 +190,7 @@ export function transformBodyForSeo(
     if (!insidePicture && src) {
       const meta = lookup.byUrl.get(src);
       if (meta?.variants && meta.variants.length > 0) {
-        const sizes = attrs.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES;
+        const sizes = attrs.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
         const sources: string[] = [];
         // <source> order matters: browsers pick the first they support.
         // AVIF first (smallest), then WebP, then fall through to <img>.
@@ -208,12 +216,42 @@ export function transformBodyForSeo(
         const variant = `${opts.cfImageOrigin!.replace(/\/$/, '')}/cdn-cgi/image/width=${w},format=auto/${src.slice(opts.cfImageOrigin!.length).replace(/^\//, '')}`;
         return `${variant} ${w}w`;
       }).join(', ');
-      const sizes = attrs.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES;
+      const sizes = attrs.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
       return `<picture><source type="image/webp" srcset="${escapeAttr(srcset)}" sizes="${escapeAttr(sizes)}" />${rebuilt}</picture>`;
     }
 
     return serializeImg(attrs);
   });
+  return withoutAutoSizesOnEagerImages(out);
+}
+
+/**
+ * Layout-derived `sizes` start with `auto`: browsers that support it use the
+ * width the image is actually rendered at, whatever block or custom block type
+ * places it, and the rest of the list is the fallback for browsers that do not.
+ */
+function layoutSizes(fallback: string): string {
+  return /^\s*auto\b/i.test(fallback) ? fallback : `auto, ${fallback}`;
+}
+
+/**
+ * `auto` is kept only on <source> elements of a lazy image with known width and
+ * height. Never on the <img> itself: browsers give an <img sizes="auto"> a
+ * 300×150 placeholder size, which enlarges small images without dimensions.
+ */
+function withoutAutoSizesOnEagerImages(html: string): string {
+  const strip = (markup: string) => markup.replace(/(\ssizes=")auto\s*,\s*/gi, '$1');
+  const eligible = (img: string) => /\sloading="lazy"/i.test(img) && /\swidth="\d+"/i.test(img) && /\sheight="\d+"/i.test(img);
+  return html
+    .replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, picture => {
+      const img = /<img\b[^>]*>/i.exec(picture)?.[0] ?? '';
+      const sources = picture.slice(0, picture.indexOf(img));
+      return (eligible(img) ? sources : strip(sources)) + strip(img) + picture.slice(picture.indexOf(img) + img.length);
+    })
+    .replace(/<img\b[^>]*>/gi, (img, offset: number, all: string) => {
+      const before = all.slice(0, offset);
+      return before.lastIndexOf('<picture') > before.lastIndexOf('</picture>') ? img : strip(img);
+    });
 }
 
 /**

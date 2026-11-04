@@ -572,7 +572,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     return value === undefined ? [] : [`--${field.name}:${value}`];
   });
   if (numericStyles.length) html = mergeAttrsIntoFirstTag(html, { style: numericStyles.join(';') }) ?? html;
-  html = substituteChildren(html, effectiveBlock, options);
+  html = substituteChildren(html, effectiveBlock, options, blockType);
   html = substituteSlots(html, effectiveBlock, blockType, options);
   // Insert prepared field rows after all template passes. Authored values and
   // row markup must never become a second Page-context template evaluation.
@@ -717,6 +717,8 @@ function renderGlobalBlockRef(block: Block, effectiveBlock: Block, options: Rend
  */
 export function withImageSizes(html: string, sizes: string | null): string {
   if (!sizes || !html.includes('<img')) return html;
+  // The layout estimate. The SEO transform adds `auto` on the generated
+  // <source> elements where the browser may use the rendered width instead.
   return html.replace(/<img\b(?![^>]*\ssizes=)/g, `<img sizes="${escapeHtml(sizes)}"`);
 }
 
@@ -730,6 +732,29 @@ export function columnSlotSizes(data: Record<string, unknown>, slotIndex: number
   const [left, right] = COLUMN_RATIOS[String(data.ratio ?? '1-1')] ?? COLUMN_RATIOS['1-1']!;
   const share = Number.isFinite(fixed) && fixed > 0 ? `${Math.round(fixed)}px` : `${Math.ceil(((slotIndex === 0 ? left : right) / (left + right)) * 100)}vw`;
   return `(max-width: ${threshold - 1}px) 100vw, ${share}`;
+}
+
+const GRID_STACK_PX: Record<string, number> = { sm: 720, md: 900, lg: 1000 };
+
+/** Rendered width of one core/grid cell: full width once stacked, one column's share above. */
+export function gridItemSizes(data: Record<string, unknown>): string | null {
+  const declared = Number(data.cols ?? data.columns);
+  if (!Number.isFinite(declared) || declared <= 1) return null;
+  const columns = Math.min(6, Math.max(1, Math.round(declared)));
+  if (columns === 1) return null;
+  return `(max-width: ${GRID_STACK_PX[String(data.stack_at ?? 'sm')] ?? 720}px) 100vw, ${Math.ceil(100 / columns)}vw`;
+}
+
+/**
+ * Column-count fallback for any container whose block type declares a `cols`
+ * or `columns` field: core/grid and custom block types that follow the same
+ * convention. Only declared fields are read.
+ */
+function columnFieldSizes(blockType: BlockType, data: Record<string, unknown>): string | null {
+  const field = blockType.schema?.find(candidate => candidate.name === 'cols' || candidate.name === 'columns');
+  if (!field) return null;
+  const stack = blockType.schema?.some(candidate => candidate.name === 'stack_at') ? data.stack_at : undefined;
+  return gridItemSizes({ cols: data[field.name], ...(stack !== undefined ? { stack_at: stack } : {}) });
 }
 
 /** Rendered width of one repeater item in a multi-column layout; null for single-column layouts. */
@@ -1541,9 +1566,13 @@ function substituteChildren(
   html: string,
   block: Block,
   options: RenderBlocksOptions,
+  blockType?: BlockType,
 ): string {
   if (!html.includes('{{children}}')) return html;
-  const inner = block.children ? renderBlocks(block.children, options) : '';
+  let inner = block.children ? renderBlocks(block.children, options) : '';
+  // Any container that lays out its children in `cols` columns (core/grid,
+  // and custom block types that follow the same field convention).
+  if (blockType && block.type !== 'core/columns') inner = withImageSizes(inner, columnFieldSizes(blockType, block.data ?? {}));
   return html.split('{{children}}').join(inner);
 }
 
@@ -1561,7 +1590,7 @@ function substituteSlots(
     const slot = block.slots?.[slotIndex];
     if (!slot) return '';
     const html = renderBlocks(slot, options);
-    return blockType.id === 'core/columns' ? withImageSizes(html, columnSlotSizes(block.data ?? {}, slotIndex)) : html;
+    return withImageSizes(html, blockType.id === 'core/columns' ? columnSlotSizes(block.data ?? {}, slotIndex) : columnFieldSizes(blockType, block.data ?? {}));
   });
 }
 
