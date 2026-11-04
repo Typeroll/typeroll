@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.152 (candidate)
 
 - Fixes for the image changes in 0.2.151, found on moveria.se:
   - Share copies (SE-10) were never made on customer build engines: the build's
