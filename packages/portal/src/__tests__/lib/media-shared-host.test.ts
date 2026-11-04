@@ -3,7 +3,7 @@
 // keys, one redirect per website media path keeps old addresses working, and
 // publication verification treats those addresses as moved, not deleted.
 import { describe, expect, it } from 'vitest';
-import { moveWebsiteMediaToMediaHost } from '../../lib/publishing/media-manifest';
+import { moveWebsiteMediaToMediaHost, collapseMediaHostChains } from '../../lib/publishing/media-manifest';
 import { staticManifestChecks } from '../../lib/builds/verification';
 
 const storage = { account_id: 'a'.repeat(32), original_bucket: 'private', public_bucket: 'public', site_prefix: 'media/abcdefghij' };
@@ -66,5 +66,26 @@ describe('verification of moved media', () => {
     ];
     const checks = staticManifestChecks({ 'index.html': { sha256: 'd' } }, '/media/* https://media.example.net/media/abcdefghij/:splat 301\n', previous);
     expect(checks.map(check => [check.route, check.status])).toEqual([['/', 200], ['/old-page', 404]]);
+  });
+});
+
+describe('collapseMediaHostChains', () => {
+  const hostRules = [{ id: 'media-host-x', media_path_prefix: '/media', from_path: '/media/*', to_path: 'https://media.example.com/site123/:splat', status_code: 301 as const }];
+  it('sends old file addresses to the media host in one hop (AT-08)', () => {
+    const rules = [
+      { id: 'a', from_path: '/wp-content/uploads/2023/a.jpg', to_path: '/media/abc-a.jpg', status_code: 301 as const },
+      { id: 'b', from_path: '/wp-content/uploads/b.jpg', to_path: 'https://www.example.com/media/b.jpg', status_code: 301 as const },
+      { id: 'c', from_path: '/files/*', to_path: '/media/:splat', status_code: 301 as const },
+      { id: 'd', from_path: '/old-page', to_path: '/new-page/', status_code: 301 as const },
+      { id: 'e', from_path: '/elsewhere', to_path: 'https://other.example/media/x.jpg', status_code: 301 as const },
+    ];
+    expect(collapseMediaHostChains(rules, hostRules, 'www.example.com').map(rule => rule.to_path)).toEqual([
+      'https://media.example.com/site123/abc-a.jpg', 'https://media.example.com/site123/b.jpg', 'https://media.example.com/site123/:splat', '/new-page/', 'https://other.example/media/x.jpg']);
+    // The authored rules are not changed.
+    expect(rules[0]!.to_path).toBe('/media/abc-a.jpg');
+  });
+  it('changes nothing without a media-host move', () => {
+    const rules = [{ id: 'a', from_path: '/x', to_path: '/media/x.jpg', status_code: 301 as const }];
+    expect(collapseMediaHostChains(rules, [], 'www.example.com')).toBe(rules);
   });
 });

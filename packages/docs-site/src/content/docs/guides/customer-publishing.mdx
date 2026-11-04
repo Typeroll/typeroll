@@ -483,7 +483,10 @@ media host once: it becomes part of every image address.
 Images that an earlier publication served from the website under `/media` move to
 the shared media host on the next publication. A single `/media/*` redirect (301)
 sends old image addresses to the same file there, so links and image search results
-keep working. No dynamic Worker serves the website or the images.
+keep working. No dynamic Worker serves the website or the images. Your own
+redirects that end on such a path, for example `/wp-content/uploads/a.jpg` →
+`/media/a.jpg`, are published straight to the file on the media host, so an old
+address answers with one 301 instead of two. The saved rules are not changed.
 
 A media item's `public_path` can preserve a legacy path such as
 `/wp-content/uploads/2024/photo.jpg`. The path must end in an extension that

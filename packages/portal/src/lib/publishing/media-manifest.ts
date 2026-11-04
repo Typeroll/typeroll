@@ -265,6 +265,27 @@ export function moveWebsiteMediaToMediaHost(retained: any[], current: any): { re
   return { retained: result, redirects };
 }
 
+/**
+ * Point rules that end on a website media path straight at the media host.
+ * Once `/media/*` redirects to the media host, an authored rule such as
+ * `/wp-content/uploads/x.jpg` → `/media/x.jpg` would answer 301 → 301 (AT-08).
+ * Only the frozen copy changes; the stored rules keep their authored target.
+ */
+export function collapseMediaHostChains<T extends Redirect>(redirects: T[], hostRules: Array<Redirect & { media_path_prefix: string }>, websiteHost: string): T[] {
+  if (!hostRules.length) return redirects;
+  const hostRuleIds = new Set(hostRules.map(rule => rule.id));
+  const websiteOrigin = `https://${websiteHost}`;
+  return redirects.map(rule => {
+    if (hostRuleIds.has(rule.id)) return rule;
+    const target = rule.to_path.startsWith(`${websiteOrigin}/`) ? rule.to_path.slice(websiteOrigin.length) : rule.to_path;
+    if (!target.startsWith('/') || target.startsWith('//')) return rule;
+    const hostRule = hostRules.find(candidate => target.startsWith(`${candidate.media_path_prefix}/`));
+    if (!hostRule) return rule;
+    const rest = target.slice(hostRule.media_path_prefix.length + 1);
+    return { ...rule, to_path: hostRule.to_path.replace(/:splat$/, rest) };
+  });
+}
+
 /** Replace retired unsafe bytes with a redirect to the same media record's safe output.
  * Do not retain an unsanitized SVG, infer replacements from filenames, or exempt
  * genuinely deleted files from public verification.
