@@ -7,7 +7,7 @@ export const GET: APIRoute = async ({ request }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   return apiResponse(ctx, { organizations: ctx.personalUserId
-    ? await personalOrganizations(ctx.personalUserId)
+    ? (await personalOrganizations(ctx.personalUserId)).filter(entry => !ctx.personalAllowedOrgIds || ctx.personalAllowedOrgIds.includes(entry.id))
     : [{ id: ctx.tokenOrgId, permission: ctx.tokenSiteId === null ? 'admin' : 'site' }],
   });
 };

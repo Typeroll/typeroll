@@ -39,6 +39,7 @@ export default defineConfig({
             { label: 'Incoming email', slug: 'guides/incoming-email' },
             { label: 'Stop form spam', slug: 'guides/form-spam-protection' },
             { label: 'Connect your AI agent', slug: 'getting-started/mcp-server' },
+            { label: 'Use the REST API', slug: 'guides/rest-api' },
             { label: 'Setup by client', slug: 'getting-started/connect-your-agent' },
             { label: 'Personal AI connections', slug: 'guides/ai-connections' },
             { label: 'Built-in AI assistant', slug: 'guides/ai-assistant' },
@@ -173,6 +174,7 @@ export default defineConfig({
           label: 'Technical Reference',
           items: [
             { label: 'Overview', slug: 'technical/overview' },
+            { label: 'REST API reference', slug: 'technical/rest-api-reference' },
             { label: 'SEO & indexing', slug: 'technical/seo-and-indexing' },
           ],
         },

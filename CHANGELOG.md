@@ -19,6 +19,19 @@
   under Forms → Spam protection: paste the widget's site and secret keys, see
   which forms require the check, or turn it off. A new guide, Stop form spam
   with Turnstile, covers the portal, the API and AI agents.
+- REST API parity with MCP is documented and enforced. A generated REST API
+  reference lists the REST call behind every MCP tool, with its parameters and
+  required permission; CI fails when a tool and the page disagree, and every
+  tool must call the REST API. A new guide, Use the REST API, covers
+  credentials, several organizations and errors.
+- Personal API tokens: create one in Account → AI connections for scripts. It
+  has your access in every organization (name one per request with the
+  `Typeroll-Organization` header) and is shown once. A token can be limited to
+  some organizations, made read only or set to expire; at most 20 are active.
+  The list shows when each was last used.
+- Writes through personal connections and tokens are audited with the person's
+  user id, and organization routes are audited on the organization. Discovery
+  (`GET /api/v1/organizations`, `/api/v1/sites`) ignores the organization header.
 
 ## 0.2.150 (candidate)
 

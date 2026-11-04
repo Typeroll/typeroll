@@ -50,6 +50,41 @@ import { compactTools, COMPACT_INSTRUCTIONS, type CallableTool, type ToolEffect 
  *  default — applied to anything that isn't trivially side-effect-free. */
 
 
+/** Every MCP tool, in registration order. The REST reference is generated from it. */
+export const ALL_TOOLS: ToolDef[] = [
+  ...skillTools,
+  ...siteTools,
+  ...pageTools,
+  ...structuredDataTools,
+  ...ownerReviewTools,
+  ...partialTools,
+  ...blockTypeTools,
+  ...pageBlockTools,
+  ...workingCopyTools,
+  ...contentTypeTools,
+  ...pageTemplateTools,
+  ...mediaTools,
+  ...redirectTools,
+  ...styleTools,
+  ...reusableBlockTools,
+  ...migrationTools,
+  ...formTools,
+  ...emailTools,
+  ...settingsTools,
+  ...appTools,
+  ...extensionTools,
+  ...developerExtensionTools,
+  ...searchTools,
+  ...bulkTools,
+  ...readinessTools,
+  ...versionTools,
+  ...deployTools,
+  ...previewTools,
+  ...domainTools,
+  ...workflowTools,
+  ...accessTools,
+];
+
 const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
 
 /**
@@ -61,7 +96,7 @@ const PERM_RANK: Record<ToolEffect, number> = { read: 0, write: 1, admin: 2 };
  * `list_*` / `read_*` / `get_*` / `preview_*` / `search_*` / `check_*` / `find_*`; everything else
  * mutates.
  */
-function effectFor(name: string): ToolEffect {
+export function effectFor(name: string): ToolEffect {
   if (name === 'page_completeness' || name === 'resolve_page_url') return 'read';
   if (
     name === 'guide_publishing_domain_change'
@@ -244,39 +279,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
     instructions: (options.selection ? 'First ask which site to work on. List sites, confirm its organization/name with the user, then call select_site. Carry the returned site_context on every site call. Never search across sites or silently switch sites or versions. Select a new context to switch. Organization administration requires an explicit organization_id and the user’s permission. ' : '') + (options.toolMode === 'compact' ? COMPACT_INSTRUCTIONS : SERVER_INSTRUCTIONS),
   });
 
-  const allTools: ToolDef[] = [
-    ...skillTools,
-    ...siteTools,
-    ...pageTools,
-    ...structuredDataTools,
-    ...ownerReviewTools,
-    ...partialTools,
-    ...blockTypeTools,
-    ...pageBlockTools,
-    ...workingCopyTools,
-    ...contentTypeTools,
-    ...pageTemplateTools,
-    ...mediaTools,
-    ...redirectTools,
-    ...styleTools,
-    ...reusableBlockTools,
-    ...migrationTools,
-    ...formTools,
-    ...emailTools,
-    ...settingsTools,
-    ...appTools,
-    ...extensionTools,
-    ...developerExtensionTools,
-    ...searchTools,
-    ...bulkTools,
-    ...readinessTools,
-    ...versionTools,
-    ...deployTools,
-    ...previewTools,
-    ...domainTools,
-    ...workflowTools,
-    ...accessTools,
-  ];
+  const allTools = ALL_TOOLS;
 
   // SDK's registerTool has deeply-nested generics we can't unify across a
   // heterogeneous tool list at compile time — same shrug as stdio's index.ts.
