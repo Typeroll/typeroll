@@ -10,6 +10,9 @@
 - Lazy images that carry a layout estimate (grid cards, columns) now also get
   `auto` on their sources. Before, only images without an estimate did, so
   cards never used their rendered width (found on moveria.se).
+- The site logo block asks for the width the logo has at its display height
+  (for example `129px` for a 705×220 logo at 40 px), so a header logo loads a
+  small variant instead of one sized for an 800 px image.
 
 ## 0.2.152 (candidate)
 

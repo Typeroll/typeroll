@@ -171,6 +171,15 @@ export function transformBodyForSeo(
     // High priority on a lazy image contradicts itself; lazy wins.
     if (attrs.loading === 'lazy' && attrs.fetchpriority === 'high') delete attrs.fetchpriority;
 
+    // 1b. An image shown at a fixed height (the site logo) is as wide as its
+    //     proportions make it at that height.
+    const displayHeight = Number(attrs['data-tr-display-height']);
+    delete attrs['data-tr-display-height'];
+    if (displayHeight > 0 && attrs.sizes === undefined && attrs.src) {
+      const meta = lookup.byUrl.get(attrs.src);
+      if (meta?.width && meta.height) attrs.sizes = `${Math.ceil(displayHeight * meta.width / meta.height)}px`;
+    }
+
     // 2. width/height + alt injection from Media lookup.
     const src = attrs.src;
     if (src) {
