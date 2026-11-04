@@ -203,7 +203,7 @@ export async function ensureGithubMainBranch(github, { owner, repo, repository }
 }
 
 /** Replace the entire generated tree while preserving history. Never force-push. */
-export async function publishTree(github, { owner, repo, branch = 'main', files, message }) {
+export async function publishTree(github, { owner, repo, branch = 'main', files, message, retryDelays = [1000, 3000] }) {
   if (!PUBLICATION_BRANCH.test(branch)) throw new Error('Invalid publication branch');
   const root = repoRoute(owner, repo);
   const treeEntries = Object.entries(files).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
@@ -222,14 +222,28 @@ export async function publishTree(github, { owner, repo, branch = 'main', files,
   const parent = await github(`${root}/git/commits/${ref.object.sha}`);
   const previous = await github(`${root}/git/trees/${parent.tree.sha}?recursive=1`);
   const blobs = new Map((previous.truncated ? [] : previous.tree ?? []).filter(entry => entry.type === 'blob' && entry.mode === '100644').map(entry => [entry.path, entry.sha]));
-  const tree = await github(`${root}/git/trees`, {
-    method: 'POST',
-    // Deliberately omit base_tree: stale and manually added files disappear.
-    body: { tree: treeEntries.map(([name, content]) => {
-      const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
-      return { path: name, mode: '100644', type: 'blob', ...(blobs.get(name) === sha ? { sha } : { content }) };
-    }) },
-  });
+  // GitHub can answer 422 validation_failed for a tree that reuses blobs it has
+  // just listed (replication lag, AT-18). Tree creation is content-addressed and
+  // the ref update never forces, so retrying is safe; the last try sends every
+  // file's content instead of reusing blob SHAs.
+  let tree;
+  for (let attempt = 0; ; attempt++) {
+    const reuse = attempt < retryDelays.length;
+    try {
+      tree = await github(`${root}/git/trees`, {
+        method: 'POST',
+        // Deliberately omit base_tree: stale and manually added files disappear.
+        body: { tree: treeEntries.map(([name, content]) => {
+          const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+          return { path: name, mode: '100644', type: 'blob', ...(reuse && blobs.get(name) === sha ? { sha } : { content }) };
+        }) },
+      });
+      break;
+    } catch (error) {
+      if (!(error instanceof ProviderError) || error.status !== 422 || attempt >= retryDelays.length) throw error;
+      await new Promise(resolve => setTimeout(resolve, retryDelays[attempt]));
+    }
+  }
   if (parent.tree.sha === tree.sha) return { commit: ref.object.sha, changed: false, branch };
   const commit = await github(`${root}/git/commits`, {
     method: 'POST', body: { message, tree: tree.sha, parents: [ref.object.sha] },
