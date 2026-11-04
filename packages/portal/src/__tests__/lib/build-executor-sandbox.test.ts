@@ -38,3 +38,29 @@ describe('sandbox binary sources', () => {
     expect(dependencies.some((d: { name: string }) => d.name === 'apparmor-profile')).toBe(true);
   });
 });
+
+describe('sandbox /proc on hosts that refuse a nested procfs (Cloudflare, Nov 2026)', async () => {
+  const { sandboxProcfs, SANDBOX_PROC, SANDBOX_NO_PROC } = await import('../../lib/builds/executor.mjs');
+  const refused = Object.assign(Error('build_process_exit_1'), { output: "bwrap: Can't mount proc on /newroot/proc: Operation not permitted\n" });
+  it('keeps a private /proc where the host allows one', async () => {
+    expect(await sandboxProcfs(async () => {})).toBe(SANDBOX_PROC);
+  });
+  it('builds without /proc only when the host refuses exactly that mount', async () => {
+    const logs: string[] = [];
+    expect(await sandboxProcfs(async (proc: string[]) => { if (proc === SANDBOX_PROC) throw refused; }, (message: string) => logs.push(message))).toBe(SANDBOX_NO_PROC);
+    expect(logs).toEqual([expect.stringContaining('building without /proc')]);
+    const other = Object.assign(Error('build_process_exit_1'), { output: 'bwrap: setting up uid map: Permission denied' });
+    await expect(sandboxProcfs(async () => { throw other; })).rejects.toBe(other);
+  });
+  it('never exposes the host /proc to build code', () => {
+    for (const args of [SANDBOX_PROC, SANDBOX_NO_PROC]) {
+      for (let i = 0; i < args.length; i++) if (['--bind', '--ro-bind', '--dev-bind', '--bind-try', '--dev-bind-try'].includes(args[i]!)) expect(args[i + 1]).not.toBe('/proc');
+    }
+    expect(SANDBOX_NO_PROC.filter((_, i) => SANDBOX_NO_PROC[i - 1] === '--ro-bind-try')).toEqual(['/proc/cpuinfo', '/proc/stat']);
+  });
+  it('tells an old engine to update instead of reporting a dependency failure', async () => {
+    const { buildFailureMessage } = await import('../../lib/builds/failure-message');
+    expect(buildFailureMessage('dependencies_build_process_exit_1', { cause: null, lines: ["bwrap: Can't mount proc on /newroot/proc: Operation not permitted"] }))
+      .toContain('Update the build engine in Publishing → Builds');
+  });
+});

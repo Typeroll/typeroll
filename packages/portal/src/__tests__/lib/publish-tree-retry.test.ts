@@ -50,3 +50,38 @@ it('does not retry other refusals', async () => {
   await expect(publishTree(github as any, input)).rejects.toMatchObject({ status: 403 });
   expect(github.mock.calls.filter(([route]) => route.endsWith('/git/trees'))).toHaveLength(1);
 });
+
+it('stores large new files as blobs first, so the tree request carries only object ids for them', async () => {
+  const big = 'x'.repeat(300 * 1024), same = 'y'.repeat(300 * 1024);
+  const created: string[] = [], trees: any[] = [];
+  const github = vi.fn(async (route: string, options: any = {}) => {
+    if (route.endsWith('/git/ref/heads/main')) return { object: { sha: 'parent' } };
+    if (route.endsWith('/git/commits/parent')) return { tree: { sha: 'old-tree' } };
+    if (route.includes('/git/trees/old-tree')) return { truncated: false, tree: [{ path: 'unchanged.json', mode: '100644', type: 'blob', sha: blob(same) }] };
+    if (route.endsWith('/git/blobs') && options.method === 'POST') { created.push(options.body.content); return { sha: blob(options.body.content) }; }
+    if (route.endsWith('/git/trees') && options.method === 'POST') { trees.push(options.body.tree); return { sha: 'new-tree' }; }
+    if (route.endsWith('/git/commits') && options.method === 'POST') return { sha: 'new-commit' };
+    if (route.endsWith('/git/refs/heads/main')) return {};
+    throw new Error(`unexpected ${route}`);
+  });
+  await publishTree(github as any, { owner: 'synthetic', repo: 'site', files: { 'publication.json': big, 'unchanged.json': same, 'small.json': '{}' }, message: 'Publish' });
+  // Only the changed large file is uploaded; the unchanged one keeps its blob.
+  expect(created).toEqual([big]);
+  expect(trees[0]).toEqual([
+    { path: 'publication.json', mode: '100644', type: 'blob', sha: blob(big) },
+    { path: 'small.json', mode: '100644', type: 'blob', content: '{}' },
+    { path: 'unchanged.json', mode: '100644', type: 'blob', sha: blob(same) },
+  ]);
+  expect(JSON.stringify(trees[0]).length).toBeLessThan(1000);
+});
+
+it('refuses a blob GitHub stored with different bytes', async () => {
+  const github = vi.fn(async (route: string, options: any = {}) => {
+    if (route.endsWith('/git/ref/heads/main')) return { object: { sha: 'parent' } };
+    if (route.endsWith('/git/commits/parent')) return { tree: { sha: 'old-tree' } };
+    if (route.includes('/git/trees/old-tree')) return { truncated: false, tree: [] };
+    if (route.endsWith('/git/blobs')) return { sha: 'f'.repeat(40) };
+    throw new Error(`unexpected ${route} ${options.method}`);
+  });
+  await expect(publishTree(github as any, { owner: 'synthetic', repo: 'site', files: { 'publication.json': 'z'.repeat(300 * 1024) }, message: 'Publish' })).rejects.toThrow('different blob');
+});

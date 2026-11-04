@@ -44,6 +44,24 @@ export function mediaCheckpointPolicy(kind, progress, startedAt, deadline, now =
 }
 
 /**
+ * A private procfs where the host allows one. Never the host's /proc: the
+ * sandbox shares the supervisor's kernel uid, so binding the host's /proc would
+ * expose the supervisor's environment, file descriptors and root to build code.
+ */
+export const SANDBOX_PROC = ['--proc', '/proc'];
+export const SANDBOX_NO_PROC = ['--dir', '/proc', '--ro-bind-try', '/proc/cpuinfo', '/proc/cpuinfo', '--ro-bind-try', '/proc/stat', '/proc/stat'];
+const PROC_REFUSED = /bwrap: Can't mount proc on \/newroot\/proc: Operation not permitted/;
+/** Cloudflare's build containers stopped allowing a nested procfs (Nov 2026): build without /proc there, and only there. */
+export async function sandboxProcfs(probe, log = message => console.log(message)) {
+  try { await probe(SANDBOX_PROC); return SANDBOX_PROC; }
+  catch (error) {
+    if (!PROC_REFUSED.test(error?.output ?? '')) throw error;
+    log('TYPEROLL_BUILD_LOG sandbox: this host refuses a private /proc; building without /proc');
+    return SANDBOX_NO_PROC;
+  }
+}
+
+/**
  * Use an AppArmor-profiled system installation only when it is the pinned binary.
  * @param {string} extracted
  * @param {{lstat: (name: string) => Promise<{uid: number, mode: number, isSymbolicLink(): boolean, isFile(): boolean, isDirectory(): boolean}>, readFile: (name: string) => Promise<Uint8Array>}} disk
@@ -269,11 +287,14 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     await fs.writeFile(path.join(temp, 'passwd'), 'builder:x:1000:1000:Build user:/tmp:/bin/false\n');
     await fs.writeFile(path.join(temp, 'group'), 'builder:x:1000:\n');
     const runtime = path.dirname(path.dirname(await fs.realpath(process.execPath)));
-    const base = ['--unshare-all', '--unshare-user', '--die-with-parent', '--new-session', '--uid', '1000', '--gid', '1000', '--cap-drop', 'ALL',
+    const head = ['--unshare-all', '--unshare-user', '--die-with-parent', '--new-session', '--uid', '1000', '--gid', '1000', '--cap-drop', 'ALL',
       '--ro-bind', path.join(temp, 'passwd'), '/etc/passwd', '--ro-bind', path.join(temp, 'group'), '/etc/group', '--ro-bind', '/etc/resolv.conf', '/etc/resolv.conf', '--ro-bind', '/etc/hosts', '/etc/hosts', '--ro-bind', '/usr', '/usr', '--ro-bind', '/lib', '/lib', '--ro-bind', '/lib64', '/lib64', '--symlink', 'usr/bin', '/bin',
-      '--ro-bind', runtime, '/runtime', '--proc', '/proc', '--dev', '/dev', '--tmpfs', '/tmp', '--bind', work, '/work', '--chdir', '/work',
+      '--ro-bind', runtime, '/runtime'];
+    const tail = ['--dev', '/dev', '--tmpfs', '/tmp', '--bind', work, '/work', '--chdir', '/work',
       '--remount-ro', '/', '--clearenv', '--setenv', 'PATH', '/runtime/bin:/usr/bin:/bin', '--setenv', 'HOME', '/tmp',
       '--setenv', 'ASTRO_TELEMETRY_DISABLED', '1', '--setenv', 'NODE_OPTIONS', '--max-old-space-size=768'];
+    const procfs = await sandboxProcfs(proc => command(binary, [...head, ...proc, ...tail, '/runtime/bin/node', '-e', ''], 30000));
+    const base = [...head, ...procfs, ...tail];
     const run = (args, network = false, env = {}) => command(binary, [...base, ...(network ? ['--share-net'] : []),
       ...Object.entries(env).flatMap(([key, value]) => ['--setenv', key, value]), '/runtime/bin/node', ...args]);
     if (job.kind === 'qualification') {

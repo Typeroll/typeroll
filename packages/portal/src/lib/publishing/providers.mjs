@@ -202,6 +202,9 @@ export async function ensureGithubMainBranch(github, { owner, repo, repository }
   throw new Error('GitHub is still preparing the main branch. Retry setup or publishing shortly.');
 }
 
+/** Files at least this large go to GitHub as separate blobs, never inline in a tree request. */
+const INLINE_BLOB_LIMIT = 256 * 1024;
+
 /** Replace the entire generated tree while preserving history. Never force-push. */
 export async function publishTree(github, { owner, repo, branch = 'main', files, message, retryDelays = [1000, 3000] }) {
   if (!PUBLICATION_BRANCH.test(branch)) throw new Error('Invalid publication branch');
@@ -222,6 +225,18 @@ export async function publishTree(github, { owner, repo, branch = 'main', files,
   const parent = await github(`${root}/git/commits/${ref.object.sha}`);
   const previous = await github(`${root}/git/trees/${parent.tree.sha}?recursive=1`);
   const blobs = new Map((previous.truncated ? [] : previous.tree ?? []).filter(entry => entry.type === 'blob' && entry.mode === '100644').map(entry => [entry.path, entry.sha]));
+  // Large new files are stored as blobs first, so the tree request carries
+  // object ids only. GitHub refused an 11 MB inline publication.json from the
+  // GitHub App with 422 while accepting the same tree from a user (FC, Nov 2026).
+  const uploaded = new Map();
+  for (const [name, content] of treeEntries) {
+    if (Buffer.byteLength(content) < INLINE_BLOB_LIMIT) continue;
+    const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
+    if (blobs.get(name) === sha || uploaded.has(sha)) continue;
+    const blob = await github(`${root}/git/blobs`, { method: 'POST', body: { content, encoding: 'utf-8' } });
+    if (blob?.sha !== sha) throw new Error('GitHub stored a different blob than the publication file');
+    uploaded.set(sha, name);
+  }
   // GitHub can answer 422 validation_failed for a tree that reuses blobs it has
   // just listed (replication lag, AT-18). Tree creation is content-addressed and
   // the ref update never forces, so retrying is safe; the last try sends every
@@ -235,7 +250,7 @@ export async function publishTree(github, { owner, repo, branch = 'main', files,
         // Deliberately omit base_tree: stale and manually added files disappear.
         body: { tree: treeEntries.map(([name, content]) => {
           const sha = createHash('sha1').update(`blob ${Buffer.byteLength(content)}\0`).update(content).digest('hex');
-          return { path: name, mode: '100644', type: 'blob', ...(reuse && blobs.get(name) === sha ? { sha } : { content }) };
+          return { path: name, mode: '100644', type: 'blob', ...((reuse && blobs.get(name) === sha) || uploaded.has(sha) ? { sha } : { content }) };
         }) },
       });
       break;
