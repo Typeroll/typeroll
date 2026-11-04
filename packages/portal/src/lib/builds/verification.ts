@@ -50,7 +50,13 @@ export function staticManifestChecks(files: Record<string, { sha256: string; siz
     assets.set(from, target);
   }
   const current = new Set(checks.map(check => check.route.replace(/\/$/, '')));
-  for (const check of previous) if (check.status === 200 && !current.has(check.route.replace(/\/$/, '')) && !redirects.includes(check.route)) checks.push({ route: check.route, status: 404 });
+  // A path-prefix rule (`/media/* https://media.example.com/...`) moves a whole
+  // retired directory, such as website-hosted images now served from the
+  // organization media host; its routes are redirected, not deleted.
+  const movedPrefixes = rules.filter(([from, to, status]) => ['301', '302'].includes(status) && /^\/[^*:?#]+\/\*$/.test(from ?? '') && Boolean(to))
+    .map(([from]) => from!.slice(0, -1));
+  for (const check of previous) if (check.status === 200 && !current.has(check.route.replace(/\/$/, '')) && !redirects.includes(check.route)
+    && !movedPrefixes.some(prefix => check.route.startsWith(prefix))) checks.push({ route: check.route, status: 404 });
   return checks.sort((a, b) => a.route.localeCompare(b.route));
 }
 

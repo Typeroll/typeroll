@@ -29,6 +29,15 @@
   forms render the widget and send its answer with the first step. Each form
   requires Turnstile once its republished pages send a verified answer, so
   earlier pages keep working until then. The forms runtime is version 3.
+- Images are served from the organization's shared media host by default. When
+  the organization has one and the site has no media host of its own, the build
+  engine writes images directly to the customer's public R2 bucket and the Pages
+  deployment carries only pages, so large media libraries no longer hit Pages
+  file limits or slow every publication. Images that earlier publications served
+  from the website under `/media` move there on the next publication, and one
+  `/media/*` 301 redirect keeps their old addresses working. Publication
+  verification treats redirected media paths as moved. Site icons on a separate
+  media host are read locally for the favicon files only.
 
 ## 0.2.149 (candidate)
 

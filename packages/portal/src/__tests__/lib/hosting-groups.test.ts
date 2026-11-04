@@ -90,16 +90,17 @@ it('registers Pages in the hosting account and changes only the separate DNS acc
   expect(hosting.mock.calls.some(call => String(call[0]).startsWith('/zones'))).toBe(false);
 });
 
-it('packages only referenced organization media on a second group website and retains shared URLs', async () => {
+it('serves only referenced organization media for a second group website from the shared media host', async () => {
   const group = await create();
   await assignHostingGroup('org', 'site', { hosting_group_id: group.id, previous_group_id: 'default' });
   for (const id of ['used', 'unused']) await getStore().setDoc(`${paths.media('org', 'site')}/${id}`, { filename: `${id}.png`, mime_type: 'image/png', cdn_url: `https://media.example.com/${id}.png`, sha256: 'd'.repeat(64),
     storage: { provider: 'organization_r2', state: 'ready', account_id: account1, bucket: 'originals', key: `private/media/abcdefghij/originals/${id}.png` } });
   const result = await publicationMediaManifest('org', 'site', { html: '<img src="https://media.example.com/used.png">' }, 'site.sites2.example.com');
   expect(result.manifest?.account_id).toBe(account1);
-  expect(result.manifest?.media_host).toBe('site.sites2.example.com');
+  // The R2 media host belongs to the organization's account, whichever account hosts the website.
+  expect(result.manifest).toMatchObject({ delivery: 'r2', media_host: 'media.example.com' });
   expect(result.media.map(item => item.id)).toEqual(['used']);
-  expect(result.content.html).toContain('https://site.sites2.example.com/media/');
+  expect(result.content.html).toContain('https://media.example.com/media/abcdefghij/');
   expect(result.media[0].aliases[0].url).toContain('https://media.example.com/media/abcdefghij/');
 });
 

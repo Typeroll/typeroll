@@ -232,7 +232,7 @@ describe('publication media manifest', () => {
     const unknown = await seed('c', { filename: 'run.js', mime_type: 'text/javascript' });
     const result = await publicationMediaManifest('org', 'site', { html: `<img src="${byPath}"><img src="${byName}"><a href="${unknown}">x</a>` }, 'site.demos.example.com');
     const paths_ = result.manifest!.entries.map(entry => entry.public_path);
-    expect(paths_).toContain('/media/evil.html.png');
+    expect(paths_).toContain('/media/abcdefghij/evil.html.png');
     expect(paths_.find(path => path.includes('evil.html-') || path.endsWith('-evil.html.png'))).toMatch(/-evil\.html\.png$/);
     expect(result.manifest!.entries.find(entry => entry.id === 'c')).toMatchObject({ mime_type: 'application/octet-stream', public_path: expect.stringMatching(/-run\.js\.bin$/) });
     expect(result.manifest!.entries.every(entry => !/\.(?:html|js)$/.test(entry.public_path))).toBe(true);
@@ -265,7 +265,7 @@ describe('publication media manifest', () => {
     expect(result.manifest!.entries.map(entry => entry.id)).toEqual(['photo']);
     expect(result.sourceMedia.map(item => item.id)).toEqual(['photo']);
     // No private address and no bytes of the excluded file reach the publication.
-    expect(result.content.html).toMatch(/^<img src=""><img src="https:\/\/site\.demos\.example\.com\/media\/[^"]+photo\.png">$/);
+    expect(result.content.html).toMatch(/^<img src=""><img src="https:\/\/media\.example\.net\/media\/abcdefghij\/[^"]+photo\.png">$/);
     expect(result.warnings).toEqual([expect.stringMatching(/^Media bad \(bad\.svg\) was not published: the SVG could not be made safe/)]);
     expect((await getStore().getDoc<SvgMedia>(mediaPath('bad')))?.svg_sanitized).toBeUndefined();
   });

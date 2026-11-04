@@ -36,7 +36,7 @@ import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed, find
 import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
 import { freezeThemeFonts } from './theme-font-freeze';
-import { retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
+import { moveStaticMediaToSharedHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
 import { DerivationError, runBuildDerivations } from './build-derivation';
@@ -398,7 +398,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
       frozen.media_replacement_redirects = replacedMediaRedirects(retained, frozen.media_manifest, frozen.redirects, prior?.media_replacement_redirects);
       frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_replacement_redirects.filter((rule: any) => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path))];
-      frozen.retained_media_manifests = retainDistinctMediaManifests(retained, frozen.media_manifest);
+      // Images served from the organization media host leave the Pages deployment; old website addresses redirect there.
+      const movedMedia = moveStaticMediaToSharedHost(retainDistinctMediaManifests(retained, frozen.media_manifest), frozen.media_manifest);
+      frozen.retained_media_manifests = movedMedia.retained;
+      frozen.media_host_redirects = movedMedia.redirects.filter(rule => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path));
+      frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)];
       frozen.previous_website_hosts = args.versionId === 'main'
         ? previousWebsiteHosts(savedDomains, host, prior?.site_url ? new URL(prior.site_url).hostname : undefined) : [];
       // Theme fonts are copied now, so no build engine needs network access or Google to render them.
