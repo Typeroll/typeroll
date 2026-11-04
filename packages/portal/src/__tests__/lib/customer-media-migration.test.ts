@@ -122,6 +122,17 @@ it('keeps media on the website when the organization has no media host', async (
   expect(result.content.html_content).toBe('<img src="https://site.demos.example.com/media/archive/photo.png">');
 });
 
+it('serves media from a site media host through the organization bucket', async () => {
+  await getStore().setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, sha256: sha,
+    public_path: '/archive/photo.png', storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: `private/media/abcdefghij/originals/${sha}/image.png`, state: 'ready' } });
+  const saved = await getSiteDomains('org', 'site');
+  const domains = { ...saved, desired: { website_host: 'www.customer.com', media_host: 'media.customer.com', media_path_prefix: '' } };
+  const result = await publicationMediaManifest('org', 'site', { html_content: `<img src="${oldUrl}">` }, 'www.customer.com', undefined, { domains });
+  expect(result.manifest).toMatchObject({ delivery: 'r2', media_host: 'media.customer.com', media_path_prefix: '' });
+  expect(result.manifest!.entries[0]).toMatchObject({ public_key: 'media/abcdefghij/archive/photo.png' });
+  expect(result.content.html_content).toBe('<img src="https://media.customer.com/archive/photo.png">');
+});
+
 it('completes empty organizations immediately without a worker, storage calls or media DNS', async () => {
   const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Storage must not be called'));
   vi.mocked(preparePublicMediaDomains).mockRejectedValue(new Error('Domain is not configured'));
