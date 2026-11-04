@@ -53,3 +53,34 @@ describe('leading background image', () => {
     expect(leadingBackgroundImage('<div data-block="container" style="--bg-image:url(data:image/png;base64,AAA)"><p>x</p></div>')).toBeNull();
   });
 });
+
+describe('art-directed images and distant images', () => {
+  const variants = (base: string) => [320, 1024].flatMap(width => (['avif', 'webp'] as const).map(format => ({ width, format, cdn_url: `${base}.w${width}.${format}` })));
+  const lookup = buildMediaLookup([
+    { id: 'd', cdn_url: 'https://m.example/desk.png', width: 1510, height: 566, variants: variants('https://m.example/desk.png') },
+    { id: 'm', cdn_url: 'https://m.example/mob.png', width: 750, height: 900, variants: variants('https://m.example/mob.png') },
+  ] as never);
+
+  it('gives both images of an art-directed core/image their AVIF and WebP variants', () => {
+    const html = '<picture data-tr-art-direction><source media="(width < 768px)" srcset="https://m.example/mob.png" /><img src="https://m.example/desk.png" alt="Offer" width="755" height="283" loading="lazy" decoding="async" /></picture>';
+    const out = transformBodyForSeo(html, lookup);
+    const sources = out.match(/<source\b[^>]*>/g) ?? [];
+    expect(sources).toHaveLength(5);
+    expect(sources[0]).toContain('media="(width < 768px)" type="image/avif" srcset="https://m.example/mob.png.w320.avif 320w');
+    expect(sources[1]).toContain('type="image/webp"');
+    expect(sources[1]).toContain('mob.png.w1024.webp 1024w');
+    expect(sources[2]).toBe('<source media="(width < 768px)" srcset="https://m.example/mob.png" />');
+    expect(sources[3]).toContain('type="image/avif" srcset="https://m.example/desk.png.w320.avif');
+    expect(sources[3]).not.toContain('media=');
+    expect(out.match(/<picture/g)).toHaveLength(1);
+    expect(transformBodyForSeo(out, lookup)).toBe(out);
+  });
+
+  it('keeps a second image lazy when it is far below the first', () => {
+    const html = `<img src="/hero.webp" alt="" /><p>${'Text. '.repeat(1000)}</p><img src="/banner.webp" alt="" loading="lazy" />`;
+    const [hero, banner] = imgs(transformBodyForSeo(html, empty));
+    expect(hero).toContain('fetchpriority="high"');
+    expect(banner).toContain('loading="lazy"');
+    expect(banner).not.toContain('fetchpriority');
+  });
+});

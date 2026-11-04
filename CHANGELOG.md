@@ -8,6 +8,13 @@
   stacks, and a `core/image` with a maximum width never asks for more. An image
   that already sets `sizes` keeps it. Before, every image used the generic
   "(max-width: 768px) 100vw, 800px", so a 300 px card loaded a 1024 px variant.
+- A `core/image` with a mobile image gets AVIF and WebP variants for both
+  images: the mobile sources under its media query, then the desktop sources,
+  each with its own `sizes`, with the originals kept as fallbacks. Before, this
+  art-directed `<picture>` served only the original files.
+- Only the first visual image on a page, and a second one close to it, load
+  eagerly with high priority. An image far below the first, such as a banner
+  after a short article, stays lazy.
 - Large share images are no longer shared as the uploaded original. When a
   page's og:image is a JPEG, PNG or WebP over 300 kB or wider than 1200 px, the
   build makes a JPEG copy at most 1200 px wide (aspect ratio kept, never

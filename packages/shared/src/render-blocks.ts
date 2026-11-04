@@ -515,7 +515,8 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     // A capped image never renders wider than its maximum.
     const sizes = maximum ? ` sizes="(max-width: ${maximum}px) 100vw, ${maximum}px"` : '';
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''}${sizes} loading="lazy" decoding="async" />`;
-    const picture = d.mobile_src ? `<picture><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
+    // The marker lets the SEO transform add AVIF/WebP sources for both images.
+    const picture = d.mobile_src ? `<picture data-tr-art-direction><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
     const frame = `<span class="block-image-frame">${picture}</span>`;
     d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link"${linkTargetAttributes(d.link_rel, d.new_tab)}>${frame}</a>` : frame;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
