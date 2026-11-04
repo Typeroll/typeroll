@@ -113,7 +113,7 @@ function expandArtDirection(html: string, lookup: MediaLookup, opts: TransformOp
       if (srcset && rawMedia) sources.push(`<source media="${rawMedia}" type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="auto, 100vw" />`);
     }
     sources.push(`<source${sourceRaw.replace(/\s*\/$/, '')} />`);
-    const sizes = image.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
+    const sizes = layoutSizes(image.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
     for (const fmt of ['avif', 'webp'] as const) {
       const srcset = desktop?.variants?.length ? buildVariantSrcset(desktop.variants, fmt) : null;
       if (srcset) sources.push(`<source type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="${escapeAttr(sizes)}" />`);
@@ -196,7 +196,9 @@ export function transformBodyForSeo(
         // use `auto`. Without a layout estimate, ask for the full viewport width:
         // it is then sharp on any screen and density, for a few extra kB once.
         const fallback = opts.defaultSizes ?? (isLeading ? LEADING_IMAGE_SIZES : DEFAULT_IMAGE_SIZES);
-        const sizes = attrs.sizes ?? layoutSizes(fallback);
+        // Layout estimates and defaults alike get `auto`; it is removed again
+        // below unless the image is lazy with known width and height.
+        const sizes = layoutSizes(attrs.sizes ?? fallback);
         const sources: string[] = [];
         // <source> order matters: browsers pick the first they support.
         // AVIF first (smallest), then WebP, then fall through to <img>.

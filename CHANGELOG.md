@@ -7,6 +7,9 @@
   the generic "800px" made a full-width first image soft on wide retina
   screens. It now gets a variant matching the screen width and density, at the
   cost of a few extra kB for that one image.
+- Lazy images that carry a layout estimate (grid cards, columns) now also get
+  `auto` on their sources. Before, only images without an estimate did, so
+  cards never used their rendered width (found on moveria.se).
 
 ## 0.2.152 (candidate)
 

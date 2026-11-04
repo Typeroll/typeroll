@@ -111,3 +111,15 @@ describe('the leading image', () => {
     expect(estimated).toContain('sizes="(max-width: 720px) 100vw, 34vw"');
   });
 });
+
+describe('auto with a layout estimate', () => {
+  it('adds auto to the sources of a lazy grid card that carries its layout sizes', async () => {
+    const { buildMediaLookup, transformBodyForSeo } = await import('../seo-transform');
+    const variants = [320, 1024].flatMap(width => (['avif', 'webp'] as const).map(format => ({ width, format, cdn_url: `https://m.example/c.png.w${width}.${format}` })));
+    const lookup = buildMediaLookup([{ id: 'c', cdn_url: 'https://m.example/c.png', width: 1200, height: 800, variants }] as never);
+    const html = '<img src="https://m.example/c.png" alt="" /><p>x</p><img sizes="(max-width: 900px) 100vw, 34vw" src="https://m.example/c.png" alt="" loading="lazy" />';
+    const [, card] = transformBodyForSeo(html, lookup).split('<p>x</p>');
+    expect(card).toContain('<source type="image/avif" srcset="https://m.example/c.png.w320.avif 320w, https://m.example/c.png.w1024.avif 1024w" sizes="auto, (max-width: 900px) 100vw, 34vw" />');
+    expect(card).toMatch(/<img [^>]*sizes="\(max-width: 900px\) 100vw, 34vw"/);
+  });
+});
