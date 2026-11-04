@@ -81,17 +81,19 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   if (!media.length) { assertPublicMediaReferences(content); return { content, media: [], sourceMedia: [], warnings: [] as string[], manifest: null }; }
   if (!connection.cloudflare?.public_bucket || !connection.media_ready) throw new ConnectionError('Complete private and public R2 storage setup in Publishing.', 409, 'media_storage_required');
   const organizationHost = organization.media_host;
-  // Images are served from the organization's public R2 bucket on its media
+  // Images are served from the organization's public R2 bucket on a media
   // host, so a Pages deployment carries only pages however large the library
-  // is. The customer's build engine writes them there directly. A site with its
-  // own media host keeps it; without any media host they stay on the website.
+  // is. The customer's build engine writes them there directly. A site's own
+  // media host (for example media.<site domain>) serves the same bucket through
+  // a path rule; without it the organization's shared host does. Only without
+  // any media host, or on a version branch, do images stay on the website.
   const ownHost = domains.desired.media_host;
   const host = ownHost
     ? (content.git_branch && content.git_branch !== 'main' ? websiteHost : ownHost)
     : organizationHost || websiteHost;
   if (!host) throw new ConnectionError('Set a media host in Publishing before deploying images.', 409, 'media_domain_required');
   const sharedHost = host === organizationHost;
-  const delivery = sharedHost || (domains.active?.media_host === host && host !== websiteHost) ? 'r2' : 'static';
+  const delivery = sharedHost || host !== websiteHost ? 'r2' : 'static';
   const publicPrefix = sharedHost ? `/${prefix}` : domains.desired.media_path_prefix || (host === websiteHost ? '/media' : '');
   const replacements = new Map<string, string>();
   const pathsSeen = new Set<string>();
@@ -215,17 +217,24 @@ export function retainDistinctMediaManifests(previous: any[], current: any): any
 }
 
 /**
- * When a publication serves its images from the organization media host,
- * images that earlier publications served from the website (`/media/...`)
- * move there too: the build writes each one to its organization-host key,
- * where earlier builds already put an identical copy, and one redirect per
- * website media path sends old addresses to it. No image is copied into the
- * Pages deployment again. Manifests without a website media path stay static.
+ * When a publication serves its images from a media host — the organization's
+ * shared host or the site's own — images that earlier publications served from
+ * the website (`/media/...`) move there too: the build writes each one to its
+ * storage key, where earlier builds already put an identical copy, and one
+ * redirect per website media path sends old addresses to it. No image is
+ * copied into the Pages deployment again. Manifests without a website media
+ * path stay static.
+ *
+ * Both hosts address the same key: the shared host as `/<site_prefix>/<path>`,
+ * a site media host as `/<path>`, which its path rule maps to the same key.
  */
-export function moveStaticMediaToSharedHost(retained: any[], current: any): { retained: any[]; redirects: Array<Redirect & { media_path_prefix: string }> } {
+export function moveWebsiteMediaToMediaHost(retained: any[], current: any): { retained: any[]; redirects: Array<Redirect & { media_path_prefix: string }> } {
   const prefix = current?.site_prefix;
   const host = current?.media_host;
-  if (current?.delivery !== 'r2' || !prefix || !host || current.media_path_prefix !== `/${prefix}`) return { retained, redirects: [] };
+  const hostPath = current?.media_path_prefix;
+  const sharedHost = hostPath === `/${prefix}`;
+  const siteHost = hostPath === '' && host !== current?.website_host;
+  if (current?.delivery !== 'r2' || !prefix || !host || !(sharedHost || siteHost)) return { retained, redirects: [] };
   const sameStorage = (manifest: any) => ['account_id', 'original_bucket', 'public_bucket', 'site_prefix'].every(field => manifest[field] === current[field]);
   const moved = new Set<string>();
   const result = retained.map(manifest => {
@@ -238,14 +247,14 @@ export function moveStaticMediaToSharedHost(retained: any[], current: any): { re
     return { ...manifest, delivery: 'r2', media_host: host, static_path_prefix: pathPrefix,
       entries: manifest.entries.map((entry: any) => {
         const relative = entry.public_path.slice(pathPrefix.length);
-        const alias = { url: `https://${host}/${prefix}${relative}`, key: `${prefix}${relative}` };
+        const alias = { url: `https://${host}${hostPath}${relative}`, key: `${prefix}${relative}` };
         const aliases = entry.aliases ?? [];
         return aliases.some((candidate: any) => candidate.key === alias.key && candidate.url === alias.url) ? entry : { ...entry, aliases: [...aliases, alias] };
       }) };
   });
   const redirects = [...moved].sort().map(pathPrefix => ({
     id: `media-host-${createHash('sha256').update(pathPrefix).digest('hex').slice(0, 32)}`, media_path_prefix: pathPrefix,
-    from_path: `${pathPrefix}/*`, to_path: `https://${host}/${prefix}/:splat`, status_code: 301,
+    from_path: `${pathPrefix}/*`, to_path: `https://${host}${hostPath}/:splat`, status_code: 301,
   }) as Redirect & { media_path_prefix: string });
   return { retained: result, redirects };
 }

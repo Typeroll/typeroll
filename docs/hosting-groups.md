@@ -63,10 +63,11 @@ and a safe media path. Retain previously published paths where required by alias
 reject collisions with pages or reserved output files. Never copy private
 originals merely because they exist in the bucket.
 
-Keep separate website and media host settings. A separate media hostname needs
-an explicit verified static serving target; do not silently attach it to a
-different account's R2 bucket. Preserve existing published configurations during
-the transition. A customer source build remains independent of the CMS once its
+Keep separate website and media host settings. A site media host (for example
+`media.<site domain>`) is attached to the organization's public R2 bucket with a
+path rule mapping it to the site's folder, and is verified by real bytes before
+pages reference it. Its zone must be in the bucket's account; never attach it to
+a different account's bucket. Website-served `/media` addresses redirect to it. A customer source build remains independent of the CMS once its
 source and required media are available.
 
 ## Migration and safety

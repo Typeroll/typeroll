@@ -3,7 +3,7 @@
 // keys, one redirect per website media path keeps old addresses working, and
 // publication verification treats those addresses as moved, not deleted.
 import { describe, expect, it } from 'vitest';
-import { moveStaticMediaToSharedHost } from '../../lib/publishing/media-manifest';
+import { moveWebsiteMediaToMediaHost } from '../../lib/publishing/media-manifest';
 import { staticManifestChecks } from '../../lib/builds/verification';
 
 const storage = { account_id: 'a'.repeat(32), original_bucket: 'private', public_bucket: 'public', site_prefix: 'media/abcdefghij' };
@@ -16,30 +16,42 @@ const staticManifest = { ...storage, delivery: 'static', media_host: 'www.exampl
     { id: 'old', public_path: '/media/2222-early.png', public_key: 'media/abcdefghij/media/2222-early.png', aliases: [] },
   ] };
 
-describe('moveStaticMediaToSharedHost', () => {
+describe('moveWebsiteMediaToMediaHost', () => {
   it('moves website-hosted media to the organization host and redirects its path', () => {
-    const { retained, redirects } = moveStaticMediaToSharedHost([staticManifest], current);
+    const { retained, redirects } = moveWebsiteMediaToMediaHost([staticManifest], current);
     expect(retained[0]).toMatchObject({ delivery: 'r2', media_host: 'media.example.net', static_path_prefix: '/media' });
     // An entry with its organization copy is unchanged; one from before gets that copy.
     expect(retained[0].entries[0]).toBe(staticManifest.entries[0]);
     expect(retained[0].entries[1].aliases).toEqual([{ url: 'https://media.example.net/media/abcdefghij/2222-early.png', key: 'media/abcdefghij/2222-early.png' }]);
     expect(redirects).toEqual([expect.objectContaining({ from_path: '/media/*', to_path: 'https://media.example.net/media/abcdefghij/:splat', status_code: 301 })]);
     // The moved manifest keeps its redirect in later publications.
-    const again = moveStaticMediaToSharedHost(retained, current);
+    const again = moveWebsiteMediaToMediaHost(retained, current);
     expect(again.retained).toEqual(retained);
     expect(again.redirects).toEqual(redirects);
   });
 
+  it('moves website-hosted media to a site media host at the same storage keys', () => {
+    const own = { ...current, media_host: 'images.example.com', media_path_prefix: '',
+      entries: [{ id: 'new', public_path: '/new.png', public_key: 'media/abcdefghij/new.png', aliases: [] }] };
+    const { retained, redirects } = moveWebsiteMediaToMediaHost([staticManifest], own);
+    expect(retained[0]).toMatchObject({ delivery: 'r2', media_host: 'images.example.com', static_path_prefix: '/media' });
+    expect(retained[0].entries[1].aliases).toEqual([{ url: 'https://images.example.com/2222-early.png', key: 'media/abcdefghij/2222-early.png' }]);
+    expect(redirects).toEqual([expect.objectContaining({ from_path: '/media/*', to_path: 'https://images.example.com/:splat', status_code: 301 })]);
+    // Media that already moved to the shared host now redirects to the site host.
+    const moved = moveWebsiteMediaToMediaHost([staticManifest], current).retained;
+    expect(moveWebsiteMediaToMediaHost(moved, own).redirects).toEqual(redirects);
+  });
+
   it('changes nothing while the current publication serves media from the website', () => {
     const website = { ...current, delivery: 'static', media_host: 'www.example.com', media_path_prefix: '/media' };
-    expect(moveStaticMediaToSharedHost([staticManifest], website)).toEqual({ retained: [staticManifest], redirects: [] });
+    expect(moveWebsiteMediaToMediaHost([staticManifest], website)).toEqual({ retained: [staticManifest], redirects: [] });
   });
 
   it('keeps a manifest static when its addresses cannot be redirected as one path', () => {
     const root = { ...staticManifest, media_path_prefix: '' };
     const otherStorage = { ...staticManifest, public_bucket: 'other' };
     const outside = { ...staticManifest, entries: [{ ...staticManifest.entries[0], public_path: '/elsewhere/a.png' }] };
-    const { retained, redirects } = moveStaticMediaToSharedHost([root, otherStorage, outside], current);
+    const { retained, redirects } = moveWebsiteMediaToMediaHost([root, otherStorage, outside], current);
     expect(retained).toEqual([root, otherStorage, outside]);
     expect(redirects).toEqual([]);
   });

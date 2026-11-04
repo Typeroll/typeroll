@@ -8,6 +8,13 @@
   expiry; one chain head per connection and client detects a replayed token and
   revokes the connection. When a grant does end, the token error says whether it
   was revoked or replayed and how to reconnect.
+- A site can serve its images from its own media host, such as
+  `media.<site domain>`, so image addresses do not show the organization's
+  domain. The host serves the organization's public R2 bucket through a path
+  rule, like the shared host, and the Pages deployment carries only pages.
+  Images that earlier publications served from the website under `/media`, or
+  from the shared host, keep working: `/media/*` redirects to the site media
+  host. The portal suggests `media.<site domain>`.
 
 ## 0.2.150 (candidate)
 
