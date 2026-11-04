@@ -643,9 +643,17 @@ starting new shared publications; already frozen older jobs retain their origina
 artifact and verification path.
 
 Preparation has a six-hour overall limit, and public verification has its own
-45-minute window after the build completes. Direct static output is limited to 512 MiB,
-20,000 files and 25 MiB per file. Older binary-artifact engines retain their
-128 MiB package limit. Images and generated variants remain outside
+45-minute window after the build completes. Direct static output follows the
+Cloudflare Pages limits: at most 20,000 files, each at most 25 MiB. There is no
+total size limit. The engine uploads a large output in runs of at most 256 MiB
+and 4,000 files, each with its own upload grant and time limit, then deploys it
+once; the provider log shows `TYPEROLL_UPLOAD_CHUNK` per run. Pages stores files
+by content hash, so a retried build skips everything already uploaded. When a
+build exceeds a limit, the provider log line `TYPEROLL_OUTPUT_LIMIT` names the
+limit, the file count, the total size, the largest files and the largest
+top-level folders. Older binary-artifact engines retain their 128 MiB package
+limit, and engines from before Core 0.2.150 retain a 512 MiB total until they
+are updated. Images and generated variants remain outside
 Git. Corruption, conflicting immutable paths and access errors stop publication;
 retry after fixing the reported problem. Verified preparation is retained.
 
@@ -1054,6 +1062,14 @@ Deployment status can include `build_progress`: the exact task's status, attempt
 step and completed/total files. These counters are not an ETA or a whole-job
 percentage. Existing status polling reads progress; no additional scheduled job
 is started. A new attempt does not mean that completed media must be recopied.
+
+Large media sets are prepared in windows of about 12 minutes. Each window saves
+its position and the next build run continues from it, so `attempt` rises
+during a healthy build. `media_continuations` counts these planned windows,
+`retries` counts runs that failed and were started again, and `deadline` is when
+the build stops for good (six hours after a build with media starts). Wait for
+a terminal status instead of cancelling a build whose `completed` count still
+rises.
 
 `get_preview_link` also returns `frame_url` for rendering QA without the portal
 wrapper. It uses the same signed expiry and sandbox. Keep the normal `url` for

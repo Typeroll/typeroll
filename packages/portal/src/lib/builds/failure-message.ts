@@ -42,7 +42,7 @@ const REASONS: Array<[RegExp, (match: RegExpMatchArray) => Reason]> = [
   [/^coordinator_(\d{3})$/, match => ({ text: `Typeroll’s build coordinator answered HTTP ${match[1]}.` })],
   [/^build_transfer_(?:failed|limit)$/, () => ({ text: 'a build input could not be downloaded.' })],
   [/^artifact_upload_failed$/, () => ({ text: 'the built site could not be uploaded to build storage.' })],
-  [/^static_output_size_limit$/, () => ({ text: 'the finished site exceeds the static output limit or contains a file larger than 25 MiB.', action: 'Reduce the published files, then retry publishing.' })],
+  [/^static_output_size_limit$/, () => ({ text: 'the finished site exceeds the static output limit or contains a file larger than 25 MiB.', action: 'The provider log line TYPEROLL_OUTPUT_LIMIT names the limit, the totals and the largest files. Reduce those files, then retry publishing.' })],
   [/^(?:invalid_static_path|invalid_static_file|unsafe_build_output)$/, () => ({ text: 'the build produced a file that cannot be published.' })],
   [/^publication_validation_failed$/, () => ({ text: 'the built pages failed publication validation.', action: 'Fix the reported pages, then publish again.' })],
   [/^publication_report_too_large$/, () => ({ text: 'the publication validation report was too large to return.', action: 'Fix the pages with the most validation errors, then publish again.' })],

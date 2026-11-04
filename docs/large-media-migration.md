@@ -57,8 +57,10 @@ Object grants and final local materialization are issued in slices of at most 10
 media entries. This prevents large libraries from putting every signed object URL
 into a single claim response or grant document. Engines negotiate this capability
 with the frozen renderer; older templates retain their original access path.
-Direct uploads accept at most 512 MiB of static output, with 20,000 files and
-25 MiB per file; legacy encoded artifacts retain the 128 MiB limit.
+Direct uploads follow the Cloudflare Pages limits of 20,000 files and 25 MiB per
+file, with no total size limit (512 MiB before Core 0.2.150). Large outputs are
+uploaded in runs of at most 256 MiB and 4,000 files and deployed once; legacy
+encoded artifacts retain the 128 MiB limit.
 
 Shared Cloudflare claims prioritize waiting publications over private preparation
 when a build slot becomes available. A running preparation retains its bounded
