@@ -86,6 +86,7 @@ export * from './site-css-lint.js';
 export * from './json-ld-check.js';
 
 export * from './social-metadata.js';
+export * from './mcp-client-links.js';
 export * from './faq-jsonld.js';
 export * from './ai-crawlers.js';
 export * from './page-markdown.js';
