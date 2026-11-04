@@ -43,7 +43,7 @@ import { DerivationError, runBuildDerivations } from './build-derivation';
 import { indexableSettings } from './launch-robots';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { preparePublicMediaDomains } from './media-domain';
-import { pagesBranchHost, pagesBranchLabel, PAGES_BRANCH_LABEL_LIMIT } from './pages-alias';
+import { pagesBranchHost } from './pages-alias';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
 import { recordCustomerCompute } from './compute-cost';
@@ -433,7 +433,6 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });
         terminal = true; return 'ran';
       }
-      if (frozen.git_branch && frozen.git_branch !== 'main') await assertUniqueBranchAlias(args.orgId, args.siteId, args.versionId, frozen.git_branch);
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: site?.git_repository ?? generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domainPublicationRevision(domains), destination: {hosts: domains.desired, dns_mode: domains.dns_mode},
@@ -898,12 +897,4 @@ async function assertTestAddressReachable(publication: { branch?: string; projec
   409, 'test_address_unreachable', { test_address: publication.website_host, branch_alias: alias });
 }
 
-/** Two versions whose branch names agree in Cloudflare's shortened label would share one test alias. */
-async function assertUniqueBranchAlias(orgId: string, siteId: string, versionId: string, branch: string) {
-  const label = pagesBranchLabel(branch);
-  const clash = (await getStore().listDocs<{ id: string }>(paths.versions(orgId, siteId)))
-    .find(version => version.id !== versionId && version.id !== 'main' && pagesBranchLabel(`version-${version.id}`) === label);
-  if (clash) throw new ConnectionError(`Version ${versionId} would share Cloudflare's test alias ${label} with version ${clash.id}. Cloudflare shortens branch names to ${PAGES_BRANCH_LABEL_LIMIT} characters, so both versions would serve whichever was published last. Create the version with a name that differs within its first ${PAGES_BRANCH_LABEL_LIMIT - 'version-'.length} characters.`,
-    409, 'version_alias_collision', { branch_alias: label, conflicting_version: clash.id });
-}
 

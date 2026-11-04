@@ -237,30 +237,36 @@ async function longVersion(id: string) {
   return { ...args, versionId: id };
 }
 
-it('refuses a version whose shortened Cloudflare alias another version already uses', async () => {
+it('gives two long versions distinct branches within Cloudflare\'s 28-character alias, instead of refusing one', async () => {
+  const { versionGitBranch } = await import('../../../../../scripts/lib/static-publication.mjs');
+  const [first, second] = ['seo-sharing-render-refresh-2026-11-04', 'seo-sharing-render-refresh-2026-12-01'].map(versionGitBranch);
+  expect(first).toMatch(/^version-seo-sharing-r-[a-f0-9]{6}$/);
+  expect(first).not.toBe(second);
+  expect(Math.max(first.length, second.length)).toBeLessThanOrEqual(28);
+  expect(versionGitBranch('design')).toBe('version-design');
   await getStore().setDoc(paths.version('org', 'site', 'seo-sharing-render-refresh-2026-12-01'), { kind: 'branch', base_version_id: 'main' });
   const versionArgs = await longVersion('seo-sharing-render-refresh-2026-11-04');
-  await executeCustomerPublication(versionArgs);
-  expect(mocks.push).not.toHaveBeenCalled();
-  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'version_alias_collision' },
-    error: expect.stringContaining('version-seo-sharing-render-r') });
+  expect(await executeCustomerPublication(versionArgs)).toBe('waiting');
+  expect(mocks.push.mock.calls[0][1].branch).toBe(first);
 });
 
 it('stops with a clear error when an activated test address does not serve a build its branch alias serves', async () => {
   const versionArgs = await longVersion('seo-sharing-render-refresh-2026-11-04');
   expect(await executeCustomerPublication(versionArgs)).toBe('waiting');
-  complete('version-seo-sharing-render-refresh-2026-11-04');
-  mocks.deployment.aliases = [`https://version-seo-sharing-render-r.${project}.pages.dev`];
+  const { versionGitBranch } = await import('../../../../../scripts/lib/static-publication.mjs');
+  const branch = versionGitBranch('seo-sharing-render-refresh-2026-11-04');
+  complete(branch);
+  mocks.deployment.aliases = [`https://${branch}.${project}.pages.dev`];
   // The build answers on Cloudflare's addresses; the test address does not.
   mocks.probe.mockImplementation(async origin => origin.includes('.pages.dev'));
   expect(await executeCustomerPublication(versionArgs)).toBe('waiting');
   const waiting = await getStore().getDoc<any>(jobPath);
   expect(waiting.status).toBe('running');
-  expect(waiting.git_publication.deployment_receipt.aliases).toEqual([`https://version-seo-sharing-render-r.${project}.pages.dev`]);
+  expect(waiting.git_publication.deployment_receipt.aliases).toEqual([`https://${branch}.${project}.pages.dev`]);
   await getStore().updateDoc(jobPath, { git_publication: { ...waiting.git_publication, candidate_prepared_at: new Date(Date.now() - 11 * 60_000).toISOString() } });
   await executeCustomerPublication(versionArgs);
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'test_address_unreachable' },
-    error: expect.stringContaining(`answers at https://version-seo-sharing-render-r.${project}.pages.dev`) });
+    error: expect.stringContaining(`answers at https://${branch}.${project}.pages.dev`) });
 });
 
 it('a domain-only preparation reuses the public snapshot and does not publish later saved content', async () => {

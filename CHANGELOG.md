@@ -11,8 +11,10 @@
   A test-address record Typeroll created against the wrong alias is corrected
   on the next publication; records Typeroll did not create, and live websites,
   are never rewritten.
-- Two versions whose names agree in their first 20 characters would share one
-  alias. Publishing such a version stops with `version_alias_collision`.
+- A version whose branch would exceed Cloudflare's 28-character alias keeps its
+  first characters and ends in a short hash of its full name, for example
+  `version-seo-sharing-r-3bcd58`. Two versions can never share a test address,
+  and short version names keep their branch.
 - When Cloudflare has activated a version's test address but it still does not
   serve a build that answers on its branch alias 10 minutes after the build was
   verified, the publication stops with `test_address_unreachable`, naming the
