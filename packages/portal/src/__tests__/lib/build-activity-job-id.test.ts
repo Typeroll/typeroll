@@ -46,3 +46,10 @@ it('lists a domain switch that only waits for DNS approval apart from active job
   expect(await activeBuilds('org', now)).toEqual([]);
   expect(await buildActivity('org', now)).toEqual({ active_jobs: [], awaiting_approval: [expect.objectContaining({ key, job_id: 'switch-1', site_id: 'fi', site_name: 'Finland', status: 'awaiting_approval' })] });
 });
+
+it('splits a build attempt into planned media windows and retried runs (SE-07)', async () => {
+  const { buildAttemptParts } = await import('../../lib/builds/activity');
+  expect(buildAttemptParts({ attempt: 4, media_batches: 3 })).toEqual({ media_continuations: 3, retries: 0 });
+  expect(buildAttemptParts({ attempt: 4, media_batches: 1 })).toEqual({ media_continuations: 1, retries: 2 });
+  expect(buildAttemptParts({ attempt: 1 })).toEqual({ media_continuations: 0, retries: 0 });
+});

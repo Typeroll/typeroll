@@ -1422,3 +1422,14 @@ it('lets a domain preparation blocked by a stale cache resume after an approved 
   expect(mocks.push).toHaveBeenCalledTimes(1);
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
 });
+
+it('tells the publication that background image preparation stopped and why (SE-07)', async () => {
+  await getStore().setDoc(`media_preparations/${createHash('sha256').update('org\0site').digest('hex')}`, { state: 'failed', error: 'Background preparation stopped. Cause: the runner ran out of time (build_timeout)', error_code: 'build_timeout', failed_task: 'old-task' });
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
+  mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ media_preparation: { state: 'failed', error_code: 'build_timeout', failed_build_task: 'old-task' },
+    warnings: expect.arrayContaining([expect.stringContaining('Background image preparation stopped (build_timeout)')]) });
+});

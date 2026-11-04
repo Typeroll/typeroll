@@ -1096,7 +1096,10 @@ during a healthy build. `media_continuations` counts these planned windows,
 `retries` counts runs that failed and were started again, and `deadline` is when
 the build stops for good (six hours after a build with media starts). Wait for
 a terminal status instead of cancelling a build whose `completed` count still
-rises.
+rises. `read_organization_build_engine` lists the same split for each active job.
+When the site's background image preparation has stopped, a publication says so
+in `job.warnings` and `job.media_preparation` (state, `error_code`, error), since
+it then prepares the remaining images itself and takes longer.
 
 `get_preview_link` also returns `frame_url` for rendering QA without the portal
 wrapper. It uses the same signed expiry and sandbox. Keep the normal `url` for

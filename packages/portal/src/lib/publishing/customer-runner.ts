@@ -38,6 +38,7 @@ import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-v
 import { freezeThemeFonts } from './theme-font-freeze';
 import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest, collapseMediaHostChains } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
+import { mediaPreparationStatus } from '../media/preparation';
 import { publicationRuntime } from './runtime-projection';
 import { DerivationError, runBuildDerivations } from './build-derivation';
 import { indexableSettings } from './launch-robots';
@@ -610,6 +611,14 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         const source = await publicationSourceTree(await readSnapshot(args, publication));
         const queued = await enqueueBuild(engine, { org_id: args.orgId, site_id: args.siteId, version_id: args.versionId, job_id: args.jobId,
           publication_id: publication.publication_id, commit: publication.commit, branch: publication.branch }, source);
+        // A stopped background preparation means this build encodes the images itself: say why it takes longer (SE-07).
+        const preparation = await mediaPreparationStatus(args.orgId, args.siteId).catch(() => null);
+        if (preparation?.state === 'failed' || (preparation?.state === 'queued' && preparation.error_code)) {
+          const current = await store.getDoc<GitJob>(jobPath);
+          await store.updateDoc(jobPath, { media_preparation: { state: preparation.state, error_code: preparation.error_code, error: preparation.error,
+            ...('failed_build_task' in preparation ? { failed_build_task: preparation.failed_build_task } : {}) },
+            warnings: [...((current as any)?.warnings ?? []), `Background image preparation ${preparation.state === 'failed' ? 'stopped' : 'is waiting to retry'} (${preparation.error_code ?? 'unknown'})${preparation.error ? `: ${preparation.error}` : ''}. This publication prepares the remaining images itself, which takes longer.`] });
+        }
         await assertLease();
         publication = { ...publication, build_task_key: queued.key };
         await store.updateDoc(jobPath, { git_publication: publication, execution_backend: publication.build_provider === 'github' ? 'organization_github' : 'organization_cloudflare' });
