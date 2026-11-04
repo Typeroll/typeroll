@@ -9,7 +9,12 @@
   credentials, several organizations and errors.
 - Personal API tokens: create one in Account → AI connections for scripts. It
   has your access in every organization (name one per request with the
-  `Typeroll-Organization` header), lasts until revoked and is shown once.
+  `Typeroll-Organization` header) and is shown once. A token can be limited to
+  some organizations, made read only or set to expire; at most 20 are active.
+  The list shows when each was last used.
+- Writes through personal connections and tokens are audited with the person's
+  user id, and organization routes are audited on the organization. Discovery
+  (`GET /api/v1/organizations`, `/api/v1/sites`) ignores the organization header.
 
 ## 0.2.150 (candidate)
 

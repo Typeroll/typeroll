@@ -4,10 +4,21 @@ import { getSession } from '../../../lib/auth';
 import { listPersonalConnections } from '../../../lib/api-keys';
 import { publicMcpUrl } from '../../../lib/mcp-consent';
 import PersonalApiToken from '../../../components/PersonalApiToken.tsx';
+import { personalOrganizations } from '../../../lib/personal-site-access';
 const session = await getSession(Astro.cookies);
 if (!session) return Astro.redirect('/login');
 Astro.response.headers.set('Cache-Control', 'no-store');
 const connections = await listPersonalConnections(session.userId);
+const date = (value: string) => new Date(value).toLocaleDateString('en-GB');
+const describe = (connection: (typeof connections)[number]) => [
+  connection.kind === 'api_token' ? 'API token' : 'AI connection',
+  `Created ${date(connection.created_at)}`,
+  connection.revoked_at ? 'Revoked' : connection.expires_at && Date.parse(connection.expires_at) > Date.now() ? `Expires ${date(connection.expires_at)}` : connection.expires_at ? 'Expired' : 'Active until revoked',
+  ...(connection.last_used_at ? [`Last used ${date(connection.last_used_at)}`] : []),
+  ...(connection.read_only ? ['Read only'] : []),
+  ...(connection.allowed_org_ids ? [`Organizations: ${connection.allowed_org_ids.join(', ')}`] : []),
+].join(' · ');
+const organizations = (await personalOrganizations(session.userId)).map(org => ({ id: org.id, name: org.name ?? org.id }));
 const endpoint = publicMcpUrl(Astro.request);
 ---
 <AppLayout title="AI connections">
@@ -24,14 +35,14 @@ const endpoint = publicMcpUrl(Astro.request);
     {connections.map(connection => {
       return <section class="card stack">
         <h3 style="overflow-wrap:anywhere;">{connection.name}</h3>
-        <p class="muted">{connection.kind === 'api_token' ? 'API token' : 'AI connection'} · Created {new Date(connection.created_at).toLocaleDateString('en-GB')} · {connection.revoked_at ? 'Revoked' : 'Active until revoked'}</p>
+        <p class="muted">{describe(connection)}</p>
         {!connection.revoked_at && <form action="/api/account/ai-connections" method="POST">
           <input type="hidden" name="connection_id" value={connection.id} />
           <button class="btn btn--ghost" type="submit">Revoke connection</button>
         </form>}
       </section>;
     })}
-    <PersonalApiToken client:load />
+    <PersonalApiToken client:load organizations={organizations} />
     <p>See <a href="https://typeroll.com/docs/guides/rest-api/" target="_blank" rel="noopener noreferrer">Use the REST API ↗</a> for examples with several organizations.</p>
     <p>Manual keys remain available in <a href="/app/settings/api-keys">API keys</a>. Revoking a personal connection does not change other connections or API keys.</p>
   </div>

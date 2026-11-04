@@ -13,6 +13,8 @@ import { getStore } from './datastore';
 
 export interface ApiAuditEntry {
   key_prefix: string;
+  /** The person behind a personal connection or token. */
+  actor_user_id?: string;
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   path: string;
   status: number;
@@ -38,6 +40,7 @@ export async function recordAudit(args: {
   orgId: string;
   siteId: string;
   keyPrefix: string;
+  actorUserId?: string;
   method: string;
   path: string;
   status: number;
@@ -49,6 +52,7 @@ export async function recordAudit(args: {
   try {
     const entry: ApiAuditEntry = {
       key_prefix: args.keyPrefix,
+      ...(args.actorUserId ? { actor_user_id: args.actorUserId } : {}),
       method: args.method as ApiAuditEntry['method'],
       path: args.path,
       status: args.status,
@@ -57,7 +61,9 @@ export async function recordAudit(args: {
       ts: new Date().toISOString(),
       body_preview: args.bodyPreview ? args.bodyPreview.slice(0, 200) : undefined,
     };
-    await getStore().addDoc(paths.apiAudit(args.orgId, args.siteId), entry);
+    if (!args.orgId) return;
+    // Organization routes have no site: they are audited on the organization.
+    await getStore().addDoc(args.siteId ? paths.apiAudit(args.orgId, args.siteId) : `${paths.org(args.orgId)}/api_audit`, entry);
   } catch {
     /* swallow */
   }

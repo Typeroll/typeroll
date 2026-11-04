@@ -237,3 +237,40 @@ it('creates a personal API token that reaches every organization through the hea
   expect((await site()).ok).toBe(false);
   expect((await site('alpha')).ok).toBe(true);
 });
+
+it('limits a personal API token to chosen organizations, to reads and to its expiry', async () => {
+  const { POST: createToken } = await import('../../pages/api/account/api-tokens');
+  const portal = new URL(process.env.PORTAL_PUBLIC_URL || origin).origin;
+  const create = (body: unknown) => createToken({ request: new Request(`${portal}/api/account/api-tokens`, {
+    method: 'POST', headers: { origin: portal, 'content-type': 'application/json' }, body: JSON.stringify(body),
+  }), cookies: {} } as never) as Promise<Response>;
+  expect((await create({ name: 'Bad', organization_ids: ['not-mine'] })).status).toBe(400);
+  expect((await create({ name: 'Bad', expires_in_days: 7 })).status).toBe(400);
+  const limited = await create({ name: 'Alpha reader', organization_ids: ['alpha'], read_only: true, expires_in_days: 30 });
+  expect(limited.status).toBe(201);
+  const { token: limitedToken, expires_at } = await limited.json();
+  expect(Date.parse(expires_at)).toBeGreaterThan(Date.now() + 29 * 86400000);
+  const call = (method: string, organization: string) => requireApiKey(new Request(`${origin}/api/v1/sites/same-id/pages`, {
+    method, headers: { authorization: `Bearer ${limitedToken}`, 'Typeroll-Organization': organization },
+  }), 'same-id');
+  const read = await call('GET', 'alpha');
+  expect(read.ok && read.value.permission).toBe('read');
+  expect((await call('PATCH', 'alpha')).ok).toBe(false);
+  const other = await call('GET', 'beta');
+  expect(other.ok).toBe(false);
+  if (!other.ok) expect((await other.response.json()).code).toBe('token_organization_not_allowed');
+  // Discovery lists only the allowed organization and ignores the header.
+  const { GET: organizations } = await import('../../pages/api/v1/organizations');
+  const listed = await organizations({ request: new Request(`${origin}/api/v1/organizations`, {
+    headers: { authorization: `Bearer ${limitedToken}`, 'Typeroll-Organization': 'beta' },
+  }) } as never) as Response;
+  expect((await listed.json()).organizations.map((entry: { id: string }) => entry.id)).toEqual(['alpha']);
+  // An expired token stops working.
+  const { paths: sharedPaths } = await import('@typeroll/shared');
+  const lookups = await getStore().listDocs<{ id: string; personal_user_id?: string; expires_at?: string }>('api_key_lookup');
+  const entry = lookups.find(doc => doc.expires_at);
+  expect(entry).toBeTruthy();
+  await getStore().updateDoc(sharedPaths.apiKeyLookupEntry(entry!.id), { expires_at: new Date(Date.now() - 1000).toISOString() });
+  expect(await verifyApiToken(limitedToken)).toBeNull();
+});
+

@@ -1,12 +1,16 @@
 // The published REST reference is generated from the MCP tools: every tool
 // that is not a bundled-documentation reader calls the REST API, and the page
 // in the docs site matches what the tools do today.
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ALL_TOOLS } from '../src/server';
 import { LOCAL_TOOLS, renderRestReference, restReference } from '../src/rest-reference';
+
+// No tool may reach the network while it is observed, even after the recorder
+// stops watching a slow handler.
+vi.stubGlobal('fetch', async () => new Response('Network is not available in this test', { status: 503 }));
 
 const PAGE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../docs-site/src/content/docs/technical/rest-api-reference.md');
 

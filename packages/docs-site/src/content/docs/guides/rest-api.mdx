@@ -20,17 +20,32 @@ with `Content-Type: application/json`.
 | **Organization API key** | Organization settings → API keys              | One organization, as an administrator                     |
 | **Site API key**         | Site settings → API keys                      | One site, with the permission chosen for the key          |
 
-A personal API token follows your access. If you lose access to an organization,
-the token loses it too. A token lasts until you revoke it in **Account → AI
-connections**. Typeroll shows it only once, so store it in a password manager or
-secret store.
+A personal API token follows your access: if you lose access to an
+organization, the token loses it too. When you create one, you can limit it to
+some of your organizations, make it read only, or let it expire after 30, 90 or
+365 days. Without an expiry it lasts until you revoke it in **Account → AI
+connections**, which also shows when each token was last used. Typeroll shows a
+token only once, so store it in a password manager or secret store. Writes made
+with a personal token are recorded with your user id.
+
+For unattended automation in one organization, prefer an organization API key:
+it is tied to that organization by the key itself, needs no extra header and
+outlives staff changes.
 
 **Availability:** personal API tokens and the generated reference come with Core
 0.2.151.
 
 ## Work with several organizations
 
-If you manage several organizations, use one personal API token for all of them.
+You have two options:
+
+- **One organization API key per organization.** Each key reaches only its
+  organization, so no header is needed. Store one key per organization and pick
+  the key that matches the organization you call.
+- **One personal API token for all of them.** Name the organization in every
+  request with the `Typeroll-Organization` header, as below.
+
+With a personal API token:
 
 1. List your organizations and your role in each:
 

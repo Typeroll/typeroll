@@ -31,6 +31,8 @@ import { organizationMembership } from './organization-session';
 
 export interface ApiContext {
   personalUserId?: string;
+  /** Organizations a personal API token is limited to; absent means all of the person's. */
+  personalAllowedOrgIds?: string[];
   /** Org that owns the resolved site (owner-side). For owned sites this is
    *  the token's org; for shared-in sites accessed via an org-scoped key
    *  it's the original owner. Always the org to use for datastore paths. */
@@ -330,7 +332,11 @@ async function resolveAnyApiKey(request: Request): Promise<GuardResult<ApiContex
     const pathname = new URL(request.url).pathname.replace(/\/$/, '');
     const accessRead = request.method === 'GET' && pathname === '/api/v1/access';
     const discovery = request.method === 'GET' && ['/api/v1/sites', '/api/v1/organizations'].includes(pathname);
-    const orgId = request.headers.get(ORGANIZATION_HEADER)?.trim() || '';
+    // Discovery lists everything the person can reach; it never takes an organization from the request.
+    const orgId = discovery ? '' : request.headers.get(ORGANIZATION_HEADER)?.trim() || '';
+    if (orgId && verified.allowedOrgIds && !verified.allowedOrgIds.includes(orgId)) {
+      return { ok: false, response: json({ error: `This token is not allowed to use organization "${orgId}".`, code: 'token_organization_not_allowed' }, 403) };
+    }
     const membership = orgId ? await organizationMembership(verified.personalUserId, orgId) : null;
     // Root routes historically trust org API keys as administrators. Keep that
     // invariant; personal discovery is the only exception and never mutates.
@@ -338,10 +344,11 @@ async function resolveAnyApiKey(request: Request): Promise<GuardResult<ApiContex
       return { ok: false, response: json({ error: 'Select an organization where you are an owner or administrator using Typeroll-Organization.' }, 403) };
     }
     const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
+    if (isWrite && verified.readOnly) return { ok: false, response: json({ error: 'This token is read-only.', code: 'token_read_only' }, 403) };
     const rl = rateLimit(`${isWrite ? 'w' : 'r'}:${verified.prefix}`, isWrite ? WRITE_LIMIT : READ_LIMIT, WINDOW_MS);
     if (!rl.allowed) return { ok: false, response: json({ error: 'Rate limit exceeded' }, 429) };
     return { ok: true, value: {
-      personalUserId: verified.personalUserId, orgId, tokenOrgId: orgId, tokenSiteId: null,
+      personalUserId: verified.personalUserId, personalAllowedOrgIds: verified.allowedOrgIds, orgId, tokenOrgId: orgId, tokenSiteId: null,
       siteId: '', site: { id: '' } as Site & { id: string }, versionId: MAIN_VERSION_ID,
       keyPrefix: verified.prefix, permission: discovery || accessRead ? 'read' : 'admin', request, path: pathname,
     } };
@@ -451,6 +458,9 @@ async function resolveApiKey(
   if (verified.personalUserId && !declaredOrg) {
     return { ok: false, response: json({ error: 'Select a site first. Personal connections require Typeroll-Organization.' }, 400) };
   }
+  if (verified.personalUserId && verified.allowedOrgIds && !verified.allowedOrgIds.includes(declaredOrg!)) {
+    return { ok: false, response: json({ error: `This token is not allowed to use organization "${declaredOrg}".`, code: 'token_organization_not_allowed' }, 403) };
+  }
   const resolved = verified.personalUserId
     ? await resolvePersonalSite(verified.personalUserId, declaredOrg!, urlSiteId)
     : await resolveTokenSite(verified.orgId, verified.siteId, urlSiteId);
@@ -467,7 +477,9 @@ async function resolveApiKey(
       ...(verified.personalUserId ? {} : { details: { organization_id: verified.orgId } }),
     }, 404) };
   }
-  const { ownerOrgId, permission, site } = resolved;
+  const { ownerOrgId, site } = resolved;
+  // A read-only personal token reads, whatever the person's role.
+  const permission: SharePermission = verified.readOnly ? 'read' : resolved.permission;
   const declaredMismatch = organizationMismatch(request, ownerOrgId);
   if (declaredMismatch) return { ok: false, response: declaredMismatch };
 
@@ -646,6 +658,7 @@ export function apiResponse(
       orgId: ctx.orgId,
       siteId: ctx.siteId,
       keyPrefix: ctx.keyPrefix,
+      actorUserId: ctx.personalUserId,
       method: ctx.request.method,
       path: ctx.path,
       status,

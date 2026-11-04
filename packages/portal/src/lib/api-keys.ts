@@ -60,6 +60,12 @@ export interface ApiKeyLookupEntry {
   personal_user_id?: string;
   oauth_user_id?: string;
   oauth_created_at?: string;
+  /** Personal API tokens: organizations the token may use (all when absent). */
+  allowed_org_ids?: string[];
+  /** Personal API tokens: reads only, whatever the person's role. */
+  read_only?: boolean;
+  /** Personal API tokens: optional end of validity (ISO time). */
+  expires_at?: string;
 }
 
 export interface NewKey {
@@ -275,6 +281,9 @@ export interface VerifiedKey {
   prefix: string;
   /** Personal OAuth grants never confer an organization-wide API-key role. */
   personalUserId?: string;
+  /** Limits a personal API token chose when it was created. */
+  allowedOrgIds?: string[];
+  readOnly?: boolean;
 }
 
 /**
@@ -313,7 +322,11 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
         if (user.disabled || !user.emailVerified || Date.parse(user.tokensValidAfterTime || '') > createdAt) return null;
       } catch { return null; }
     }
-    return { orgId: '', siteId: null, prefix: parsed.prefix, personalUserId: lookup.personal_user_id };
+    if (lookup.expires_at && Date.now() >= Date.parse(lookup.expires_at)) return null;
+    void recordPersonalUse(lookup.personal_user_id, parsed.prefix);
+    return { orgId: '', siteId: null, prefix: parsed.prefix, personalUserId: lookup.personal_user_id,
+      ...(Array.isArray(lookup.allowed_org_ids) ? { allowedOrgIds: lookup.allowed_org_ids } : {}),
+      ...(lookup.read_only ? { readOnly: true } : {}) };
   }
   if (lookup.oauth_user_id) {
     const member = await organizationMembership(lookup.oauth_user_id, lookup.org_id);
@@ -423,23 +436,40 @@ export const CREATE_KEY_IN_PORTAL = 'API keys are created in the portal (Site se
 const personalConnectionsPath = (userId: string) => `personal_connections/${encodeURIComponent(userId)}/connections`;
 
 /** A connection belongs to a person, never to their currently selected organization. */
-export async function createPersonalConnection(userId: string, name: string, kind: 'oauth' | 'api_token' = 'oauth'): Promise<NewKey> {
+export interface PersonalTokenLimits { allowed_org_ids?: string[]; read_only?: boolean; expires_at?: string }
+
+export async function createPersonalConnection(userId: string, name: string, kind: 'oauth' | 'api_token' = 'oauth', limits: PersonalTokenLimits = {}): Promise<NewKey> {
   const key = generateNewKey();
   const createdAt = new Date().toISOString();
   const store = getStore();
+  const stored = {
+    ...(limits.allowed_org_ids ? { allowed_org_ids: limits.allowed_org_ids } : {}),
+    ...(limits.read_only ? { read_only: true } : {}),
+    ...(limits.expires_at ? { expires_at: limits.expires_at } : {}),
+  };
   await store.createDocIfMissing(`personal_connections/${encodeURIComponent(userId)}`, { schema_version: 1 });
   await store.setDoc(`${personalConnectionsPath(userId)}/${key.prefix}`, {
-    name: name.slice(0, 80), created_at: createdAt, ...(kind === 'api_token' ? { kind } : {}),
+    name: name.slice(0, 80), created_at: createdAt, ...(kind === 'api_token' ? { kind } : {}), ...stored,
   });
   await store.setDoc(paths.apiKeyLookupEntry(key.prefix), {
     org_id: '', site_id: null, personal_user_id: userId,
-    key_hash: hashSecret(parseKey(key.token)!.secret), oauth_created_at: createdAt,
+    key_hash: hashSecret(parseKey(key.token)!.secret), oauth_created_at: createdAt, ...stored,
   });
   return key;
 }
 
+const personalUseWritten = new Map<string, number>();
+
+/** Last use of a personal connection or token, written at most every five minutes per instance. */
+async function recordPersonalUse(userId: string, prefix: string): Promise<void> {
+  const now = Date.now();
+  if (now - (personalUseWritten.get(prefix) ?? 0) < 5 * 60_000) return;
+  personalUseWritten.set(prefix, now);
+  try { await getStore().updateDoc(`${personalConnectionsPath(userId)}/${prefix}`, { last_used_at: new Date(now).toISOString() }); } catch { /* telemetry only */ }
+}
+
 export async function listPersonalConnections(userId: string) {
-  return getStore().listDocs<{ name: string; created_at: string; revoked_at?: string; kind?: 'api_token' }>(personalConnectionsPath(userId));
+  return getStore().listDocs<{ name: string; created_at: string; revoked_at?: string; kind?: 'api_token'; last_used_at?: string } & PersonalTokenLimits>(personalConnectionsPath(userId));
 }
 
 export async function revokePersonalConnection(userId: string, prefix: string): Promise<boolean> {

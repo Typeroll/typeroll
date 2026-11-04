@@ -20,7 +20,9 @@ export const GET: APIRoute = async ({ request }) => {
   const guard = await requireAnyApiKey(request);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const allowed = ctx.personalUserId ? await personalSites(ctx.personalUserId) : await listAllowedSites(ctx.tokenOrgId, ctx.tokenSiteId);
+  const allowed = ctx.personalUserId
+    ? (await personalSites(ctx.personalUserId)).filter(entry => !ctx.personalAllowedOrgIds || ctx.personalAllowedOrgIds.includes(entry.ownerOrgId))
+    : await listAllowedSites(ctx.tokenOrgId, ctx.tokenSiteId);
   return apiResponse(ctx, {
     // A site id is unique within an organization and not across them, and
     // listAllowedSites already knows which organization owns each entry. The
