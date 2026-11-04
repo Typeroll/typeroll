@@ -174,7 +174,8 @@ describe('transformBodyForSeo', () => {
   });
 
   it('falls back to the generic default when neither img sizes nor opts.defaultSizes is set', () => {
-    const html = '<img src="https://cdn.example.com/x.png">';
+    // A second image: the first one asks for the full viewport width instead.
+    const html = '<img src="https://cdn.example.com/first.png"><img src="https://cdn.example.com/x.png">';
     const out = transformBodyForSeo(
       html,
       buildMediaLookup([media({

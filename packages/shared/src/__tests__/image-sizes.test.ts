@@ -66,7 +66,7 @@ describe('block-agnostic sizes', () => {
     const out = transformBodyForSeo('<img src="https://m.example/a.png" alt="" /><p>x</p><img src="https://m.example/a.png" alt="" sizes="auto, 34vw" />', lookup);
     const [first, second] = out.split('<p>x</p>');
     expect(first).not.toContain('auto');
-    expect(first).toContain('sizes="(max-width: 768px) 100vw, 800px"');
+    expect(first).toContain('sizes="100vw"');
     expect(second).toMatch(/<source type="image\/avif" srcset="[^"]+" sizes="auto, 34vw" \/>/);
     expect(second).toContain('loading="lazy"');
     // Never on the <img> itself: browsers would give it a 300×150 placeholder size.
@@ -97,3 +97,42 @@ describe('auto sizes need known dimensions', () => {
   });
 });
 
+
+describe('the leading image', () => {
+  it('asks for the full viewport width when no layout estimate exists, so it is sharp on retina screens', async () => {
+    const { buildMediaLookup, transformBodyForSeo } = await import('../seo-transform');
+    const variants = [320, 1024, 1920].flatMap(width => (['avif', 'webp'] as const).map(format => ({ width, format, cdn_url: `https://m.example/h.png.w${width}.${format}` })));
+    const lookup = buildMediaLookup([{ id: 'h', cdn_url: 'https://m.example/h.png', width: 2400, height: 1200, variants }] as never);
+    const [first, second] = transformBodyForSeo('<img src="https://m.example/h.png" alt="" /><p>x</p><img src="https://m.example/h.png" alt="" />', lookup).split('<p>x</p>');
+    expect(first).toContain('sizes="100vw"');
+    expect(second).toContain('sizes="auto, (max-width: 768px) 100vw, 800px"');
+    // A layout estimate still wins for the first image.
+    const estimated = transformBodyForSeo('<img src="https://m.example/h.png" alt="" sizes="(max-width: 720px) 100vw, 34vw" />', lookup);
+    expect(estimated).toContain('sizes="(max-width: 720px) 100vw, 34vw"');
+  });
+});
+
+describe('auto with a layout estimate', () => {
+  it('adds auto to the sources of a lazy grid card that carries its layout sizes', async () => {
+    const { buildMediaLookup, transformBodyForSeo } = await import('../seo-transform');
+    const variants = [320, 1024].flatMap(width => (['avif', 'webp'] as const).map(format => ({ width, format, cdn_url: `https://m.example/c.png.w${width}.${format}` })));
+    const lookup = buildMediaLookup([{ id: 'c', cdn_url: 'https://m.example/c.png', width: 1200, height: 800, variants }] as never);
+    const html = '<img src="https://m.example/c.png" alt="" /><p>x</p><img sizes="(max-width: 900px) 100vw, 34vw" src="https://m.example/c.png" alt="" loading="lazy" />';
+    const [, card] = transformBodyForSeo(html, lookup).split('<p>x</p>');
+    expect(card).toContain('<source type="image/avif" srcset="https://m.example/c.png.w320.avif 320w, https://m.example/c.png.w1024.avif 1024w" sizes="auto, (max-width: 900px) 100vw, 34vw" />');
+    expect(card).toMatch(/<img [^>]*sizes="\(max-width: 900px\) 100vw, 34vw"/);
+  });
+});
+
+describe('the site logo', () => {
+  it('asks for the width the logo has at its display height', async () => {
+    const { buildMediaLookup, transformBodyForSeo } = await import('../seo-transform');
+    const variants = [320, 640].flatMap(width => (['avif', 'webp'] as const).map(format => ({ width, format, cdn_url: `https://m.example/logo.png.w${width}.${format}` })));
+    const lookup = buildMediaLookup([{ id: 'l', cdn_url: 'https://m.example/logo.png', width: 705, height: 220, variants }] as never);
+    const html = renderBlocks([{ id: 'logo', type: 'template/site_logo', data: { height: 'md' } }], { registry, context: { site: { logo: 'https://m.example/logo.png', name: 'Moveria' } } as never });
+    expect(html).toContain('data-tr-display-height="40"');
+    const out = transformBodyForSeo(html, lookup, { leadingImage: false });
+    expect(out).toContain('sizes="129px"');
+    expect(out).not.toContain('data-tr-display-height');
+  });
+});

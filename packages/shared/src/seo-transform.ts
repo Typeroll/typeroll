@@ -61,6 +61,8 @@ const CF_RESIZE_WIDTHS = [400, 800, 1200, 1600];
  * per-site) and a per-image `sizes` attribute exist to correct.
  */
 export const DEFAULT_IMAGE_SIZES = '(max-width: 768px) 100vw, 800px';
+/** The first image on a page without a layout estimate: never undersized on retina screens. */
+export const LEADING_IMAGE_SIZES = '100vw';
 
 export interface TransformOptions {
   /** Cloudflare-hosted CDN origin (e.g. "https://cdn.example.com"). When set,
@@ -111,7 +113,7 @@ function expandArtDirection(html: string, lookup: MediaLookup, opts: TransformOp
       if (srcset && rawMedia) sources.push(`<source media="${rawMedia}" type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="auto, 100vw" />`);
     }
     sources.push(`<source${sourceRaw.replace(/\s*\/$/, '')} />`);
-    const sizes = image.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
+    const sizes = layoutSizes(image.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
     for (const fmt of ['avif', 'webp'] as const) {
       const srcset = desktop?.variants?.length ? buildVariantSrcset(desktop.variants, fmt) : null;
       if (srcset) sources.push(`<source type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="${escapeAttr(sizes)}" />`);
@@ -169,6 +171,15 @@ export function transformBodyForSeo(
     // High priority on a lazy image contradicts itself; lazy wins.
     if (attrs.loading === 'lazy' && attrs.fetchpriority === 'high') delete attrs.fetchpriority;
 
+    // 1b. An image shown at a fixed height (the site logo) is as wide as its
+    //     proportions make it at that height.
+    const displayHeight = Number(attrs['data-tr-display-height']);
+    delete attrs['data-tr-display-height'];
+    if (displayHeight > 0 && attrs.sizes === undefined && attrs.src) {
+      const meta = lookup.byUrl.get(attrs.src);
+      if (meta?.width && meta.height) attrs.sizes = `${Math.ceil(displayHeight * meta.width / meta.height)}px`;
+    }
+
     // 2. width/height + alt injection from Media lookup.
     const src = attrs.src;
     if (src) {
@@ -190,7 +201,13 @@ export function transformBodyForSeo(
     if (!insidePicture && src) {
       const meta = lookup.byUrl.get(src);
       if (meta?.variants && meta.variants.length > 0) {
-        const sizes = attrs.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
+        // The first image is the largest paint and loads eagerly, so it cannot
+        // use `auto`. Without a layout estimate, ask for the full viewport width:
+        // it is then sharp on any screen and density, for a few extra kB once.
+        const fallback = opts.defaultSizes ?? (isLeading ? LEADING_IMAGE_SIZES : DEFAULT_IMAGE_SIZES);
+        // Layout estimates and defaults alike get `auto`; it is removed again
+        // below unless the image is lazy with known width and height.
+        const sizes = layoutSizes(attrs.sizes ?? fallback);
         const sources: string[] = [];
         // <source> order matters: browsers pick the first they support.
         // AVIF first (smallest), then WebP, then fall through to <img>.

@@ -27,6 +27,17 @@
   the new copy (within Cloudflare's 2000-redirect limit; beyond it the page
   keeps its website copy). Sites without a separate media host keep their
   copies at `/_assets/share/` as before. Older build engines need no update.
+- The first image on a page asks for the full viewport width (`sizes="100vw"`)
+  when no layout estimate applies. It loads eagerly and cannot use `auto`, so
+  the generic "800px" made a full-width first image soft on wide retina
+  screens. It now gets a variant matching the screen width and density, at the
+  cost of a few extra kB for that one image.
+- Lazy images that carry a layout estimate (grid cards, columns) now also get
+  `auto` on their sources. Before, only images without an estimate did, so
+  cards never used their rendered width (found on moveria.se).
+- The site logo block asks for the width the logo has at its display height
+  (for example `129px` for a 705×220 logo at 40 px), so a header logo loads a
+  small variant instead of one sized for an 800 px image.
 
 ## 0.2.152 (candidate)
 
