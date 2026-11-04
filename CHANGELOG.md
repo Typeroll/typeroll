@@ -23,6 +23,12 @@
   deploys once. A build that exceeds a limit logs `TYPEROLL_OUTPUT_LIMIT` with
   the limit, totals, largest files and largest folders. Organization build
   engines must be updated to use chunked uploads.
+- Cloudflare Turnstile for site forms, against spam from bots that fill in
+  forms in a real browser. `set_form_spam_protection` stores a Turnstile
+  widget's site key and encrypted secret (checked with Cloudflare); published
+  forms render the widget and send its answer with the first step. Each form
+  requires Turnstile once its republished pages send a verified answer, so
+  earlier pages keep working until then. The forms runtime is version 3.
 
 ## 0.2.149 (candidate)
 

@@ -24,6 +24,11 @@ export interface FormEmbed {
    * refuses, so a preview can never create a submission.
    */
   preview?: boolean;
+  /**
+   * Cloudflare Turnstile site key. When set, the form renders a Turnstile
+   * widget and the runtime sends its answer as `cf-turnstile-response`.
+   */
+  turnstile_site_key?: string | null;
 }
 
 // Inline so the shared shell CSS (and every published page) stays unchanged.
@@ -219,6 +224,9 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
 `
     : '';
 
+  // Turnstile renders into this container on the first step only; previews never post.
+  const turnstileKey = !preview && embed.turnstile_site_key && /^[0-9A-Za-z_-]{10,128}$/.test(embed.turnstile_site_key) ? embed.turnstile_site_key : '';
+  const turnstileHtml = turnstileKey ? `<div class="form-turnstile" data-tr-turnstile="${escapeHtml(turnstileKey)}"></div>\n` : '';
   return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam} data-tr-context-params="${escapeHtml(JSON.stringify(form.target?.context_params ?? []))}">
 ${styles}<form data-tr-form-el${!preview && form.option_sources?.length ? ' data-live-options="true"' : ''} method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${preview ? 0 : (opts.pow_bits ?? 0)}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${remoteMsgAttrs}${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}${labelAttrs}${versionAttr}${previewAttrs}>
 ${previewHtml}<input type="hidden" name="_token" value="${escapeHtml(preview ? '' : (embed.submit_token ?? ''))}" />
@@ -228,7 +236,7 @@ ${previewHtml}<input type="hidden" name="_token" value="${escapeHtml(preview ? '
 <p class="form-toplevel-error form-field-error" hidden tabindex="-1"></p>
 ${progressHtml}${stepHtml}
 <div data-form-dynamic-step hidden></div>
-${backHtml}<button type="submit" class="form-submit">${escapeHtml(labelFor(steps[0]!))}</button>
+${turnstileHtml}${backHtml}<button type="submit" class="form-submit">${escapeHtml(labelFor(steps[0]!))}</button>
 </form>
 </div>`;
 }

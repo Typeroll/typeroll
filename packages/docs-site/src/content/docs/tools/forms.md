@@ -307,6 +307,23 @@ Every submission passes three checks before it's accepted:
 - **Honeypot field** — invisible to humans, filled in by naive bots
 - **Rate limit** — per IP, to blunt floods
 
+Bots that fill in forms in a real browser pass these checks. Against them, turn on
+**Cloudflare Turnstile** for the site's forms:
+
+1. In the site owner's Cloudflare dashboard, open **Turnstile → Add widget**. Choose
+   the **Managed** mode and add the site's website hostnames.
+2. Call `set_form_spam_protection` with the widget's site key and secret key. The
+   secret is checked with Cloudflare, encrypted and never returned.
+3. Publish the site. Forms then show the Turnstile check above the send button; in
+   most cases it passes without the visitor doing anything.
+
+A form keeps accepting submissions without Turnstile until its republished pages send
+the first verified answer, so pages published earlier keep working. From then on the
+form requires a valid answer. `get_form_spam_protection` lists these forms under
+`enforced_forms`. If Cloudflare cannot be reached, the submission is accepted and
+logged. A new site key starts over the same way; `delete_form_spam_protection` turns
+it off. Forms that post to an app or Extension are not covered.
+
 ## Token expiry
 
 The `submit_token` embedded in the form HTML expires after 24 hours. For forms on
