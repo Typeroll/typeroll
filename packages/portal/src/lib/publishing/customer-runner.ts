@@ -43,6 +43,7 @@ import { DerivationError, runBuildDerivations } from './build-derivation';
 import { indexableSettings } from './launch-robots';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { preparePublicMediaDomains } from './media-domain';
+import { pagesBranchHost, pagesBranchLabel, PAGES_BRANCH_LABEL_LIMIT } from './pages-alias';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
 import { recordCustomerCompute } from './compute-cost';
@@ -168,12 +169,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const observation = await observePagesDomain(provider, { accountId: publication.account_id, project: publication.project, host,
       lastRetryAt: previous?.host === host ? previous.retried_at : null,
       dnsPointsAtProject: async () => {
-        if (zone) return hostPointsAtProject({ host, project: publication.project, branch: publication.branch, zone });
+        if (zone) return hostPointsAtProject({ host, project: publication.project, branch: publication.branch, deployment: publication.deployment_receipt, zone });
         const dnsMode = publication.destination?.dns_mode ?? 'automatic';
-        if (dnsMode === 'external') return hostPointsAtProject({ host, project: publication.project, branch: publication.branch });
+        if (dnsMode === 'external') return hostPointsAtProject({ host, project: publication.project, branch: publication.branch, deployment: publication.deployment_receipt });
         const access = await hostingDns(args.orgId, publication.hosting_group_id ?? 'default', host);
         const found = await findZone(access.provider, access.accountId, host);
-        return found ? hostPointsAtProject({ host, project: publication.project, branch: publication.branch, zone: { provider: access.provider, zoneId: found.id } }) : null;
+        return found ? hostPointsAtProject({ host, project: publication.project, branch: publication.branch, deployment: publication.deployment_receipt, zone: { provider: access.provider, zoneId: found.id } }) : null;
       } });
     if (!observation.status) return null;
     await store.updateDoc(jobPath, { pages_domain: observation });
@@ -432,6 +433,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });
         terminal = true; return 'ran';
       }
+      if (frozen.git_branch && frozen.git_branch !== 'main') await assertUniqueBranchAlias(args.orgId, args.siteId, args.versionId, frozen.git_branch);
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: site?.git_repository ?? generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domainPublicationRevision(domains), destination: {hosts: domains.desired, dns_mode: domains.dns_mode},
@@ -646,7 +648,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { phase: 'verifying static output' }); return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
       }
       publication = { ...publication, candidate_verified_id: deployment.id, candidate_prepared_at: publication.candidate_prepared_at ?? new Date().toISOString(),
-        deployment_receipt: { id: deployment.id, url: deployment.url, uses_functions: false, latest_stage: deployment.latest_stage, deployment_trigger: deployment.deployment_trigger } };
+        deployment_receipt: { id: deployment.id, url: deployment.url, uses_functions: false, latest_stage: deployment.latest_stage, deployment_trigger: deployment.deployment_trigger,
+          // Cloudflare's own branch alias: long branch names are shortened, never reconstruct it.
+          aliases: Array.isArray(deployment.aliases) ? deployment.aliases : [], short_id: deployment.short_id } };
       await store.updateDoc(jobPath, { git_publication: publication });
     }
     if (preparingDomain && args.versionId === 'main' && domains.cutover_approved_revision !== domains.revision)
@@ -663,7 +667,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const dnsMode = args.versionId === 'main' && domains.desired.website_host ? domains.dns_mode : group.dns_mode;
     const dns = dnsMode === 'automatic' ? await hostingDns(args.orgId, group.id, publication.website_host) : null;
     const preparation = publication.website_preparation ?? await preparePagesDomain(cloudflare, { accountId: publication.account_id, project: publication.project,
-      branch: publication.branch, hostname: publication.website_host,
+      branch: publication.branch, deployment: publication.deployment_receipt ?? deployment, hostname: publication.website_host,
       configureTraffic: !preparingDomain && domains.cutover_approved_revision !== domains.revision, dnsProvider: dns?.provider, dnsAccountId: dns?.accountId,
       dnsMode, orgId: args.orgId });
     let mediaPreparation: import('./domain-provider').DomainPreparation | null = null;
@@ -672,7 +676,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (mediaManifest?.delivery === 'static' && mediaManifest.media_host !== publication.website_host) {
       mediaDns = domains.dns_mode === 'automatic' ? await hostingDns(args.orgId, group.id, mediaManifest.media_host) : null;
       mediaPreparation = publication.media_preparation ?? await preparePagesDomain(cloudflare, { accountId: publication.account_id, project: publication.project,
-        branch: publication.branch, hostname: mediaManifest.media_host, dnsMode: domains.dns_mode,
+        branch: publication.branch, deployment: publication.deployment_receipt ?? deployment, hostname: mediaManifest.media_host, dnsMode: domains.dns_mode,
         dnsProvider: mediaDns?.provider, dnsAccountId: mediaDns?.accountId, configureTraffic: !preparingDomain && domains.cutover_approved_revision !== domains.revision, orgId: args.orgId });
     }
     if (!sameRedirectHosts({ ...domains.desired, redirect_hosts: publication.redirect_hosts }, domains.desired)) {
@@ -788,6 +792,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { public_probe: result });
       if (!result.ready) console.info(JSON.stringify({ event: 'customer_publication_pending', site_id: args.siteId, job_id: args.jobId, ...result }));
     } })) {
+      // A version's test address that Cloudflare has activated, with a
+      // certificate, yet still does not serve a build Cloudflare serves on its
+      // own branch alias, is not going to recover by waiting: say what to fix
+      // instead of observing for 45 minutes. Certificate issuance itself may
+      // take longer and keeps waiting.
+      if (preparation.certificate_ready && !pagesPending) await assertTestAddressReachable(publication);
       const validationWindow = domains.approved_validation_window === true && domains.cutover_approved_revision === domains.revision && !preparation.certificate_ready;
       const restore = (domains.approved_preparation?.previous_records ?? []).map(record => `${record.type} ${record.name} ${record.content} (${record.proxied ? 'proxied' : 'DNS only'})`).join(', ');
       const pagesNote = pagesPending ? ` ${pagesPending.message}` : '';
@@ -873,3 +883,27 @@ function providerRequestNote(error: ProviderError): string {
   const types = error.errorTypes.map(type => [type.resource, type.code, type.field].filter(Boolean).join(' ')).filter(Boolean);
   return ` Request: ${error.operation}${types.length ? `; ${types.join(', ')}` : ''}.`;
 }
+
+/** How long an activated test address may fail while its build already answers on the branch alias. Not the build time: it starts once the build is verified. */
+export const TEST_ADDRESS_GRACE_MS = 10 * 60_000;
+
+async function assertTestAddressReachable(publication: { branch?: string; project?: string; website_host?: string; publication_id: string;
+  candidate_prepared_at?: string; deployment_receipt?: any }, now = Date.now()) {
+  if (!publication.branch || publication.branch === 'main' || !publication.project || !publication.website_host || !publication.candidate_prepared_at) return;
+  if (now - Date.parse(publication.candidate_prepared_at) < TEST_ADDRESS_GRACE_MS) return;
+  const alias = pagesBranchHost(publication.project, publication.branch, publication.deployment_receipt);
+  if (!await probePublication(`https://${alias}`, '/.well-known/typeroll/publication.json', publication.publication_id)) return;
+  throw new ConnectionError(`The build is published and answers at https://${alias}, but its test address ${publication.website_host} still does not serve it after ${TEST_ADDRESS_GRACE_MS / 60_000} minutes. `
+    + `Point ${publication.website_host} at ${alias} (CNAME, proxied) and publish the version again. The test address was not marked live.`,
+  409, 'test_address_unreachable', { test_address: publication.website_host, branch_alias: alias });
+}
+
+/** Two versions whose branch names agree in Cloudflare's shortened label would share one test alias. */
+async function assertUniqueBranchAlias(orgId: string, siteId: string, versionId: string, branch: string) {
+  const label = pagesBranchLabel(branch);
+  const clash = (await getStore().listDocs<{ id: string }>(paths.versions(orgId, siteId)))
+    .find(version => version.id !== versionId && version.id !== 'main' && pagesBranchLabel(`version-${version.id}`) === label);
+  if (clash) throw new ConnectionError(`Version ${versionId} would share Cloudflare's test alias ${label} with version ${clash.id}. Cloudflare shortens branch names to ${PAGES_BRANCH_LABEL_LIMIT} characters, so both versions would serve whichever was published last. Create the version with a name that differs within its first ${PAGES_BRANCH_LABEL_LIMIT - 'version-'.length} characters.`,
+    409, 'version_alias_collision', { branch_alias: label, conflicting_version: clash.id });
+}
+

@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- A version's test address points at the branch alias Cloudflare Pages actually
+  serves. Cloudflare shortens branch names to 28 characters, so a long version
+  such as `seo-sharing-render-refresh-2026-11-04` was served on
+  `version-seo-sharing-render-r.<project>.pages.dev` while Typeroll pointed the
+  test address at the full name and it answered 404. The alias comes from the
+  deployment Cloudflare returned, with Cloudflare's own rule as the fallback.
+  A test-address record Typeroll created against the wrong alias is corrected
+  on the next publication; records Typeroll did not create, and live websites,
+  are never rewritten.
+- Two versions whose names agree in their first 20 characters would share one
+  alias. Publishing such a version stops with `version_alias_collision`.
+- When Cloudflare has activated a version's test address but it still does not
+  serve a build that answers on its branch alias 10 minutes after the build was
+  verified, the publication stops with `test_address_unreachable`, naming the
+  alias to point it at, instead of waiting 45 minutes.
+
 ## 0.2.151 (candidate)
 
 - MCP connections no longer expire. A connection made by signing in lasts until

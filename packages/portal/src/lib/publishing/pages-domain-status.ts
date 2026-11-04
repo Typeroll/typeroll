@@ -1,4 +1,5 @@
 import { Resolver } from 'node:dns/promises';
+import { pagesBranchHost } from './pages-alias';
 import { ProviderError, ProviderTransportError } from './providers.mjs';
 import { ConnectionError } from './connections';
 
@@ -112,9 +113,9 @@ export async function observePagesDomain(provider: Provider, input: {
 }
 
 /** Whether the host's record points at `project.pages.dev`, from the zone (automatic DNS) or public DNS (external). */
-export async function hostPointsAtProject(input: { host: string; project: string; branch?: string;
+export async function hostPointsAtProject(input: { host: string; project: string; branch?: string; deployment?: { aliases?: unknown; short_id?: unknown } | null;
   zone?: { provider: Provider; zoneId: string } | null; resolveCname?: (host: string) => Promise<string[]> }): Promise<boolean | null> {
-  const target = `${input.branch && input.branch !== 'main' ? `${input.branch}.` : ''}${input.project}.pages.dev`;
+  const target = pagesBranchHost(input.project, input.branch ?? 'main', input.deployment);
   const normal = (value: unknown) => String(value ?? '').toLowerCase().replace(/\.$/, '');
   if (input.zone) {
     const records = (await input.zone.provider(`/zones/${input.zone.zoneId}/dns_records?name=${encodeURIComponent(input.host)}&per_page=100`))

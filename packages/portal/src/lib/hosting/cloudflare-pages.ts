@@ -12,6 +12,7 @@
 // regressions.
 
 import fs from 'node:fs';
+import { pagesBranchHost } from '../publishing/pages-alias';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -87,7 +88,7 @@ export class CloudflarePagesAdapter implements HostingAdapter {
         const fallback =
           branch === 'main'
             ? `https://${this.cfg.projectName}.pages.dev`
-            : `https://${branch}.${this.cfg.projectName}.pages.dev`;
+            : `https://${pagesBranchHost(this.cfg.projectName, branch)}`;
         const url = extractDeployUrl(stdout) ?? fallback;
         const deployId = extractDeployId(stdout) ?? `dep_${Date.now()}`;
         resolve({
