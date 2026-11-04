@@ -512,8 +512,11 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     const w = positive(d.original_width), h = positive(d.original_height);
     const maximum = positive(d.max_width) || (d.width === 'original' ? w : 0);
     d.image_size_style = maximum ? `max-width:min(100%,${maximum}px)` : '';
-    const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''} loading="lazy" decoding="async" />`;
-    const picture = d.mobile_src ? `<picture><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
+    // A capped image never renders wider than its maximum.
+    const sizes = maximum ? ` sizes="(max-width: ${maximum}px) 100vw, ${maximum}px"` : '';
+    const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''}${sizes} loading="lazy" decoding="async" />`;
+    // The marker lets the SEO transform add AVIF/WebP sources for both images.
+    const picture = d.mobile_src ? `<picture data-tr-art-direction><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
     const frame = `<span class="block-image-frame">${picture}</span>`;
     d.image_markup = d.link ? `<a href="${escapeHtml(d.link)}" class="block-image-link"${linkTargetAttributes(d.link_rel, d.new_tab)}>${frame}</a>` : frame;
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
@@ -707,6 +710,39 @@ function renderGlobalBlockRef(block: Block, effectiveBlock: Block, options: Rend
 }
 
 /**
+ * Give images without their own `sizes` the width their layout renders them
+ * at, so the browser picks a fitting responsive variant instead of the generic
+ * 800px default. An inner block that already set `sizes` (a nested grid, an
+ * image with a maximum width) keeps it.
+ */
+export function withImageSizes(html: string, sizes: string | null): string {
+  if (!sizes || !html.includes('<img')) return html;
+  return html.replace(/<img\b(?![^>]*\ssizes=)/g, `<img sizes="${escapeHtml(sizes)}"`);
+}
+
+const COLUMN_RATIOS: Record<string, [number, number]> = { '1-1': [1, 1], '2-1': [2, 1], '1-2': [1, 2], '3-1': [3, 1], '1-3': [1, 3] };
+
+/** Rendered width of one side of core/columns: full width once stacked, its share of the row above. */
+export function columnSlotSizes(data: Record<string, unknown>, slotIndex: number): string {
+  const custom = Number(data.stack_below_px);
+  const threshold = Number.isFinite(custom) && custom > 0 ? Math.min(1600, Math.max(320, Math.round(custom))) : Number(data.stack_below) || 721;
+  const fixed = Number(slotIndex === 0 ? data.left_width_px : data.right_width_px);
+  const [left, right] = COLUMN_RATIOS[String(data.ratio ?? '1-1')] ?? COLUMN_RATIOS['1-1']!;
+  const share = Number.isFinite(fixed) && fixed > 0 ? `${Math.round(fixed)}px` : `${Math.ceil(((slotIndex === 0 ? left : right) / (left + right)) * 100)}vw`;
+  return `(max-width: ${threshold - 1}px) 100vw, ${share}`;
+}
+
+/** Rendered width of one repeater item in a multi-column layout; null for single-column layouts. */
+export function repeaterItemSizes(data: Record<string, unknown>): string | null {
+  const layout = String(data.layout ?? 'grid');
+  if (!['grid', 'masonry', 'carousel', 'justified'].includes(layout)) return null;
+  const columns = Math.min(6, Math.max(1, Math.round(Number(data.cols) || 3)));
+  const mobile = Math.min(6, Math.max(1, Math.round(Number(data.mobile_cols) || 1)));
+  if (columns === 1 && mobile === 1) return null;
+  return `(max-width: 767px) ${Math.ceil(100 / mobile)}vw, ${Math.ceil(100 / columns)}vw`;
+}
+
+/**
  * Render a repeater block. Loops over the resolved item list and renders
  * each item via the configured `item_block` BlockType. Item data is
  * supplied either statically (`source_type: 'static'`) or by the caller's
@@ -879,6 +915,7 @@ function renderRepeaterItems(
   // the item template can reference `{{item.title}}`, `{{item.url}}` etc.
   // The collection name flows along too for `{{collection.name}}`.
   const collectionName = String(data.content_type ?? '');
+  const itemSizes = repeaterItemSizes(data);
   const renderItems = (source: Record<string, unknown>[], offset = 0) => source
     .map((item, i) => {
       const iterOptions: RenderBlocksOptions = {
@@ -893,8 +930,8 @@ function renderRepeaterItems(
       };
       const itemTemplate = !data.item_block && block.children?.length ? block.children : undefined;
       if (itemTemplate) {
-        return instanceTree(itemTemplate, `${sanitizeCssId(block.id)}__i${offset + i}`)
-          .map(child => renderBlock(child, iterOptions)).join('');
+        return withImageSizes(instanceTree(itemTemplate, `${sanitizeCssId(block.id)}__i${offset + i}`)
+          .map(child => renderBlock(child, iterOptions)).join(''), itemSizes);
       }
       const itemBlock: Block = {
         id: `${block.id}__i${offset + i}`,
@@ -904,7 +941,7 @@ function renderRepeaterItems(
         // regardless of item data).
         data: { ...item, ...overrides },
       };
-      return renderBlock(itemBlock, iterOptions);
+      return withImageSizes(renderBlock(itemBlock, iterOptions), itemSizes);
     })
     .join('');
 
@@ -1522,7 +1559,9 @@ function substituteSlots(
     if (slotIndex < 0) return '';
     if (blockType.id === 'core/tabs' && Array.isArray(block.data.labels) && block.data.labels[slotIndex]?.href) return '';
     const slot = block.slots?.[slotIndex];
-    return slot ? renderBlocks(slot, options) : '';
+    if (!slot) return '';
+    const html = renderBlocks(slot, options);
+    return blockType.id === 'core/columns' ? withImageSizes(html, columnSlotSizes(block.data ?? {}, slotIndex)) : html;
   });
 }
 

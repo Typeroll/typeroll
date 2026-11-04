@@ -7,7 +7,7 @@ import sharp from 'sharp';
 import { mediaReceiptKey } from './media-receipt.mjs';
 import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_WIDTHS, mediaVariantCandidates, mediaVariantSuffix } from './media-recipe.mjs';
 import { isSiteIconEntry } from './site-icons.mjs';
-import { isShareImageEntry } from './share-images.mjs';
+import { isShareImageEntry, needsShareDerivative, shareVariantWidth } from './share-images.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const cache = 'public, max-age=31536000, immutable';
@@ -221,8 +221,26 @@ export async function prepareMedia(publication, root, options = {}) {
               return actual.width !== variant.width || actual.format !== variant.format || !/^[a-f0-9]{64}$/.test(actual.sha256) || !Number.isSafeInteger(actual.size_bytes) || actual.size_bytes < 1;
             })) throw new Error('Invalid media completion receipt');
         media.width = completed.width; media.height = completed.height;
-        media.variants = completed.variants.map(variant => ({ width: variant.width, format: variant.format, size_bytes: variant.size_bytes,
+        media.variants = completed.variants.map(variant => ({ width: variant.width, format: variant.format, size_bytes: variant.size_bytes, sha256: variant.sha256,
           cdn_url: entry.cdn_url + mediaVariantSuffix(variant.width === completed.width ? 'original' : `w${variant.width}`, entry.sha256, variant.format) }));
+        // A large raster share image is copied from one prepared WebP variant at
+        // build time (share-images.mjs). Read that variant locally only for it.
+        const websiteServed = manifest.delivery === 'static' || manifest.media_host === manifest.website_host;
+        if (!options.prepareOnly && !websiteServed && needsShareDerivative(publication, entry, completed.width)) {
+          const width = shareVariantWidth(completed.variants.filter(variant => variant.format === 'webp').map(variant => variant.width));
+          const variant = completed.variants.find(candidate => candidate.format === 'webp' && candidate.width === width);
+          if (variant) {
+            const suffix = mediaVariantSuffix(variant.width === completed.width ? 'original' : `w${variant.width}`, entry.sha256, 'webp');
+            const destination = path.resolve(root, '.publication-media', (entry.public_path + suffix).slice(1));
+            if (!destination.startsWith(path.resolve(root, '.publication-media') + path.sep)) throw new Error('Invalid media output path');
+            const bytes = await read(manifest.public_bucket, entry.public_key + suffix);
+            if (bytes && hash(bytes) === variant.sha256) {
+              await fs.mkdir(path.dirname(destination), { recursive: true });
+              await fs.writeFile(destination, bytes);
+              sameHostFiles.push({ source: destination, path: entry.public_path + suffix, local_only: true });
+            }
+          }
+        }
         // A durable completion receipt replaces library-wide revalidation. Only
         // artifacts included in this static output need downloading and hashing.
         // A share image on a separate media host is read locally for its PNG copy, never published on the website host.
@@ -292,6 +310,9 @@ export async function prepareMedia(publication, root, options = {}) {
         if (!imageTypes.has(entry.mime_type)) return;
         const metadata = await mediaOperation('inspect_image', entry.public_key, () => sharp(bytes).metadata());
         media.width = metadata.width; media.height = metadata.height; media.variants = [];
+        const websiteServed = manifest.delivery === 'static' || manifest.media_host === manifest.website_host;
+        const shareWidth = !options.prepareOnly && !websiteServed && needsShareDerivative(publication, entry, metadata.width)
+          ? shareVariantWidth(mediaVariantCandidates(metadata.width).map(candidate => candidate.width)) : null;
         const tasks = mediaVariantCandidates(metadata.width).flatMap(({ width, slot }) => ['webp', 'avif'].map(format => async () => {
             // A receipt is written only after reading back the immutable variant.
             // It binds reuse to the original, exact encoder and transformation recipe.
@@ -345,11 +366,19 @@ export async function prepareMedia(publication, root, options = {}) {
             }
             if (options.cacheOnly) return null;
             await store(variant, key, `image/${format}`, publicPath, true, verifiedVariant);
+            // The WebP a large share image is copied from at build time (share-images.mjs), read locally only for that.
+            if (format === 'webp' && width === shareWidth && !options.cacheOnly) {
+              const destination = path.resolve(root, '.publication-media', publicPath.slice(1));
+              if (!destination.startsWith(path.resolve(root, '.publication-media') + path.sep)) throw new Error('Invalid media output path');
+              await fs.mkdir(path.dirname(destination), { recursive: true });
+              await fs.writeFile(destination, variant);
+              sameHostFiles.push({ source: destination, path: publicPath, local_only: true });
+            }
             // A reused variant keeps the receipt, and the encoder, that describe its bytes.
             const receipt = verifiedVariant && receiptBytes ? receiptBytes : Buffer.from(JSON.stringify({ source_sha256: entry.sha256, recipe_sha256: variantRecipe, width, format, sha256: hash(variant), size_bytes: variant.length }));
             if (hasReceiptAccess && !options.materializeOnly) await store(receipt, receiptKey, 'application/json', '', false, receiptBytes);
             for (const alias of options.materializeOnly ? [] : entry.aliases ?? []) if (alias.key !== entry.public_key) await store(variant, alias.key + suffix, `image/${format}`, new URL(alias.url).pathname + suffix, false);
-            return { variant: { width, format, size_bytes: variant.length, cdn_url: entry.cdn_url + suffix }, completed: { width, format, sha256: hash(variant), size_bytes: variant.length } };
+            return { variant: { width, format, size_bytes: variant.length, sha256: hash(variant), cdn_url: entry.cdn_url + suffix }, completed: { width, format, sha256: hash(variant), size_bytes: variant.length } };
         }));
         // Results keep candidate order, which the completion receipt checks.
         for (const result of await boundedAll(tasks, VARIANT_CONCURRENCY)) if (result) { media.variants.push(result.variant); completedVariants.push(result.completed); }
