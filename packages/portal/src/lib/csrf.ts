@@ -10,6 +10,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 // Routes that opt out because they have their own auth/anti-abuse
 // protection:
 //   /api/forms/submit — HMAC token + per-IP rate limit + honeypot
+//   /api/forms/options — the same HMAC form token + per-IP rate limit; read-only
+//     live choices that a published form on the customer's domain requests
 //   /api/analytics/events — site-bound HMAC + origin/rule validation + rate limits
 //   /api/extensions/public-token/* — stored site-origin allowlist + per-IP rate limit;
 //     this endpoint is intentionally called by customer sites, not the portal
@@ -26,6 +28,7 @@ const CSRF_EXEMPT_PATHS = new Set([
   '/api/webhooks/email/ses',
   '/api/webhooks/email/inbound-ses',
   '/api/forms/submit',
+  '/api/forms/options',
   '/api/analytics/events',
   '/api/extensions/token',
   '/api/auth/dev-session',
