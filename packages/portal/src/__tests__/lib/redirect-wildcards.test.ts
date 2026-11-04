@@ -271,3 +271,29 @@ it('rejects slash and case self-redirects before saving', async () => {
   for (const [from_path, to_path] of [['/blog', '/blog/'], ['/Blog/', '/blog']])
     expect((await checkRedirectWrite({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, from_path, to_path })).ok).toBe(false);
 });
+it('refuses a self-redirect with a stable code, also through an absolute URL on the site host (AT-07)', async () => {
+  const { token } = await setup();
+  const { getStore } = await import('../../lib/datastore');
+  await getStore().updateDoc(paths.site(ORG, SITE), { domain: 'www.example.test' });
+  await seedPage('blog', { slug: 'blog' });
+  for (const to_path of ['/blog/', 'https://www.example.test/blog/', '/blog/?ref=1'])
+    expect(await checkRedirectWrite({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, from_path: '/blog', to_path })).toMatchObject({ ok: false, code: 'redirect_self' });
+  // Another site's host is a real destination.
+  expect((await checkRedirectWrite({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, from_path: '/news', to_path: 'https://other.example/news/' })).ok).toBe(true);
+  const { POST } = await import('../../pages/api/v1/sites/[siteId]/redirects/index');
+  const response = await POST({ request: new Request(`http://localhost/api/v1/sites/${SITE}/redirects`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from_path: '/blog', to_path: '/blog/' }) }), params: { siteId: SITE } } as any);
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ code: 'redirect_self' });
+  expect(await getStore().listDocs(paths.redirects(ORG, SITE, MAIN_VERSION_ID))).toEqual([]);
+});
+it('reports only the chains a new rule takes part in', async () => {
+  await setup();
+  const { getStore } = await import('../../lib/datastore');
+  // An old loop saved before writes were checked.
+  await getStore().setDoc(`${paths.redirects(ORG, SITE, MAIN_VERSION_ID)}/a`, { from_path: '/a', to_path: '/b', status_code: 301 });
+  await getStore().setDoc(`${paths.redirects(ORG, SITE, MAIN_VERSION_ID)}/b`, { from_path: '/b', to_path: '/a', status_code: 301 });
+  const result = await checkRedirectWrite({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, from_path: '/old', to_path: '/new' });
+  expect(result).toMatchObject({ ok: true });
+  expect(result.ok && result.warnings).toBeFalsy();
+});

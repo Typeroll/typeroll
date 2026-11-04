@@ -22,11 +22,15 @@ import { createHash } from 'node:crypto';
 import { paths, validateRedirectPattern, pagesShadowedByRedirect, isRedirectPattern, matchRedirect, sortRedirectsForEmit, contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
 import type { ContentType, Page, Redirect } from '@typeroll/shared';
 import { vstore } from './version-store';
+import { getStore } from './datastore';
+import { getSiteDomains } from './publishing/domain-config';
 import { isLivePageStatus } from './redirect-hygiene';
 
 export type RedirectWarning = { code: 'redirect_chain' | 'redirect_loop'; from_path: string; via: string[]; final_target: string };
-export type RedirectWriteCheck = { ok: true; warnings?: RedirectWarning[] } | { ok: false; error: string };
-export type RedirectWriteResult = { ok: true; id: string; action: 'create' | 'update'; warnings?: RedirectWarning[] } | { ok: false; error: string };
+/** Stable codes for a refused write, so agents can tell a self-redirect from a hidden page. */
+export type RedirectErrorCode = 'invalid_redirect' | 'redirect_self' | 'redirect_loop' | 'redirect_hides_page';
+export type RedirectWriteCheck = { ok: true; warnings?: RedirectWarning[] } | { ok: false; error: string; code: RedirectErrorCode };
+export type RedirectWriteResult = { ok: true; id: string; action: 'create' | 'update'; warnings?: RedirectWarning[] } | { ok: false; error: string; code: RedirectErrorCode };
 
 const MAX_REDIRECT_ID = 120;
 
@@ -91,25 +95,34 @@ export async function checkRedirectWrite(args: {
   const syntax = checkRedirectSyntax(args.from_path, args.to_path);
   if (!syntax.ok) return syntax;
   const context = await loadRedirectWriteContext(args.orgId, args.siteId, args.versionId);
+  const own = checkRedirectSyntax(args.from_path, args.to_path, context.ownHosts);
+  if (!own.ok) return own;
   const shadow = checkRedirectShadow(context, args.from_path, args.to_path);
   if (!shadow.ok) return shadow;
-  const warnings = redirectChainWarnings([...context.existing.filter(rule => rule.from_path !== args.from_path), { id:'candidate', from_path:args.from_path, to_path:args.to_path, status_code:301 }]);
-  if (createsLoop(warnings, args.from_path)) return { ok: false, error: 'Invalid redirect: this rule creates a redirect loop.' };
+  // Only chains this rule takes part in; older rules' problems belong to the launch report.
+  const warnings = redirectChainWarnings([...context.existing.filter(rule => rule.from_path !== args.from_path), { id:'candidate', from_path:args.from_path, to_path:args.to_path, status_code:301 }])
+    .filter(warning => warning.from_path === args.from_path || warning.via.includes(args.from_path));
+  if (createsLoop(warnings, args.from_path)) return { ok: false, error: 'Invalid redirect: this rule creates a redirect loop.', code: 'redirect_loop' };
   const { id, action } = assignRedirectDocId(args.from_path, takenRedirectIds(context.existing));
   return { ok: true, id, action, ...(warnings.length ? { warnings } : {}) };
 }
 
-export type RedirectWriteContext = { liveUrls: string[]; existing: Redirect[] };
+export type RedirectWriteContext = { liveUrls: string[]; existing: Redirect[]; ownHosts?: string[] };
 
 /** Read the pages, content types and rules a redirect write is checked against. */
 export async function loadRedirectWriteContext(orgId: string, siteId: string, versionId: string): Promise<RedirectWriteContext> {
   // Resolve URLs exactly as the renderer does: the content type's route
   // template places a page, and types without a route have no public URL.
-  const [pages, contentTypes, existing] = await Promise.all([
+  const [pages, contentTypes, existing, site, domains] = await Promise.all([
     vstore.pages(orgId, siteId, versionId),
     vstore.contentTypes(orgId, siteId, versionId),
     vstore.redirects(orgId, siteId, versionId),
+    getStore().getDoc<{ domain?: string; domain_alias?: string }>(paths.site(orgId, siteId)),
+    getSiteDomains(orgId, siteId).catch(() => null),
   ]);
+  // An absolute target on the site's own hosts is the same page as its path.
+  const ownHosts = [site?.domain, site?.domain_alias, domains?.desired.website_host, domains?.active?.website_host, ...(domains?.desired.redirect_hosts ?? [])]
+    .filter((host): host is string => typeof host === 'string' && host.length > 0).map(host => host.toLowerCase());
   const types = new Map<string, ContentType>([[DEFAULT_CONTENT_TYPE.id, DEFAULT_CONTENT_TYPE], ...contentTypes.map((type) => [type.id, type] as [string, ContentType])]);
   const liveUrls = pages
     .filter((p: Page) => isLivePageStatus(p.status))
@@ -118,20 +131,26 @@ export async function loadRedirectWriteContext(orgId: string, siteId: string, ve
       const url = type ? contentPagePath(p, type) : null;
       return url ? [url] : [];
     });
-  return { liveUrls, existing };
+  return { liveUrls, existing, ownHosts: [...new Set(ownHosts)] };
 }
 
-function checkRedirectSyntax(from_path: string, to_path: string): RedirectWriteCheck {
+function checkRedirectSyntax(from_path: string, to_path: string, ownHosts: string[] = []): RedirectWriteCheck {
   const syntax = validateRedirectPattern(from_path, to_path);
   if (!syntax.ok) {
-    return { ok: false, error: `Invalid redirect: ${syntax.error}` };
+    return { ok: false, error: `Invalid redirect: ${syntax.error}`, code: 'invalid_redirect' };
   }
   if (!to_path.startsWith('/') && !/^https?:\/\//.test(to_path)) {
-    return { ok: false, error: 'Invalid redirect: to_path must be a site-relative path ("/x") or an absolute http(s) URL' };
+    return { ok: false, error: 'Invalid redirect: to_path must be a site-relative path ("/x") or an absolute http(s) URL', code: 'invalid_redirect' };
   }
+  // The build serves a page at both slash forms, so a rule between them, or
+  // between letter cases, sends the page to itself (AT-07).
   const normalize = (value: string) => value.replace(/\/+$/, '').toLowerCase() || '/';
-  if (!isRedirectPattern(from_path) && to_path.startsWith('/') && normalize(from_path) === normalize(to_path))
-    return { ok: false, error: 'Invalid redirect: source and destination are the same normalized path. Use the site trailing-slash policy instead.' };
+  let target: string | null = to_path.startsWith('/') && !to_path.startsWith('//') ? to_path.split(/[?#]/)[0]! : null;
+  if (!target && ownHosts.length) {
+    try { const url = new URL(to_path); if (ownHosts.includes(url.hostname.toLowerCase())) target = url.pathname; } catch { target = null; }
+  }
+  if (!isRedirectPattern(from_path) && target !== null && normalize(from_path) === normalize(target))
+    return { ok: false, error: `Invalid redirect: ${from_path} and ${to_path} are the same page; the build already serves both slash forms. Use the site trailing-slash policy instead.`, code: 'redirect_self' };
   return { ok: true };
 }
 
@@ -141,6 +160,7 @@ function checkRedirectShadow(context: RedirectWriteContext, from_path: string, t
   const list = shadowed.slice(0, 8).join(', ') + (shadowed.length > 8 ? `, +${shadowed.length - 8} more` : '');
   return {
     ok: false,
+    code: 'redirect_hides_page',
     error:
       `This rule would hide ${shadowed.length} live page(s): ${list}. ` +
       'Cloudflare Pages applies redirects before serving files, so the page would become unreachable. ' +
@@ -160,6 +180,7 @@ export type RedirectBatchResult = {
   action: 'create' | 'update' | 'unchanged';
   ok: boolean;
   error?: string;
+  code?: RedirectErrorCode;
 };
 
 /**
@@ -183,9 +204,9 @@ export function checkRedirectBatch(context: RedirectWriteContext, rules: Redirec
     const current = byFrom.get(rule.from_path);
     const id = ids[index]!;
     const action = !current ? 'create' : current.to_path === rule.to_path && current.status_code === rule.status_code ? 'unchanged' : 'update';
-    const check = [checkRedirectSyntax(rule.from_path, rule.to_path), checkRedirectShadow(context, rule.from_path, rule.to_path)].find(result => !result.ok);
-    if (check && !check.ok) return { from_path: rule.from_path, id, action, ok: false, error: check.error };
-    if (createsLoop(warnings, rule.from_path)) return { from_path: rule.from_path, id, action, ok: false, error: 'Invalid redirect: this rule creates a redirect loop.' };
+    const check = [checkRedirectSyntax(rule.from_path, rule.to_path, context.ownHosts), checkRedirectShadow(context, rule.from_path, rule.to_path)].find(result => !result.ok);
+    if (check && !check.ok) return { from_path: rule.from_path, id, action, ok: false, error: check.error, code: check.code };
+    if (createsLoop(warnings, rule.from_path)) return { from_path: rule.from_path, id, action, ok: false, error: 'Invalid redirect: this rule creates a redirect loop.', code: 'redirect_loop' };
     return { from_path: rule.from_path, id, action, ok: true };
   });
   return { results, warnings };

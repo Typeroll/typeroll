@@ -290,6 +290,10 @@ Rules:
   is the platform protecting you: redirects are applied before static files, so
   `/blogg/*` would make every real article under `/blogg/` unreachable. Narrow
   the prefix instead.
+- **No slash or case twins.** `/blog` → `/blog/` (or `/Blog` → `/blog`, or an
+  absolute URL to the site's own host) is refused with `redirect_self`: the build
+  already serves both slash forms. Refusals carry a `code`: `redirect_self`,
+  `redirect_loop`, `redirect_hides_page` or `invalid_redirect`.
 - **Query-string URLs get exact rules.** Create one rule per old address, for
   example `from_path="/?p=123"` or `"/?page_id=5"`, with a fixed `to_path`. The
   path before `?` must be literal. The publication embeds these rules in the
