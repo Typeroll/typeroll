@@ -19,6 +19,20 @@ address when you self-host. The examples were checked against each provider's
 documentation on November 1, 2026. Typeroll has not yet recorded an end-to-end
 test in every client; see [Client compatibility](../client-compatibility/).
 
+## Fastest way
+
+| Client                      | One step                                                                                                                                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Claude (claude.ai, Desktop) | [Add Typeroll to Claude](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Typeroll&connectorUrl=https%3A%2F%2Fapp.typeroll.com%2Fapi%2Fmcp), then select **Add** and sign in |
+| Claude Code                 | `claude mcp add --transport http typeroll https://app.typeroll.com/api/mcp`                                                                                                                                 |
+| Codex                       | `codex mcp add typeroll --url https://app.typeroll.com/api/mcp && codex mcp login typeroll`                                                                                                                 |
+| Cursor                      | [Add Typeroll to Cursor](cursor://anysphere.cursor-deeplink/mcp/install?name=typeroll&config=eyJ1cmwiOiJodHRwczovL2FwcC50eXBlcm9sbC5jb20vYXBpL21jcCJ9)                                                      |
+
+The links only fill in the client's own form: you confirm there, then sign in to
+Typeroll and approve access. In the portal, **Account → AI connections** shows
+the same buttons and commands with your portal's address, which is what a
+self-hosted portal needs.
+
 After connecting, ask the agent a read-only question first:
 
 ```text
@@ -28,6 +42,12 @@ List the Typeroll sites available to this connection. Do not change anything.
 ## Claude (claude.ai and Claude Desktop)
 
 Connectors are added to your Claude account and then work in Claude Desktop too.
+
+[Add Typeroll to Claude](https://claude.ai/customize/connectors?modal=add-custom-connector&connectorName=Typeroll&connectorUrl=https%3A%2F%2Fapp.typeroll.com%2Fapi%2Fmcp) opens the **Add custom connector** dialog
+with the name and address filled in; select **Add**, then continue from step 3.
+Team and Enterprise owners can use the
+[organization version](https://claude.ai/admin-settings/connectors?modal=add-custom-connector&connectorName=Typeroll&connectorUrl=https%3A%2F%2Fapp.typeroll.com%2Fapi%2Fmcp)
+of the link. By hand:
 
 1. Open **Customize → Connectors**, select **+ Add**, then **Add custom
    connector**. On Team and Enterprise plans an owner adds it under
@@ -123,7 +143,13 @@ Start the server from the MCP view and approve the Typeroll sign-in. See
 
 ## Codex
 
-Add the hosted server to `~/.codex/config.toml`:
+One command adds the hosted server and opens the sign-in:
+
+```bash
+codex mcp add typeroll --url https://app.typeroll.com/api/mcp && codex mcp login typeroll
+```
+
+Or add it to `~/.codex/config.toml` yourself:
 
 ```toml
 [mcp_servers.typeroll]

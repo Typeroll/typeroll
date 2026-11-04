@@ -4,6 +4,8 @@ import { getSession } from '../../../lib/auth';
 import { listPersonalConnections } from '../../../lib/api-keys';
 import { publicMcpUrl } from '../../../lib/mcp-consent';
 import PersonalApiToken from '../../../components/PersonalApiToken.tsx';
+import McpConnectLinks from '../../../components/McpConnectLinks.tsx';
+import { mcpClientLinks } from '@typeroll/shared';
 import { personalOrganizations } from '../../../lib/personal-site-access';
 const session = await getSession(Astro.cookies);
 if (!session) return Astro.redirect('/login');
@@ -20,12 +22,13 @@ const describe = (connection: (typeof connections)[number]) => [
 ].join(' · ');
 const organizations = (await personalOrganizations(session.userId)).map(org => ({ id: org.id, name: org.name ?? org.id }));
 const endpoint = publicMcpUrl(Astro.request);
+const links = mcpClientLinks(endpoint);
 ---
 <AppLayout title="AI connections">
   <div class="stack" style="max-width: 760px;">
     <h1>AI connections</h1>
-    <p>Use your usual AI assistant to work on Typeroll. In its connector settings, add this MCP server, sign in and approve access:</p>
-    <code style="overflow-wrap:anywhere;">{endpoint}</code>
+    <p>Use your usual AI assistant to work on Typeroll. Connect it once, sign in and approve access.</p>
+    <McpConnectLinks client:load endpoint={endpoint} links={links} />
     <p>Then tell your assistant which site to work on. It confirms the organization, site and version before reading or changing content. Each conversation keeps its own selection.</p>
     <p>Your connection follows your current access across all organizations. Editors can create pages, custom block types and shared Page templates. Administrative settings still require administrator access.</p>
     <p><a href="https://typeroll.com/docs/guides/ai-connections/" target="_blank" rel="noopener noreferrer">Connection instructions and workflow skills ↗</a></p>
