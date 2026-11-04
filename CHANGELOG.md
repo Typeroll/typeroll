@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.2.153 (candidate)
+
+- A media host is reported live only after it serves the publication's files.
+  On fundraiserchart.com a domain preparation reported `media.fundraiserchart.com`
+  as live although neither its DNS record nor its R2 custom domain existed: an
+  earlier Core marked a publication's media as prepared before preparing it, and
+  a resumed job trusted that flag. Publications now record a receipt naming the
+  exact hosts, namespace and files that were proven, and only that receipt
+  counts. Cloudflare must report the R2 custom domain and its certificate as
+  active, and every image, earlier image address and share copy must answer
+  over HTTPS with its exact bytes. Until then the job stays in
+  `distributing media` and `media_delivery` names what remains: missing DNS, a
+  pending certificate, a rewrite rule for another namespace, a missing file or
+  different bytes. The domain guide shows the same check. Retrying after a
+  partial failure adds only what is missing and leaves a working custom domain
+  and rule as they are. Verification retries never provision; they only check.
+- Share copies (og:image) of images served from a separate media host are
+  stored on that host through the ordinary media stage, next to the image in
+  the site's R2 namespace, instead of in the Pages deployment. Their names come
+  from the source image and the copy recipe, with a receipt, so an unchanged
+  copy is reused and never rendered again. The publication checks that the
+  media host serves them before it replaces the live site; a copy that cannot
+  be stored fails the build and keeps the previous publication live. Pages that
+  shared a copy at `/_assets/share/` keep that address working through a 301 to
+  the new copy (within Cloudflare's 2000-redirect limit; beyond it the page
+  keeps its website copy). Sites without a separate media host keep their
+  copies at `/_assets/share/` as before. Older build engines need no update.
+
 ## 0.2.152 (candidate)
 
 - Fixes for the image changes in 0.2.151, found on moveria.se:
