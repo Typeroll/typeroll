@@ -38,6 +38,23 @@
 - The site logo block asks for the width the logo has at its display height
   (for example `129px` for a 705×220 logo at 40 px), so a header logo loads a
   small variant instead of one sized for an 800 px image.
+- A version's test address points at the branch alias Cloudflare Pages actually
+  serves. Cloudflare shortens branch names to 28 characters, so a long version
+  such as `seo-sharing-render-refresh-2026-11-04` was served on
+  `version-seo-sharing-render-r.<project>.pages.dev` while Typeroll pointed the
+  test address at the full name and it answered 404. The alias comes from the
+  deployment Cloudflare returned, with Cloudflare's own rule as the fallback.
+  A test-address record Typeroll created against the wrong alias is corrected
+  on the next publication; records Typeroll did not create, and live websites,
+  are never rewritten.
+- A version whose branch would exceed Cloudflare's 28-character alias keeps its
+  first characters and ends in a short hash of its full name, for example
+  `version-seo-sharing-r-3bcd58`. Two versions can never share a test address,
+  and short version names keep their branch.
+- When Cloudflare has activated a version's test address but it still does not
+  serve a build that answers on its branch alias 10 minutes after the build was
+  verified, the publication stops with `test_address_unreachable`, naming the
+  alias to point it at, instead of waiting 45 minutes.
 
 ## 0.2.152 (candidate)
 
