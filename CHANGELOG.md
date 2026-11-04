@@ -52,6 +52,42 @@
   serve a build that answers on its branch alias 10 minutes after the build was
   verified, the publication stops with `test_address_unreachable`, naming the
   alias to point it at, instead of waiting 45 minutes.
+- Fixes from the Moveria market sites:
+  - `create_redirect`, `upsert_redirects` and redirect edits refuse a rule
+    whose target is the same page in another slash form or letter case, also
+    as an absolute URL on the site's own host, with code `redirect_self`
+    (AT-07). Every refusal now has a stable `code` (`redirect_self`,
+    `redirect_loop`, `redirect_hides_page`, `invalid_redirect`), and warnings
+    name only chains the new rule takes part in.
+  - Redirects that end on a website media path (`/wp-content/…` →
+    `/media/…`) are published straight to the file on the media host, so an
+    old file address answers with one 301 instead of two (AT-08).
+  - A site-wide share image (`default_og_image`, logo) gets `og:image:alt` from
+    its media library alt text, never from the first image in the page body
+    (AT-10).
+  - Two media records with the same bytes and public path are published once,
+    with both references pointing at it, instead of stopping publication with
+    `media_path_collision` (AT-14).
+  - A GitHub 422 when creating the publication tree is retried twice, the last
+    time without reusing blobs (AT-18).
+  - The link style role accepts `visited` (a colour), emitted as `:visited`
+    for links in text and prose (SE-04).
+  - `create_zone` refused by Cloudflare answers `zone_create_permission_required`
+    with the permission and the dashboard fallback (SE-06).
+  - `check_site_indexing` reports a pending or deactivated Pages custom domain
+    on the live host as an issue with `matches_expected: false` (CH-07).
+  - A media migration whose only leftovers are unfetchable sources ends
+    `complete` with them in `failed_media`; a retry restarts those sites too
+    (FI-10).
+  - A publication says when the site's background image preparation stopped,
+    in `job.warnings` and `job.media_preparation`; build activity splits
+    `attempt` into `media_continuations` and `retries` (SE-07).
+  - `analytics_site_limit` says who must act (the account's administrator or
+    the installation's operator) and is documented (ES-02).
+  - `POST /v1/sites` also returns the new site's `id` at the top level (BE-02).
+- The site logo keeps its full-resolution variant: the display-height `sizes`
+  from #160 is withdrawn, since it saved about 0.2 kB per logo and sharpness on
+  high-density screens matters more.
 
 ## 0.2.152 (candidate)
 
