@@ -40,7 +40,7 @@ describe('layout-aware image sizes', () => {
   });
 
   it('keeps a sizes the inner markup already set', () => {
-    expect(withImageSizes('<img sizes="64px" src="a"><img src="b">', '50vw')).toBe('<img sizes="64px" src="a"><img sizes="auto, 50vw" src="b">');
+    expect(withImageSizes('<img sizes="64px" src="a"><img src="b">', '50vw')).toBe('<img sizes="64px" src="a"><img sizes="50vw" src="b">');
     const capped = renderBlocks([{ id: 'i', type: 'core/image', data: { src: 'https://media.example.com/a.jpg', alt: 'A', max_width: 300 } }], { registry });
     expect(sizesOf(capped)).toEqual(['(max-width: 300px) 100vw, 300px']);
   });
@@ -69,6 +69,8 @@ describe('block-agnostic sizes', () => {
     expect(first).toContain('sizes="(max-width: 768px) 100vw, 800px"');
     expect(second).toMatch(/<source type="image\/avif" srcset="[^"]+" sizes="auto, 34vw" \/>/);
     expect(second).toContain('loading="lazy"');
+    // Never on the <img> itself: browsers would give it a 300×150 placeholder size.
+    expect(second).toMatch(/<img [^>]*sizes="34vw"/);
   });
 });
 
@@ -84,3 +86,14 @@ describe('header and footer images', () => {
     expect(out).not.toContain('loading=');
   });
 });
+
+describe('auto sizes need known dimensions', () => {
+  it('keeps the plain fallback on sources of a lazy image without width and height', async () => {
+    const { buildMediaLookup, transformBodyForSeo } = await import('../seo-transform');
+    const variants = [320].flatMap(width => (['avif', 'webp'] as const).map(format => ({ width, format, cdn_url: `https://m.example/s.png.w${width}.${format}` })));
+    const lookup = buildMediaLookup([{ id: 's', cdn_url: 'https://m.example/s.png', variants }] as never);
+    const out = transformBodyForSeo('<img src="https://m.example/x.png" alt="" /><img src="https://m.example/s.png" alt="" sizes="50vw" />', lookup);
+    expect(out).not.toContain('auto');
+  });
+});
+

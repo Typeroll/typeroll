@@ -234,15 +234,23 @@ function layoutSizes(fallback: string): string {
   return /^\s*auto\b/i.test(fallback) ? fallback : `auto, ${fallback}`;
 }
 
-/** `auto` only applies to lazy images; drop it from eager ones and their sources. */
+/**
+ * `auto` is kept only on <source> elements of a lazy image with known width and
+ * height. Never on the <img> itself: browsers give an <img sizes="auto"> a
+ * 300×150 placeholder size, which enlarges small images without dimensions.
+ */
 function withoutAutoSizesOnEagerImages(html: string): string {
   const strip = (markup: string) => markup.replace(/(\ssizes=")auto\s*,\s*/gi, '$1');
+  const eligible = (img: string) => /\sloading="lazy"/i.test(img) && /\swidth="\d+"/i.test(img) && /\sheight="\d+"/i.test(img);
   return html
-    .replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, picture => /<img\b[^>]*\sloading="lazy"/i.test(picture) ? picture : strip(picture))
+    .replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, picture => {
+      const img = /<img\b[^>]*>/i.exec(picture)?.[0] ?? '';
+      const sources = picture.slice(0, picture.indexOf(img));
+      return (eligible(img) ? sources : strip(sources)) + strip(img) + picture.slice(picture.indexOf(img) + img.length);
+    })
     .replace(/<img\b[^>]*>/gi, (img, offset: number, all: string) => {
       const before = all.slice(0, offset);
-      const insidePicture = before.lastIndexOf('<picture') > before.lastIndexOf('</picture>');
-      return insidePicture || /\sloading="lazy"/i.test(img) ? img : strip(img);
+      return before.lastIndexOf('<picture') > before.lastIndexOf('</picture>') ? img : strip(img);
     });
 }
 

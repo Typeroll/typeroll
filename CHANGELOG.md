@@ -14,12 +14,14 @@
   - Cards in a `core/grid` get a `sizes` from its columns too (SE-09).
   - Only the first visual image on a page loads eagerly with high priority.
   - Image sizing no longer depends on knowing each block type. Lazy images get
-    `sizes="auto, …"`, so browsers that support it use the width the image is
+    `sizes="auto, …"` on their sources, so browsers that support it use the width the image is
     actually rendered at, in any core or custom block type. The layout
     estimate after `auto` is the fallback; any container block type with a
     `cols` or `columns` field gives its children one. Header and footer
     partials now get variants, dimensions and sizes too, without taking the
-    page's leading image slot.
+    page's leading image slot. `auto` is set only on the generated
+    `<source>` elements of a lazy image with known width and height, never on
+    the `<img>`, which browsers would otherwise give a 300×150 placeholder size.
 - Once a publication is done, Typeroll reads the home page once and requests
   the images it references (og:image, each `<img>`, the first `srcset`
   candidate) on every host they use. When one does not answer 200, the job

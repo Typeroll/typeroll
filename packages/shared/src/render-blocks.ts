@@ -513,7 +513,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     const maximum = positive(d.max_width) || (d.width === 'original' ? w : 0);
     d.image_size_style = maximum ? `max-width:min(100%,${maximum}px)` : '';
     // A capped image never renders wider than its maximum.
-    const sizes = maximum ? ` sizes="auto, (max-width: ${maximum}px) 100vw, ${maximum}px"` : '';
+    const sizes = maximum ? ` sizes="(max-width: ${maximum}px) 100vw, ${maximum}px"` : '';
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''}${sizes} loading="lazy" decoding="async" />`;
     // The marker lets the SEO transform add AVIF/WebP sources for both images.
     const picture = d.mobile_src ? `<picture data-tr-art-direction><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
@@ -717,10 +717,9 @@ function renderGlobalBlockRef(block: Block, effectiveBlock: Block, options: Rend
  */
 export function withImageSizes(html: string, sizes: string | null): string {
   if (!sizes || !html.includes('<img')) return html;
-  // `auto` lets supporting browsers use the rendered width; the layout's own
-  // estimate after it is the fallback.
-  const value = /^\s*auto\b/i.test(sizes) ? sizes : `auto, ${sizes}`;
-  return html.replace(/<img\b(?![^>]*\ssizes=)/g, `<img sizes="${escapeHtml(value)}"`);
+  // The layout estimate. The SEO transform adds `auto` on the generated
+  // <source> elements where the browser may use the rendered width instead.
+  return html.replace(/<img\b(?![^>]*\ssizes=)/g, `<img sizes="${escapeHtml(sizes)}"`);
 }
 
 const COLUMN_RATIOS: Record<string, [number, number]> = { '1-1': [1, 1], '2-1': [2, 1], '1-2': [1, 2], '3-1': [3, 1], '1-3': [1, 3] };
