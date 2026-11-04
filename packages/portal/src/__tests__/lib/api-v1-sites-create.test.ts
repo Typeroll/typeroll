@@ -56,6 +56,7 @@ describe('POST /api/v1/sites', () => {
     const { status, json } = await createSiteReq(token, { name: 'Acme Studio' });
     expect(status).toBe(201);
     expect(json.site.id).toBe('acme-studio'); // slugified from name
+    expect(json.id).toBe('acme-studio');
     expect(json.site.name).toBe('Acme Studio');
     expect(json.site.organization_id).toBe(ORG);
     expect(json.site.urls).toBeDefined();
