@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.149 (candidate)
 
 - A published form on the customer's domain can load its live choices again.
   The CSRF origin check rejected `/api/forms/options` from any origin outside
