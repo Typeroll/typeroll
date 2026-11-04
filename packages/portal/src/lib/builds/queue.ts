@@ -18,6 +18,8 @@ export interface BuildTask {
   media_cursor?: number;
   media_batches?: number;
   media_checkpoint_attempt?: number;
+  /** Background work nobody waits on. It stays queued until its deadline instead of the interactive queue limit. */
+  background?: boolean;
   lease_id: string | null;
   lease_until: number;
   token_hash: string | null;
@@ -37,7 +39,10 @@ export function equalToken(token: string, expected: string | null) {
 }
 export const BUILD_QUEUE_WAIT_MS = 15 * 60_000;
 export function queuedBuildExpired(task: BuildTask, now = Date.now()): boolean {
-  return task.status === 'queued' && Number.isFinite(task.queued_at ?? task.created_at) && now >= Math.min(task.deadline, (task.queued_at ?? task.created_at) + BUILD_QUEUE_WAIT_MS);
+  // The queue limit gives a person waiting on a publication a clear failure.
+  // Background image preparation waits behind a long publication instead.
+  const queuedAt = task.queued_at ?? task.created_at;
+  return task.status === 'queued' && Number.isFinite(queuedAt) && now >= (task.background ? task.deadline : Math.min(task.deadline, queuedAt + BUILD_QUEUE_WAIT_MS));
 }
 /** Revoke an unclaimed task, never start a replacement or interrupt a live lease. */
 export async function expireQueuedBuild(store: ReadWriteStore, org: string, key: string, now = Date.now()) {
@@ -53,12 +58,12 @@ const rejected = () => new ConnectionError('This build attempt has expired or wa
 /** Organization-scoped queue, backed by the existing transactional datastore. */
 export class OrganizationBuildQueue {
   constructor(private store: ReadWriteStore = getStore(), private clock = Date.now) {}
-  async enqueue(identity: BuildIdentity, engineRevision: string, mediaTotal = 0, purpose?: 'static_verification') {
+  async enqueue(identity: BuildIdentity, engineRevision: string, mediaTotal = 0, purpose?: 'static_verification' | 'media_preparation') {
     if (!Number.isSafeInteger(mediaTotal) || mediaTotal < 0 || mediaTotal > (purpose === 'static_verification' ? 40000 : 20000)) throw new ConnectionError('Invalid media preparation size.', 400);
     assertBuildIdentity(identity);
     const key = purpose === 'static_verification' ? sha256(`${buildTaskKey(identity)}\0verification\0${identity.source_sha256}`) : buildTaskKey(identity), path = `${buildTasksPath(identity.org_id)}/${key}`;
     const task: BuildTask = { identity, engine_revision: engineRevision, status: 'queued', created_at: this.clock(), queued_at: this.clock(), deadline: this.clock() + (mediaTotal ? MEDIA_BUILD_DEADLINE_MS : 45 * 60_000),
-      media_total: mediaTotal, media_cursor: 0, media_batches: 0,
+      media_total: mediaTotal, media_cursor: 0, media_batches: 0, ...(purpose === 'media_preparation' ? { background: true } : {}),
       attempt: 0, lease_id: null, lease_until: 0, token_hash: null, artifact_sha256: null, artifact_key: null, error_code: null };
     await this.store.createDocIfMissing(path, task);
     const existing = await this.store.getDoc<BuildTask>(path);

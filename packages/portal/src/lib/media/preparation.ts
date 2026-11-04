@@ -11,14 +11,39 @@ import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { sha256 } from '../builds/contract.mjs';
 import { buildTasksPath, type BuildTask } from '../builds/queue';
 import type { BuildDiagnostic } from '../builds/diagnostics.mjs';
+import { ConnectionError } from '../publishing/connections';
 
-interface Preparation { recipe?: string; full_scan?: boolean; org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; first_requested_at?: number; round_request?: string; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number; unreadable?: string[] }
+interface Preparation { recipe?: string; full_scan?: boolean; org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; first_requested_at?: number; round_request?: string; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number; unreadable?: string[]; retries?: number; error_code?: string | null; failed_task?: string | null }
 const jobPath = (org: string, site: string) => `media_preparations/${sha256(`${org}\0${site}`)}`;
 const imageTypes = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/avif', 'image/gif']);
 /** Already prepared, or known not to decode, for these exact bytes and recipe. */
 const settled = (file: Media) => !!file.preparation && ['ready', 'unreadable'].includes(file.preparation.state) &&
   file.preparation.source_sha256 === file.sha256 && file.preparation.recipe === MEDIA_RECIPE_VERSION;
 const UNREADABLE_LIMIT = 50;
+/**
+ * A round stopped by a passing condition starts again by itself, never ending
+ * the job: first after 5 minutes, then doubling up to an hour so a broken engine
+ * does not spend the customer's build minutes in a tight loop.
+ */
+export const PREPARATION_RETRY_DELAY_MS = 5 * 60_000;
+export const PREPARATION_RETRY_MAX_DELAY_MS = 60 * 60_000;
+export const preparationRetryDelay = (retries: number) => Math.min(PREPARATION_RETRY_DELAY_MS * 2 ** Math.min(retries, 10), PREPARATION_RETRY_MAX_DELAY_MS);
+const STOPPED = 'Image preparation stopped. The originals are safe. Retry preparation or publish to prepare the required images.';
+// An engine update, a runner Cloudflare did not start, a lost lease or a step
+// time limit ends a round without saying anything about the images. The next
+// round reuses every variant already prepared.
+const TRANSIENT = new Set(['build_queue_timeout', 'build_engine_changed', 'build_lease_lost', 'shared_build_timeout', 'shared_runner_start_failed', 'media_build_process_timeout', 'media_media_transfer_interrupted', 'build_cancelled']);
+
+/** Why a round stopped, from the failed build task when there is one. Never includes credentials. */
+export function preparationFailure(error: unknown, task: Pick<BuildTask, 'status' | 'error_code'> | null): { code: string; message: string; transient: boolean } {
+  const code = task?.status === 'cancelled' ? 'build_cancelled'
+    : error instanceof ConnectionError && error.code ? error.code
+      : task?.status === 'failed' && task.error_code ? task.error_code : 'media_preparation_failed';
+  const message = task?.status === 'cancelled' ? 'The build engine cancelled the preparation build.'
+    : error instanceof ConnectionError ? error.message.replace(/ ?Prepared images are retained\.$/, '')
+      : 'The preparation build could not be started or read.';
+  return { code, message, transient: TRANSIENT.has(code) };
+}
 
 /**
  * The library image a failed preparation round could not decode. The media
@@ -88,7 +113,7 @@ export async function requestMediaPreparation(org: string, site: string, mediaId
     : fresh ? { first_requested_at: now, next_at: preparationStartAt(now, now) }
       : current.state === 'queued' && !current.task ? { next_at: preparationStartAt(now, current.first_requested_at ?? now) }
         : {};
-  await store.compareAndUpdateDoc<Preparation>(path, value => value.request === current?.request, { request: randomUUID(), state: current?.state === 'running' ? 'running' : 'queued', error: null, ...schedule, ...(!mediaId ? { full_scan: true } : current?.state === 'complete' ? { full_scan: false } : {}), ...(current?.state === 'failed' ? { task: null } : {}) });
+  await store.compareAndUpdateDoc<Preparation>(path, value => value.request === current?.request, { request: randomUUID(), state: current?.state === 'running' ? 'running' : 'queued', error: null, ...(current?.state === 'failed' ? { error_code: null, failed_task: null, retries: 0 } : {}), ...schedule, ...(!mediaId ? { full_scan: true } : current?.state === 'complete' ? { full_scan: false } : {}), ...(current?.state === 'failed' ? { task: null } : {}) });
   const { enqueueMediaMigration } = await import('../publishing/media-migration-queue');
   if (created || !['queued', 'running'].includes(current?.state ?? '')) await enqueueMediaMigration(org, 10000).catch(() => { console.error('[media-preparation] scheduling interrupted; durable work will be recovered'); });
   return true;
@@ -116,7 +141,7 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
           const failed = await store.getDoc<BuildTask>(`${buildTasksPath(item.org)}/${item.task}`);
           const id = unreadableMedia(failed, item.entries ?? []);
           const entry = item.entries?.find(value => value.id === id);
-          if (!entry) throw error;
+          if (!entry) throw Object.assign(new Error('preparation round failed'), { round: { error, task: failed } });
           await store.compareAndUpdateDoc<Media>(`${paths.media(item.org, item.site)}/${entry.id}`, value => value.sha256 === entry.sha256,
             { preparation_pending: false, preparation: { state: 'unreadable', source_sha256: entry.sha256, recipe: item.recipe ?? MEDIA_RECIPE_VERSION } });
           const unreadable = [...new Set([entry.id, ...(item.unreadable ?? [])])].slice(0, UNREADABLE_LIMIT);
@@ -136,7 +161,7 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
         const finishedAt = Date.now();
         const uploadedMeanwhile = item.round_request !== undefined && item.request !== item.round_request;
         await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease,
-          { task: null, state: 'queued', completed: item.entries?.length ?? 0, error: null, ...(uploadedMeanwhile ? { first_requested_at: finishedAt, next_at: preparationStartAt(finishedAt, finishedAt) } : {}) });
+          { task: null, state: 'queued', completed: item.entries?.length ?? 0, error: null, error_code: null, retries: 0, ...(uploadedMeanwhile ? { first_requested_at: finishedAt, next_at: preparationStartAt(finishedAt, finishedAt) } : {}) });
         pending = true;
         continue;
       }
@@ -169,9 +194,15 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       await update({ task: queued.key, recipe: MEDIA_RECIPE_VERSION, active_request: preparationRequest, round_request: item.request, entries: entries.map(({ id, sha256 }) => ({ id, sha256 })),
         state: 'running', total: entries.length, completed: 0, next_at: 0 });
       pending = true;
-    } catch {
-      await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease,
-        { state: 'failed', error: 'Image preparation stopped. The originals are safe. Retry preparation or publish to prepare the required images.' });
+    } catch (caught) {
+      const round = (caught as { round?: { error: unknown; task: BuildTask | null } }).round;
+      const failure = preparationFailure(round ? round.error : caught, round?.task ?? null);
+      const retry = failure.transient;
+      console.error(`[media-preparation] round stopped org=${item.org} site=${item.site} code=${failure.code} task=${item.task ?? '-'} retry=${retry}`);
+      await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease, retry
+        ? { task: null, state: 'queued', next_at: Date.now() + preparationRetryDelay(item.retries ?? 0), retries: (item.retries ?? 0) + 1, error: null, error_code: failure.code }
+        : { state: 'failed', error: `${STOPPED} Cause: ${failure.message}${failure.message.includes(`(${failure.code})`) ? '' : ` (${failure.code})`}`, error_code: failure.code, failed_task: item.task ?? null });
+      pending ||= retry;
     } finally {
       clearInterval(heartbeat);
       await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease, { lease: null, lease_until: 0 });
@@ -187,6 +218,9 @@ export async function mediaPreparationStatus(org: string, site: string) {
   // The build engine job id lets agents see the job among the organization's active builds.
   const running = item.state === 'running' && item.task;
   return { state: item.state, completed: task?.media_cursor ?? item.completed ?? 0, total: task?.media_total ?? item.total ?? 0, error: item.error ?? null,
+    // The reported code of the round that stopped the job, or of the last round that will be retried.
+    error_code: item.error_code ?? null, ...(item.state === 'failed' && item.failed_task ? { failed_build_task: item.failed_task } : {}),
+    ...(item.state === 'queued' && item.retries ? { retry: { attempt: item.retries, next_at: new Date(item.next_at).toISOString() } } : {}),
     build_job_id: running && item.active_request ? `media-${item.active_request}` : null, build_task: running ? item.task : null,
     // Library images whose stored file does not decode. They were skipped; upload a working copy to prepare them.
     unreadable_media: item.unreadable ?? [] };

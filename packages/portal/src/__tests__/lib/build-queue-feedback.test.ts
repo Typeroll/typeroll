@@ -31,6 +31,17 @@ it('measures a continuation from its checkpoint, not the age of the entire media
   expect(queuedBuildExpired({status:'queued',created_at:1,queued_at:Date.now(),deadline:Date.now()+3600000} as BuildTask)).toBe(false);
   expect(queuedBuildExpired({status:'running',created_at:1,deadline:1} as BuildTask)).toBe(false);
 });
+it('keeps background image preparation queued behind a long publication until its deadline',async()=>{
+  const now=Date.now(), waited={status:'queued',created_at:1,queued_at:now-BUILD_QUEUE_WAIT_MS-1,deadline:now+3600000} as BuildTask;
+  expect(queuedBuildExpired(waited,now)).toBe(true);
+  expect(queuedBuildExpired({...waited,background:true},now)).toBe(false);
+  expect(queuedBuildExpired({...waited,background:true,deadline:now},now)).toBe(true);
+  const {OrganizationBuildQueue}=await import('../../lib/builds/queue');
+  const {BUILD_PROTOCOL,BUILD_RUNTIME}=await import('../../lib/builds/contract.mjs');
+  const identity={protocol:BUILD_PROTOCOL,org_id:'org',site_id:'site',version_id:'main',job_id:'media-request',publication_id:'c'.repeat(64),commit:'a'.repeat(40),branch:'main',node_version:BUILD_RUNTIME,source_sha256:'b'.repeat(64)};
+  expect((await new OrganizationBuildQueue().enqueue(identity as any,'engine',3,'media_preparation')).task).toMatchObject({background:true});
+  expect((await new OrganizationBuildQueue().enqueue({...identity,job_id:'publication'} as any,'engine',3)).task).not.toHaveProperty('background');
+});
 it('classifies a GitHub 422 without leaking its reflected body',async()=>{
   const client=createProviderClient('GitHub','fake',async()=>new Response(JSON.stringify({message:'Update is not a fast forward',secret:'sensitive-value'}),{status:422}));
   try { await client('/repos/org/repo/git/refs/heads/main',{method:'PATCH',body:{sha:'test'}}); throw new Error('expected failure'); }
