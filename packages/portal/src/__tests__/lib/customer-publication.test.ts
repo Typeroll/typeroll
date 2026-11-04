@@ -10,6 +10,7 @@ import { executeCustomerPublication as executePublicationPhase } from '../../lib
 import { captureImpact } from '../../lib/publishing/impact';
 import { previewPublicationImpact } from '../../lib/publishing/impact-preview';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
+import { checkLiveMedia } from '../../lib/publishing/media-serving';
 
 async function executeCustomerPublication(args: Parameters<typeof executePublicationPhase>[0]) {
   for (let step = 0; step < 4; step++) {
@@ -116,6 +117,18 @@ it('freezes once, waits for the exact Git commit, and hides the live link until 
   // The later save must be compared with the frozen, verified source, not
   // whatever happened to be in the CMS when the build finally completed.
   expect(await previewPublicationImpact('org', 'site', 'main')).toMatchObject({ comparison: 'verified_snapshot', provisional: true, total: 1, changed_pages: 1, classification: 'page_content_only' });
+});
+
+it('checks the images of the live site once the publication is done and reports any that are not served', async () => {
+  vi.mocked(checkLiveMedia).mockResolvedValueOnce({ status: 'failing', checked: 4, failing: [{ url: 'https://media.example.org/a.png', http_status: null, error: 'getaddrinfo ENOTFOUND media.example.org' }] });
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  complete(); mocks.probe.mockResolvedValue(true);
+  expect(checkLiveMedia).not.toHaveBeenCalled();
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(checkLiveMedia).toHaveBeenCalledTimes(1);
+  expect(checkLiveMedia).toHaveBeenCalledWith('www.example.com');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', phase: 'images not served',
+    verification_message: expect.stringContaining('1 of 4 images on the home page are not served'), media_check: { status: 'failing', checked: 4 } });
 });
 
 it('reports removal and excludes new drafts using the last verified source', async () => {

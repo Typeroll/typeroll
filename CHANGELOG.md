@@ -20,10 +20,11 @@
     `cols` or `columns` field gives its children one. Header and footer
     partials now get variants, dimensions and sizes too, without taking the
     page's leading image slot.
-- Live serving checks (2, 10 and 30 minutes after going live, then daily) also
-  request a sample of the images the home page references, on every host they
-  use. When one does not answer 200, the job shows `images not served` with the
-  first failing address (`serving_check.media_issue`).
+- Once a publication is done, Typeroll reads the home page once and requests
+  the images it references (og:image, each `<img>`, the first `srcset`
+  candidate) on every host they use. When one does not answer 200, the job
+  shows `images not served` with the first failing address (`media_check`).
+  Nothing is scheduled; server errors and timeouts report nothing.
 - A new media host is attached and serving its files before a publication
   replaces the live site. Engine publications marked media as prepared as soon
   as Cloudflare returned a deployment, so a domain preparation that added a site

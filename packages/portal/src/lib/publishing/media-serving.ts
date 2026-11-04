@@ -1,13 +1,12 @@
 import { createSafeFetch } from '../net/safe-fetch';
 
 /**
- * After a publication is live, read its home page and check that a sample of
+ * Once a publication is done, read its home page and check that a sample of
  * the images it references (og:image, <img src>, the first candidate of each
- * srcset) answer 200, on every host they use. A publication that went live
- * with images on a host that does not serve them yet (an unattached media
- * host, a removed R2 custom domain, a broken path rule) is reported within
- * minutes instead of when a visitor notices. Read-only; it never changes
- * anything.
+ * srcset) answer 200, on every host they use. A publication whose images sit
+ * on a host that does not serve them (an unattached media host, a removed R2
+ * custom domain, a broken path rule) shows on its job at once. It runs once per
+ * publication, is read-only and never changes anything.
  */
 
 export interface MediaServingFailure { url: string; http_status: number | null; error?: string }
@@ -58,8 +57,8 @@ export async function checkLiveMedia(websiteHost: string, opts: { fetchPage?: ty
       const response = await (opts.fetchMedia ?? mediaFetch)(url, { method: 'HEAD', headers: { 'Cache-Control': 'no-cache', 'User-Agent': 'Typeroll-Serving-Check/1.0' } });
       void response.body?.cancel().catch(() => {});
       if (response.ok) return 'ok';
-      // Edge errors and rate limits say nothing about the file itself.
-      if (response.status === 429 || response.status >= 520) return 'unknown';
+      // Server errors and rate limits say nothing about the file itself.
+      if (response.status === 429 || response.status >= 500) return 'unknown';
       return { url, http_status: response.status };
     } catch (error) {
       // A host that does not resolve or refuses TLS does not serve the file.

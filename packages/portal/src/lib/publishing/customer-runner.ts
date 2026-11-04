@@ -43,6 +43,7 @@ import { DerivationError, runBuildDerivations } from './build-derivation';
 import { indexableSettings } from './launch-robots';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { preparePublicMediaDomains } from './media-domain';
+import { checkLiveMedia } from './media-serving';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
 import { recordCustomerCompute } from './compute-cost';
@@ -232,7 +233,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
     await assertLease();
     await completeDomainCutover(args.orgId, args.siteId, publication.publication_id);
-    await store.updateDoc(jobPath, { status: 'succeeded', phase: 'live', deploy_url: `https://${publication.website_host}`, verification_message: null, static_probe: null, finished_at: finished });
+    const media = await afterPublicationMediaCheck(publication.website_host);
+    await store.updateDoc(jobPath, { status: 'succeeded', phase: 'live', deploy_url: `https://${publication.website_host}`, verification_message: null, static_probe: null, finished_at: finished,
+      ...media.fields, ...(media.failing ? { phase: MEDIA_NOT_SERVED_PHASE, verification_message: media.message } : {}) });
     terminal = true;
     return 'ran';
   };
@@ -739,8 +742,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (savedDomains.candidate?.job_id && savedDomains.candidate.job_id !== args.jobId) await store.compareAndUpdateDoc<any>(paths.deploy(args.orgId, args.siteId, savedDomains.candidate.job_id),
         previous => previous.status === 'running' && previous.phase === 'awaiting domain cutover approval',
         { status: 'succeeded', phase: 'replaced by newer publication', finished_at: finished });
-      await store.updateDoc(jobPath, { phase: matchesDesired ? 'awaiting domain cutover approval' : 'published at current address', deploy_url: `https://${currentHost}`,
-        dns_requirements: requirements, validation_blocker: windowCandidate ? preparation.validation_blocker : null,
+      // This publication now serves the current address: check its images once.
+      const media = await afterPublicationMediaCheck(currentHost);
+      await store.updateDoc(jobPath, { phase: matchesDesired ? 'awaiting domain cutover approval' : media.failing ? MEDIA_NOT_SERVED_PHASE : 'published at current address', deploy_url: `https://${currentHost}`,
+        dns_requirements: requirements, validation_blocker: windowCandidate ? preparation.validation_blocker : null, ...media.fields,
+        ...(media.failing ? { verification_message: media.message } : {}),
         ...(!matchesDesired ? { status: 'succeeded', finished_at: finished } : {}) });
       terminal = !matchesDesired;
       parkedCandidate = matchesDesired;
@@ -886,3 +892,22 @@ function providerRequestNote(error: ProviderError): string {
   const types = error.errorTypes.map(type => [type.resource, type.code, type.field].filter(Boolean).join(' ')).filter(Boolean);
   return ` Request: ${error.operation}${types.length ? `; ${types.join(', ')}` : ''}.`;
 }
+
+export const MEDIA_NOT_SERVED_PHASE = 'images not served';
+
+/**
+ * Once a publication serves its address, read its home page and request the
+ * images it references. One check per publication, nothing scheduled: a host
+ * that does not serve them (an unattached media host, a removed custom domain)
+ * shows on the job at once. An inconclusive read reports nothing.
+ */
+async function afterPublicationMediaCheck(host: string): Promise<{ failing: boolean; message: string; fields: Record<string, unknown> }> {
+  const result = await checkLiveMedia(host).catch(() => null);
+  if (!result || result.status === 'inconclusive') return { failing: false, message: '', fields: {} };
+  const first = result.failing[0];
+  const fields = { media_check: { status: result.status, checked: result.checked, failing: result.failing, checked_at: new Date().toISOString() } };
+  if (!first) return { failing: false, message: '', fields };
+  return { failing: true, fields,
+    message: `${result.failing.length} of ${result.checked} images on the home page are not served (${first.http_status ? `HTTP ${first.http_status}` : first.error ?? 'no response'}): ${first.url}. Check the media host in Publishing, then publish again.` };
+}
+

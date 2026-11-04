@@ -248,39 +248,3 @@ describe('the Pages custom domain of the live website host (CH-07)', () => {
     expect(cloudflare.provider).not.toHaveBeenCalled();
   });
 });
-
-describe('images on the live site', () => {
-  const page = '<html><head><meta property="og:image" content="https://media.example.org/share.png"></head><body>'
-    + '<picture><source type="image/avif" srcset="https://media.example.org/a.png.w320.avif 320w, https://media.example.org/a.png.w640.avif 640w" />'
-    + '<img src="https://media.example.org/a.png" alt="" /></picture></body></html>';
-  const site = (images: (url: URL) => Response) => (url: URL, init?: RequestInit) => {
-    if (url.hostname === 'moveria.ch') return url.pathname === '/' && (init?.method ?? 'GET') === 'GET'
-      ? new Response(page, { headers: { 'x-typeroll-publication': publication, 'content-type': 'text/html' } }) : typeroll()(url);
-    return images(url);
-  };
-
-  it('raises an alarm when images the home page references are not served, and clears it once they are', async () => {
-    await scheduleServingChecks('org', 'site', { publication_id: publication, website_host: 'moveria.ch', job_id: 'job' }, live);
-    network.respond = site(() => { throw new TypeError('getaddrinfo ENOTFOUND media.example.org'); });
-    await deliver(minutes(2));
-    const failing = (await config()).serving_check!;
-    expect(failing).toMatchObject({ status: 'serving', media: { checked: 3 }, media_issue: { code: 'media_not_served', url: 'https://media.example.org/share.png' } });
-    expect(failing.media!.failing).toHaveLength(3);
-    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', phase: 'images not served', verification_message: expect.stringContaining('3 of 3 images') });
-    // A rate limit or edge error says nothing about the files: the alarm stands.
-    network.respond = site(() => new Response(null, { status: 503 }));
-    await deliver(minutes(10));
-    expect((await config()).serving_check!.media_issue).toMatchObject({ code: 'media_not_served' });
-    network.respond = site(() => new Response(null, { status: 200 }));
-    await deliver(minutes(30));
-    expect((await config()).serving_check).toMatchObject({ media: { checked: 3, failing: [] }, media_issue: null });
-    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ phase: 'live', verification_message: null });
-  });
-
-  it('reports a 404 image as not served', async () => {
-    await scheduleServingChecks('org', 'site', { publication_id: publication, website_host: 'moveria.ch', job_id: 'job' }, live);
-    network.respond = site(url => new Response(null, { status: url.pathname === '/a.png' ? 404 : 200 }));
-    await deliver(minutes(2));
-    expect((await config()).serving_check!.media_issue).toMatchObject({ url: 'https://media.example.org/a.png', http_status: 404 });
-  });
-});
