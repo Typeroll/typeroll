@@ -1,0 +1,88 @@
+---
+title: Use the REST API
+description: Authenticate, work across several organizations and find the REST call for every MCP tool.
+---
+
+Everything an AI agent can do through the MCP server, a script can do through the
+REST API: every MCP tool calls the REST API underneath. The
+[REST API reference](../../technical/rest-api-reference/) lists each call next to
+the MCP tool that uses it. It is generated from the tools, so the two always match.
+
+The base address is `https://app.typeroll.com` on Typeroll Cloud. A self-hosted
+portal uses its own host. Send the credential as a bearer token and JSON bodies
+with `Content-Type: application/json`.
+
+## Choose a credential
+
+| Credential               | Where to create it                            | Reaches                                                   |
+| ------------------------ | --------------------------------------------- | --------------------------------------------------------- |
+| **Personal API token**   | Account → AI connections → Personal API token | Every organization and site you can reach, with your role |
+| **Organization API key** | Organization settings → API keys              | One organization, as an administrator                     |
+| **Site API key**         | Site settings → API keys                      | One site, with the permission chosen for the key          |
+
+A personal API token follows your access. If you lose access to an organization,
+the token loses it too. A token lasts until you revoke it in **Account → AI
+connections**. Typeroll shows it only once, so store it in a password manager or
+secret store.
+
+**Availability:** personal API tokens and the generated reference come with Core
+0.2.151.
+
+## Work with several organizations
+
+If you manage several organizations, use one personal API token for all of them.
+
+1. List your organizations and your role in each:
+
+   ```bash
+   curl -H "Authorization: Bearer $TYPEROLL_TOKEN" \
+     https://app.typeroll.com/api/v1/organizations
+   ```
+
+2. List the sites you can reach. Each site includes its `organization_id`:
+
+   ```bash
+   curl -H "Authorization: Bearer $TYPEROLL_TOKEN" \
+     https://app.typeroll.com/api/v1/sites
+   ```
+
+3. Name the organization in every other request with the
+   `Typeroll-Organization` header:
+
+   ```bash
+   curl -H "Authorization: Bearer $TYPEROLL_TOKEN" \
+     -H "Typeroll-Organization: example-org" \
+     https://app.typeroll.com/api/v1/sites/example-site/pages
+   ```
+
+A site id is unique within an organization, not across organizations, so the
+header decides which site you reach. Organization routes, such as
+`/api/v1/publishing/builds`, need the owner or administrator role in the
+organization you name.
+
+An organization or site API key belongs to one organization. You can send the
+same header with it as a safety check: if the key belongs to another
+organization, the request is refused with `409` and changes nothing.
+
+## Permissions
+
+Each call in the reference states the least permission it needs: `read`,
+`write` or `admin`. A personal token uses your role in the organization, or the
+permission a site was shared with you. A site API key uses the permission chosen
+when it was created.
+
+## Errors
+
+Errors return a JSON body with `error` and, where useful, `code`. Common answers:
+
+- `401`: the credential is missing, invalid or revoked.
+- `403`: the credential cannot do this, for example a `read` key that writes.
+- `404`: the site or object is not available to this credential.
+- `409`: the request conflicts with the current state, for example a changed
+  revision or a `Typeroll-Organization` mismatch. Read again and retry.
+- `429`: too many requests. Wait and retry.
+
+## Versions
+
+Site calls act on the live version `main` unless you add `?version=<branch-id>`.
+An unknown version is refused with `404`; it is never answered about `main`.

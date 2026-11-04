@@ -423,13 +423,13 @@ export const CREATE_KEY_IN_PORTAL = 'API keys are created in the portal (Site se
 const personalConnectionsPath = (userId: string) => `personal_connections/${encodeURIComponent(userId)}/connections`;
 
 /** A connection belongs to a person, never to their currently selected organization. */
-export async function createPersonalConnection(userId: string, name: string): Promise<NewKey> {
+export async function createPersonalConnection(userId: string, name: string, kind: 'oauth' | 'api_token' = 'oauth'): Promise<NewKey> {
   const key = generateNewKey();
   const createdAt = new Date().toISOString();
   const store = getStore();
   await store.createDocIfMissing(`personal_connections/${encodeURIComponent(userId)}`, { schema_version: 1 });
   await store.setDoc(`${personalConnectionsPath(userId)}/${key.prefix}`, {
-    name: name.slice(0, 80), created_at: createdAt,
+    name: name.slice(0, 80), created_at: createdAt, ...(kind === 'api_token' ? { kind } : {}),
   });
   await store.setDoc(paths.apiKeyLookupEntry(key.prefix), {
     org_id: '', site_id: null, personal_user_id: userId,
@@ -439,7 +439,7 @@ export async function createPersonalConnection(userId: string, name: string): Pr
 }
 
 export async function listPersonalConnections(userId: string) {
-  return getStore().listDocs<{ name: string; created_at: string; revoked_at?: string }>(personalConnectionsPath(userId));
+  return getStore().listDocs<{ name: string; created_at: string; revoked_at?: string; kind?: 'api_token' }>(personalConnectionsPath(userId));
 }
 
 export async function revokePersonalConnection(userId: string, prefix: string): Promise<boolean> {

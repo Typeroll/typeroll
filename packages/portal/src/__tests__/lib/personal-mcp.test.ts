@@ -214,3 +214,26 @@ it('requires owning organization admin access for a personal connection to appro
   expect((await requireApiKey(request('sites/same-id/deploy', 'alpha', 'POST'), 'same-id')).ok).toBe(true);
   expect((await invoke('alpha')).status).toBe(403);
 });
+
+it('creates a personal API token that reaches every organization through the header', async () => {
+  const { POST: createToken } = await import('../../pages/api/account/api-tokens');
+  const portal = new URL(process.env.PORTAL_PUBLIC_URL || origin).origin;
+  const created = await createToken({ request: new Request(`${portal}/api/account/api-tokens`, {
+    method: 'POST', headers: { origin: portal, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Report script' }),
+  }), cookies: {} } as never) as Response;
+  expect(created.status).toBe(201);
+  const { token: apiToken, name } = await created.json();
+  expect(name).toBe('Report script');
+  const { listPersonalConnections } = await import('../../lib/api-keys');
+  expect((await listPersonalConnections('person')).find(entry => entry.name === 'Report script')?.kind).toBe('api_token');
+  const { GET: organizations } = await import('../../pages/api/v1/organizations');
+  const listed = await organizations({ request: new Request(`${origin}/api/v1/organizations`, { headers: { authorization: `Bearer ${apiToken}` } }) } as never) as Response;
+  expect(listed.status).toBe(200);
+  expect((await listed.json()).organizations.map((entry: { id: string }) => entry.id)).toEqual(expect.arrayContaining(['alpha', 'beta']));
+  // A site call needs the organization named in the header.
+  const site = (organization?: string) => requireApiKey(new Request(`${origin}/api/v1/sites/same-id/pages`, {
+    headers: { authorization: `Bearer ${apiToken}`, ...(organization ? { 'Typeroll-Organization': organization } : {}) },
+  }), 'same-id');
+  expect((await site()).ok).toBe(false);
+  expect((await site('alpha')).ok).toBe(true);
+});

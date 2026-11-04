@@ -34,7 +34,8 @@
     "workspace-templates"
   ],
   "scripts": {
-    "gen": "node scripts/embed-content.mjs",
+    "gen": "node scripts/embed-content.mjs && npm run gen:rest",
+    "gen:rest": "UPDATE_REST_REFERENCE=1 vitest run tests/rest-reference.test.ts",
     "prebuild": "node scripts/embed-content.mjs --clean",
     "build": "tsc -p .",
     "typecheck": "tsc --noEmit",

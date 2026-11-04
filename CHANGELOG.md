@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- REST API parity with MCP is documented and enforced. A generated REST API
+  reference lists the REST call behind every MCP tool, with its parameters and
+  required permission; CI fails when a tool and the page disagree, and every
+  tool must call the REST API. A new guide, Use the REST API, covers
+  credentials, several organizations and errors.
+- Personal API tokens: create one in Account → AI connections for scripts. It
+  has your access in every organization (name one per request with the
+  `Typeroll-Organization` header), lasts until revoked and is shown once.
+
 ## 0.2.150 (candidate)
 
 - Background image preparation no longer stops for good when its build waits
