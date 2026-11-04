@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.155 (candidate)
+
+- Connecting an AI client takes one step. **Account → AI connections** has
+  **Add to Claude**, **Add to Cursor** and **Add to VS Code**, which open the
+  client with Typeroll's MCP address filled in (the person confirms there and
+  signs in), and one copyable command each for Claude Code and Codex. Claude's
+  link is Anthropic's documented prefill for the Add custom connector dialog,
+  with an organization variant for Team and Enterprise owners. Every link uses
+  the portal's own address, so self-hosted portals get theirs. The docs start
+  with the same table.
+
 ## 0.2.154 (candidate)
 
 - Cloudflare build engines work again. Around 20:00 UTC on November 4, 2026,
