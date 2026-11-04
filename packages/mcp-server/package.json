@@ -1,7 +1,7 @@
 {
   "name": "@typeroll/mcp-server",
   "mcpName": "io.github.Typeroll/typeroll",
-  "version": "0.45.110",
+  "version": "0.45.111",
   "description": "Typeroll CMS MCP server \u2013 connect AI agents to the REST API to manage content and publish static websites.",
   "license": "MIT",
   "repository": {
@@ -34,7 +34,8 @@
     "workspace-templates"
   ],
   "scripts": {
-    "gen": "node scripts/embed-content.mjs",
+    "gen": "node scripts/embed-content.mjs && npm run gen:rest",
+    "gen:rest": "UPDATE_REST_REFERENCE=1 vitest run tests/rest-reference.test.ts",
     "prebuild": "node scripts/embed-content.mjs --clean",
     "build": "tsc -p .",
     "typecheck": "tsc --noEmit",

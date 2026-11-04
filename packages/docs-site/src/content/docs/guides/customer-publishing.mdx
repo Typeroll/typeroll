@@ -462,9 +462,15 @@ media host, for example `https://media.example.com/media/<site-media-id>/photo.p
 They are served from your public R2 bucket, where your build engine writes them
 directly, and are not part of the Pages deployment. The deployment then carries
 only pages, so a large media library does not make publishing slower or hit the
-Pages file limits. With a separate site media host an image can use
-`https://images.customer.com/photo.png`; that media is included in the static site
-output.
+Pages file limits.
+
+A site can have its own media host on its own domain, for example
+`media.customer.com`, so image addresses do not show the organization's domain.
+An image then uses `https://media.customer.com/photo.png`. It is served from the
+same public R2 bucket: Typeroll attaches the host to the bucket and adds a path
+rule that maps it to the site's folder. The host's domain must be in the
+organization's connected Cloudflare account. Earlier `/media` and
+shared-host addresses keep working: `/media/*` redirects to the site media host.
 
 A site with images needs a media host before its first publication. **Configure
 domains** in Publishing sets both addresses from one domain in your connected

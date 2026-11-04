@@ -1477,3 +1477,13 @@ with `read_site_instructions` and enabled App guides with
 `read_app_documentation`. Use `tr-edit-site` for the editor workflow.
 Organization administration requires an explicit `organization_id` and a
 current owner/admin membership. Manual API keys keep their existing scope.
+
+## REST parity
+
+Every tool must call the REST API through `TyperollClient`; a tool must not do
+work the API cannot. The published REST reference
+(`packages/docs-site/src/content/docs/technical/rest-api-reference.md`) is
+generated from the tools by `npm run gen:rest` (also part of `npm run gen`), and
+`tests/rest-reference.test.ts` fails when it is stale or a tool makes no REST
+call. Tools that only read bundled documentation are listed in `LOCAL_TOOLS`.
+

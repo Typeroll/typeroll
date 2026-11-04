@@ -1,0 +1,72 @@
+---
+title: Stop form spam with Turnstile
+description: Turn on Cloudflare Turnstile for a site's forms in the portal, through the API or with an AI agent.
+---
+
+Every form already has three checks: a signed token, a hidden honeypot field and
+a rate limit per IP address. They stop simple bots. Bots that fill in forms in a
+real browser get past them, and Cloudflare Turnstile stops those. Most visitors
+pass Turnstile without doing anything.
+
+**Availability:** Turnstile for forms is part of Core 0.2.150. The portal setting
+comes with Core 0.2.151.
+
+## 1. Create a Turnstile widget
+
+1. Sign in to the Cloudflare dashboard and open **Turnstile → Add widget**.
+2. Name it, for example `example.com forms`.
+3. Add the site's domain, for example `example.com`. Subdomains such as
+   `www.example.com` are included.
+4. Choose **Managed** mode and create the widget.
+5. Copy the **site key** and the **secret key**.
+
+Any Cloudflare account works, including the free plan. The widget does not need
+to be in the account that hosts the site.
+
+## 2. Add the keys to the site
+
+### In the portal
+
+Open the site, go to **Forms** and find **Spam protection**. Paste the site key
+and the secret key, then select **Save Turnstile keys**. Only site
+administrators see this setting.
+
+Typeroll checks the secret key with Cloudflare before saving it. It is stored
+encrypted and is never shown again. To change only the site key, enter both keys.
+To keep the stored secret, leave the secret field empty.
+
+### Through the API
+
+```bash
+curl -X PUT "https://app.typeroll.com/api/v1/sites/SITE_ID/integrations/form-spam-protection" \
+  -H "Authorization: Bearer $TYPEROLL_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"turnstile","site_key":"0x4AAAA...","secret_key":"0x4AAAA..."}'
+```
+
+Use an API key with admin permission. Read the setting with `GET` on the same
+address; the response shows `secret_key` only as `{ "set": true }`. `DELETE` turns
+Turnstile off. Self-hosted portals use their own host instead of
+`app.typeroll.com`.
+
+### With an AI agent
+
+Ask your agent to turn on Turnstile and give it the keys. It uses
+`set_form_spam_protection`, `get_form_spam_protection` and
+`delete_form_spam_protection`. See [Forms tools](../../tools/forms/#protection).
+
+## 3. Publish the site
+
+The keys take effect when the site is published. Published forms then show the
+Turnstile check above the send button.
+
+A form starts requiring Turnstile after its republished pages send the first
+verified answer, so pages published earlier keep working during the change. The
+setting lists the forms that require it. If Cloudflare cannot be reached, a
+submission is accepted and logged, so visitors are never blocked by an outage.
+Forms that post to an app or Extension are not covered.
+
+## Turn it off
+
+Select **Turn off** in **Forms → Spam protection**, or send `DELETE` to the API
+address above, then publish the site.

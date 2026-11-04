@@ -19,7 +19,9 @@ remain revocable in API keys until they expire; reconnect for personal access.
 Personal connections live under `personal_connections/{user}/connections`, with
 hashed credentials in the existing lookup. No plaintext credential is persisted.
 PKCE, encrypted single-use codes, audience/client binding, refresh rotation and
-30-day absolute connection expiry remain. Revocation also invalidates refresh.
+no connection expiry: a connection lasts until revoked or until the person loses
+access. Each refresh token is single-use; a per-client chain head detects a
+replay and revokes the connection. Revocation also invalidates refresh.
 
 Before site tools run, `select_site` binds organization, site and version into a
 credential-signed, 24-hour `site_context`. Every site tool requires that context.

@@ -143,22 +143,37 @@ it('keeps read-only site shares read-only and checks canonical revocation even w
   expect((await requireApiKey(request('sites/shared-site/pages', 'outside'), 'shared-site')).ok).toBe(false);
 });
 
-it('expires a connection absolutely and revokes a replayed personal refresh chain', async () => {
-  const { issueToken } = await import('../../lib/mcp-tokens');
+it('keeps a connection until it is revoked, renews refresh and revokes a replayed refresh chain', async () => {
+  const { issueToken, verifyToken } = await import('../../lib/mcp-tokens');
   const { POST: exchange } = await import('../../pages/api/mcp/oauth/token');
   const audience = `${origin}/api/mcp`;
   const clientId = signClientId(['https://client.test/callback']);
-  const refresh = issueToken({ apiKey: token, audience, kind: 'refresh', clientId });
+  // A connection approved long ago keeps working.
+  const old = await createPersonalConnection('person', 'Old');
+  await getStore().updateDoc(paths.apiKeyLookupEntry(old.prefix), { oauth_created_at: new Date(Date.now() - 400 * 86400000).toISOString() });
+  expect(await verifyApiToken(old.token)).not.toBeNull();
+  // A refresh token close to its end gets a full new lifetime on rotation.
+  const refresh = issueToken({ apiKey: token, audience, kind: 'refresh', clientId, expiresAt: Math.floor(Date.now() / 1000) + 60 });
   const redeem = () => exchange({ request: new Request(`${origin}/api/mcp/oauth/token`, {
     method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refresh.token, client_id: clientId }),
   }) } as never) as Promise<Response>;
-  expect((await redeem()).status).toBe(200);
-  expect((await redeem()).status).toBe(400);
+  const first = await redeem();
+  expect(first.status).toBe(200);
+  const firstBody = await first.json();
+  const rotated = verifyToken(firstBody.refresh_token, audience);
+  expect(rotated!.exp - Date.now() / 1000).toBeGreaterThan(50 * 365 * 86400);
+  // The rotated token works once more; the chain head moved with it.
+  const next = await exchange({ request: new Request(`${origin}/api/mcp/oauth/token`, {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: firstBody.refresh_token, client_id: clientId }),
+  }) } as never) as Response;
+  expect(next.status).toBe(200);
+  // Replaying the used refresh token revokes the connection and says why.
+  const replay = await redeem();
+  expect(replay.status).toBe(400);
+  expect((await replay.json()).error_description).toMatch(/used twice.*Reconnect Typeroll/);
   expect(await verifyApiToken(token)).toBeNull();
-  const fresh = await createPersonalConnection('person', 'Expired');
-  await getStore().updateDoc(paths.apiKeyLookupEntry(fresh.prefix), { oauth_created_at: new Date(Date.now() - 31 * 86400000).toISOString() });
-  expect(await verifyApiToken(fresh.token)).toBeNull();
 });
 
 it('allows personal editor block authoring but keeps site instructions administrator-managed and versioned', async () => {
@@ -214,3 +229,63 @@ it('requires owning organization admin access for a personal connection to appro
   expect((await requireApiKey(request('sites/same-id/deploy', 'alpha', 'POST'), 'same-id')).ok).toBe(true);
   expect((await invoke('alpha')).status).toBe(403);
 });
+
+it('creates a personal API token that reaches every organization through the header', async () => {
+  const { POST: createToken } = await import('../../pages/api/account/api-tokens');
+  const portal = new URL(process.env.PORTAL_PUBLIC_URL || origin).origin;
+  const created = await createToken({ request: new Request(`${portal}/api/account/api-tokens`, {
+    method: 'POST', headers: { origin: portal, 'content-type': 'application/json' }, body: JSON.stringify({ name: 'Report script' }),
+  }), cookies: {} } as never) as Response;
+  expect(created.status).toBe(201);
+  const { token: apiToken, name } = await created.json();
+  expect(name).toBe('Report script');
+  const { listPersonalConnections } = await import('../../lib/api-keys');
+  expect((await listPersonalConnections('person')).find(entry => entry.name === 'Report script')?.kind).toBe('api_token');
+  const { GET: organizations } = await import('../../pages/api/v1/organizations');
+  const listed = await organizations({ request: new Request(`${origin}/api/v1/organizations`, { headers: { authorization: `Bearer ${apiToken}` } }) } as never) as Response;
+  expect(listed.status).toBe(200);
+  expect((await listed.json()).organizations.map((entry: { id: string }) => entry.id)).toEqual(expect.arrayContaining(['alpha', 'beta']));
+  // A site call needs the organization named in the header.
+  const site = (organization?: string) => requireApiKey(new Request(`${origin}/api/v1/sites/same-id/pages`, {
+    headers: { authorization: `Bearer ${apiToken}`, ...(organization ? { 'Typeroll-Organization': organization } : {}) },
+  }), 'same-id');
+  expect((await site()).ok).toBe(false);
+  expect((await site('alpha')).ok).toBe(true);
+});
+
+it('limits a personal API token to chosen organizations, to reads and to its expiry', async () => {
+  const { POST: createToken } = await import('../../pages/api/account/api-tokens');
+  const portal = new URL(process.env.PORTAL_PUBLIC_URL || origin).origin;
+  const create = (body: unknown) => createToken({ request: new Request(`${portal}/api/account/api-tokens`, {
+    method: 'POST', headers: { origin: portal, 'content-type': 'application/json' }, body: JSON.stringify(body),
+  }), cookies: {} } as never) as Promise<Response>;
+  expect((await create({ name: 'Bad', organization_ids: ['not-mine'] })).status).toBe(400);
+  expect((await create({ name: 'Bad', expires_in_days: 7 })).status).toBe(400);
+  const limited = await create({ name: 'Alpha reader', organization_ids: ['alpha'], read_only: true, expires_in_days: 30 });
+  expect(limited.status).toBe(201);
+  const { token: limitedToken, expires_at } = await limited.json();
+  expect(Date.parse(expires_at)).toBeGreaterThan(Date.now() + 29 * 86400000);
+  const call = (method: string, organization: string) => requireApiKey(new Request(`${origin}/api/v1/sites/same-id/pages`, {
+    method, headers: { authorization: `Bearer ${limitedToken}`, 'Typeroll-Organization': organization },
+  }), 'same-id');
+  const read = await call('GET', 'alpha');
+  expect(read.ok && read.value.permission).toBe('read');
+  expect((await call('PATCH', 'alpha')).ok).toBe(false);
+  const other = await call('GET', 'beta');
+  expect(other.ok).toBe(false);
+  if (!other.ok) expect((await other.response.json()).code).toBe('token_organization_not_allowed');
+  // Discovery lists only the allowed organization and ignores the header.
+  const { GET: organizations } = await import('../../pages/api/v1/organizations');
+  const listed = await organizations({ request: new Request(`${origin}/api/v1/organizations`, {
+    headers: { authorization: `Bearer ${limitedToken}`, 'Typeroll-Organization': 'beta' },
+  }) } as never) as Response;
+  expect((await listed.json()).organizations.map((entry: { id: string }) => entry.id)).toEqual(['alpha']);
+  // An expired token stops working.
+  const { paths: sharedPaths } = await import('@typeroll/shared');
+  const lookups = await getStore().listDocs<{ id: string; personal_user_id?: string; expires_at?: string }>('api_key_lookup');
+  const entry = lookups.find(doc => doc.expires_at);
+  expect(entry).toBeTruthy();
+  await getStore().updateDoc(sharedPaths.apiKeyLookupEntry(entry!.id), { expires_at: new Date(Date.now() - 1000).toISOString() });
+  expect(await verifyApiToken(limitedToken)).toBeNull();
+});
+

@@ -36,7 +36,7 @@ import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed, find
 import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
 import { freezeThemeFonts } from './theme-font-freeze';
-import { moveStaticMediaToSharedHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
+import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { publicationRuntime } from './runtime-projection';
 import { DerivationError, runBuildDerivations } from './build-derivation';
@@ -399,7 +399,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       frozen.media_replacement_redirects = replacedMediaRedirects(retained, frozen.media_manifest, frozen.redirects, prior?.media_replacement_redirects);
       frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_replacement_redirects.filter((rule: any) => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path))];
       // Images served from the organization media host leave the Pages deployment; old website addresses redirect there.
-      const movedMedia = moveStaticMediaToSharedHost(retainDistinctMediaManifests(retained, frozen.media_manifest), frozen.media_manifest);
+      const movedMedia = moveWebsiteMediaToMediaHost(retainDistinctMediaManifests(retained, frozen.media_manifest), frozen.media_manifest);
       frozen.retained_media_manifests = movedMedia.retained;
       frozen.media_host_redirects = movedMedia.redirects.filter(rule => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path));
       frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)];

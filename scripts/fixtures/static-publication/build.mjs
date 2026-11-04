@@ -153,7 +153,13 @@ for (const file of new Map(sameHostMedia.map(file => [file.path, file])).values(
 }
 await writeSiteIcons(dist, publication.settings, url => readFrozenIcon(publication, sameHostMedia, url));
 // Networks do not show SVG share images: give those pages a PNG copy.
-await writeShareImages(dist, publication, url => readFrozenShareImage(publication, sameHostMedia, url));
+// Large raster share images get a ~1200 px JPEG copy from a verified, locally prepared WebP variant.
+await writeShareImages(dist, publication, url => readFrozenShareImage(publication, sameHostMedia, url), async source => {
+  let pathname;
+  try { pathname = new URL(source.url).pathname; } catch { return null; }
+  const file = sameHostMedia.find(candidate => candidate.path === pathname && candidate.source && !candidate.reused);
+  return file ? fs.readFile(file.source) : null;
+});
 const validation = await validatePublicationDirectory(dist, {
   publication, configurationHash, routes: JSON.parse(await fs.readFile(path.join(work, 'routes.json'), 'utf8')),
   sourceHash: createHash('sha256').update(JSON.stringify(manifest.files)).digest('hex'),
