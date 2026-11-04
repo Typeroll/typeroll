@@ -1,26 +1,29 @@
-import { paths, type Form, type SiteApps } from '@typeroll/shared';
+import { paths, type Form, type Site, type SiteApps } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { publicAppsSnapshot } from '../apps/config';
 import { buildExtensionRuntimeSnapshot } from '../extensions/runtime-snapshot';
 import { formEmbedInfo, POW_BITS } from '../forms-signing';
 import { resolveAppFormEndpoint } from '../apps/form-endpoint';
 import { parsePublicHttpsUrl } from '../extensions/public-http';
+import { publicTurnstileSiteKey } from '../forms/turnstile';
 
 /** Reuse the same public runtime contracts as preview and managed builds. No action credentials cross this boundary. */
 export async function publicationRuntime(orgId: string, siteId: string, versionId = 'main') {
   const store = getStore();
-  const [storedApps, storedForms, extensions] = await Promise.all([
+  const [storedApps, storedForms, extensions, site] = await Promise.all([
     store.getDoc<SiteApps>(paths.apps(orgId, siteId)), store.listDocs<Form>(paths.forms(orgId, siteId)),
     buildExtensionRuntimeSnapshot(orgId, siteId, { reconcileBlocks: false, strict: true, versionId }),
+    store.getDoc<Site>(paths.site(orgId, siteId)),
   ]);
   const apps = publicAppsSnapshot(storedApps ?? undefined);
   if (apps.apps?.analytics?.enabled) {
     const { analyticsEventEmbedInfo } = await import('../apps/analytics-events');
     apps.apps.analytics.config = { ...apps.apps.analytics.config, ...analyticsEventEmbedInfo(orgId, siteId) };
   }
+  const turnstileSiteKey = publicTurnstileSiteKey(site);
   const forms = await Promise.all(storedForms.map(async form => {
     const endpoint = await resolveAppFormEndpoint(form, { orgId, siteId, portalUrl: (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '') }) ||
-      { ...formEmbedInfo(orgId, siteId, form.id), pow_bits: POW_BITS };
+      { ...formEmbedInfo(orgId, siteId, form.id), pow_bits: POW_BITS, ...(turnstileSiteKey ? { turnstile_site_key: turnstileSiteKey } : {}) };
     parsePublicHttpsUrl(endpoint.submit_url);
     return { id: form.id, name: form.name, kind: form.kind, submit_text: form.submit_text, success_message: form.success_message, success_redirect_url: form.success_redirect_url,
       styles: form.styles, steps: form.steps, target: form.target, allow_back: form.allow_back, show_progress: form.show_progress,

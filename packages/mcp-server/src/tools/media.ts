@@ -64,7 +64,7 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'get_media_preparation',
-    description: 'Read background image preparation progress, including the build_job_id of a running preparation job on the organization build engine. unreadable_media lists library images whose stored file does not decode; preparation skips them, so upload a working copy. Originals and prepared draft variants remain private. Requires site access.',
+    description: 'Read background image preparation progress, including the build_job_id of a running preparation job on the organization build engine. unreadable_media lists library images whose stored file does not decode; preparation skips them, so upload a working copy. A round stopped by a passing condition (engine update, runner not started, step time limit, interrupted transfer) never ends the job: it starts again after 5 minutes, doubling up to an hour, shown as retry { attempt, next_at } with error_code. When the job fails, error names the cause, with error_code and failed_build_task. Originals and prepared draft variants remain private. Requires site access.',
     inputSchema: {},
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'media/preparation'))),
   },

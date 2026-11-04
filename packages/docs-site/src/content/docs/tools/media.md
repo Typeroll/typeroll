@@ -379,8 +379,20 @@ A library image whose stored file does not decode, such as a truncated PNG, no
 longer stops the job. Preparation records it as unreadable for those exact
 bytes, skips it and prepares the rest of the library in a new round.
 `get_media_preparation` lists such files in `unreadable_media`. Upload a working
-copy to prepare it again. A storage or timeout failure still stops the job, so
-it can be retried.
+copy to prepare it again.
+
+A preparation build waits in the queue for as long as a publication holds the
+engine, up to its six-hour deadline. Publications are not held back by it.
+
+Some stops end a round without saying anything about the images: an engine
+update, a runner that Cloudflare did not start, a lost lease, a step time limit
+or an interrupted storage transfer. These never end the job. The next round
+starts by itself after 5 minutes, and each later wait doubles, up to an hour.
+`retry` reports the attempt and the next start, and `error_code` reports the
+code that stopped the last round. Only another kind of failure ends the job.
+Its `error` then names the cause and the code, and `failed_build_task` names
+the build. Prepared variants are kept, so the next round or a publication
+reuses them.
 
 ## Responsive image resolution (Core 0.2.37+)
 

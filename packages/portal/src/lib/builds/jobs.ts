@@ -31,7 +31,7 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
   } : {};
   const supportsMediaBatches = files['scripts/media.mjs']?.includes('export async function prepareMediaBatch(');
   const mediaTotal = kind === 'static_verification' ? JSON.parse(files['verification.json']).checks.length : supportsMediaBatches ? (publication?.media_manifest?.entries?.length ?? 0) + (publication?.retained_media_manifests ?? []).reduce((sum: number, manifest: any) => sum + manifest.entries.length, 0) : 0;
-  const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal, kind === 'static_verification' ? kind : undefined);
+  const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal, kind === 'static_verification' || kind === 'media_preparation' ? kind : undefined);
   await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { ...validation, source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare' } satisfies BuildInput);
   try { await dispatchPendingBuild(identity.org_id, queued.key, config); }
   catch (error) { await new OrganizationBuildQueue().cancel(identity.org_id, queued.key); throw error; }
@@ -87,14 +87,14 @@ export async function completedBuild(org: string, key: string) {
       const issue = task.seo_report.errors[0];
       throw new ConnectionError(`Publication validation failed: ${issue?.message ?? 'Invalid static output'} (${issue?.url ?? ''}). ${issue?.remediation ?? 'Review the validation report.'}`, 422, 'publication_validation_failed');
     }
-    if (task.error_code === 'artifact_static_output_size_limit') throw new ConnectionError('The finished site exceeds this build engine’s static output limit or contains a file larger than 25 MiB. Reduce the published files before retrying. Prepared images are retained.', 413, task.error_code);
+    if (task.error_code === 'artifact_static_output_size_limit') throw new ConnectionError('The finished site exceeds this build engine’s static output limit or contains a file larger than 25 MiB. The provider log line TYPEROLL_OUTPUT_LIMIT names the limit, the totals and the largest files; reduce those before retrying. Prepared images are retained.', 413, task.error_code);
     const code = task.error_code ?? 'shared_build_failed', diagnostic = task.error_detail ?? undefined;
     throw new ConnectionError(`${buildFailureMessage(code, diagnostic)} Prepared images are retained.`, 502, code, diagnostic ? { build_diagnostic: diagnostic } : undefined);
   }
   if (task.status !== 'completed') {
     const metadata = await getStore().getDoc<BuildInput>(buildInputPath(org, key));
     const config = await readEngineConfiguration(org, metadata?.provider ?? 'cloudflare');
-    if (!config || config.revision !== task.engine_revision || !['ready', 'qualifying'].includes(config.status)) throw new ConnectionError('The shared build engine changed. Retry the publication.', 409);
+    if (!config || config.revision !== task.engine_revision || !['ready', 'qualifying'].includes(config.status)) throw new ConnectionError('The shared build engine changed. Retry the publication.', 409, 'build_engine_changed');
     await dispatchPendingBuild(org, key, config); return null;
   }
   const files = await buildStorage(org, async storage => decodeArtifact(await storage.read(task.artifact_key!), task.identity, task.artifact_sha256!));

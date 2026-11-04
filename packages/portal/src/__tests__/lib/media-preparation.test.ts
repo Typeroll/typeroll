@@ -4,7 +4,8 @@ import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { connectionPath } from '../../lib/publishing/connections';
 import { engineConfigurationPath } from '../../lib/builds/state';
-import { requestMediaPreparation, runPendingMediaPreparation, mediaPreparationStatus, unreadableMedia } from '../../lib/media/preparation';
+import { requestMediaPreparation, runPendingMediaPreparation, mediaPreparationStatus, unreadableMedia, preparationRetryDelay } from '../../lib/media/preparation';
+import { ConnectionError } from '../../lib/publishing/connections';
 import { buildTasksPath } from '../../lib/builds/queue';
 const mocks = vi.hoisted(() => ({ enqueue: vi.fn(async (..._args: any[]) => ({ key: 'task' })), completed: vi.fn(), transport: vi.fn(async () => {}), source: vi.fn(async (publication: unknown) => ({ 'publication.json': JSON.stringify(publication) })) }));
 vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completedBuild: mocks.completed }));
@@ -208,14 +209,15 @@ it('skips a library image that does not decode and prepares the rest without it'
   expect(await requestMediaPreparation('org', 'site', 'broken')).toBe(true);
 });
 
-it('still fails the job for storage, timeout and unattributed failures', async () => {
+it('does not mark images unreadable for storage, timeout and unattributed failures', async () => {
   const store = await configureEngine();
   await store.setDoc(`${paths.media('org', 'site')}/image`, imageDoc('a'));
   await requestMediaPreparation('org', 'site'); await releaseDelay(); await runPendingMediaPreparation('org');
-  await store.setDoc(`${buildTasksPath('org')}/task`, decodeFailure('image', { error_code: 'media_media_transfer_interrupted' }));
-  mocks.completed.mockRejectedValueOnce(new Error('failed'));
+  await store.setDoc(`${buildTasksPath('org')}/task`, decodeFailure('image', { error_code: 'media_build_process_exit_1', error_detail: { cause: 'Error: ENOSPC: no space left on device', lines: [] } }));
+  mocks.completed.mockRejectedValueOnce(new ConnectionError('The build failed while preparing images and files: the step exited with code 1. (media_build_process_exit_1) Prepared images are retained.', 502, 'media_build_process_exit_1'));
   await runPendingMediaPreparation('org');
-  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'failed', unreadable_media: [] });
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'failed', unreadable_media: [], error_code: 'media_build_process_exit_1', failed_build_task: 'task',
+    error: expect.stringContaining('Cause: The build failed while preparing images and files: the step exited with code 1. (media_build_process_exit_1)') });
   expect(await store.getDoc(`${paths.media('org', 'site')}/image`)).not.toHaveProperty('preparation');
   const entries = [{ id: 'image' }];
   expect(unreadableMedia(decodeFailure('image') as any, entries)).toBe('image');
@@ -228,4 +230,32 @@ it('still fails the job for storage, timeout and unattributed failures', async (
   expect(unreadableMedia(decodeFailure('image', { error_detail: storage }) as any, entries)).toBeNull();
   const fromLines = { cause: 'Error: Input buffer contains unsupported image format', lines: ['TYPEROLL_MEDIA_FAILURE step=inspect_image media="image" file="/x" object="x" attempts=1'] };
   expect(unreadableMedia(decodeFailure('image', { error_detail: fromLines }) as any, entries)).toBe('image');
+});
+
+it('never ends the job for a passing stop; each later round waits longer, up to an hour', async () => {
+  const store = await configureEngine();
+  await store.setDoc(`${paths.media('org', 'site')}/image`, imageDoc('a'));
+  await requestMediaPreparation('org', 'site'); await releaseDelay(); await runPendingMediaPreparation('org');
+  expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+  // Cloudflare did not start the runner for a round, more times than any fixed limit.
+  for (let round = 1; round <= 6; round++) {
+    await store.setDoc(`${buildTasksPath('org')}/task`, { status: 'failed', error_code: 'shared_runner_start_failed' });
+    mocks.completed.mockRejectedValueOnce(new ConnectionError('Cloudflare could not start the shared runner. Open Publishing → Builds and check the build project.', 502, 'shared_runner_start_failed'));
+    const before = Date.now();
+    await runPendingMediaPreparation('org');
+    const status = await mediaPreparationStatus('org', 'site');
+    expect(status).toMatchObject({ state: 'queued', error: null, error_code: 'shared_runner_start_failed', retry: { attempt: round } });
+    expect(Date.parse(status!.retry!.next_at) - before).toBeGreaterThanOrEqual(preparationRetryDelay(round - 1) - 1000);
+    // The round waits for its delay, then starts again.
+    expect(await runPendingMediaPreparation('org')).toBe(true);
+    expect(mocks.enqueue).toHaveBeenCalledTimes(round);
+    await releaseDelay(); await runPendingMediaPreparation('org');
+    expect(mocks.enqueue).toHaveBeenCalledTimes(round + 1);
+  }
+  expect([0, 1, 2, 3, 4].map(preparationRetryDelay)).toEqual([5, 10, 20, 40, 60].map(minutes => minutes * 60_000));
+  // A completed round clears the recorded stop.
+  mocks.completed.mockResolvedValueOnce({ task: {}, files: {} });
+  await runPendingMediaPreparation('org');
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ error_code: null });
+  expect(await mediaPreparationStatus('org', 'site')).not.toHaveProperty('retry');
 });

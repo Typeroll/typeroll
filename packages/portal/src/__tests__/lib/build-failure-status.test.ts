@@ -55,7 +55,7 @@ it('names the step, the reason and the cause of every reported failure', () => {
   expect(buildFailureMessage('dependencies_build_enospc')).toMatch(/installing the site’s build dependencies: the build machine ran out of disk space/);
   expect(buildFailureMessage('rendering_build_process_timeout')).toMatch(/rendering the static pages: the step did not finish within its time limit/);
   expect(buildFailureMessage('extension_assets_build_err_module_not_found')).toMatch(/preparing Extension assets: a module the build imports could not be found/);
-  expect(buildFailureMessage('artifact_static_output_size_limit')).toMatch(/Reduce the published files/);
+  expect(buildFailureMessage('artifact_static_output_size_limit')).toMatch(/TYPEROLL_OUTPUT_LIMIT names the limit/);
   expect(buildFailureMessage('source_unsupported_build_runtime')).toMatch(/Update the build engine/);
   expect(buildFailureMessage('media_media_transfer_interrupted')).toMatch(/Prepared images are kept/);
   expect(buildFailureMessage('verification_coordinator_502')).toMatch(/answered HTTP 502/);

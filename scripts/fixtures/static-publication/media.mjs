@@ -244,7 +244,10 @@ export async function prepareMedia(publication, root, options = {}) {
             if (!bytes || hash(bytes) !== artifact.sha256 || (artifact.size_bytes && bytes.length !== artifact.size_bytes)) throw new Error('Prepared media failed byte verification');
             await fs.mkdir(path.dirname(destination), { recursive: true });
             await fs.writeFile(destination, bytes);
-            sameHostFiles.push({ source: destination, path: artifact.path, ...(shareOnly ? { local_only: true } : {}) });
+            // On a separate media host a site icon is read locally for its favicon files only; its
+            // website path may be redirected to that host.
+            const localOnly = shareOnly || !(manifest.delivery === 'static' || manifest.media_host === manifest.website_host);
+            sameHostFiles.push({ source: destination, path: artifact.path, ...(localOnly ? { local_only: true } : {}) });
           }
         }
         return;
@@ -273,7 +276,8 @@ export async function prepareMedia(publication, root, options = {}) {
           if (retained && hash(retained) !== hash(bytes)) throw new Error('Static media paths contain conflicting retained assets');
           await fs.mkdir(path.dirname(destination), { recursive: true });
           await fs.writeFile(destination, bytes);
-          sameHostFiles.push({ source: destination, path: publicPath, ...(shareOnly ? { local_only: true } : {}) });
+          const localOnly = shareOnly || !(manifest.delivery === 'static' || manifest.media_host === manifest.website_host);
+          sameHostFiles.push({ source: destination, path: publicPath, ...(localOnly ? { local_only: true } : {}) });
         }
       }
       // The original and its variants are independent objects. Promote them

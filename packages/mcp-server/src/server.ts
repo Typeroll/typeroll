@@ -113,6 +113,8 @@ function effectFor(name: string): ToolEffect {
     || name === 'prepare_organization_media_storage'
     || name === 'save_organization_media_access'
     || name === 'set_email_settings'
+    || name === 'set_form_spam_protection'
+    || name === 'delete_form_spam_protection'
     || name === 'delete_email_settings'
     || name === 'send_test_email'
     || name === 'retry_form_intake_notification'

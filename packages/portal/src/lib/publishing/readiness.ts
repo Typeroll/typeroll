@@ -71,7 +71,7 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   }
   if (media.length) {
     require(connectionSummary(storage).media_ready, 'media_storage_required', 'Complete R2 media storage setup for your organization.', '/app/settings/publishing#media-title');
-    require(domains.desired.media_host || organization.media_host, 'media_domain_required', 'Set the organization’s shared media host before publishing media at the current address. Future media hosts are prepared separately.');
+    require(domains.desired.media_host || organization.media_host, 'media_domain_required', 'Images are served from the organization’s shared media host. In Publishing, choose a domain in your connected Cloudflare account to set it up, for example media.example.com.');
   }
   return { ready: required.length === 0, mode: 'customer_git' as const, hosting_group_id: group.id, required };
 }

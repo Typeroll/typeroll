@@ -5,11 +5,40 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { assertFilePath } from './contract.mjs';
 
-export const MAX_DIRECT_OUTPUT_BYTES = 512 * 1024 * 1024;
+/**
+ * One Wrangler upload run sends at most this much. Cloudflare Pages limits a
+ * deployment to 20,000 files of at most 25 MiB each, not its total size, so a
+ * larger output is uploaded in several runs and deployed once.
+ */
+export const UPLOAD_CHUNK_BYTES = 256 * 1024 * 1024;
+export const UPLOAD_CHUNK_FILES = 4000;
 export const DIRECT_RECEIPT = '.typeroll-direct-upload.json';
+const OUTPUT_LIMITS = { files: 20000, file_bytes: 25 * 1024 * 1024 };
+
+/** Running totals of a static output, with memory bounded by the file limit. */
+export function outputMeasure(limits = OUTPUT_LIMITS) {
+  const largest = [], folders = new Map(); let files = 0, bytes = 0, oversized = 0;
+  return {
+    add(name, size) {
+      files++; bytes += size; if (size > limits.file_bytes) oversized++;
+      const folder = name.includes('/') ? name.slice(0, name.indexOf('/')) : '(root)';
+      if (folders.has(folder) || folders.size < 1000) folders.set(folder, (folders.get(folder) ?? 0) + size);
+      if (largest.length < 10 || size > largest[largest.length - 1].size) {
+        largest.push({ name: name.slice(0, 200), size }); largest.sort((x, y) => y.size - x.size); largest.length = Math.min(largest.length, 10);
+      }
+    },
+    /** Which limit the output exceeds, its totals and largest files; null when it fits. */
+    exceeded() {
+      const limit = oversized ? 'file_bytes' : files > limits.files ? 'files' : limits.bytes !== undefined && bytes > limits.bytes ? 'bytes' : null;
+      return limit && { limit, max: limits[limit], files, bytes, largest: [...largest],
+        folders: Object.fromEntries([...folders].sort((x, y) => y[1] - x[1]).slice(0, 5)) };
+    },
+  };
+}
+
 /** The supervisor reads bounded metadata. Site bytes remain in the customer's build environment. */
-export async function describeStaticOutput(root) {
-  const files = Object.create(null), controls = Object.create(null); let total = 0;
+export async function describeStaticOutput(root, limits = OUTPUT_LIMITS) {
+  const files = Object.create(null), controls = Object.create(null), entries = [], measure = outputMeasure(limits);
   async function walk(dir, prefix = '') {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
       const name = prefix + entry.name; assertFilePath(name, { artifact: true });
@@ -17,34 +46,37 @@ export async function describeStaticOutput(root) {
       const target = path.join(dir, entry.name), stat = await fs.lstat(target);
       if (stat.isSymbolicLink() || (!stat.isDirectory() && !stat.isFile()) || stat.isFile() && stat.nlink !== 1) throw Error('unsafe_build_output');
       if (stat.isDirectory()) { await walk(target, name + '/'); continue; }
-      total += stat.size;
-      if (stat.size > 25 * 1024 * 1024 || total > MAX_DIRECT_OUTPUT_BYTES || Object.keys(files).length >= 20000) throw Error('build_output_limit');
-      const digest = createHash('sha256');
-      for await (const chunk of createReadStream(target)) digest.update(chunk);
-      files[name] = { sha256: digest.digest('hex'), size: stat.size };
-      if (['_headers', '_redirects'].includes(name)) {
-        if (stat.size > (name === '_redirects' ? MAX_PAGES_REDIRECT_BYTES : 128 * 1024)) throw Error('static_control_file_limit');
-        const bytes = await fs.readFile(target);
-        if (name === '_redirects') checkPagesRedirects(bytes.toString('utf8'));
-        controls[name] = bytes.toString('base64');
-      }
+      measure.add(name, stat.size);
+      if (entries.length <= limits.files) entries.push({ name, target, size: stat.size });
     }
   }
-  await walk(root); return { files, controls };
+  await walk(root);
+  // Measure the whole output before hashing, so a refusal names what to reduce.
+  const exceeded = measure.exceeded();
+  if (exceeded) { console.log('TYPEROLL_OUTPUT_LIMIT ' + JSON.stringify(exceeded)); throw Error('build_output_limit'); }
+  for (const { name, target, size } of entries) {
+    const digest = createHash('sha256');
+    for await (const chunk of createReadStream(target)) digest.update(chunk);
+    files[name] = { sha256: digest.digest('hex'), size };
+    if (['_headers', '_redirects'].includes(name)) {
+      if (size > (name === '_redirects' ? MAX_PAGES_REDIRECT_BYTES : 128 * 1024)) throw Error('static_control_file_limit');
+      const bytes = await fs.readFile(target);
+      if (name === '_redirects') checkPagesRedirects(bytes.toString('utf8'));
+      controls[name] = bytes.toString('base64');
+    }
+  }
+  return { files, controls };
 }
 /** Accept only a small, complete receipt for static files and the official uploader's content hashes. */
 export function validateDirectReceipt(value) {
   if (value?.format !== 1 || !value.files || !value.manifest || !value.controls ||
       Object.keys(value.files).length < 1 || Object.keys(value.files).length > 20000) throw Error('invalid_direct_receipt');
   if (value.target && (!/^[a-f0-9]{32}$/.test(value.target.account ?? '') || !/^[a-z0-9-]{1,58}$/.test(value.target.project ?? ''))) throw Error('invalid_direct_target');
-  let total = 0;
   for (const [name, file] of Object.entries(value.files)) {
     assertFilePath(name, { artifact: true });
     if (name === DIRECT_RECEIPT || !/^[a-f0-9]{64}$/.test(file.sha256 ?? '') || !Number.isSafeInteger(file.size) || file.size < 0 || file.size > 25 * 1024 * 1024) throw Error('invalid_direct_receipt');
-    total += file.size;
     if (!['_headers', '_redirects'].includes(name) && !/^[a-f0-9]{32}$/.test(value.manifest['/' + name] ?? '')) throw Error('incomplete_direct_manifest');
   }
-  if (total > MAX_DIRECT_OUTPUT_BYTES) throw Error('build_output_limit');
   for (const [route, hash] of Object.entries(value.manifest)) {
     if (!route.startsWith('/') || !value.files[route.slice(1)] || ['/_headers', '/_redirects'].includes(route) || !/^[a-f0-9]{32}$/.test(hash)) throw Error('invalid_direct_manifest');
   }
@@ -124,4 +156,37 @@ export async function retainPagesAssets(receipt, grant, fetchImpl = fetch) {
     if (!saved) return false;
   }
   return true;
+}
+
+/** Split uploadable files into runs bounded by bytes and file count, in a stable order. Control files travel in the receipt. */
+export function planUploadChunks(files, { maxBytes = UPLOAD_CHUNK_BYTES, maxFiles = UPLOAD_CHUNK_FILES } = {}) {
+  const chunks = []; let current = [], bytes = 0;
+  for (const name of Object.keys(files).filter(name => !['_headers', '_redirects'].includes(name)).sort()) {
+    const size = files[name].size;
+    if (current.length && (bytes + size > maxBytes || current.length >= maxFiles)) { chunks.push(current); current = []; bytes = 0; }
+    current.push(name); bytes += size;
+  }
+  if (current.length) chunks.push(current);
+  return chunks;
+}
+
+/**
+ * Move one chunk's files into an empty directory for the uploader, then always
+ * move them back. Renames stay on one filesystem, so nothing is copied.
+ */
+export async function withUploadChunk(root, directory, names, upload) {
+  const moved = [];
+  try {
+    await fs.mkdir(directory);
+    for (const name of names) {
+      assertFilePath(name, { artifact: true });
+      const target = path.join(directory, name);
+      await fs.mkdir(path.dirname(target), { recursive: true });
+      await fs.rename(path.join(root, name), target); moved.push(name);
+    }
+    return await upload(directory);
+  } finally {
+    for (const name of moved) await fs.rename(path.join(directory, name), path.join(root, name));
+    await fs.rm(directory, { recursive: true, force: true });
+  }
 }

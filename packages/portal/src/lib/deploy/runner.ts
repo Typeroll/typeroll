@@ -573,7 +573,9 @@ export async function materializeFixtures(
   const site = await store.getDoc<Site>(paths.site(orgId, siteId));
   if (!site) throw new Error('Site disappeared');
   const resolved = await resolvePublicationVersion(orgId, siteId, versionId);
-  await writeDoc(outDir, paths.site(orgId, siteId), site);
+  // The Turnstile secret stays on the server; forms get only the public site key below.
+  const { form_turnstile: _turnstile, ...buildSite } = site;
+  await writeDoc(outDir, paths.site(orgId, siteId), buildSite);
 
   // Apps: write ONLY the public projection of enabled apps (enabled flag +
   // each app's declared public config, e.g. the analytics beacon token).
@@ -697,6 +699,8 @@ export async function materializeFixtures(
     const { formEmbedInfo } = await import('../forms-signing');
     const { POW_BITS } = await import('../forms-signing');
     const formDocs = await store.listDocs<Record<string, unknown>>(paths.forms(orgId, siteId));
+    const { publicTurnstileSiteKey } = await import('../forms/turnstile');
+    const turnstileSiteKey = publicTurnstileSiteKey(site);
     for (const f of formDocs) {
       const id = (f as { id?: string }).id;
       if (!id) continue;
@@ -724,6 +728,7 @@ export async function materializeFixtures(
         submit_url: embed.submit_url,
         submit_token: embed.submit_token,
         pow_bits: POW_BITS,
+        ...(turnstileSiteKey ? { turnstile_site_key: turnstileSiteKey } : {}),
       });
     }
   }

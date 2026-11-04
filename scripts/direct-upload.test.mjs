@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt } from '../packages/portal/src/lib/builds/direct-upload.mjs';
+import { describeStaticOutput, outputMeasure, planUploadChunks, withUploadChunk, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt } from '../packages/portal/src/lib/builds/direct-upload.mjs';
 
 test('a thousand static files produce only a bounded receipt and preserve control files', async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'direct-static-'));
@@ -33,17 +33,47 @@ test('direct manifests reject dynamic files, private paths and invalid hashes', 
   }
 });
 
-test('direct receipts accept bounded sites above the legacy artifact ceiling', () => {
+test('direct receipts have no total size cap, only the Pages file count and file size limits', () => {
   const files = {}, manifest = {};
-  for (let i = 0; i < 20; i++) { const name = `document-${i}.pdf`; files[name] = { sha256: 'a'.repeat(64), size: 25 * 1024 * 1024 }; manifest['/' + name] = 'b'.repeat(32); }
-  assert.equal(Object.keys(validateDirectReceipt({ format: 1, files, manifest, controls: {} }).files).length, 20);
-  files.extra = { sha256: 'a'.repeat(64), size: 25 * 1024 * 1024 }; manifest['/extra'] = 'b'.repeat(32);
-  assert.throws(() => validateDirectReceipt({ format: 1, files, manifest, controls: {} }), /build_output_limit/);
+  // 40 files of 25 MiB is 1 GiB, above the former 512 MiB cap.
+  for (let i = 0; i < 40; i++) { const name = `document-${i}.pdf`; files[name] = { sha256: 'a'.repeat(64), size: 25 * 1024 * 1024 }; manifest['/' + name] = 'b'.repeat(32); }
+  assert.equal(Object.keys(validateDirectReceipt({ format: 1, files, manifest, controls: {} }).files).length, 40);
+  const oversized = { ...files, large: { sha256: 'a'.repeat(64), size: 25 * 1024 * 1024 + 1 } };
+  assert.throws(() => validateDirectReceipt({ format: 1, files: oversized, manifest: { ...manifest, '/large': 'b'.repeat(32) }, controls: {} }), /invalid_direct_receipt/);
+});
+
+test('large outputs are split into bounded upload runs without the control files', () => {
+  const files = { _headers: { size: 10 }, _redirects: { size: 10 } };
+  for (let i = 0; i < 7; i++) files[`media/${i}.png`] = { size: 100 };
+  files['index.html'] = { size: 50 };
+  const chunks = planUploadChunks(files, { maxBytes: 250, maxFiles: 10 });
+  assert.deepEqual(chunks, [['index.html', 'media/0.png', 'media/1.png'], ['media/2.png', 'media/3.png'], ['media/4.png', 'media/5.png'], ['media/6.png']]);
+  assert.deepEqual(planUploadChunks(files, { maxBytes: 1e9, maxFiles: 3 }).map(chunk => chunk.length), [3, 3, 2]);
+  // A single file larger than the run budget still gets its own run.
+  assert.deepEqual(planUploadChunks({ 'big.pdf': { size: 500 } }, { maxBytes: 100 }), [['big.pdf']]);
+  assert.deepEqual(planUploadChunks({ _headers: { size: 1 } }), []);
+});
+
+test('an upload run sees only its files, and every file returns afterwards even on failure', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'direct-chunk-'));
+  try {
+    await fs.mkdir(path.join(root, 'media'));
+    for (const name of ['index.html', 'media/a.png', 'media/b.png']) await fs.writeFile(path.join(root, name), name);
+    const listed = await withUploadChunk(root, path.join(root, '..', path.basename(root) + '-run'), ['media/a.png', 'index.html'], async directory => {
+      const names = []; for (const entry of await fs.readdir(directory, { recursive: true, withFileTypes: true })) if (entry.isFile()) names.push(path.relative(directory, path.join(entry.parentPath ?? entry.path, entry.name)));
+      return names.sort();
+    });
+    assert.deepEqual(listed, ['index.html', 'media/a.png']);
+    await assert.rejects(() => withUploadChunk(root, path.join(root, '..', path.basename(root) + '-fail'), ['media/b.png'], async () => { throw Error('uploader failed'); }), /uploader failed/);
+    for (const name of ['index.html', 'media/a.png', 'media/b.png']) assert.equal(await fs.readFile(path.join(root, name), 'utf8'), name);
+    await assert.rejects(() => fs.access(path.join(root, '..', path.basename(root) + '-fail')));
+  } finally { await fs.rm(root, { recursive: true, force: true }); }
 });
 
 test('the trusted supervisor invokes the official project uploader with only the asset JWT', async () => {
   const source = await fs.readFile(new URL('../packages/portal/src/lib/builds/executor.mjs', import.meta.url), 'utf8');
-  assert.match(source, /'pages', 'project', 'upload', dist/);
+  assert.match(source, /'pages', 'project', 'upload', directory/);
+  assert.match(source, /planUploadChunks\(description\.files\)/);
   // Wrangler's generic authentication gate needs its token variable as well;
   // both receive the same restricted asset JWT, never the customer's OAuth token.
   assert.match(source, /CF_PAGES_UPLOAD_JWT: grant\.jwt, CLOUDFLARE_API_TOKEN: grant\.jwt/);
@@ -119,4 +149,33 @@ test('large valid redirects survive description and receipt validation above 128
     await fs.writeFile(path.join(root, '_headers'), 'x'.repeat(128 * 1024 + 1));
     await assert.rejects(() => describeStaticOutput(root), /static_control_file_limit/);
   } finally { await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('a refused static output names the exceeded limit, its totals and the largest files', async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'direct-limit-'));
+  const logged = [], log = console.log; console.log = line => logged.push(String(line));
+  try {
+    await fs.mkdir(path.join(root, 'media'));
+    for (let i = 0; i < 12; i++) await fs.writeFile(path.join(root, 'media', `illustration-${i}.png`), Buffer.alloc(1000 + i));
+    await fs.writeFile(path.join(root, 'index.html'), '<p>home</p>');
+    await assert.rejects(() => describeStaticOutput(root, { bytes: 5000, files: 100, file_bytes: 25 * 1024 * 1024 }), /build_output_limit/);
+    const line = logged.find(value => value.startsWith('TYPEROLL_OUTPUT_LIMIT '));
+    const report = JSON.parse(line.slice('TYPEROLL_OUTPUT_LIMIT '.length));
+    assert.equal(report.limit, 'bytes'); assert.equal(report.max, 5000); assert.equal(report.files, 13);
+    assert.equal(report.largest.length, 10); assert.deepEqual(report.largest[0], { name: 'media/illustration-11.png', size: 1011 });
+    assert.equal(Object.keys(report.folders)[0], 'media');
+    // Within the limits the same output is described normally.
+    console.log = log;
+    assert.equal(Object.keys((await describeStaticOutput(root)).files).length, 13);
+  } finally { console.log = log; await fs.rm(root, { recursive: true, force: true }); }
+});
+
+test('an oversized file is named before the total, and memory stays bounded by the file limit', () => {
+  const measure = outputMeasure({ bytes: 10, files: 2, file_bytes: 4 });
+  for (const [name, size] of [['a', 1], ['big/b', 5], ['c', 1]]) measure.add(name, size);
+  assert.deepEqual(measure.exceeded(), { limit: 'file_bytes', max: 4, files: 3, bytes: 7, largest: [{ name: 'big/b', size: 5 }, { name: 'a', size: 1 }, { name: 'c', size: 1 }], folders: { big: 5, '(root)': 2 } });
+  const counted = outputMeasure({ bytes: 100, files: 2, file_bytes: 4 });
+  for (const name of ['a', 'b', 'c']) counted.add(name, 1);
+  assert.equal(counted.exceeded().limit, 'files');
+  assert.equal(outputMeasure().exceeded(), null);
 });

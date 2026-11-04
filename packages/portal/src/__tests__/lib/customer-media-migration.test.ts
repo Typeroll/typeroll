@@ -89,17 +89,16 @@ it('keeps a stable organization alias when a site gets its own media host and le
   expect(JSON.stringify(result.manifest)).not.toMatch(/synthetic-key|secret_access_key|X-Amz/);
 });
 
-it('packages media on the website origin and preserves shared aliases and frozen paths after CMS metadata is removed', async () => {
+it('serves media from the organization media host and preserves shared aliases and frozen paths after CMS metadata is removed', async () => {
   const mediaPath = `${paths.media('org', 'site')}/image`;
   await getStore().setDoc(mediaPath, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl,
     sha256: sha, public_path: '/archive/photo.png', storage: { provider: 'organization_r2',
       account_id: 'a'.repeat(32), bucket: 'customer-private', key: `private/media/abcdefghij/originals/${sha}/image.png`, state: 'ready' } });
   const first = await publicationMediaManifest('org', 'site', { html_content: `<img src="${oldUrl}">` }, 'site.demos.example.com');
   const organizationUrl = 'https://media.example.net/media/abcdefghij/archive/photo.png';
-  expect(first.manifest?.media_host).toBe('site.demos.example.com');
-  expect(first.manifest?.media_path_prefix).toBe('/media');
+  expect(first.manifest).toMatchObject({ delivery: 'r2', media_host: 'media.example.net', media_path_prefix: '/media/abcdefghij' });
   expect(first.manifest?.entries[0].aliases).toContainEqual({ url: organizationUrl, key: 'media/abcdefghij/archive/photo.png' });
-  expect(first.content.html_content).toBe('<img src="https://site.demos.example.com/media/archive/photo.png">');
+  expect(first.content.html_content).toBe(`<img src="${organizationUrl}">`);
   const config = await getSiteDomains('org', 'site');
   await saveSiteDomains('org', 'site', { revision: config.revision, website_host: 'www.example.com',
     media_host: 'images.example.com', media_path_prefix: '', dns_mode: 'external' });
@@ -113,6 +112,15 @@ it('packages media on the website origin and preserves shared aliases and frozen
   expect(next.manifest?.entries[0].source_key).toBe(first.manifest?.entries[0].source_key);
 });
 
+
+it('keeps media on the website when the organization has no media host', async () => {
+  await getStore().setDoc(organizationDomainConfigPath('org'), { ...(await getOrganizationDomains('org')), media_host: null });
+  await getStore().setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, sha256: sha,
+    public_path: '/archive/photo.png', storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: `private/media/abcdefghij/originals/${sha}/image.png`, state: 'ready' } });
+  const result = await publicationMediaManifest('org', 'site', { html_content: `<img src="${oldUrl}">` }, 'site.demos.example.com');
+  expect(result.manifest).toMatchObject({ delivery: 'static', media_host: 'site.demos.example.com', media_path_prefix: '/media' });
+  expect(result.content.html_content).toBe('<img src="https://site.demos.example.com/media/archive/photo.png">');
+});
 
 it('completes empty organizations immediately without a worker, storage calls or media DNS', async () => {
   const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Storage must not be called'));
@@ -314,8 +322,8 @@ it('rewrites image, srcset, background and download references without exposing 
   const content = { html: `<img src="${oldUrl}" srcset="${oldUrl} 640w"><a href="${oldUrl}">Download</a>`, css: `background-image:url('${oldUrl}')` };
   const result = await publicationMediaManifest('org', 'site', content, 'site.demos.example.com');
   expect(JSON.stringify(result.content)).not.toContain('/api/sites/');
-  expect(result.content.html.match(/site\.demos\.example\.com/g)).toHaveLength(3);
-  expect(result.content.css).toContain('https://site.demos.example.com/media/');
+  expect(result.content.html.match(/media\.example\.net\/media\/abcdefghij\//g)).toHaveLength(3);
+  expect(result.content.css).toContain('https://media.example.net/media/abcdefghij/');
   expect(content.html).toContain(oldUrl);
 });
 
@@ -331,7 +339,8 @@ it('resolves deferred media in the builder and keeps aliases across domain-only 
   await getStore().deleteDoc(`${paths.media('org', 'site')}/image`);
   const next = await publicationMediaManifest('org', 'site', frozen, 'next.example.com', frozen, { deferReferences: true });
   const ready = resolvePublicationReferences({ ...next.content, site_url: 'https://next.example.com', media_manifest: next.manifest, media: next.media });
-  expect(ready.pages[0].html).toContain('https://next.example.com/media/');
+  // A website-only change keeps images on the organization media host.
+  expect(ready.pages[0].html).toContain('https://media.example.net/media/abcdefghij/');
   expect(ready.pages[0].html).not.toContain('/api/sites/');
 });
 

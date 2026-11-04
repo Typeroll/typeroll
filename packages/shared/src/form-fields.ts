@@ -194,7 +194,8 @@ export type FormMessageKey =
   // Submit endpoint
   | 'payload_too_large' | 'rate_limited' | 'form_busy' | 'preview_refused' | 'missing_token'
   | 'not_configured' | 'invalid_token' | 'form_not_found' | 'no_steps' | 'bad_state' | 'too_fast'
-  | 'step_submitted' | 'action_failed' | 'failed' | 'page_ok' | 'page_error';
+  | 'step_submitted' | 'action_failed' | 'failed' | 'page_ok' | 'page_error'
+  | 'spam_check_required' | 'spam_check_failed';
 
 const FORM_MESSAGES: Record<FormMessageKey, { en: string; sv: string }> = {
   submit: { en: 'Send', sv: 'Skicka' },
@@ -235,6 +236,14 @@ const FORM_MESSAGES: Record<FormMessageKey, { en: string; sv: string }> = {
   no_steps: { en: 'This form has no steps configured.', sv: 'Formuläret har inga steg.' },
   bad_state: { en: 'Session expired — reload the page.', sv: 'Sessionen har gått ut — ladda om sidan.' },
   too_fast: { en: 'Slow down and try again.', sv: 'Vänta en stund och försök igen.' },
+  spam_check_required: {
+    en: 'Complete the check above the send button, then send again. If no check appears, reload the page.',
+    sv: 'Slutför kontrollen ovanför skicka-knappen och skicka igen. Ladda om sidan om ingen kontroll visas.',
+  },
+  spam_check_failed: {
+    en: 'We could not confirm that this was sent by a person. Try again.',
+    sv: 'Vi kunde inte bekräfta att svaret skickades av en människa. Försök igen.',
+  },
   step_submitted: {
     en: 'This step has already been submitted — reload the page.',
     sv: 'Det här steget är redan skickat — ladda om sidan.',

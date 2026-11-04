@@ -4,7 +4,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, DIRECT_RECEIPT } from './direct-upload.mjs';
+import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, planUploadChunks, withUploadChunk, DIRECT_RECEIPT } from './direct-upload.mjs';
 import { buildDiagnostic, secretValues, mediaFailureCode } from './diagnostics.mjs';
 import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, MAX_SEO_REPORT_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
 
@@ -380,13 +380,25 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
       if (typeof grant.jwt !== 'string' || grant.jwt.length > 16384) throw Error('invalid_pages_upload_grant');
       const manifestPath = path.join(temp, 'pages-manifest.json');
       const logPath = path.join(temp, 'wrangler.log'); await fs.symlink('/dev/null', logPath);
-      // The official uploader runs outside the untrusted source sandbox. It has
-      // an asset-only JWT, never the organization's Cloudflare API credential.
-      // Wrangler also requires its generic token variable at the authentication gate.
-      await command(process.execPath, [fileURLToPath(new URL('./node_modules/wrangler/bin/wrangler.js', import.meta.url)),
-        'pages', 'project', 'upload', dist, '--output-manifest-path', manifestPath], 300000,
-        { CF_PAGES_UPLOAD_JWT: grant.jwt, CLOUDFLARE_API_TOKEN: grant.jwt, CI: 'true', WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: logPath }, temp);
-      const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
+      // A large output is uploaded in bounded runs, each with a fresh grant and
+      // its own time limit, then deployed once. Pages stores assets by content
+      // hash, so a repeated run skips everything an earlier one already sent.
+      const chunks = planUploadChunks(description.files), manifest = {};
+      for (const [index, names] of chunks.entries()) {
+        if (index) { grant = await request('direct-upload', job.token, attempt); secretValues(grant, secrets); }
+        if (typeof grant.jwt !== 'string' || grant.jwt.length > 16384) throw Error('invalid_pages_upload_grant');
+        if (chunks.length > 1) console.log(`TYPEROLL_UPLOAD_CHUNK ${index + 1}/${chunks.length} files=${names.length} bytes=${names.reduce((total, name) => total + description.files[name].size, 0)}`);
+        await withUploadChunk(dist, path.join(temp, `upload-${index}`), names, async directory => {
+          await fs.rm(manifestPath, { force: true });
+          // The official uploader runs outside the untrusted source sandbox. It has
+          // an asset-only JWT, never the organization's Cloudflare API credential.
+          // Wrangler also requires its generic token variable at the authentication gate.
+          await command(process.execPath, [fileURLToPath(new URL('./node_modules/wrangler/bin/wrangler.js', import.meta.url)),
+            'pages', 'project', 'upload', directory, '--output-manifest-path', manifestPath], 300000,
+            { CF_PAGES_UPLOAD_JWT: grant.jwt, CLOUDFLARE_API_TOKEN: grant.jwt, CI: 'true', WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: logPath }, temp);
+          Object.assign(manifest, JSON.parse(await fs.readFile(manifestPath, 'utf8')));
+        });
+      }
       const receipt = mergeDirectReceipt(description, manifest, reused, grant.target);
       if (!await retainPagesAssets(reused, grant, fetchImpl)) console.log('TYPEROLL_MEDIA_CACHE availability index refresh failed; future builds may download files again');
       mediaReport.reused_files = Object.keys(reused.files).length;

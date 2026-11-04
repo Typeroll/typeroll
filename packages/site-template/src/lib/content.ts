@@ -556,6 +556,7 @@ export async function buildFormSource(
     submit_url?: string;
     submit_token?: string | null;
     pow_bits?: number;
+    turnstile_site_key?: string | null;
   };
   let forms: EnrichedForm[] = [];
   try {
@@ -571,7 +572,7 @@ export async function buildFormSource(
     onRender?.(form.steps!.flatMap((step) => step.blocks ?? []));
     return renderFormHtml(
       form,
-      { submit_url: form.submit_url ?? '/api/forms/submit', submit_token: form.submit_token ?? null },
+      { submit_url: form.submit_url ?? '/api/forms/submit', submit_token: form.submit_token ?? null, turnstile_site_key: form.turnstile_site_key ?? null },
       // A core/form block's own submit label wins over the form's.
       { registry, pow_bits: form.pow_bits ?? 0, lang, renderVersion, submit_label: block?.submit_label },
     );

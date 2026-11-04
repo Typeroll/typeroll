@@ -49,10 +49,17 @@ private. Editor/preview and retained public media aliases continue using that
 storage. No image binaries or credentials are committed to GitHub.
 
 During a customer build, fetch only the frozen publication's required media
-using scoped access, verify content hashes, generate required variants, and
-include public assets in the static output. Default publication URLs use the
-website's own origin and a safe media path. Publish pages and their assets as
-one deployment. Retain previously published paths where required by aliases;
+using scoped access, verify content hashes and generate required variants. When
+the organization has a shared media host and the site has no media host of its
+own, the build engine writes images directly to the public R2 bucket and the
+Pages deployment carries only pages; its size no longer grows with the media
+library. Objects are immutable and written before the deployment is finalized,
+so a page never references a missing image. Website-hosted media of earlier
+publications moves to its organization-host key, with one `/media/*` redirect.
+Customer publishing requires a media host for a site with media, so this is the
+normal path. Without any media host (publications by the CMS's own runner),
+public assets are included in the static output under the website's own origin
+and a safe media path. Retain previously published paths where required by aliases;
 reject collisions with pages or reserved output files. Never copy private
 originals merely because they exist in the bucket.
 

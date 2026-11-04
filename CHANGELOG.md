@@ -1,5 +1,44 @@
 # Changelog
 
+## 0.2.150 (candidate)
+
+- Background image preparation no longer stops for good when its build waits
+  behind a long publication. The build kept the 15-minute queue limit meant for
+  someone waiting on a publication, failed with `build_queue_timeout`, and the
+  job reported only "Image preparation stopped". Preparation builds now wait
+  until their six-hour deadline. Passing stops (an engine update, a runner
+  Cloudflare did not start, a lost lease, a step time limit, an interrupted
+  transfer) start a new round after 5 minutes, doubling up to an hour, and never
+  end the job. `get_media_preparation` reports `retry` and `error_code`. A job
+  that does fail names its cause, code and `failed_build_task`.
+- `build_progress` separates planned media windows from retries. Large media
+  sets are prepared in windows of about 12 minutes, so `attempt` rises in a
+  healthy build. `media_continuations`, `retries`, `attempt_limit` and
+  `deadline` now say which is which, and the portal shows "part N" instead of
+  "attempt N".
+- Static output on customer Cloudflare engines has no total size cap. The
+  512 MiB limit was Typeroll's own; Cloudflare Pages limits only 20,000 files
+  and 25 MiB per file. The engine uploads large outputs in runs of at most
+  256 MiB and 4,000 files, each with a fresh upload grant and time limit, and
+  deploys once. A build that exceeds a limit logs `TYPEROLL_OUTPUT_LIMIT` with
+  the limit, totals, largest files and largest folders. Organization build
+  engines must be updated to use chunked uploads.
+- Cloudflare Turnstile for site forms, against spam from bots that fill in
+  forms in a real browser. `set_form_spam_protection` stores a Turnstile
+  widget's site key and encrypted secret (checked with Cloudflare); published
+  forms render the widget and send its answer with the first step. Each form
+  requires Turnstile once its republished pages send a verified answer, so
+  earlier pages keep working until then. The forms runtime is version 3.
+- Images are served from the organization's shared media host by default. When
+  the organization has one and the site has no media host of its own, the build
+  engine writes images directly to the customer's public R2 bucket and the Pages
+  deployment carries only pages, so large media libraries no longer hit Pages
+  file limits or slow every publication. Images that earlier publications served
+  from the website under `/media` move there on the next publication, and one
+  `/media/*` 301 redirect keeps their old addresses working. Publication
+  verification treats redirected media paths as moved. Site icons on a separate
+  media host are read locally for the favicon files only.
+
 ## 0.2.149 (candidate)
 
 - A published form on the customer's domain can load its live choices again.
