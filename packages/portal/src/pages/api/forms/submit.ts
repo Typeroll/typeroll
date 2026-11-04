@@ -68,6 +68,7 @@ import { formStepBodyHtml, formStepPath, resolveRenderVersion } from '@typeroll/
 import type { BlockType, FormStep } from '@typeroll/shared';
 import { sanitizeBody } from '../../../lib/sanitize';
 import { BodyTooLargeError, parseFormBody, parseJsonBody, readBoundedBody } from '../../../lib/forms/request-body';
+import { enforceTurnstileForForm, TURNSTILE_RESPONSE_FIELD, turnstileForForm, verifyTurnstileResponse } from '../../../lib/forms/turnstile';
 
 const RATE_LIMIT_PER_IP = 30;
 const RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
@@ -264,6 +265,29 @@ export const POST: APIRoute = async (context) => {
   }
   if (!Array.isArray(form.steps) || form.steps.length === 0) {
     return respond(wantsHtml, { error: formMessage('no_steps', lang) }, 422, backUrl, lang);
+  }
+  // 5. Turnstile, when the site has it: checked on the first step only (a
+  // continuation carries its signed `_state`). A form requires an answer once
+  // its published pages have sent a valid one; until then pages published
+  // before the widget keep working. The answer is never stored.
+  const turnstileAnswer = typeof data[TURNSTILE_RESPONSE_FIELD] === 'string' ? data[TURNSTILE_RESPONSE_FIELD] as string : '';
+  delete data[TURNSTILE_RESPONSE_FIELD];
+  const continuing = (typeof data._state === 'string' && data._state !== '') || typeof data._retry === 'string';
+  if (!continuing) {
+    const turnstile = await turnstileForForm(orgId, siteId, formId);
+    if (turnstile) {
+      const refuse = (key: 'spam_check_required' | 'spam_check_failed') => {
+        const message = formMessage(key, lang);
+        if (wantsRuntimeProtocol) return jsonCors({ v: 1, ok: false, errors: [{ field: null, code: key, message }] }, 403);
+        return respond(wantsHtml, { error: message }, 403, backUrl, lang);
+      };
+      if (turnstileAnswer) {
+        const check = await verifyTurnstileResponse(turnstile.secret, turnstileAnswer, ip);
+        if (check.result === 'invalid') return refuse('spam_check_failed');
+        if (check.result === 'unavailable') console.warn(`[forms] Turnstile verification unavailable for site ${siteId} form ${formId} (${check.codes.join(',')}); accepted without it.`);
+        else if (!turnstile.enforced) await enforceTurnstileForForm(orgId, siteId, formId, turnstile.siteKey);
+      } else if (turnstile.enforced) return refuse('spam_check_required');
+    }
   }
   return handleStepsMode({ request, form, orgId, siteId, formId, data, wantsHtml, wantsProtocol, backUrl, lang });
 };

@@ -266,6 +266,12 @@ export interface Site {
    * not per version. See packages/portal/src/lib/form-submissions.ts.
    */
   form_submission_retention_days?: number | null;
+  /**
+   * Cloudflare Turnstile for this site's forms: the widget's public site key
+   * and its secret, encrypted at rest. Stored on the Site, not per version.
+   * See packages/portal/src/lib/forms/turnstile.ts.
+   */
+  form_turnstile?: { site_key: string; secret_encrypted: string; updated_at: string } | null;
   source_wp_url?: string | null;
   source_builder?: 'elementor' | 'breakdance' | 'gutenberg' | 'classic' | 'none';
   hosting_adapter: HostingAdapterName;

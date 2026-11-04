@@ -75,6 +75,30 @@ export const formTools: ToolDef[] = [
     }),
   },
   {
+    name: 'get_form_spam_protection',
+    description:
+      "Read the site's Cloudflare Turnstile setup for forms: provider, public site_key, secret_key masked as { set: true }, and enforced_forms (forms whose published pages have sent a verified Turnstile answer and now require one). provider is null when Turnstile is off. Admin permission required.",
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'integrations/form-spam-protection'))),
+  },
+  {
+    name: 'set_form_spam_protection',
+    description:
+      "Turn on Cloudflare Turnstile for every form on the site, against bots that fill in forms in a real browser. First create a Turnstile widget in the site owner's Cloudflare dashboard (Turnstile → Add widget, mode Managed, with the site's website hostnames), then pass its site key and secret key. The secret is checked with Cloudflare, encrypted and never returned; omit secret_key to keep the stored one for the same site_key. Publish the site afterwards: forms render the widget only after publishing. Each form keeps accepting submissions without Turnstile until its republished pages send the first verified answer, then requires it. Forms that post to an app or Extension are not covered. Admin permission required.",
+    inputSchema: {
+      site_key: z.string().min(10).describe('The Turnstile widget\'s site key (public).'),
+      secret_key: z.string().min(10).optional().describe('The Turnstile widget\'s secret key. Required for a new site_key.'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.put(siteId, 'integrations/form-spam-protection', {
+      provider: 'turnstile', site_key: args.site_key, ...(args.secret_key !== undefined ? { secret_key: args.secret_key } : {}),
+    }))),
+  },
+  {
+    name: 'delete_form_spam_protection',
+    description:
+      "Turn off Turnstile for the site's forms and delete the stored secret. Submissions are accepted without Turnstile at once; republish to remove the widget from pages. Admin permission required.",
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.del(siteId, 'integrations/form-spam-protection'))),
+  },
+  {
     name: 'get_form_capabilities',
     description:
       'List the action types a form can run after a submission (core "email" and "webhook" plus types provided by installed apps) and the prefill sources, each with its config field schema — the same choices as the portal\'s Forms editor. Read this before writing `actions` with create_form/update_form. Admin permission required.',

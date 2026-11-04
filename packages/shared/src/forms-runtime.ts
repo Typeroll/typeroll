@@ -27,7 +27,7 @@
 //     no-JS visitors keep working, bulk bots pay either CPU or throttle.
 //   - The runtime only ever posts to the form's baked action URL.
 
-export const FORMS_RUNTIME_VERSION = 2;
+export const FORMS_RUNTIME_VERSION = 3;
 
 export const FORMS_RUNTIME_JS = String.raw`(function(){
 "use strict";
@@ -43,6 +43,20 @@ function topError(form,msg){var el=$(".form-toplevel-error",form);if(el){el.text
 // site's language; see formMessage); the English fallbacks only cover
 // markup that predates an attribute.
 function msg(form,key,fallback){return form.getAttribute("data-msg-"+key)||fallback}
+// Cloudflare Turnstile (data-tr-turnstile holds the site key): one shared
+// script per page, loaded only when a form asks for it. Its answer goes with
+// the first step as cf-turnstile-response; the server decides whether one is
+// required, so a blocked script never stops a form that does not need it.
+function turnstileApi(){if(window.turnstile)return Promise.resolve(window.turnstile);if(!window.__trTurnstile){window.__trTurnstile=new Promise(function(resolve,reject){var s=document.createElement("script");s.src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit";s.async=true;s.onload=function(){window.turnstile?resolve(window.turnstile):reject(new Error("turnstile"))};s.onerror=function(){window.__trTurnstile=null;reject(new Error("turnstile"))};document.head.appendChild(s)})}return window.__trTurnstile}
+function turnstileFor(form){var box=$("[data-tr-turnstile]",form);if(!box)return null;var ts={id:null,token:"",waiters:[],started:false};
+  var settle=function(t){ts.token=t;var w=ts.waiters;ts.waiters=[];w.forEach(function(f){f(t)})};
+  ts.start=function(){if(ts.started)return;ts.started=true;turnstileApi().then(function(api){ts.id=api.render(box,{sitekey:box.getAttribute("data-tr-turnstile"),appearance:"interaction-only","response-field":false,callback:function(t){settle(t)},"expired-callback":function(){ts.token=""},"error-callback":function(){settle("")}})}).catch(function(){ts.started=false;settle("")})};
+  ts.get=function(){ts.start();if(ts.token)return Promise.resolve(ts.token);return new Promise(function(resolve){ts.waiters.push(resolve);setTimeout(function(){resolve(ts.token)},30000)})};
+  // An answer is single-use: after a post, ask for a fresh one.
+  ts.reset=function(){ts.token="";if(ts.id!==null&&window.turnstile)try{window.turnstile.reset(ts.id)}catch(e){}};
+  ts.done=function(){box.hidden=true};
+  if("IntersectionObserver" in window){var io=new IntersectionObserver(function(es){if(es.some(function(e){return e.isIntersecting})){io.disconnect();ts.start()}});io.observe(form)}
+  return ts}
 // Native constraint validation must only see the visible step. Hidden steps
 // stay in the one <form>, so their required controls would block every
 // submit ("An invalid form control is not focusable"). Disabled controls are
@@ -266,9 +280,11 @@ function init(form){
   var token=(form.elements._token||{}).value||"";
   var powP=null,powStart=function(){if(!powP&&bits>0&&window.crypto&&crypto.subtle){var bucket=Math.floor(Date.now()/6e5);powP=computePow(token+"."+bucket,bits).then(function(n){return bucket+"."+n})}};
   form.addEventListener("focusin",powStart,{once:true});
+  var ts=turnstileFor(form);if(ts)form.addEventListener("focusin",ts.start,{once:true});
   form.addEventListener("submit",async function(ev){
     ev.preventDefault();clearErrors(form);if(preview){previewSubmit(form);return}if(remote&&!form.__hydrated){topError(form,msg(form,"loading","Wait for the form to load before submitting. If loading failed, reload this page."));return}if(form.hasAttribute("data-live-options")&&!form.__optionsReady){topError(form,"Wait for the live choices to load, or reload this page.");return}powStart();
     var btn=$('[type="submit"]',form);if(btn)btn.disabled=true;
+    var firstStep=!(form.elements._state&&form.elements._state.value);
     try{
       var fd=new FormData(form);fd.set("_protocol","1");if(form.__retry)fd.set("_retry",form.__retry);
       // With Back, a visitor may send an earlier step again: name the step,
@@ -291,6 +307,7 @@ function init(form){
         });
       }
       if(powP){try{fd.set("_pow",await powP)}catch(e){}}
+      if(ts&&firstStep){var answer=await ts.get();if(answer)fd.set("cf-turnstile-response",answer)}
       var hdrs=Object.assign({Accept:"application/json"},sessParam?authHeaders(form):{});
       var res=await fetch(form.action,{method:"POST",body:fd,headers:hdrs});
       var out=await res.json().catch(function(){return null});
@@ -302,7 +319,7 @@ function init(form){
         var first=$("[data-invalid] .form-input, [data-invalid] input",form);if(first)first.focus();
         return;
       }
-      if(out.state&&form.elements._state)form.elements._state.value=out.state;
+      if(out.state&&form.elements._state){form.elements._state.value=out.state;if(ts)ts.done()}
       powP=null;if(bits>0)powStart();
       if(out.done){
         if(out.form_id)form.dispatchEvent(new CustomEvent("typeroll:form-success",{bubbles:true,detail:{form_id:out.form_id,results:out.results||[]}}));
@@ -316,7 +333,7 @@ function init(form){
       if(out.html)goToDynamic(form,out.html,out);
       else if(out.next_step)goToStep(form,out.next_step);
     }catch(e){topError(form,msg(form,"fail","Something went wrong."))}
-    finally{if(btn)btn.disabled=false}
+    finally{if(btn)btn.disabled=false;if(ts&&firstStep)ts.reset()}
   });
 }
 function boot(){$all("form[data-tr-form-el]").forEach(init)}

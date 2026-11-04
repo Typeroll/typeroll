@@ -213,6 +213,9 @@ across pages. Other hidden fields always send their `default`.
 ## Pitfalls
 
 - Do not hand-write a form, token, honeypot, or submit script.
+- Spam from bots that use a real browser gets past the token, honeypot and rate
+  limits. Turn on Cloudflare Turnstile with `set_form_spam_protection` (a widget
+  from the site owner's Cloudflare dashboard), then publish the site.
 - Do not put a raw `<script>` in page HTML; the sanitizer removes it.
 - Do not drop existing actions by accident: `actions` replaces the list.
 - Do not send every submitted field to a webhook by default; choose the
