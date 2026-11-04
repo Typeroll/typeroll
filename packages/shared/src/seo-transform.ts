@@ -77,6 +77,12 @@ export interface TransformOptions {
    * rendered width so the browser picks the 320w variant instead of 640w.
    */
   defaultSizes?: string;
+  /**
+   * False for markup outside the page body (header, footer): its images keep
+   * their variants and dimensions but never take the page's leading,
+   * high-priority slot from the body's first image.
+   */
+  leadingImage?: boolean;
 }
 
 /**
@@ -102,10 +108,10 @@ function expandArtDirection(html: string, lookup: MediaLookup, opts: TransformOp
     const sources: string[] = [];
     for (const fmt of ['avif', 'webp'] as const) {
       const srcset = mobile?.variants?.length ? buildVariantSrcset(mobile.variants, fmt) : null;
-      if (srcset && rawMedia) sources.push(`<source media="${rawMedia}" type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="100vw" />`);
+      if (srcset && rawMedia) sources.push(`<source media="${rawMedia}" type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="auto, 100vw" />`);
     }
     sources.push(`<source${sourceRaw.replace(/\s*\/$/, '')} />`);
-    const sizes = image.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES;
+    const sizes = image.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
     for (const fmt of ['avif', 'webp'] as const) {
       const srcset = desktop?.variants?.length ? buildVariantSrcset(desktop.variants, fmt) : null;
       if (srcset) sources.push(`<source type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="${escapeAttr(sizes)}" />`);
@@ -130,7 +136,7 @@ export function transformBodyForSeo(
   // (idempotency) or one the AUTHOR hand-wrote to opt out of the generic
   // sizes (e.g. custom media-queried <source>s). Re-wrapping produced
   // invalid nested <picture> markup — see the autopilot.se field report.
-  return html.replace(/<img\b([^>]*)\/?>/gi, (match, attrsRaw, offset) => {
+  const out = html.replace(/<img\b([^>]*)\/?>/gi, (match, attrsRaw, offset) => {
     // Are we inside an open <picture>? Find the nearest preceding picture
     // boundary across the WHOLE prefix (not a fixed 200-char window — an
     // author's <picture> with several long media-queried <source>s pushes
@@ -150,13 +156,14 @@ export function transformBodyForSeo(
     // Only the first visual image is the likely largest paint. Every later
     // image loads lazily: an eager second image (a banner after a short
     // article, the next card) competes with it for bandwidth.
-    const isLeading = index === 0;
+    const isLeading = index === 0 && opts.leadingImage !== false;
 
     // 1. loading / decoding defaults. Block templates mark their images
     //    lazy; the first visual image overrides that, since a lazy LCP
     //    image waits for layout before it starts loading.
     if (isLeading && attrs.loading === 'lazy') attrs.loading = 'eager';
-    if (!('loading' in attrs)) attrs.loading = isLeading ? 'eager' : 'lazy';
+    // Header and footer images keep their own loading: they are usually above the fold.
+    if (!('loading' in attrs) && opts.leadingImage !== false) attrs.loading = isLeading ? 'eager' : 'lazy';
     if (!('decoding' in attrs)) attrs.decoding = 'async';
     if (isLeading && attrs.loading !== 'lazy' && !('fetchpriority' in attrs)) attrs.fetchpriority = 'high';
     // High priority on a lazy image contradicts itself; lazy wins.
@@ -183,7 +190,7 @@ export function transformBodyForSeo(
     if (!insidePicture && src) {
       const meta = lookup.byUrl.get(src);
       if (meta?.variants && meta.variants.length > 0) {
-        const sizes = attrs.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES;
+        const sizes = attrs.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
         const sources: string[] = [];
         // <source> order matters: browsers pick the first they support.
         // AVIF first (smallest), then WebP, then fall through to <img>.
@@ -209,12 +216,34 @@ export function transformBodyForSeo(
         const variant = `${opts.cfImageOrigin!.replace(/\/$/, '')}/cdn-cgi/image/width=${w},format=auto/${src.slice(opts.cfImageOrigin!.length).replace(/^\//, '')}`;
         return `${variant} ${w}w`;
       }).join(', ');
-      const sizes = attrs.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES;
+      const sizes = attrs.sizes ?? layoutSizes(opts.defaultSizes ?? DEFAULT_IMAGE_SIZES);
       return `<picture><source type="image/webp" srcset="${escapeAttr(srcset)}" sizes="${escapeAttr(sizes)}" />${rebuilt}</picture>`;
     }
 
     return serializeImg(attrs);
   });
+  return withoutAutoSizesOnEagerImages(out);
+}
+
+/**
+ * Layout-derived `sizes` start with `auto`: browsers that support it use the
+ * width the image is actually rendered at, whatever block or custom block type
+ * places it, and the rest of the list is the fallback for browsers that do not.
+ */
+function layoutSizes(fallback: string): string {
+  return /^\s*auto\b/i.test(fallback) ? fallback : `auto, ${fallback}`;
+}
+
+/** `auto` only applies to lazy images; drop it from eager ones and their sources. */
+function withoutAutoSizesOnEagerImages(html: string): string {
+  const strip = (markup: string) => markup.replace(/(\ssizes=")auto\s*,\s*/gi, '$1');
+  return html
+    .replace(/<picture\b[^>]*>[\s\S]*?<\/picture>/gi, picture => /<img\b[^>]*\sloading="lazy"/i.test(picture) ? picture : strip(picture))
+    .replace(/<img\b[^>]*>/gi, (img, offset: number, all: string) => {
+      const before = all.slice(0, offset);
+      const insidePicture = before.lastIndexOf('<picture') > before.lastIndexOf('</picture>');
+      return insidePicture || /\sloading="lazy"/i.test(img) ? img : strip(img);
+    });
 }
 
 /**

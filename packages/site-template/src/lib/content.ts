@@ -450,7 +450,15 @@ export async function renderPartialHtml(
       })()
     : '';
 
-  const render = async (): Promise<string | null> => {
+  // Header and footer images get the same variants, dimensions and sizes as
+  // body images, without taking the body's leading image slot.
+  const optimise = async (html: string | null) => {
+    if (!html) return html;
+    const { buildMediaLookup, transformBodyForSeo } = await import('@typeroll/shared');
+    return transformBodyForSeo(html, buildMediaLookup(await getAllMedia()), { leadingImage: false });
+  };
+  const render = async (): Promise<string | null> => optimise(await renderUnoptimised());
+  const renderUnoptimised = async (): Promise<string | null> => {
     if (partial.content_mode === 'blocks' && partial.blocks?.length) {
       // The MERGED registry — core plus this site's own BlockTypes. Partials
       // used to render against the core library alone, so a custom or

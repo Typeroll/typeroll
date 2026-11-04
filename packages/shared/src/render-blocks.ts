@@ -513,7 +513,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     const maximum = positive(d.max_width) || (d.width === 'original' ? w : 0);
     d.image_size_style = maximum ? `max-width:min(100%,${maximum}px)` : '';
     // A capped image never renders wider than its maximum.
-    const sizes = maximum ? ` sizes="(max-width: ${maximum}px) 100vw, ${maximum}px"` : '';
+    const sizes = maximum ? ` sizes="auto, (max-width: ${maximum}px) 100vw, ${maximum}px"` : '';
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''}${sizes} loading="lazy" decoding="async" />`;
     // The marker lets the SEO transform add AVIF/WebP sources for both images.
     const picture = d.mobile_src ? `<picture data-tr-art-direction><source media="${mobileImageMedia(effectiveBlock.data, options)}" srcset="${escapeHtml(d.mobile_src)}" />${img}</picture>` : img;
@@ -572,7 +572,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     return value === undefined ? [] : [`--${field.name}:${value}`];
   });
   if (numericStyles.length) html = mergeAttrsIntoFirstTag(html, { style: numericStyles.join(';') }) ?? html;
-  html = substituteChildren(html, effectiveBlock, options);
+  html = substituteChildren(html, effectiveBlock, options, blockType);
   html = substituteSlots(html, effectiveBlock, blockType, options);
   // Insert prepared field rows after all template passes. Authored values and
   // row markup must never become a second Page-context template evaluation.
@@ -717,7 +717,10 @@ function renderGlobalBlockRef(block: Block, effectiveBlock: Block, options: Rend
  */
 export function withImageSizes(html: string, sizes: string | null): string {
   if (!sizes || !html.includes('<img')) return html;
-  return html.replace(/<img\b(?![^>]*\ssizes=)/g, `<img sizes="${escapeHtml(sizes)}"`);
+  // `auto` lets supporting browsers use the rendered width; the layout's own
+  // estimate after it is the fallback.
+  const value = /^\s*auto\b/i.test(sizes) ? sizes : `auto, ${sizes}`;
+  return html.replace(/<img\b(?![^>]*\ssizes=)/g, `<img sizes="${escapeHtml(value)}"`);
 }
 
 const COLUMN_RATIOS: Record<string, [number, number]> = { '1-1': [1, 1], '2-1': [2, 1], '1-2': [1, 2], '3-1': [3, 1], '1-3': [1, 3] };
@@ -736,9 +739,23 @@ const GRID_STACK_PX: Record<string, number> = { sm: 720, md: 900, lg: 1000 };
 
 /** Rendered width of one core/grid cell: full width once stacked, one column's share above. */
 export function gridItemSizes(data: Record<string, unknown>): string | null {
-  const columns = Math.min(6, Math.max(1, Math.round(Number(data.cols) || 3)));
+  const declared = Number(data.cols ?? data.columns);
+  if (!Number.isFinite(declared) || declared <= 1) return null;
+  const columns = Math.min(6, Math.max(1, Math.round(declared)));
   if (columns === 1) return null;
   return `(max-width: ${GRID_STACK_PX[String(data.stack_at ?? 'sm')] ?? 720}px) 100vw, ${Math.ceil(100 / columns)}vw`;
+}
+
+/**
+ * Column-count fallback for any container whose block type declares a `cols`
+ * or `columns` field: core/grid and custom block types that follow the same
+ * convention. Only declared fields are read.
+ */
+function columnFieldSizes(blockType: BlockType, data: Record<string, unknown>): string | null {
+  const field = blockType.schema?.find(candidate => candidate.name === 'cols' || candidate.name === 'columns');
+  if (!field) return null;
+  const stack = blockType.schema?.some(candidate => candidate.name === 'stack_at') ? data.stack_at : undefined;
+  return gridItemSizes({ cols: data[field.name], ...(stack !== undefined ? { stack_at: stack } : {}) });
 }
 
 /** Rendered width of one repeater item in a multi-column layout; null for single-column layouts. */
@@ -1550,10 +1567,13 @@ function substituteChildren(
   html: string,
   block: Block,
   options: RenderBlocksOptions,
+  blockType?: BlockType,
 ): string {
   if (!html.includes('{{children}}')) return html;
   let inner = block.children ? renderBlocks(block.children, options) : '';
-  if (block.type === 'core/grid') inner = withImageSizes(inner, gridItemSizes(block.data ?? {}));
+  // Any container that lays out its children in `cols` columns (core/grid,
+  // and custom block types that follow the same field convention).
+  if (blockType && block.type !== 'core/columns') inner = withImageSizes(inner, columnFieldSizes(blockType, block.data ?? {}));
   return html.split('{{children}}').join(inner);
 }
 
@@ -1571,7 +1591,7 @@ function substituteSlots(
     const slot = block.slots?.[slotIndex];
     if (!slot) return '';
     const html = renderBlocks(slot, options);
-    return blockType.id === 'core/columns' ? withImageSizes(html, columnSlotSizes(block.data ?? {}, slotIndex)) : html;
+    return withImageSizes(html, blockType.id === 'core/columns' ? columnSlotSizes(block.data ?? {}, slotIndex) : columnFieldSizes(blockType, block.data ?? {}));
   });
 }
 
