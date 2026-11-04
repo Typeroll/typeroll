@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- MCP connections no longer expire. A connection made by signing in lasts until
+  it is revoked in Account → AI connections, or until the person loses access;
+  the 30-day limit is gone. Refresh tokens are single-use and have no practical
+  expiry; one chain head per connection and client detects a replayed token and
+  revokes the connection. When a grant does end, the token error says whether it
+  was revoked or replayed and how to reconnect.
+
 ## 0.2.150 (candidate)
 
 - Background image preparation no longer stops for good when its build waits

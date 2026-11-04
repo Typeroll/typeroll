@@ -301,8 +301,10 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
   if (lookup.revoked_at) return null;
   if (!constantTimeHexEquals(lookup.key_hash, hashSecret(parsed.secret))) return null;
   if (lookup.personal_user_id) {
+    // A connection has no fixed lifetime: it lasts until revoked, and the
+    // checks below end it as soon as the person loses access.
     const createdAt = Date.parse(lookup.oauth_created_at || '');
-    if (!Number.isFinite(createdAt) || Date.now() >= createdAt + 30 * 24 * 60 * 60 * 1000) return null;
+    if (!Number.isFinite(createdAt)) return null;
     if (isFirebaseAdminConfigured()) {
       // Delegated credentials follow the person: a disabled account, revoked
       // tokens or an unconfirmed email address (same rule as portal sessions)
@@ -318,7 +320,7 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
   if (lookup.oauth_user_id) {
     const member = await organizationMembership(lookup.oauth_user_id, lookup.org_id);
     const createdAt = Date.parse(lookup.oauth_created_at || '');
-    if (!Number.isFinite(createdAt) || Date.now() >= createdAt + 30 * 24 * 60 * 60 * 1000) return null;
+    if (!Number.isFinite(createdAt)) return null;
     if (!member || !['owner', 'admin'].includes(member.role)) return null;
     if (isFirebaseAdminConfigured()) {
       try {

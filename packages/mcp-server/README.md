@@ -52,7 +52,7 @@ release. See the [model guide](https://typeroll.com/docs/tools/content-types/) a
   personal access with any role. No API key copying is needed. Confirm a site
   and version, use `select_site`, and carry its `site_context` on site calls.
   Revoke access in Account → AI connections. Permissions are checked live;
-  the connection expires after 30 days. Legacy OAuth grants remain scoped
+  the connection lasts until revoked. Legacy OAuth grants remain scoped
   as before until reconnecting. Manual bearer keys remain supported.
 - **Local stdio — launch the npm package.** Use a client that can run a local
   command with environment variables. Instructions below.

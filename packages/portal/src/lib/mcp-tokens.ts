@@ -7,7 +7,9 @@ import { paths } from '@typeroll/shared';
 import { getStore } from './datastore';
 
 const ACCESS_TTL_SECONDS = 60 * 60; // 1 hour
-const REFRESH_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days
+// A connection lasts until it is revoked: refresh tokens have no practical
+// expiry. Each one is single-use; its chain head below detects a replay.
+const REFRESH_TTL_SECONDS = 60 * 60 * 24 * 365 * 100;
 const CODE_TTL_SECONDS = 10 * 60; // 10 minutes
 
 type TokenKind = 'access' | 'refresh';
@@ -58,6 +60,8 @@ export interface IssueArgs {
   kind: TokenKind;
   clientId?: string;
   expiresAt?: number;
+  /** Token id; refresh rotation records it as the chain head. */
+  jti?: string;
 }
 
 /** Issue a credential bound to this portal's MCP endpoint audience. */
@@ -73,7 +77,7 @@ export function issueToken(args: IssueArgs): { token: string; expiresIn: number 
     kind: args.kind,
     iat: now,
     exp,
-    jti: crypto.randomBytes(8).toString('hex'),
+    jti: args.jti ?? newTokenId(),
   };
   if (args.clientId) {
     const nonce = crypto.randomBytes(12);
@@ -314,4 +318,30 @@ export async function exchangeAuthorizationCode(args: {
 /** A refresh credential is consumed once across every portal instance. */
 export async function consumeRefreshToken(token: VerifiedToken): Promise<boolean> {
   return getStore().createDocIfMissing(`mcp_refresh_uses/${crypto.createHash('sha256').update(token.jti).digest('hex')}`, { expires_at: token.exp * 1000 });
+}
+
+export function newTokenId(): string {
+  return crypto.randomBytes(8).toString('hex');
+}
+
+// One small document per connection and client holds the id of the only
+// refresh token that may be used next. Rotation moves it forward; any other
+// token of that chain is a replay. It replaces per-token use records, which
+// would never expire now that refresh tokens do not.
+function refreshHeadPath(prefix: string, clientId: string): string {
+  return `mcp_refresh_heads/${crypto.createHash('sha256').update(`${prefix}\n${clientId}`).digest('hex')}`;
+}
+
+/** A new authorization starts this client's chain; an older chain ends. */
+export async function startRefreshChain(prefix: string, clientId: string, jti: string): Promise<void> {
+  await getStore().setDoc(refreshHeadPath(prefix, clientId), { jti });
+}
+
+/** Accept a refresh token once and make `nextJti` the chain head. False means a replay. */
+export async function advanceRefreshChain(token: VerifiedToken & { clientId: string }, prefix: string, nextJti: string): Promise<boolean> {
+  const store = getStore(), path = refreshHeadPath(prefix, token.clientId);
+  if (await store.compareAndUpdateDoc<{ jti: string }>(path, current => current.jti === token.jti, { jti: nextJti })) return true;
+  // Tokens issued before chain heads existed are consumed once, then start a chain.
+  if (await store.getDoc(path)) return false;
+  return await consumeRefreshToken(token) && store.createDocIfMissing(path, { jti: nextJti });
 }

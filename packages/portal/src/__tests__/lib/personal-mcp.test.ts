@@ -143,22 +143,37 @@ it('keeps read-only site shares read-only and checks canonical revocation even w
   expect((await requireApiKey(request('sites/shared-site/pages', 'outside'), 'shared-site')).ok).toBe(false);
 });
 
-it('expires a connection absolutely and revokes a replayed personal refresh chain', async () => {
-  const { issueToken } = await import('../../lib/mcp-tokens');
+it('keeps a connection until it is revoked, renews refresh and revokes a replayed refresh chain', async () => {
+  const { issueToken, verifyToken } = await import('../../lib/mcp-tokens');
   const { POST: exchange } = await import('../../pages/api/mcp/oauth/token');
   const audience = `${origin}/api/mcp`;
   const clientId = signClientId(['https://client.test/callback']);
-  const refresh = issueToken({ apiKey: token, audience, kind: 'refresh', clientId });
+  // A connection approved long ago keeps working.
+  const old = await createPersonalConnection('person', 'Old');
+  await getStore().updateDoc(paths.apiKeyLookupEntry(old.prefix), { oauth_created_at: new Date(Date.now() - 400 * 86400000).toISOString() });
+  expect(await verifyApiToken(old.token)).not.toBeNull();
+  // A refresh token close to its end gets a full new lifetime on rotation.
+  const refresh = issueToken({ apiKey: token, audience, kind: 'refresh', clientId, expiresAt: Math.floor(Date.now() / 1000) + 60 });
   const redeem = () => exchange({ request: new Request(`${origin}/api/mcp/oauth/token`, {
     method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refresh.token, client_id: clientId }),
   }) } as never) as Promise<Response>;
-  expect((await redeem()).status).toBe(200);
-  expect((await redeem()).status).toBe(400);
+  const first = await redeem();
+  expect(first.status).toBe(200);
+  const firstBody = await first.json();
+  const rotated = verifyToken(firstBody.refresh_token, audience);
+  expect(rotated!.exp - Date.now() / 1000).toBeGreaterThan(50 * 365 * 86400);
+  // The rotated token works once more; the chain head moved with it.
+  const next = await exchange({ request: new Request(`${origin}/api/mcp/oauth/token`, {
+    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: firstBody.refresh_token, client_id: clientId }),
+  }) } as never) as Response;
+  expect(next.status).toBe(200);
+  // Replaying the used refresh token revokes the connection and says why.
+  const replay = await redeem();
+  expect(replay.status).toBe(400);
+  expect((await replay.json()).error_description).toMatch(/used twice.*Reconnect Typeroll/);
   expect(await verifyApiToken(token)).toBeNull();
-  const fresh = await createPersonalConnection('person', 'Expired');
-  await getStore().updateDoc(paths.apiKeyLookupEntry(fresh.prefix), { oauth_created_at: new Date(Date.now() - 31 * 86400000).toISOString() });
-  expect(await verifyApiToken(fresh.token)).toBeNull();
 });
 
 it('allows personal editor block authoring but keeps site instructions administrator-managed and versioned', async () => {

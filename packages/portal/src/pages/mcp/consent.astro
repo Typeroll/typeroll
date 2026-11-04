@@ -29,7 +29,7 @@ const oauthFields = [...params.entries()].filter(([name]) => ['client_id', 'redi
         <p>Choose a site with your AI assistant before working. It can read content, make changes and perform actions allowed by your role. Review changes before saving or publishing.</p>
         <form method="POST" action="/api/mcp/oauth/complete" class="stack">
           {oauthFields.map(([name, value]) => <input type="hidden" name={name} value={value} />)}
-          <p class="muted text-sm">No API key copying is needed. Revoke this connection in Account → AI connections. Connections expire after 30 days; reconnect to continue.</p>
+          <p class="muted text-sm">No API key copying is needed. Revoke this connection in Account → AI connections. The connection lasts until you revoke it.</p>
           <div style="display:flex; gap:0.75rem; flex-wrap:wrap;">
             <button type="submit" class="btn" name="decision" value="allow">Allow access</button>
             <button type="submit" class="btn btn--ghost" name="decision" value="deny">Cancel</button>

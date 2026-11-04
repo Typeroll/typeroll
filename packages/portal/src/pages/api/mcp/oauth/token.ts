@@ -12,7 +12,7 @@ import { authClientAddress, limitAuthRequest, readAuthBody } from '../../../../l
 
 import type { APIRoute } from 'astro';
 import { verifyApiToken, revokeVerifiedConnection } from '../../../../lib/api-keys';
-import { issueToken, verifyToken, exchangeAuthorizationCode, consumeRefreshToken } from '../../../../lib/mcp-tokens';
+import { issueToken, verifyToken, exchangeAuthorizationCode, newTokenId, startRefreshChain, advanceRefreshChain } from '../../../../lib/mcp-tokens';
 
 export const prerender = false;
 
@@ -70,10 +70,12 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     // exchange can't slip through.
     const live = await verifyApiToken(apiKey);
     if (!live) {
-      return err('invalid_grant', 'Underlying API key has been revoked');
+      return err('invalid_grant', 'This Typeroll connection was revoked, or its account no longer has access. Reconnect Typeroll in your assistant’s connector settings.');
     }
     const access = issueToken({ apiKey, audience, kind: 'access', clientId: body.client_id });
-    const refresh = issueToken({ apiKey, audience, kind: 'refresh', clientId: body.client_id });
+    const jti = newTokenId();
+    const refresh = issueToken({ apiKey, audience, kind: 'refresh', clientId: body.client_id, jti });
+    if (body.client_id) await startRefreshChain(live.prefix, body.client_id, jti);
     return new Response(
       JSON.stringify({
         token_type: 'Bearer',
@@ -91,19 +93,20 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     if (!refreshToken) return err('invalid_request', 'refresh_token required');
     const verified = verifyToken(refreshToken, audience);
     if (!verified || verified.kind !== 'refresh') {
-      return err('invalid_grant', 'Refresh token is invalid or expired');
+      return err('invalid_grant', 'This Typeroll connection has expired or its refresh token is invalid. Reconnect Typeroll in your assistant’s connector settings.');
     }
     if (verified.clientId && body.client_id !== verified.clientId) return err('invalid_grant', 'Client does not match this connection');
     const live = await verifyApiToken(verified.apiKey);
     if (!live) {
-      return err('invalid_grant', 'Underlying API key has been revoked');
+      return err('invalid_grant', 'This Typeroll connection was revoked, or its account no longer has access. Reconnect Typeroll in your assistant’s connector settings.');
     }
-    if (verified.clientId && !await consumeRefreshToken(verified)) {
+    const nextJti = newTokenId();
+    if (verified.clientId && !await advanceRefreshChain({ ...verified, clientId: verified.clientId }, live.prefix, nextJti)) {
       await revokeVerifiedConnection(live);
-      return err('invalid_grant', 'Refresh token already used; reconnect your tool');
+      return err('invalid_grant', 'This refresh token was used twice, so Typeroll revoked the connection to protect it. Reconnect Typeroll in your assistant’s connector settings.');
     }
     const access = issueToken({ apiKey: verified.apiKey, audience, kind: 'access', clientId: verified.clientId });
-    const refresh = verified.clientId ? issueToken({ apiKey: verified.apiKey, audience, kind: 'refresh', clientId: verified.clientId, expiresAt: verified.exp }) : null;
+    const refresh = verified.clientId ? issueToken({ apiKey: verified.apiKey, audience, kind: 'refresh', clientId: verified.clientId, jti: nextJti }) : null;
     return new Response(
       JSON.stringify({
         token_type: 'Bearer',
