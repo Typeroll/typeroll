@@ -34,6 +34,8 @@ vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completed
 vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload, finalizeDirectUpload: mocks.direct }));
 vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify, verifyCustomerCandidate: mocks.candidateVerification, saveCustomerVerification: mocks.verificationPlan }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
+const mediaDomains = vi.hoisted(() => vi.fn(async () => true));
+vi.mock('../../lib/publishing/media-domain', () => ({ preparePublicMediaDomains: mediaDomains }));
 const resanitize = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/media/svg-media', async original => ({ ...await original<object>(), resanitizeStoredSvgMedia: resanitize }));
 const redirectProbe = vi.hoisted(() => vi.fn(async () => ({ ok: true, status: 301, location: null as string | null })));
@@ -710,6 +712,41 @@ it('keeps direct publication waiting for customer verification, then runs only b
   expect(mocks.verify.mock.calls.length).toBeGreaterThanOrEqual(2);
   expect(mocks.verify.mock.calls.every(call => call[2] === 'bounded-probes' && call[4] === true)).toBe(true);
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', deploy_url: 'https://www.example.com' });
+});
+
+it('attaches and verifies the media host before the deployment replaces the live site', async () => {
+  const store = getStore();
+  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
+  await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<img src="https://media.example.com/photo.png" alt="Photo">' });
+  await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12,
+    storage: { provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'originals', key: 'photo.png' } });
+  const domains = await getSiteDomains('org', 'site');
+  await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', media_host: 'media.example.org', media_path_prefix: '', dns_mode: 'automatic' });
+  await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'www.example.com', media_host: 'media.example.org', media_path_prefix: '' } });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
+  mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  await store.setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
+  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
+  mocks.verificationPlan.mockResolvedValue({ verification_checks_key: 'customer-checks', probe_checks_key: 'bounded-probes', static_controls_sha256: 'controls' });
+  mocks.direct.mockImplementation(async () => { complete(); return mocks.deployment; });
+  // The new media host does not serve the files yet: the live site must stay as it is.
+  mediaDomains.mockResolvedValue(false);
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(mediaDomains).toHaveBeenCalledWith('org', expect.objectContaining({ media_host: 'media.example.org', delivery: 'r2' }));
+  expect(mocks.direct).not.toHaveBeenCalled();
+  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'distributing media' });
+  // Once it serves them, the deployment goes ahead, and media is not prepared again.
+  mediaDomains.mockClear(); mediaDomains.mockResolvedValue(true);
+  mocks.probe.mockResolvedValue(true); mocks.candidateVerification.mockResolvedValue(true); mocks.verify.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  expect(mocks.direct).toHaveBeenCalledTimes(1);
+  expect(mediaDomains).toHaveBeenCalledTimes(1);
+  expect(mediaDomains.mock.invocationCallOrder[0]).toBeLessThan(mocks.direct.mock.invocationCallOrder[0]!);
+  expect((await store.getDoc<any>(jobPath)).git_publication.public_media_prepared).toBe(true);
 });
 
 it('requires an engine update before queuing a new shared publication on the legacy supervisor', async () => {
