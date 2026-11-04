@@ -89,6 +89,53 @@ export async function renderShareImage(bytes, background = '#ffffff') {
     .toBuffer();
 }
 
+// Large raster share images (SE-10): a 2048 px PNG makes a 4 MB og:image.
+// Pages that share one get a JPEG copy about 1200 px wide, made from the
+// image's own prepared WebP variant (never the original, never upscaled), so
+// the srcset keeps every large variant for sharp on-page display.
+const RASTER_SHARE = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const SHARE_MAX_BYTES = 300_000;
+const MAX_DERIVATIVES = 2_000;
+
+/** True when some page or the site may share this entry and it is a raster image too large to share as it is. */
+export function needsShareDerivative(publication, entry, width, sizeBytes = entry.size_bytes) {
+  if (!RASTER_SHARE.has(essence(entry.mime_type)) || !(Number(sizeBytes) > SHARE_MAX_BYTES || Number(width) > SHARE_WIDTH)) return false;
+  for (const source of shareImageSources(publication)) if (matchesEntry(publication, entry, source)) return true;
+  return false;
+}
+
+/** Of the prepared variant widths, the one a share copy is made from: the smallest at least 1200 px, else the largest. */
+export function shareVariantWidth(widths) {
+  const sorted = [...widths].filter(Number.isSafeInteger).sort((a, b) => a - b);
+  return sorted.find(width => width >= SHARE_WIDTH) ?? sorted.at(-1) ?? null;
+}
+
+/** The prepared variant a large raster share image is copied from, or null when the image is fine as it is. */
+export function shareDerivativeSource(publication, url) {
+  const resolved = publication.reference_mapping?.media?.find(([from]) => from === url)?.[1] ?? url;
+  const item = (publication.media ?? []).find(candidate => candidate.cdn_url === resolved);
+  if (!item || !RASTER_SHARE.has(essence(item.mime_type))) return null;
+  if (!(Number(item.size_bytes) > SHARE_MAX_BYTES || Number(item.width) > SHARE_WIDTH)) return null;
+  const variants = (item.variants ?? []).filter(variant => variant.format === 'webp' && typeof variant.cdn_url === 'string'
+    && /^[a-f0-9]{64}$/.test(variant.sha256 ?? '') && Number.isSafeInteger(variant.width));
+  if (!variants.length) return null;
+  const width = shareVariantWidth(variants.map(variant => variant.width));
+  const chosen = variants.find(variant => variant.width === width);
+  return { url: chosen.cdn_url, sha256: chosen.sha256, size_bytes: chosen.size_bytes };
+}
+
+/** A JPEG at most 1200 px wide, keeping the aspect ratio, under about 300 kB. */
+export async function renderShareDerivative(bytes) {
+  const options = { limitInputPixels: 40_000_000, failOn: 'error' };
+  let quality = 82, output;
+  do {
+    output = await sharp(bytes, options).rotate().resize({ width: SHARE_WIDTH, withoutEnlargement: true })
+      .flatten({ background: '#ffffff' }).jpeg({ quality, mozjpeg: true }).toBuffer({ resolveWithObject: true });
+    quality -= 10;
+  } while (output.data.length > SHARE_MAX_BYTES && quality >= 52);
+  return { bytes: output.data, width: output.info.width, height: output.info.height };
+}
+
 const decodeAttr = value => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 const encodeAttr = value => value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 const OG_IMAGE = /<meta\s+property="og:image"\s+content="([^"]*)"\s*\/?>/;
@@ -98,7 +145,7 @@ const OG_IMAGE = /<meta\s+property="og:image"\s+content="([^"]*)"\s*\/?>/;
  * to a PNG copy. A copy that cannot be made leaves the page as it was: the
  * share image is never a reason to fail a publication.
  */
-export async function writeShareImages(dist, publication, readImage) {
+export async function writeShareImages(dist, publication, readImage, readVariant = async () => null) {
   const background = backgroundColor(publication.settings);
   const rendered = new Map();
   async function shareUrl(url) {
@@ -122,6 +169,35 @@ export async function writeShareImages(dist, publication, readImage) {
     rendered.set(url, result);
     return result;
   }
+  const derived = new Map();
+  async function derivative(url) {
+    if (derived.has(url)) return derived.get(url);
+    let result = null;
+    const source = shareDerivativeSource(publication, url);
+    try {
+      if (source && derived.size < MAX_DERIVATIVES) {
+        const bytes = await readVariant(source);
+        if (bytes && createHash('sha256').update(bytes).digest('hex') === source.sha256) {
+          const copy = await renderShareDerivative(Buffer.from(bytes));
+          const relative = `/_assets/share/share-${digest(copy.bytes)}.jpg`;
+          await fs.mkdir(path.join(dist, '_assets/share'), { recursive: true });
+          await fs.writeFile(path.join(dist, relative), copy.bytes);
+          result = { url: new URL(relative, publication.site_url).href, width: copy.width, height: copy.height };
+        }
+      }
+    } catch (error) {
+      console.warn(`share_image_copy_skipped: ${error instanceof Error ? error.name : 'error'}`);
+    }
+    derived.set(url, result);
+    return result;
+  }
+  const replaceTags = (html, url, type, width, height) => {
+    const attr = encodeAttr(url);
+    return html
+      .replace(/<meta\s+property="og:image:(?:type|width|height)"\s+content="[^"]*"\s*\/?>/g, '')
+      .replace(OG_IMAGE, `<meta property="og:image" content="${attr}"><meta property="og:image:type" content="${type}"><meta property="og:image:width" content="${width}"><meta property="og:image:height" content="${height}">`)
+      .replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*("\s*\/?>)/, `$1${attr}$2`);
+  };
   let pages = 0;
   async function rewrite(directory) {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
@@ -133,17 +209,17 @@ export async function writeShareImages(dist, publication, readImage) {
       if (!match) continue;
       const original = decodeAttr(match[1]);
       const entryMatch = publication.media_manifest?.entries.some(candidate => isShareImageEntry(publication, candidate) && matchesEntry(publication, candidate, original));
-      if (!entryMatch) continue;
-      const replacement = await shareUrl(original);
-      if (!replacement) continue;
-      const attr = encodeAttr(replacement);
-      const next = html
-        .replace(/<meta\s+property="og:image:(?:type|width|height)"\s+content="[^"]*"\s*\/?>/g, '')
-        .replace(OG_IMAGE, `<meta property="og:image" content="${attr}"><meta property="og:image:type" content="image/png"><meta property="og:image:width" content="${SHARE_WIDTH}"><meta property="og:image:height" content="${SHARE_HEIGHT}">`)
-        .replace(/(<meta\s+name="twitter:image"\s+content=")[^"]*("\s*\/?>)/, `$1${attr}$2`);
+      let next = html;
+      if (entryMatch) {
+        const replacement = await shareUrl(original);
+        if (replacement) next = replaceTags(html, replacement, 'image/png', SHARE_WIDTH, SHARE_HEIGHT);
+      } else {
+        const copy = await derivative(original);
+        if (copy) next = replaceTags(html, copy.url, 'image/jpeg', copy.width, copy.height);
+      }
       if (next !== html) { await fs.writeFile(file, next); pages++; }
     }
   }
   await rewrite(dist);
-  return { pages, images: [...rendered.values()].filter(Boolean).length };
+  return { pages, images: [...rendered.values(), ...derived.values()].filter(Boolean).length };
 }

@@ -4,7 +4,8 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import sharp from 'sharp';
-import { isShareImageEntry, readFrozenShareImage, renderShareImage, shareImageSources, writeShareImages, SHARE_WIDTH, SHARE_HEIGHT } from './fixtures/static-publication/share-images.mjs';
+import { createHash } from 'node:crypto';
+import { isShareImageEntry, needsShareDerivative, readFrozenShareImage, renderShareDerivative, renderShareImage, shareDerivativeSource, shareImageSources, shareVariantWidth, writeShareImages, SHARE_WIDTH, SHARE_HEIGHT } from './fixtures/static-publication/share-images.mjs';
 
 const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="200" height="40" viewBox="0 0 200 40"><rect width="200" height="40" fill="#c60075"/></svg>');
 const entry = { id: 'logo', mime_type: 'image/svg+xml', cdn_url: 'https://media.example/s/logo.svg', public_path: '/s/logo.svg', aliases: [] };
@@ -83,3 +84,41 @@ test('frozen share images only read verified, locally prepared manifest media', 
   assert.equal(await readFrozenShareImage(pub, files, 'https://evil.example/s/logo.svg'), null);
   assert.equal(await readFrozenShareImage(pub, [{ ...files[0], reused: true }], entry.cdn_url), null);
 }));
+
+test('a large raster share image is copied from its 1920 WebP variant as a ~1200 px JPEG; small ones stay', () => fixture(async dir => {
+  const webp = await sharp({ create: { width: 1920, height: 1280, channels: 3, background: '#3366aa' } }).webp().toBuffer();
+  const sha = createHash('sha256').update(webp).digest('hex');
+  const large = { id: 'large', mime_type: 'image/png', cdn_url: 'https://media.example/s/large.png', size_bytes: 4_000_000, width: 2048,
+    variants: [{ width: 1024, format: 'webp', sha256: 'a'.repeat(64), cdn_url: 'https://media.example/s/large.png.w1024.webp' },
+      { width: 1920, format: 'webp', sha256: sha, cdn_url: 'https://media.example/s/large.png.w1920.webp' }] };
+  const small = { id: 'small', mime_type: 'image/jpeg', cdn_url: 'https://media.example/s/share.jpg', size_bytes: 90_000, width: 1200, variants: [] };
+  const pub = { site_url: 'https://site.example', settings: {}, contentTypes: [], media: [large, small],
+    pages: [{ og_image: large.cdn_url }, { og_image: small.cdn_url }], media_manifest: { entries: [] } };
+  assert.equal(shareVariantWidth([320, 640, 1024, 1920]), 1920);
+  assert.equal(shareVariantWidth([320, 640, 1024]), 1024);
+  assert.equal(needsShareDerivative(pub, { ...large, aliases: [] }, 2048), true);
+  assert.equal(needsShareDerivative(pub, { ...small, aliases: [] }, 1200), false);
+  assert.deepEqual(shareDerivativeSource(pub, large.cdn_url), { url: large.variants[1].cdn_url, sha256: sha, size_bytes: undefined });
+  assert.equal(shareDerivativeSource(pub, small.cdn_url), null);
+  const copy = await renderShareDerivative(webp);
+  assert.deepEqual([copy.width, copy.height], [1200, 800]);
+  assert.ok(copy.bytes.length < 300_000);
+  await fs.writeFile(path.join(dir, 'index.html'), page(large.cdn_url));
+  await fs.mkdir(path.join(dir, 'small'));
+  await fs.writeFile(path.join(dir, 'small/index.html'), page(small.cdn_url));
+  const reads = [];
+  const result = await writeShareImages(dir, pub, async () => null, async source => { reads.push(source.url); return webp; });
+  assert.deepEqual(reads, [large.variants[1].cdn_url]);
+  assert.deepEqual(result, { pages: 1, images: 1 });
+  const html = await fs.readFile(path.join(dir, 'index.html'), 'utf8');
+  assert.match(html, /property="og:image" content="https:\/\/site\.example\/_assets\/share\/share-[a-f0-9]{20}\.jpg"/);
+  assert.match(html, /og:image:type" content="image\/jpeg"/);
+  assert.match(html, /og:image:width" content="1200"/);
+  assert.match(html, /og:image:height" content="800"/);
+  assert.match(html, /name="twitter:image" content="https:\/\/site\.example\/_assets\/share\//);
+  assert.equal(await fs.readFile(path.join(dir, 'small/index.html'), 'utf8'), page(small.cdn_url));
+  // Bytes that do not match the variant's hash are never used.
+  await fs.writeFile(path.join(dir, 'index.html'), page(large.cdn_url));
+  assert.deepEqual(await writeShareImages(dir, pub, async () => null, async () => Buffer.from('tampered')), { pages: 0, images: 0 });
+}));
+

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+- Images in multi-column layouts load a fitting variant. Repeater items in a
+  grid, masonry, carousel or justified layout, and blocks in either side of
+  `core/columns`, get a `sizes` that matches their column width until the layout
+  stacks, and a `core/image` with a maximum width never asks for more. An image
+  that already sets `sizes` keeps it. Before, every image used the generic
+  "(max-width: 768px) 100vw, 800px", so a 300 px card loaded a 1024 px variant.
+- Large share images are no longer shared as the uploaded original. When a
+  page's og:image is a JPEG, PNG or WebP over 300 kB or wider than 1200 px, the
+  build makes a JPEG copy at most 1200 px wide (aspect ratio kept, never
+  upscaled, under about 300 kB) from the image's own prepared WebP variant, and
+  points og:image, og:image:width/height and twitter:image at it. Smaller share
+  images stay as they are, and the page's srcset still offers every large
+  variant. The copy travels with the publication; no build engine update is
+  needed.
+
 ## 0.2.150 (candidate)
 
 - Background image preparation no longer stops for good when its build waits
