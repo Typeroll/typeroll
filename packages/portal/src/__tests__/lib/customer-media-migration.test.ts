@@ -57,7 +57,7 @@ it('does not switch an original whose destination fails byte verification', asyn
   vi.mocked(copyWithTransferService).mockRejectedValue(new ConnectionError('The copied file does not match the original.', 422, 'media_integrity_failed'));
   await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
   expect((await getStore().getDoc<any>(mediaPath)).storage.provider).toBe('draft_r2');
-  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'failed', copied_files: 0, failed_files: 1,
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 0, failed_files: 1,
     failed_media: [{ site_id: 'site', media_id: 'image', code: 'media_integrity_failed' }] });
 });
 
@@ -304,13 +304,13 @@ it('retries an interrupted transfer automatically and pauses after three unsucce
     const job = (await store.listDocs<any>('publishing_media_migrations'))[0];
     await store.updateDoc(`publishing_media_migrations/${job.id}`, { retry_at: 0 });
     await runMediaMigrationBatch('org', 'site');
-    expect((await mediaMigrationStatus('org'))?.state).toBe(attempt === 3 ? 'failed' : 'queued');
+    expect((await mediaMigrationStatus('org'))?.state).toBe(attempt === 3 ? 'complete' : 'queued');
   }
   // The third attempt sets the file aside with its own reason instead of blaming R2 access.
   const status = await mediaMigrationStatus('org');
   expect(status?.error).toContain('1 file could not be copied');
   expect(status).toMatchObject({ failed_files: 1, updated_at: expect.any(String),
-    sites: [{ site_id: 'site', state: 'failed', failed_files: 1 }], failed_media: [{ media_id: 'image', code: 'media_transfer_interrupted' }] });
+    sites: [{ site_id: 'site', state: 'complete', failed_files: 1 }], failed_media: [{ media_id: 'image', code: 'media_transfer_interrupted' }] });
 });
 
 it('lets only one worker copy while a duplicate delivery observes the active lease', async () => {
@@ -505,7 +505,8 @@ it('sets aside a source the transfer service refuses, finishes the rest, and ret
   });
   await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
   const status = await mediaMigrationStatus('org');
-  expect(status).toMatchObject({ state: 'failed', failed_files: 1, copied_files: 1, failed_media: [{ media_id: 'dead', filename: 'q.jpg', code: 'media_source_unavailable', message: 'The original file could not be downloaded.' }] });
+  // Set-aside files are listed with their reason; they do not leave the migration failed (FI-10).
+  expect(status).toMatchObject({ state: 'complete', failed_files: 1, copied_files: 1, failed_media: [{ media_id: 'dead', filename: 'q.jpg', code: 'media_source_unavailable', message: 'The original file could not be downloaded.' }] });
   expect(status?.error).toContain('1 file could not be copied');
   // A later upload on the Site does not retry the refused file.
   const { enqueueMediaMigration } = await import('../../lib/publishing/media-migration-queue');
