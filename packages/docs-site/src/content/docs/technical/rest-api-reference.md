@@ -3085,7 +3085,7 @@ Save future website, redirect and media hosts before preparing a deployment. Nor
 | --- | --- | --- | --- | --- |
 | `revision` | body | string | yes |  |
 | `website_host` | body | string \| null | yes |  |
-| `media_host` | body | string \| null | yes |  |
+| `media_host` | body | string \| null | yes | Optional site media host, such as media.&lt;site domain&gt;, so image addresses do not show the organization media domain. Its domain must be in the organization's connected Cloudflare account. Null uses the organization's shared media host. |
 | `confirm_rebuild` | body | boolean | no | Legacy input; Core 0.2.116+ does not require confirmation to save inert future addresses. |
 | `media_path_prefix` | body | string | no | Empty on a separate media host; /media when using the website host. |
 | `redirect_hosts` | body | string[] | no | Hostnames that redirect permanently to website_host, such as www.example.com. Omit or send [] for none. |
