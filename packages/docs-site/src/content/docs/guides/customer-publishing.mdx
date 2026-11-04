@@ -464,7 +464,15 @@ directly, and are not part of the Pages deployment. The deployment then carries
 only pages, so a large media library does not make publishing slower or hit the
 Pages file limits. With a separate site media host an image can use
 `https://images.customer.com/photo.png`; that media is included in the static site
-output. Without any media host, images are served from the website under `/media`.
+output.
+
+A site with images needs a media host before its first publication. **Configure
+domains** in Publishing sets both addresses from one domain in your connected
+Cloudflare account, for example `sites.example.com` and `media.example.com`, and
+attaches the media host to your public R2 bucket. Cloudflare only attaches an R2
+custom domain to a domain in the same account, so that domain's DNS must be on
+Cloudflare. Your websites' own domains can keep DNS at any provider. Choose the
+media host once: it becomes part of every image address.
 
 Images that an earlier publication served from the website under `/media` move to
 the shared media host on the next publication. A single `/media/*` redirect (301)

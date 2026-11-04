@@ -81,6 +81,19 @@ Possible statuses:
 - `succeeded` — deployed successfully
 - `failed` — build error (the AI agent will report what went wrong)
 
+Over the API, `GET /api/v1/sites/{siteId}/deploys/{jobId}` returns the job
+under `job`, so read the status from `job.status`, not the top level:
+
+```json
+{
+  "job": { "status": "running", "warnings": [] },
+  "build_progress": { },
+  "waiting_for_job_id": null,
+  "queue_timeout_seconds": 300,
+  "site_urls": { "production": "https://www.example.com" }
+}
+```
+
 ### Partial rendering
 
 From Core 0.2.15, generated publication builds can reuse unchanged HTML. The

@@ -56,8 +56,10 @@ Pages deployment carries only pages; its size no longer grows with the media
 library. Objects are immutable and written before the deployment is finalized,
 so a page never references a missing image. Website-hosted media of earlier
 publications moves to its organization-host key, with one `/media/*` redirect.
-Without any media host, public assets are included in the static output under
-the website's own origin and a safe media path. Retain previously published paths where required by aliases;
+Customer publishing requires a media host for a site with media, so this is the
+normal path. Without any media host (publications by the CMS's own runner),
+public assets are included in the static output under the website's own origin
+and a safe media path. Retain previously published paths where required by aliases;
 reject collisions with pages or reserved output files. Never copy private
 originals merely because they exist in the bucket.
 
