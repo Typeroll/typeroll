@@ -5,6 +5,7 @@ import { notifyScheduledWrites, workPath, type ScheduledWork } from '../scheduli
 import { siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { observeRedirectHost, observeWebsiteHost, servingIssue, type ServingIssue, type ServingObservation } from './serving-host';
 import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
+import { checkLiveMedia, type MediaServingFailure } from './media-serving';
 
 /**
  * Live-serving verification after a website host goes live. A traffic switch
@@ -32,6 +33,7 @@ const READ_REFRESH_MS = 60_000;
 const EXPLICIT_RETRY_MS = 60_000;
 export const SERVING_ALARM_PHASE = 'served by another host';
 export const PAGES_ALARM_PHASE = 'Pages custom domain not active';
+export const MEDIA_ALARM_PHASE = 'images not served';
 
 export interface ServingCheck {
   status: 'pending' | 'serving' | 'other_host' | 'other_publication' | 'inconclusive';
@@ -50,12 +52,17 @@ export interface ServingCheck {
   pages_domain?: PagesDomainObservation | null;
   /** Stands while that domain is not active; an inconclusive read never sets or clears it. */
   pages_issue?: PagesDomainIssue | null;
+  /** The latest conclusive check of a sample of the images the home page references. */
+  media?: { checked_at: string; checked: number; failing: MediaServingFailure[] } | null;
+  /** Stands while referenced images do not answer 200; an inconclusive check never sets or clears it. */
+  media_issue?: { code: 'media_not_served'; message: string; url: string; http_status: number | null } | null;
 }
 
 export const servingAlarm = (check: ServingCheck | null | undefined): check is ServingCheck & { issue: ServingIssue } =>
   !!check?.issue && (check.status === 'other_host' || check.status === 'other_publication');
 
 export const pagesDomainAlarm = (check: ServingCheck | null | undefined): check is ServingCheck & { pages_issue: PagesDomainIssue } => !!check?.pages_issue;
+export const mediaAlarm = (check: ServingCheck | null | undefined): check is ServingCheck & { media_issue: NonNullable<ServingCheck['media_issue']> } => !!check?.media_issue;
 
 const nextDue = (liveAt: number, now: number) => SERVING_CHECK_OFFSETS_MINUTES.map(minutes => liveAt + minutes * 60_000).find(due => due > now) ?? null;
 /** The next check: the first series, then daily for as long as the host is live. */
@@ -115,9 +122,10 @@ export async function recordServingCheck(org: string, site: string, opts: { fetc
   if (!config || !current || config.state !== 'live' || !config.published?.publication_id || !config.published.hosts.website_host ||
       config.published.hosts.website_host !== current.website_host) return null;
   const now = opts.now ?? Date.now();
-  const [result, pages] = await Promise.all([
+  const [result, pages, media] = await Promise.all([
     checkLiveServing(config, opts.fetchImpl),
     observeLivePagesDomain(org, site, config, current.pages_domain ?? null, { now, force: opts.retryValidation === 'explicit' }),
+    checkLiveMedia(config.published.hosts.website_host, opts.fetchImpl ? { fetchPage: opts.fetchImpl, fetchMedia: opts.fetchImpl } : {}),
   ]);
   const checkedAt = new Date(now).toISOString();
   const nextCheckAt = opts.nextCheckAt === undefined ? current.next_check_at : opts.nextCheckAt === null ? null : new Date(opts.nextCheckAt).toISOString();
@@ -128,13 +136,22 @@ export async function recordServingCheck(org: string, site: string, opts: { fetc
       observed: result.failing ? { host: result.failing.host, publication: result.failing.publication, http_status: result.failing.http_status, provider_hint: result.failing.provider_hint } : null };
   // An inconclusive Pages read (or none, without a known project) keeps the previous state, alarm included.
   const pagesConclusive = !!pages?.observation.status;
-  const check: ServingCheck = pagesConclusive
+  const withPages: ServingCheck = pagesConclusive
     ? { ...served, pages_domain: pages!.observation, pages_issue: pagesDomainIssue(pages!.observation, pages!.project) } : served;
+  // An inconclusive media check keeps the previous state, alarm included.
+  const mediaConclusive = media.status !== 'inconclusive';
+  const firstFailure = media.failing[0];
+  const check: ServingCheck = mediaConclusive
+    ? { ...withPages, media: { checked_at: checkedAt, checked: media.checked, failing: media.failing },
+      media_issue: firstFailure ? { code: 'media_not_served', url: firstFailure.url, http_status: firstFailure.http_status,
+        message: `${media.failing.length} of ${media.checked} images on the home page are not served (${firstFailure.http_status ? `HTTP ${firstFailure.http_status}` : firstFailure.error ?? 'no response'}): ${firstFailure.url}. Check the media host in Publishing.` } : null }
+    : withPages;
   // A newer publication or domain change owns the configuration now; it schedules its own checks.
   const saved = await store.compareAndUpdateDoc<DomainConfiguration>(source, value => value.revision === config.revision &&
     value.published?.publication_id === config.published!.publication_id && value.state === 'live', { serving_check: check });
   if (!saved) return null;
-  if (result.status !== 'inconclusive' || pagesConclusive) await recordJobServing(org, site, check);
+  if (result.status !== 'inconclusive' || pagesConclusive || mediaConclusive) await recordJobServing(org, site, check);
+  if (mediaAlarm(check)) console.warn(JSON.stringify({ event: 'media_serving_alarm', org_id: org, site_id: site, code: check.media_issue.code, url: check.media_issue.url, http_status: check.media_issue.http_status }));
   if (check.issue && servingAlarm(check)) console.warn(JSON.stringify({ event: 'domain_serving_alarm', org_id: org, site_id: site, code: check.issue.code, host: check.issue.host, provider: check.observed?.provider_hint?.provider ?? null }));
   if (pagesDomainAlarm(check)) console.warn(JSON.stringify({ event: 'domain_serving_alarm', org_id: org, site_id: site, code: check.pages_issue.code, host: check.pages_issue.host, pages_status: check.pages_issue.status, retry: check.pages_domain?.retry ?? null }));
   return check;
@@ -179,11 +196,12 @@ async function observeLivePagesDomain(org: string, site: string, config: DomainC
 async function recordJobServing(org: string, site: string, check: ServingCheck) {
   if (!check.job_id) return;
   const alarm = servingAlarm(check) ? { phase: SERVING_ALARM_PHASE, message: check.issue.message }
-    : pagesDomainAlarm(check) ? { phase: PAGES_ALARM_PHASE, message: check.pages_issue.message } : null;
+    : pagesDomainAlarm(check) ? { phase: PAGES_ALARM_PHASE, message: check.pages_issue.message }
+    : mediaAlarm(check) ? { phase: MEDIA_ALARM_PHASE, message: check.media_issue.message } : null;
   const summary = { status: check.status, checked_at: check.checked_at, observed: check.observed ?? null, issue: check.issue ?? null,
-    pages_domain: check.pages_domain ?? null, pages_issue: check.pages_issue ?? null };
+    pages_domain: check.pages_domain ?? null, pages_issue: check.pages_issue ?? null, media: check.media ?? null, media_issue: check.media_issue ?? null };
   await getStore().compareAndUpdateDoc<any>(paths.deploy(org, site, check.job_id),
-    job => job.status === 'succeeded' && [SERVING_ALARM_PHASE, PAGES_ALARM_PHASE, 'live'].includes(job.phase),
+    job => job.status === 'succeeded' && [SERVING_ALARM_PHASE, PAGES_ALARM_PHASE, MEDIA_ALARM_PHASE, 'live'].includes(job.phase),
     alarm ? { serving_check: summary, phase: alarm.phase, verification_message: alarm.message }
       : { serving_check: summary, phase: 'live', verification_message: null });
 }

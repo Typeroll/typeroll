@@ -450,6 +450,15 @@ it. The checks only read public responses and provider status; their only
 provider write is Cloudflare's validation retry for the Pages custom domain.
 Typeroll never changes DNS or rolls back the switch because of them.
 
+Each check also reads the home page and requests a sample of the images it
+references: the share image (og:image), each `<img>` and the first candidate
+of each `srcset`, on whichever host serves them. When one does not answer 200,
+for example because a media host is not attached to the R2 bucket yet, the
+publication job shows the phase `images not served` with the first failing
+address, and `serving_check.media_issue` names it. A rate limit, edge error or
+timeout is inconclusive and never raises or clears this issue. The next check
+that finds every sampled image clears it.
+
 ## Check it
 
 After the switch, `poll_domain` reports the domain as verified,
