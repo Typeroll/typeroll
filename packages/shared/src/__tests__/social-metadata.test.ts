@@ -26,3 +26,15 @@ it('uses article sharing type for content-type articles', () => {
   for (const schema_type of ['BlogPosting', 'Article', 'NewsArticle'])
     expect(socialMetadata(page, settings, { ...type, schema_type }).type).toBe('article');
 });
+
+it('describes the site default share image with its own alt text, never the first body image (AT-10)', () => {
+  const alt = (url: string) => ({ 'https://site.test/default.jpg': 'Moving van', 'https://site.test/chosen.jpg': 'Chosen in library' } as Record<string, string>)[url];
+  const bare = { ...page, fields: {}, html_content: '<p><img src="/other.jpg" alt="Other"></p>' } as Page;
+  expect(socialMetadata(bare, settings, type, 'https://site.test/a/', alt)).toMatchObject({ image: 'https://site.test/default.jpg', imageAlt: 'Moving van' });
+  // Without a library alt text the default image gets none rather than another image's.
+  expect(socialMetadata(bare, settings, type, 'https://site.test/a/').imageAlt).toBe('');
+  expect(socialMetadata({ ...bare, seo_image_alt: 'Override' }, settings, type, 'https://site.test/a/', alt).imageAlt).toBe('Override');
+  // An explicit page image prefers its library alt text, then the body.
+  expect(socialMetadata({ ...bare, og_image: '/chosen.jpg' }, settings, type, 'https://site.test/a/', alt).imageAlt).toBe('Chosen in library');
+  expect(socialMetadata({ ...bare, og_image: '/chosen.jpg' }, settings, type, 'https://site.test/a/').imageAlt).toBe('Other');
+});

@@ -53,7 +53,7 @@ interface Props {
    */
   extraJsonLd?: string[];
   /** Media records by URL, for the share image's size and type (see SEOHead). */
-  mediaByUrl?: { get(url: string): { width?: number; height?: number; mime_type?: string } | undefined };
+  mediaByUrl?: { get(url: string): { width?: number; height?: number; mime_type?: string; alt?: string } | undefined };
   /** The first section's background image, preloaded because CSS reveals it late. */
   preloadImage?: string | null;
 }
