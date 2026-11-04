@@ -312,8 +312,10 @@ Bots that fill in forms in a real browser pass these checks. Against them, turn 
 
 1. In the site owner's Cloudflare dashboard, open **Turnstile → Add widget**. Choose
    the **Managed** mode and add the site's website hostnames.
-2. Call `set_form_spam_protection` with the widget's site key and secret key. The
-   secret is checked with Cloudflare, encrypted and never returned.
+2. Call `set_form_spam_protection` with the widget's site key and secret key, or
+   let a site admin paste them in the portal under **Forms → Spam protection**.
+   The secret is checked with Cloudflare, encrypted and never returned. See
+   [Stop form spam with Turnstile](../../guides/form-spam-protection/).
 3. Publish the site. Forms then show the Turnstile check above the send button; in
    most cases it passes without the visitor doing anything.
 

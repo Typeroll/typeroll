@@ -15,6 +15,10 @@
   Images that earlier publications served from the website under `/media`, or
   from the shared host, keep working: `/media/*` redirects to the site media
   host. The portal suggests `media.<site domain>`.
+- Site admins can turn on Cloudflare Turnstile for a site's forms in the portal,
+  under Forms → Spam protection: paste the widget's site and secret keys, see
+  which forms require the check, or turn it off. A new guide, Stop form spam
+  with Turnstile, covers the portal, the API and AI agents.
 
 ## 0.2.150 (candidate)
 
