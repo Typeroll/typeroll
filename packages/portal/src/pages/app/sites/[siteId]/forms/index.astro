@@ -7,6 +7,8 @@ import type { Form } from '@typeroll/shared';
 import FormsManager from '../../../../../components/FormsManager.tsx';
 import FormSubmissionRetention from '../../../../../components/FormSubmissionRetention.tsx';
 import { siteSubmissionRetentionDays } from '../../../../../lib/form-submissions';
+import FormSpamProtection from '../../../../../components/FormSpamProtection.tsx';
+import { readFormSpamProtection } from '../../../../../lib/forms/turnstile';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -30,6 +32,8 @@ const initialForms = forms.map((f) => ({
   submission_count: counts.get(f.id) ?? 0,
   created_at: f.created_at,
 }));
+const spamProtection = permission === 'admin' ? await readFormSpamProtection(orgId, siteId) : null;
+const formNames = Object.fromEntries(forms.map((f) => [f.id, f.name]));
 ---
 <AppLayout title={`Forms — ${site.name}`} siteId={siteId}>
   <div class="app-header">
@@ -46,6 +50,11 @@ const initialForms = forms.map((f) => ({
 
   <div style="max-width: 860px;">
     <FormsManager client:load siteId={siteId} initialForms={initialForms} canWrite={permission !== 'read'} />
+    {permission === 'admin' && spamProtection && (
+      <div style="margin-top: 1.5rem;">
+        <FormSpamProtection client:load siteId={siteId} initial={spamProtection} formNames={formNames} />
+      </div>
+    )}
     {permission === 'admin' && (
       <div style="margin-top: 1.5rem;">
         <FormSubmissionRetention client:load siteId={siteId} initialDays={siteSubmissionRetentionDays(site)} />

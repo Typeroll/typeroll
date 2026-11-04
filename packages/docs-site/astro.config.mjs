@@ -37,6 +37,7 @@ export default defineConfig({
             { label: 'Using Typeroll Cloud', slug: 'guides/typeroll-cloud' },
             { label: 'Cloud trial and access', slug: 'guides/cloud-trial' },
             { label: 'Incoming email', slug: 'guides/incoming-email' },
+            { label: 'Stop form spam', slug: 'guides/form-spam-protection' },
             { label: 'Connect your AI agent', slug: 'getting-started/mcp-server' },
             { label: 'Setup by client', slug: 'getting-started/connect-your-agent' },
             { label: 'Personal AI connections', slug: 'guides/ai-connections' },

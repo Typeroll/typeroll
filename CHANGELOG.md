@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Site admins can turn on Cloudflare Turnstile for a site's forms in the portal,
+  under Forms → Spam protection: paste the widget's site and secret keys, see
+  which forms require the check, or turn it off. A new guide, Stop form spam
+  with Turnstile, covers the portal, the API and AI agents.
+
 ## 0.2.150 (candidate)
 
 - Background image preparation no longer stops for good when its build waits
