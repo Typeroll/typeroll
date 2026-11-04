@@ -44,11 +44,6 @@ export function mediaCheckpointPolicy(kind, progress, startedAt, deadline, now =
 }
 
 /**
- * Use an AppArmor-profiled system installation only when it is the pinned binary.
- * @param {string} extracted
- * @param {{lstat: (name: string) => Promise<{uid: number, mode: number, isSymbolicLink(): boolean, isFile(): boolean, isDirectory(): boolean}>, readFile: (name: string) => Promise<Uint8Array>}} disk
- */
-/**
  * A private procfs where the host allows one. Never the host's /proc: the
  * sandbox shares the supervisor's kernel uid, so binding the host's /proc would
  * expose the supervisor's environment, file descriptors and root to build code.
@@ -66,6 +61,11 @@ export async function sandboxProcfs(probe, log = message => console.log(message)
   }
 }
 
+/**
+ * Use an AppArmor-profiled system installation only when it is the pinned binary.
+ * @param {string} extracted
+ * @param {{lstat: (name: string) => Promise<{uid: number, mode: number, isSymbolicLink(): boolean, isFile(): boolean, isDirectory(): boolean}>, readFile: (name: string) => Promise<Uint8Array>}} disk
+ */
 export async function sandboxBinary(extracted, disk = fs) {
   const installed = '/usr/bin/bwrap';
   try {
