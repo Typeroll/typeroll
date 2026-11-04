@@ -106,6 +106,12 @@ export async function readDomainGuide(org: string, site: string) {
     (await getStore().listDocs<any>(paths.deploys(org, site))).filter(item => item.publication_intent === 'domain_prepare').sort((a, b) => String(b.started_at).localeCompare(String(a.started_at)))[0];
   const publishedMain = Boolean(config.candidate && config.published?.publication_id === config.candidate.id && lastPublication?.publication_id === config.candidate.id);
   checks.push({ id: 'candidate', status: job?.status === 'failed' ? 'action_required' : publishedMain && config.state === 'ready_to_switch' ? 'ready' : 'waiting', message: job?.error || (job?.phase === 'awaiting domain cutover approval' ? 'The main site is published with the new addresses. DNS is still pending.' : job?.phase) || 'Publish the last published content again with the new addresses. This replaces main before DNS changes.', details: { candidate_id: config.candidate?.id ?? null, job_id: job?.id ?? null } });
+  // Media hosts are part of the switch: name what still stops them, or what proved them.
+  const mediaPending = job?.media_delivery;
+  const mediaReceipt = job?.git_publication?.public_media_receipt;
+  if (mediaPending) checks.push({ id: 'media_delivery', status: job.status === 'failed' ? 'action_required' : 'waiting', message: mediaPending.message,
+    details: { host: mediaPending.host, issue: mediaPending.issue, url: mediaPending.url ?? null, http_status: mediaPending.http_status ?? null, checked_at: mediaPending.checked_at } });
+  else if (mediaReceipt) checks.push({ id: 'media_delivery', status: 'ready', message: `Media hosts served all ${mediaReceipt.checked} checked files with the published bytes (verified ${mediaReceipt.verified_at}).` });
   const cutover = config.candidate ? await readDomainCutover(org, site, config.candidate.id) : null;
   const ended = await endedDistribution(org, site, config);
   const previousHosts = await readPreviousHosts(config);

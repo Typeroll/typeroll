@@ -42,7 +42,7 @@ import { publicationRuntime } from './runtime-projection';
 import { DerivationError, runBuildDerivations } from './build-derivation';
 import { indexableSettings } from './launch-robots';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
-import { preparePublicMediaDomains } from './media-domain';
+import { preparePublicMediaDelivery, verifyPublicMediaDelivery, type MediaDeliveryResult } from './media-domain';
 import { checkLiveMedia } from './media-serving';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
@@ -57,6 +57,8 @@ import { prepareStaticProject, saveStaticChecks, verifyStaticBatch, saveCustomer
 
 interface GitPublication extends CustomerVerification {
   candidate_prepared_at?: string; candidate_verified_id?: string | null; deployment_receipt?: any; project_prepared?: boolean; website_preparation?: import('./domain-provider').DomainPreparation | null; media_preparation?: import('./domain-provider').DomainPreparation | null; public_media_prepared?: boolean; traffic_applied?: boolean;
+  /** Set only after this publication's media hosts were provisioned and served its exact files. The older boolean alone is never proof. */
+  public_media_receipt?: { scope: string; verified_at: string; checked: number } | null;
   build_provider?: BuildProvider; build_engine_revision?: string; build_task_key?: string | null; static_checks_key?: string | null;
   hosting_group_id?: string; hosting_group_revision?: string;
   owner: string; repo: string; project: string; account_id: string; branch: string;
@@ -95,7 +97,7 @@ async function pendingRedirect(jobPath: string, publication: GitPublication, pre
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication; clear_authored_noindex?: boolean };
+export type GitJob = DeployJob & { media_delivery?: (import('./media-domain').MediaDeliveryPending & { checked_at: string }) | null; pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication; clear_authored_noindex?: boolean };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -185,6 +187,23 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
   };
   const releaseBuildAccess = async () => {
     for (const environment of ['production', 'preview']) await store.compareAndUpdateDoc<any>(`${paths.site(args.orgId, args.siteId)}/publishing_build_slots/${environment}`, value => value.job_id === args.jobId, { job_id: null });
+  };
+  /**
+   * Record the outcome of a media delivery check. Ready returns the publication
+   * with its receipt; otherwise the job names what remains, and the caller waits.
+   */
+  const recordMediaDelivery = async (publication: GitPublication, result: MediaDeliveryResult): Promise<GitPublication | null> => {
+    const current = await store.getDoc<GitJob>(jobPath);
+    if (!result.ready) {
+      await store.updateDoc(jobPath, { phase: 'distributing media', media_delivery: { ...result.pending, checked_at: new Date().toISOString() },
+        verification_message: `${result.pending.message} Public verification will retry automatically.` });
+      console.info(JSON.stringify({ event: 'publication_media_pending', site_id: args.siteId, job_id: args.jobId, host: result.pending.host, issue: result.pending.issue, http_status: result.pending.http_status ?? null }));
+      return null;
+    }
+    const next = { ...publication, public_media_prepared: true, public_media_receipt: { scope: result.scope, verified_at: new Date().toISOString(), checked: result.checked } };
+    await assertLease();
+    await store.updateDoc(jobPath, { git_publication: next, ...(current?.media_delivery ? { media_delivery: null, verification_message: null } : {}) });
+    return next;
   };
   const finishPublication = async (publication: GitPublication, domains: DomainConfiguration, frozen: any): Promise<DeployRunOutcome> => {
     let previousHosts: import('./previous-hosts').PreviousHost[] = [];
@@ -492,6 +511,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         }
       }
       if (await pendingRedirect(jobPath, publication)) return await waitForPublicationCondition(jobPath, 'retrying public verification');
+      // Recovery never provisions media hosts; it only proves that they serve this publication's files.
+      if (!publication.public_media_receipt && frozen.media_manifest?.entries?.length) {
+        const verified = await recordMediaDelivery(publication, await verifyPublicMediaDelivery(frozen.media_manifest, organization.media_host));
+        if (!verified) return await waitForPublicationCondition(jobPath, 'retrying public verification');
+        publication = verified;
+      }
       const pages = becomesLive(publication) ? await pagesDomainGate(publication, cloudflare) : null;
       if (pages) {
         await store.updateDoc(jobPath, { phase: 'retrying public verification', verification_message: `${pages.message} Public verification will retry automatically.` });
@@ -606,17 +631,16 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group',
           ...(result.task.seo_report ? { seo_report: result.task.seo_report } : {}),
           ...(result.task.render_report ? { render_report: result.task.render_report } : {}) });
-        if (!deployment && !publication.public_media_prepared) {
+        if (!deployment && !publication.public_media_receipt) {
           // Attach and verify every public media host before the deployment
           // replaces the live site: a published page must never reference a
-          // media host that does not serve its files yet.
+          // media host that does not serve its files yet, share copies included.
           const snapshot = await readSnapshot(args, publication);
-          if (snapshot.media_manifest?.entries?.length && !await preparePublicMediaDomains(args.orgId, snapshot.media_manifest)) {
-            await store.updateDoc(jobPath, { phase: 'distributing media' });
-            return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
+          if (snapshot.media_manifest?.entries?.length) {
+            const prepared = await recordMediaDelivery(publication, await preparePublicMediaDelivery(args.orgId, snapshot.media_manifest));
+            if (!prepared) return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
+            publication = prepared;
           }
-          publication = { ...publication, public_media_prepared: true };
-          await store.updateDoc(jobPath, { git_publication: publication });
         }
         if (!deployment) {
           await assertLease();
@@ -669,9 +693,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease, { last_publication: publication });
     await recordPublishingOrigin(args.orgId, args.siteId, candidate.origin, true);
     const frozen = await readSnapshot(args, publication);
-    if (!publication.public_media_prepared && frozen.media_manifest?.entries?.length && !await preparePublicMediaDomains(args.orgId, frozen.media_manifest)) {
-      await store.updateDoc(jobPath, { phase: 'distributing media' });
-      return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
+    // Every path passes here before a host is offered or marked live. A Pages Git
+    // build stores its media while it deploys; a job resumed from before media
+    // receipts existed, or whose preparation never finished, is checked now.
+    if (!publication.public_media_receipt && frozen.media_manifest?.entries?.length) {
+      const prepared = await recordMediaDelivery(publication, await preparePublicMediaDelivery(args.orgId, frozen.media_manifest));
+      if (!prepared) return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
+      publication = prepared;
     }
     publication = { ...publication, deployment_id: deployment.id, public_media_prepared: true };
     await assertLease();
