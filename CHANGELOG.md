@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Images are served from the organization's shared media host by default. When
+  the organization has one and the site has no media host of its own, the build
+  engine writes images directly to the customer's public R2 bucket and the Pages
+  deployment carries only pages, so large media libraries no longer hit Pages
+  file limits or slow every publication. Images that earlier publications served
+  from the website under `/media` move there on the next publication, and one
+  `/media/*` 301 redirect keeps their old addresses working. Publication
+  verification treats redirected media paths as moved. Site icons on a separate
+  media host are read locally for the favicon files only.
+
 ## 0.2.149 (candidate)
 
 - A published form on the customer's domain can load its live choices again.

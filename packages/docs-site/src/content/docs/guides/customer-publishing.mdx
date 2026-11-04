@@ -457,11 +457,19 @@ website host and, optionally, a separate media host. For example:
 | Site media host                | `images.customer.com`                                                   |
 | Media path prefix              | Empty for a separate media host; `/media` when sharing the website host |
 
-Before a site has its own media host, an image can use
-`https://media.example.com/media/<site-media-id>/photo.png`. With a separate
-site media host it can use `https://images.customer.com/photo.png`. Referenced public media is included in the static site output; shared media
-aliases remain available through organization storage and configured URL rules.
-No dynamic Worker serves the website or the images.
+Before a site has its own media host, its images use the organization shared
+media host, for example `https://media.example.com/media/<site-media-id>/photo.png`.
+They are served from your public R2 bucket, where your build engine writes them
+directly, and are not part of the Pages deployment. The deployment then carries
+only pages, so a large media library does not make publishing slower or hit the
+Pages file limits. With a separate site media host an image can use
+`https://images.customer.com/photo.png`; that media is included in the static site
+output. Without any media host, images are served from the website under `/media`.
+
+Images that an earlier publication served from the website under `/media` move to
+the shared media host on the next publication. A single `/media/*` redirect (301)
+sends old image addresses to the same file there, so links and image search results
+keep working. No dynamic Worker serves the website or the images.
 
 A media item's `public_path` can preserve a legacy path such as
 `/wp-content/uploads/2024/photo.jpg`. The path must end in an extension that
