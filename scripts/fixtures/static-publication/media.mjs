@@ -5,9 +5,9 @@ import { createHash } from 'node:crypto';
 import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import { mediaReceiptKey } from './media-receipt.mjs';
-import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_WIDTHS, mediaVariantCandidates, mediaVariantSuffix } from './media-recipe.mjs';
+import { MEDIA_RECIPE_VERSION, MEDIA_VARIANT_WIDTHS, SHARE_RECIPE_VERSION, mediaVariantCandidates, mediaVariantSuffix, shareBackground, shareCopyTarget } from './media-recipe.mjs';
 import { isSiteIconEntry } from './site-icons.mjs';
-import { isShareImageEntry, needsShareDerivative, shareVariantWidth } from './share-images.mjs';
+import { isShareImageEntry, needsShareDerivative, shareVariantWidth, renderShareImage, renderShareDerivative } from './share-images.mjs';
 
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const cache = 'public, max-age=31536000, immutable';
@@ -202,6 +202,78 @@ export async function prepareMedia(publication, root, options = {}) {
       });
     }
   }
+  /** Write an immutable public object once. An existing object is kept, and the stored bytes are returned. */
+  async function putOnce(key, bytes, contentType) {
+    const existing = await read(manifest.public_bucket, key);
+    if (existing) return existing;
+    await write(key, bytes, contentType);
+    const stored = await read(manifest.public_bucket, key);
+    if (!stored) throw new Error('Published media failed byte verification');
+    return stored;
+  }
+  /**
+   * The og:image copy of a share image served from a separate media host goes
+   * to that host's namespace, next to its variants, instead of the website.
+   * Its key depends on the source and recipe only: an unchanged copy, with its
+   * receipt, is reused and never rendered again. A copy that cannot be written
+   * fails this entry, so the previous publication stays live.
+   */
+  async function prepareShareCopy(entry, media, readSource) {
+    const target = shareCopyTarget(manifest, entry);
+    if (!target || options.cacheOnly || !media) return;
+    if (target.kind === 'card' ? !isShareImageEntry(publication, entry) : !needsShareDerivative(publication, entry, media.width)) return;
+    // Without exact grants for both objects the page keeps its website copy.
+    if (grants && !(grants.objects[target.key] && grants.objects[target.receipt_key])) return;
+    const valid = receipt => receipt?.format === 1 && receipt.kind === target.kind && receipt.source_sha256 === entry.sha256 && receipt.mime_type === target.mime_type &&
+      /^[a-f0-9]{64}$/.test(receipt.sha256) && [receipt.size_bytes, receipt.width, receipt.height].every(value => Number.isSafeInteger(value) && value > 0);
+    let receipt, copy;
+    const receiptBytes = await read(manifest.public_bucket, target.receipt_key);
+    if (receiptBytes) {
+      try { receipt = JSON.parse(receiptBytes.toString()); } catch { receipt = null; }
+      if (!valid(receipt)) throw new Error('Invalid share copy receipt');
+      copy = await read(manifest.public_bucket, target.key);
+      if (!copy || hash(copy) !== receipt.sha256 || copy.length !== receipt.size_bytes) throw new Error('Prepared media failed byte verification');
+    } else {
+      if (options.materializeOnly) return;
+      copy = await read(manifest.public_bucket, target.key);
+      if (!copy) {
+        const source = await readSource(target.kind);
+        if (!source) return;
+        let rendered;
+        // An image the encoder cannot copy keeps its page as it is, as at build time; storage failures still stop the build.
+        try {
+          rendered = target.kind === 'card'
+            ? await encode(() => renderShareImage(source, shareBackground(manifest.share_background)))
+            : (await encode(() => renderShareDerivative(source))).bytes;
+        } catch (error) { console.warn(`share_image_copy_skipped: ${error instanceof Error ? error.name : 'error'}`); return; }
+        copy = await putOnce(target.key, rendered, target.mime_type);
+      }
+      // An earlier, interrupted attempt may have stored the copy without its receipt: describe those bytes.
+      const metadata = await sharp(copy).metadata();
+      receipt = { format: 1, recipe: SHARE_RECIPE_VERSION, kind: target.kind, source_sha256: entry.sha256, mime_type: target.mime_type,
+        sha256: hash(copy), size_bytes: copy.length, width: metadata.width, height: metadata.height };
+      const saved = JSON.parse((await putOnce(target.receipt_key, Buffer.from(JSON.stringify(receipt)), 'application/json')).toString());
+      if (!valid(saved) || saved.sha256 !== receipt.sha256) throw new Error('A public media path already contains different bytes. Choose a new path to preserve published versions.');
+    }
+    for (const alias of options.materializeOnly ? [] : entry.aliases ?? []) {
+      if (alias.key === entry.public_key) continue;
+      if (hash(await putOnce(alias.key + target.suffix, copy, target.mime_type)) !== receipt.sha256) throw new Error('A public media path already contains different bytes. Choose a new path to preserve published versions.');
+    }
+    if (!options.prepareOnly) media.share_copy = { kind: target.kind, url: target.url, mime_type: target.mime_type, width: receipt.width, height: receipt.height, sha256: receipt.sha256, size_bytes: receipt.size_bytes };
+  }
+  /** Verified bytes a share copy is made from: the original for a card, the chosen WebP variant for a photo. */
+  const shareSource = (entry, media, original) => async kind => {
+    if (kind === 'card') {
+      const bytes = original ?? await read(manifest.original_bucket, entry.source_key, true);
+      return bytes && hash(bytes) === entry.sha256 ? bytes : null;
+    }
+    const webp = (media.variants ?? []).filter(variant => variant.format === 'webp');
+    const width = shareVariantWidth(webp.map(variant => variant.width));
+    const variant = webp.find(candidate => candidate.width === width);
+    if (!variant) return null;
+    const bytes = await read(manifest.public_bucket, entry.public_key + mediaVariantSuffix(width === media.width ? 'original' : `w${width}`, entry.sha256, 'webp'));
+    return bytes && hash(bytes) === variant.sha256 ? bytes : null;
+  };
   const sameHostFiles = [];
   try {
     const processEntry = async entry => {
@@ -268,6 +340,7 @@ export async function prepareMedia(publication, root, options = {}) {
             sameHostFiles.push({ source: destination, path: artifact.path, ...(localOnly ? { local_only: true } : {}) });
           }
         }
+        await prepareShareCopy(entry, media, shareSource(entry, media));
         return;
       }
       const completedVariants = [];
@@ -386,6 +459,7 @@ export async function prepareMedia(publication, root, options = {}) {
       const [original, variants] = await Promise.allSettled([promoteOriginal(), prepareVariants()]);
       if (original.status === 'rejected') throw original.reason;
       if (variants.status === 'rejected') throw variants.reason;
+      await prepareShareCopy(entry, media, shareSource(entry, media, bytes));
       // Publish last: a partial or interrupted preparation never counts as ready.
       if (canComplete && !options.materializeOnly) {
         const receipt = Buffer.from(JSON.stringify({ format: 1, key: completionKey, recipe_sha256: recipeHash,

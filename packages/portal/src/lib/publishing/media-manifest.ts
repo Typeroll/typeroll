@@ -1,4 +1,5 @@
 import { findReferences, replaceReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
+import { shareBackground } from '../../../../../scripts/fixtures/static-publication/media-recipe.mjs';
 import { paths, type Media, type Redirect } from '@typeroll/shared';
 import { createHash } from 'node:crypto';
 import { getStore } from '../datastore';
@@ -190,7 +191,9 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   await markOrganizationMediaHostUsed(orgId, organization);
   return { content: publicContent, media: entries, sourceMedia: media, warnings,
     manifest: { delivery, account_id: connection.cloudflare.account_id, original_bucket: connection.cloudflare.bucket, public_bucket: connection.cloudflare.public_bucket,
-      media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix, entries } };
+      media_host: host, website_host: websiteHost, dns_mode: domains.dns_mode, media_path_prefix: publicPrefix, site_prefix: prefix,
+      // Share copies on a media host are keyed by their card background, so their exact objects can be granted before the build.
+      ...(entries.some(entry => entry.share_source) ? { share_background: shareBackground(content.settings?.colors?.background) } : {}), entries } };
 }
 
 /** Keep old public routes without preparing identical current files a second time. */
