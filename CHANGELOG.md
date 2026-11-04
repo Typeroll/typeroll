@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.154 (candidate)
+
+- Cloudflare build engines work again. Around 20:00 UTC on November 4, 2026,
+  Cloudflare's build hosts started refusing the private `/proc` that the
+  engine's sandbox mounts (`bwrap: Can't mount proc on /newroot/proc`), so
+  every Cloudflare build failed while installing dependencies. Updated engines
+  keep the private `/proc` where the host allows it and otherwise build
+  without one; they never bind the host's `/proc`, which would expose the
+  supervisor's environment to build code. The build check accepts a sandbox
+  without `/proc` once it sees no other processes. Engines from before this
+  release cannot be fixed centrally: their failures now say to update the build
+  engine instead of reporting a dependency error.
+- Large publications reach GitHub again. GitHub's App rejected a tree carrying
+  an 11 MB inline `publication.json` with 422 `GitRPC::BadObjectState` while
+  accepting the same tree from a user (fundraiserchart.com test version).
+  Derived app data and the impact snapshot now live in their own files under
+  `content/` (size-bounded parts, with source and key order kept, so the
+  derived data URL is unchanged), and files of 256 kB or more are stored as Git
+  blobs before the tree is created. For FundraiserChart `publication.json`
+  shrinks from 11.1 MB to 2.3 MB and the tree request from 12.4 MB to 0.9 MB;
+  unchanged derived parts reuse their blobs.
+
 ## 0.2.153 (candidate)
 
 - A media host is reported live only after it serves the publication's files.

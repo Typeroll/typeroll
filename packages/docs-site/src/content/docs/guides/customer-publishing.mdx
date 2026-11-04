@@ -690,6 +690,13 @@ Builds card says **Build engine update available** when the engine runs older
 generated code than the installed Core; publishing keeps working until you update. Wait for verification
 before publishing again. Updating the engine does not require reconnecting GitHub
 or Cloudflare when the existing connections still have the required permissions.
+Since November 2026 Cloudflare's build hosts refuse the private `/proc` that
+build engines from before Core 0.2.154 mount in their sandbox. Those engines
+fail every Cloudflare build until they are updated; the publication then says
+so and names **Update build engine**. Updated engines keep the private `/proc`
+where the host allows it and otherwise build without one; they never expose the
+host's `/proc` to build code.
+
 Independent `npm run build` runs reuse the same verified media; their process
 scheduling and time limits belong to your own build environment.
 

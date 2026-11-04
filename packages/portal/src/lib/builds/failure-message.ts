@@ -1,5 +1,10 @@
 import type { BuildDiagnostic } from './diagnostics.mjs';
 
+/** The sandbox line an engine from before Core 0.2.154 prints on a host that refuses a nested /proc. */
+export const sandboxProcRefused = (lines: string[]) => lines.some(line => /bwrap: Can't mount proc on \/newroot\/proc/.test(line));
+export const engineUpdateRequiredMessage = (code: string) =>
+  `Cloudflare's build hosts no longer let this build engine version start its sandbox. Update the build engine in Publishing → Builds (an organization admin approves it), then retry publishing. The live site is unchanged. (${code})`;
+
 /**
  * The sentence a person reads when a build fails, from the reported code and
  * whatever the failed step printed.
@@ -75,6 +80,8 @@ export function buildFailureMessage(code: string, diagnostic?: BuildDiagnostic |
     return withCause('The build sandbox downloaded from a pinned URL did not match its pinned checksum. This is not a transient failure and must not be retried: the bytes at that URL changed. Check the build log for the source and the checksum it served, and establish why before publishing anything.', diagnostic);
   if (code === 'sandbox_unavailable')
     return withCause('No source served the pinned build sandbox. The pinned artifact is not in question; its hosts are unreachable. Check the build log for which sources failed, then retry publishing when a host recovers.', diagnostic);
+  // Engines from before Core 0.2.154 cannot build on Cloudflare hosts that refuse a nested /proc.
+  if (sandboxProcRefused([diagnostic?.cause ?? '', ...(diagnostic?.lines ?? [])])) return engineUpdateRequiredMessage(code);
   if (code === 'build_connection_lost')
     return withCause('The build engine stopped reporting progress and this attempt can no longer finish. Check the build log, then retry publishing. No replacement build was started.', diagnostic);
   const { stage, reason } = splitFailureCode(code);

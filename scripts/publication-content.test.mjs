@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { publicationContentFiles, readPublicationContent, stableJson } from './fixtures/static-publication/content.mjs';
 import { digest } from './lib/customer-publishing.mjs';
+import { createHash } from 'node:crypto';
 
 test('record files preserve branches, remove stale content and reuse every unchanged page', async () => {
   const publication = { version_id: 'design', pages: Array.from({ length: 258 }, (_, i) => ({ id: `page-${i}`, title: `Page ${i}`, html_content: 'x'.repeat(12000) })), pageTemplates: [{ id: 'article', blocks: [] }], media_manifest: { entries: [] } };
@@ -44,4 +45,37 @@ test('a record edit produces a reviewable line diff, independent of key order', 
   assert.equal(reordered['content/pages/home.json'], before);
   assert.equal(reordered['publication.json'], files['publication.json']);
   assert.ok(stableJson({ b: 1, a: 2 }).endsWith('\n'));
+});
+
+test('large derived data and the impact snapshot leave publication.json in size-bounded files', async () => {
+  const profiles = Array.from({ length: 900 }, (_, i) => ({ zeta: i, id: `companies_${i}`, alpha: 'x'.repeat(1500) }));
+  const publication = { format: 'typeroll-static-publication', format_version: 2, pages: [], derived: { 'directory.profiles': profiles, 'directory.meta': { b: 1, a: 2 } },
+    source_impact_snapshot: { pages: { a: 1 } }, media_manifest: { entries: [] }, extensions: { installations: [] } };
+  const files = publicationContentFiles(publication);
+  const meta = JSON.parse(files['publication.json']);
+  assert.equal(meta.derived, undefined);
+  assert.equal(meta.source_impact_snapshot, undefined);
+  // Fields build engines read from publication.json stay in it.
+  assert.deepEqual(meta.media_manifest, { entries: [] });
+  const parts = meta.content_files.derived.find(entry => entry.source === 'directory.profiles').files;
+  assert.ok(parts.length > 1);
+  for (const name of parts) assert.ok(Buffer.byteLength(files[name]) < 700 * 1024, name);
+  const manifest = { files: Object.fromEntries(Object.entries(files).map(([name, content]) => [name, createHash('sha256').update(content).digest('hex')])) };
+  const back = await readPublicationContent(meta, async name => files[name], manifest);
+  assert.deepEqual(back, publication);
+  // Order is kept: the build hashes derived data into its public URL.
+  assert.equal(JSON.stringify(back.derived), JSON.stringify(publication.derived));
+  // An unchanged record keeps its part, so Git reuses the blob.
+  const edited = publicationContentFiles({ ...publication, derived: { ...publication.derived, 'directory.profiles': profiles.map((p, i) => i === 899 ? { ...p, zeta: -1 } : p) } });
+  assert.equal(edited[parts[0]], files[parts[0]]);
+  assert.notEqual(edited[parts.at(-1)], files[parts.at(-1)]);
+});
+
+test('a split publication only reads indexed, verified parts', async () => {
+  const files = publicationContentFiles({ pages: [], derived: { 'a.b': [1, 2] }, source_impact_snapshot: {} });
+  const meta = JSON.parse(files['publication.json']);
+  const manifest = { files: Object.fromEntries(Object.keys(files).map(name => [name, 'x'])) };
+  await assert.rejects(readPublicationContent({ ...meta, content_files: { ...meta.content_files, derived: [{ source: 'a.b', array: true, files: ['content/derived/other/0000.json'] }] } }, async name => files[name], manifest), /Invalid publication content index/);
+  await assert.rejects(readPublicationContent({ ...meta, content_files: { ...meta.content_files, metadata: { settings: 'content/metadata/settings.json' } } }, async name => files[name], manifest), /Invalid publication content index/);
+  await assert.rejects(readPublicationContent(meta, async name => files[name], { files: {} }), /Unverified publication record/);
 });
