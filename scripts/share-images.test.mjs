@@ -122,3 +122,10 @@ test('a large raster share image is copied from its 1920 WebP variant as a ~1200
   assert.deepEqual(await writeShareImages(dir, pub, async () => null, async () => Buffer.from('tampered')), { pages: 0, images: 0 });
 }));
 
+test('the media stage recognises share images from the portal flag without any pages', () => {
+  const bare = { site_url: 'https://site.example', settings: {}, contentTypes: [], pages: [], media_manifest: { entries: [] } };
+  assert.equal(needsShareDerivative(bare, { id: 'p', mime_type: 'image/png', size_bytes: 4_000_000, cdn_url: 'https://media.example/s/p.png', aliases: [], share_source: true }, 2048), true);
+  assert.equal(needsShareDerivative(bare, { id: 'p', mime_type: 'image/png', size_bytes: 4_000_000, cdn_url: 'https://media.example/s/p.png', aliases: [] }, 2048), false);
+  assert.equal(isShareImageEntry(bare, { ...entry, share_source: true }), true);
+});
+

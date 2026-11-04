@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- Fixes for the image changes in 0.2.151, found on moveria.se:
+  - Share copies (SE-10) were never made on customer build engines: the build's
+    media stage reads a publication without its pages, so it could not tell
+    which images pages share. The portal now marks those entries
+    (`share_source`) in the media manifest. This also lets SVG share images on
+    a separate media host get their PNG copy.
+  - Art-directed images (SE-11) were not expanded once the page body had
+    passed the HTML parser, which writes `<source></source>` and escapes `<`.
+    Both forms are now recognised.
+  - Cards in a `core/grid` get a `sizes` from its columns too (SE-09).
+  - Only the first visual image on a page loads eagerly with high priority.
+- A new media host is attached and serving its files before a publication
+  replaces the live site. Engine publications marked media as prepared as soon
+  as Cloudflare returned a deployment, so a domain preparation that added a site
+  media host published pages pointing at a host that was not attached yet, and
+  their images failed until it was set up.
+
 ## 0.2.151 (candidate)
 
 - MCP connections no longer expire. A connection made by signing in lasts until

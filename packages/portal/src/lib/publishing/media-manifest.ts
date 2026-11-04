@@ -141,6 +141,7 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     for (const url of references(item)) replacements.set(url, '');
     media.splice(media.indexOf(item), 1);
   }
+  const shareSources = shareImageSourceUrls(content);
   const entries = media.map(item => {
     if (!item.storage) throw new ConnectionError('Media storage changed during publishing. Deploy again.', 409, 'media_migration_pending');
     const chosen = item.public_path ? publicMediaPath(item.public_path) : `/${item.sha256!.slice(0, 16)}-${item.filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
@@ -168,7 +169,9 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
     for (const variant of item.variants ?? []) replacements.set(variant.cdn_url, url);
     return { id: item.id, filename: item.filename, mime_type: safe.mime_type, alt_text: item.alt_text, title: item.title, caption: item.caption,
       cdn_url: url, variants: [], source_key: item.storage.key, sha256: item.sha256, size_bytes: item.size_bytes,
-      public_key: publicKey, public_path: publicPath, aliases, ...(svg ? { svg_sanitized: true } : {}) };
+      public_key: publicKey, public_path: publicPath, aliases, ...(svg ? { svg_sanitized: true } : {}),
+      // The build's media stage sees no pages, so it learns here which files a page may share.
+      ...(references(item).some(url => shareSources.has(url)) ? { share_source: true } : {}) };
   });
   for (const warning of warnings) console.warn(`[media-manifest] site ${siteId}: ${warning}`);
   for (const [alias, previousTarget] of previousPublication?.reference_mapping?.media ?? []) {
@@ -289,3 +292,22 @@ export function replacedMediaRedirects(previous: any[], current: any, existing: 
   }
   return [...redirects.values()].sort((a, b) => a.from_path.localeCompare(b.from_path));
 }
+
+/** Every URL a page or the site can select as its share image (og:image), as the site template chooses it. */
+function shareImageSourceUrls(content: Record<string, any>): Set<string> {
+  const sources = new Set<string>();
+  const add = (value: unknown) => { if (typeof value === 'string' && value.trim()) sources.add(value.trim()); };
+  add(content.settings?.default_og_image);
+  add(content.settings?.logo);
+  const mapped = new Map<string, string[]>();
+  for (const type of content.contentTypes ?? content.content_types ?? []) {
+    const fields = Object.entries(type?.schema_field_map ?? {}).filter(([, property]) => property === 'image').map(([field]) => field);
+    if (fields.length) mapped.set(type.id, fields);
+  }
+  for (const page of content.pages ?? []) {
+    add(page?.og_image);
+    for (const field of mapped.get(page?.content_type ?? 'page') ?? []) add(page?.fields?.[field]);
+  }
+  return sources;
+}
+

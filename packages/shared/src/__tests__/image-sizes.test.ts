@@ -3,7 +3,7 @@
 // the generic 800px default.
 import { describe, expect, it } from 'vitest';
 import { buildCoreBlockRegistry } from '../core-blocks';
-import { columnSlotSizes, renderBlocks, repeaterItemSizes, withImageSizes } from '../render-blocks';
+import { columnSlotSizes, gridItemSizes, renderBlocks, repeaterItemSizes, withImageSizes } from '../render-blocks';
 
 const registry = buildCoreBlockRegistry();
 const sizesOf = (html: string) => [...html.matchAll(/<img\b[^>]*\ssizes="([^"]*)"/g)].map(match => match[1]);
@@ -17,6 +17,16 @@ describe('layout-aware image sizes', () => {
       item_block: 'core/image', layout: 'grid', cols: 3, items: [{ src: 'https://media.example.com/a.jpg', alt: 'A' }],
     } }], { registry });
     expect(sizesOf(html)).toEqual(['(max-width: 767px) 100vw, 34vw']);
+  });
+
+  it('sizes the cells of a core/grid by its columns until it stacks', () => {
+    expect(gridItemSizes({ cols: 3 })).toBe('(max-width: 720px) 100vw, 34vw');
+    expect(gridItemSizes({ cols: 4, stack_at: 'md' })).toBe('(max-width: 900px) 100vw, 25vw');
+    expect(gridItemSizes({ cols: 1 })).toBeNull();
+    const html = renderBlocks([{ id: 'g', type: 'core/grid', data: { cols: 3 }, children: [
+      { id: 'i', type: 'core/image', data: { src: 'https://media.example.com/a.jpg', alt: 'A' } },
+    ] }], { registry });
+    expect(sizesOf(html)).toEqual(['(max-width: 720px) 100vw, 34vw']);
   });
 
   it('sizes each side of two columns by its share until they stack', () => {

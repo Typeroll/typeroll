@@ -83,8 +83,6 @@ export interface TransformOptions {
  * Transform a page body in place. Returns the modified HTML; never throws.
  * Designed to be cheap (~ms for realistic pages).
  */
-const LEADING_PAIR_DISTANCE = 4_000;
-
 /**
  * A core/image with a mobile image renders `<picture data-tr-art-direction>`
  * with one media-queried `<source>`. Give both images their AVIF and WebP
@@ -93,15 +91,18 @@ const LEADING_PAIR_DISTANCE = 4_000;
  */
 function expandArtDirection(html: string, lookup: MediaLookup, opts: TransformOptions): string {
   if (!html.includes('data-tr-art-direction')) return html;
-  return html.replace(/<picture data-tr-art-direction>\s*<source\b([^>]*)\/?>\s*(<img\b[^>]*\/?>)\s*<\/picture>/gi, (match, sourceRaw: string, img: string) => {
+  // The body may have passed an HTML parser first, which writes `<source></source>`
+  // and escapes `<` in attribute values; accept both forms.
+  return html.replace(/<picture data-tr-art-direction>\s*<source\b([^>]*?)\s*\/?>(?:\s*<\/source>)?\s*(<img\b[^>]*\/?>)\s*<\/picture>/gi, (match, sourceRaw: string, img: string) => {
     const source = parseAttrs(sourceRaw);
     const image = parseAttrs(img.replace(/^<img\b/i, '').replace(/\/?>$/, ''));
-    const media = source.media, mobile = source.srcset ? lookup.byUrl.get(source.srcset) : undefined;
-    const desktop = image.src ? lookup.byUrl.get(image.src) : undefined;
+    const rawMedia = /\bmedia="([^"]*)"/.exec(sourceRaw)?.[1];
+    const mobile = source.srcset ? lookup.byUrl.get(decodeEntities(source.srcset)) : undefined;
+    const desktop = image.src ? lookup.byUrl.get(decodeEntities(image.src)) : undefined;
     const sources: string[] = [];
     for (const fmt of ['avif', 'webp'] as const) {
       const srcset = mobile?.variants?.length ? buildVariantSrcset(mobile.variants, fmt) : null;
-      if (srcset && media) sources.push(`<source media="${escapeAttr(media)}" type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="100vw" />`);
+      if (srcset && rawMedia) sources.push(`<source media="${rawMedia}" type="image/${fmt}" srcset="${escapeAttr(srcset)}" sizes="100vw" />`);
     }
     sources.push(`<source${sourceRaw.replace(/\s*\/$/, '')} />`);
     const sizes = image.sizes ?? opts.defaultSizes ?? DEFAULT_IMAGE_SIZES;
@@ -113,6 +114,8 @@ function expandArtDirection(html: string, lookup: MediaLookup, opts: TransformOp
   });
 }
 
+const decodeEntities = (value: string) => value.replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+
 export function transformBodyForSeo(
   html: string,
   lookup: MediaLookup,
@@ -121,7 +124,6 @@ export function transformBodyForSeo(
   if (!html) return html;
   html = expandArtDirection(html, lookup, opts);
   let imgIndex = 0;
-  let firstLeadingOffset = -1;
 
   // Single pass over <img> tags. Don't re-wrap an <img> that is already
   // inside a <picture> — whether one WE emitted on a previous pass
@@ -145,11 +147,10 @@ export function transformBodyForSeo(
     // own loading and do not use up the leading slots.
     const candidate = isLcpCandidate(attrs, html, offset);
     const index = candidate ? imgIndex++ : Infinity;
-    // The first visual image is the likely largest paint. A second one counts
-    // only when it sits close to the first (a hero pair), not far down the
-    // page after a short article.
-    if (index === 0) firstLeadingOffset = offset;
-    const isLeading = index === 0 || (index === 1 && offset - firstLeadingOffset < LEADING_PAIR_DISTANCE);
+    // Only the first visual image is the likely largest paint. Every later
+    // image loads lazily: an eager second image (a banner after a short
+    // article, the next card) competes with it for bandwidth.
+    const isLeading = index === 0;
 
     // 1. loading / decoding defaults. Block templates mark their images
     //    lazy; the first visual image overrides that, since a lazy LCP

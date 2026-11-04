@@ -603,6 +603,18 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { git_publication: publication, phase: 'uploading static files to the Hosting Group',
           ...(result.task.seo_report ? { seo_report: result.task.seo_report } : {}),
           ...(result.task.render_report ? { render_report: result.task.render_report } : {}) });
+        if (!deployment && !publication.public_media_prepared) {
+          // Attach and verify every public media host before the deployment
+          // replaces the live site: a published page must never reference a
+          // media host that does not serve its files yet.
+          const snapshot = await readSnapshot(args, publication);
+          if (snapshot.media_manifest?.entries?.length && !await preparePublicMediaDomains(args.orgId, snapshot.media_manifest)) {
+            await store.updateDoc(jobPath, { phase: 'distributing media' });
+            return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
+          }
+          publication = { ...publication, public_media_prepared: true };
+          await store.updateDoc(jobPath, { git_publication: publication });
+        }
         if (!deployment) {
           await assertLease();
           deployment = result.direct ? await finalizeDirectUpload(cloudflare, { account: publication.account_id, project: publication.project, branch: publication.branch, commit: publication.commit! }, result.direct) : await uploadStaticBuild(cloudflare, { org: args.orgId, group: group.id, account: publication.account_id,
@@ -611,7 +623,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
     }
     if (deployment?.id && publication.deployment_id !== deployment.id) {
-      publication = { ...publication, deployment_id: deployment.id, public_media_prepared: true };
+      // Media hosts are prepared before an engine deployment; a Pages Git build prepares them below.
+      publication = { ...publication, deployment_id: deployment.id };
       await store.updateDoc(jobPath, { git_publication: publication });
     }
     if (!deployment || deployment.latest_stage?.name !== 'deploy' || deployment.latest_stage?.status !== 'success') {

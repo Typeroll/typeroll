@@ -732,6 +732,15 @@ export function columnSlotSizes(data: Record<string, unknown>, slotIndex: number
   return `(max-width: ${threshold - 1}px) 100vw, ${share}`;
 }
 
+const GRID_STACK_PX: Record<string, number> = { sm: 720, md: 900, lg: 1000 };
+
+/** Rendered width of one core/grid cell: full width once stacked, one column's share above. */
+export function gridItemSizes(data: Record<string, unknown>): string | null {
+  const columns = Math.min(6, Math.max(1, Math.round(Number(data.cols) || 3)));
+  if (columns === 1) return null;
+  return `(max-width: ${GRID_STACK_PX[String(data.stack_at ?? 'sm')] ?? 720}px) 100vw, ${Math.ceil(100 / columns)}vw`;
+}
+
 /** Rendered width of one repeater item in a multi-column layout; null for single-column layouts. */
 export function repeaterItemSizes(data: Record<string, unknown>): string | null {
   const layout = String(data.layout ?? 'grid');
@@ -1543,7 +1552,8 @@ function substituteChildren(
   options: RenderBlocksOptions,
 ): string {
   if (!html.includes('{{children}}')) return html;
-  const inner = block.children ? renderBlocks(block.children, options) : '';
+  let inner = block.children ? renderBlocks(block.children, options) : '';
+  if (block.type === 'core/grid') inner = withImageSizes(inner, gridItemSizes(block.data ?? {}));
   return html.split('{{children}}').join(inner);
 }
 

@@ -133,6 +133,15 @@ it('serves media from a site media host through the organization bucket', async 
   expect(result.content.html_content).toBe('<img src="https://media.customer.com/archive/photo.png">');
 });
 
+it('marks media that a page shares so the build can prepare its share copy without the pages', async () => {
+  await getStore().setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png', mime_type: 'image/png', cdn_url: oldUrl, sha256: sha,
+    public_path: '/archive/photo.png', storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: `private/media/abcdefghij/originals/${sha}/image.png`, state: 'ready' } });
+  const shared = await publicationMediaManifest('org', 'site', { pages: [{ id: 'p', og_image: oldUrl }] }, 'site.demos.example.com');
+  expect(shared.manifest!.entries[0]).toMatchObject({ share_source: true });
+  const body = await publicationMediaManifest('org', 'site', { pages: [{ id: 'p', html_content: `<img src="${oldUrl}">` }] }, 'site.demos.example.com');
+  expect(body.manifest!.entries[0].share_source).toBeUndefined();
+});
+
 it('completes empty organizations immediately without a worker, storage calls or media DNS', async () => {
   const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Storage must not be called'));
   vi.mocked(preparePublicMediaDomains).mockRejectedValue(new Error('Domain is not configured'));

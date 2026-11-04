@@ -18,7 +18,7 @@ describe('transformBodyForSeo', () => {
     const matches = Array.from(out.matchAll(/<img\b[^>]*>/g)).map((m) => m[0]);
     expect(matches[0]).toContain('loading="eager"');
     expect(matches[0]).toContain('fetchpriority="high"');
-    expect(matches[1]).toContain('loading="eager"'); // 2nd is also above-the-fold
+    expect(matches[1]).toContain('loading="lazy"'); // only the first image is the largest paint
     expect(matches[2]).toContain('loading="lazy"');
   });
 
