@@ -1,6 +1,6 @@
 ---
 title: Self-Hosting
-description: Run Typeroll on your own infrastructure — requirements, environment variables, and deployment.
+description: Run Typeroll CMS in your own Cloudflare account — requirements, configuration, deployment, upgrades and backups.
 ---
 
 import { Aside } from "@astrojs/starlight/components";
@@ -9,443 +9,311 @@ This guide is for operators installing their own CMS. Cloud users can start with
 [Using Typeroll Cloud](../typeroll-cloud/); shared editing and publishing guides
 are listed in [Cloud and self-hosting](../../getting-started/cloud-and-self-hosting/).
 
-Typeroll CMS is open-source (MIT) and can be self-hosted. The supported reference
-profile runs entirely in a GCP/Firebase project you own. Cloud Run hosts the
-portal and Forms from the same immutable Core image used by Typeroll Cloud;
-Cloud Tasks and Cloud Scheduler invoke authenticated internal routes when work
-is ready. There is no VM or always-running worker.
+Typeroll CMS is open source (MIT). A self-hosted installation runs in your own
+Cloudflare account as two Workers, the portal and Forms, built from the same
+release bundle that Typeroll Cloud deploys. Content and accounts live in
+Durable Objects and media in R2, both in the EU jurisdiction. There is no
+server, container or database to operate.
 
 <Aside type="note">
-  The hosted version at [app.typeroll.com](https://app.typeroll.com) adds
-  managed infrastructure, migration execution, operations, and support. The CMS,
-  migration workflow, Forms, renderer, public API, and Extension protocol are
-  part of open-source Core.
+  Earlier releases documented a Google Cloud profile (Cloud Run, Firebase, Cloud
+  Tasks) and a Docker Compose fallback. Both are removed; this Cloudflare
+  profile replaces them. Typeroll Cloud adds managed operations, migration
+  execution and support on top of the same open-source Core.
 </Aside>
 
 ## Architecture
 
 ```text
-Internet ── Cloud Run portal ───── Firebase Auth + Firestore
-                 │                          │
-                 ├── Cloud Tasks ──────────┤ deploy-worker route
-                 ├── Cloud Scheduler ──────┤ publish-sweep route
-                 ├── R2 media
-                 └── Cloudflare Pages static sites
+Internet ── portal Worker ──┬── Durable Objects (EU): one per site,
+                            │   one per organization, one global
+                            ├── R2 (EU): media, private drafts, backups
+                            └── Cron every 5 minutes (wakes overdue objects)
 
-Internet ── Cloud Run Forms ────── Firebase Auth + Firestore
+Internet ── Forms Worker ───── the portal's Durable Objects
 ```
 
-Both Cloud Run services use the same verified Core release. The public image is
-copied by digest into the customer's Artifact Registry without rebuilding it.
-The portal enqueues durable Cloud Tasks; each task invokes
-`/api/internal/deploy-worker` with an OIDC token. Cloud Scheduler invokes
-`/api/internal/publish-sweep` with the same identity contract.
-
-The runtime uses Application Default Credentials from dedicated Cloud Run
-service accounts. Do not create or mount a Firebase service-account key for the
-reference profile.
+- **Portal** (`<prefix>-portal`): the editor, public API, hosted MCP and
+  sign-in. It owns the `DocumentStore` Durable Object class. Each object's
+  alarm delivers its own scheduled work (publishing schedules, Forms
+  notifications) through the portal's `Scheduler` entrypoint; a Cron trigger
+  every five minutes wakes any object whose alarm is overdue.
+- **Forms** (`<prefix>-forms`): the same bundle with `SERVICE_ROLE=forms` on
+  its own hostname. It serves only Forms, Analytics and diagnostic routes and
+  reaches the portal's objects; it owns no data of its own.
+- **Published sites** are static. Each Organization publishes through its own
+  build engine and hosting account (GitHub or Cloudflare), as on Typeroll
+  Cloud; see [Customer publishing](../customer-publishing/).
 
 ## Prerequisites
 
-- **Development:** Node.js 22.12 or later
-- **Production:** a GCP project with billing, `gcloud`, and `crane`
-- **Firebase:** Firestore Native mode, Authentication, and a Firebase Web App
-- **Cloudflare account** with R2 for media and Pages for static site output
-- Two public DNS names for the portal and Forms origins
+- A **Cloudflare account** with Workers, Durable Objects and R2. The Workers
+  Paid plan is recommended for production.
+- Two hostnames for the portal and Forms in a zone of that account, for example
+  `cms.example.org` and `forms.example.org`. Without them both Workers answer
+  on `workers.dev`.
+- A hostname for public media, for example `media.example.org`.
+- An email provider for account mail (confirmation and password reset):
+  Postmark, Amazon SES or SMTP on a submission port.
+- On the machine that deploys: Node.js 22.12 or later, Git and the
+  [GitHub CLI](https://cli.github.com) (`gh`), signed in to GitHub, which
+  downloads the release and verifies its build provenance.
 - **Optional:** each Organization's own Anthropic API key for the built-in AI
-  assistant, added in the portal (no server variable)
+  assistant, added in the portal (no server variable).
 
-## Quick start (local dev)
+To try the CMS on your computer first, without any account, follow the
+[self-hosting quickstart](../../getting-started/self-hosting-quickstart/).
 
-Clone the repository and install dependencies:
+## Configure
 
-```bash
-git clone https://github.com/typeroll/typeroll
-cd typeroll
-npm ci
-```
-
-The portal includes a **fixtures backend** — a JSON file store that replaces Firestore for local development. No Firebase configuration needed to run locally:
-
-```bash
-npm run dev:portal
-```
-
-Open `http://localhost:4321`. You'll be logged in as a dev user with access to the sample content in `packages/site-template/fixtures/`.
-
-## Plan the reference profile
-
-Clone a tagged Core release and copy the non-secret serverless configuration
-contract:
+Clone the release you install and its tooling, then copy the two templates:
 
 ```bash
 git clone --branch core-v<VERSION> --depth 1 https://github.com/typeroll/typeroll
 cd typeroll
-cp config/self-host-gcp.example.json self-host.gcp.json
-```
-
-Fill in the customer project, region, Firebase Web App, public origins,
-resource names, Secret Manager resource names, and the release's published
-`@sha256:` image. The JSON contains references to secrets, never secret values.
-Generate an inspectable, non-mutating plan:
-
-```bash
 npm ci
-npm run self-host:gcp:plan -- --config self-host.gcp.json > self-host.gcp.plan.json
+cp config/self-host-cloudflare.example.json self-host.cloudflare.json
+cp .env.self-host.example .env.self-host
+chmod 600 .env.self-host
 ```
 
-The plan fixes the supported topology before any remote mutation: required
-APIs, three least-privilege identities, Artifact Registry mirror, Cloud Run
-portal and Forms services, Cloud Tasks queue, Cloud Scheduler job, runtime
-configuration, and Secret Manager bindings. It also records that the artifact
-is copied by digest without a rebuild and explicitly forbids VM, managed
-instance group, reverse proxy, and long-running-worker resources.
+`self-host.cloudflare.json` holds names and public settings only:
 
-`R2_PRIVATE_BUCKET` is optional. It names a second R2 bucket in the same
-account with public access disabled; the R2 access key must be able to read
-and write both buckets. Uploads made before an Organization
-connects its own storage, and every SVG upload on sites that use the server's
-platform bucket (`R2_BUCKET`), are staged there, because every object in the
-public bucket is reachable as soon as it is written; SVGs are published only
-after they are sanitized. Without it, those uploads return HTTP 503
-(`draft_storage_unavailable` or `svg_staging_unavailable`). When the config
-names a secret for it, the plan binds it to the portal only. In the Compose
-fallback, set `R2_PRIVATE_BUCKET` in `.env`; `npm run self-host:check` warns
-when it is missing and rejects the public bucket's name.
+| Setting             | Meaning                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `account_id`        | Your Cloudflare account ID                                                                                                            |
+| `core_version`      | The Core release to install. Defaults to the version of this checkout                                                                 |
+| `bundle_sha256`     | Optional. Pins the exact bundle digest (`sha256:…`); apply refuses any other                                                          |
+| `name_prefix`       | Prefix for Worker and default bucket names (default `typeroll`)                                                                       |
+| `portal_host`       | Portal hostname, attached as a Worker custom domain                                                                                   |
+| `forms_host`        | Forms hostname; must differ from the portal                                                                                           |
+| `workers_subdomain` | Only without hostnames: your `<subdomain>.workers.dev`                                                                                |
+| `buckets`           | R2 bucket names for `media`, `private_drafts` and `backups` (default `<prefix>-media`, `<prefix>-private-drafts`, `<prefix>-backups`) |
+| `media_public_url`  | Public origin of the media bucket, for example `https://media.example.org`                                                            |
+| `sites_base_domain` | Optional. Domain for automatic `<slug>.<domain>` site addresses                                                                       |
+| `logpush`           | Optional. `true` sends Worker trace events to your Logpush jobs                                                                       |
+| `vars`              | Optional public variables, such as your publishing App IDs (see below)                                                                |
 
-Every required Secret Manager resource must have an enabled `latest` version
-before deployment. Keep the actual secret values in your secret-management
-workflow; do not add them to `self-host.gcp.json` or Git.
-
-## Apply and verify the reference profile
-
-The apply command is a dry run unless `--apply` and an exact project
-confirmation are both present. Its two rerunnable phases separate resources
-that contain no secret values from the runtime deployment:
-
-```bash
-# Local preview only; makes no remote calls.
-npm run self-host:gcp:apply -- --config self-host.gcp.json
-
-# APIs, service accounts, IAM, Artifact Registry, Cloud Tasks, and empty
-# Secret Manager containers. This changes the named GCP project.
-npm run self-host:gcp:apply -- \
-  --config self-host.gcp.json \
-  --phase foundation \
-  --apply \
-  --confirm-project your-gcp-project
-```
-
-Add one enabled version to every Secret Manager resource using your normal
-secret-management workflow. The apply command creates secret containers and
-IAM bindings, but it never accepts, reads, prints, or copies secret values.
-Then preview and apply the runtime phase:
-
-```bash
-npm run self-host:gcp:apply -- \
-  --config self-host.gcp.json \
-  --phase runtime
-
-npm run self-host:gcp:apply -- \
-  --config self-host.gcp.json \
-  --phase runtime \
-  --apply \
-  --confirm-project your-gcp-project
-```
-
-The runtime phase fails before copying an image or deploying Cloud Run if any
-secret lacks an enabled version. It verifies the source digest, copies the
-release to Artifact Registry under a deterministic digest tag without a
-rebuild, deploys the portal and Forms roles, and converges the publish-sweep
-Scheduler job. A new portal receives one bootstrap revision so its stable
-`run.app` URL can be discovered; the command immediately converges the active
-revision and both OIDC callers on that URL.
-
-Run the read-only control-plane doctor at any time. It reads resource and
-secret-version metadata, never secret contents:
-
-```bash
-npm run self-host:gcp:doctor -- --config self-host.gcp.json
-npm run self-host:gcp:doctor -- --config self-host.gcp.json --json
-```
-
-The operator running apply must already be allowed to enable services, manage
-the listed project resources and IAM bindings, and act as the three dedicated
-runtime service accounts. Core does not grant roles to the human or automation
-identity running the installer.
-
-After deployment, verify both roles and the immutable release identity:
-
-```bash
-curl --fail https://cms.example.com/api/healthz
-curl --fail https://cms.example.com/api/readyz
-curl --fail https://cms.example.com/api/version
-curl --fail https://forms.example.com/api/readyz
-curl --fail https://forms.example.com/api/version
-```
-
-## Portable Compose fallback
-
-`compose.yaml` is retained for local evaluation and deployments outside GCP.
-It is not the production-supported profile and is not the permanent self-host
-E2E target. For this fallback only, copy the environment contract and keep it
-readable only by the operator:
-
-```bash
-cp .env.self-host.example .env
-chmod 600 .env
-```
-
-`TYPEROLL_IMAGE` must use the release's published `@sha256:` digest, not a
-mutable tag. Set `TYPEROLL_IMAGE_DIGEST` to the same digest.
-
-Generate each HMAC/encryption value independently:
+`.env.self-host` holds the secrets. Fill in every required value; the file
+lists each one with its purpose. Generate each random secret separately:
 
 ```bash
 node -e "console.log(require('node:crypto').randomBytes(32).toString('base64url'))"
 ```
 
-Generate the Extension issuer key once and store the resulting private JWK as
-single-line JSON in `EXTENSION_SIGNING_PRIVATE_JWK`:
+Generate the Extension signing key once and store the private JWK as one line:
 
 ```bash
 node --input-type=module -e "import { generateKeyPairSync } from 'node:crypto'; const { privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' }); console.log(JSON.stringify(privateKey.export({ format: 'jwk' })))"
 ```
 
-Validate the complete portable contract before Docker receives credentials:
+`ACCOUNT_EMAIL` is the provider for account mail as JSON, for example
+`{"type":"postmark","from":"CMS <cms@example.org>","config":{"server_token":"…"}}`.
+SMTP accepts ports 465, 587, 26, 2465, 2525 and 2587; Workers cannot open
+port 25.
+
+For media uploads, create an R2 API token with **Object Read & Write** for the
+media and private-drafts buckets and put its key pair in `R2_ACCESS_KEY_ID` and
+`R2_SECRET_ACCESS_KEY`. The private-drafts bucket keeps uploads that are not
+yet published, and SVGs until they are sanitized, out of public reach.
+
+Secrets can also come from the environment instead of the file: pass
+`--secrets-env` to the commands below, for example in CI with a secret manager.
+
+Finally, create a Cloudflare API token for deploying, starting from the **Edit
+Cloudflare Workers** template. It needs Workers Scripts and Workers R2 Storage
+edit access on the account and, for custom hostnames, Workers Routes edit
+access on the zone. Export it only in the shell that deploys:
 
 ```bash
-npm ci
-npm run self-host:check
-docker compose config --quiet
+export CLOUDFLARE_DEPLOY_API_TOKEN=<deploy token>
 ```
 
-All self-host operation commands also accept the complete contract through
-their process environment. Process-injected values override an `--env-file`,
-and a file is optional when the injected environment is complete. Prefer that
-mode with a secret-manager runner so JSON keys and recovery credentials do not
-need to be materialized on disk. The `0600` check still applies whenever an
-environment file is supplied.
+The deploy token is never sent to the Workers. The runtime's own
+`CLOUDFLARE_API_TOKEN` in `.env.self-host` is a separate, optional token for
+the installation's Cloudflare account (site hosting and Web Analytics).
 
-The check prints field names and validation failures only. It never prints
-secret values. Keep `TYPEROLL_BACKUP_KEY` in a second, off-host secret store;
-losing both the host and this key makes encrypted backups unrecoverable. The
-Compose profile explicitly removes this key from every Core container.
-
-Each Core role receives only the secrets it uses. The public Forms service
-keeps Firebase Admin, `FORMS_HMAC_SECRET` and `INTEGRATIONS_SECRET_KEY`; Compose
-blanks its Cloudflare token, R2 keys, preview and MCP OAuth signing keys and
-Extension signing key. The worker does not receive the preview or MCP OAuth
-signing keys. The Core image runs as the unprivileged `node` user.
-
-Bootstrap the portable data contract once before starting Core:
+## Plan
 
 ```bash
-npm run self-host:bootstrap
+npm run self-host:cloudflare:plan
 ```
 
-Bootstrap is idempotent. It refuses a project or bucket containing data unless
-you pass `--adopt`; use that flag only after verifying all existing resources
-belong to this Typeroll installation. Start the installation when the checks
-and bootstrap pass:
+The plan changes nothing. It:
+
+1. downloads the release bundle (`typeroll-core-<VERSION>-workers.tar.gz` and
+   its descriptor) from the Core GitHub release, or uses `--bundle-dir DIR`
+   when you have downloaded them yourself;
+2. verifies the bundle's digest, file inventory and release contract, and its
+   GitHub build provenance from Typeroll's release workflow
+   (`gh attestation verify`). A bundle without valid provenance is refused;
+3. derives the portal and Forms Worker configurations from the configuration
+   the build generated, and builds both without uploading them;
+4. reads your account: which buckets exist, whether the Workers exist, their
+   Durable Object migration and the names of their secrets.
+
+The output lists the buckets to create, how each Worker will be uploaded, and
+which secrets will be set or are missing, by name only. Any problem makes the
+command exit non-zero.
+
+## Apply
 
 ```bash
-docker compose pull
-docker compose up -d
-docker compose ps
+npm run self-host:cloudflare:apply -- --confirm <account_id>
 ```
 
-Caddy requests TLS certificates after both DNS names point at the host and
-ports 80 and 443 are reachable. Verify every portable role:
+`--confirm` must repeat your account ID exactly. Apply runs the same checks as
+the plan, stops before any change if something is missing, and then:
+
+1. creates the missing R2 buckets in the EU jurisdiction;
+2. uploads the portal, then Forms. A first installation, or a release with a
+   new Durable Object migration, is deployed in one step (`wrangler deploy`);
+   otherwise a new version is uploaded (`wrangler versions upload`) and
+   deployed to all traffic (`wrangler versions deploy`). Secrets travel with
+   the upload through a temporary file readable only by you, which is removed
+   afterwards. Secrets you leave out keep their current value;
+3. runs the doctor until both Workers serve the new release and report ready.
+
+What the derived configuration always does:
+
+- binds the store in the EU jurisdiction (`STORE_JURISDICTION=eu`) and every R2
+  bucket with `jurisdiction: eu`;
+- keeps Workers Logs and traces off and Smart Placement off; with
+  `"logpush": true` trace events go to your Logpush jobs instead, for example
+  a job to an EU R2 bucket;
+- uses no KV namespaces and turns off per-version preview URLs;
+- runs the Cron trigger on the portal only;
+- records the bundle digest and source commit, so `/api/version` names exactly
+  what is running.
+
+A new installation records its data schema in its empty store on the first
+request. A store that already holds data but no schema record is never adopted;
+the portal then answers 503 until the data is restored or migrated.
+
+Then make the media bucket public on its hostname: in the Cloudflare dashboard
+open **R2 → `<prefix>-media` → Settings → Custom Domains** and add the hostname
+from `media_public_url`. Do not make the private-drafts or backups buckets
+public.
+
+## Verify
 
 ```bash
-curl --fail https://cms.example.com/api/healthz
-curl --fail https://cms.example.com/api/readyz
-curl --fail https://cms.example.com/api/version
-curl --fail https://forms.example.com/api/readyz
-docker compose exec worker node -e "fetch('http://127.0.0.1:8080/api/readyz').then(async r => { console.log(await r.text()); process.exit(r.ok ? 0 : 1) })"
+npm run self-host:cloudflare:doctor
 ```
 
-The Forms hostname exposes only Forms, Analytics, and diagnostic routes. The
-portable worker is not published through Caddy.
+The doctor checks `/api/version` and `/api/readyz` of both Workers: the
+expected release and role, and every required readiness check, which it lists
+by name and reason. You can check the same endpoints yourself:
 
-Caddy is the only client of the portal and Forms containers and appends one
-`X-Forwarded-For` hop, so Compose sets `AUTH_TRUST_PROXY_HOPS=1`. Sign-in, MCP
-OAuth and Forms rate limits then count each visitor separately instead of
-sharing one budget for every request. If you place another proxy or CDN in front
-of Caddy, configure Caddy's `trusted_proxies` for it and set
-`AUTH_TRUST_PROXY_HOPS=2` in `.env`. Never raise the value without that proxy:
-clients could then choose their own rate-limit address.
-
-Outbound requests whose address a user or remote content chooses, such as
-WordPress sources, webhooks, Extension endpoints and SMTP servers, only connect
-to public addresses. To migrate an intranet WordPress or send through a mail
-relay on your own network, set `TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH=1` in
-`.env`. It applies only to migration sources and SMTP, allowing private,
-loopback and CGNAT addresses and `.local`/`.internal` names. Link-local
-addresses, including cloud metadata endpoints, stay blocked. Every portal user
-who can start a migration or save SMTP settings can then reach that network, so
-set it only when you trust all of them. Typeroll Cloud does not offer this
-setting.
-
-The portal hostname sends `Content-Security-Policy: frame-ancestors 'self'` and
-`X-Frame-Options: SAMEORIGIN` unless a response sets its own policy, so other
-sites cannot frame the admin interface. Its Firestore queue is durable;
-do not replace `DEPLOY_QUEUE=firestore` with `in_process` in an internet-facing
-portable install.
-
-## Build-cost accounting
-
-Every deploy records what the build cost in server time, on the deploy job
-itself. You'll see it in `get_deploy_status` responses — total, a
-CPU/memory/request split, wall-clock duration, per-phase timings, and the size
-of the generated site.
-
-Nothing needs configuring to get this. The defaults above are the published
-rates for a request-billed container at 1 vCPU / 1 GiB, which is how the
-reference deployment runs.
-
-Adjust the rates when your hosting differs:
-
-- **Different provider or region.** Substitute your own per-second rates.
-- **Committed-use or reserved pricing.** Use your effective discounted rates.
-- **Your own hardware.** Set the rates to `0` — every build then costs nothing,
-  which is accurate: you've already paid for the machine.
-
-Two things to keep in mind:
-
-- **`DEPLOY_COST_VCPU` and `DEPLOY_COST_MEMORY_GIB` must match what you
-  actually allocate** to the worker container. Change your container's CPU or
-  memory without changing these and every subsequent build is mispriced.
-- **The rate card is snapshotted onto each deploy job when it runs.** Changing
-  a rate affects future builds only; history keeps the numbers it was costed
-  with, so a rate change never silently rewrites past figures.
-
-The numbers are estimates from that rate card, not billing records, and they're
-gross — free-tier allowances and discounts aren't deducted, so your real
-invoice will be lower.
-
-## Firebase setup
-
-1. Create a Firebase project at [console.firebase.google.com](https://console.firebase.google.com).
-2. Enable **Firestore** in Native mode and **Authentication → Email/Password**.
-3. Add a Firebase web app and copy its four public values to
-   the serverless config.
-4. Attach the dedicated runtime service accounts from the generated plan to
-   the Cloud Run services. Core uses `FIREBASE_PROJECT_ID` and Application
-   Default Credentials; do not create a downloadable key.
-5. Ensure the backup identity can read the Authentication password hash
-   configuration (`firebaseauth.configs.getHashConfig`) in addition to managing
-   Auth users and Typeroll's Firestore data. Backups fail closed if password
-   hashes or their hash configuration are unavailable.
-6. For each user, set an `org_id` custom claim with the modular Admin API:
-
-```javascript
-import { applicationDefault, initializeApp } from "firebase-admin/app";
-import { getAuth } from "firebase-admin/auth";
-
-initializeApp({
-  credential: applicationDefault(),
-  projectId: process.env.FIREBASE_PROJECT_ID,
-});
-await getAuth().setCustomUserClaims(uid, { org_id: "your-org-id" });
+```bash
+curl --fail https://cms.example.org/api/version
+curl --fail https://cms.example.org/api/readyz
+curl --fail https://forms.example.org/api/readyz
 ```
 
-All content is scoped under `organizations/{org_id}/` in Firestore.
-The portable Compose fallback instead accepts `FIREBASE_SERVICE_ACCOUNT` JSON
-because it does not have a GCP workload identity.
+Then open the portal, create your account, confirm the email address and
+create your Organization.
 
-### Email confirmation
+## Upgrade and roll back
 
-In Core releases after 0.2.84, the portal accepts a signed-in person only when
-Firebase reports a confirmed email address (`email_verified` in the ID token).
-Until then the account sees only **Check your email**: it cannot create or join
-an Organization, accept invitations, open Sites, use or create API keys,
-approve MCP access or call authenticated APIs. Delegated MCP connections of an
-account whose address is not confirmed stop working on the next request.
-Organization-wide API keys are Organization credentials and keep working.
+Check out the new release tag (or set `core_version`), run `npm ci`, then plan
+and apply again. Read the [changelog](https://github.com/typeroll/typeroll/blob/main/CHANGELOG.md)
+for the release first: a release that changes the stored data says what to do
+before you apply it.
 
-Firebase sends the confirmation messages; no mail service is required.
+`/api/version` reports the release and the data schema range it can read. A
+Worker version is rolled back with Wrangler, for example:
 
-1. In **Authentication → Settings → Authorized domains**, add the portal host
-   (for example `cms.your-domain.example`). The confirmation link returns to
-   the portal's `/verify-email` page only for an authorized domain; otherwise
-   Firebase shows its own confirmation page and the person returns manually.
-2. Optionally adjust **Authentication → Templates → Email address
-   verification** (sender name, reply-to, language).
-3. Set `PORTAL_PUBLIC_URL` and `PUBLIC_FIREBASE_API_KEY`. The portal uses the
-   public Web API key to send a new link and to refresh the session after
-   confirmation.
+```bash
+npx wrangler deployments list --name typeroll-portal
+npx wrangler rollback --name typeroll-portal
+```
 
-**Upgrading existing installations.** Password accounts created before this
-release usually have an unconfirmed address, because earlier releases never
-sent a confirmation. Session cookies are re-checked on every request, so those
-people see **Check your email** the next time they open the portal, even with
-an active session. Their memberships are kept and work again after they confirm.
-Tell your users before upgrading. Mark an address as confirmed with the Admin
-SDK (`getAuth().updateUser(uid, { emailVerified: true })`) only when you know
-the person owns it.
+Roll back Forms the same way. A rollback cannot go behind a Durable Object
+migration: apply refuses to deploy code older than the store's migration, and
+so should you.
 
-### Sign-out and session cookies
+## Backups and disaster recovery
 
-A portal session is a Firebase session cookie that lasts up to 14 days and is
-renewed about once a day while the person is active. **Sign out** ends that
-browser's sign-in on the server, not only in the browser: a copy of the cookie,
-and any cookie renewed from it, stops working on its next request on every
-portal instance. The person's other browsers and devices stay signed in, and so
-do their MCP connections and API keys, because sign-out does not revoke the
-account's Firebase refresh tokens. To end every session of an account, revoke
-its refresh tokens or disable it in Firebase; that also ends its delegated MCP
-connections.
+A backup is a verified export of the whole document store: every Organization,
+Site, Page, setting and account, including password hashes and encrypted
+integration secrets. It does not contain media files; they stay in your R2
+bucket, which you can copy with any S3-compatible tool.
 
-Sign-out records are kept in the root Firestore collections `revoked_sessions`
-and `session_lineage`. Each document holds only a hash of the user ID and
-sign-in time and an expiry about 14 days ahead; the portal ignores expired
-records. Enable Firestore TTL on the native timestamp field `expires_at` for
-both collection groups so expired records are deleted; deletion is
-asynchronous. For a file-backed self-host store, remove expired documents
-periodically.
+Backups and restores go through the portal's store transfer endpoint, which is
+closed unless `TYPEROLL_STORE_TRANSFER_TOKEN` is set. Add a random value of at
+least 32 characters to `.env.self-host` and apply. When you are done, remove it
+from the file and delete the secret again:
+
+```bash
+npx wrangler secret delete TYPEROLL_STORE_TRANSFER_TOKEN --name typeroll-portal
+```
+
+```bash
+npm run self-host:cloudflare:backup
+```
+
+The backup reads every store object page by page into `backups/backup-<time>/`
+(`store.ndjson`, `store.manifest.json` with record counts and SHA-256
+checksums, and `backup.json`), checks the files against the manifest, and
+copies them to the backups bucket in the EU jurisdiction. `--out DIR` chooses
+the directory; `--skip-upload` keeps the copy local. Keep backups as private as
+the installation itself.
+
+To restore, for example into a new installation:
+
+```bash
+npm run self-host:cloudflare:restore -- --in backups/backup-<time> --confirm cms.example.org
+```
+
+`--confirm` must repeat the portal hostname. The restore checks the backup
+locally, copies it to the backups bucket, and lets the portal verify, import
+and read-compare it in bounded steps. Progress is kept in the bucket, so an
+interrupted restore continues when you run the same command again. The import
+never overwrites a document whose current value differs from the backup; it
+reports it as a conflict and the command exits non-zero. To overwrite such
+documents deliberately, run the restore again with `--force` and a new
+`--run` name.
+
+Restore into a new installation at least quarterly and sign in to it: a backup
+that has only been created is not yet a proven recovery path.
+
+## Accounts and sign-in
+
+People sign up with an email address and password. The portal sends a
+confirmation link through `ACCOUNT_EMAIL`; until the address is confirmed the
+account sees only **Check your email** and cannot open Organizations, Sites or
+API keys. Password reset uses the same provider.
+
+Sessions are kept in the store and last up to 14 days. **Sign out** ends the
+session on the server at once.
 
 ### GitHub sign-in (optional)
 
-**Continue with GitHub** appears only when `PUBLIC_FIREBASE_GITHUB_SIGNIN=true`.
-It is separate from the GitHub App that an Organization connects for
-publishing; a GitHub sign-in grants no repository access.
+**Continue with GitHub** appears when `GITHUB_SIGNIN_CLIENT_ID` and
+`GITHUB_SIGNIN_CLIENT_SECRET` are set. It is separate from the GitHub App that
+an Organization connects for publishing and grants no repository access.
 
-1. In **Firebase console → Authentication → Sign-in method**, add the
-   **GitHub** provider and copy the callback URL it shows
-   (`https://<auth-domain>/__/auth/handler`).
-2. On GitHub, under **Settings → Developer settings → OAuth Apps**, create a
-   new OAuth App (not a GitHub App). Use the portal URL as the homepage URL
-   and paste the Firebase callback URL as the authorization callback URL.
-   Generate a client secret.
-3. Paste the OAuth App's client ID and client secret into the Firebase GitHub
-   provider and enable it. Keep the secret in Firebase only.
-4. Keep **One account per email address** enabled in Firebase. Set
-   `PUBLIC_FIREBASE_GITHUB_SIGNIN=true` in the portal environment and restart.
-
-The portal requests only the `user:email` scope and does not store the GitHub
-access token. Firebase does not treat GitHub as a trusted email provider, so
-GitHub identities report `email_verified: false`: a new GitHub account
-receives a confirmation email and must confirm its address like a password
-account. When the address already has a password account, Firebase reports a
-conflict; the sign-in page asks for that password and links GitHub to the
-existing account.
-
-The sign-in page uses a popup and falls back to a full-page redirect when the
-browser blocks popups. Browsers that partition third-party storage can break
-the redirect when `PUBLIC_FIREBASE_AUTH_DOMAIN` is on a different site than the
-portal; see Firebase's guidance on using `signInWithRedirect` with blocked
-third-party storage.
+1. On GitHub, under **Settings → Developer settings → OAuth Apps**, create an
+   OAuth App (not a GitHub App). Use the portal URL as the homepage URL and
+   `https://<portal host>/api/auth/callback/github` as the callback URL.
+2. Put its client ID and a new client secret in `.env.self-host` and apply.
 
 ## Cloudflare sign-in for customer publishing
 
 Customer publishing connects each Organization's Cloudflare account through
-your Cloudflare OAuth client (`TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID`,
-`TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET`, an HTTPS `PORTAL_PUBLIC_URL` and
-`INTEGRATIONS_SECRET_KEY`). Cloudflare refuses the whole sign-in
-(`invalid_scope`) when Typeroll asks for a scope the client is not allowed, so
-optional scopes are requested only when you list them.
+your Cloudflare OAuth client. Put its client ID in `vars` as
+`TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID` and its secret in `.env.self-host` as
+`TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET`; the portal also needs its HTTPS
+`PORTAL_PUBLIC_URL` (set by the profile) and `INTEGRATIONS_SECRET_KEY`.
+Publishing through GitHub likewise uses your own GitHub App:
+`TYPEROLL_PUBLISH_GITHUB_APP_ID`, `TYPEROLL_PUBLISH_GITHUB_APP_SLUG` and
+`TYPEROLL_PUBLISH_GITHUB_CLIENT_ID` in `vars`, its client secret and private key
+in `.env.self-host`.
+
+Cloudflare refuses the whole sign-in (`invalid_scope`) when Typeroll asks for a
+scope the client is not allowed, so optional scopes are requested only when you
+list them.
 
 | Scope                    | Cloudflare name        | Enables                                                   |
 | ------------------------ | ---------------------- | --------------------------------------------------------- |
@@ -457,171 +325,50 @@ optional scopes are requested only when you list them.
 To include them in **Connect Cloudflare**:
 
 1. Allow the scopes on your OAuth client in Cloudflare.
-2. List the same scopes, separated by spaces or commas, in
-   `TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES` and restart the portal:
+2. List the same scopes, separated by spaces, in `vars` and apply:
 
-   ```sh
-   TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES="account-settings.write account-analytics.read dynamic-redirect.read dynamic-redirect.write"
+   ```json
+   "vars": {
+     "TYPEROLL_PUBLISH_CLOUDFLARE_OPTIONAL_SCOPES": "account-settings.write account-analytics.read dynamic-redirect.read dynamic-redirect.write"
+   }
    ```
 
 Other values are ignored. You may list only some, for example only the two
-`dynamic-redirect` scopes. Unset, **Connect Cloudflare** requests exactly what
-earlier releases did; Analytics access is then approved per Site with
+`dynamic-redirect` scopes. Unset, Analytics access is approved per Site with
 **Approve Analytics access**, which requests the two Analytics scopes and still
 requires them on the client, and redirect rules are created by hand
-(`redirect_rule_required`). Existing connections keep working and get the
-listed scopes when an owner or admin selects **Approve update** on their
-Cloudflare card. Approving a scope enables Analytics for no Site.
-
-## Backups and disaster recovery
-
-Typeroll's backup is one encrypted, authenticated snapshot of all three state
-planes:
-
-- Firestore documents, subcollections, native value types, and installation
-  schema metadata
-- Firebase Authentication users, password hashes, password hash configuration,
-  provider identities, custom claims, and MFA metadata
-- R2 objects and their relevant HTTP metadata
-
-The manifest exposes only source identifiers, schema version, timestamps, and
-counts. Data, user records, object keys, and object bodies are encrypted with
-AES-256-GCM. Every file and the manifest are authenticated before restore.
-
-For a consistent manual backup of the portable Compose fallback, stop writers
-but leave its managed dependencies online:
-
-```bash
-docker compose stop portal forms worker
-npm run self-host:backup -- --output /srv/typeroll-backups/2026-09-01
-npm run self-host:restore -- --backup /srv/typeroll-backups/2026-09-01
-docker compose start portal forms worker
-```
-
-The restore command is verify-only unless `--apply` is present. Copy the
-completed backup directory off-host and test that copy with the verify-only
-command. Never copy a directory containing `INCOMPLETE`.
-
-Restore to a completely empty Firebase project and R2 bucket with exact target
-and backup confirmations:
-
-```bash
-npm run self-host:restore -- \
-  --backup /srv/typeroll-backups/2026-09-01 \
-  --apply --empty-target \
-  --confirm-project my-disaster-recovery-project \
-  --confirm-bucket my-disaster-recovery-bucket \
-  --confirm-backup <backup-id> \
-  --allow-target-mismatch
-```
-
-`--allow-target-mismatch` is required only when the backup source identifiers
-differ from an intentional disaster-recovery target. The restore writes the
-target identifiers into the recovered installation metadata.
-
-To replace an existing installation, stop every Core role and substitute
-`--replace` for `--empty-target`. Replace mode deletes Firestore documents,
-Auth users, and R2 objects that are absent from the backup. It verifies the
-entire backup first, requires all exact confirmations, and verifies the final
-record sets, but it cannot make three external services transactional. Keep the
-roles stopped until the command succeeds; if it fails, correct the cause and
-rerun the same idempotent restore.
-
-At least quarterly, restore the latest backup into isolated Firebase and R2
-test resources, start the pinned Core image against them, and run the browser
-and agent acceptance suite. A backup that has only been created is not yet a
-proven recovery path.
-
-## Portable upgrade, migration, and rollback
-
-Core reports both its release and readable data-schema range at `/api/version`.
-The command-level sequence below applies to the portable Compose fallback. The
-serverless profile instead promotes a new digest through the generated GCP plan
-and keeps the previous Cloud Run revision available for traffic rollback.
-
-1. Stop portal, Forms, and worker so the backup and migration have no writers.
-2. Create an encrypted backup and verify the copied backup directory.
-3. Check out the new signed/tagged Core release, run `npm ci`,
-   `npm run self-host:check`, and `docker compose config --quiet`.
-4. Inspect the migration without changing data:
-
-   ```bash
-   npm run self-host:migrate
-   ```
-
-5. If migrations are pending, apply them only with the verified pre-migration
-   backup and exact project confirmation:
-
-   ```bash
-   npm run self-host:migrate -- \
-     --apply \
-     --backup /srv/typeroll-backups/2026-09-01 \
-     --confirm-project my-firebase-project
-   ```
-
-6. Set `TYPEROLL_IMAGE` and `TYPEROLL_IMAGE_DIGEST` to the new published digest,
-   then run `docker compose pull`, `docker compose up -d`, and the health,
-   readiness, and version checks above.
-7. Run a site edit/deploy smoke test, one Forms submission, the browser visual
-   suite, and the agent suite before ending the maintenance window.
-
-Migration steps are ordered, idempotent, protected by a renewable installation
-lock, and update schema metadata after each successful step. They will not run
-without a matching verified backup.
-
-If the new image fails while the previous image can read the resulting schema,
-pin the previous digest again and restart Compose. If the previous image cannot
-read the new schema, leave all roles stopped and restore the pre-migration
-backup with `--replace`, then start the previous digest. Never run an image
-against a schema outside the readable range reported by that image.
-
-## Direct Docker smoke test
-
-For image development only, the container listens on port 8080:
-
-```bash
-docker build -t typeroll-core:dev .
-docker run --rm -p 8080:8080 --env-file .env typeroll-core:dev
-```
-
-This single-container command does not provide the separate Forms origin or
-durable jobs and is not the production installation profile.
+(`redirect_rule_required`). Existing connections get the listed scopes when an
+owner or admin selects **Approve update** on their Cloudflare card. Approving a
+scope enables Analytics for no Site.
 
 ## Hosted MCP connector
 
-A self-hosted portal serves the MCP Streamable HTTP transport at `/api/mcp` automatically — no extra deployment step. Your users add `https://<your-portal-host>/api/mcp` as a remote server in their MCP-compatible client, follow the consent screen, and enter a Typeroll API key (org-scoped from `/app/settings/api-keys` is the right default).
+The portal serves the MCP Streamable HTTP transport at `/api/mcp`. Users add
+`https://<portal host>/api/mcp` as a remote server in their MCP client, follow
+the consent screen and choose an API key. Issued tokens are signed with
+`MCP_OAUTH_SIGNING_KEY` and bound to `PORTAL_PUBLIC_URL`.
 
-Requirements specific to this endpoint:
-
-- `MCP_OAUTH_SIGNING_KEY` set (see above). Without it the `/api/mcp/oauth/token` endpoint refuses to issue JWTs.
-- `PORTAL_PUBLIC_URL` set to the public origin (`https://<your-portal-host>`). The OAuth `aud` claim and the well-known metadata endpoints use this to bind issued tokens to your domain per RFC 8707.
-- TLS for remotely hosted MCP clients.
-
-Agent clients with local process support can keep using the stdio install (`npx -y @typeroll/mcp-server` with `TYPEROLL_API_URL` pointed at your portal). Same tool surface, same API keys.
+Agent clients that run local processes can use the stdio package instead
+(`npx -y @typeroll/mcp-server` with `TYPEROLL_API_URL` pointed at your portal):
+the same tools and API keys.
 
 ## Built-in AI assistant
 
 There is no server-wide AI key. Each Organization adds its own Anthropic API key
 in the portal under **Account → AI assistant** and chooses its Sites; see
-[Set up the built-in AI assistant](../ai-assistant/). The portal stores the key
-encrypted with `INTEGRATIONS_SECRET_KEY`, which the reference profile already
-requires. `ANTHROPIC_API_KEY` is no longer read; `npm run self-host:check` warns
-when an old environment still sets it. The optional `ANTHROPIC_BASE_URL` points
-AI calls and key verification at a compatible endpoint, such as a gateway. MCP
-and the public API do not depend on any of this.
+[Set up the built-in AI assistant](../ai-assistant/). The key is stored
+encrypted with `INTEGRATIONS_SECRET_KEY`. The optional `ANTHROPIC_BASE_URL`
+variable (in `vars`) points AI calls and key verification at a compatible
+endpoint, such as a gateway. MCP and the public API do not depend on any of
+this.
 
 ## Extensions
 
 A self-hosted portal can register and install private or unlisted Extensions
-without contacting Typeroll's hosted catalog. Set
-`EXTENSION_SIGNING_PRIVATE_JWK` to a P-256 private JWK and keep it outside
-source control.
-
-Native Extension form bindings also require `FORMS_HMAC_SECRET`. Set
-`FORMS_PUBLIC_URL` when form submissions are served from a dedicated service;
-otherwise components call the self-hosted `PORTAL_PUBLIC_URL` endpoint
-directly. Customer site deployment remains static and contains no generated
-Functions.
+without contacting Typeroll's hosted catalog. Extension tokens are signed with
+`EXTENSION_SIGNING_PRIVATE_JWK`; Native Extension form bindings also use
+`FORMS_HMAC_SECRET` and the Forms origin. Customer site deployment remains
+static and contains no generated Functions.
 
 The portal publishes issuer discovery and JWKS from its own
 `PORTAL_PUBLIC_URL`. Extension providers must pair and validate that issuer
@@ -640,31 +387,24 @@ developer's accounts. In both cases the browser calls the provider directly;
 the self-hosted portal issues identity tokens but never proxies provider API
 traffic.
 
-Other platforms can run the same three image roles, but the Compose profile is
-the compatibility baseline. Preserve the separate origins, immutable digest,
-and durable queue contract when translating it to another orchestrator.
+## Settings reference
 
-## Publishing events (Core 0.2.21)
+The profile sets these variables on both Workers from `self-host.cloudflare.json`:
+`PORTAL_PUBLIC_URL`, `FORMS_PUBLIC_URL`, `STORE_JURISDICTION=eu`,
+`TYPEROLL_STORE_BOOTSTRAP=empty`, `TYPEROLL_SOURCE_SHA` and
+`TYPEROLL_BUNDLE_DIGEST`; on the portal also `CLOUDFLARE_ACCOUNT_ID`,
+`R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_PRIVATE_BUCKET`, `R2_PUBLIC_BASE_URL` and
+`SITES_BASE_DOMAIN`; on Forms `SERVICE_ROLE=forms`. The portal's `MIGRATION`
+R2 binding points at the backups bucket.
 
-Publishing proceeds from saved step to saved step. A completed build wakes its
-publication immediately; Typeroll does not restart a build because it estimates
-that the build should have finished. Duplicate event deliveries keep the same
-publication identity. A failed or disconnected build is reported through the
-portal and the deployment-status API used by MCP.
-
-The existing `publish-sweep` endpoint now reads an index of pending events and
-explicit page schedules. It does not scan all content or poll running customer
-builds. Keep its recovery schedule enabled to recover failed queue submissions.
-Cloud Tasks and the portable Firestore worker consume the same persisted events.
-
-When upgrading an existing installation, drain active publications and run the
-one-time schedule-index preparation before starting the new workers:
-
-```sh
-node --experimental-strip-types scripts/reindex-publishing.mjs --project PROJECT_ID
-node --experimental-strip-types scripts/reindex-publishing.mjs --project PROJECT_ID --apply --confirm-project PROJECT_ID
-```
-
-Use your existing administration credentials. The first command reports a dry
-run; the second creates missing schedule entries. It does not change page content
-or start builds. It is safe to repeat. Fresh installations do not need this step.
+| Secret                                                                                                                      | Worker        | Required |
+| --------------------------------------------------------------------------------------------------------------------------- | ------------- | -------- |
+| `AUTH_SECRET` (at least 32 characters)                                                                                      | portal, Forms | yes      |
+| `FORMS_HMAC_SECRET`, `INTEGRATIONS_SECRET_KEY`, `EXTENSION_SIGNING_PRIVATE_JWK`                                             | portal, Forms | yes      |
+| `ACCOUNT_EMAIL`, `PREVIEW_HMAC_SECRET`, `MCP_OAUTH_SIGNING_KEY`                                                             | portal        | yes      |
+| `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`                                                                                  | portal        | yes      |
+| `CLOUDFLARE_API_TOKEN`                                                                                                      | portal        | no       |
+| `GITHUB_SIGNIN_CLIENT_ID`, `GITHUB_SIGNIN_CLIENT_SECRET`                                                                    | portal        | no       |
+| `TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET`, `TYPEROLL_PUBLISH_GITHUB_CLIENT_SECRET`, `TYPEROLL_PUBLISH_GITHUB_PRIVATE_KEY` | portal        | no       |
+| `EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS`, `PAGESPEED_API_KEY`, `SCRAPER_API_KEY`                                            | portal        | no       |
+| `TYPEROLL_STORE_TRANSFER_TOKEN` (only while backing up or restoring)                                                        | portal        | no       |

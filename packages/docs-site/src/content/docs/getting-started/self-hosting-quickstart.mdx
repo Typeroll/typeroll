@@ -1,6 +1,6 @@
 ---
 title: Self-hosting quickstart
-description: Run Typeroll CMS on your own computer in a few minutes with sample content, then choose the production setup that fits.
+description: Run Typeroll CMS on your own computer in a few minutes with sample content, then install it in your own Cloudflare account.
 ---
 
 Typeroll CMS is open source (MIT). This page gets the portal running on your
@@ -25,8 +25,7 @@ npm run dev:portal
 Open [http://localhost:4321](http://localhost:4321). You are signed in as a
 development user with the sample sites in
 `packages/site-template/fixtures/`. The local **fixtures backend** stores
-everything as JSON files instead of a database, so no Firebase project is
-needed.
+everything as JSON files, so no database or account is needed.
 
 Try the main workflows:
 
@@ -54,20 +53,20 @@ claude.ai connect from the provider's servers and cannot reach `localhost`.
 
 ## Choose a production setup
 
-| Setup                                                                                                | When it fits                                              | Guide                                                                               |
-| ---------------------------------------------------------------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| **Reference profile** on Google Cloud: Cloud Run, Firebase and Cloud Tasks, with no always-on server | Production, the setup Typeroll qualifies every release on | [Plan the reference profile](../../guides/self-hosting/#plan-the-reference-profile) |
-| **Portable Compose fallback** with Docker                                                            | Evaluation on a server, or hosting outside Google Cloud   | [Portable Compose fallback](../../guides/self-hosting/#portable-compose-fallback)   |
-| **Typeroll Cloud**                                                                                   | You want the same CMS without running it                  | [Using Typeroll Cloud](../../guides/typeroll-cloud/)                                |
+| Setup                                      | When it fits                                               | Guide                                                |
+| ------------------------------------------ | ---------------------------------------------------------- | ---------------------------------------------------- |
+| **Self-hosted** in your Cloudflare account | You run the CMS yourself, with data in the EU jurisdiction | [Self-hosting](../../guides/self-hosting/)           |
+| **Typeroll Cloud**                         | You want the same CMS without running it                   | [Using Typeroll Cloud](../../guides/typeroll-cloud/) |
 
-Every production setup needs Firebase Authentication and Firestore, and a
-Cloudflare account with R2 for media and Pages for the published sites. Use a
-tagged Core release and its published image digest, never a moving tag.
+A self-hosted installation runs as two Cloudflare Workers with Durable Objects
+and R2, installed from a released, provenance-verified bundle with
+`npm run self-host:cloudflare:apply`. Earlier Google Cloud and Docker Compose
+setups are no longer supported.
 
 ## Check it
 
 - `http://localhost:4321` shows the sample sites, and a saved edit survives a
   page reload.
-- For a production installation, `/api/healthz`, `/api/readyz` and
-  `/api/version` on the portal answer successfully; see
-  [Apply and verify the reference profile](../../guides/self-hosting/#apply-and-verify-the-reference-profile).
+- For a production installation, `npm run self-host:cloudflare:doctor` checks
+  `/api/version` and `/api/readyz` of both Workers; see
+  [Verify](../../guides/self-hosting/#verify).

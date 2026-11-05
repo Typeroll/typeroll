@@ -10,16 +10,10 @@ import { VERSION as MCP_VERSION } from '@typeroll/mcp-server/version';
 import { readinessReport } from '../../lib/readiness';
 import { releaseManifest } from '../../lib/release';
 
-const firebaseAdmin = JSON.stringify({
-  project_id: 'test-project',
-  client_email: 'test@example.invalid',
-  private_key: 'not-a-real-key',
-});
-
 function productionPortalEnv(): NodeJS.ProcessEnv {
   return {
     NODE_ENV: 'production',
-    FIREBASE_SERVICE_ACCOUNT: firebaseAdmin,
+    STORE_JURISDICTION: 'eu',
     AUTH_SECRET: 'test-only-auth-secret-0123456789abcdef',
     ACCOUNT_EMAIL: '{"type":"postmark","from":"Typeroll <no-reply@example.test>","config":{}}',
     PORTAL_PUBLIC_URL: 'https://portal.example.test',
@@ -51,40 +45,40 @@ describe('release manifest', () => {
 
 describe('readiness report', () => {
   it('passes a fully configured production portal', async () => {
-    const report = await readinessReport(productionPortalEnv(), async () => undefined);
+    const report = await readinessReport(productionPortalEnv(), async () => undefined, 'durable_object');
 
     expect(report.ready).toBe(true);
     expect(report.role).toBe('portal');
     expect(report.checks.find((check) => check.name === 'deploy_queue')?.detail).toBe('durable_object');
+    expect(report.checks.find((check) => check.name === 'datastore_runtime')).toMatchObject({ state: 'pass', detail: 'durable_object (eu)' });
   });
 
-  it('accepts keyless Firebase Admin credentials for Cloud Run', async () => {
-    const env = productionPortalEnv();
-    delete env.FIREBASE_SERVICE_ACCOUNT;
-    env.FIREBASE_PROJECT_ID = 'test-project';
+  it('refuses development stores and a store outside the EU jurisdiction in production', async () => {
+    for (const backend of ['fixtures', 'sqlite'] as const) {
+      const report = await readinessReport(productionPortalEnv(), async () => undefined, backend);
+      expect(report.ready).toBe(false);
+      expect(report.checks.find((check) => check.name === 'datastore_runtime')).toMatchObject({ state: 'fail', required: true });
+    }
+    const unscoped = await readinessReport({ ...productionPortalEnv(), STORE_JURISDICTION: 'none' }, async () => undefined, 'durable_object');
+    expect(unscoped.ready).toBe(false);
+    expect(unscoped.checks.find((check) => check.name === 'datastore_runtime')?.detail).toContain('not allowed');
+  });
 
-    const report = await readinessReport(env, async () => undefined);
+  it('accepts an unscoped store only for local workerd on a localhost portal', async () => {
+    const report = await readinessReport({ ...productionPortalEnv(), STORE_JURISDICTION: 'none', PORTAL_PUBLIC_URL: 'http://localhost:8799' }, async () => undefined, 'durable_object');
 
     expect(report.ready).toBe(true);
-    expect(report.checks.find((check) => check.name === 'firebase_admin')?.detail)
-      .toBe('application_default_credentials');
+    expect(report.checks.find((check) => check.name === 'datastore_runtime')?.detail).toBe('durable_object (local, no jurisdiction)');
   });
 
-  it('rejects conflicting Firebase Admin project IDs', async () => {
-    const report = await readinessReport({
-      ...productionPortalEnv(),
-      FIREBASE_PROJECT_ID: 'different-project',
-    }, async () => undefined);
+  it('accepts fixtures in development', async () => {
+    const report = await readinessReport({ NODE_ENV: 'development' }, async () => undefined, 'fixtures');
 
-    expect(report.ready).toBe(false);
-    expect(report.checks.find((check) => check.name === 'firebase_admin')).toMatchObject({
-      state: 'fail',
-      detail: 'FIREBASE_PROJECT_ID does not match service account JSON',
-    });
+    expect(report.checks.find((check) => check.name === 'datastore_runtime')).toMatchObject({ state: 'pass', required: false, detail: 'fixtures' });
   });
 
   it('rejects an auth secret that is too short', async () => {
-    const report = await readinessReport({ ...productionPortalEnv(), AUTH_SECRET: 'short' }, async () => undefined);
+    const report = await readinessReport({ ...productionPortalEnv(), AUTH_SECRET: 'short' }, async () => undefined, 'durable_object');
 
     expect(report.ready).toBe(false);
     expect(report.checks.find((check) => check.name === 'identity')).toMatchObject({ state: 'fail', detail: 'AUTH_SECRET must be at least 32 characters' });
@@ -92,11 +86,11 @@ describe('readiness report', () => {
   });
 
   it('reports missing production requirements without exposing their values', async () => {
-    const report = await readinessReport({ NODE_ENV: 'production' }, async () => undefined);
+    const report = await readinessReport({ NODE_ENV: 'production' }, async () => undefined, 'fixtures');
 
     expect(report.ready).toBe(false);
     expect(report.checks.filter((check) => check.state === 'fail').map((check) => check.name)).toEqual([
-      'firebase_admin',
+      'datastore_runtime',
       'identity',
       'account_email',
       'portal_public_url',
@@ -110,7 +104,7 @@ describe('readiness report', () => {
   it('fails when the datastore probe is unreachable', async () => {
     const report = await readinessReport(productionPortalEnv(), async () => {
       throw new Error('credential detail that must not escape');
-    });
+    }, 'durable_object');
 
     expect(report.ready).toBe(false);
     expect(report.checks.at(-1)).toEqual({
@@ -126,9 +120,8 @@ describe('readiness report', () => {
     const report = await readinessReport({
       NODE_ENV: 'production',
       SERVICE_ROLE: 'forms',
-      FIREBASE_SERVICE_ACCOUNT: firebaseAdmin,
       FORMS_HMAC_SECRET: 'test-only-secret',
-    }, async () => undefined);
+    }, async () => undefined, 'durable_object');
 
     expect(report.ready).toBe(true);
     expect(report.checks.some((check) => check.name === 'identity')).toBe(false);
@@ -136,10 +129,10 @@ describe('readiness report', () => {
   });
 
   it('requires the durable scheduler in production and accepts local timers in development', async () => {
-    const local = await readinessReport({ ...productionPortalEnv(), TYPEROLL_SCHEDULER: 'local' }, async () => undefined);
+    const local = await readinessReport({ ...productionPortalEnv(), TYPEROLL_SCHEDULER: 'local' }, async () => undefined, 'durable_object');
     expect(local.ready).toBe(false);
     expect(local.checks.find((check) => check.name === 'deploy_queue')).toMatchObject({ state: 'fail', required: true });
-    const typo = await readinessReport({ ...productionPortalEnv(), TYPEROLL_SCHEDULER: 'cloud_tasks' }, async () => undefined);
+    const typo = await readinessReport({ ...productionPortalEnv(), TYPEROLL_SCHEDULER: 'cloud_tasks' }, async () => undefined, 'durable_object');
     expect(typo.checks.find((check) => check.name === 'deploy_queue')).toMatchObject({ state: 'fail', detail: 'unsupported TYPEROLL_SCHEDULER cloud_tasks' });
     const development = await readinessReport({ NODE_ENV: 'development' }, async () => undefined);
     expect(development.checks.find((check) => check.name === 'deploy_queue')).toMatchObject({ state: 'pass', detail: 'local' });

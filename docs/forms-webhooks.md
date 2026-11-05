@@ -62,10 +62,9 @@ signed with that attempt's timestamp. A request that timed out on Typeroll's
 side may still have reached you, so deduplicate on the event id.
 
 Background retries use the scheduled-work index (`scheduled_work`, kind
-`form_webhook_retry`): Cloud Tasks, the in-process timer, the self-hosted
-worker loop or the periodic `/api/internal/publish-sweep` runs a due retry,
-so the exact time depends on that scheduler's interval (`PUBLISH_SWEEP_INTERVAL_MS`
-for the worker loop; every few minutes on Cloud). Each attempt is leased on
+`form_webhook_retry`): the store object's alarm delivers a due retry through
+the portal's `Scheduler` entrypoint, and the five-minute Cron sweep wakes any
+object whose alarm is overdue; local development uses process timers. Each attempt is leased on
 the delivery record with a compare-and-update, so overlapping sweeps or
 instances never send the same attempt twice. A retry uses the webhook's
 current URL and secret; removing the webhook ends its pending retries. The

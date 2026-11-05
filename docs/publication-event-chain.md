@@ -3,7 +3,7 @@
 Core 0.2.21 replaces recurring publication observations with persisted next-step
 messages. A successful checkpoint immediately continues the same frozen job;
 a completed or failed organization build records the next event in the same
-Firestore transaction as its result. Queue delivery is at least once. The
+store transaction as its result. Queue delivery is at least once. The
 publication identity, event generation, atomic claims and saved provider receipts
 prevent duplicate messages from publishing different or repeated source.
 
@@ -29,7 +29,7 @@ existing maximum verification window ends with a visible error.
 ## Durable delivery and schedules
 
 `scheduled_work` is a transactional outbox and secondary index. Source changes
-and their index entry commit together in Firestore. It contains explicit future
+and their index entry commit together in the same store object. It contains explicit future
 page schedules, coalesced site publication requests, coordinator checkpoints,
 and terminal build events. Running remote builds are absent from its due set.
 A worker acknowledges only after the next event or terminal outcome is saved.
@@ -37,15 +37,12 @@ Old generations are harmless; a completion cannot overwrite a newer checkpoint.
 A site blocked behind an active publication is resumed by that job's completion,
 without shortening the configured auto-publish debounce for newer edits.
 
-Cloud Tasks delivers each entry to the existing authenticated worker route. Its
-retries re-deliver the **same event**, not a new build. An index-only recovery
-pass repairs failed queue submission. `/api/internal/publish-sweep` retains its
-operational address, but no longer traverses organizations, sites, pages or
-publication histories when idle. The existing five-minute Cloud scheduler can
-remain for delivery recovery and media recovery. It does not poll running builds.
-The portable Firestore worker reads the same index. Local development uses
-process timers; fixtures and local in-process execution are not production
-crash-durability guarantees.
+Each store object's alarm delivers its due entries through the portal's
+`Scheduler` entrypoint. Retries re-deliver the **same event**, not a new build.
+The portal's five-minute Cron sweep wakes objects whose alarm is overdue; it
+does not traverse organizations, sites, pages or publication histories and does
+not poll running builds. Local development uses process timers; fixtures and
+local in-process execution are not production crash-durability guarantees.
 
 Workflow runs use the same index for their chunks (`workflow_chunk`, one entry
 per run, source `organizations/{org}/workflows/{id}`). Each chunk does at most

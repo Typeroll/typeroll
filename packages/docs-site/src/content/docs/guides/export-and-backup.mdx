@@ -85,8 +85,9 @@ addresses.
 - **Typeroll Cloud:** schedule the export API, for example nightly, and store
   the zip files and mirrored media where your other backups live. The
   published website and its media already live in your own Cloudflare account.
-- **Self-hosted:** the operator's backup covers every site, user and media file
-  in one encrypted snapshot, with a verified restore. See
+- **Self-hosted:** the operator's backup exports every site, setting and
+  account in the document store, checks it against its checksums and keeps a
+  copy in the installation's EU backups bucket; media files stay in R2. See
   [Backups and disaster recovery](../self-hosting/#backups-and-disaster-recovery).
   Test a restore at least quarterly.
 

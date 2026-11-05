@@ -53,9 +53,8 @@ Limits that apply to every submission:
   per Site per hour;
 - forms that belong to an app installation cannot be submitted directly.
 
-Self-hosted installs behind a reverse proxy must set `AUTH_TRUST_PROXY_HOPS`
-(Compose sets it to `1` behind Caddy); otherwise every visitor shares one rate
-limit.
+The portal and Forms Workers take each visitor's address from Cloudflare, so a
+self-hosted installation needs no proxy setting for these limits.
 
 In previews (the editor, **Preview site**, preview links and page previews)
 forms validate and step through as published but send nothing; a "Preview –
@@ -81,19 +80,6 @@ are not stored. Submissions saved before this change may still hold them: API
 and MCP responses never return the IP address, and only site administrators see
 the earlier browser string, shortened to 256 characters.
 
-To remove those earlier values from the datastore, a self-hosted operator on
-Firestore can run `scripts/scrub-submission-network-data.mjs` from the Core
-repository with credentials for the project. It deletes only the fields
-`submitted_from_ip` and `user_agent` from documents in the `submissions`
-collection group, in batches, and prints counts. It is a dry run unless you
-pass `--apply --confirm-project` with the same project ID:
-
-```sh
-node scripts/scrub-submission-network-data.mjs --project PROJECT_ID
-node scripts/scrub-submission-network-data.mjs --project PROJECT_ID \
-  --apply --confirm-project PROJECT_ID
-```
-
 Completed submissions are kept until someone deletes them, unless the site opts
 into a retention period. A site administrator sets it under **Forms →
 Submission retention**, or with `form_submission_retention_days` (30–3650 days)
@@ -111,21 +97,9 @@ period set:
 Partial submissions keep the form's `partial_ttl_days`. Questionnaire
 responses that belong to an app installation are managed by that app.
 
-Each expiring submission also carries a native timestamp, `delete_at`, so the
-datastore can delete it without anyone opening the inbox. The operator of the
-Forms datastore enables this; on a self-hosted installation on Firestore,
-enable a TTL policy for the collection group `submissions` on the field
-`delete_at`, for example:
-
-```sh
-gcloud firestore fields ttls update delete_at \
-  --collection-group=submissions --enable-ttl
-```
-
-Firestore deletes expired documents asynchronously, usually within a day. With
-a file-backed store, or before the policy is enabled, expired submissions are
-hidden and deleted when the inbox is read. Webhook delivery records hold only
-delivery metadata, not answers.
+Each expiring submission also records when it may be deleted (`delete_at`).
+Expired submissions are hidden at once and deleted when the inbox is read.
+Webhook delivery records hold only delivery metadata, not answers.
 
 ## Agent and API surface
 

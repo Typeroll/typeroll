@@ -1,20 +1,17 @@
 import { gzipSync, gunzipSync } from 'node:zlib';
-// Firestore cannot store directly-nested arrays — `[[a], [b]]` is rejected
-// with `INVALID_ARGUMENT: Property array contains an invalid nested entity`.
-// Our block trees legitimately contain that shape (`Block.slots: Block[][]`),
-// and the fixtures backend (plain JSON) accepts it, so the mismatch only
-// surfaces in production. This codec makes the Firestore backend shape-
-// transparent: on write, any array that appears directly inside another
-// array is wrapped in a single-key marker map; on read the marker is
-// unwrapped. Lossless for every JSON value, invisible to callers.
+// The storage format Firestore installations wrote (`FirestoreStore`, removed
+// with the move to Durable Objects). The runtime store keeps plain JSON; this
+// module remains for the one-time store migration, which reads Firestore
+// exports in this format (lib/migration/transform.ts decodes them), and for
+// tests that reproduce documents exactly as Firestore stored them
+// (`encodeFirestoreDocument`). `StorageDocumentError` is the 422 the API
+// returns for a document that storage cannot accept or read.
 //
-// The marker key is namespaced so it can't collide with real document
-// fields (customer data flows through sanitizers that would never emit it,
-// and our own types never use the prefix). NOTE the single underscores:
-// Firestore RESERVES field names matching __.*__ ("field name
-// '__tr_nested_array__' is reserved"), so a dunder-style marker is itself
-// rejected at write time — another fixtures-vs-Firestore gap no local test
-// can catch.
+// The format: Firestore cannot store directly-nested arrays (`[[a], [b]]`),
+// so any array directly inside another array is wrapped in a single-key
+// marker map. Block trees are stored gzip-compressed and history snapshots as
+// JSON strings, because Firestore caps document nesting depth. Marker keys use
+// single underscores: Firestore reserves `__.*__` field names.
 
 const MARKER = '_tr_nested_array_';
 const SNAPSHOT_MARKER = '_tr_snapshot_json_';

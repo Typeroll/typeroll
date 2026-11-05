@@ -46,16 +46,25 @@ Apps entitlements.
 Local Playwright runs need no credentials. The seeder creates the five Core
 personas in a throwaway fixture copy and the test server exposes a signed,
 local-only session exchange. That exchange requires a per-process HMAC secret,
-is available only with `NODE_ENV=test`, is unavailable when Firebase is
-configured, and fails closed in every other process mode.
+is available only with `NODE_ENV=test`, is unavailable when sign-in is
+configured (`AUTH_SECRET`), and fails closed in every other process mode.
 The ordinary `dev-user` fallback remains available for older local tests.
 
-Remote `self_host` and `cloud` targets use stable Firebase Auth users, real
+Remote `self_host` and `cloud` targets use stable portal accounts, real
 password login, and one site-scoped E2E API key. Every credential is injected
 through the environment; passwords must contain at least 32 characters and
 must be unique per persona. `TYPEROLL_E2E_API_KEY` must use the ordinary
-`typeroll_live_<prefix>_<secret>` shape. The idempotent seeder writes only its
-two namespaced key documents and never prints the token.
+`typeroll_live_<prefix>_<secret>` shape.
+
+Remote seeding goes through the target's persona endpoint, never through
+direct database access. `TYPEROLL_E2E_SEED_URL` names it (HTTPS, no
+credentials or query) and `TYPEROLL_E2E_SEED_TOKEN` (at least 32 characters)
+authenticates the request. On Typeroll Cloud staging the endpoint is the
+operator's token-gated `/api/e2e-personas` route, which calls the portal's
+internal operator API (`seedE2EPersonas` / `inspectE2EPersonas`); the portal
+accepts seeding only with `TYPEROLL_E2E_PERSONA_SEEDING=allow` and only inside
+the E2E namespace. The seeder writes the personas' accounts, memberships, the
+fixture site and its two namespaced key documents, and never prints the token.
 Never commit a credential file. If `--env-file` is used, the CLI refuses any
 mode other than `0600`.
 
@@ -70,28 +79,25 @@ attachment, or DNS record through the portal's own hosting credentials.
 npm run e2e:personas -- seed --fixtures-dir /tmp/typeroll-e2e
 npm run e2e:personas -- verify --fixtures-dir /tmp/typeroll-e2e
 
-# Remote mutation requires the exact Firebase project ID as confirmation
-npm run e2e:personas -- seed --environment self_host \
-  --env-file /private/path/self-host-e2e.env \
-  --confirm-project typeroll-selfhost-e2e
+# Remote mutation requires the exact seeding endpoint host as confirmation
+npm run e2e:personas -- seed --environment cloud \
+  --env-file /private/path/cloud-staging-e2e.env \
+  --confirm-target operator-staging.example.com
 
 # Verification is read-only and does not require mutation confirmation
-npm run e2e:personas -- verify --environment self_host \
-  --env-file /private/path/self-host-e2e.env
+npm run e2e:personas -- verify --environment cloud \
+  --env-file /private/path/cloud-staging-e2e.env
 ```
 
-Remote persona administration and the self-host operation commands accept
-either `FIREBASE_SERVICE_ACCOUNT`, or keyless Application Default Credentials
-plus `GOOGLE_CLOUD_PROJECT`. Remote E2E also requires
-`TYPEROLL_E2E_FIREBASE_API_KEY`, `TYPEROLL_E2E_API_KEY`, and the email/password
-variables named by the manifest. Service-account JSON, API keys, and passwords
-belong in the shared credential store; only the project ID and public Firebase
-API key may be stored as ordinary test configuration. Prefer keyless ADC for
-the supported GCP self-host profile.
+Remote persona administration needs `TYPEROLL_E2E_SEED_URL`,
+`TYPEROLL_E2E_SEED_TOKEN` and the email/password variables named by the
+manifest. Remote E2E also requires `TYPEROLL_E2E_API_KEY`. The seed token, API
+keys and passwords belong in the shared credential store; only URLs may be
+stored as ordinary test configuration.
 These identities are permanent sentinels, marked with `is_test_account` and a
 stable `e2e_persona` claim. Automated cleanup must not delete them. Retire only
 the exact manifest UIDs when the whole target environment is decommissioned,
-with the same explicit project confirmation used for seeding.
+with the same explicit target confirmation used for seeding.
 
 ## E2E targets
 
@@ -102,13 +108,12 @@ Remote targets additionally require:
 | --- | --- |
 | `TYPEROLL_E2E_PORTAL_URL` | HTTPS portal origin |
 | `TYPEROLL_E2E_FORMS_URL` | Separate HTTPS Forms origin |
-| `TYPEROLL_E2E_FIREBASE_API_KEY` | Public Firebase Web API key |
-| `TYPEROLL_E2E_EXPECTED_DIGEST` | Exact `sha256:…` image digest |
+| `TYPEROLL_E2E_EXPECTED_DIGEST` | Exact `sha256:…` Worker bundle digest |
 | `TYPEROLL_E2E_API_KEY` | Secret site-scoped key for the permanent E2E fixture |
 | `TYPEROLL_E2E_FALLBACK_ORIGIN` | Exact platform fallback origin expected by the Cloud-only indexing journey |
 
 Run `npm run e2e:target:check` before browser tests. It checks portal liveness,
-portal and Forms readiness, and rejects an image digest different from the
+portal and Forms readiness, and rejects a bundle digest different from the
 expected immutable release. `npm run test:e2e -w @typeroll/portal` then runs
 the remote target contract on desktop, 390 px, and 320 px Chromium profiles.
 Set `TYPEROLL_E2E_FULL_BROWSERS=true` for the release/nightly expansion to
@@ -191,9 +196,9 @@ test('user can do the foo', async ({ page }) => {
 ```
 
 Local E2E specs run against `http://127.0.0.1:4322`. The config in
-`playwright.config.ts` builds the SSR server artifact and starts it with empty
-`FIREBASE_SERVICE_ACCOUNT`; the default development
-session and the isolated E2E persona exchange are both available.
+`playwright.config.ts` builds the server artifact and starts it without
+`AUTH_SECRET` on a throwaway fixtures copy; the default development session and
+the isolated E2E persona exchange are both available.
 
 ### E2E writes go to a throwaway fixtures copy
 

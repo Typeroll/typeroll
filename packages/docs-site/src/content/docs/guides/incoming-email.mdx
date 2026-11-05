@@ -161,11 +161,9 @@ disabled. This endpoint validates the SNS signature against an exact allowed top
 and regional AWS certificate URL; it confirms a valid subscription automatically.
 It is separate from the outbound SES delivery-events webhook.
 
-Set bounded HTTP retry policies and alarm on notification failures. In Firestore,
-enable TTL on the native timestamp field `expires_at` for collection groups
-`mail_inbound_receipts` and `mail_inbound_quotas`; actual deletion is asynchronous.
-For a file-backed self-host store, configure equivalent metadata expiry cleanup
-before enabling incoming mail. Public receipt access stops at expiry regardless.
+Set bounded HTTP retry policies and alarm on notification failures. Receipt and
+quota records carry an expiry (`expires_at`); public receipt access stops at
+expiry.
 SNS signature verification needs no AWS secret. S3 reads/deletes use a separate
 protected `EMAIL_SES_INBOUND_STORAGE` JSON object containing `access_key_id` and
 `secret_access_key`. Grant only GetObject/DeleteObject on the approved bucket

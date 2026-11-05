@@ -1,4 +1,4 @@
-import { getStore } from './datastore';
+import { getStore, storeBackend, type StoreBackend } from './datastore';
 import { requireCurrentDataSchema } from './data-schema';
 import { serviceRole, type ServiceRole } from './release';
 import { isIdentityConfigured } from './identity/portal-auth';
@@ -43,35 +43,31 @@ function requirement(env: NodeJS.ProcessEnv, name: string, keys: string[], requi
   };
 }
 
-function firebaseAdminCheck(env: NodeJS.ProcessEnv, required: boolean): ReadinessCheck {
-  const raw = env.FIREBASE_SERVICE_ACCOUNT?.trim();
-  const projectId = env.FIREBASE_PROJECT_ID?.trim();
-  if (!raw) {
-    const check = requirement(env, 'firebase_admin', ['FIREBASE_PROJECT_ID'], required);
-    if (check.state !== 'pass') return check;
-    return { ...check, detail: 'application_default_credentials' };
+/**
+ * The document store this process serves. Deployed Workers must run on the
+ * Durable Object store in the EU jurisdiction; STORE_JURISDICTION=none exists
+ * only for local workerd, so it passes only on a localhost portal. Fixtures and
+ * a local SQLite file are development backends.
+ */
+function datastoreRuntimeCheck(env: NodeJS.ProcessEnv, backend: StoreBackend, required: boolean): ReadinessCheck {
+  const name = 'datastore_runtime';
+  if (backend !== 'durable_object') {
+    return required
+      ? { name, state: 'fail', required, detail: `${backend} is for development only; deploy the Worker with its Durable Object store` }
+      : { name, state: 'pass', required, detail: backend };
   }
+  const jurisdiction = env.STORE_JURISDICTION?.trim() || 'eu';
+  if (jurisdiction === 'eu') return { name, state: 'pass', required, detail: 'durable_object (eu)' };
+  if (jurisdiction === 'none' && isLocalPortal(env)) return { name, state: 'pass', required, detail: 'durable_object (local, no jurisdiction)' };
+  return { name, state: required ? 'fail' : 'disabled', required, detail: `STORE_JURISDICTION ${jurisdiction} is not allowed; deployed stores use eu` };
+}
+
+function isLocalPortal(env: NodeJS.ProcessEnv): boolean {
   try {
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const valid = Boolean(parsed.project_id && parsed.client_email && parsed.private_key);
-    const projectMatches = !projectId || parsed.project_id === projectId;
-    return {
-      name: 'firebase_admin',
-      state: valid && projectMatches ? 'pass' : 'fail',
-      required,
-      detail: !valid
-        ? 'service account JSON lacks required fields'
-        : projectMatches
-          ? 'service_account_json'
-          : 'FIREBASE_PROJECT_ID does not match service account JSON',
-    };
+    const url = new URL(env.PORTAL_PUBLIC_URL?.trim() ?? '');
+    return url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
   } catch {
-    return {
-      name: 'firebase_admin',
-      state: 'fail',
-      required,
-      detail: 'service account is not valid JSON',
-    };
+    return false;
   }
 }
 
@@ -98,10 +94,10 @@ function queueCheck(env: NodeJS.ProcessEnv, role: ServiceRole): ReadinessCheck {
   return { name: 'deploy_queue', state: 'pass', required: true, detail: mode };
 }
 
-function configChecks(env: NodeJS.ProcessEnv): { role: ServiceRole; checks: ReadinessCheck[] } {
+function configChecks(env: NodeJS.ProcessEnv, backend: StoreBackend): { role: ServiceRole; checks: ReadinessCheck[] } {
   const role = serviceRole(env);
   const production = env.NODE_ENV === 'production';
-  const checks: ReadinessCheck[] = [firebaseAdminCheck(env, production)];
+  const checks: ReadinessCheck[] = [datastoreRuntimeCheck(env, backend, production)];
 
   if (role === 'portal') {
     checks.push(
@@ -136,8 +132,9 @@ async function defaultDatastoreProbe(): Promise<void> {
 export async function readinessReport(
   env: NodeJS.ProcessEnv = process.env,
   probe: Probe = defaultDatastoreProbe,
+  backend: StoreBackend = storeBackend(env),
 ): Promise<ReadinessReport> {
-  const { role, checks } = configChecks(env);
+  const { role, checks } = configChecks(env, backend);
   try {
     await probe();
     checks.push({ name: 'datastore', state: 'pass', required: true, detail: 'reachable' });

@@ -25,8 +25,6 @@ describe('no platform AI key', () => {
       ...walk(join(repo, 'packages', 'shared', 'src')),
       join(portal, 'playwright.config.ts'),
       join(portal, '.env.example'),
-      join(repo, '.env.self-host.example'),
-      join(repo, 'compose.yaml'),
       join(repo, 'Dockerfile'),
     ];
     const offenders = files.filter((file) => readFileSync(file, 'utf8').includes('ANTHROPIC_API_KEY'));

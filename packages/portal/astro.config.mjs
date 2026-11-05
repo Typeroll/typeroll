@@ -21,12 +21,4 @@ export default defineConfig({
   // authed requests still need a matching Origin header — browsers send
   // that automatically on every state-changing fetch.
   security: { checkOrigin: false },
-  vite: {
-    optimizeDeps: {
-      exclude: ['firebase-admin'],
-    },
-    ssr: {
-      external: ['firebase-admin'],
-    },
-  },
 });
