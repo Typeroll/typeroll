@@ -346,6 +346,9 @@ export async function recordKeyUse(
   prefix: string,
   ip?: string,
 ): Promise<void> {
+  // A personal connection has no organization and no key metadata document
+  // (recordPersonalUse covers it); `organizations//…` is not a document path.
+  if (!orgId) return;
   try {
     const store = getStore();
     const existing = await store.getDoc<SiteApiKey>(metaPath(orgId, siteId, prefix));
