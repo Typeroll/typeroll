@@ -46,7 +46,13 @@ export class SqlStore implements ReadWriteStore {
   private async optimistic<T>(paths: string[], decide: (docs: Array<StoredDoc | null>) => { writes: Write[]; index: IndexWrite[]; result: T } | { result: T; writes?: undefined }): Promise<T> {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       const docs = await this.transport.getMany(paths);
-      const decision = decide(docs);
+      let decision: ReturnType<typeof decide>;
+      try { decision = decide(docs); }
+      catch (error) {
+        // Circular input overflows the recursive clean-up before validation can name it.
+        if (error instanceof RangeError) throw new StorageDocumentError('storage_document_invalid', 'The document contains circular or invalid data. No content was saved.', paths[0]);
+        throw error;
+      }
       if (!decision.writes) return decision.result;
       for (const write of decision.writes) if (write.op !== 'delete') assertStorableDocument(write.path, write.data);
       const committed = await this.transport.commit(paths.map((path, i) => condition(path, docs[i])), decision.writes);
