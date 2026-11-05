@@ -17,14 +17,36 @@ export function privateJson(data: unknown, status = 200): Response {
   return response;
 }
 
-export function connectionFailure(error: unknown): Response {
+/** Signed URL queries and bearer tokens never reach the log. */
+export function redactFailureText(text: string): string {
+  return text.replace(/(https?:\/\/[^\s?"'`]+)\?[^\s"'`]*/g, '$1?[redacted]').replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/g, 'Bearer [redacted]').slice(0, 1000);
+}
+
+/** An unexpected error becomes a generic 502 for the caller; record why, without secrets. */
+export function logConnectionFailure(error: unknown, context: Record<string, string> = {}) {
+  const value = error as { name?: unknown; message?: unknown; code?: unknown; status?: unknown; codes?: unknown; stack?: unknown; $metadata?: { httpStatusCode?: unknown } } | null;
+  const text = (input: unknown) => typeof input === 'string' ? redactFailureText(input) : undefined;
+  const constructorName = (error as { constructor?: { name?: unknown } } | null)?.constructor?.name;
+  const name = value?.name === 'Error' && typeof constructorName === 'string' ? constructorName : value?.name;
+  console.error(JSON.stringify({ event: 'publishing_connection_failed', ...context,
+    name: text(name) ?? typeof error, message: text(value?.message) ?? text(String(error)),
+    ...(typeof value?.code === 'string' || typeof value?.code === 'number' ? { code: value.code } : {}),
+    ...(typeof value?.status === 'number' ? { status: value.status } : {}),
+    ...(Array.isArray(value?.codes) ? { provider_codes: value.codes } : {}),
+    ...(typeof value?.$metadata?.httpStatusCode === 'number' ? { http_status: value.$metadata.httpStatusCode } : {}),
+    ...(typeof value?.stack === 'string' ? { stack: redactFailureText(value.stack.split('\n').slice(1, 6).join('\n')) } : {}) }));
+}
+
+export function connectionFailure(error: unknown, context: Record<string, string> = {}): Response {
   if (error instanceof OrganizationAccessError) return error.response();
   if (error instanceof R2VerificationError) return privateJson({ error: error.message, code: error.code, details: error.diagnostic }, error.status);
   if (error instanceof ConnectionError) return privateJson({ error: error.message, ...(error.code ? { code: error.code } : {}), ...(error.details ? { details: error.details } : {}), ...(error.code === 'import_storage_required' ? { settings_url: '/app/settings/publishing#media-title' } : {}) }, error.status);
   if (error instanceof ProviderError) {
     if (error.codes.includes(10042)) return privateJson({ code: 'r2_activation_required', error: 'R2 is not activated in the connected Cloudflare account. Open Storage & databases → R2 object storage → Overview in Cloudflare and complete the R2 subscription checkout, including billing details if requested. Then return to Typeroll and select I’ve activated R2 — check again. Connecting Cloudflare to Typeroll does not activate R2.' }, 409);
+    logConnectionFailure(error, context);
     return privateJson({ error: error.message }, 502);
   }
+  logConnectionFailure(error, context);
   return privateJson({ error: 'Publishing connection failed. Check the account setup and try again.' }, 502);
 }
 

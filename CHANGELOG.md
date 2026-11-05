@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.156 (candidate)
+
+- An unexpected error behind a publishing or build-runner HTTP 502 is now
+  logged as a `publishing_connection_failed` event with its error name, code,
+  provider status and a short stack, with signed URL queries and bearer tokens
+  removed. Build-runner entries name the organization and action. Previously a
+  failed runner claim returned a generic 502 and left no trace of its cause.
+
 ## 0.2.155 (candidate)
 
 - Connecting an AI client takes one step. **Account → AI connections** has

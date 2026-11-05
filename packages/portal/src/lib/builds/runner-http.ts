@@ -225,5 +225,5 @@ export async function runnerRequest(request: Request, org: string, action: strin
     try { await wakeCompletedPublication(org, key, metadata.kind); }
     catch { console.warn('[build completion] immediate publication continuation unavailable; durable completion work remains indexed'); }
     return privateJson({ ok: true });
-  } catch (error) { return connectionFailure(error); }
+  } catch (error) { return connectionFailure(error, { route: 'build_runner', org_id: org, action }); }
 }
