@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { getStore } from '../datastore';
 import { githubConfiguration } from './github-config';
 import { ConnectionError, connectionPath, getConnection, openCredentials, sealCredentials, type Connection } from './connections';
-import { assertInstallation, createProviderClient, ProviderError, githubAppClient, type ProviderClient } from './providers.mjs';
+import { assertInstallation, createProviderClient, ProviderError, githubAppClient, type ProviderClient, PROVIDER_USER_AGENT } from './providers.mjs';
 import { withoutRedirects } from '../net/no-redirect.mjs';
 
 /** Kept only for personal repository creation; all publishing uses installation tokens. */
@@ -49,7 +49,7 @@ async function userAccess(org: string, expected: NonNullable<Connection['github'
       let response: Response, body: any;
       try {
         response = await withoutRedirects(fetchImpl)('https://github.com/login/oauth/access_token', { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(30_000),
-          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': PROVIDER_USER_AGENT },
           body: JSON.stringify({ client_id: config.clientId, client_secret: config.clientSecret, grant_type: 'refresh_token', refresh_token: grant.refresh_token }) });
         body = await response.json();
       } catch { throw new ConnectionError('GitHub authorization could not be renewed. Try again shortly.', 502, 'github_refresh_unavailable'); }

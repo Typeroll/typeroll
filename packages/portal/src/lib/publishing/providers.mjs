@@ -2,6 +2,8 @@ import { createHash, createSign } from 'node:crypto';
 import { withoutRedirects } from '../net/no-redirect.mjs';
 
 const GH = 'https://api.github.com';
+/** GitHub refuses API requests without a User-Agent (403), and Workers' fetch sends none. */
+export const PROVIDER_USER_AGENT = 'Typeroll';
 const CF = 'https://api.cloudflare.com/client/v4';
 export const PUBLICATION_BRANCH = /^main$|^version-[a-z0-9][a-z0-9-]{0,127}$/;
 
@@ -110,6 +112,7 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
         headers: {
           Authorization: `Bearer ${token}`,
           Accept: 'application/json',
+          'User-Agent': PROVIDER_USER_AGENT,
           ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
           ...(provider === 'GitHub' ? { 'X-GitHub-Api-Version': '2026-03-10' } : {}),
         },

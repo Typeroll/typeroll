@@ -50,6 +50,7 @@ test('provider errors never surface reflected secrets and redirects cannot carry
     assert.equal(url, 'https://api.github.com/test');
     assert.equal(request.redirect, 'manual');
     assert.equal(request.headers.Authorization, `Bearer ${secret}`);
+    assert.equal(request.headers['User-Agent'], 'Typeroll', 'GitHub refuses requests without a User-Agent');
     return new Response(JSON.stringify({ message: secret }), { status: 403 });
   });
   // A redirect is refused, never followed with the credential.
