@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,19 +16,22 @@ export function readCoreVersions(repositoryRoot = root) {
   const packageManifest = JSON.parse(
     readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8'),
   );
-  return {
+  const versions = {
     package: packageManifest.version,
     runtime: readExportedVersion(
       repositoryRoot,
       'packages/shared/src/release.ts',
       'CORE_VERSION',
     ),
-    selfHost: readExportedVersion(
-      repositoryRoot,
-      'scripts/lib/self-host-schema.mjs',
-      'SELF_HOST_CORE_VERSION',
-    ),
   };
+  // The GCP self-host profile is being removed with the move to Workers; its
+  // version literal is checked only while the file still exists. The Worker
+  // bundle itself carries the package version (release-worker-bundle.mjs).
+  const selfHostSchema = 'scripts/lib/self-host-schema.mjs';
+  if (existsSync(path.join(repositoryRoot, selfHostSchema))) {
+    versions.selfHost = readExportedVersion(repositoryRoot, selfHostSchema, 'SELF_HOST_CORE_VERSION');
+  }
+  return versions;
 }
 
 export function verifyCoreReleaseVersion(releaseTag, versions = readCoreVersions()) {

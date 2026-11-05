@@ -36,7 +36,7 @@ export function releaseScopes(files) {
   const normalized = files.filter(Boolean);
   const infrastructureOnly = (file) =>
     file.startsWith('.github/') ||
-    ['scripts/release-artifact.mjs', 'scripts/release-artifact.test.mjs', 'scripts/release-dependencies.mjs', 'scripts/qualified-docs.mjs', 'scripts/source-check-plan.mjs', 'scripts/source-check-plan.test.mjs'].includes(file) ||
+    ['scripts/release-artifact.mjs', 'scripts/release-artifact.test.mjs', 'scripts/release-worker-bundle.mjs', 'scripts/release-worker-bundle.test.mjs', 'scripts/lib/worker-bundle.mjs', 'scripts/release-dependencies.mjs', 'scripts/qualified-docs.mjs', 'scripts/source-check-plan.mjs', 'scripts/source-check-plan.test.mjs'].includes(file) ||
     file === 'scripts/oss-release-plan.mjs' ||
     file === 'scripts/oss-release-plan.test.mjs' ||
     file === 'scripts/oss-release-bump.mjs' ||
@@ -95,15 +95,39 @@ export function buildReleasePlan({ sourceSha, coreVersion, mcpVersion, coreTagSh
   };
 }
 
-export function buildReleaseManifest({ repositoryRoot = root, sourceSha, imageDigest, recordedAt = new Date().toISOString().slice(0, 10) }) {
+export const BUNDLE_PROVENANCE = {
+  predicate_type: 'https://slsa.dev/provenance/v1',
+  signer_workflow: 'Typeroll/typeroll/.github/workflows/publish-mcp.yml',
+  source_ref: 'refs/heads/main',
+};
+
+/**
+ * The Cloud-consumable lock for one released Core. `bundle` is the descriptor
+ * that release-worker-bundle.mjs wrote next to the published tarball; Cloud
+ * verifies the tarball against `bundle_digest` and its GitHub attestation
+ * against `bundle.provenance` before deploying it.
+ */
+export function buildReleaseManifest({ repositoryRoot = root, sourceSha, bundle, recordedAt = new Date().toISOString().slice(0, 10) }) {
   if (!GIT_SHA.test(sourceSha)) throw new Error('source SHA must be a full lowercase Git SHA');
-  if (!SHA256.test(imageDigest)) throw new Error('image digest must be an immutable lowercase sha256 digest');
+  if (!SHA256.test(bundle?.sha256 ?? '')) throw new Error('bundle digest must be an immutable lowercase sha256 digest');
+  const coreVersion = readJson(repositoryRoot, 'package.json').version;
+  const release = bundle.release ?? {};
   const manifest = {
-    schema_version: 1,
+    schema_version: 2,
     repository: 'Typeroll/typeroll',
     source_commit: sourceSha,
-    core_version: readJson(repositoryRoot, 'package.json').version,
-    image_digest: imageDigest,
+    core_version: coreVersion,
+    bundle_digest: bundle.sha256,
+    bundle: {
+      asset: bundle.asset,
+      url: `https://github.com/Typeroll/typeroll/releases/download/core-v${coreVersion}/${bundle.asset}`,
+      size: bundle.size,
+      content_sha256: release.content_sha256,
+      provenance: BUNDLE_PROVENANCE,
+      build: release.build,
+      workers: release.workers,
+      roles: release.roles,
+    },
     data_schema_version: readLiteral(repositoryRoot, 'packages/shared/src/release.ts', 'DATA_SCHEMA_VERSION'),
     data_schema_readable: {
       min: readLiteral(repositoryRoot, 'packages/shared/src/release.ts', 'DATA_SCHEMA_READABLE_MIN'),
@@ -124,12 +148,27 @@ export function buildReleaseManifest({ repositoryRoot = root, sourceSha, imageDi
       'packages/shared/src/extensions.ts',
       'EXTENSION_RUNTIME_VERSION',
     ),
+    // The narrow internal API the private operator Worker calls through its
+    // service binding to the portal's OperatorApi entrypoint.
+    operator_api_version: readLiteral(repositoryRoot, 'packages/portal/src/lib/operator-api/contract.ts', 'OPERATOR_API_VERSION'),
     mcp_version: readJson(repositoryRoot, 'packages/mcp-server/package.json').version,
     recorded_at: recordedAt,
   };
   if (!STABLE_VERSION.test(manifest.core_version) || !STABLE_VERSION.test(manifest.mcp_version)) {
     throw new Error('release manifest versions must be stable semantic versions');
   }
+  if (!release.workers?.portal?.exports?.includes('OperatorApi')) throw new Error('bundle exports no OperatorApi entrypoint for the operator');
+  const mismatches = [
+    ['source_sha', release.source_sha, sourceSha],
+    ['core_version', release.core_version, manifest.core_version],
+    ['data_schema_version', release.data_schema_version, manifest.data_schema_version],
+    ['data_schema_readable', JSON.stringify(release.data_schema_readable), JSON.stringify(manifest.data_schema_readable)],
+    ['asset', bundle.asset, `typeroll-core-${manifest.core_version}-workers.tar.gz`],
+  ].filter(([, actual, expected]) => actual !== expected);
+  if (mismatches.length) {
+    throw new Error(`bundle does not belong to this release: ${mismatches.map(([key, actual, expected]) => `${key}=${actual} (expected ${expected})`).join(', ')}`);
+  }
+  if (!release.workers?.portal?.migration_tag) throw new Error('bundle contract names no portal Worker with a Durable Object migration');
   return manifest;
 }
 
@@ -185,11 +224,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       'github-output': { type: 'boolean', default: false },
       manifest: { type: 'string' },
       'source-sha': { type: 'string' },
-      'image-digest': { type: 'string' },
+      bundle: { type: 'string' },
     },
   });
   if (values.manifest) {
-    const manifest = buildReleaseManifest({ sourceSha: values['source-sha'], imageDigest: values['image-digest'] });
+    if (!values.bundle) throw new Error('--bundle DESCRIPTOR is required with --manifest');
+    const bundle = JSON.parse(readFileSync(path.resolve(values.bundle), 'utf8'));
+    const manifest = buildReleaseManifest({ sourceSha: values['source-sha'], bundle });
     writeFileSync(path.resolve(values.manifest), `${JSON.stringify(manifest, null, 2)}\n`);
     console.log(`Wrote OSS release manifest to ${values.manifest}.`);
   } else {

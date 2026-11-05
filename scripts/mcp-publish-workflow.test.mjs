@@ -114,7 +114,7 @@ test('publication trusts the exact successful release-candidate source gate', ()
   assert.doesNotMatch(workflow, /npm run typecheck --workspace=@typeroll\/mcp-server/);
   assert.doesNotMatch(workflow, /npm test --workspace=@typeroll\/mcp-server/);
   assert.match(workflow, /Build and inspect MCP package[\s\S]*npm run build --workspace=@typeroll\/mcp-server/);
-  assert.match(workflow, /Verify published image contract/);
+  assert.match(workflow, /Verify the bundle serves its release identity/);
 });
 
 test('docs reuse requires exact successful source proof before any publication', () => {
@@ -128,41 +128,40 @@ test('docs reuse requires exact successful source proof before any publication',
   assert.match(testWorkflow, /release-dependencies\.mjs/);
 });
 
-test('an interrupted Core publication can recover only from the same source commit', () => {
-  const inspect = workflow.indexOf('- name: Inspect existing Core release');
-  const build = workflow.indexOf('- name: Build and publish immutable image');
-  const verify = workflow.indexOf('- name: Verify published image contract');
-  const tag = workflow.indexOf('- name: Create verified Core tag');
-
-  assert.ok(inspect > 0 && inspect < build);
-  assert.ok(build < verify && verify < tag);
-  assert.match(workflow, /org\.opencontainers\.image\.revision/);
-  assert.match(workflow, /REVISION.*!=.*SOURCE_SHA/);
-  assert.match(workflow, /steps\.registry\.outputs\.exists != 'true'/);
-  assert.match(workflow, /EXISTING_DIGEST: \$\{\{ steps\.registry\.outputs\.image_digest \}\}/);
-});
-
-test('a prebuilt Core image is reused only at the digest recorded by main Tests, after the same contract check', () => {
+test('an interrupted Core publication reuses the published bundle and never rebuilds over it', () => {
   const core = jobSource(workflow, 'core');
-  const steps = ['Download prebuilt image record', 'Resolve prebuilt image record', 'Inspect existing Core release', 'Inspect prebuilt Core image', 'Build and publish immutable image',
-    'Resolve release digest', 'Verify published image contract', 'Tag verified prebuilt image', 'Create verified Core tag']
+  const steps = ['Verify Core release version', 'Inspect published Worker bundle', 'Install build dependencies', 'Build the Worker bundle',
+    'Verify the Worker bundle and its release contract', 'Verify the bundle serves its release identity', 'Attest Worker bundle build provenance',
+    'Verify Worker bundle provenance', 'Create verified Core tag', 'Publish the Worker bundle on the Core release']
     .map(name => core.indexOf(`- name: ${name}\n`));
   assert.ok(steps.every((index, position) => index > 0 && (position === 0 || index > steps[position - 1])), String(steps));
-  assert.match(core, /Inspect prebuilt Core image\n        id: prebuilt\n        if: needs\.plan\.outputs\.publish_core == 'true' && steps\.registry\.outputs\.exists != 'true'/);
-  // The record comes only from the qualified main Tests run of this exact source.
-  assert.match(core, /Download prebuilt image record[\s\S]*?continue-on-error: true[\s\S]*?run-id: \$\{\{ needs\.plan\.outputs\.tests_run_id \}\}\n\s+name: core-image-\$\{\{ needs\.plan\.outputs\.source_sha \}\}/);
-  assert.match(core, /select\(\.source_sha == env\.SOURCE_SHA and \.core_tag == env\.CORE_TAG\) \| \.image_digest/);
-  // A mutable tag is never resolved for reuse; only the recorded digest is.
-  assert.doesNotMatch(core, /typeroll:sha-\$SOURCE_SHA|crane digest "\$IMAGE" 2>\/dev\/null/);
-  assert.match(core, /IMAGE="ghcr\.io\/typeroll\/typeroll@\$RECORDED_DIGEST"/);
-  assert.match(core, /echo "image_digest=\$RECORDED_DIGEST" >> "\$GITHUB_OUTPUT"/);
-  assert.match(core, /if \[ "\$REVISION" = "\$SOURCE_SHA" \] && \[ "\$VERSION" = "\$CORE_TAG" \]; then/);
-  // An existing release tag must match the recorded digest when one exists.
-  assert.match(core, /\[ -n "\$RECORDED_DIGEST" \] && \[ "\$RESULT" != "\$RECORDED_DIGEST" \]/);
-  assert.match(core, /steps\.registry\.outputs\.exists != 'true' &&\s+steps\.prebuilt\.outputs\.exists != 'true'\n\s+uses: \.\/\.github\/actions\/core-image/);
-  assert.match(core, /PREBUILT_DIGEST: \$\{\{ steps\.prebuilt\.outputs\.image_digest \}\}/);
-  assert.match(core, /crane tag "ghcr\.io\/typeroll\/typeroll@\$IMAGE_DIGEST" "\$CORE_TAG"/);
-  assert.match(jobSource(workflow, 'manifest'), /--image-digest "\$\{\{ needs\.core\.outputs\.image_digest \}\}"/);
+  // The bundle is built from the commit the Core tag names.
+  assert.match(core, /ref: \$\{\{ needs\.plan\.outputs\.core_source_sha \}\}/);
+  for (const step of ['Install build dependencies', 'Build the Worker bundle', 'Verify the bundle serves its release identity']) {
+    assert.match(core, new RegExp(`${step}\\n        if: steps\\.published\\.outputs\\.exists != 'true'\\n`));
+  }
+  // A release in an unknown state stops the run instead of publishing again.
+  assert.match(core, /Could not safely determine whether release \$CORE_TAG exists/);
+  assert.match(core, /carries only one of \$TARBALL and \$DESCRIPTOR/);
+  // Every bundle, reused or new, is verified against the exact Core source.
+  assert.match(core, /release-worker-bundle\.mjs verify --dir temp\/core-workers --source-sha "\$CORE_SOURCE_SHA" --core-tag "\$CORE_TAG"/);
+  assert.match(core, /test "\$\(jq -r '\.bundle_digest' <<<"\$RELEASE"\)" = "\$BUNDLE_DIGEST"/);
+  // The published asset must be the verified bytes.
+  assert.match(core, /test "sha256:\$\(sha256sum "\$CHECK\/\$TARBALL" \| cut -d' ' -f1\)" = "\$BUNDLE_DIGEST"/);
+  assert.doesNotMatch(core, /--clobber|gh release delete/);
+});
+
+test('Core provenance is attested before the tag and verified exactly as Cloud verifies it', () => {
+  const core = jobSource(workflow, 'core');
+  assert.match(core, /Attest Worker bundle build provenance\n        if: steps\.published\.outputs\.exists != 'true' && env\.PUBLISH == 'true'\n        uses: actions\/attest-build-provenance@[a-f0-9]{40}/);
+  assert.match(core, /subject-path: temp\/core-workers\/\$\{\{ steps\.bundle\.outputs\.tarball \}\}/);
+  assert.match(core, /gh attestation verify "temp\/core-workers\/\$TARBALL"\n\s+--repo "\$GITHUB_REPOSITORY"\n\s+--signer-workflow "\$GITHUB_REPOSITORY\/\.github\/workflows\/publish-mcp\.yml"\n\s+--source-ref refs\/heads\/main\n\s+--predicate-type https:\/\/slsa\.dev\/provenance\/v1\n\s+--deny-self-hosted-runners/);
+  assert.match(core, /PUBLISH: \$\{\{ github\.event_name != 'workflow_dispatch' \|\| inputs\.dry_run != true \}\}/);
+  assert.match(core, /Create verified Core tag\n        if: needs\.plan\.outputs\.publish_core == 'true' && env\.PUBLISH == 'true'/);
+  // No container image is published any more.
+  assert.doesNotMatch(workflow, /ghcr\.io|crane|docker\/|core-image/);
+  assert.match(jobSource(workflow, 'manifest'), /--bundle "temp\/core-workers\/typeroll-core-\$\{\{ needs\.plan\.outputs\.core_version \}\}-workers\.json"/);
+  assert.match(core, /name: core-workers-\$\{\{ needs\.plan\.outputs\.source_sha \}\}/);
 });
 
 test('documentation publication verifies its source without redeploying the retired host', () => {
@@ -174,39 +173,14 @@ test('documentation publication verifies its source without redeploying the reti
 });
 
 test('unchanged packages do not reinstall build dependencies during publication', () => {
-  const core = workflow.slice(workflow.indexOf('\n  core:'), workflow.indexOf('\n  mcp:'));
-  assert.doesNotMatch(core, /run: npm ci/);
+  const core = jobSource(workflow, 'core');
+  assert.match(core, /Install build dependencies\n        if: steps\.published\.outputs\.exists != 'true'\n        run: npm ci/);
   assert.match(workflow, /Install MCP build dependencies\n        if: needs\.plan\.outputs\.publish_mcp == 'true'/);
 });
 
-test('main Tests prebuild only the sha- image of a planned Core release, with the only write grant', () => {
-  const image = jobSource(testWorkflow, 'image');
-  assert.match(image, /needs: plan\n/);
-  assert.match(image, /github\.event_name == 'push' &&\s+github\.ref == 'refs\/heads\/main' &&\s+github\.repository == 'Typeroll\/typeroll' &&\s+needs\.plan\.outputs\.publish_core == 'true'/);
-  assert.match(image, /permissions:\n      contents: read\n      packages: write\n/);
-  assert.match(image, /source_sha: \$\{\{ github\.sha \}\}\n\s+core_tag: \$\{\{ needs\.plan\.outputs\.core_tag \}\}\n\s+tags: ghcr\.io\/typeroll\/typeroll:sha-\$\{\{ github\.sha \}\}\n/);
-  // The built digest is recorded in this run for Release OSS to pin.
-  assert.match(image, /IMAGE_DIGEST: \$\{\{ steps\.image\.outputs\.digest \}\}/);
-  assert.match(image, /name: core-image-\$\{\{ github\.sha \}\}\n\s+path: temp\/core-image\n\s+if-no-files-found: error/);
-  assert.doesNotMatch(image, /core-v|git tag|crane/);
-  // The workflow default stays read-only; no other job can write packages.
+test('main Tests no longer prebuild or push a Core container image', () => {
+  assert.doesNotMatch(testWorkflow, /\n  image:|packages: write|core-image|Plan Core publication/);
   assert.match(testWorkflow, /^permissions:\n  contents: read\n  actions: read\n\njobs:/m);
-  assert.equal(testWorkflow.match(/packages: write/g).length, 1);
-  assert.match(jobSource(testWorkflow, 'plan'), /Plan Core publication\n        id: release\n        if: github\.event_name == 'push'\n        run: node scripts\/oss-release-plan\.mjs --github-output/);
-});
-
-test('every Core image build uses the one shared build definition', () => {
-  const action = readFileSync(new URL('../.github/actions/core-image/action.yml', import.meta.url), 'utf8');
-  for (const source of [workflow, testWorkflow]) {
-    assert.doesNotMatch(source, /docker\/build-push-action|docker\/setup-buildx-action/);
-  }
-  assert.match(workflow, /uses: \.\/\.github\/actions\/core-image/);
-  assert.match(testWorkflow, /uses: \.\/\.github\/actions\/core-image/);
-  assert.match(action, /using: composite/);
-  assert.match(action, /org\.opencontainers\.image\.revision=\$\{\{ inputs\.source_sha \}\}/);
-  assert.match(action, /org\.opencontainers\.image\.version=\$\{\{ inputs\.core_tag \}\}/);
-  assert.match(action, /TYPEROLL_SOURCE_SHA=\$\{\{ inputs\.source_sha \}\}/);
-  assert.match(action, /platforms: linux\/amd64\n\s+cache-from: type=gha,scope=core\n\s+cache-to: type=gha,scope=core,mode=max\n\s+sbom: true\n\s+provenance: mode=max/);
 });
 
 test('the release train has no default token grant and each job requests only its own permissions', () => {
@@ -217,19 +191,19 @@ test('the release train has no default token grant and each job requests only it
     return Object.fromEntries(block[1].trim().split('\n').map(line => line.trim().split(': ')));
   };
   assert.deepEqual(permissions('plan'), { contents: 'read', actions: 'read' });
-  assert.deepEqual(permissions('core'), { contents: 'write', packages: 'write', actions: 'read' });
+  assert.deepEqual(permissions('core'), { contents: 'write', 'id-token': 'write', attestations: 'write', actions: 'read' });
   assert.deepEqual(permissions('mcp'), { contents: 'write', 'id-token': 'write' });
   assert.deepEqual(permissions('registry'), { contents: 'read', 'id-token': 'write' });
   assert.deepEqual(permissions('docs'), { contents: 'read', actions: 'read' });
   assert.deepEqual(permissions('manifest'), { contents: 'read' });
-  // OIDC only for npm Trusted Publishing and the MCP Registry namespace proof.
-  assert.equal(workflow.match(/id-token: write/g).length, 2);
-  assert.doesNotMatch(workflow, /attestations: write/);
+  // OIDC only for the Core bundle provenance, npm Trusted Publishing and the
+  // MCP Registry namespace proof; only Core writes attestations.
+  assert.equal(workflow.match(/id-token: write/g).length, 3);
+  assert.equal(workflow.match(/attestations: write/g).length, 1);
 });
 
 test('every external action is pinned to a full commit SHA', () => {
-  const action = readFileSync(new URL('../.github/actions/core-image/action.yml', import.meta.url), 'utf8');
-  for (const source of [workflow, testWorkflow, action]) {
+  for (const source of [workflow, testWorkflow]) {
     for (const [, reference] of source.matchAll(/uses: ([^\s]+)/g)) {
       if (reference.startsWith('./')) continue;
       assert.match(reference, /^[\w.-]+\/[\w.-]+@[a-f0-9]{40}$/, reference);

@@ -72,11 +72,45 @@ test('an existing version rejects relevant source drift but permits docs-only fo
   assert.equal(docsPlan.core_source_sha, OLD_SHA);
 });
 
+const bundleDescriptor = (release = {}) => ({
+  asset: 'typeroll-core-0.2.157-workers.tar.gz',
+  sha256: DIGEST,
+  size: 1234,
+  release: {
+    core_version: '0.2.157',
+    source_sha: SHA,
+    data_schema_version: 2,
+    data_schema_readable: { min: 2, max: 2 },
+    content_sha256: 'd'.repeat(64),
+    build: { node_version: '22.23.1' },
+    workers: { portal: { migration_tag: 'v1', exports: ['DocumentStore', 'OperatorApi', 'default'] } },
+    roles: { portal: { worker: 'portal' } },
+    ...release,
+  },
+});
+
 test('the generated release manifest matches the runtime version sources', () => {
-  const manifest = buildReleaseManifest({ sourceSha: SHA, imageDigest: DIGEST, recordedAt: '2026-09-06' });
+  const manifest = buildReleaseManifest({ sourceSha: SHA, bundle: bundleDescriptor(), recordedAt: '2026-09-06' });
+  assert.equal(manifest.schema_version, 2);
   assert.equal(manifest.core_version, '0.2.157');
   assert.equal(manifest.mcp_version, '0.45.116');
   assert.equal(manifest.template_capabilities_version, '0.57.0');
-  assert.equal(manifest.image_digest, DIGEST);
+  assert.equal(manifest.bundle_digest, DIGEST);
+  assert.equal(manifest.operator_api_version, 1);
+  assert.equal(manifest.image_digest, undefined);
+  assert.equal(manifest.bundle.url, 'https://github.com/Typeroll/typeroll/releases/download/core-v0.2.157/typeroll-core-0.2.157-workers.tar.gz');
+  assert.deepEqual(manifest.bundle.provenance, {
+    predicate_type: 'https://slsa.dev/provenance/v1',
+    signer_workflow: 'Typeroll/typeroll/.github/workflows/publish-mcp.yml',
+    source_ref: 'refs/heads/main',
+  });
   assert.deepEqual(manifest.data_schema_readable, { min: 2, max: 2 });
+});
+
+test('the release manifest refuses a bundle from another source, version or schema', () => {
+  for (const release of [{ source_sha: OLD_SHA }, { core_version: '0.2.156' }, { data_schema_version: 3 }, { workers: {} }, { workers: { portal: { migration_tag: 'v1', exports: ['default'] } } }]) {
+    assert.throws(() => buildReleaseManifest({ sourceSha: SHA, bundle: bundleDescriptor(release) }), /bundle|OperatorApi/);
+  }
+  assert.throws(() => buildReleaseManifest({ sourceSha: SHA, bundle: { ...bundleDescriptor(), sha256: 'sha256:abc' } }), /bundle digest/);
+  assert.throws(() => buildReleaseManifest({ sourceSha: SHA, bundle: { ...bundleDescriptor(), asset: 'other.tar.gz' } }), /asset=/);
 });

@@ -15,8 +15,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       lane: ${{ steps.plan.outputs.lane }}
-      publish_core: ${{ steps.release.outputs.publish_core }}
-      core_tag: ${{ steps.release.outputs.core_tag }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -28,11 +26,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/source-check-plan.mjs
-      # Decides whether main prebuilds the Core image that Release OSS would publish.
-      - name: Plan Core publication
-        id: release
-        if: github.event_name == 'push'
-        run: node scripts/oss-release-plan.mjs --github-output
       # Main skips the gate for this exact tree only when the run below succeeds.
       # Recording is an optimization: its failure never fails a pull request.
       - name: Record the tree this run qualifies
@@ -140,54 +133,6 @@ jobs:
         with:
           node-version: '22.23.1'
       - run: node scripts/release-dependencies.mjs
-
-  # Builds the image Release OSS would build, while the source is qualified.
-  # It pushes only the sha- tag and records the built digest as an artifact of
-  # this run. Release OSS reuses only that exact digest (a mutable tag or label
-  # is never trusted), verifies the image contract before it creates any
-  # release tag, and builds itself if this record is absent.
-  image:
-    name: Build Core image
-    needs: plan
-    if: >-
-      github.event_name == 'push' &&
-      github.ref == 'refs/heads/main' &&
-      github.repository == 'Typeroll/typeroll' &&
-      needs.plan.outputs.publish_core == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - uses: ./.github/actions/core-image
-        id: image
-        with:
-          source_sha: ${{ github.sha }}
-          core_tag: ${{ needs.plan.outputs.core_tag }}
-          tags: ghcr.io/typeroll/typeroll:sha-${{ github.sha }}
-      - name: Record built image digest
-        env:
-          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
-          SOURCE_SHA: ${{ github.sha }}
-          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
-        run: |
-          set -euo pipefail
-          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
-          mkdir -p temp/core-image
-          jq -n --arg source_sha "$SOURCE_SHA" --arg core_tag "$CORE_TAG" --arg image_digest "$IMAGE_DIGEST" \
-            '{source_sha: $source_sha, core_tag: $core_tag, image_digest: $image_digest}' > temp/core-image/core-image.json
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: core-image-${{ github.sha }}
-          path: temp/core-image
-          if-no-files-found: error
-          retention-days: 30
 
   # The suite runs on one worker because the datastore is global per server, so
   # each shard gets its own runner, server and fixtures to cut wall-clock time.
