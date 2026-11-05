@@ -6,7 +6,7 @@ import { buildTasksPath } from '../../lib/builds/queue';
 import { wakeCompletedPublication } from '../../lib/builds/publication-wakeup';
 import { workPath } from '../../lib/scheduling/index';
 const deliver = vi.hoisted(() => vi.fn());
-vi.mock('../../lib/scheduling/transport', () => ({ dispatchScheduledWork: deliver }));
+vi.mock('../../lib/scheduling/transport', () => ({ deliverCommitted: deliver }));
 const org = 'org', key = 'a'.repeat(64);
 const jobPath = paths.deploy(org, 'site', 'job');
 const taskPath = `${buildTasksPath(org)}/${key}`;
@@ -46,7 +46,6 @@ it('does not wake a publication for background preparation or qualification', as
   expect(await getStore().getDoc(eventPath)).toBeNull();
 });
 it('retains the next event after a queue outage without requiring a second callback', async () => {
-  vi.stubEnv('DEPLOY_QUEUE', 'cloud_tasks');
   deliver.mockRejectedValue(Error('synthetic queue outage'));
   await wakeCompletedPublication(org,key,'publication');
   expect(await getStore().getDoc(taskPath)).toMatchObject({status:'completed'});

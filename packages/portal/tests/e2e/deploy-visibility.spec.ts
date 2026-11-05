@@ -1,32 +1,30 @@
 import { test, expect } from '@playwright/test';
-import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { gotoReady, reloadReady } from './helpers/ready';
-
-const siteRoot = path.join(tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default');
+import { DEFAULT_MAIN, DEFAULT_SITE, e2eStore } from './helpers/store';
+import { stubPublishingReady } from './helpers/publishing';
 
 for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
   test(`live links wait for deployed content and mobile deploy stays visible at ${width}x${height}`, async ({ page }, testInfo) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(error.message));
-    const versionFile = path.join(siteRoot, 'versions/main.json');
-    const siteFile = `${siteRoot}.json`;
-    const pageFile = path.join(siteRoot, 'versions/main/pages/deploy-visibility.json');
-    const extraFiles = Array.from({ length: 24 }, (_, index) => path.join(siteRoot, `versions/main/pages/menu-content-${index}.json`));
-    const originalVersion = existsSync(versionFile) ? readFileSync(versionFile) : null;
-    const originalSite = readFileSync(siteFile);
+    const pageDoc = `${DEFAULT_MAIN}/pages/deploy-visibility`;
+    const extraDocs = Array.from({ length: 24 }, (_, index) => `${DEFAULT_MAIN}/pages/menu-content-${index}`);
+    const originalVersion = await e2eStore.get(DEFAULT_MAIN);
+    const originalSite = await e2eStore.read(DEFAULT_SITE);
     const content = { id: 'deploy-visibility', title: 'Deploy visibility', slug: 'deploy-visibility', status: 'published',
       content_mode: 'blocks', date_updated: '2020-01-02T10:00:00.000Z', blocks: [] };
     const version = { id: 'main', name: 'Main', kind: 'main', created_at: '2020-01-01T00:00:00.000Z' };
     try {
-      writeFileSync(siteFile, JSON.stringify({ ...JSON.parse(originalSite.toString()), domain: 'test-site.example.com' }));
-      writeFileSync(versionFile, JSON.stringify(version));
-      writeFileSync(pageFile, JSON.stringify(content));
-      extraFiles.forEach((file, index) => writeFileSync(file, JSON.stringify({ ...content,
-        id: `menu-content-${index}`, slug: `menu-content-${index}`, title: `Example content ${index}: a descriptive page title that wraps across lines`,
-        status: index % 2 === 0 ? 'published' : 'draft',
-      })));
+      await e2eStore.setMany([
+        [DEFAULT_SITE, { ...originalSite, domain: 'test-site.example.com' }],
+        [DEFAULT_MAIN, version],
+        [pageDoc, content],
+        ...extraDocs.map((doc, index): [string, Record<string, unknown>] => [doc, { ...content,
+          id: `menu-content-${index}`, slug: `menu-content-${index}`, title: `Example content ${index}: a descriptive page title that wraps across lines`,
+          status: index % 2 === 0 ? 'published' : 'draft',
+        }]),
+      ]);
+      await stubPublishingReady(page);
       await page.setViewportSize({ width, height });
       await gotoReady(page, '/app/sites/default/pages/deploy-visibility');
       expect(pageErrors, 'The editor must hydrate without recovering from a rendering mismatch').toEqual([]);
@@ -74,7 +72,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
 
       // A successful live deployment makes this saved page eligible.
-      writeFileSync(versionFile, JSON.stringify({ ...version, last_deployed_at: '2020-01-02T12:00:00.000Z', last_deployed_content_at: '2020-01-02T11:00:00.000Z' }));
+      await e2eStore.set(DEFAULT_MAIN, { ...version, last_deployed_at: '2020-01-02T12:00:00.000Z', last_deployed_content_at: '2020-01-02T11:00:00.000Z' });
       await reloadReady(page);
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveAttribute('href', 'https://test-site.example.com/deploy-visibility');
@@ -92,7 +90,7 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
 
 
       // Content changed while the build ran is not proven live by its completion time.
-      writeFileSync(pageFile, JSON.stringify({ ...content, date_updated: '2020-01-02T11:30:00.000Z' }));
+      await e2eStore.set(pageDoc, { ...content, date_updated: '2020-01-02T11:30:00.000Z' });
       await gotoReady(page, '/app/sites/default/pages/deploy-visibility');
       await page.getByRole('button', { name: 'Publish', exact: true }).click();
       await expect(page.getByRole('link', { name: 'Live URL' })).toHaveCount(0);
@@ -100,10 +98,9 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await expect(page.getByRole('row').filter({ hasText: 'Deploy visibility' }).getByTitle('Open live URL')).toHaveCount(0);
       expect(pageErrors).toEqual([]);
     } finally {
-      writeFileSync(siteFile, originalSite);
-      if (originalVersion) writeFileSync(versionFile, originalVersion); else rmSync(versionFile, { force: true });
-      rmSync(pageFile, { force: true });
-      extraFiles.forEach((file) => rmSync(file, { force: true }));
+      await e2eStore.set(DEFAULT_SITE, originalSite);
+      if (originalVersion) await e2eStore.set(DEFAULT_MAIN, originalVersion); else await e2eStore.delete(DEFAULT_MAIN);
+      await e2eStore.deleteTree(pageDoc, ...extraDocs);
     }
   });
 }

@@ -155,8 +155,11 @@ export type HostingAdapterName = 'cloudflare' | 'netlify' | 'vercel' | 'firebase
 export interface Site {
   id: string;
   name: string;
-  /** Customer Git publishing is explicit; existing managed sites retain their adapter until migrated. */
-  publishing_mode?: 'customer_git' | 'managed';
+  /**
+   * Customer Git publishing is explicit; existing managed sites retain their adapter until migrated.
+   * `hosted` (only with a bound hosting service) is set only by internal site creation.
+   */
+  publishing_mode?: 'customer_git' | 'managed' | 'hosted';
   /** Verified reuse of the original static Pages project; server-managed migration receipt. */
   publishing_migration?: { account_id: string; project: string; website_host: string; previous_deployment_id: string; hosting_group_id: string; migrated_at: string };
   /** Omitted legacy values resolve to the organization's Default Hosting Group. */
@@ -1684,7 +1687,7 @@ export interface AnalyticsEvent {
  * Per-site state for one app. Mirrors the EmailConnector convention:
  * provider-agnostic `config`, secret values stored under `${key}_enc` as
  * AES-256-GCM ciphertext. Only the app's declared PUBLIC keys are ever
- * written into a build snapshot (see materializeFixtures); secrets and
+ * written into a publication snapshot (see publicAppsSnapshot); secrets and
  * server-only config never reach the customer site.
  */
 export interface AppState {
@@ -2235,13 +2238,4 @@ export const paths = {
     `org_share_index/${orgId}/shares`,
   sharesWithOrgEntry: (orgId: string, shareId: string) =>
     `org_share_index/${orgId}/shares/${shareId}`,
-
-  // Portal sign-out denylist. Doc id is sha256(`${uid}:${auth_time}`) of one
-  // Firebase sign-in; a revoked sign-in rejects every session cookie carrying
-  // that key. Lineage docs map a cookie re-minted by the rolling refresh to
-  // the sign-in it continues (`root_key`), so sign-out revokes every copy.
-  // Both carry a native `expires_at` timestamp for a Firestore TTL policy.
-  revokedSession: (key: string) => `revoked_sessions/${key}`,
-  sessionLineages: () => `session_lineage`,
-  sessionLineage: (key: string) => `session_lineage/${key}`,
 };

@@ -64,7 +64,7 @@ async function handle(request: Request): Promise<Response> {
 
   const verified = await verifyApiToken(apiKey);
   if (!verified) return unauthorized();
-  const limited = rateLimit(`mcp:${verified.prefix}`, 600, 60_000);
+  const limited = await rateLimit(`mcp:${verified.prefix}`, 600, 60_000);
   if (!limited.allowed) return new Response('Too many MCP requests. Try again shortly.', { status: 429, headers: { 'Retry-After': '60' } });
 
   const portalBase = process.env.PORTAL_PUBLIC_URL?.replace(/\/+$/, '') ?? new URL(request.url).origin;

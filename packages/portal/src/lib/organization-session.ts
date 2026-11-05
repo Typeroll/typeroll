@@ -2,6 +2,7 @@ import type { AstroCookies } from 'astro';
 import { paths, type Member, type Organization, type MemberRole } from '@typeroll/shared';
 import type { Session } from './auth';
 import { getStore } from './datastore';
+import { portalCookiesSecure } from './local-e2e';
 
 const COOKIE = 'typeroll_organization';
 const validSegment = (value: unknown): value is string =>
@@ -41,7 +42,7 @@ export async function listOrganizations(session: Session): Promise<OrganizationC
 
 export function selectOrganization(cookies: AstroCookies, userId: string, orgId: string): void {
   cookies.set(COOKIE, JSON.stringify({ userId, orgId }), {
-    httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax',
+    httpOnly: true, secure: portalCookiesSecure(), sameSite: 'lax',
     path: '/', maxAge: 14 * 24 * 60 * 60,
   });
   cookies.delete('typeroll_version', { path: '/' });

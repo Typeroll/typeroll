@@ -11,7 +11,7 @@ delete process.env.ANTHROPIC_BASE_URL;
 delete process.env.R2_ACCOUNT_ID;
 delete process.env.CLOUDFLARE_API_TOKEN;
 delete process.env.CF_IMAGE_ORIGIN;
-process.env.DEPLOY_QUEUE = 'in_process';
+process.env.TYPEROLL_SCHEDULER = 'off';
 process.env.FORMS_HMAC_SECRET = 'test-hmac-secret-please-change-for-real-use-32+chars';
 // Pin TYPEROLL_FIXTURES_DIR per-test via the helper; no global override.
 

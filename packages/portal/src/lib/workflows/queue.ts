@@ -3,26 +3,17 @@
 // A workflow run executes as a chain of short chunks (engine.ts). Each chunk
 // is delivered through the scheduled-work index (scheduling/index.ts), the
 // same outbox the publication chain and serving checks use, so a chunk runs
-// inside a request of its own and survives the process that enqueued it:
-//
-//   - DEPLOY_QUEUE=cloud_tasks: Cloud Tasks posts the entry to
-//     /api/internal/deploy-worker, which keeps the Cloud Run instance's CPU
-//     allocated for the chunk. A failed delivery is retried by the queue;
-//     the publish-sweep scheduler re-dispatches due entries whose submission
-//     failed.
-//   - DEPLOY_QUEUE=firestore (portable self-host): the worker loop's sweep
-//     runs due entries.
-//   - DEPLOY_QUEUE unset/in_process (development, simple self-host): process
-//     timers deliver the entry in the same process, one chunk after another.
+// in a delivery of its own and survives the process that enqueued it: the
+// organization object's alarm on Cloudflare, process timers in development
+// (scheduling/transport.ts). A failed delivery is retried with backoff.
 //
 // One index entry per run; enqueueing the next chunk replaces it. The entry's
 // generation is the chunk id, and the engine runs a chunk only while the run
 // still names it, so stale and duplicate deliveries are harmless.
 
 import { paths } from '@typeroll/shared';
-import type { ReadWriteStore } from '../datastore';
-import { getStore } from '../datastore';
-import { notifyScheduledWrites, workPath, type ScheduledWork } from '../scheduling/index';
+import { getStore, type ReadWriteStore } from '../datastore';
+import { putScheduledWork } from '../scheduling/index';
 
 export interface WorkflowChunkRef {
   orgId: string;
@@ -46,23 +37,13 @@ export function parseWorkflowRunSource(source: string): { orgId: string; workflo
 }
 
 export class ScheduledWorkflowQueue implements WorkflowChunkQueue {
-  constructor(private readonly store: ReadWriteStore = getStore(), private readonly now: () => number = Date.now) {}
+  /** Without a store, the entry is written in the organization's own store object. */
+  constructor(private readonly store?: ReadWriteStore, private readonly now: () => number = Date.now) {}
 
   async enqueue(ref: WorkflowChunkRef, delayMs = 0): Promise<void> {
     const source = workflowRunSource(ref.orgId, ref.workflowId);
-    const path = workPath(source, 'workflow_chunk');
-    const work: ScheduledWork = {
-      kind: 'workflow_chunk',
-      source,
-      generation: ref.chunkId,
-      due_at: this.now() + Math.max(0, delayMs),
-      payload: { chunk_id: ref.chunkId },
-      lease_until: 0,
-      lease_owner: null,
-      blocked_by: null,
-    };
-    await this.store.setDoc(path, work as unknown as Record<string, unknown>);
-    await notifyScheduledWrites([{ path, data: work }]);
+    await putScheduledWork({ kind: 'workflow_chunk', source, generation: ref.chunkId,
+      due_at: this.now() + Math.max(0, delayMs), payload: { chunk_id: ref.chunkId } }, { store: this.store });
   }
 }
 

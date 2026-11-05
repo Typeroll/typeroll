@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../datastore';
-import { notifyScheduledWrites, workPath, type ScheduledWork } from '../scheduling/index';
+import { putScheduledWork } from '../scheduling/index';
 import { siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { observeRedirectHost, observeWebsiteHost, servingIssue, type ServingIssue, type ServingObservation } from './serving-host';
 import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
@@ -78,15 +77,8 @@ export async function scheduleServingChecks(org: string, site: string, input: { 
     live_at: new Date(now).toISOString(), next_check_at: new Date(due).toISOString(),
   };
   await store.updateDoc(source, { serving_check: check });
-  const payload = { publication_id: input.publication_id, website_host: input.website_host, live_at: now };
-  const work: ScheduledWork = {
-    kind: 'domain_serving_check', source, due_at: due, payload,
-    generation: createHash('sha256').update(JSON.stringify({ kind: 'domain_serving_check', source, due, payload })).digest('hex'),
-    lease_until: 0, lease_owner: null,
-  };
-  const path = workPath(source, 'domain_serving_check');
-  await store.setDoc(path, work as unknown as Record<string, unknown>);
-  await notifyScheduledWrites([{ path, data: work }]);
+  await putScheduledWork({ kind: 'domain_serving_check', source, due_at: due,
+    payload: { publication_id: input.publication_id, website_host: input.website_host, live_at: now } });
 }
 
 /** Observe the live website host and its redirect hosts against the current publication. */

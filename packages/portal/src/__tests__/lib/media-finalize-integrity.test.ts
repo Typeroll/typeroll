@@ -70,6 +70,15 @@ describe('finalizeMedia integrity', () => {
     expect(sent).toContain('CopyObjectCommand');
   });
 
+  it('applies cache headers to a legacy image without transcoding it in the portal', async () => {
+    storedBytes = Buffer.from('\x89PNG fake image bytes');
+    await seedMedia('image/png');
+    const { finalizeMedia } = await import('../../lib/media-finalize');
+    const result = await finalizeMedia(ORG, SITE, 'm1', CONFIG);
+    expect(result).toMatchObject({ cache_headers_applied: true, variants_generated: false, variant_count: 0 });
+    expect(sent).toEqual(['GetObjectCommand', 'CopyObjectCommand']);
+  });
+
   it('expected_sha256 mismatch throws BEFORE cache headers are applied', async () => {
     await seedMedia();
     const { finalizeMedia, MediaIntegrityError } = await import('../../lib/media-finalize');

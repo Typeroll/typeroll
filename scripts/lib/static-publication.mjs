@@ -9,7 +9,9 @@ import { projectPublicationBlocks, projectPublicationBlockTypes, projectPublicat
 
 import { externalRoutesError } from '../../packages/shared/src/external-routes.mjs';
 
-const root = fileURLToPath(new URL('../../', import.meta.url));
+// Resolved on use: the portal Worker imports this module for its projections,
+// and a bundled Worker has no file URL to resolve the repository from.
+const repositoryRoot = () => fileURLToPath(new URL('../../', import.meta.url));
 const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const safeFieldName = /^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$/;
 const stringFields = {
@@ -330,6 +332,7 @@ async function copySources(source, destination) {
 }
 
 export async function createStaticPublicationProject(publication, destination) {
+  const root = repositoryRoot();
   if (publication.format !== 'typeroll-static-publication' || publication.format_version !== 2) throw new Error('Unsupported publication format');
   await fs.mkdir(destination, { recursive: false });
   const json = async (file, data) => {

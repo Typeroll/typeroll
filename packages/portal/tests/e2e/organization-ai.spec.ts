@@ -1,17 +1,14 @@
 import { test, expect, type Page } from '@playwright/test';
 import { createServer, type Server } from 'node:http';
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { authenticatePersona } from './helpers/auth';
+import { PORTAL_ORIGIN as origin, e2eStore } from './helpers/store';
 
 // The Organization's own AI key. Anthropic's key check is the only external
 // call: playwright.config.ts points ANTHROPIC_BASE_URL at the stub below,
 // which accepts one synthetic key and rejects everything else, the way
 // Anthropic answers an unknown key. No real key is used anywhere.
 
-const origin = 'http://127.0.0.1:4322';
-const fixtures = path.join(os.tmpdir(), 'typeroll-e2e-fixtures', 'organizations', 'e2e-core');
+const orgDoc = 'organizations/e2e-core';
 const CORE_SITE = 'e2e-core-site';
 const SECOND_SITE = 'e2e-ai-second-site';
 const ACCEPTED_KEY = 'sk-ant-e2e-synthetic-accepted-key-0000ABCD';
@@ -29,17 +26,15 @@ test.beforeAll(async () => {
     response.end(JSON.stringify(accepted ? { data: [], has_more: false } : { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' } }));
   });
   await new Promise<void>((resolve) => anthropic.listen(4329, '127.0.0.1', resolve));
-  mkdirSync(path.join(fixtures, 'sites'), { recursive: true });
-  writeFileSync(path.join(fixtures, 'sites', `${SECOND_SITE}.json`), JSON.stringify({ name: 'E2E AI second site', created_at: '2026-10-01T00:00:00.000Z', hosting_adapter: 'cloudflare' }));
+  await e2eStore.set(`${orgDoc}/sites/${SECOND_SITE}`, { name: 'E2E AI second site', created_at: '2026-10-01T00:00:00.000Z', hosting_adapter: 'cloudflare' });
 });
 
-test.afterEach(() => {
-  rmSync(path.join(fixtures, 'ai_settings'), { recursive: true, force: true });
+test.afterEach(async () => {
+  for (const { id } of await e2eStore.list(`${orgDoc}/ai_settings`)) await e2eStore.deleteTree(`${orgDoc}/ai_settings/${id}`);
 });
 
 test.afterAll(async () => {
-  rmSync(path.join(fixtures, 'sites', `${SECOND_SITE}.json`), { force: true });
-  rmSync(path.join(fixtures, 'sites', SECOND_SITE), { recursive: true, force: true });
+  await e2eStore.deleteTree(`${orgDoc}/sites/${SECOND_SITE}`);
   await new Promise<void>((resolve) => anthropic.close(() => resolve()));
 });
 

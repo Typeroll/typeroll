@@ -78,12 +78,12 @@ describe('runMigrationPreflight', () => {
     expect(media?.fix).toContain('Publishing → Media storage');
   });
 
-  it('blocks when deploys would run against the stub adapter', async () => {
+  it('blocks a site still in managed publishing, which can no longer publish', async () => {
     setEnv(R2_ENV);
     const report = await run();
     expect(report.ready).toBe(false);
     expect(check(report, 'hosting')?.status).toBe('fail');
-    expect(check(report, 'hosting')?.detail).toContain('publishes nothing');
+    expect(check(report, 'hosting')?.detail).toContain('no longer available');
   });
 
   it('is ready once both blockers are satisfied', async () => {

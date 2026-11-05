@@ -1,13 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { gotoReady } from './helpers/ready';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 
 test('style library: add standard styles, edit one, refuse low contrast, and apply it to a heading', async ({ page }, info) => {
-  const file = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/styled-heading.json');
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify({ id: 'styled-heading', title: 'Styled', slug: 'styled-heading', status: 'draft', content_mode: 'blocks', blocks: [{ id: 'kicker', type: 'core/heading', data: { text: 'For leadership teams', level: 'h2' } }] }));
+  const pageDoc = `${DEFAULT_MAIN}/pages/styled-heading`;
+  await e2eStore.set(pageDoc, { id: 'styled-heading', title: 'Styled', slug: 'styled-heading', status: 'draft', content_mode: 'blocks', blocks: [{ id: 'kicker', type: 'core/heading', data: { text: 'For leadership teams', level: 'h2' } }] });
   try {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await gotoReady(page, '/app/sites/default/styles');
@@ -49,5 +46,5 @@ test('style library: add standard styles, edit one, refuse low contrast, and app
     await expect(heading).toHaveCSS('font-size', '14px');
     await expect(heading).toHaveCSS('color', 'rgb(29, 78, 216)');
     await page.screenshot({ path: info.outputPath('editor-style-1440.png') });
-  } finally { rmSync(file, { force: true }); }
+  } finally { await e2eStore.deleteTree(pageDoc); }
 });

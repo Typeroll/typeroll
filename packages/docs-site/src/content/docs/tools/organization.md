@@ -38,10 +38,9 @@ enforce member roles. The API and MCP do not create keys, so a secret never land
 in an agent's conversation, a tool log or a chat history; `POST` to these routes
 returns `403` saying where to create one. Lists return metadata only: id, name,
 creator, creation, last use and revocation, and need admin permission on the
-Site because they name people and addresses. The last-use address is the one
-the deployment's trusted proxy appended (`AUTH_TRUST_PROXY_HOPS`, see
-[self-hosting](../../guides/self-hosting/)); a client-supplied
-`X-Forwarded-For` value is not stored.
+Site because they name people and addresses. The last-use address is the
+visitor's address as Cloudflare reports it to the portal Worker; a
+client-supplied `X-Forwarded-For` value is not stored.
 
 Site keys are created only by the Organization that owns the Site. An
 administrator of an Organization the Site is shared with can list and revoke

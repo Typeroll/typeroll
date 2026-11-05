@@ -42,7 +42,7 @@ export const GET: APIRoute = async ({ params, request }) => {
 
   // Rate-limit per token so a runaway scraper can't pull a snapshot loop.
   // 300/min, separate bucket from API key rate-limits.
-  const rl = rateLimit(`pv:${token}`, 300, 60_000);
+  const rl = await rateLimit(`pv:${token}`, 300, 60_000);
   if (!rl.allowed) {
     return plain(
       '<h1>Preview rate limit exceeded</h1>',

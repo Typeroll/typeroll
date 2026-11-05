@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface PublishingSetup {
   ready: boolean;
-  mode: 'managed' | 'customer_git';
+  /** Every mode except the former managed one publishes production only. */
+  mode: 'managed' | 'customer_git' | 'hosted';
   required: Array<{ code: string; message: string; settings_url: string }>;
   /** Where a production deploy lands; production is true once the site serves a live custom domain. */
   publication?: import('./liveDomainConfirmation').PublicationTargetsView;

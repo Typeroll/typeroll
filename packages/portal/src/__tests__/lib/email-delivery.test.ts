@@ -103,3 +103,41 @@ it('binds an inline calendar to the durable delivery identity without accepting 
   await expect(sendApplicationEmail(scope,{...input,calendar:{...calendar,filename:'../secret.ics'}},{send})).rejects.toMatchObject({status:400});
   expect(send).toHaveBeenCalledOnce();
 });
+
+describe('application mail on the sharded store', () => {
+  // The event route (global object) and the receipt (site object) cannot share
+  // a conditional commit; the route is written first and is safe to repeat.
+  let counter = 0;
+  beforeEach(async () => {
+    const { ShardedStore } = await import('../../lib/store/sharded-store');
+    const { SqlDocumentEngine } = await import('../../lib/store/sql-engine');
+    const { localTransport } = await import('../../lib/store/sql-store');
+    const { nodeSqliteDriver } = await import('../../lib/store/node-sqlite');
+    const { setRuntimeStore } = await import('../../lib/datastore');
+    const engines = new Map<string, InstanceType<typeof SqlDocumentEngine>>();
+    const store = new ShardedStore({ transport: name => {
+      if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+      return localTransport(engines.get(name)!);
+    } }, () => `id${++counter}`);
+    setRuntimeStore(() => store);
+    await store.setDoc(paths.integrations(scope.orgId, scope.siteId), { email: { type: 'ses', from: 'Approved <mail@example.com>', config: {} } });
+  });
+  afterEach(async () => { (await import('../../lib/datastore')).setRuntimeStore(null); });
+
+  it('reserves, correlates events and resumes after a crash between the route and the receipt', async () => {
+    const send = vi.fn().mockResolvedValue({ ok: true, id: 'ses-1' });
+    const store = getStore();
+    const original = store.compareAndReplaceDoc.bind(store);
+    const spy = vi.spyOn(store, 'compareAndReplaceDoc').mockImplementationOnce(async () => { throw new Error('object unavailable'); });
+    await expect(sendApplicationEmail(scope, input, { send })).rejects.toThrow('object unavailable');
+    spy.mockImplementation(original);
+    expect(send).not.toHaveBeenCalled();
+
+    const receipts = await Promise.all(Array.from({ length: 4 }, () => sendApplicationEmail(scope, input, { send })));
+    expect(send).toHaveBeenCalledTimes(1);
+    const id = receipts[0]!.id;
+    expect(await store.getDoc(`mail_delivery_routes/${id}`)).toMatchObject({ ...scope, id });
+    expect(await applyDeliveryEvent({ id: 'event-1', deliveryId: id, providerId: 'ses-1', provider: 'ses', type: 'delivered', at: new Date().toISOString() })).toBe(true);
+    expect((await readDelivery(scope, id))?.status).toBe('delivered');
+  });
+});

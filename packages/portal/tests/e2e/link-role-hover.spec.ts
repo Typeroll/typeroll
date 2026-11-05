@@ -1,34 +1,40 @@
 import { expect, test } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
+import { localFixtureDocuments, writeFixtureTree } from './seed-store.mjs';
 
-const fixtures = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
-const version = path.join(fixtures, 'organizations/default/sites/default/versions/main');
-const settingsFile = path.join(version, 'settings/default.json');
-const pageFile = path.join(version, 'pages/link-role-hover.json');
-const typeFile = path.join(version, 'content_types/hover-articles.json');
+// The portal preview reads the local E2E Worker's store; the static build reads
+// a disposable fixtures tree written per test with the same documents.
+const settingsFile = `${DEFAULT_MAIN}/settings/default`;
+const pageFile = `${DEFAULT_MAIN}/pages/link-role-hover`;
+const typeFile = `${DEFAULT_MAIN}/content_types/hover-articles`;
 const template = fileURLToPath(new URL('../../../site-template/', import.meta.url));
 const STATIC = 'https://link-role.test';
+// Asynchronous: a synchronous build blocked the worker's event loop, and with it the browser connection, for the whole build.
+const run = promisify(execFile);
 
 test('link role hover and mapped Page dates agree in static output and preview', async ({ page }, info) => {
   test.setTimeout(180_000);
   const out = mkdtempSync(path.join(os.tmpdir(), 'tr-link-role-'));
-  const original = readFileSync(settingsFile, 'utf8');
-  const settings = JSON.parse(original);
+  const fixtures = mkdtempSync(path.join(os.tmpdir(), 'tr-link-role-fixtures-'));
+  const original = await e2eStore.read(settingsFile);
+  const settings = original;
   const styles = [
     { id: 'link', name: 'Links', role: 'link', targets: ['link'], base: { color: 'primary' }, hover: { color: '#0056a0', decoration: 'underline' } },
     { id: 'own-hover', name: 'Own hover', targets: ['link', 'button'], base: {}, hover: { color: '#9b1250', decoration: 'none' } },
   ];
-  writeFileSync(settingsFile, JSON.stringify({ ...settings, render_version: 11, custom_css: '', styles,
-    cookie_consent: { enabled: true, privacy_policy_url: '/privacy/' } }));
-  mkdirSync(path.dirname(typeFile), { recursive: true });
-  writeFileSync(typeFile, JSON.stringify({ id: 'hover-articles', name: 'hover-articles', label_singular: 'Article', label_plural: 'Articles',
+  const documents: Array<[string, Record<string, unknown>]> = [];
+  documents.push([settingsFile, { ...settings, render_version: 11, custom_css: '', styles,
+    cookie_consent: { enabled: true, privacy_policy_url: '/privacy/' } }]);
+  documents.push([typeFile, { id: 'hover-articles', name: 'hover-articles', label_singular: 'Article', label_plural: 'Articles',
     route_template: '/{slug}', fields: [{ name: 'sort_order', type: 'number', label: 'Order' }], schema_type: 'Article', schema_field_mode: 'mapped',
-    schema_field_map: { title: 'headline', date_published: 'datePublished', date_updated: 'dateModified' } }));
-  writeFileSync(pageFile, JSON.stringify({ id: 'link-role-hover', title: 'Link role', slug: 'link-role-hover', path: '/link-role-hover/', status: 'published',
+    schema_field_map: { title: 'headline', date_published: 'datePublished', date_updated: 'dateModified' } }]);
+  documents.push([pageFile, { id: 'link-role-hover', title: 'Link role', slug: 'link-role-hover', path: '/link-role-hover/', status: 'published',
     content_type: 'hover-articles', content_mode: 'blocks', date_published: '2024-05-02T10:01:08Z', date_updated: '2024-05-03T12:00:00+02:00', fields: { sort_order: 10 },
     blocks: [
       { id: 'crumbs', type: 'template/page_breadcrumbs', data: {} },
@@ -37,10 +43,12 @@ test('link role hover and mapped Page dates agree in static output and preview',
       { id: 'button', type: 'core/button', data: { label: 'Own button', href: '/button/', style_id: 'own-hover' } },
       { id: 'nav', type: 'core/navigation', data: { links: [{ label: 'Own navigation', href: '/nav/' }], part_styles: { link: 'own-hover' } } },
       { id: 'card', type: 'core/post_card', data: { title: 'Own card', href: '/card/', part_styles: { title_link: 'own-hover' } } },
-    ] }));
+    ] }]);
   try {
-    execFileSync(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
-      cwd: template, timeout: 90_000, stdio: 'pipe', env: { ...process.env, FIREBASE_SERVICE_ACCOUNT: '', TYPEROLL_FIXTURES_DIR: fixtures,
+    await e2eStore.setMany(documents);
+    writeFixtureTree(fixtures, new Map([...localFixtureDocuments(), ...documents]));
+    await run(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
+      cwd: template, timeout: 90_000, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, TYPEROLL_FIXTURES_DIR: fixtures,
         TYPEROLL_ORG_ID: 'default', TYPEROLL_SITE_ID: 'default', TYPEROLL_VERSION_ID: 'main', TYPEROLL_SITE_URL: STATIC },
     });
     const published = readFileSync(path.join(out, 'link-role-hover/index.html'), 'utf8');
@@ -64,13 +72,19 @@ test('link role hover and mapped Page dates agree in static output and preview',
     for (const [url, frame] of [[`${STATIC}/link-role-hover/`, false], ['/api/sites/default/preview/browse/link-role-hover/', true]] as const) {
       await page.goto(url);
       const scope = frame ? page.frameLocator('iframe') : page;
+      // Hide the consent dialog, then hover. Retried: the preview's iframe can
+      // still swap in the site document (whose head script, in a sandbox without
+      // cookies, shows the dialog again) after the first removal.
+      const hover = (link: ReturnType<typeof scope.locator>) => expect(async () => {
+        await scope.locator('html').evaluate(el => el.classList.remove('tr-consent-needed'));
+        await link.hover({ timeout: 2_000 });
+      }).toPass({ timeout: 30_000 });
       for (const width of [375, 768, 1280]) {
         await page.setViewportSize({ width, height: 1000 });
-        await scope.locator('html').evaluate(el => el.classList.remove('tr-consent-needed'));
         // Test mouse hover at narrow widths too; this is not a touch emulation.
         for (const selector of ['[data-block="prose"] a', '[data-block="breadcrumbs"] a', '[data-block="table_of_contents"] a']) {
           const link = scope.locator(selector).first();
-          await link.hover();
+          await hover(link);
           await expect(link).toHaveCSS('color', 'rgb(0, 86, 160)');
           await expect(link).toHaveCSS('text-decoration-line', 'underline');
         }
@@ -79,7 +93,7 @@ test('link role hover and mapped Page dates agree in static output and preview',
         if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
         for (const name of ['Own button', 'Own navigation', 'Own card']) {
           const link = scope.locator('[data-block="button"], [data-block="navigation"], [data-block="post_card"]').getByRole('link', { name, exact: true });
-          await link.hover();
+          await hover(link);
           await expect(link).toHaveCSS('color', 'rgb(155, 18, 80)');
           await expect(link).toHaveCSS('text-decoration-line', 'none');
         }
@@ -92,7 +106,8 @@ test('link role hover and mapped Page dates agree in static output and preview',
       }
     }
   } finally {
-    writeFileSync(settingsFile, original);
-    rmSync(pageFile, { force: true }); rmSync(typeFile, { force: true }); rmSync(out, { recursive: true, force: true });
+    await e2eStore.set(settingsFile, original);
+    await e2eStore.deleteTree(pageFile, typeFile);
+    rmSync(out, { recursive: true, force: true }); rmSync(fixtures, { recursive: true, force: true });
   }
 });

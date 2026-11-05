@@ -130,6 +130,16 @@ export function publicUrlsFor(site: Site & { id: string }): PublicSiteUrls {
       pending_domain: site.domain_status !== 'live' ? site.domain ?? null : null, domain_status: site.domain_status ?? null,
       fallback: null, staging: null, preview_base: portalOrigin ? `${portalOrigin}/preview/${site.id}` : null };
   }
+  if (site.publishing_mode === 'hosted') {
+    // Served on its platform address (fallback) until a custom domain is launched.
+    const portalOrigin = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
+    const live = site.domain_status === 'live' && !!site.domain;
+    const fallback = site.hosting_config?.fallback_subdomain ? `https://${site.hosting_config.fallback_subdomain}` : null;
+    // Launched without a custom domain, the platform address is the production site.
+    return { production: live ? `https://${site.domain}` : site.hosting_config?.launched === true ? fallback : null,
+      pending_domain: !live ? site.domain ?? null : null, domain_status: site.domain ? site.domain_status ?? 'pending' : null, fallback,
+      staging: null, preview_base: portalOrigin ? `${portalOrigin}/preview/${site.id}` : null };
+  }
   const domain = (site as { domain?: string }).domain;
   const status = (site as { domain_status?: 'pending' | 'verified' | 'live' | 'failed' }).domain_status;
   const stagingUrl = (site as { staging_url?: string }).staging_url;

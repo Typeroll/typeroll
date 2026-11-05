@@ -1,16 +1,17 @@
 import type { APIRoute } from 'astro';
 import { isDevAuthEnabled } from '../../../lib/auth';
 import { safeReturnPath } from '../../../lib/return-path';
+import { portalCookiesSecure } from '../../../lib/local-e2e';
 
 // Sets a non-verified `dev` session for local development. Disabled in
-// production and whenever Firebase is configured.
+// production and whenever accounts (AUTH_SECRET) are configured.
 export const POST: APIRoute = async ({ cookies, redirect, request }) => {
   if (!isDevAuthEnabled()) {
     return new Response('Dev session is disabled', { status: 403 });
   }
   cookies.set('typeroll_session', 'dev', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure: portalCookiesSecure(),
     sameSite: 'lax',
     path: '/',
     maxAge: 14 * 24 * 60 * 60,

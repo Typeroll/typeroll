@@ -1,36 +1,21 @@
 /**
- * Deploy job queue abstraction.
+ * Deploy job queue.
  *
- * Three implementations:
- *   - InProcessQueue    runs the deploy inline as a fire-and-forget Promise.
- *                       Used for local dev (no infra to set up, instant
- *                       feedback). Caveat: not safe on Cloud Run without
- *                       `--cpu-always-allocated`, and process restarts mid-
- *                       deploy lose the work.
- *   - CloudTasksQueue   enqueues an HTTP task. Cloud Tasks then calls the
- *                       portal's deploy-worker route in a separate request
- *                       that keeps the Cloud Run instance alive for the
- *                       duration. Retries, backoff, and visibility are all
- *                       provided by the queue.
- *   - FirestoreDeployQueue persists an accepted task in Firestore. A
- *                       separate worker role leases and executes tasks with
- *                       retry and crash recovery. This is the supported
- *                       self-host production backend.
+ * Enqueueing a deploy writes one `deploy_dispatch` entry in the scheduled-work
+ * index (lib/scheduling), next to the job in its site's store object. The
+ * scheduling transport delivers it: the site object's alarm on Cloudflare,
+ * in-process timers in development. Delivery runs `executeDeployJob`; the job
+ * document decides whether it still runs, so late or repeated deliveries are
+ * harmless.
  *
- * Choice is per-process via DEPLOY_QUEUE env var. Default in_process.
- *
- * The DeployJob doc is the single source of truth for status — both
- * implementations write to it the same way, so consumers (poll endpoint,
- * dashboard, deploy button) don't care which backend ran the work.
+ * The DeployJob doc is the single source of truth for status, so consumers
+ * (poll endpoint, dashboard, deploy button) never see the transport.
  */
 
-import { runDeploy } from './runner';
 import { getStore } from '../datastore';
-import { computeDeployCost, getRateCard, PhaseTimer } from './cost';
-import { acquireBuildSlot } from './concurrency';
-import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
-import { createHash } from 'node:crypto';
-import { assertPublishingReady } from '../publishing/readiness';
+import { paths } from '@typeroll/shared';
+import { assertPublishingReady, MANAGED_PUBLISHING_REMOVED } from '../publishing/readiness';
+import { putScheduledWork } from '../scheduling/index';
 
 export interface EnqueueArgs {
   jobId: string;
@@ -39,12 +24,9 @@ export interface EnqueueArgs {
   versionId: string;
   environment: 'staging' | 'production';
   /**
-   * Skip the hosting-adapter upload phase. Build runs as normal —
-   * materializing fixtures, running astro build, writing _redirects/
-   * _headers, bundling block assets — but the resulting dist/ never
-   * leaves the worker. Useful for agents that want to validate a
-   * structural change (new collection routes, schema bump) without
-   * risking the live site.
+   * Validate the publication without replacing the live site: the frozen
+   * publication is prepared and checked, but never deployed. Useful for agents
+   * that want to validate a structural change without risking the live site.
    */
   dryRun?: boolean;
   /** A separately deduplicated continuation of the same frozen publication. */
@@ -54,273 +36,79 @@ export interface EnqueueArgs {
 }
 
 export interface DeployQueue {
-  /** Hand off the deploy. Returns once the task is accepted (not once it is
-   *  done). Firestore and Cloud Tasks are durable; in-process is explicitly
-   *  a development-only best-effort backend. */
+  /** Hand off the deploy. Resolves once it is durably accepted, not once it is done. */
   enqueue(args: EnqueueArgs): Promise<void>;
 }
 
-export interface FirestoreDeployQueueItem extends EnqueueArgs {
-  status: 'queued' | 'leased';
-  created_at: string;
-  available_at: string;
-  attempts: number;
-  lease_owner?: string;
-  lease_expires_at?: string;
-  last_error?: string;
-}
-
-export const FIRESTORE_DEPLOY_QUEUE_PATH = 'typeroll_system/deploy_queue/items';
-
-export function firestoreDeployQueueItemId(args: Pick<EnqueueArgs, 'jobId' | 'orgId' | 'siteId' | 'dispatchKey'>): string {
-  return createHash('sha256')
-    .update(`${args.orgId}\0${args.siteId}\0${deployTaskIdentity(args)}`)
-    .digest('hex')
-    .slice(0, 40);
-}
-
-/** Continuations must not collide with a consumed task's provider deduplication window. */
+/** A repeated request has the same identity; a continuation of the same job has its own. */
 export function deployTaskIdentity(args: Pick<EnqueueArgs, 'jobId' | 'dispatchKey'>): string {
-  if (args.dispatchKey && !/^[a-f0-9]{16}$/.test(args.dispatchKey)) throw new Error('Invalid deploy continuation identity');
+  if (args.dispatchKey !== undefined && !/^[A-Za-z0-9-]{1,64}$/.test(args.dispatchKey)) throw new Error('Invalid deploy continuation identity');
   return args.dispatchKey ? `${args.jobId}-${args.dispatchKey}` : args.jobId;
 }
 
-// ─── In-process (local dev) ─────────────────────────────────────────────
+/**
+ * The one deploy queue. A dispatch replaces the job's pending one; the same
+ * identity again (a retried request) is accepted without a second delivery.
+ */
+export class ScheduledDeployQueue implements DeployQueue {
+  constructor(private readonly now: () => number = Date.now) {}
 
-export class InProcessQueue implements DeployQueue {
   async enqueue(args: EnqueueArgs): Promise<void> {
+    const identity = deployTaskIdentity(args);
     if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: !args.dispatchKey });
-    // Fire-and-forget on the current event loop. The HTTP response from
-    // the launcher returns immediately; this Promise resolves on its
-    // own. The .catch is essential — without it, any failure (real
-    // deploy error OR a test runner cleaning up the fixtures dir before
-    // the deploy finishes) becomes an unhandled rejection and crashes
-    // the process / CI test runner. The error is already written to
-    // the deploy job's status doc by runDeployInline when possible;
-    // logging here covers the case where even the status write fails.
-    const attempt = async () => {
-      try {
-        const outcome = await runDeployInline(args);
-        if (outcome === 'deferred') {
-          const timer = setTimeout(() => { void attempt(); }, 10_000);
-          timer.unref();
-        }
-      } catch { console.error('[in-process deploy] background execution failed'); }
-    };
-    void attempt();
+    await putScheduledWork({
+      kind: 'deploy_dispatch',
+      source: paths.deploy(args.orgId, args.siteId, args.jobId),
+      due_at: this.now() + Math.max(0, args.delayMs ?? 0),
+      generation: identity,
+      payload: { version_id: args.versionId, environment: args.environment, dry_run: args.dryRun === true, dispatch_key: args.dispatchKey ?? null },
+    }, { dedupe: true });
   }
 }
 
 /**
- * Durable queue for the portable non-GCP fallback profile.
- *
- * The portal only writes a queue document and returns. A separate worker role
- * leases and executes it, so restarting the portal cannot lose an accepted
- * deploy. The queue lives in the same Firestore project as the CMS data and
- * therefore needs no second infrastructure service.
+ * `deferred` means the publication is already executing elsewhere (its lease is
+ * held): the delivery is handed back and redelivered, never marked failed.
+ * `continue` means the next coordinator phase has been durably saved; consume
+ * this delivery.
  */
-export class FirestoreDeployQueue implements DeployQueue {
-  constructor(private store = getStore()) {}
-
-  async enqueue(args: EnqueueArgs): Promise<void> {
-    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: !args.dispatchKey });
-    const now = new Date().toISOString();
-    await this.store.createDocIfMissing(
-      `${FIRESTORE_DEPLOY_QUEUE_PATH}/${firestoreDeployQueueItemId(args)}`,
-      {
-        ...args,
-        status: 'queued',
-        created_at: now,
-        available_at: new Date(Date.parse(now) + (args.delayMs ?? 0)).toISOString(),
-        attempts: 0,
-      } satisfies FirestoreDeployQueueItem,
-    );
-  }
-}
-
-/**
- * `deferred` means no build slot was free within the wait budget — the caller
- * should hand the task back so it is redelivered, NOT mark the job failed. A
- * congested platform is not a broken build, and showing the user a failure
- * they can't act on is worse than a late deploy.
- */
-/** continue means the next coordinator phase has been durably saved; consume this delivery. */
 export type DeployRunOutcome = 'ran' | 'deferred' | 'continue' | 'waiting';
 
-async function runDeployInline(
-  args: EnqueueArgs,
-  opts: { slotWaitMs?: number } = {},
-): Promise<DeployRunOutcome> {
-  const site = await getStore().getDoc<{ publishing_mode?: string }>(paths.site(args.orgId, args.siteId));
-  const retry = site?.publishing_mode !== 'customer_git' && (await getStore().getDoc<{ verification_retry?: unknown }>(paths.deploy(args.orgId, args.siteId, args.jobId)))?.verification_retry;
+/**
+ * The execution path of every delivered deploy (scheduling/worker.ts).
+ *
+ * Every site publishes through its organization's build engine and hosting
+ * (customer publishing), or, for a hosted site, through the build engine to
+ * the bound hosting service. Typeroll no longer builds sites itself: a
+ * site still in the former managed mode fails with a named error until it is
+ * migrated.
+ */
+export async function executeDeployJob(args: EnqueueArgs): Promise<DeployRunOutcome> {
+  const store = getStore();
+  const site = await store.getDoc<{ publishing_mode?: string }>(paths.site(args.orgId, args.siteId));
+  const jobPath = paths.deploy(args.orgId, args.siteId, args.jobId);
+  // Hosted sites publish through their own runner, which refuses by name
+  // when no hosting service is bound.
+  if (site?.publishing_mode === 'hosted') {
+    const { executeHostedPublication } = await import('../publishing/hosting-runner');
+    return executeHostedPublication(args);
+  }
+  // A verification retry of a publication that already ran on customer
+  // publishing resumes there even if the site's mode was changed since.
+  const retry = site?.publishing_mode !== 'customer_git' && (await store.getDoc<{ verification_retry?: unknown }>(jobPath))?.verification_retry;
   if (site?.publishing_mode === 'customer_git' || retry) {
     const { executeCustomerPublication } = await import('../publishing/customer-runner');
     return executeCustomerPublication(args);
   }
-  // One build per process at a time (DEPLOY_MAX_CONCURRENT, default 1). Taken
-  // here rather than in either caller for the same reason cost accounting
-  // lives here: this is the ONE execution path every queue backend shares, so
-  // a new backend inherits the gate instead of having to remember it.
-  const slot = await acquireBuildSlot(opts.slotWaitMs ?? Infinity);
-  if (!slot) return 'deferred';
-  try {
-    await runDeployBody(args);
-    return 'ran';
-  } finally {
-    slot.release();
-  }
+  await store.compareAndUpdateDoc(jobPath, job => ['queued', 'running'].includes(String((job as { status?: unknown }).status)), {
+    status: 'failed', phase: 'failed', finished_at: new Date().toISOString(),
+    error: MANAGED_PUBLISHING_REMOVED.message, failure: { code: MANAGED_PUBLISHING_REMOVED.code },
+  }).catch(() => { /* the job document is gone; nothing to report on */ });
+  return 'ran';
 }
-
-async function runDeployBody(args: EnqueueArgs): Promise<void> {
-  const store = getStore();
-  const jobPath = paths.deploy(args.orgId, args.siteId, args.jobId);
-  // Wrap each store write in its own swallow so a failed status update
-  // (e.g. underlying fixtures dir was torn down by a test) doesn't
-  // bubble out as an unhandled rejection.
-  const safeUpdate = async (patch: Record<string, unknown>): Promise<void> => {
-    try { await store.updateDoc(jobPath, patch); } catch { /* best effort */ }
-  };
-
-  // Cost accounting. This function is the ONE execution path every queue
-  // backend uses, so metering here
-  // covers every deploy without either caller having to remember to.
-  //
-  // The clock starts before runDeploy and stops in the finally: a failed
-  // build burns the same instance-time as a successful one, so it gets a
-  // cost row too. Otherwise a site stuck in a build-failure loop would look
-  // free in the report — exactly backwards.
-  const rates = getRateCard();
-  const timer = new PhaseTimer();
-  const startedMs = Date.now();
-  let outputBytes: number | undefined;
-  let outputFiles: number | undefined;
-
-  await safeUpdate({ status: 'running', phase: 'starting' });
-  try {
-    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: false });
-    const result = await runDeploy({
-      orgId: args.orgId,
-      siteId: args.siteId,
-      versionId: args.versionId ?? MAIN_VERSION_ID,
-      environment: args.environment,
-      buildOnly: args.dryRun === true,
-      onPhase: (phase) => {
-        timer.enter(phase);
-        return safeUpdate({ phase });
-      },
-    });
-    outputBytes = result.outputBytes;
-    outputFiles = result.outputFiles;
-    await safeUpdate({
-      status: result.availability ? 'running' : 'succeeded',
-      phase: result.availability ? 'distributing' : args.dryRun ? 'done (dry-run, no upload)' : 'done',
-      ...(!result.availability ? { finished_at: new Date().toISOString() } : { availability: result.availability }),
-      deploy_url: args.dryRun ? null : (result.deploy?.url ?? null),
-      dry_run: args.dryRun === true,
-      warnings: result.warnings ?? [],
-      cost: computeDeployCost({
-        durationMs: Date.now() - startedMs,
-        rates,
-        phaseMs: timer.finish(),
-        outputBytes,
-        outputFiles,
-      }),
-    });
-  } catch (e) {
-    await safeUpdate({
-      status: 'failed',
-      phase: 'failed',
-      finished_at: new Date().toISOString(),
-      error: e instanceof Error ? e.message : String(e),
-      cost: computeDeployCost({
-        durationMs: Date.now() - startedMs,
-        rates,
-        phaseMs: timer.finish(),
-      }),
-    });
-  }
-}
-
-/**
- * Exported so the worker route can reuse the same execution path.
- *
- * Durable workers pass a finite `slotWaitMs` because they can redeliver a
- * handed-back task; the in-process backend passes none (Infinity) because it
- * has no redelivery, so giving up there would silently drop a requested deploy.
- */
-export async function executeDeployJob(
-  args: EnqueueArgs,
-  opts: { slotWaitMs?: number } = {},
-): Promise<DeployRunOutcome> {
-  return runDeployInline(args, opts);
-}
-
-// ─── Cloud Tasks (Typeroll Cloud) ───────────────────────────────────────
-
-export class CloudTasksQueue implements DeployQueue {
-  constructor(
-    private queue: string, // projects/{p}/locations/{l}/queues/{q}
-    private workerUrl: string, // public URL of /api/internal/deploy-worker
-    private serviceAccountEmail: string, // OIDC token "sub" used by Cloud Tasks
-  ) {}
-
-  async enqueue(args: EnqueueArgs): Promise<void> {
-    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: !args.dispatchKey });
-    // Dynamic import so the @google-cloud/tasks SDK is only loaded in the
-    // environment where it's actually used. Keeps `npm run dev:portal`
-    // free of unnecessary GCP wiring.
-    const { CloudTasksClient } = await import('@google-cloud/tasks');
-    const client = new CloudTasksClient();
-
-    try { await client.createTask({
-      parent: this.queue,
-      task: {
-        // Cloud Tasks dedup window is 1h on the task name; using jobId
-        // means a retried POST /deploy that already enqueued doesn't
-        // double-deploy. We accept the 1h limit — that's plenty for
-        // deploy idempotency.
-        name: `${this.queue}/tasks/${deployTaskIdentity(args)}`,
-        ...(args.delayMs ? { scheduleTime: { seconds: Math.ceil((Date.now() + Math.max(0, args.delayMs)) / 1000) } } : {}),
-        httpRequest: {
-          httpMethod: 'POST',
-          url: this.workerUrl,
-          headers: { 'Content-Type': 'application/json' },
-          body: Buffer.from(JSON.stringify(args)).toString('base64'),
-          oidcToken: {
-            serviceAccountEmail: this.serviceAccountEmail,
-            audience: this.workerUrl,
-          },
-        },
-      },
-    }); }
-    catch (error) { if ((error as { code?: number }).code !== 6) throw error; }
-    finally { await client.close(); }
-  }
-}
-
-// ─── Factory ─────────────────────────────────────────────────────────────
 
 let cached: DeployQueue | null = null;
 
 export function getDeployQueue(): DeployQueue {
-  if (cached) return cached;
-  const mode = (process.env.DEPLOY_QUEUE ?? 'in_process').toLowerCase();
-  if (mode === 'cloud_tasks') {
-    const queue   = process.env.CLOUD_TASKS_QUEUE;
-    const url     = process.env.DEPLOY_WORKER_URL;
-    const sa      = process.env.CLOUD_TASKS_SERVICE_ACCOUNT;
-    if (!queue || !url || !sa) {
-      throw new Error(
-        'DEPLOY_QUEUE=cloud_tasks requires CLOUD_TASKS_QUEUE, DEPLOY_WORKER_URL, and CLOUD_TASKS_SERVICE_ACCOUNT.',
-      );
-    }
-    cached = new CloudTasksQueue(queue, url, sa);
-  } else if (mode === 'firestore') {
-    cached = new FirestoreDeployQueue();
-  } else if (mode === 'in_process') {
-    cached = new InProcessQueue();
-  } else {
-    throw new Error(`Unsupported DEPLOY_QUEUE mode: ${mode}`);
-  }
-  return cached;
+  return cached ??= new ScheduledDeployQueue();
 }

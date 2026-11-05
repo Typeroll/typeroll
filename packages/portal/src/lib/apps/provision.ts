@@ -6,7 +6,7 @@
 //
 // The mechanism is deliberately boring. Rather than teaching the renderer,
 // the preview, the editor's block picker, the agent's list_block_types and
-// materializeFixtures each to merge in "app blocks", enabling an app WRITES
+// the publication snapshot each to merge in "app blocks", enabling an app WRITES
 // its block types into the site's own `block_types` collection. Every one of
 // those surfaces already reads that collection, so they all pick the blocks up
 // with no change at all. The same goes for forms: an app form is seeded as a

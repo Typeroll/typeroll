@@ -22,7 +22,7 @@ async function executeCustomerPublication(args: Parameters<typeof executePublica
   throw new Error('Publication did not yield to its build provider');
 }
 
-const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), upload: vi.fn(), verify: vi.fn(), candidateVerification: vi.fn(), verificationPlan: vi.fn(), direct: vi.fn(), runtime: { forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] } as any, derive: vi.fn(), deployment: null as any }));
+const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), verify: vi.fn(), candidateVerification: vi.fn(), verificationPlan: vi.fn(), direct: vi.fn(), runtime: { forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] } as any, derive: vi.fn(), deployment: null as any }));
 vi.mock('../../lib/publishing/github-connection', () => ({ githubConfiguration: () => ({ appId: '12', privateKey: 'synthetic-only' }) }));
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => mocks.cloudflare }));
 vi.mock('../../lib/publishing/providers.mjs', async importOriginal => ({ ...await importOriginal<object>(), githubInstallationClient: async () => mocks.github, publishTree: mocks.push }));
@@ -37,7 +37,7 @@ vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completed
 // Engine updates replace provider resources; the runner tests drive their outcome through the engine state.
 const engineSetup = vi.hoisted(() => vi.fn());
 vi.mock('../../lib/builds/setup', async original => ({ ...await original<object>(), configureBuildEngine: engineSetup }));
-vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload, finalizeDirectUpload: mocks.direct }));
+vi.mock('../../lib/builds/upload', () => ({ finalizeDirectUpload: mocks.direct }));
 vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify, verifyCustomerCandidate: mocks.candidateVerification, saveCustomerVerification: mocks.verificationPlan }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
 const mediaReady = (checked = 1) => ({ ready: true as const, scope: 'scope', checked });
@@ -383,8 +383,8 @@ it('switches DNS for the same main artifact without a second push, build or uplo
   const frozen = (await store.getDoc<any>(jobPath)).git_publication;
   complete(frozen.branch);
   const preview = mocks.deployment; mocks.deployment = null;
-  mocks.built.mockResolvedValue({ task: {}, files: { 'index.html': Buffer.from('verified candidate') } });
-  mocks.upload.mockImplementation(async (_client, target) => {
+  mocks.built.mockResolvedValue({ task: {}, files: {}, direct: { format: 1 } });
+  mocks.direct.mockImplementation(async (_client, target) => {
     const deployment = { ...preview, id: target.branch === 'main' ? 'promoted' : 'deployment', environment: target.branch === 'main' ? 'production' : 'preview', deployment_trigger: { metadata: { commit_hash: target.commit, branch: target.branch } } };
     mocks.deployment = deployment; return deployment;
   });
@@ -397,7 +397,7 @@ it('switches DNS for the same main artifact without a second push, build or uplo
   mocks.deployment = null;
   await executeCustomerPublication(args);
   expect(mocks.enqueue).toHaveBeenCalledTimes(1);
-  expect(mocks.upload).toHaveBeenCalledTimes(1);
+  expect(mocks.direct).toHaveBeenCalledTimes(1);
   expect(mocks.push).toHaveBeenCalledTimes(1);
   expect((await store.getDoc<any>(jobPath)).status).toBe('succeeded');
 });
@@ -476,32 +476,45 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ revision: 'engine-1' }), expect.objectContaining({ org_id: 'org', site_id: 'site', version_id: 'main', branch: 'main', commit: 'b'.repeat(40) }), expect.any(Object), 'publication', { requeueFailed: false });
-  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(mocks.direct).not.toHaveBeenCalled();
   await getStore().updateDoc(jobPath, { started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString() });
   await getStore().setDoc('organizations/org/build_tasks/task', { status: 'queued', deadline: Date.now() + 60_000, media_total: 1001, media_cursor: 750 });
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'preparing media: 750 of 1001 files ready; continuing automatically' });
-  expect(mocks.upload).not.toHaveBeenCalled();
+  expect(mocks.direct).not.toHaveBeenCalled();
   await getStore().updateDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now(), media_cursor: 1001 });
   await getStore().updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: 'New unsaved-to-Git version' });
   await getStore().updateDoc('organizations/org/publishing/build_selection', { provider: providerName === 'github' ? 'cloudflare' : 'github' });
   const renderReport = { format: 1, mode: 'partial', rendered: 1, reused: 49, total: 50, removed: 0, reason: 'unchanged_routes_reused' };
-  mocks.built.mockResolvedValue({ task: { render_report: renderReport }, files: { 'index.html': Buffer.from('frozen') } });
+  mocks.built.mockResolvedValue({ task: { render_report: renderReport }, files: {}, direct: { format: 1 } });
   complete(); const finished = mocks.deployment;
   // Disabled Pages Git integrations still emit a skipped deployment for this commit.
   mocks.deployment = { ...finished, id: 'skipped-git-build', is_skipped: true, latest_stage: { name: 'queued', status: 'idle' } };
-  mocks.upload.mockImplementation(async () => { mocks.deployment = finished; return finished; });
+  mocks.direct.mockImplementation(async () => { mocks.deployment = finished; return finished; });
   mocks.probe.mockResolvedValue(true); mocks.verify.mockResolvedValue(false);
   expect(await executeCustomerPublication(args)).toBe('waiting');
-  expect(mocks.upload).toHaveBeenCalledWith(mocks.cloudflare, expect.objectContaining({ account: 'a'.repeat(32), group: 'default', branch: 'main' }), { 'index.html': Buffer.from('frozen') });
+  expect(mocks.direct).toHaveBeenCalledWith(mocks.cloudflare, expect.objectContaining({ account: 'a'.repeat(32), project, branch: 'main' }), { format: 1 });
   expect((await getStore().getDoc<any>(jobPath)).deploy_url).toBeUndefined();
   expect((await getStore().getDoc<any>(jobPath)).render_report).toEqual(renderReport);
   mocks.verify.mockResolvedValue(true);
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', execution_backend: providerName === 'github' ? 'organization_github' : 'organization_cloudflare' });
-  expect(mocks.push).toHaveBeenCalledTimes(1); expect(mocks.enqueue).toHaveBeenCalledTimes(1); expect(mocks.upload).toHaveBeenCalledTimes(1);
+  expect(mocks.push).toHaveBeenCalledTimes(1); expect(mocks.enqueue).toHaveBeenCalledTimes(1); expect(mocks.direct).toHaveBeenCalledTimes(1);
   expect(mocks.push.mock.calls[0][1].files['publication.json']).not.toContain('New unsaved');
 });
+it('refuses a whole-site artifact from an engine without direct uploads and uploads nothing', async () => {
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
+  mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  await getStore().setDoc('organizations/org/build_tasks/task', { status: 'completed', completed_at: Date.now() });
+  mocks.built.mockResolvedValue({ task: {}, files: { 'index.html': Buffer.from('whole site') }, direct: null });
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'build_engine_update_required' }, error: expect.stringContaining('Update the build engine') });
+  expect(mocks.direct).not.toHaveBeenCalled();
+});
+
 it('logs what an unclassified error was, without secrets, when a publication stops with publication_internal_error', async () => {
   const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
   fonts.freeze.mockRejectedValue(new TypeError('Cannot read properties of undefined (reading \'family\') at https://fonts.example.invalid/css?key=do-not-log'));
@@ -880,7 +893,6 @@ it('attaches and verifies the media host before the deployment replaces the live
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(mediaDomains).toHaveBeenCalledWith('org', expect.objectContaining({ media_host: 'media.example.org', delivery: 'r2' }));
   expect(mocks.direct).not.toHaveBeenCalled();
-  expect(mocks.upload).not.toHaveBeenCalled();
   const waiting = await store.getDoc<any>(jobPath);
   // The job names what remains instead of a bare phase.
   expect(waiting).toMatchObject({ status: 'running', phase: 'distributing media', media_delivery: { host: 'media.example.org', issue: 'dns_missing' },
@@ -1048,7 +1060,7 @@ it('resumes a timed-out public verification through the same job without provide
   expect(resumed.started_at).toBe(original.started_at);
   expect(resumed.verification_retry.failure.code).toBe('publication_observation_timeout');
   expect(await retryPublicationVerification('org', 'site', 'job', 'main')).toMatchObject({ already_running: true });
-  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct, mocks.cloudflare]) mock.mockClear();
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.direct, mocks.cloudflare]) mock.mockClear();
   mocks.verify.mockResolvedValue(false);
   expect(await executePublicationPhase(args)).toBe('waiting');
   expect((await store.getDoc<any>(jobPath)).status).toBe('running');
@@ -1056,7 +1068,7 @@ it('resumes a timed-out public verification through the same job without provide
   expect(await executePublicationPhase(args)).toBe('ran');
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'succeeded', phase: 'live', git_publication: publication });
   expect(await store.getDoc<any>(paths.version('org', 'site', 'main'))).toMatchObject({ last_deployed_content_at: publication.content_cutoff });
-  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct, mocks.cloudflare]) expect(mock).not.toHaveBeenCalled();
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.direct, mocks.cloudflare]) expect(mock).not.toHaveBeenCalled();
 });
 
 it('freezes a www redirect host, switches it after approval with the apex and verifies its 301 before going live', async () => {
@@ -1423,7 +1435,7 @@ it.each([{ corrected: true, legacy: false }, { corrected: false, legacy: false }
     await store.updateDoc(path, { static_probe: { origin, route: '/media/removed.svg', expected_status: 404, actual_status: 200, reason: 'status_mismatch', response_headers: { cf_cache_status: 'MISS', age: 180000 } } });
     return false;
   });
-  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct, mocks.cloudflare]) mock.mockClear();
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.direct, mocks.cloudflare]) mock.mockClear();
   const { retryPublicationVerification } = await import('../../lib/publishing/verification-retry');
   if (legacy) {
     await store.updateDoc(jobPath, { status: 'failed', failure: { code: 'publication_observation_timeout' } });
@@ -1446,7 +1458,7 @@ it.each([{ corrected: true, legacy: false }, { corrected: false, legacy: false }
   expect(mocks.cloudflare.mock.calls.filter(([path]) => path.endsWith('/purge_cache'))).toHaveLength(1);
   expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.body?.purge_everything)).toHaveLength(0);
   expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.method && opts.method !== 'GET').every(([path]) => path.endsWith('/purge_cache'))).toBe(true);
-  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct]) expect(mock).not.toHaveBeenCalled();
+  for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.direct]) expect(mock).not.toHaveBeenCalled();
 });
 
 it('refreshes a stale cached file at the current address during domain preparation, path by path', async () => {

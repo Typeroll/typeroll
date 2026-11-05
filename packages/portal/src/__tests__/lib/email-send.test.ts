@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EmailConnector } from '@typeroll/shared';
 import dns from 'node:dns/promises';
 
-const sendMailMock = vi.fn();
-vi.mock('nodemailer', () => ({
-  default: { createTransport: vi.fn(() => ({ sendMail: sendMailMock })) },
-}));
-
 import { sendViaConnector } from '../../lib/email';
+import { smtpTransport } from '../../lib/email/providers/smtp';
 import { encryptSecret } from '../../lib/secret-crypto';
+import { fakeSmtp, type FakeSmtpOptions } from '../helpers/fake-smtp';
+
+let server: ReturnType<typeof fakeSmtp>;
+const useServer = (options: FakeSmtpOptions = {}) => { server = fakeSmtp(options); smtpTransport.connect = server.connect; return server.state; };
 
 const KEY = 'unit-test-integrations-key-please-change-32+chars';
 const msg = { from: 'Site <a@b.com>', to: 'x@y.com', subject: 'Hi', html: '<p>Hi</p>' };
@@ -16,12 +16,12 @@ const msg = { from: 'Site <a@b.com>', to: 'x@y.com', subject: 'Hi', html: '<p>Hi
 describe('sendViaConnector', () => {
   beforeEach(() => {
     process.env.INTEGRATIONS_SECRET_KEY = KEY;
-    sendMailMock.mockReset();
-    sendMailMock.mockResolvedValue({ messageId: 'smtp-1' });
+    useServer();
     vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: '203.0.113.25', family: 4 }] as never);
   });
   afterEach(() => {
     delete process.env.INTEGRATIONS_SECRET_KEY;
+    smtpTransport.connect = null;
     vi.restoreAllMocks();
   });
 
@@ -73,11 +73,12 @@ describe('sendViaConnector', () => {
       from: 'Site <a@b.com>',
       config: { host: 'smtp.x.com', port: 587, secure: false, user: 'u', password_enc: encryptSecret('pw') },
     };
+    const state = useServer({ password: { user: 'u', password: 'pw' } });
     const res = await sendViaConnector(connector, msg);
     expect(res.ok).toBe(true);
-    expect(res.id).toBe('smtp-1');
-    expect(sendMailMock).toHaveBeenCalledOnce();
-    expect(sendMailMock.mock.calls[0]![0].to).toBe('x@y.com');
+    expect(res.id).toMatch(/^<[0-9a-f-]{36}@b\.com>$/);
+    expect(state).toMatchObject({ tls: true, authenticated: true, from: 'a@b.com', recipients: ['x@y.com'], closed: true });
+    expect(state.data).toContain('To: x@y.com');
   });
 
   it('falls back to the connector From and reply_to', async () => {
@@ -87,17 +88,24 @@ describe('sendViaConnector', () => {
       reply_to: 'reply@b.com',
       config: { host: 'smtp.x.com', port: 587, secure: false, user: '', password_enc: '' },
     };
+    const state = useServer({ extensions: ['STARTTLS'] });
     await sendViaConnector(connector, { from: '', to: 'x@y.com', subject: 's', text: 't' });
-    const call = sendMailMock.mock.calls[0]![0];
-    expect(call.from).toBe('Default <d@b.com>');
-    expect(call.replyTo).toBe('reply@b.com');
+    expect(state.from).toBe('d@b.com');
+    expect(state.data).toMatch(/^From: Default <d@b\.com>\r\n/);
+    expect(state.data).toContain('\r\nReply-To: reply@b.com\r\n');
+    expect(state.authenticated).toBe(false);
   });
 
-  it('pins SMTP to the validated public address and verifies TLS against the host name', async () => {
-    const nodemailer = (await import('nodemailer')).default as unknown as { createTransport: ReturnType<typeof vi.fn> };
+  it('connects to the validated host name and verifies TLS against it', async () => {
     const connector: EmailConnector = { type: 'smtp', from: 'a@b.com', config: { host: 'smtp.x.com', port: 587, secure: false, user: '', password_enc: '' } };
+    const state = useServer();
     await sendViaConnector(connector, msg);
-    expect(nodemailer.createTransport).toHaveBeenLastCalledWith(expect.objectContaining({ host: '203.0.113.25', servername: 'smtp.x.com', port: 587 }));
+    expect(state.connects).toEqual([{ hostname: 'smtp.x.com', port: 587, secureTransport: 'starttls' }]);
+    expect(state.tlsHostname).toBe('smtp.x.com');
+    const implicit = useServer();
+    await sendViaConnector({ ...connector, config: { ...connector.config, port: 465, secure: true } }, msg);
+    expect(implicit.connects).toEqual([{ hostname: 'smtp.x.com', port: 465, secureTransport: 'on' }]);
+    expect(implicit.commands).not.toContain('STARTTLS');
   });
 
   it.each([
@@ -105,18 +113,19 @@ describe('sendViaConnector', () => {
     ['a mapped metadata address', { host: 'smtp.x.com' }, '::ffff:a9fe:a9fe', /public address/],
     ['a loopback literal', { host: '127.0.0.1' }, '203.0.113.25', /public address/],
     ['a non-SMTP port', { host: 'smtp.x.com', port: 6379 }, '203.0.113.25', /port must be one of/],
+    ['port 25, which Workers sockets cannot open', { host: 'smtp.x.com', port: 25 }, '203.0.113.25', /port must be one of/],
   ])('refuses %s without connecting', async (_label, config, resolved, error) => {
     vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: resolved, family: resolved.includes(':') ? 6 : 4 }] as never);
     const connector: EmailConnector = { type: 'smtp', from: 'a@b.com', config: { port: 587, secure: false, user: '', password_enc: '', ...config } };
     const res = await sendViaConnector(connector, msg);
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(error);
-    expect(sendMailMock).not.toHaveBeenCalled();
+    expect(server.state.connects).toEqual([]);
   });
 
   it('returns a fixed message instead of the SMTP server reply', async () => {
-    sendMailMock.mockRejectedValue(Object.assign(new Error('Invalid greeting. response=SSH-2.0-OpenSSH_9.6 internal-db-01'), { code: 'EPROTOCOL' }));
-    const connector: EmailConnector = { type: 'smtp', from: 'a@b.com', config: { host: 'smtp.x.com', port: 25, secure: false, user: '', password_enc: '' } };
+    useServer({ reply: (command) => command.startsWith('EHLO') ? 'SSH-2.0-OpenSSH_9.6 internal-db-01\r\n' : null });
+    const connector: EmailConnector = { type: 'smtp', from: 'a@b.com', config: { host: 'smtp.x.com', port: 587, secure: false, user: '', password_enc: '' } };
     const res = await sendViaConnector(connector, msg);
     expect(res.ok).toBe(false);
     expect(res.error).toBe('Could not connect to the SMTP server; check the host, port and TLS setting');

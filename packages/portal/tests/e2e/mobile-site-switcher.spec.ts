@@ -1,17 +1,14 @@
 import { test, expect } from '@playwright/test';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import path from 'node:path';
-import os from 'node:os';
 import { authenticatePersona } from './helpers/auth';
 import { gotoReady } from './helpers/ready';
+import { e2eStore } from './helpers/store';
 
-const root = path.join(os.tmpdir(), 'typeroll-e2e-fixtures', 'organizations', 'e2e-core', 'sites');
+const root = 'organizations/e2e-core/sites';
 const ids = Array.from({ length: 20 }, (_, i) => `scroll-site-${String(i).padStart(2, '0')}`);
-test.beforeAll(() => {
-  mkdirSync(root, { recursive: true });
-  ids.forEach((id, i) => writeFileSync(path.join(root, `${id}.json`), JSON.stringify({ name: `Scroll site ${String(i).padStart(2, '0')}`, created_at: '2026-10-26T00:00:00Z' })));
+test.beforeAll(async () => {
+  await e2eStore.setMany(ids.map((id, i) => [`${root}/${id}`, { name: `Scroll site ${String(i).padStart(2, '0')}`, created_at: '2026-10-26T00:00:00Z' }]));
 });
-test.afterAll(() => ids.forEach(id => rmSync(path.join(root, `${id}.json`), { force: true })));
+test.afterAll(async () => { await e2eStore.delete(...ids.map(id => `${root}/${id}`)); });
 
 for (const [width, height] of [[390, 664], [320, 480], [844, 390]]) {
   test(`the last site and New site are reachable at ${width}x${height}`, async ({ page }, info) => {

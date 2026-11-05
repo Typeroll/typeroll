@@ -206,9 +206,9 @@ update_form form_id=lead patch={ actions: [
 In the portal, set **Send** to "When a started form is abandoned" on an email
 action of a multi-step form. The check runs on Typeroll's scheduled work, the
 same as scheduled publishing: Typeroll Cloud runs it for you, and a self-hosted
-Core needs its scheduler (Cloud Tasks and the Cloud Scheduler job that calls
-`/api/internal/publish-sweep`, see [Self-hosting](../../guides/self-hosting/)).
-Without it the email goes out on the next sweep after it is due.
+installation runs it from its store objects' alarms and the portal's Cron
+trigger (see [Self-hosting](../../guides/self-hosting/)). The email goes out
+when the check is due, or at the latest on the next five-minute sweep.
 
 ### `get_form_capabilities`
 

@@ -1,34 +1,40 @@
 import { test, expect } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
+import { localFixtureDocuments, writeFixtureTree } from './seed-store.mjs';
 
-// The local Playwright server owns this disposable tree (see playwright.config).
-// No API credentials, customer content, or deployed site is involved.
-const fixtures = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
-const version = path.join(fixtures, 'organizations/default/sites/default/versions/main');
+// Asynchronous, so the build does not block the worker's event loop.
+const run = promisify(execFile);
+
+// The portal preview reads the local E2E Worker's store; the static build reads
+// a disposable fixtures tree written per test. No API credentials, customer
+// content, or deployed site is involved.
+const version = DEFAULT_MAIN;
 const template = fileURLToPath(new URL('../../../site-template/', import.meta.url));
 
 test('Page listing has real responsive tracks in preview and a fresh static build', async ({ page }) => {
   test.setTimeout(120_000);
   const out = mkdtempSync(path.join(os.tmpdir(), 'tr-e2e-block-assets-'));
-  const pageFile = path.join(version, 'pages/asset-listing.json');
-  const collectionFile = path.join(version, 'content_types/asset-guides.json');
-  const itemDir = path.join(version, 'pages');
-  mkdirSync(itemDir, { recursive: true });
-  mkdirSync(path.dirname(collectionFile), { recursive: true });
-  writeFileSync(collectionFile, JSON.stringify({
+  const fixtures = mkdtempSync(path.join(os.tmpdir(), 'tr-e2e-block-assets-fixtures-'));
+  const pageFile = `${version}/pages/asset-listing`;
+  const collectionFile = `${version}/content_types/asset-guides`;
+  const itemFile = (i: number) => `${version}/pages/asset-guide-${i}`;
+  const documents: Array<[string, Record<string, unknown>]> = [];
+  documents.push([collectionFile, {
     id: 'asset-guides', name: 'asset-guides', label_singular: 'Guide', label_plural: 'Guides',
     fields: [{ name: 'pdf_url', label: 'PDF', type: 'url' }], route_template: '', created_at: '2026-09-07T00:00:00Z',
-  }));
-  for (let i = 0; i < 3; i++) writeFileSync(path.join(itemDir, `asset-guide-${i}.json`), JSON.stringify({
+  }]);
+  for (let i = 0; i < 3; i++) documents.push([itemFile(i), {
     id: `asset-guide-${i}`, content_type: 'asset-guides', content_mode: 'blocks', blocks: [], slug: `guide-${i}`, title: `Guide ${i}`, status: 'published',
     fields: { pdf_url: `https://media.example.test/guide-${i}.pdf` },
     created_at: '2026-09-07T00:00:00Z', updated_at: '2026-09-07T00:00:00Z',
-  }));
-  writeFileSync(pageFile, JSON.stringify({
+  }]);
+  documents.push([pageFile, {
     id: 'asset-listing', title: 'Asset listing', slug: 'asset-listing', path: '/asset-listing/',
     status: 'published', content_mode: 'blocks', blocks: [{
       id: 'asset-list', type: 'core/page_list', data: {
@@ -36,12 +42,14 @@ test('Page listing has real responsive tracks in preview and a fresh static buil
         item_overrides: { show_image: false, title_field: 'title', href_field: 'pdf_url', heading_level: 'h2' },
       },
     }],
-  }));
+  }]);
   try {
-    execFileSync(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
-      cwd: template, timeout: 60_000, encoding: 'utf8', stdio: 'pipe',
+    await e2eStore.setMany(documents);
+    writeFixtureTree(fixtures, new Map([...localFixtureDocuments(), ...documents]));
+    await run(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
+      cwd: template, timeout: 60_000, maxBuffer: 64 * 1024 * 1024,
       env: {
-        ...process.env, FIREBASE_SERVICE_ACCOUNT: '', TYPEROLL_FIXTURES_DIR: fixtures,
+        ...process.env, TYPEROLL_FIXTURES_DIR: fixtures,
         TYPEROLL_ORG_ID: 'default', TYPEROLL_SITE_ID: 'default', TYPEROLL_VERSION_ID: 'main',
         TYPEROLL_SITE_URL: 'https://static-assets.test',
       },
@@ -78,9 +86,8 @@ test('Page listing has real responsive tracks in preview and a fresh static buil
       }
     }
   } finally {
-    rmSync(pageFile, { force: true });
-    rmSync(collectionFile, { force: true });
-    for (let i = 0; i < 3; i++) rmSync(path.join(itemDir, `asset-guide-${i}.json`), { force: true });
+    await e2eStore.deleteTree(...documents.map(([document]) => document));
     rmSync(out, { recursive: true, force: true });
+    rmSync(fixtures, { recursive: true, force: true });
   }
 });

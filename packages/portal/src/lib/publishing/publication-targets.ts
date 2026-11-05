@@ -14,6 +14,7 @@ import { generatedCloudflareNames } from './cloudflare-account-claims';
 import { getSiteDomains } from './domain-config';
 import { siteHostingGroup } from './hosting-groups';
 import { digest } from './providers.mjs';
+import { hostedDomains, hostedServingHost, isHostedSite } from './site-hosting';
 
 export const LIVE_DOMAIN_CONFIRMATION_CODE = 'live_domain_confirmation_required';
 
@@ -46,6 +47,17 @@ export async function publicationTargets(orgId: string, siteId: string, versionI
   const site = await getStore().getDoc<Site>(paths.site(orgId, siteId));
   if (!site) return { production: false, live_domains: [], targets: [] };
   const main = versionId === MAIN_VERSION_ID;
+
+  if (isHostedSite(site)) {
+    // One live site per hosted site: only main publishes, to the serving host.
+    // It is production once launched (indexable), on the primary custom
+    // hostname or, without one, on the platform address.
+    const state = await hostedDomains(orgId, siteId).catch(() => null);
+    const serving = hostedServingHost(state);
+    if (!main || environment === 'staging' || !serving) return result([], [], false);
+    const platform = state?.platform_host ? url(state.platform_host) : null;
+    return result(state?.launched ? [url(serving)] : [], [platform], state?.launched === true);
+  }
 
   if (site.publishing_mode !== 'customer_git') {
     const urls = publicUrlsFor({ ...site, id: siteId });

@@ -31,7 +31,6 @@ export function resolveE2ETarget(env = process.env) {
       kind,
       portalUrl,
       formsUrl: normalizedUrl(env.TYPEROLL_E2E_FORMS_URL ?? portalUrl, 'TYPEROLL_E2E_FORMS_URL', false),
-      firebaseApiKey: null,
       expectedDigest: null,
       isRemote: false,
     };
@@ -48,7 +47,6 @@ export function resolveE2ETarget(env = process.env) {
     kind,
     portalUrl,
     formsUrl,
-    firebaseApiKey: required(env, 'TYPEROLL_E2E_FIREBASE_API_KEY'),
     expectedDigest,
     isRemote: true,
   };

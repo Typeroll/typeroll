@@ -1,4 +1,5 @@
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { r2Endpoint } from '../r2-endpoint';
 import { copyWithTransferService } from '../media/remote-transfer';
 import { createHash, randomUUID } from 'node:crypto';
 import { S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
@@ -295,7 +296,7 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
                 if (media.storage?.state === 'uploading') pending++;
                 else {
                   const sourceLocation = media.storage ?? { provider: 'legacy_r2' as const, account_id: process.env.R2_ACCOUNT_ID!, bucket: process.env.R2_BUCKET!, key: media.r2_key };
-                  const source = sourceLocation.provider === 'legacy_r2' ? new S3Client({ region: 'auto', endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`, forcePathStyle: true,
+                  const source = sourceLocation.provider === 'legacy_r2' ? new S3Client({ region: 'auto', endpoint: r2Endpoint(process.env.R2_ACCOUNT_ID!, sourceLocation.bucket), forcePathStyle: true,
                     credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID!, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY! } }) : await storageClient(orgId, sourceLocation);
                   try {
                     const prefix = await siteMediaPrefix(orgId, site.id);
@@ -517,7 +518,7 @@ export async function executeMediaMigration(orgId: string, siteId?: string): Pro
   return activeDelay(await getStore().getDoc<Migration>(organizationPath(orgId))) ?? (preparing ? 10000 : null);
 }
 
-/** Cron is recovery only on Cloud Tasks; portable workers call this on each poll. */
+/** Recovery for migrations whose chain was lost: requeue each one on its chain. */
 export async function runPendingMediaMigrations() {
   const { runPendingMediaPreparation } = await import('../media/preparation');
   await runPendingMediaPreparation();
@@ -526,10 +527,7 @@ export async function runPendingMediaMigrations() {
   })) {
     if (migration.lease_until > Date.now() || (migration.retry_at ?? 0) > Date.now()) continue;
     const siteId = migration.scope === 'site' ? migration.site_id : undefined;
-    if ((process.env.DEPLOY_QUEUE ?? 'in_process') === 'cloud_tasks') {
-      const { enqueueMediaMigration } = await import('./media-migration-queue');
-      await enqueueMediaMigration(migration.org_id, 0, siteId);
-    } else if (siteId) await runMediaMigrationBatch(migration.org_id, siteId);
-    else await runOrganizationMediaStep(migration.org_id);
+    const { enqueueMediaMigration } = await import('./media-migration-queue');
+    await enqueueMediaMigration(migration.org_id, 0, siteId);
   }
 }

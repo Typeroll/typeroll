@@ -1,9 +1,10 @@
 ---
 import MarketingLayout from '../layouts/MarketingLayout.astro';
 import LoginForm from '../components/LoginForm.tsx';
-import { isDevAuthEnabled, isFirebaseConfigured, getSessionIdentity } from '../lib/auth';
+import { isDevAuthEnabled, isAccountSignInConfigured, getSessionIdentity } from '../lib/auth';
+import { githubSignInConfigured } from '../lib/identity/portal-auth';
+import { oauthErrorMessage } from '../lib/auth-errors';
 import { safeReturnPath } from '../lib/return-path';
-import { githubSignInEnabled } from '../lib/runtime-config-server';
 
 // If already signed in, send where they need to go.
 // Accounts without a confirmed email go to "Check your email". Pending
@@ -16,20 +17,21 @@ if (session) return Astro.redirect(session.orgId ? next ?? '/app' : next?.starts
 
 // `?mode=signup` opens account creation directly, e.g. from a "Create an account" link.
 const initialMode = Astro.url.searchParams.get('mode') === 'signup' ? 'signup' : 'signin';
-const firebaseReady = isFirebaseConfigured();
+const accountsReady = isAccountSignInConfigured();
 const devAuthEnabled = isDevAuthEnabled();
-const githubSignIn = firebaseReady && githubSignInEnabled();
+const githubSignIn = accountsReady && githubSignInConfigured();
+const initialError = oauthErrorMessage(Astro.url.searchParams.get('error'));
 ---
 <MarketingLayout title="Sign in — Typeroll">
   <section class="container--narrow" style="padding: 4rem 1.5rem;">
     <div class="card stack">
       <h1 style="font-size: 1.5rem;">Welcome to Typeroll</h1>
-      {firebaseReady ? (
-        <LoginForm client:load next={next} initialMode={initialMode} githubSignIn={githubSignIn} />
+      {accountsReady ? (
+        <LoginForm client:load next={next} initialMode={initialMode} githubSignIn={githubSignIn} initialError={initialError} />
       ) : devAuthEnabled ? (
         <>
           <p class="muted text-sm">
-            Firebase is not configured on this server. Dev mode is enabled — click below to continue with a local dev session.
+            Sign-in is not configured on this server. Dev mode is enabled — click below to continue with a local dev session.
           </p>
           <form method="POST" action="/api/auth/dev-session">
             {next && <input type="hidden" name="next" value={next} />}
@@ -38,12 +40,12 @@ const githubSignIn = firebaseReady && githubSignInEnabled();
             </button>
           </form>
           <p class="muted text-sm">
-            To enable real auth, set <code>FIREBASE_PROJECT_ID</code> with Application Default Credentials (or <code>FIREBASE_SERVICE_ACCOUNT</code>) and the <code>PUBLIC_FIREBASE_*</code> env vars.
+            To enable accounts, set <code>AUTH_SECRET</code> (at least 32 characters) and <code>PORTAL_PUBLIC_URL</code>.
           </p>
         </>
       ) : (
         <p class="muted text-sm">
-          Authentication is unavailable because Firebase is not configured on this production server.
+          Sign-in is unavailable because <code>AUTH_SECRET</code> is not configured on this production server.
         </p>
       )}
     </div>

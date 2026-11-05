@@ -69,7 +69,7 @@ export async function issuePublicExtensionToken(args: {
   installationId: string;
 }): Promise<{ token: string; expires_in: number; cors: Record<string, string> }> {
   const cors = await publicExtensionCors(args);
-  const limit = rateLimit(
+  const limit = await rateLimit(
     `extension-public-token:${args.siteId}:${args.installationId}:${clientIp(args.request.headers, args.clientAddress)}`,
     60,
     60_000,

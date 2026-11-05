@@ -165,9 +165,10 @@ through normal authenticated administration if the email link expires.
 Private review pages use no-store, noindex, no-referrer and no third-party assets.
 The token is carried in a URL fragment, removed from history on load, and sent in
 a bearer header. Reloading the cleaned URL requires reopening the original link.
-Firestore performs decision, Page and history writes in one transaction. The
-filesystem fixture datastore is for local testing and does not provide
-multi-document crash recovery; use the transactional backend for live review.
+The document store performs decision, Page and history writes in one
+transaction. The filesystem fixture datastore is for local testing and does not
+provide multi-document crash recovery; use a deployed installation for live
+review.
 
 ## Migration checklist
 

@@ -42,6 +42,33 @@ async function googleFontsCss(families: string[], fetchImpl: typeof fetch): Prom
   return parts.join('\n');
 }
 
+interface CopiedThemeFonts { css: string; files: Array<{ name: string; bytes: Uint8Array }>; bytes: number }
+
+/**
+ * Fetch the theme's Google webfonts in memory and rewrite the stylesheet to
+ * the site's own origin. Throws when they cannot be copied completely.
+ */
+async function copyThemeFonts(families: string[], fetchImpl: typeof fetch): Promise<CopiedThemeFonts> {
+  const css = await googleFontsCss(families, fetchImpl);
+  const urls = googleFontFileUrls(css);
+  // Every family is a local font such as Arial; there is nothing to copy.
+  if (!urls.length) return { css: `/* ${families.join(', ').replace(/\*\//g, '')}: not served by Google Fonts; the browser uses local fonts. */\n`, files: [], bytes: 0 };
+  if (urls.length > MAX_FONT_FILES) throw new Error(`The theme fonts need more than ${MAX_FONT_FILES} files`);
+  const local = new Map<string, string>();
+  const files: CopiedThemeFonts['files'] = [];
+  let bytes = 0;
+  for (const url of urls) {
+    const file = await fetchPublicAsset(url, MAX_FONT_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT });
+    bytes += file.byteLength;
+    if (bytes > MAX_TOTAL_BYTES) throw new Error('The theme fonts exceed the size limit');
+    const extension = /\.(woff2?|ttf|otf)$/i.exec(new URL(url).pathname)?.[1]?.toLowerCase() ?? 'woff2';
+    const name = `${crypto.createHash('sha256').update(file).digest('hex').slice(0, 32)}.${extension}`;
+    files.push({ name, bytes: file });
+    local.set(url, `${SELF_HOSTED_FONTS_DIRECTORY}${name}`);
+  }
+  return { css: rewriteGoogleFontCss(css, local) + '\n', files, bytes };
+}
+
 /**
  * Copy the theme's Google webfonts into the build so published pages load them
  * from the site's own origin. A failure leaves an empty stylesheet: pages fall
@@ -66,34 +93,15 @@ export async function vendorThemeFonts(buildDir: string, fonts: Fonts, fetchImpl
     return { delivery: 'self_hosted', files: names.filter(name => name !== path.basename(cssPath)).length, bytes };
   }
   try {
-    const css = await googleFontsCss(families, fetchImpl);
-    const urls = googleFontFileUrls(css);
-    if (!urls.length) {
-      // Every family is a local font such as Arial; there is nothing to copy.
-      await fs.promises.writeFile(cssPath, `/* ${families.join(', ').replace(/\*\//g, '')}: not served by Google Fonts; the browser uses local fonts. */\n`);
-      if (cached) { await fs.promises.rm(cached, { recursive: true, force: true }); await fs.promises.cp(directory, cached, { recursive: true }); }
-      return { delivery: 'self_hosted', files: 0, bytes: 0 };
-    }
-    if (urls.length > MAX_FONT_FILES) throw new Error(`The theme fonts need more than ${MAX_FONT_FILES} files`);
-    const local = new Map<string, string>();
-    let bytes = 0;
-    for (const url of urls) {
-      const file = await fetchPublicAsset(url, MAX_FONT_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT });
-      bytes += file.byteLength;
-      if (bytes > MAX_TOTAL_BYTES) throw new Error('The theme fonts exceed the size limit');
-      const extension = /\.(woff2?|ttf|otf)$/i.exec(new URL(url).pathname)?.[1]?.toLowerCase() ?? 'woff2';
-      const name = `${crypto.createHash('sha256').update(file).digest('hex').slice(0, 32)}.${extension}`;
-      const target = path.join(directory, name);
-      await fs.promises.writeFile(target, file);
-      local.set(url, `${SELF_HOSTED_FONTS_DIRECTORY}${name}`);
-    }
-    await fs.promises.writeFile(cssPath, rewriteGoogleFontCss(css, local) + '\n');
+    const copied = await copyThemeFonts(families, fetchImpl);
+    for (const file of copied.files) await fs.promises.writeFile(path.join(directory, file.name), file.bytes);
+    await fs.promises.writeFile(cssPath, copied.css);
     if (cached) {
       // Only a complete copy is cached; a failed one is retried next build.
       await fs.promises.rm(cached, { recursive: true, force: true });
       await fs.promises.cp(directory, cached, { recursive: true });
     }
-    return { delivery: 'self_hosted', files: local.size, bytes };
+    return { delivery: 'self_hosted', files: copied.files.length, bytes: copied.bytes };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Theme fonts could not be copied';
     await fs.promises.writeFile(cssPath, `/* Theme fonts could not be copied at build time (${message.replace(/\*\//g, '')}); local fallback fonts are used. */\n`);
@@ -121,21 +129,20 @@ export function themeFontsCssUrl(fonts: Fonts): string | null {
   return families.length && fontDelivery(fonts) === 'self_hosted' ? googleFontsCssUrl(families) : null;
 }
 
-/** Copy the theme fonts into a frozen record. Throws when they cannot be copied completely. */
-export async function captureThemeFonts(workDir: string, fonts: Fonts, fetchImpl: typeof fetch = fetch): Promise<FrozenThemeFonts | null> {
+/**
+ * Copy the theme fonts into a frozen record, in memory: the portal freezes a
+ * publication without a filesystem. Throws when they cannot be copied completely.
+ */
+export async function captureThemeFonts(fonts: Fonts, fetchImpl: typeof fetch = fetch): Promise<FrozenThemeFonts | null> {
   const cssUrl = themeFontsCssUrl(fonts);
   if (!cssUrl) return null;
-  const result = await vendorThemeFonts(workDir, fonts, fetchImpl);
-  if (result.error) throw new Error(result.error);
-  const directory = path.join(workDir, SELF_HOSTED_FONTS_DIRECTORY.replace(/^\//, ''));
-  const css = await fs.promises.readFile(path.join(directory, 'fonts.css'), 'utf8');
-  const files = [];
-  for (const name of (await fs.promises.readdir(directory)).sort()) {
-    if (name === 'fonts.css') continue;
-    const bytes = await fs.promises.readFile(path.join(directory, name));
-    files.push({ name, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), data: bytes.toString('base64') });
-  }
-  return { css_url: cssUrl, css, files };
+  const copied = await copyThemeFonts(webFontFamilies(fonts?.heading ?? 'Inter', fonts?.body ?? 'Inter', fonts?.mono), fetchImpl);
+  // File names are content hashes: two URLs with the same bytes are one file.
+  const unique = new Map(copied.files.map(file => [file.name, file.bytes]));
+  const files = [...unique].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([name, bytes]) => ({
+    name, sha256: crypto.createHash('sha256').update(bytes).digest('hex'), data: Buffer.from(bytes).toString('base64'),
+  }));
+  return { css_url: cssUrl, css: copied.css, files };
 }
 
 /** Write frozen theme fonts into the build output after verifying every file. */

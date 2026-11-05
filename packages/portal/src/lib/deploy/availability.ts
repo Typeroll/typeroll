@@ -1,42 +1,11 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import type { DeploymentAvailability, DeployJob, SiteVersion } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
 import { liveDeploymentUpdate } from './live-state';
 import { publicationResponse } from './public-response';
-import { withGlobalHeaders } from './pages-headers';
 
 export const PUBLICATION_HEADER = 'x-typeroll-publication';
-
-/** The marker is part of each static response, never a dynamic serving layer. */
-export async function stampPublication(buildDir: string): Promise<{ id: string; paths: string[] }> {
-  const id = randomUUID();
-  const routes: string[] = [];
-  async function walk(directory: string, prefix = ''): Promise<void> {
-    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
-      const relative = `${prefix}${entry.name}`;
-      if (entry.isDirectory()) await walk(path.join(directory, entry.name), `${relative}/`);
-      else if (entry.isFile() && entry.name.endsWith('.html') && entry.name !== '404.html') {
-        routes.push(`/${relative.replace(/index\.html$/, '').replace(/\.html$/, '')}`);
-      }
-    }
-  }
-  await walk(buildDir);
-  if (!routes.length) {
-    // Publishing an empty site (including deleting its last page) must work.
-    const marker = '.well-known/typeroll/publication.txt';
-    await fs.mkdir(path.dirname(path.join(buildDir, marker)), { recursive: true });
-    await fs.writeFile(path.join(buildDir, marker), id);
-    routes.push(`/${marker}`);
-  }
-  const headersPath = path.join(buildDir, '_headers');
-  const headers = await fs.readFile(headersPath, 'utf8').catch(error => { if (error.code === 'ENOENT') return ''; throw error; });
-  await fs.writeFile(headersPath, withGlobalHeaders(headers, { 'X-Typeroll-Publication': id }));
-  return { id, paths: routes.sort() };
-}
 
 export interface PublicationProbeResult {
   checked_at: string; host: string; ready: boolean;

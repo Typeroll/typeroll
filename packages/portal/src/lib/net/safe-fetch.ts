@@ -6,9 +6,11 @@
 //     opts in (WordPress sources are often http);
 //   - every destination, including each redirect hop and IP literals, must be
 //     a public address (see `classifyIpAddress` in @typeroll/shared);
-//   - the TCP connection is pinned to the addresses that were validated: DNS
-//     resolution happens inside the connection's own lookup, so a rebinding
-//     answer cannot slip in between check and connect;
+//   - host names are resolved and every answer checked before each hop. On
+//     Workers `node:dns` is DNS over HTTPS (1.1.1.1) and `fetch` cannot reach
+//     private networks at all, so there is no connection pinning: the check
+//     gives clear errors for missing or private hosts, and keeps the same
+//     guarantee in Node (tests, local tools);
 //   - redirects are followed manually with a hop limit, and credentials or
 //     custom headers are dropped when a hop leaves the origin;
 //   - a deadline covers headers and body, and the body is byte-capped while it
@@ -21,7 +23,6 @@
 
 import dns from 'node:dns';
 import type { LookupAddress } from 'node:dns';
-import { Agent, fetch as undiciFetch } from 'undici';
 import { classifyIpAddress, isIpAddressLiteral, isLocalHostname, type IpAddressClass } from '@typeroll/shared';
 
 export const PRIVATE_NETWORK_FETCH_ENV = 'TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH';
@@ -91,7 +92,7 @@ function bareHost(hostname: string): string {
 
 /**
  * Synchronous URL checks: scheme, credentials, local names and IP literals.
- * Host names are resolved and checked again when the connection is made.
+ * Host names are resolved and checked again before each request.
  */
 export function parseOutboundUrl(raw: string | URL, policy: OutboundPolicy = {}): URL {
   const label = policy.label ?? 'URL';
@@ -114,7 +115,7 @@ export function parseOutboundUrl(raw: string | URL, policy: OutboundPolicy = {})
 type LookupFn = (hostname: string, options: dns.LookupAllOptions) => Promise<LookupAddress[]>;
 const systemLookup: LookupFn = (hostname, options) => dns.promises.lookup(hostname, options);
 
-/** Resolve a host and require every answer to be allowed. Used for checks that do not connect. */
+/** Resolve a host and require every answer to be allowed. Runs before each safeFetch hop and for checks that do not fetch. */
 export async function resolveOutboundAddresses(hostname: string, policy: OutboundPolicy = {}, lookup: LookupFn = systemLookup): Promise<LookupAddress[]> {
   const host = bareHost(hostname);
   if (isIpAddressLiteral(host)) {
@@ -130,48 +131,22 @@ export async function resolveOutboundAddresses(hostname: string, policy: Outboun
   return addresses;
 }
 
-type LookupCallback = (error: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void;
-
-/**
- * The `connect.lookup` of the pinned agents: the socket connects only to the
- * addresses this function validated, in the same resolution.
- */
-export function createValidatingLookup(policy: OutboundPolicy, lookup: LookupFn = systemLookup) {
-  return (hostname: string, options: dns.LookupOptions, callback: LookupCallback): void => {
-    resolveOutboundAddresses(hostname, policy, lookup).then((addresses) => {
-      const family = options?.family === 4 || options?.family === 6 ? options.family : 0;
-      const matching = family ? addresses.filter((entry) => entry.family === family) : addresses;
-      if (!matching.length) {
-        callback(Object.assign(new Error(`No IPv${family} address for ${hostname}`), { code: 'ENOTFOUND' }), '', family || 4);
-        return;
-      }
-      if (options?.all) callback(null, matching);
-      else callback(null, matching[0]!.address, matching[0]!.family);
-    }, (error: Error) => callback(Object.assign(error, { code: (error as { code?: string }).code ?? 'EBLOCKED' }), '', 4));
-  };
-}
-
-const agents = new Map<string, Agent>();
-function pinnedAgent(policy: OutboundPolicy): Agent {
-  const key = privateAllowed(policy) ? 'private' : 'public';
-  let agent = agents.get(key);
-  if (!agent) {
-    agent = new Agent({
-      connect: { timeout: 10_000, lookup: createValidatingLookup({ privateNetwork: key === 'private' ? 'self_hosted_opt_in' : 'deny' }) as never },
-      headersTimeout: 60_000,
-      bodyTimeout: 60_000,
-    });
-    agents.set(key, agent);
-  }
-  return agent;
-}
-
-// A replaced global fetch (tests, local instrumentation) owns connection
-// establishment; URL, redirect, deadline and size checks still apply.
+// A replaced global fetch (tests, local instrumentation) owns name resolution
+// and connections; URL, redirect, deadline and size checks still apply.
 const NATIVE_FETCH = globalThis.fetch;
 function replacedFetch(): typeof fetch | null {
   const current = globalThis.fetch;
   return current !== NATIVE_FETCH || 'mock' in current ? current : null;
+}
+
+/** The request deadline also bounds name resolution. */
+function untilAborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    work.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
 }
 
 function headerRecord(headers: HeadersInit | undefined): Record<string, string> {
@@ -233,9 +208,8 @@ export async function safeFetch(input: string | URL, init: RequestInit = {}, pol
   for (let hop = 0; ; hop++) {
     const request: RequestInit = { ...init, method, body, headers, redirect: 'manual', signal };
     const replaced = replacedFetch();
-    const response = replaced
-      ? await replaced(hop === 0 ? input : url, request)
-      : await undiciFetch(url, { ...request, headers: headerRecord(headers), dispatcher: pinnedAgent(policy) } as never) as unknown as Response;
+    if (!replaced && !isIpAddressLiteral(bareHost(url.hostname))) await untilAborted(resolveOutboundAddresses(url.hostname, policy), signal);
+    const response = replaced ? await replaced(hop === 0 ? input : url, request) : await NATIVE_FETCH.call(globalThis, url, request);
 
     const location = REDIRECT_STATUSES.has(response.status) ? response.headers.get('location') : null;
     if (!location || mode === 'manual') return finalResponse(response, url, redirected, maxBytes, label);

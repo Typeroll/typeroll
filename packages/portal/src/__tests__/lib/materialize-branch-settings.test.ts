@@ -1,7 +1,4 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { Site, SiteVersion } from '@typeroll/shared';
@@ -9,20 +6,14 @@ import type { Site, SiteVersion } from '@typeroll/shared';
 const ORG = 'orgone';
 const SITE = 'mysite';
 const BRANCH = 'settings-branch';
-let outputDir = '';
 
-describe('materializeFixtures — branch settings', () => {
+describe('content snapshot — branch settings', () => {
   beforeEach(async () => {
     makeTmpFixtures();
     await resetDatastore();
-    outputDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'typeroll-materialize-settings-'));
   });
 
-  afterEach(async () => {
-    if (outputDir) await fs.promises.rm(outputDir, { recursive: true, force: true });
-  });
-
-  it('writes the version-aware consent settings consumed by the static builder', async () => {
+  it('exports the version-aware consent settings consumed by the static builder', async () => {
     const { getStore } = await import('../../lib/datastore');
     const store = getStore();
     await store.setDoc(paths.site(ORG, SITE), {
@@ -42,15 +33,12 @@ describe('materializeFixtures — branch settings', () => {
       language: 'en', cookie_consent: { enabled: true, text: 'Branch consent marker' },
     });
 
-    const { materializeFixtures } = await import('../../lib/deploy/runner');
-    await materializeFixtures(store, ORG, SITE, BRANCH, outputDir, {
-      runtime_version: '0.39.1', protocol_version: 3, installations: [],
-    });
-
-    const settingsPath = path.join(outputDir, `${paths.settings(ORG, SITE, BRANCH)}.json`);
-    const settings = JSON.parse(await fs.promises.readFile(settingsPath, 'utf8')) as {
-      cookie_consent?: { enabled?: boolean; text?: string };
-    };
+    const { contentSnapshot } = await import('../../lib/export');
+    const snapshot = await contentSnapshot(store, ORG, SITE, BRANCH);
+    const settings = snapshot.get(paths.settings(ORG, SITE, BRANCH)) as { cookie_consent?: { enabled?: boolean; text?: string } };
     expect(settings.cookie_consent).toEqual({ enabled: true, text: 'Branch consent marker' });
+    expect(snapshot.get(paths.version(ORG, SITE, BRANCH))).toMatchObject({ kind: 'branch', robots_blocked: true });
+    // Ids live in the document path, never in the exported data.
+    expect(snapshot.get(paths.site(ORG, SITE))).not.toHaveProperty('id');
   });
 });

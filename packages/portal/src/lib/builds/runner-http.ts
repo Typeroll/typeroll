@@ -13,8 +13,9 @@ import { rateLimit } from '../rate-limit';
 import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, type BuildTask } from './queue';
 import { authorizeEngine, assertEngineConnections, readEngineConfiguration, buildInputPath, engineConfigurationPath, renderCachePath, assetCachePath, type AssetCachePointer, type RenderCachePointer, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
+import { inspectArtifact, retainNamed } from './artifact-stream';
 import { normalizeDiagnostic, mediaFailureCode } from './diagnostics.mjs';
-import { decodeSource, decodeArtifact, MAX_SOURCE_BYTES, MAX_RUNNER_RESULT_BYTES, sha256, renderReport, seoReport, outputDigest } from './contract.mjs';
+import { decodeSource, MAX_SOURCE_BYTES, MAX_RUNNER_RESULT_BYTES, sha256, renderReport, seoReport, outputDigest } from './contract.mjs';
 import { publicationStillRunning } from './jobs';
 import { qualificationFiles } from './qualification';
 import { enginePath, type BuildEngine } from './cloudflare';
@@ -34,7 +35,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
       const authorized = input.provider === 'github' ? await authorizeGithubClaim(org, token, input) : null;
       const engine = authorized?.engine ?? await authorizeEngine(org, token, String(input.revision));
       // GitHub applies its authenticated per-run limit before acquiring a lease.
-      if (!authorized && !rateLimit(`build-claim:${org}`, 30, 60000).allowed) return privateJson({ error: 'Too many build claims.' }, 429);
+      if (!authorized && !(await rateLimit(`build-claim:${org}`, 30, 60000, { scope: `organizations/${org}` })).allowed) return privateJson({ error: 'Too many build claims.' }, 429);
       const claim = authorized?.claim ?? await queue.claim(org, engine.revision, Number(input.protocol));
       if (!claim) return privateJson(null);
       const task = await queue.authorize(org, claim.key, claim.lease_id, claim.token);
@@ -70,7 +71,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
           } catch { /* Expired or unavailable receipts fall back to ordinary downloads. */ }
         }
         return privateJson({ ...claim, kind: metadata.kind, source_url: await storage.grant(metadata.source_key),
-          storage_account_id: storage.account, media_access_batched: batchedAccess, direct_upload: metadata.kind === 'publication',
+          storage_account_id: storage.account, media_access_batched: batchedAccess, direct_upload: metadata.kind === 'publication' && metadata.direct_upload !== false,
           ...(input.render_cache === true && metadata.kind === 'publication' ? { render_cache_supported: true, render_cache: renderCache } : {}),
           ...(assetCache ? { asset_cache: assetCache } : {}),
           ...(mediaAccess ? { media_access: mediaAccess } : {}) });
@@ -113,7 +114,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
       });
     }
     if (action === 'direct-upload') {
-      if (metadata.kind !== 'publication') throw new ConnectionError('This task has no static hosting target.', 409);
+      if (metadata.kind !== 'publication' || metadata.direct_upload === false) throw new ConnectionError('This task has no static hosting target.', 409);
       const job = await store.getDoc<DeployJob & { git_publication?: { build_task_key?: string; publication_id: string; commit?: string; branch: string; hosting_group_id?: string; hosting_group_revision?: string; account_id: string; project: string } }>(paths.deploy(org, task.identity.site_id, task.identity.job_id));
       const publication = job?.git_publication;
       const group = await siteHostingGroup(org, task.identity.site_id);
@@ -171,19 +172,22 @@ export async function runnerRequest(request: Request, org: string, action: strin
     if (validation && !validation.passed) throw new ConnectionError('Static publication validation failed.', 409);
     await buildStorage(org, async storage => {
       if (storage.account !== metadata.storage_account_id) throw new ConnectionError('Build storage changed.', 409);
-      const files = decodeArtifact(await storage.read(artifactKey), task.identity, String(input.sha256));
+      // Validated as it streams; only receipt-sized files are kept, never the site itself.
+      const { entries, files } = await inspectArtifact(storage.stream(artifactKey), task.identity, String(input.sha256), retainNamed(
+        DIRECT_RECEIPT, 'verification.json', 'preparation.json', ...(metadata.kind === 'qualification' ? Object.keys(qualificationFiles(task.identity.publication_id)) : [])));
+      const count = entries.length;
       if (metadata.kind === 'static_verification') {
         const expected = JSON.stringify({ publication_id: task.identity.publication_id, source_sha256: task.identity.source_sha256, completed: task.media_total });
-        if (task.media_cursor !== task.media_total || Object.keys(files).length !== 2 || files['verification.json']?.toString('utf8') !== expected)
+        if (task.media_cursor !== task.media_total || count !== 2 || files['verification.json']?.toString('utf8') !== expected)
           throw new ConnectionError('Static verification returned an incomplete receipt.', 409);
       }
       if (metadata.kind === 'media_preparation') {
         const expected = JSON.stringify({ publication_id: task.identity.publication_id, completed: task.media_total });
-        if (task.media_cursor !== task.media_total || Object.keys(files).length !== 2 || files['preparation.json']?.toString('utf8') !== expected)
+        if (task.media_cursor !== task.media_total || count !== 2 || files['preparation.json']?.toString('utf8') !== expected)
           throw new ConnectionError('Media preparation returned an incomplete receipt.', 409);
       }
       if (['publication', 'static_verification'].includes(metadata.kind) && files[DIRECT_RECEIPT]) {
-        if (Object.keys(files).length !== 2) throw new ConnectionError('Invalid static upload receipt.', 409);
+        if (count !== 2) throw new ConnectionError('Invalid static upload receipt.', 409);
         const receipt = validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8')));
         cacheableAssets = Boolean(receipt.target);
         if (receipt.files['.well-known/typeroll/publication.json']?.sha256 !== sha256(files['.well-known/typeroll/publication.json']))
@@ -191,12 +195,13 @@ export async function runnerRequest(request: Request, org: string, action: strin
       }
       if (validation) {
         const tree = files[DIRECT_RECEIPT] ? validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8'))).files
-          : Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, { sha256: sha256(bytes), size: bytes.length }]));
+          : Object.fromEntries(entries.map(entry => [entry.name, { sha256: entry.sha256, size: entry.size }]));
         if (validation.artifact_tree_sha256 !== outputDigest(tree)) throw new ConnectionError('Validation belongs to different output.', 409);
       }
       if (metadata.kind === 'qualification') {
         const expected = qualificationFiles(task.identity.publication_id);
-        if (key !== engine.qualification_key || Object.keys(files).length !== Object.keys(expected).length || Object.entries(expected).some(([name, value]) => sha256(files[name] ?? Buffer.alloc(0)) !== sha256(value)))
+        const hashes = new Map(entries.map(entry => [entry.name, entry.sha256]));
+        if (key !== engine.qualification_key || count !== Object.keys(expected).length || Object.entries(expected).some(([name, value]) => hashes.get(name) !== sha256(value)))
           throw new ConnectionError('Build verification returned a different artifact.', 409);
       }
     });

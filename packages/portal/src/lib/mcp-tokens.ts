@@ -259,8 +259,12 @@ interface AuthorizationGrant {
   redirect_uri: string;
   client_id?: string;
   expires_at: number;
+  /** Store TTL: removed a day after the code expired. */
+  delete_at: number;
   consumed: boolean;
 }
+
+const USED_RECORD_GRACE_MS = 24 * 60 * 60 * 1000;
 
 function grantEncryptionKey(): Buffer {
   return Buffer.from(crypto.hkdfSync('sha256', getSigningKey(), '', 'typeroll-oauth-code-v1', 32));
@@ -283,6 +287,7 @@ export async function issueAuthorizationCode(args: {
     redirect_uri: args.redirectUri,
     ...(args.clientId ? { client_id: args.clientId } : {}),
     expires_at: Date.now() + CODE_TTL_SECONDS * 1000,
+    delete_at: Date.now() + CODE_TTL_SECONDS * 1000 + USED_RECORD_GRACE_MS,
     consumed: false,
   } satisfies AuthorizationGrant);
   if (!created) throw new Error('Could not reserve authorization code');
@@ -317,7 +322,11 @@ export async function exchangeAuthorizationCode(args: {
 
 /** A refresh credential is consumed once across every portal instance. */
 export async function consumeRefreshToken(token: VerifiedToken): Promise<boolean> {
-  return getStore().createDocIfMissing(`mcp_refresh_uses/${crypto.createHash('sha256').update(token.jti).digest('hex')}`, { expires_at: token.exp * 1000 });
+  return getStore().createDocIfMissing(`mcp_refresh_uses/${crypto.createHash('sha256').update(token.jti).digest('hex')}`, {
+    expires_at: token.exp * 1000,
+    // Kept past the token's expiry: once the token is expired it cannot be replayed anyway.
+    delete_at: token.exp * 1000 + USED_RECORD_GRACE_MS,
+  });
 }
 
 export function newTokenId(): string {

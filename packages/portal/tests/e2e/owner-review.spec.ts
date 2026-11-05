@@ -1,18 +1,16 @@
 import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { paths } from '@typeroll/shared';
 import { ownerReviewMessage } from '../../src/lib/owner-review-message';
 import { authenticatePersona } from './helpers/auth';
 import { gotoReady } from './helpers/ready';
+import { e2eStore } from './helpers/store';
 const org = 'e2e-core', site = 'e2e-core-site';
 const canonical = (value: any): any => Array.isArray(value) ? value.map(canonical) : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => [key, canonical(item)])) : value;
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
-async function write(path: string, body: unknown) {
+async function write(path: string, body: Record<string, unknown>) {
   if ((process.env.TYPEROLL_E2E_TARGET ?? 'local') !== 'local') throw Error('Synthetic fixture only supports local execution');
-  const file = join(tmpdir(), 'typeroll-e2e-fixtures', path + '.json'); await mkdir(dirname(file), { recursive: true }); await writeFile(file, JSON.stringify(body)); return file;
+  await e2eStore.set(path, body); return path;
 }
 for (const width of [375, 1280]) test(`private review and admin queue at ${width}px`, async ({ page }, info) => {
   await page.setViewportSize({ width, height: 900 });
@@ -20,7 +18,7 @@ for (const width of [375, 1280]) test(`private review and admin queue at ${width
   const schema = { id: typeId, name: typeId, fields: [{ name: 'online', label: 'Online support?', type: 'boolean', writable_by: ['owner', 'portal', 'import'] }] };
   const content = { id: pageId, title: 'Synthetic Company', content_type: typeId, status: 'published', fields: { online: null } };
   await write(paths.contentType(org, site, typeId), schema);
-  const contentFile = await write(paths.page(org, site, pageId), content);
+  const contentDoc = await write(paths.page(org, site, pageId), content);
   const proposalPath = `organizations/${org}/sites/${site}/owner_proposals/${id}`;
   await write(proposalPath, { id, page_id: pageId, title: content.title, version_id: 'main', content_type: typeId,
     installation_id: 'synthetic-app', subject_id: 'a'.repeat(64), base_revision: hash(content), schema_revision: hash(schema),
@@ -41,7 +39,7 @@ for (const width of [375, 1280]) test(`private review and admin queue at ${width
   await expect(page.getByRole('heading', { name: 'Review Synthetic Company' })).toBeVisible();
   expect(new URL(page.url()).hash).toBe('');
   await expect(page.getByLabel('No', { exact: true })).toBeChecked();
-  expect(JSON.parse(await readFile(contentFile, 'utf8')).fields.online).toBeNull();
+  expect((await e2eStore.read(contentDoc)).fields.online).toBeNull();
   await page.screenshot({ path: info.outputPath(`private-review-${width}.png`), fullPage: true });
   await page.getByLabel('Yes', { exact: true }).check();
   await page.getByRole('button', { name: 'Approve changes' }).click();
@@ -60,9 +58,9 @@ for (const width of [375, 1280]) test(`private review and admin queue at ${width
   await expect(confirmation).toBeFocused();
   await expect(page.getByRole('button', { name: 'Approve changes' })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath(`review-confirmed-${width}.png`), fullPage: false });
-  const accepted = JSON.parse(await readFile(contentFile, 'utf8'));
+  const accepted = await e2eStore.read(contentDoc);
   expect(accepted.fields.online).toBe(true); expect(accepted._provenance.online.source).toBe('portal');
-  const decided = JSON.parse(await readFile(join(tmpdir(), 'typeroll-e2e-fixtures', proposalPath + '.json'), 'utf8'));
+  const decided = await e2eStore.read(proposalPath);
   expect(decided.changes.online).toBe(false); expect(decided.decision.adjustments.online).toBe(true);
   const scanner = await page.request.get(`/api/owner-review?${query}`, { headers: { Authorization: `Bearer ${token}` } });
   expect(scanner.status()).toBe(200); expect(scanner.headers()['cache-control']).toContain('no-store');

@@ -1,12 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { gotoReady } from './helpers/ready';
-const settingsFile = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/settings/default.json');
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
+const settingsDoc = `${DEFAULT_MAIN}/settings/default`;
 
 test('sections retain edits and save only the selected section', async ({ page }, info) => {
-  const original = readFileSync(settingsFile, 'utf8');
+  const original = await e2eStore.read(settingsDoc);
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
     await gotoReady(page, '/app/sites/default/settings');
@@ -18,18 +16,19 @@ test('sections retain edits and save only the selected section', async ({ page }
     await page.getByLabel('Default meta description').fill('Saved separately');
     await page.getByRole('button', { name: 'Save SEO', exact: true }).click();
     await expect(page.locator('#settings-save-status')).toContainText('Saved.');
-    expect(JSON.parse(readFileSync(settingsFile, 'utf8')).site_name).toBe(JSON.parse(original).site_name);
-    expect(JSON.parse(readFileSync(settingsFile, 'utf8')).default_meta_description).toBe('Saved separately');
+    const afterSeo = await e2eStore.read(settingsDoc);
+    expect(afterSeo.site_name).toBe(original.site_name);
+    expect(afterSeo.default_meta_description).toBe('Saved separately');
     await page.getByRole('link', { name: /^General/ }).click();
     await expect(page.getByLabel('Site name', { exact: true })).toHaveValue('Unsaved identity');
     await expect(page.locator('#settings-save-status')).toContainText('Unsaved changes');
     await page.getByRole('button', { name: 'Save General', exact: true }).click();
     await expect(page.locator('#settings-save-status')).toContainText('Saved.');
-    expect(JSON.parse(readFileSync(settingsFile, 'utf8')).site_name).toBe('Unsaved identity');
+    expect((await e2eStore.read(settingsDoc)).site_name).toBe('Unsaved identity');
     await page.screenshot({ path: info.outputPath('settings-desktop.png'), fullPage: true });
     await page.reload();
     await expect(page.getByLabel('Site name', { exact: true })).toHaveValue('Unsaved identity');
-  } finally { writeFileSync(settingsFile, original); }
+  } finally { await e2eStore.set(settingsDoc, original); }
 });
 
 for (const width of [375, 767, 768]) test(`settings navigation at ${width}px`, async ({ page }, info) => {

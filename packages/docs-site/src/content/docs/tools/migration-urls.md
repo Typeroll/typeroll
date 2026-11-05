@@ -260,7 +260,7 @@ remove loops; Typeroll never rewrites intentional redirects automatically.
 If Search Console denies access, the error names the exact property and service
 account. Grant that account read access to that property. Domain properties and
 URL-prefix properties have separate permissions. Platform administrators must
-enable the Search Console API; self-host GCP provisioning/doctor includes it.
+enable the Search Console API for that service account's project.
 Choose another property explicitly or import a CSV export; Typeroll does not
 silently substitute a different source.
 

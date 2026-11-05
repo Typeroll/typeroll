@@ -18,10 +18,10 @@
 //       2. reads delete the expired submissions they meet (at most
 //          LAZY_PURGE_LIMIT per call), and setting the period deletes the
 //          already-expired ones and stamps the rest;
-//       3. each completed submission carries `delete_at`, a native timestamp
-//          for a datastore TTL policy (Firestore: collection group
-//          `submissions`, field `delete_at`), so nothing depends on someone
-//          opening the inbox. Clearing the setting clears `delete_at` again.
+//       3. each completed submission carries `delete_at`, the store's TTL
+//          field: the site's store object removes it on its alarm once that
+//          time has passed, so nothing depends on someone opening the inbox.
+//          Clearing the setting clears `delete_at` again.
 //     Partial submissions and app intake records keep their own expiry.
 
 import { paths } from '@typeroll/shared';

@@ -1,11 +1,10 @@
-// POST /api/auth/verification-status — asked automatically by "Check your email". Re-checks
-// the account in Firebase and, once the address is confirmed, replaces the
-// pending session cookie with one carrying `email_verified: true`.
+// POST /api/auth/verification-status — asked automatically by "Check your
+// email". Sessions are read from the store on every request, so the identity
+// already reflects a confirmation made in another tab or browser.
 
 import type { APIRoute } from 'astro';
 import { getSessionIdentity } from '../../../lib/auth';
 import { limitAuthRequest, requireAuthOrigin } from '../../../lib/auth-request';
-import { confirmEmailVerification } from '../../../lib/email-verification';
 
 export const prerender = false;
 const json = (body: unknown, status: number) => new Response(JSON.stringify(body), {
@@ -20,10 +19,5 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   if (identity.emailVerified) return json({ ok: true, verified: true }, 200);
   const limited = await limitAuthRequest(`verify-status:${identity.userId}`, 120, 10 * 60_000);
   if (limited) return limited;
-  try {
-    return json({ ok: true, verified: await confirmEmailVerification(cookies, identity) }, 200);
-  } catch (error) {
-    console.error('[verification-status] failed:', error instanceof Error ? error.message : 'unknown error');
-    return json({ error: 'Could not check your email confirmation. Please try again shortly.' }, 502);
-  }
+  return json({ ok: true, verified: false }, 200);
 };

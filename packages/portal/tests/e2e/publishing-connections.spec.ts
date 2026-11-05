@@ -1,10 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { authenticatePersona } from './helpers/auth';
+import { PORTAL_ORIGIN, e2eStore } from './helpers/store';
 
-const connections = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/e2e-core/publishing_connections');
+const connections = 'organizations/e2e-core/publishing_connections';
 
 // These journeys exercise account connections against synthetic provider data.
 // Domain discovery has its own API and browser coverage, so keep that boundary
@@ -17,11 +15,10 @@ test.beforeEach(async ({ page }) => {
 
 
 test('organization owner sees masked account metadata and can disconnect without deleting provider resources', async ({ page }) => {
-  mkdirSync(connections, { recursive: true });
-  const file = path.join(connections, 'cloudflare.json');
-  writeFileSync(file, JSON.stringify({ revision: 'synthetic-connection-revision', status: 'connected',
+  const doc = `${connections}/cloudflare`;
+  await e2eStore.set(doc, { revision: 'synthetic-connection-revision', status: 'connected',
     cloudflare: { account_id: 'a'.repeat(32), account_name: 'Synthetic agency', bucket: 'agency-media', public_bucket: 'public-media', endpoint: `https://${'a'.repeat(32)}.r2.cloudflarestorage.com` },
-    encrypted_credentials: 'synthetic-encrypted-secret-that-must-stay-on-server' }));
+    encrypted_credentials: 'synthetic-encrypted-secret-that-must-stay-on-server' });
   try {
     await authenticatePersona(page, 'owner');
     const response = await page.goto('/app/settings/publishing#cloudflare');
@@ -39,11 +36,11 @@ test('organization owner sees masked account metadata and can disconnect without
     await page.getByRole('button', { name: 'Disconnect Cloudflare' }).click();
     await expect(page.locator('section').filter({ has: page.getByRole('heading', { name: 'Cloudflare account', exact: true }) }).getByRole('status')).toContainText('Disconnected');
     await expect(page.getByRole('button', { name: 'Disconnect Cloudflare' })).toHaveCount(0);
-    const stored = JSON.parse(readFileSync(file, 'utf8'));
+    const stored = await e2eStore.read(doc);
     expect(stored.status).toBe('disconnected');
     expect(stored.encrypted_credentials).toBeNull();
     expect(stored.cloudflare.bucket).toBe('agency-media');
-  } finally { rmSync(file, { force: true }); }
+  } finally { await e2eStore.delete(doc); }
 });
 
 test('editor cannot view or mutate organization publishing credentials', async ({ page }) => {
@@ -51,7 +48,7 @@ test('editor cannot view or mutate organization publishing credentials', async (
   expect((await page.goto('/app/settings/publishing'))?.status()).toBe(403);
   expect((await page.request.get('/api/orgs/publishing')).status()).toBe(403);
   expect((await page.request.post('/api/orgs/publishing/github', {
-    headers: { Origin: 'http://127.0.0.1:4322' }, data: { owner: 'synthetic-agency' },
+    headers: { Origin: PORTAL_ORIGIN }, data: { owner: 'synthetic-agency' },
   })).status()).toBe(403);
 });
 

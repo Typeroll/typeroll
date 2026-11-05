@@ -102,217 +102,167 @@ jobs:
             printf '| Source | %s | |\n' "$SOURCE_SHA"
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # Core ships as one Worker bundle: the exact `@astrojs/cloudflare` build of
+  # the portal (Forms deploys the same bundle as a second script), packed
+  # reproducibly with its release contract, attested with GitHub build
+  # provenance and attached to the Core GitHub release. Cloud pins its SHA-256
+  # and verifies the attestation before `wrangler versions upload`.
   core:
     name: Publish immutable Core
     needs: plan
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      packages: write
+      id-token: write
+      attestations: write
       actions: read
     outputs:
-      image_digest: ${{ steps.digest.outputs.image_digest }}
+      bundle_digest: ${{ steps.bundle.outputs.bundle_digest }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+      CORE_TAG: ${{ needs.plan.outputs.core_tag }}
+      CORE_SOURCE_SHA: ${{ needs.plan.outputs.core_source_sha }}
+      PUBLISH: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
     steps:
+      # The bundle is built from the commit the Core tag names: the release
+      # source itself, or the earlier tagged commit when only MCP or docs changed.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.plan.outputs.source_sha }}
+          ref: ${{ needs.plan.outputs.core_source_sha }}
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.23.1'
           cache: npm
       - name: Verify Core release version
-        run: npm run core:release:verify -- "${{ needs.plan.outputs.core_tag }}"
-      # The exact source SHA has already passed the complete release-candidate
-      # workflow. This job proves the release-specific image contract instead
-      # of repeating the same source gate.
-      - uses: imjasonh/setup-crane@feee3b6bb0d4c68370f256a4502498c9227e5c6b # v0.7
-        with:
-          version: v0.22.0
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      # Main Tests record the digest they built for this exact source in their
-      # own run. Only that digest is reused: any workflow that can write
-      # packages could move the sha- tag or forge labels, but not this record.
-      # A missing record or any download error builds as before.
-      - name: Download prebuilt image record
-        id: download_record
-        if: needs.plan.outputs.publish_core == 'true'
-        continue-on-error: true
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          github-token: ${{ github.token }}
-          run-id: ${{ needs.plan.outputs.tests_run_id }}
-          name: core-image-${{ needs.plan.outputs.source_sha }}
-          path: temp/core-image
-      - name: Resolve prebuilt image record
-        id: recorded
-        if: needs.plan.outputs.publish_core == 'true'
-        env:
-          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
-          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+        run: npm run core:release:verify -- "$CORE_TAG"
+      # A published bundle is immutable: a rerun reuses the asset it finds and
+      # verifies it, and never replaces it with a rebuild.
+      - name: Inspect published Worker bundle
+        id: published
         run: |
           set -euo pipefail
-          RECORD=temp/core-image/core-image.json
-          if [ ! -f "$RECORD" ]; then
-            echo 'The main Tests run recorded no prebuilt Core image for this source.'
-            exit 0
-          fi
-          DIGEST=$(jq -r 'select(.source_sha == env.SOURCE_SHA and .core_tag == env.CORE_TAG) | .image_digest // empty' "$RECORD")
-          if [[ "$DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
-          else
-            echo "::warning::The prebuilt image record does not name $SOURCE_SHA/$CORE_TAG; building instead."
-          fi
-      - name: Inspect existing Core release
-        id: registry
-        if: needs.plan.outputs.publish_core == 'true'
-        env:
-          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
-          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
-          RECORDED_DIGEST: ${{ steps.recorded.outputs.image_digest }}
-        run: |
-          set -euo pipefail
-          IMAGE="ghcr.io/typeroll/typeroll:$CORE_TAG"
+          VERSION="${CORE_TAG#core-v}"
+          TARBALL="typeroll-core-$VERSION-workers.tar.gz"
+          DESCRIPTOR="typeroll-core-$VERSION-workers.json"
+          mkdir -p temp/core-workers
           set +e
-          RESULT=$(crane digest "$IMAGE" 2>&1)
+          ASSETS=$(gh release view "$CORE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets[].name' 2>&1)
           STATUS=$?
           set -e
-          if [ "$STATUS" -eq 0 ]; then
-            REVISION=$(crane config "$IMAGE@$RESULT" | jq -r '.config.Labels["org.opencontainers.image.revision"] // empty')
-            if [ "$REVISION" != "$SOURCE_SHA" ]; then
-              echo "::error::$IMAGE already exists at $RESULT from ${REVISION:-an unknown commit}, not $SOURCE_SHA."
-              exit 1
-            fi
-            # With a recorded prebuilt image, an interrupted release can only
-            # have tagged that exact digest.
-            if [ -n "$RECORDED_DIGEST" ] && [ "$RESULT" != "$RECORDED_DIGEST" ]; then
-              echo "::error::$IMAGE points at $RESULT, not the digest $RECORDED_DIGEST recorded by main Tests."
-              exit 1
-            fi
-            echo 'exists=true' >> "$GITHUB_OUTPUT"
-            echo "image_digest=$RESULT" >> "$GITHUB_OUTPUT"
-          elif grep -Eqi 'manifest unknown|manifest_unknown|name unknown|name_unknown|not found|404' <<<"$RESULT"; then
-            echo 'exists=false' >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::Could not safely determine whether $IMAGE exists: $RESULT"
-            exit 1
-          fi
-      # Main Tests prebuild the image with the shared build definition. Only the
-      # exact digest recorded by that run is reused, and only while its labels
-      # name this source and release; any other answer, including a registry
-      # error, builds as before.
-      - name: Inspect prebuilt Core image
-        id: prebuilt
-        if: needs.plan.outputs.publish_core == 'true' && steps.registry.outputs.exists != 'true'
-        env:
-          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
-          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
-          RECORDED_DIGEST: ${{ steps.recorded.outputs.image_digest }}
-        run: |
-          set -euo pipefail
-          if [[ "$RECORDED_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]; then
-            IMAGE="ghcr.io/typeroll/typeroll@$RECORDED_DIGEST"
-            LABELS=$(crane config "$IMAGE" 2>/dev/null || true)
-            REVISION=$(jq -r '.config.Labels["org.opencontainers.image.revision"] // empty' <<<"$LABELS" 2>/dev/null || true)
-            VERSION=$(jq -r '.config.Labels["org.opencontainers.image.version"] // empty' <<<"$LABELS" 2>/dev/null || true)
-            if [ "$REVISION" = "$SOURCE_SHA" ] && [ "$VERSION" = "$CORE_TAG" ]; then
-              echo "Reusing $IMAGE recorded by main Tests."
-              echo 'exists=true' >> "$GITHUB_OUTPUT"
-              echo "image_digest=$RECORDED_DIGEST" >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" -ne 0 ]; then
+            if grep -qi 'release not found' <<<"$ASSETS"; then
+              echo 'release=false' >> "$GITHUB_OUTPUT"
+              echo 'exists=false' >> "$GITHUB_OUTPUT"
               exit 0
             fi
-            echo "::warning::$IMAGE is labelled ${REVISION:-unknown}/${VERSION:-unknown}, not $SOURCE_SHA/$CORE_TAG; building instead."
+            echo "::error::Could not safely determine whether release $CORE_TAG exists: $ASSETS"
+            exit 1
           fi
-          echo 'exists=false' >> "$GITHUB_OUTPUT"
-      - name: Build and publish immutable image
-        id: image
-        if: >-
-          needs.plan.outputs.publish_core == 'true' &&
-          steps.registry.outputs.exists != 'true' &&
-          steps.prebuilt.outputs.exists != 'true'
-        uses: ./.github/actions/core-image
-        with:
-          source_sha: ${{ needs.plan.outputs.source_sha }}
-          core_tag: ${{ needs.plan.outputs.core_tag }}
-          push: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
-          tags: |
-            ghcr.io/typeroll/typeroll:${{ needs.plan.outputs.core_tag }}
-            ghcr.io/typeroll/typeroll:sha-${{ needs.plan.outputs.source_sha }}
-      - name: Resolve release digest
-        id: digest
-        env:
-          BUILT_DIGEST: ${{ steps.image.outputs.digest }}
-          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
-          PUBLISH_CORE: ${{ needs.plan.outputs.publish_core }}
-          EXISTING_DIGEST: ${{ steps.registry.outputs.image_digest }}
-          PREBUILT_DIGEST: ${{ steps.prebuilt.outputs.image_digest }}
-        run: |
-          set -euo pipefail
-          if [ -n "$EXISTING_DIGEST" ]; then
-            DIGEST="$EXISTING_DIGEST"
-          elif [ -n "$PREBUILT_DIGEST" ]; then
-            DIGEST="$PREBUILT_DIGEST"
-          elif [ "$PUBLISH_CORE" = 'true' ]; then
-            test -n "$BUILT_DIGEST"
-            DIGEST="$BUILT_DIGEST"
+          echo 'release=true' >> "$GITHUB_OUTPUT"
+          if grep -qxF "$TARBALL" <<<"$ASSETS" && grep -qxF "$DESCRIPTOR" <<<"$ASSETS"; then
+            gh release download "$CORE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$TARBALL" --pattern "$DESCRIPTOR" --dir temp/core-workers
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          elif grep -qxF "$TARBALL" <<<"$ASSETS" || grep -qxF "$DESCRIPTOR" <<<"$ASSETS"; then
+            echo "::error::Release $CORE_TAG carries only one of $TARBALL and $DESCRIPTOR; inspect it before publishing again."
+            exit 1
           else
-            DIGEST=$(crane digest "ghcr.io/typeroll/typeroll:$CORE_TAG")
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
           fi
-          test -n "$DIGEST"
-          echo "image_digest=$DIGEST" >> "$GITHUB_OUTPUT"
-      - name: Verify published image contract
-        if: >-
-          needs.plan.outputs.publish_core == 'true' &&
-          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+      - name: Install build dependencies
+        if: steps.published.outputs.exists != 'true'
+        run: npm ci
+      - name: Build the Worker bundle
+        if: steps.published.outputs.exists != 'true'
+        run: node scripts/release-worker-bundle.mjs build --out temp/core-workers
+      - name: Verify the Worker bundle and its release contract
+        id: bundle
+        run: node scripts/release-worker-bundle.mjs verify --dir temp/core-workers --source-sha "$CORE_SOURCE_SHA" --core-tag "$CORE_TAG"
+      # The packed bytes, not the build directory, must answer with this
+      # release's identity in local workerd before anything is published.
+      - name: Verify the bundle serves its release identity
+        if: steps.published.outputs.exists != 'true'
         env:
-          IMAGE: ghcr.io/typeroll/typeroll@${{ steps.digest.outputs.image_digest }}
-          IMAGE_DIGEST: ${{ steps.digest.outputs.image_digest }}
-          SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
+          TARBALL: ${{ steps.bundle.outputs.tarball }}
+          BUNDLE_DIGEST: ${{ steps.bundle.outputs.bundle_digest }}
           CORE_VERSION: ${{ needs.plan.outputs.core_version }}
         run: |
           set -euo pipefail
-          docker pull "$IMAGE"
-          docker run --detach --name typeroll-core-contract \
-            --publish 127.0.0.1:8080:8080 \
-            --env TYPEROLL_IMAGE_DIGEST="$IMAGE_DIGEST" \
-            "$IMAGE"
-          trap 'docker rm --force typeroll-core-contract >/dev/null 2>&1 || true' EXIT
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:8080/api/healthz >/dev/null; then break; fi
-            if [ "$attempt" -eq 30 ]; then docker logs typeroll-core-contract; exit 1; fi
+          SMOKE="$RUNNER_TEMP/core-workers-smoke"
+          mkdir -p "$SMOKE"
+          tar -xzf "temp/core-workers/$TARBALL" -C "$SMOKE"
+          node node_modules/wrangler/bin/wrangler.js dev \
+            --config "$SMOKE/portal/server/wrangler.json" \
+            --ip 127.0.0.1 --port 8787 \
+            --var STORE_JURISDICTION:none \
+            --var "TYPEROLL_SOURCE_SHA:$CORE_SOURCE_SHA" \
+            --var "TYPEROLL_BUNDLE_DIGEST:$BUNDLE_DIGEST" \
+            --var "AUTH_SECRET:$(openssl rand -hex 32)" \
+            --var PORTAL_PUBLIC_URL:http://127.0.0.1:8787 \
+            --var ACCOUNT_EMAIL:release-check@example.invalid \
+            > "$RUNNER_TEMP/workerd.log" 2>&1 &
+          WORKERD=$!
+          trap 'kill "$WORKERD" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8787/api/healthz >/dev/null; then break; fi
+            if [ "$attempt" -eq 60 ]; then cat "$RUNNER_TEMP/workerd.log"; exit 1; fi
             sleep 1
           done
-          RELEASE=$(curl --fail --silent http://127.0.0.1:8080/api/version)
-          test "$(jq -r '.source_sha' <<<"$RELEASE")" = "$SOURCE_SHA"
-          test "$(jq -r '.image_digest' <<<"$RELEASE")" = "$IMAGE_DIGEST"
+          RELEASE=$(curl --fail --silent http://127.0.0.1:8787/api/version)
+          test "$(jq -r '.source_sha' <<<"$RELEASE")" = "$CORE_SOURCE_SHA"
+          test "$(jq -r '.bundle_digest' <<<"$RELEASE")" = "$BUNDLE_DIGEST"
           test "$(jq -r '.core_version' <<<"$RELEASE")" = "$CORE_VERSION"
-      # The release name points at the digest just verified, never a rebuild.
-      - name: Tag verified prebuilt image
-        if: >-
-          steps.prebuilt.outputs.exists == 'true' &&
-          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
+      - name: Attest Worker bundle build provenance
+        if: steps.published.outputs.exists != 'true' && env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: temp/core-workers/${{ steps.bundle.outputs.tarball }}
+      # The same check Cloud runs before it pins the digest, so a release
+      # whose provenance Cloud would refuse never gets a tag.
+      - name: Verify Worker bundle provenance
+        if: env.PUBLISH == 'true'
         env:
-          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
-          IMAGE_DIGEST: ${{ steps.digest.outputs.image_digest }}
-        run: |
-          set -euo pipefail
-          crane tag "ghcr.io/typeroll/typeroll@$IMAGE_DIGEST" "$CORE_TAG"
-          test "$(crane digest "ghcr.io/typeroll/typeroll:$CORE_TAG")" = "$IMAGE_DIGEST"
+          TARBALL: ${{ steps.bundle.outputs.tarball }}
+        run: >-
+          gh attestation verify "temp/core-workers/$TARBALL"
+          --repo "$GITHUB_REPOSITORY"
+          --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish-mcp.yml"
+          --source-ref refs/heads/main
+          --predicate-type https://slsa.dev/provenance/v1
+          --deny-self-hosted-runners
       - name: Create verified Core tag
-        if: >-
-          needs.plan.outputs.publish_core == 'true' &&
-          (github.event_name != 'workflow_dispatch' || inputs.dry_run != true)
-        env:
-          CORE_TAG: ${{ needs.plan.outputs.core_tag }}
+        if: needs.plan.outputs.publish_core == 'true' && env.PUBLISH == 'true'
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git tag -a "$CORE_TAG" -m "Release $CORE_TAG"
           git push origin "$CORE_TAG"
+      - name: Publish the Worker bundle on the Core release
+        if: steps.published.outputs.exists != 'true' && env.PUBLISH == 'true'
+        env:
+          TARBALL: ${{ steps.bundle.outputs.tarball }}
+          DESCRIPTOR: ${{ steps.bundle.outputs.descriptor }}
+          BUNDLE_DIGEST: ${{ steps.bundle.outputs.bundle_digest }}
+          HAS_RELEASE: ${{ steps.published.outputs.release }}
+        run: |
+          set -euo pipefail
+          if [ "$HAS_RELEASE" = 'true' ]; then
+            gh release upload "$CORE_TAG" "temp/core-workers/$TARBALL" "temp/core-workers/$DESCRIPTOR" --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$CORE_TAG" "temp/core-workers/$TARBALL" "temp/core-workers/$DESCRIPTOR" \
+              --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "Typeroll Core ${CORE_TAG#core-v}" \
+              --notes "Worker bundle $BUNDLE_DIGEST built from $CORE_SOURCE_SHA with GitHub build provenance."
+          fi
+          CHECK="$RUNNER_TEMP/core-workers-published"
+          gh release download "$CORE_TAG" --repo "$GITHUB_REPOSITORY" --pattern "$TARBALL" --dir "$CHECK"
+          test "sha256:$(sha256sum "$CHECK/$TARBALL" | cut -d' ' -f1)" = "$BUNDLE_DIGEST"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: core-workers-${{ needs.plan.outputs.source_sha }}
+          path: temp/core-workers/${{ steps.bundle.outputs.descriptor }}
+          if-no-files-found: error
+          retention-days: 90
 
   mcp:
     name: Publish MCP package
@@ -523,12 +473,16 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22.23.1'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: core-workers-${{ needs.plan.outputs.source_sha }}
+          path: temp/core-workers
       - name: Build Cloud-consumable release manifest
         run: >-
           node scripts/oss-release-plan.mjs
           --manifest oss-upstream.lock.json
           --source-sha "${{ needs.plan.outputs.core_source_sha }}"
-          --image-digest "${{ needs.core.outputs.image_digest }}"
+          --bundle "temp/core-workers/typeroll-core-${{ needs.plan.outputs.core_version }}-workers.json"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: oss-release-${{ needs.plan.outputs.source_sha }}
@@ -537,7 +491,7 @@ jobs:
       - name: Summarize completed train
         env:
           CORE_VERSION: ${{ needs.plan.outputs.core_version }}
-          IMAGE_DIGEST: ${{ needs.core.outputs.image_digest }}
+          BUNDLE_DIGEST: ${{ needs.core.outputs.bundle_digest }}
           MCP_VERSION: ${{ needs.plan.outputs.mcp_version }}
           SOURCE_SHA: ${{ needs.plan.outputs.source_sha }}
           CORE_SOURCE_SHA: ${{ needs.plan.outputs.core_source_sha }}
@@ -545,7 +499,7 @@ jobs:
           {
             echo '### Released OSS train'
             echo
-            printf -- '- Core %s at %s\n' "$CORE_VERSION" "$IMAGE_DIGEST"
+            printf -- '- Core %s Worker bundle %s\n' "$CORE_VERSION" "$BUNDLE_DIGEST"
             printf -- '- MCP %s\n' "$MCP_VERSION"
             printf -- '- Docs from %s\n' "$SOURCE_SHA"
             printf -- '- Core source %s\n' "$CORE_SOURCE_SHA"

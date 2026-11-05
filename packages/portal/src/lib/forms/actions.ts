@@ -51,11 +51,11 @@ export function visitorChosenRecipients(config: Partial<EmailActionConfig>, mess
 }
 
 /** Whether an email to these visitor-chosen recipients may go out now; counts it against each address's budget. */
-function visitorRecipientsAllowed(orgId: string, siteId: string, recipients: string[]): boolean {
+async function visitorRecipientsAllowed(orgId: string, siteId: string, recipients: string[]): Promise<boolean> {
   if (recipients.length > MAX_VISITOR_RECIPIENTS) return false;
   let allowed = true;
   for (const address of recipients) {
-    const result = rateLimit(`forms-email-recipient:${orgId}:${siteId}:${address}`, VISITOR_RECIPIENT_LIMIT, VISITOR_RECIPIENT_WINDOW_MS);
+    const result = await rateLimit(`forms-email-recipient:${orgId}:${siteId}:${address}`, VISITOR_RECIPIENT_LIMIT, VISITOR_RECIPIENT_WINDOW_MS, { scope: paths.site(orgId, siteId) });
     if (!result.allowed) allowed = false;
   }
   return allowed;
@@ -156,7 +156,7 @@ const CORE_ACTIONS: FormActionDef[] = [
         return;
       }
       const visitorRecipients = visitorChosenRecipients(action.config as Partial<EmailActionConfig>, message);
-      if (visitorRecipients.length && !visitorRecipientsAllowed(ctx.orgId, ctx.siteId, visitorRecipients)) {
+      if (visitorRecipients.length && !await visitorRecipientsAllowed(ctx.orgId, ctx.siteId, visitorRecipients)) {
         console.warn(`[form action] email skipped — submitted recipient address over its limit for site ${ctx.siteId}`);
         return;
       }

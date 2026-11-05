@@ -32,6 +32,11 @@ try {
   }
   await walk(destination);
   const version = JSON.parse(await fs.readFile(path.join(root, 'package.json'), 'utf8')).version;
-  await fs.writeFile(path.join(root, 'publication-template.json'), JSON.stringify({ format: 'typeroll-publication-template', version, files }));
+  const template = JSON.stringify({ format: 'typeroll-publication-template', version, files });
+  await fs.writeFile(path.join(root, 'publication-template.json'), template);
+  // The portal Worker reads its own copy through the ASSETS binding (no filesystem on Workers).
+  const asset = path.join(root, 'packages/portal/public/_typeroll/publication-template.json');
+  await fs.mkdir(path.dirname(asset), { recursive: true });
+  await fs.writeFile(asset, template);
   console.log(`Frozen publication build template ${version}: ${Object.keys(files).length} source files`);
 } finally { await fs.rm(temporary, { recursive: true, force: true }); }

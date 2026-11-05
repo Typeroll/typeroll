@@ -1,19 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { gotoReady, reloadReady } from './helpers/ready';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 
-const root = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main');
 for (const mode of ['blocks', 'html'] as const) {
   for (const width of [390, 1440]) {
     test(`${mode} sharing overrides persist independently of SEO at ${width}px`, async ({ page }, testInfo) => {
       const id = `social-${mode}-${width}`;
-      const file = path.join(root, `pages/${id}.json`);
-      mkdirSync(path.dirname(file), { recursive: true });
-      writeFileSync(file, JSON.stringify({ id, title: 'Document title', slug: id, path: `/${id}/`, status: 'draft',
+      const pageDoc = `${DEFAULT_MAIN}/pages/${id}`;
+      await e2eStore.set(pageDoc, { id, title: 'Document title', slug: id, path: `/${id}/`, status: 'draft',
         content_mode: mode, seo_title: 'Search title', seo_description: 'Search description',
-        blocks: [{ id: 'intro', type: 'core/text', data: { html: '<p>Page content</p>' } }], html_content: '<p>Page content</p>' }));
+        blocks: [{ id: 'intro', type: 'core/text', data: { html: '<p>Page content</p>' } }], html_content: '<p>Page content</p>' });
       async function openSettings() {
         if (mode === 'blocks') await page.getByRole('button', { name: 'Page settings', exact: true }).click();
         else {
@@ -38,8 +34,8 @@ for (const mode of ['blocks', 'html'] as const) {
         await openSettings();
         await expect(page.getByLabel('Sharing title', { exact: true })).toHaveValue('Share this page');
         await expect(page.getByLabel('Sharing description', { exact: true })).toHaveValue('A description for social sharing');
-        expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({ seo_title: 'Search title', seo_description: 'Search description', og_title: 'Share this page', og_description: 'A description for social sharing' });
-      } finally { rmSync(file, { force: true }); }
+        expect(await e2eStore.read(pageDoc)).toMatchObject({ seo_title: 'Search title', seo_description: 'Search description', og_title: 'Share this page', og_description: 'A description for social sharing' });
+      } finally { await e2eStore.deleteTree(pageDoc); }
     });
   }
 }

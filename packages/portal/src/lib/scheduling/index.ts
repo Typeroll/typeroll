@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
+import type { ReadWriteStore } from '../datastore';
 
 export const WORK_COLLECTION = 'scheduled_work';
-export type WorkKind = 'page_schedule' | 'site_publish' | 'publication' | 'build_result' | 'build_continue' | 'form_partial_abandoned' | 'form_webhook_retry' | 'organization_access_notice' | 'domain_serving_check' | 'workflow_chunk';
+export type WorkKind = 'page_schedule' | 'site_publish' | 'publication' | 'build_result' | 'build_continue' | 'form_partial_abandoned' | 'form_webhook_retry' | 'organization_access_notice' | 'domain_serving_check' | 'workflow_chunk' | 'deploy_dispatch' | 'media_chain';
 export interface ScheduledWork {
   kind: WorkKind;
   source: string;
@@ -85,14 +86,35 @@ export function scheduledIndexWrites(source: string, before: any, after: any, no
 /** Delivery is an acceleration; the committed index survives a transport outage. */
 export async function notifyScheduledWrites(writes: IndexWrite[]): Promise<void> {
   if (!writes.some(w => w.data)) return;
-  if ((!process.env.DEPLOY_QUEUE || process.env.DEPLOY_QUEUE === 'in_process') && process.env.NODE_ENV !== 'test') {
-    const { deliverLocally } = await import('./transport');
-    for (const write of writes) if (write.data) deliverLocally(write.path, write.data);
-    return;
-  }
-  if (process.env.DEPLOY_QUEUE !== 'cloud_tasks') return;
   try {
-    const { dispatchScheduledWork } = await import('./transport');
-    for (const write of writes) if (write.data) await dispatchScheduledWork(write.path, write.data);
+    const { deliverCommitted } = await import('./transport');
+    await deliverCommitted(writes);
   } catch { console.warn('[scheduled-work] delivery pending; durable event retained'); }
+}
+
+export interface WorkInput {
+  kind: WorkKind;
+  source: string;
+  due_at: number;
+  payload: Record<string, any>;
+  /** Defaults to a digest of the kind, source, due time and payload. */
+  generation?: string;
+}
+
+/**
+ * Write the one scheduled-work entry of (kind, source) in the source's own
+ * store object, replacing a pending one, and hand it to the transport.
+ * `dedupe` keeps an entry that already has this generation (pending or done),
+ * so repeating the same request never delivers it twice. Returns whether it wrote.
+ */
+export async function putScheduledWork(input: WorkInput, opts: { store?: ReadWriteStore; dedupe?: boolean } = {}): Promise<boolean> {
+  const { kind, source, due_at, payload } = input;
+  const generation = input.generation ?? createHash('sha256').update(JSON.stringify({ kind, source, due: due_at, payload })).digest('hex');
+  const path = workPath(source, kind);
+  const store = opts.store ?? (await (await import('./objects')).workLocation(source)).store;
+  if (opts.dedupe && (await store.getDoc<ScheduledWork>(path))?.generation === generation) return false;
+  const work: ScheduledWork = { kind, source, generation, due_at, payload, lease_until: 0, lease_owner: null, blocked_by: null };
+  await store.setDoc(path, work as unknown as Record<string, unknown>);
+  await notifyScheduledWrites([{ path, data: work }]);
+  return true;
 }

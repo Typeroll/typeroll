@@ -1,6 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 vi.mock('astro:middleware', () => ({ defineMiddleware: (handler: unknown) => handler }));
-vi.mock('../../lib/load-env', () => ({}));
 vi.mock('../../lib/data-schema', () => ({ requireCurrentDataSchema: vi.fn() }));
 import { onRequest } from '../../middleware';
 import { StorageDocumentError } from '../../lib/firestore-codec';

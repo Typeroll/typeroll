@@ -1,9 +1,7 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { buildCoreBlockRegistry, collectBlockAssets, renderBlocks, type Block } from '@typeroll/shared';
 import { sanitizeBody } from '../../../site-template/src/lib/sanitize';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 const registry = buildCoreBlockRegistry();
 const widths = { tablet: 576, laptop: 769, desktop: 1024, wide: 1280 };
 const image = 'data:image/svg+xml;base64,' + Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#ceeaf5"/></svg>').toString('base64');
@@ -96,13 +94,13 @@ test('site settings and page metadata expose the new native controls', async ({p
   const input = page.getByLabel('tablet starts at (px)');
   await expect(input).toHaveValue('640');
   // The actual editor receives custom widths from the versioned settings, not a global client constant.
-  const settingsFile = path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/settings/default.json');
-  const original = fs.readFileSync(settingsFile,'utf8');
+  const settingsDoc = `${DEFAULT_MAIN}/settings/default`;
+  const original = await e2eStore.read(settingsDoc);
   try {
-    fs.writeFileSync(settingsFile,JSON.stringify({...JSON.parse(original),responsive_breakpoints:widths}));
+    await e2eStore.set(settingsDoc,{...original,responsive_breakpoints:widths});
     await page.goto('/app/sites/default/pages/home');
     await page.getByRole('button',{name:'Page settings',exact:true}).click();
     await expect(page.getByLabel('Breadcrumb label',{exact:true})).toBeVisible();
     await expect(page.locator('button[title*="laptop starts at 769px"]').first()).toBeVisible();
-  } finally { fs.writeFileSync(settingsFile,original); }
+  } finally { await e2eStore.set(settingsDoc,original); }
 });

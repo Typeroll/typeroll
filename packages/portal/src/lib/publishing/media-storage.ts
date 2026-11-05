@@ -8,6 +8,7 @@ import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
 import { getConnection, connectionSummary, openCredentials, ConnectionError } from './connections';
 import type { CloudflareCredentials } from './cloudflare-connection';
+import { r2Endpoint } from '../r2-endpoint';
 
 import { adoptCustomerPublishingForMedia } from './media-policy';
 import { requiresSvgSanitization, withMediaExtension } from '../media/file-types';
@@ -15,9 +16,9 @@ import { requiresSvgSanitization, withMediaExtension } from '../media/file-types
 type Location = NonNullable<Media['storage']>;
 const MAX_BYTES = 25 * 1024 * 1024;
 
-function client(accountId: string, accessKeyId: string, secretAccessKey: string) {
+function client(accountId: string, accessKeyId: string, secretAccessKey: string, bucket?: string) {
   if (!/^[a-f0-9]{32}$/.test(accountId) || !accessKeyId || !secretAccessKey) throw new ConnectionError('Media storage access is unavailable. Open Publishing to check the connection.', 503, 'media_storage_unavailable');
-  return new S3Client({ region: 'auto', endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+  return new S3Client({ region: 'auto', endpoint: r2Endpoint(accountId, bucket),
     credentials: { accessKeyId, secretAccessKey }, forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED', maxAttempts: 2 });
 }
 
@@ -35,7 +36,7 @@ export async function storageClient(orgId: string, location: Pick<Location, 'pro
   if (location.account_id !== process.env.R2_ACCOUNT_ID || location.bucket !== process.env.R2_PRIVATE_BUCKET || !location.bucket) {
     throw new ConnectionError('Private draft storage is unavailable. Contact the administrator.', 503, 'draft_storage_unavailable');
   }
-  return client(location.account_id, process.env.R2_ACCESS_KEY_ID!, process.env.R2_SECRET_ACCESS_KEY!);
+  return client(location.account_id, process.env.R2_ACCESS_KEY_ID!, process.env.R2_SECRET_ACCESS_KEY!, location.bucket);
 }
 
 async function uploadDestination(orgId: string) {

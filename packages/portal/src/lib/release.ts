@@ -9,7 +9,7 @@ import {
 } from '@typeroll/shared';
 import { VERSION as MCP_VERSION } from '@typeroll/mcp-server/version';
 
-export type ServiceRole = 'portal' | 'forms' | 'worker';
+export type ServiceRole = 'portal' | 'forms';
 
 export interface ReleaseManifest {
   core_version: string;
@@ -20,7 +20,7 @@ export interface ReleaseManifest {
   extension_runtime_version: string;
   mcp_version: string;
   source_sha: string | null;
-  image_digest: string | null;
+  bundle_digest: string | null;
   service_role: ServiceRole;
 }
 
@@ -30,7 +30,7 @@ function optionalValue(value: string | undefined): string | null {
 
 export function serviceRole(env: NodeJS.ProcessEnv = process.env): ServiceRole {
   const value = env.SERVICE_ROLE?.trim().toLowerCase();
-  if (value === 'forms' || value === 'worker') return value;
+  if (value === 'forms') return value;
   return 'portal';
 }
 
@@ -47,7 +47,7 @@ export function releaseManifest(env: NodeJS.ProcessEnv = process.env): ReleaseMa
     extension_runtime_version: EXTENSION_RUNTIME_VERSION,
     mcp_version: MCP_VERSION,
     source_sha: optionalValue(env.TYPEROLL_SOURCE_SHA),
-    image_digest: optionalValue(env.TYPEROLL_IMAGE_DIGEST),
+    bundle_digest: optionalValue(env.TYPEROLL_BUNDLE_DIGEST),
     service_role: serviceRole(env),
   };
 }

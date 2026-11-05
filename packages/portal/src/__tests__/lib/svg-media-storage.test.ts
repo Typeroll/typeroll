@@ -15,7 +15,6 @@ import { createMediaUpload } from '../../lib/publishing/media-storage';
 import { copyWithTransferService } from '../../lib/media/remote-transfer';
 import { finalizeOrganizationMedia, resanitizeStoredSvgMedia, type SvgMedia } from '../../lib/media/svg-media';
 import { finalizeMedia, MediaIntegrityError, svgLooksScriptable } from '../../lib/media-finalize';
-import { backfillMediaVariants } from '../../lib/deploy/runner';
 import { WPMediaTransfer } from '../../lib/wp/media';
 
 const account = 'a'.repeat(32);
@@ -226,7 +225,7 @@ describe('platform storage', () => {
     expect(result).toMatchObject({ sha256: sha(published.body), svg_sanitized: true, source_sha256: sha(MALICIOUS) });
     expect(objects.has('private-drafts/svg-staging/media/abcdefghij/u/logo.svg')).toBe(false);
     expect(await mediaDoc('m1')).toMatchObject({ svg_staging_key: null, size_bytes: published.body.length });
-    // Deploy backfill and client retries finalize again without changing the bytes.
+    // Client retries finalize again without changing the bytes.
     await finalizeMedia('org', 'site', 'm1', config, { expectedSha256: sha(MALICIOUS) });
     expect(objects.get('legacy-public/media/abcdefghij/1-logo.svg')!.body.equals(published.body)).toBe(true);
   });
@@ -270,34 +269,16 @@ describe('platform storage', () => {
     expect(svgLooksScriptable(Buffer.from('<html><body><p>Logo</p><svg><use href="#a"/><rect fill="url(#g)"/></svg></body></html>'))).toBe(false);
   });
 
-  it('rewrites a legacy SVG once and skips it on later deploys', async () => {
+  it('does not write a legacy SVG again once the object holds the recorded sanitized bytes', async () => {
     await seed({});
     objects.set('legacy-public/media/abcdefghij/1-logo.svg', { body: MALICIOUS, etag: '"old"' });
-    expect(await backfillMediaVariants('org', 'site', { buildOnly: true })).toEqual([]);
-    expect(objects.get('legacy-public/media/abcdefghij/1-logo.svg')!.body.equals(MALICIOUS)).toBe(true);
-    expect((await mediaDoc('m1'))?.svg_sanitized).toBeUndefined();
-    await backfillMediaVariants('org', 'site');
+    await finalizeMedia('org', 'site', 'm1', config);
     const rewritten = objects.get('legacy-public/media/abcdefghij/1-logo.svg')!;
     expectInert(rewritten.body);
     vi.mocked(S3Client.prototype.send).mockClear();
-    const updated = (await mediaDoc('m1'))!;
-    await backfillMediaVariants('org', 'site');
-    expect(S3Client.prototype.send).not.toHaveBeenCalled();
-    expect(await mediaDoc('m1')).toEqual(updated);
-    // finalize itself does not write again when the object already holds the recorded bytes.
     await finalizeMedia('org', 'site', 'm1', config);
     expect(vi.mocked(S3Client.prototype.send).mock.calls.map(([command]) => command.constructor.name)).toEqual(['GetObjectCommand']);
     expect(objects.get('legacy-public/media/abcdefghij/1-logo.svg')!.etag).toBe(rewritten.etag);
-  });
-
-  it('reports an SVG that could not be sanitized on every deploy without retrying it', async () => {
-    await seed({});
-    objects.set('legacy-public/media/abcdefghij/1-logo.svg', { body: NOT_SVG, etag: '"old"' });
-    const first = await backfillMediaVariants('org', 'site');
-    expect(first).toEqual([expect.stringContaining('SVG media m1 (logo.svg) could not be sanitized and is served only as a download')]);
-    vi.mocked(S3Client.prototype.send).mockClear();
-    expect(await backfillMediaVariants('org', 'site')).toEqual(first);
-    expect(S3Client.prototype.send).not.toHaveBeenCalled();
   });
 });
 

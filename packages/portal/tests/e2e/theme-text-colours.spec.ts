@@ -1,16 +1,13 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { gotoReady } from './helpers/ready';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 
-const settingsFile = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/settings/default.json');
+const settingsDoc = `${DEFAULT_MAIN}/settings/default`;
 
 test('text on a theme colour shows both measures and saves a chosen colour', async ({ page }, info) => {
-  const original = readFileSync(settingsFile, 'utf8');
-  const settings = JSON.parse(original);
+  const original = await e2eStore.read(settingsDoc);
   // Render version 7 picks #111827 on teal by the WCAG 2 ratio.
-  writeFileSync(settingsFile, JSON.stringify({ ...settings, render_version: 7, colors: { ...settings.colors, secondary: '#00a19c' } }));
+  await e2eStore.set(settingsDoc, { ...original, render_version: 7, colors: { ...original.colors, secondary: '#00a19c' } });
   try {
     await page.setViewportSize({ width: 1280, height: 1000 });
     await gotoReady(page, '/app/sites/default/settings?section=design');
@@ -31,7 +28,7 @@ test('text on a theme colour shows both measures and saves a chosen colour', asy
 
     await page.getByRole('button', { name: 'Save Design' }).click();
     await expect(page.locator('#settings-save-status')).toContainText('Saved.');
-    const saved = JSON.parse(readFileSync(settingsFile, 'utf8'));
+    const saved = await e2eStore.read(settingsDoc);
     expect(saved.colors.on_secondary).toBe('#ffffff');
     expect(saved.colors.secondary).toBe('#00a19c');
     expect(saved.colors).not.toHaveProperty('on_primary');
@@ -40,8 +37,8 @@ test('text on a theme colour shows both measures and saves a chosen colour', asy
     await page.getByLabel('Text on secondary', { exact: true }).selectOption('auto');
     await page.getByRole('button', { name: 'Save Design' }).click();
     await expect(page.locator('#settings-save-status')).toContainText('Saved.');
-    expect(JSON.parse(readFileSync(settingsFile, 'utf8')).colors).not.toHaveProperty('on_secondary');
+    expect((await e2eStore.read(settingsDoc)).colors).not.toHaveProperty('on_secondary');
   } finally {
-    writeFileSync(settingsFile, original);
+    await e2eStore.set(settingsDoc, original);
   }
 });

@@ -8,9 +8,6 @@
  * Values must never reach a URL or a request.
  */
 import { expect, test, type Page } from "@playwright/test";
-import fs from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
 import {
   buildCoreBlockRegistry,
   buildExtensionRuntimeScript,
@@ -30,6 +27,7 @@ import {
   rewriteInternalHrefs,
 } from "../../src/lib/preview-navigation-bridge";
 import { isolatedPreviewHeaders } from "../../src/lib/preview-headers";
+import { DEFAULT_MAIN, e2eStore } from "./helpers/store";
 
 const FROM = "Storgatan 1, 111 22 Stockholm";
 const TO = "Kungsgatan 2, Uppsala";
@@ -235,18 +233,16 @@ test.describe("Extension component on a page after a native banner", () => {
 });
 
 test.describe("native receiving form in a real preview link", () => {
-  const SITE = path.join(os.tmpdir(), "typeroll-e2e-fixtures", "organizations/default/sites/default");
-
   test("the banner's handoff reaches the next preview page through the shell", async ({ page, baseURL }) => {
     const id = `e2ehandoff${Date.now()}`;
-    const start = path.join(SITE, "versions/main/pages", `${id}.json`);
-    const quote = path.join(SITE, "versions/main/pages", `${id}-quote.json`);
-    const page_ = (title: string, slug: string, blocks: Block[]) => JSON.stringify({
+    const start = `${DEFAULT_MAIN}/pages/${id}`;
+    const quote = `${DEFAULT_MAIN}/pages/${id}-quote`;
+    const page_ = (title: string, slug: string, blocks: Block[]) => ({
       title, slug, path: `/${slug}`, content_mode: "blocks", status: "published",
       content_type: "page", fields: {}, date_updated: new Date().toISOString(), blocks,
     });
-    await fs.writeFile(start, page_("Handoff start", id, [banner(`/${id}-quote/`)]));
-    await fs.writeFile(quote, page_("Handoff quote", `${id}-quote`, [{
+    await e2eStore.set(start, page_("Handoff start", id, [banner(`/${id}-quote/`)]));
+    await e2eStore.set(quote, page_("Handoff quote", `${id}-quote`, [{
       id: "receive",
       type: "core/navigation_form",
       data: {
@@ -294,8 +290,7 @@ test.describe("native receiving form in a real preview link", () => {
       for (const value of PRIVATE_VALUES) expect(requests.filter((request) => request.includes(value))).toEqual([]);
       expect(errors).toEqual([]);
     } finally {
-      await fs.rm(start, { force: true });
-      await fs.rm(quote, { force: true });
+      await e2eStore.deleteTree(start, quote);
     }
   });
 });

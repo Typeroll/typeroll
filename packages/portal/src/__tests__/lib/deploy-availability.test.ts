@@ -1,12 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { paths } from '@typeroll/shared';
 import type { DeployJob, SiteVersion } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
-import { probePublication, refreshDeploymentAvailability, stampPublication } from '../../lib/deploy/availability';
+import { probePublication, refreshDeploymentAvailability } from '../../lib/deploy/availability';
 import { pageLiveUrl } from '../../lib/site-urls';
 
 const org = 'availability-org', site = 'availability-site';
@@ -80,28 +77,6 @@ describe('public deployment readiness', () => {
     const version = await getStore().getDoc<SiteVersion>(paths.version(org, site, 'main'));
     expect(version?.distributing_deploy_id).toBe('publication-new');
     expect(version?.last_deployed_at).toBe(oldTime);
-  });
-  it('can verify a publication after its last public page was removed', async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'typeroll-empty-publication-'));
-    try {
-      await fs.writeFile(path.join(dir, '404.html'), 'Not found');
-      const stamp = await stampPublication(dir);
-      expect(stamp.paths).toEqual(['/.well-known/typeroll/publication.txt']);
-      expect(await fs.readFile(path.join(dir, '.well-known/typeroll/publication.txt'), 'utf8')).toBe(stamp.id);
-    } finally { await fs.rm(dir, { recursive: true, force: true }); }
-  });
-  it('stamps static files without adding a Worker or requiring a homepage', async () => {
-    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'typeroll-availability-'));
-    try {
-      await fs.mkdir(path.join(dir, 'nested'));
-      await fs.writeFile(path.join(dir, 'nested/index.html'), '<h1>Nested</h1>');
-      await fs.writeFile(path.join(dir, '404.html'), 'Not found');
-      await fs.writeFile(path.join(dir, '_headers'), '/*\n  X-Robots-Tag: noindex\n');
-      const stamp = await stampPublication(dir);
-      expect(stamp.paths).toEqual(['/nested/']);
-      expect(await fs.readFile(path.join(dir, '_headers'), 'utf8')).toContain(`X-Typeroll-Publication: ${stamp.id}`);
-      expect(await fs.readdir(dir)).not.toContain('_worker.js');
-    } finally { await fs.rm(dir, { recursive: true, force: true }); }
   });
 });
 

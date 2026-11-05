@@ -76,17 +76,12 @@ matching release. The stdio package update only updates its embedded guide.
    `MCP_OAUTH_SIGNING_KEY`. OAuth browser forms use `Referrer-Policy: same-origin`
    to preserve same-origin POST Origin while not disclosing query parameters to
    third parties. Callback redirects use no-referrer; consent cannot be framed.
-5. Include auth support collections in operational retention: expired
-   `auth_rate_limits`, `mcp_refresh_uses` and `mcp_authorization_codes` documents
-   can be deleted after `reset_at`/`expires_at`. They contain numeric epoch
-   milliseconds, **not Firestore TTL timestamp fields**: do not enable a TTL
-   policy on those numeric fields and claim cleanup is configured. Authorization
-   expiration is checked independently of physical deletion. Budgets reuse one
-   document per hashed identity/address; refresh tombstones persist until cleaned.
-   The sign-out denylist is different: `revoked_sessions` and `session_lineage`
-   documents carry a native timestamp `expires_at` (plus `expires_at_ms`, which
-   the portal checks on read). Enable Firestore TTL on `expires_at` for both
-   collection groups.
+5. Auth support records expire through the store's TTL: rate-limit counters,
+   Better Auth sessions and verification tokens, `mcp_refresh_uses` and
+   `mcp_authorization_codes` carry `delete_at` (epoch milliseconds), and the
+   store object that holds them removes them on its alarm once that time has
+   passed (counters at the end of their window, the rest a day after expiry).
+   Authorization expiry is still checked on read, independently of deletion.
 6. Sign-out revokes only the browser's own Firebase sign-in (keyed by a hash of
    `uid` and `auth_time`, with lineage entries for cookies re-minted by the
    rolling refresh). It deliberately does not call `revokeRefreshTokens`, which

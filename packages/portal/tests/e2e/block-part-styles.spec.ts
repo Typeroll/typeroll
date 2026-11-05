@@ -5,17 +5,22 @@
  * static build emit the same part CSS and render the same result.
  */
 import { expect, test, type Page } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
+import { localFixtureDocuments, writeFixtureTree } from './seed-store.mjs';
 
-// The local Playwright server owns this disposable tree (see playwright.config).
-const fixtures = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
-const version = path.join(fixtures, 'organizations/default/sites/default/versions/main');
-const settingsFile = path.join(version, 'settings/default.json');
-const pageFile = path.join(version, 'pages/part-styles.json');
+// Asynchronous, so the build does not block the worker's event loop.
+const run = promisify(execFile);
+
+// The portal preview reads the local E2E Worker's store; the static build reads
+// a disposable fixtures tree written per test with the same documents.
+const settingsFile = `${DEFAULT_MAIN}/settings/default`;
+const pageFile = `${DEFAULT_MAIN}/pages/part-styles`;
 const template = fileURLToPath(new URL('../../../site-template/', import.meta.url));
 const STATIC = 'https://part-styles.test';
 
@@ -41,20 +46,24 @@ const link = (page: Page, frame: boolean, id: string) => (frame ? page.frameLoca
 test('a site-wide part style removes the heading link underline and an instance part style wins, in preview and published', async ({ page }) => {
   test.setTimeout(150_000);
   const out = mkdtempSync(path.join(os.tmpdir(), 'tr-e2e-part-styles-'));
-  const originalSettings = readFileSync(settingsFile, 'utf8');
-  const settings = JSON.parse(originalSettings) as { styles?: unknown[]; cookie_consent?: Record<string, unknown> };
-  mkdirSync(path.dirname(pageFile), { recursive: true });
+  const fixtures = mkdtempSync(path.join(os.tmpdir(), 'tr-e2e-part-styles-fixtures-'));
+  const originalSettings = await e2eStore.read(settingsFile);
+  const settings = originalSettings as { styles?: unknown[]; cookie_consent?: Record<string, unknown> };
   // The consent banner would cover the links the test hovers.
-  writeFileSync(settingsFile, JSON.stringify({ ...settings, cookie_consent: { ...settings.cookie_consent, enabled: false }, styles: [...(settings.styles ?? []), ...styles] }, null, 2));
-  writeFileSync(pageFile, JSON.stringify({
-    id: 'part-styles', title: 'Part styles', slug: 'part-styles', path: '/part-styles/', status: 'published', content_mode: 'blocks',
-    blocks: [heading('site-wide'), heading('own-choice', { part_styles: { link: 'e2e-strong-link' } })],
-  }));
+  const documents: Array<[string, Record<string, unknown>]> = [
+    [settingsFile, { ...settings, cookie_consent: { ...settings.cookie_consent, enabled: false }, styles: [...(settings.styles ?? []), ...styles] }],
+    [pageFile, {
+      id: 'part-styles', title: 'Part styles', slug: 'part-styles', path: '/part-styles/', status: 'published', content_mode: 'blocks',
+      blocks: [heading('site-wide'), heading('own-choice', { part_styles: { link: 'e2e-strong-link' } })],
+    }],
+  ];
   try {
-    execFileSync(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
-      cwd: template, timeout: 90_000, encoding: 'utf8', stdio: 'pipe',
+    await e2eStore.setMany(documents);
+    writeFixtureTree(fixtures, new Map([...localFixtureDocuments(), ...documents]));
+    await run(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
+      cwd: template, timeout: 90_000, maxBuffer: 64 * 1024 * 1024,
       env: {
-        ...process.env, FIREBASE_SERVICE_ACCOUNT: '', TYPEROLL_FIXTURES_DIR: fixtures,
+        ...process.env, TYPEROLL_FIXTURES_DIR: fixtures,
         TYPEROLL_ORG_ID: 'default', TYPEROLL_SITE_ID: 'default', TYPEROLL_VERSION_ID: 'main', TYPEROLL_SITE_URL: STATIC,
       },
     });
@@ -94,8 +103,9 @@ test('a site-wide part style removes the heading link underline and an instance 
       }
     }
   } finally {
-    writeFileSync(settingsFile, originalSettings);
-    rmSync(pageFile, { force: true });
+    await e2eStore.set(settingsFile, originalSettings);
+    await e2eStore.deleteTree(pageFile);
     rmSync(out, { recursive: true, force: true });
+    rmSync(fixtures, { recursive: true, force: true });
   }
 });

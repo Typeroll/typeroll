@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util';
 
 import { reportError, requireExactConfirmation } from './lib/e2e-cli.mjs';
 import {
-  createFirebasePersonaServices,
+  createEndpointPersonaServices,
   readPersonaManifest,
   readSecurePersonaEnvFile,
   seedLocalPersonas,
@@ -19,7 +19,7 @@ const { positionals, values } = parseArgs({
     environment: { type: 'string', default: 'local' },
     'fixtures-dir': { type: 'string' },
     'env-file': { type: 'string' },
-    'confirm-project': { type: 'string' },
+    'confirm-target': { type: 'string' },
   },
 });
 
@@ -38,12 +38,12 @@ try {
     console.log(`Local E2E personas ${command === 'seed' ? 'seeded' : 'verified'} (${result.personaCount}).`);
   } else {
     const env = values['env-file'] ? readSecurePersonaEnvFile(values['env-file']) : process.env;
-    const services = await createFirebasePersonaServices(env);
-    if (command === 'seed') requireExactConfirmation(services.projectId, values['confirm-project'], 'Firebase project');
+    const services = createEndpointPersonaServices(env);
+    if (command === 'seed') requireExactConfirmation(services.target, values['confirm-target'], 'Seeding endpoint host');
     const result = command === 'seed'
       ? await seedRemotePersonas({ services, env, manifest })
       : await verifyRemotePersonas({ services, env, manifest });
-    console.log(`Remote E2E personas ${command === 'seed' ? 'seeded and verified' : 'verified'} in ${result.projectId} (${result.personaCount}).`);
+    console.log(`Remote E2E personas ${command === 'seed' ? 'seeded and verified' : 'verified'} at ${result.target} (${result.personaCount}).`);
   }
 } catch (error) {
   reportError(error);

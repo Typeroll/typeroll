@@ -1,12 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { authenticatePersona } from './helpers/auth';
 import { gotoReady } from './helpers/ready';
-
-const origin = 'http://127.0.0.1:4322';
-const fixtureRoot = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
+import { PORTAL_ORIGIN as origin, e2eStore } from './helpers/store';
 
 test('creates another organization, switches back on desktop and mobile, and rejects cross-organization access', async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
@@ -50,8 +45,9 @@ test('an existing owner joins as editor, keeps their first membership, and loses
   await expect(page).toHaveURL(`${origin}/app`);
   expect((await page.request.get('/api/orgs/publishing')).status()).toBe(403);
   expect((await page.request.get('/api/orgs')).status()).toBe(200);
-  const membership = path.join(fixtureRoot, 'organizations/e2e-outsider/members/typeroll-e2e-owner.json');
-  rmSync(membership);
+  const membership = 'organizations/e2e-outsider/members/typeroll-e2e-owner';
+  expect(await e2eStore.get(membership)).not.toBeNull();
+  await e2eStore.delete(membership);
   expect((await page.request.get('/api/orgs/publishing')).status()).toBe(403);
   await page.goto('/app');
   await expect(page).toHaveURL(`${origin}/onboarding`);
@@ -77,10 +73,7 @@ test('a new account recovers its organization after logout and a fresh login wit
     await expect(page.getByLabel('Organization', { exact: true })).toHaveValue('first-organization');
     expect((await page.request.get('/api/orgs/publishing')).status()).toBe(200);
   } finally {
-    for (const relative of ['organizations/first-organization', 'user_organizations/typeroll-e2e-pending']) {
-      rmSync(path.join(fixtureRoot, relative), { recursive: true, force: true });
-      rmSync(path.join(fixtureRoot, `${relative}.json`), { force: true });
-    }
+    await e2eStore.deleteTree('organizations/first-organization', 'user_organizations/typeroll-e2e-pending');
   }
 });
 

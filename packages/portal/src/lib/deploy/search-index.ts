@@ -8,6 +8,10 @@
 // from data-pagefind-body on <main> — page content only (nav/footer
 // excluded), and noindex pages carry no data-pagefind-body so Pagefind
 // skips them wholesale.
+//
+// Runs only in the frozen publication's build on the organization's build
+// engine: scripts/lib/static-publication.mjs copies this file verbatim into
+// every publication. The portal itself never runs it.
 
 import fs from 'node:fs';
 import path from 'node:path';

@@ -7,12 +7,13 @@ import { buildFailureMessage } from './failure-message';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { dispatchCloudflareBuild } from './cloudflare';
 import { dispatchGithubBuild, githubBuildClient, readGithubDispatch } from './github';
-import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256, decodeArtifact, type BuildIdentity } from './contract.mjs';
+import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256, type BuildIdentity } from './contract.mjs';
+import { inspectArtifact } from './artifact-stream';
 import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, queuedBuildExpired, expireQueuedBuild, type BuildTask } from './queue';
 import { readEngineConfiguration, buildInputPath, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
 
-export async function enqueueBuild(config: EngineConfiguration, identity: Omit<BuildIdentity, 'source_sha256' | 'protocol' | 'node_version'>, files: Record<string, string>, kind: BuildInput['kind'] = 'publication', options: { requeueFailed?: boolean } = {}) {
+export async function enqueueBuild(config: EngineConfiguration, identity: Omit<BuildIdentity, 'source_sha256' | 'protocol' | 'node_version'>, files: Record<string, string>, kind: BuildInput['kind'] = 'publication', options: { requeueFailed?: boolean; directUpload?: boolean } = {}) {
   if (kind === 'publication' && !files['packages/site-template/src/lib/publication-validation.mjs'])
     throw new ConnectionError('This frozen renderer predates publication checks. Publish the site with the current Core release before preparing a domain change.', 409, 'publication_renderer_update_required');
   const source = encodeSource(files);
@@ -32,7 +33,8 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
   const supportsMediaBatches = files['scripts/media.mjs']?.includes('export async function prepareMediaBatch(');
   const mediaTotal = kind === 'static_verification' ? JSON.parse(files['verification.json']).checks.length : supportsMediaBatches ? (publication?.media_manifest?.entries?.length ?? 0) + (publication?.retained_media_manifests ?? []).reduce((sum: number, manifest: any) => sum + manifest.entries.length, 0) : 0;
   const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal, kind === 'static_verification' || kind === 'media_preparation' ? kind : undefined);
-  await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { ...validation, source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare' } satisfies BuildInput);
+  await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { ...validation, source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare',
+    ...(options.directUpload === false ? { direct_upload: false } : {}) } satisfies BuildInput);
   if (options.requeueFailed && ['failed', 'cancelled'].includes(queued.task.status)) {
     // The same frozen build, retried once on an updated engine: a fresh dispatch, not the failed one's.
     await getStore().updateDoc(buildInputPath(identity.org_id, queued.key), { dispatch_id: null, dispatch_uncertain: false, dispatch_attempt: 0, dispatch_lease_until: 0, dispatch_nonce: null, storage_account_id: config.account_id });
@@ -102,7 +104,10 @@ export async function completedBuild(org: string, key: string) {
     if (!config || config.revision !== task.engine_revision || !['ready', 'qualifying'].includes(config.status)) throw new ConnectionError('The shared build engine changed. Retry the publication.', 409, 'build_engine_changed');
     await dispatchPendingBuild(org, key, config); return null;
   }
-  const files = await buildStorage(org, async storage => decodeArtifact(await storage.read(task.artifact_key!), task.identity, task.artifact_sha256!));
+  // A direct-upload artifact holds only its receipt and marker. Older engines
+  // without direct uploads return the whole site, which the coordinator uploads.
+  const { files } = await buildStorage(org, storage => inspectArtifact(storage.stream(task.artifact_key!), task.identity, task.artifact_sha256!,
+    names => names.includes(DIRECT_RECEIPT) ? name => name === DIRECT_RECEIPT : () => true));
   const direct = files[DIRECT_RECEIPT] ? validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8'))) : null;
   return { task, files, direct };
 }

@@ -1,0 +1,16 @@
+{
+  "account_id": "0123456789abcdef0123456789abcdef",
+  "core_version": "0.3.0",
+  "name_prefix": "typeroll",
+  "portal_host": "cms.example.org",
+  "forms_host": "forms.example.org",
+  "buckets": {
+    "media": "typeroll-media",
+    "private_drafts": "typeroll-private-drafts",
+    "backups": "typeroll-backups"
+  },
+  "media_public_url": "https://media.example.org",
+  "sites_base_domain": "sites.example.org",
+  "logpush": false,
+  "vars": {}
+}

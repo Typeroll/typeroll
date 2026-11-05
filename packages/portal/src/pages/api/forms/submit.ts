@@ -130,7 +130,7 @@ export const POST: APIRoute = async (context) => {
   const backUrl = safeReferer(request.headers.get('referer'));
 
   // 1. Rate limit.
-  const rl = rateLimit(`forms:${ip}`, RATE_LIMIT_PER_IP, RATE_LIMIT_WINDOW_MS);
+  const rl = await rateLimit(`forms:${ip}`, RATE_LIMIT_PER_IP, RATE_LIMIT_WINDOW_MS);
   if (!rl.allowed) {
     return respond(wantsHtml, { error: formMessage('rate_limited', lang) }, 429, backUrl, lang, {
       'Retry-After': String(Math.ceil((rl.resetAt - Date.now()) / 1000)),
@@ -225,12 +225,12 @@ export const POST: APIRoute = async (context) => {
   const pow = typeof data._pow === 'string' ? data._pow : null;
   const hasPow = pow !== null && verifyPow(token, pow);
   if (!hasPow) {
-    const strict = rateLimit(`forms-nopow:${ip}`, RATE_LIMIT_NO_POW, RATE_LIMIT_WINDOW_MS);
+    const strict = await rateLimit(`forms-nopow:${ip}`, RATE_LIMIT_NO_POW, RATE_LIMIT_WINDOW_MS);
     if (!strict.allowed) {
       return respond(wantsHtml, { error: formMessage('rate_limited', lang) }, 429, backUrl, lang);
     }
   }
-  const perForm = rateLimit(`forms-form:${orgId}:${formId}`, RATE_LIMIT_PER_FORM, RATE_LIMIT_WINDOW_MS);
+  const perForm = await rateLimit(`forms-form:${orgId}:${formId}`, RATE_LIMIT_PER_FORM, RATE_LIMIT_WINDOW_MS, { scope: `organizations/${orgId}` });
   if (!perForm.allowed) {
     return respond(wantsHtml, { error: formMessage('form_busy', lang) }, 429, backUrl, lang);
   }

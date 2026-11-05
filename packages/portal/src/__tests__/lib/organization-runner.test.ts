@@ -11,7 +11,9 @@ import { encodeSource, encodeArtifact, sha256, outputDigest, BUILD_PROTOCOL, BUI
 import { siteHostingGroup } from '../../lib/publishing/hosting-groups';
 import { qualificationFiles } from '../../lib/builds/qualification';
 const storage = vi.hoisted(() => ({ objects: new Map<string, Buffer>(), grants: vi.fn(async (key: string, write = false) => `https://storage.invalid/${key}?write=${write}`) }));
-vi.mock('../../lib/builds/storage', () => ({ buildStorage: async (_org: string, fn: any) => fn({ account: 'a'.repeat(32), read: async (key: string) => { const bytes = storage.objects.get(key); if (!bytes) throw Error('missing'); return bytes; }, grant: storage.grants }) }));
+vi.mock('../../lib/builds/storage', () => ({ buildStorage: async (_org: string, fn: any) => fn({ account: 'a'.repeat(32), read: async (key: string) => { const bytes = storage.objects.get(key); if (!bytes) throw Error('missing'); return bytes; },
+  // Small chunks exercise the incremental artifact reader across file boundaries.
+  stream: async function* (key: string) { const bytes = storage.objects.get(key); if (!bytes) throw Error('missing'); for (let at = 0; at < bytes.length; at += 7) yield bytes.subarray(at, at + 7); }, grant: storage.grants }) }));
 vi.mock('../../lib/publishing/r2-build-credentials', () => ({ customerBuildMediaAccess: vi.fn() }));
 // Every test here claims; the per-organization claim limit is not what this file tests.
 vi.mock('../../lib/rate-limit', () => ({ rateLimit: () => ({ allowed: true, remaining: 1, resetAt: 0 }) }));
@@ -297,6 +299,17 @@ it('issues asset-only upload access for the frozen hosting group and denies chan
   expect((await request('direct-upload', claim.token, attempt)).status).toBe(409);
   await new OrganizationBuildQueue().cancel(org, key);
   expect((await request('direct-upload', claim.token, attempt)).status).toBe(409);
+});
+
+it('asks for the whole site, and issues no Pages upload access, for a build that is not hosted on Pages', async () => {
+  const { key } = await prepare();
+  assetGrant.mockClear();
+  await getStore().updateDoc(buildInputPath(org, key), { direct_upload: false });
+  await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { git_publication: { provider: 'hosted', build_task_key: key, publication_id: identity.publication_id, commit: identity.commit, branch: 'main' } });
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect(claim.direct_upload).toBe(false);
+  expect((await request('direct-upload', claim.token, { key, lease_id: claim.lease_id })).status).toBe(409);
+  expect(assetGrant).not.toHaveBeenCalled();
 });
 
 it('issues media grants in bounded slices and retains frozen source integrity', async () => {

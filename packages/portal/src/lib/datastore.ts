@@ -1,16 +1,22 @@
 // Server-side read+write datastore for the portal.
 //
-// Same two-backend pattern as the site renderer (Firestore for prod,
-// JSON-on-disk for local dev), extended with write operations.
+// Deployed Workers register the Durable Object store (src/worker.ts →
+// setRuntimeStore). Without one, Node processes (tests, scripts, local tools)
+// use JSON-on-disk fixtures, or one local SQLite file with
+// TYPEROLL_STORE=sqlite:<file>.
 
 import fs from 'node:fs';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { isDeepStrictEqual } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
-import { encodeFirestoreDocument, decodeNestedArrays } from './firestore-codec';
-import { scheduledIndexWrites, notifyScheduledWrites, isScheduledSource, type IndexWrite } from './scheduling/index';
+import { scheduledIndexWrites, notifyScheduledWrites } from './scheduling/index';
+import { nodeSqliteDriver } from './store/node-sqlite';
+import { SqlDocumentEngine } from './store/sql-engine';
+
+/** Top-level document field read as a TTL: the store removes the document after this time. */
+export { TTL_FIELD } from './store/sql-engine';
+import { SqlStore, localTransport } from './store/sql-store';
 
 export interface Filter {
   field: string;
@@ -34,6 +40,11 @@ function inReadContext<T>(reader: SnapshotReader, work: () => Promise<T>): Promi
     return () => { throw new Error('Writes are not allowed while capturing publication content'); };
   } }) as ReadWriteStore;
   return readContext.run(readOnly, work);
+}
+
+/** Run `work` with reads routed to `reader` and every write refused. */
+export function runReadOnly<T>(reader: SnapshotReader, work: () => Promise<T>): Promise<T> {
+  return inReadContext(reader, work);
 }
 
 export interface ReadWriteStore {
@@ -327,194 +338,6 @@ function generateId(): string {
   );
 }
 
-// ─── Firestore (read+write) ──────────────────────────────────────────────
-
-class FirestoreStore implements ReadWriteStore {
-  private dbPromise: Promise<import('firebase-admin/firestore').Firestore>;
-
-  constructor() {
-    this.dbPromise = (async () => {
-      const { getFirestore } = await import('firebase-admin/firestore');
-      const app = await getFirebaseAdminApp();
-      const db = getFirestore(app);
-      // Our doc shapes have lots of optional fields that arrive as
-      // `undefined` from the route handlers. Firestore rejects those by
-      // default; this setting tells it to drop the keys instead. Matches
-      // the fixtures backend's tolerance.
-      db.settings({ ignoreUndefinedProperties: true });
-      return db;
-    })();
-  }
-
-  async readSnapshot<T>(root: string, work: () => Promise<T>): Promise<T> {
-    const db = await this.dbPromise;
-    const assertRoot = (p: string) => { if (p !== root && !p.startsWith(`${root}/`)) throw new Error('Read outside publication snapshot'); };
-    return db.runTransaction(transaction => inReadContext({
-      getDoc: async <D>(p: string) => {
-        assertRoot(p);
-        const snap = await transaction.get(db.doc(p));
-        return snap.exists ? { id: snap.id, ...decodeNestedArrays(snap.data() as D) } : null;
-      },
-      listDocs: async <D>(p: string, opts: { filters?: Filter[]; limit?: number; startAfterId?: string } = {}) => {
-        assertRoot(p);
-        let query: FirebaseFirestore.Query = db.collection(p);
-        for (const filter of opts.filters ?? []) query = query.where(filter.field, filter.op, filter.value);
-        if (opts.startAfterId !== undefined) {
-          query = query.orderBy('__name__');
-          if (opts.startAfterId) query = query.startAfter(opts.startAfterId);
-        }
-        if (opts.limit) query = query.limit(opts.limit);
-        const snap = await transaction.get(query);
-        return snap.docs.map(doc => ({ id: doc.id, ...decodeNestedArrays(doc.data() as D) }));
-      },
-    }, work), { readOnly: true });
-  }
-
-  async getDoc<T>(p: string): Promise<(T & { id: string }) | null> {
-    const db = await this.dbPromise;
-    const snap = await db.doc(p).get();
-    if (!snap.exists) return null;
-    return { id: snap.id, ...decodeNestedArrays(snap.data() as T) };
-  }
-
-  private indexTransaction(transaction: FirebaseFirestore.Transaction, db: FirebaseFirestore.Firestore, p: string, before: any, after: any): IndexWrite[] {
-    const writes = scheduledIndexWrites(p, before, after);
-    for (const write of writes) {
-      if (write.data) transaction.set(db.doc(write.path), write.data);
-      else transaction.delete(db.doc(write.path));
-    }
-    return writes;
-  }
-
-  async setDoc(p: string, data: Record<string, any>): Promise<void> {
-    const db = await this.dbPromise;
-    if (!isScheduledSource(p)) { await db.doc(p).set(encodeFirestoreDocument(p, data)); return; }
-    const writes = await db.runTransaction(async tx => {
-      const snap = await tx.get(db.doc(p));
-      tx.set(db.doc(p), encodeFirestoreDocument(p, data));
-      return this.indexTransaction(tx, db, p, snap.exists ? decodeNestedArrays(snap.data()) : null, data);
-    });
-    await notifyScheduledWrites(writes);
-  }
-
-  async createDocIfMissing(p: string, data: Record<string, any>): Promise<boolean> {
-    const db = await this.dbPromise;
-    const result = await db.runTransaction(async tx => {
-      const snap = await tx.get(db.doc(p));
-      if (snap.exists) return null;
-      tx.create(db.doc(p), encodeFirestoreDocument(p, data));
-      return this.indexTransaction(tx, db, p, null, data);
-    });
-    if (result) await notifyScheduledWrites(result);
-    return result !== null;
-  }
-
-  async updateDoc(p: string, data: Record<string, any>): Promise<void> {
-    const db = await this.dbPromise;
-    if (!isScheduledSource(p)) { await db.doc(p).set(encodeFirestoreDocument(p, data), { merge: true }); return; }
-    const writes = await db.runTransaction(async tx => {
-      const snap = await tx.get(db.doc(p));
-      const before = snap.exists ? decodeNestedArrays(snap.data()) : null;
-      tx.set(db.doc(p), encodeFirestoreDocument(p, data), { merge: true });
-      return this.indexTransaction(tx, db, p, before, { ...before, ...data });
-    });
-    await notifyScheduledWrites(writes);
-  }
-
-  async deleteDoc(p: string): Promise<void> {
-    const db = await this.dbPromise;
-    if (!isScheduledSource(p)) { await db.doc(p).delete(); return; }
-    const writes = await db.runTransaction(async tx => {
-      const snap = await tx.get(db.doc(p));
-      tx.delete(db.doc(p));
-      return this.indexTransaction(tx, db, p, snap.exists ? decodeNestedArrays(snap.data()) : null, null);
-    });
-    await notifyScheduledWrites(writes);
-  }
-
-  async deleteTree(p: string): Promise<void> {
-    const db = await this.dbPromise;
-    const docRef = db.doc(p);
-    // Recursively walk every subcollection and delete each doc, then drop the
-    // root doc. Done in batches because firestore doesn't ship a recursive
-    // delete in the regular SDK — the admin SDK does (`firestore.recursiveDelete`)
-    // but only for paths it owns; this works for both subtree shapes.
-    const walk = async (ref: FirebaseFirestore.DocumentReference): Promise<void> => {
-      const subs = await ref.listCollections();
-      for (const sub of subs) {
-        const snap = await sub.get();
-        for (const d of snap.docs) await walk(d.ref);
-      }
-      await ref.delete();
-    };
-    await walk(docRef);
-  }
-
-  async listDocs<T>(
-    p: string,
-    opts: { filters?: Filter[]; limit?: number; startAfterId?: string } = {}
-  ): Promise<Array<T & { id: string }>> {
-    const db = await this.dbPromise;
-    let q: FirebaseFirestore.Query = db.collection(p);
-    for (const f of opts.filters ?? []) {
-      q = q.where(f.field, f.op as FirebaseFirestore.WhereFilterOp, f.value);
-    }
-    if (opts.startAfterId !== undefined) {
-      q = q.orderBy('__name__');
-      if (opts.startAfterId) q = q.startAfter(opts.startAfterId);
-    }
-    if (opts.limit) q = q.limit(opts.limit);
-    const snap = await q.get();
-    return snap.docs.map((d) => ({ id: d.id, ...decodeNestedArrays(d.data() as T) }));
-  }
-
-  async addDoc(p: string, data: Record<string, any>): Promise<string> {
-    const db = await this.dbPromise;
-    const ref = db.collection(p).doc();
-    await this.setDoc(ref.path, data);
-    return ref.id;
-  }
-
-  async compareAndReplaceDoc(p: string, expected: Record<string, any> | null, data: Record<string, any>, effects: ConditionalEffect[] = []): Promise<boolean> {
-    const db = await this.dbPromise;
-    const result = await db.runTransaction(async tx => {
-      const ref = db.doc(p), snap = await tx.get(ref);
-      const current = snap.exists ? { id: snap.id, ...decodeNestedArrays(snap.data()!) } : null;
-      if (!isDeepStrictEqual(current, expected)) return null;
-      const previous = await Promise.all(effects.map(effect => tx.get(db.doc(effect.path))));
-      if (effects.some((effect, i) => Object.hasOwn(effect, 'expected') && !isDeepStrictEqual(
-        previous[i].exists ? { id: previous[i].id, ...decodeNestedArrays(previous[i].data()!) } : null, effect.expected))) return null;
-      tx.set(ref, encodeFirestoreDocument(p, data));
-      const writes = this.indexTransaction(tx, db, p, current, data);
-      effects.forEach((effect, i) => {
-        if (effect.guardOnly) return;
-        const before = previous[i].exists ? decodeNestedArrays(previous[i].data()) : null;
-        if (effect.replace) tx.set(db.doc(effect.path), encodeFirestoreDocument(effect.path, effect.data));
-        else tx.set(db.doc(effect.path), encodeFirestoreDocument(effect.path, effect.data), { merge: true });
-        writes.push(...this.indexTransaction(tx, db, effect.path, before, effect.replace ? effect.data : { ...before, ...effect.data }));
-      });
-      return writes;
-    });
-    if (result) await notifyScheduledWrites(result);
-    return result !== null;
-  }
-
-  async compareAndUpdateDoc<T>(p: string, check: (current: T & { id: string }) => boolean, data: Record<string, any>): Promise<(T & { id: string }) | null> {
-    const db = await this.dbPromise;
-    const result = await db.runTransaction(async tx => {
-      const ref = db.doc(p), snap = await tx.get(ref);
-      if (!snap.exists) return null;
-      const current = { id: snap.id, ...decodeNestedArrays(snap.data() as T) } as T & { id: string };
-      if (!check(current)) return null;
-      tx.set(ref, encodeFirestoreDocument(p, data), { merge: true });
-      return { current, writes: this.indexTransaction(tx, db, p, current, { ...current, ...data }) };
-    });
-    if (result) await notifyScheduledWrites(result.writes);
-    return result?.current ?? null;
-  }
-
-}
-
 // ─── Factory ─────────────────────────────────────────────────────────────
 
 function defaultFixturesDir(): string {
@@ -536,18 +359,44 @@ function defaultFixturesDir(): string {
 }
 
 let cached: ReadWriteStore | null = null;
+let runtimeStore: (() => ReadWriteStore) | null = null;
+
+/** The Worker entry registers the Durable Object store before serving requests. */
+export function setRuntimeStore(factory: (() => ReadWriteStore) | null): void {
+  runtimeStore = factory;
+  cached = null;
+}
 
 export function getStore(): ReadWriteStore {
   const snapshot = readContext.getStore();
   if (snapshot) return snapshot;
   if (cached) return cached;
-  if (isFirebaseAdminConfigured()) {
-    cached = new FirestoreStore();
+  if (runtimeStore) return (cached = runtimeStore());
+  const sqlite = process.env.TYPEROLL_STORE?.match(/^sqlite:(.+)$/)?.[1];
+  if (sqlite) {
+    cached = createSqliteStore(sqlite);
   } else {
     const dir = process.env.TYPEROLL_FIXTURES_DIR || defaultFixturesDir();
     cached = new FixtureStore(dir);
   }
   return cached;
+}
+
+export type StoreBackend = 'durable_object' | 'sqlite' | 'fixtures';
+
+/**
+ * Which backend `getStore()` serves. Only the Durable Object store is a
+ * deployment backend; fixtures and a local SQLite file are versioned with the
+ * source or belong to one developer's machine.
+ */
+export function storeBackend(env: Record<string, string | undefined> = process.env): StoreBackend {
+  if (runtimeStore) return 'durable_object';
+  return /^sqlite:./.test(env.TYPEROLL_STORE ?? '') ? 'sqlite' : 'fixtures';
+}
+
+/** The SQL document store on a local SQLite file (`TYPEROLL_STORE=sqlite:<file>`). */
+function createSqliteStore(file: string): ReadWriteStore {
+  return new SqlStore(localTransport(new SqlDocumentEngine(nodeSqliteDriver(file))), generateId);
 }
 
 export function generateDocId(): string {

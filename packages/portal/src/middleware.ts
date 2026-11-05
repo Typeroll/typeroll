@@ -1,15 +1,11 @@
 import { withAccessRequest, OrganizationAccessError } from './lib/organization-access';
-// load-env runs at module init, so .env values are in process.env before
-// any route handler tries to read them. Mounted here because middleware is
-// loaded once at SSR boot — earlier than any per-route module import.
-import './lib/load-env';
 import { requireCurrentDataSchema } from './lib/data-schema';
 import { defineMiddleware } from 'astro:middleware';
 import { MAIN_VERSION_ID } from '@typeroll/shared';
 import { enforceCsrf } from './lib/csrf';
-import { getSessionIdentity, sessionNeedsRefresh, refreshSessionForUser } from './lib/auth';
-import { firebaseApiKey } from './lib/runtime-config-server';
+import { getSessionIdentity } from './lib/auth';
 import { serviceRole } from './lib/release';
+import { schedulingMode } from './lib/scheduling/transport';
 import { StorageDocumentError } from './lib/firestore-codec';
 
 /**
@@ -37,13 +33,6 @@ const FORMS_ROLE_ALLOWED = [
   '/api/version',
 ];
 
-const WORKER_ROLE_ALLOWED = [
-  '/api/internal/',
-  '/api/healthz',
-  '/api/readyz',
-  '/api/version',
-];
-
 const ONBOARDING_EXEMPT_PREFIXES = [
   '/onboarding',
   '/login',
@@ -52,11 +41,9 @@ const ONBOARDING_EXEMPT_PREFIXES = [
   '/favicon',
 ];
 
-// Scheduled-publishing sweep, local-dev flavor. Production uses Cloud
-// Scheduler → /api/internal/publish-sweep (OIDC-verified); in dev there is
-// no scheduler, so the first request lazily starts a once-a-minute
-// in-process interval. Keyed off DEPLOY_QUEUE like the deploy path: any
-// value other than in-process means a real scheduler owns the cadence.
+// Scheduled-publishing sweep, local-dev flavor. Deployed Workers use store
+// alarms and the Cron trigger; with the local scheduler the first request
+// lazily starts a once-a-minute in-process interval.
 // Sweep errors are logged and swallowed — a broken sweep must never take
 // the portal down.
 let sweepTimerStarted = false;
@@ -64,8 +51,8 @@ function ensureDevPublishSweep(): void {
   if (sweepTimerStarted) return;
   sweepTimerStarted = true;
   if (serviceRole() !== 'portal') return;
-  const queueMode = process.env.DEPLOY_QUEUE ?? 'in_process';
-  if (queueMode !== 'in_process') return;
+  // Deployed Workers sweep from their Cron trigger; only local development polls.
+  if (schedulingMode() !== 'local') return;
   setInterval(() => {
     requireCurrentDataSchema().then(() => import('./lib/scheduled-publish'))
       .then(({ runPublishSweep }) => runPublishSweep())
@@ -123,20 +110,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     }
   }
   const role = serviceRole();
-  if (role === 'worker' && process.env.DEPLOY_QUEUE === 'firestore') {
-    const { ensureFirestoreWorkerLoop } = await import('./lib/deploy/firestore-worker');
-    ensureFirestoreWorkerLoop();
-  } else {
-    ensureDevPublishSweep();
-  }
+  ensureDevPublishSweep();
   if (role === 'forms') {
     const path = new URL(context.request.url).pathname;
     if (!FORMS_ROLE_ALLOWED.some((p) => path.startsWith(p))) {
-      return new Response('Not found', { status: 404 });
-    }
-  } else if (role === 'worker') {
-    const path = new URL(context.request.url).pathname;
-    if (!WORKER_ROLE_ALLOWED.some((p) => path.startsWith(p))) {
       return new Response('Not found', { status: 404 });
     }
   }
@@ -164,21 +141,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
       return context.redirect(pathname === '/app' ? '/onboarding' : `/onboarding?next=${encodeURIComponent(context.url.pathname + context.url.search)}`);
     }
 
-    // Rolling session refresh: Firebase caps one session cookie at 14 days,
-    // so "signed in until I log out" is implemented by re-minting the cookie
-    // on activity — at most ~daily (sessionNeedsRefresh), page GETs only,
-    // and strictly best-effort: a refresh failure must never break the page
-    // view, the current cookie is still valid.
-    if (session?.orgId && context.request.method === 'GET' && sessionNeedsRefresh(session)) {
-      const apiKey = firebaseApiKey();
-      if (apiKey) {
-        try {
-          await refreshSessionForUser(context.cookies, session.userId, apiKey);
-        } catch {
-          /* best-effort — keep serving with the existing cookie */
-        }
-      }
-    }
   }
 
   try { return applyFramingPolicy(pathname, await withAccessRequest(context.request, next)); }

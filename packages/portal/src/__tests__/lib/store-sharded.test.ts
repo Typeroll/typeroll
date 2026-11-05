@@ -1,0 +1,138 @@
+import { describe, expect, it } from 'vitest';
+import { SqlDocumentEngine } from '../../lib/store/sql-engine';
+import { localTransport, type StoreTransport } from '../../lib/store/sql-store';
+import { nodeSqliteDriver } from '../../lib/store/node-sqlite';
+import { ShardedStore, ownerPath, shardFor } from '../../lib/store/sharded-store';
+
+const make = (wrap: (name: string, transport: StoreTransport) => StoreTransport = (_n, t) => t) => {
+  const engines = new Map<string, SqlDocumentEngine>();
+  let id = 0;
+  const store = new ShardedStore({ transport: name => {
+    if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+    return wrap(name, localTransport(engines.get(name)!));
+  } }, () => `doc${++id}`);
+  return { store, engines };
+};
+
+it('routes site, organization and global paths to their objects', () => {
+  expect(shardFor('organizations/o/sites/s/versions/main/pages/p')).toEqual({ kind: 'site', org: 'o', site: 's' });
+  expect(shardFor('organizations/o/sites/s')).toEqual({ kind: 'site', org: 'o', site: 's' });
+  expect(shardFor('organizations/o/members/u')).toEqual({ kind: 'org', org: 'o' });
+  expect(shardFor('organizations/o/sites')).toEqual({ kind: 'org', org: 'o' });
+  expect(shardFor('api_key_lookup/k')).toEqual({ kind: 'global' });
+});
+
+it('keeps site data in a uid-named object and lists sites from the organization', async () => {
+  const { store, engines } = make();
+  await store.setDoc('organizations/o/sites/s', { name: 'Site' });
+  await store.setDoc('organizations/o/sites/s/versions/main/pages/p', { title: 'Home' });
+  const uid = await store.siteUid('o', 's');
+  expect(engines.has(`site:${uid}`)).toBe(true);
+  expect(engines.get(`site:${uid}`)!.get('organizations/o/sites/s/versions/main/pages/p')).not.toBeNull();
+  expect(engines.get('org:o')!.get('organizations/o/sites/s/versions/main/pages/p')).toBeNull();
+  expect(await store.listDocs('organizations/o/sites')).toEqual([{ id: 's', name: 'Site' }]);
+  await store.updateDoc('organizations/o/sites/s', { name: 'Renamed' });
+  expect(await store.listDocs('organizations/o/sites')).toEqual([{ id: 's', name: 'Renamed' }]);
+  await store.deleteDoc('organizations/o/sites/s');
+  expect(await store.listDocs('organizations/o/sites')).toEqual([]);
+});
+
+it('moves a site to another organization by its ownership row, without copying its data', async () => {
+  const { store } = make();
+  await store.setDoc('organizations/a/sites/s/versions/main/pages/p', { title: 'Home' });
+  const uid = await store.siteUid('a', 's');
+  // The transfer itself: the new owner row points at the same object.
+  await store.setDoc(ownerPath('b', 's'), { uid, org: 'b', site: 's' });
+  expect(await store.siteUid('b', 's')).toBe(uid);
+});
+
+it('refuses a guard on another object instead of pretending it is atomic', async () => {
+  const { store } = make();
+  await store.setDoc('organizations/o/sites/s/mail_deliveries/d', { state: 'new' });
+  const current = await store.getDoc('organizations/o/sites/s/mail_deliveries/d');
+  await expect(store.compareAndReplaceDoc('organizations/o/sites/s/mail_deliveries/d', current, { state: 'sent' },
+    [{ path: 'mail_delivery_routes/r', data: {}, expected: null }])).rejects.toThrow(/cannot be atomic/);
+  expect(await store.compareAndReplaceDoc('organizations/o/sites/s/mail_deliveries/d', current, { state: 'sent' },
+    [{ path: 'mail_delivery_routes/r', data: { site: 's' }, replace: true }])).toBe(true);
+  expect(await store.getDoc('mail_delivery_routes/r')).toEqual({ id: 'r', site: 's' });
+});
+
+it('mirrors a site document changed by a merge effect, exactly', async () => {
+  const { store } = make();
+  await store.setDoc('organizations/o/sites/s', { name: 'Site', pending: null });
+  await store.setDoc('organizations/o/sites/s/versions/main/pages/p', { status: 'draft' });
+  const page = await store.getDoc('organizations/o/sites/s/versions/main/pages/p');
+  expect(await store.compareAndReplaceDoc('organizations/o/sites/s/versions/main/pages/p', page, { status: 'published' },
+    [{ path: 'organizations/o/sites/s', data: { pending: 'now' } }])).toBe(true);
+  expect(await store.getDoc('organizations/o/sites/s')).toEqual({ id: 's', name: 'Site', pending: 'now' });
+  expect(await store.listDocs('organizations/o/sites')).toEqual([{ id: 's', name: 'Site', pending: 'now' }]);
+});
+
+it('re-applies an outbox entry left behind by a crash', async () => {
+  let fail = true;
+  const { store } = make((name, transport) => name !== 'org:o' ? transport : { ...transport,
+    commit: async (...args) => { if (fail) throw new Error('object unavailable'); return transport.commit(...args); } });
+  await expect(store.setDoc('organizations/o/sites/s', { name: 'Site' })).rejects.toThrow('object unavailable');
+  expect(await store.getDoc('organizations/o/sites/s')).toEqual({ id: 's', name: 'Site' });
+  fail = false;
+  expect(await store.drainOutbox(await store.shardName('organizations/o/sites/s'))).toBe(1);
+  expect(await store.listDocs('organizations/o/sites')).toEqual([{ id: 's', name: 'Site' }]);
+});
+
+describe('organization listing', () => {
+  it('lists organizations from their copies in the global object', async () => {
+    const engines = new Map<string, SqlDocumentEngine>();
+    const store = new ShardedStore({ transport: name => {
+      if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+      return localTransport(engines.get(name)!);
+    } }, () => 'id');
+    await store.setDoc('organizations/a', { name: 'A' });
+    expect(await store.compareAndReplaceDoc('organizations/b', null, { name: 'B' })).toBe(true);
+    await store.updateDoc('organizations/a', { plan: 'pro' });
+    expect((await store.listDocs<{ name: string; plan?: string }>('organizations')).map(o => [o.id, o.name, o.plan])).toEqual([['a', 'A', 'pro'], ['b', 'B', undefined]]);
+    await store.deleteDoc('organizations/b');
+    expect((await store.listDocs('organizations')).map(o => o.id)).toEqual(['a']);
+    expect(await engines.get('org:a')!.get('organizations/a')).toBeTruthy();
+  });
+});
+
+describe('rate-limit counters', () => {
+  it('spreads hashed counters over counter objects and keeps them off the global object', async () => {
+    const engines = new Map<string, SqlDocumentEngine>();
+    const store = new ShardedStore({ transport: name => {
+      if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+      return localTransport(engines.get(name)!);
+    } }, () => 'id');
+    const a = `rate_limits/ab${'0'.repeat(62)}`, b = `auth_rate_limits/cd${'1'.repeat(62)}`;
+    expect(shardFor(a)).toEqual({ kind: 'counter', bucket: 'ab' });
+    expect(await store.compareAndReplaceDoc(a, null, { count: 1 })).toBe(true);
+    await store.setDoc(b, { count: 2 });
+    expect(await store.getDoc(a)).toMatchObject({ count: 1 });
+    expect([...engines.keys()].sort()).toEqual(['counters:ab', 'counters:cd']);
+    expect(shardFor('rate_limits/not-a-hash')).toEqual({ kind: 'global' });
+    await expect(store.listDocs('rate_limits')).rejects.toThrow(/counter objects/);
+    expect(shardFor('organizations/o/sites/s/rate_limits/x').kind).toBe('site');
+  });
+});
+
+describe('mirrored copies', () => {
+  it('never lets an older copy overwrite a newer one, and hides the revision from readers', async () => {
+    const engines = new Map<string, SqlDocumentEngine>();
+    const transports = new Map<string, StoreTransport>();
+    const store = new ShardedStore({ transport: name => {
+      if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+      if (!transports.has(name)) transports.set(name, localTransport(engines.get(name)!));
+      return transports.get(name)!;
+    } }, () => 'id');
+    await store.setDoc('organizations/o/sites/s', { name: 'v1' });
+    // A slow writer read v1 and applies its copy after a faster writer's v2.
+    const siteObject = [...engines.keys()].find(name => name.startsWith('site:'))!;
+    const stale = engines.get(siteObject)!.get('organizations/o/sites/s')!;
+    await store.setDoc('organizations/o/sites/s', { name: 'v2' });
+    await store.objectStore('org:o').setDoc('organizations/o/sites/s', { ...stale.data, _mirror_revision: stale.revision });
+    await store.updateDoc('organizations/o/sites/s', { note: 'v3' });
+    const [copy] = await store.listDocs<{ name: string; note?: string }>('organizations/o/sites');
+    expect(copy).toEqual({ id: 's', name: 'v2', note: 'v3' });
+    expect(Object.keys((await store.listDocs('organizations'))[0] ?? {})).not.toContain('_mirror_revision');
+  });
+});

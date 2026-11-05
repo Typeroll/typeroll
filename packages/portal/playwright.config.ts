@@ -1,30 +1,15 @@
-import os from 'node:os';
-import path from 'node:path';
 import { defineConfig, devices } from '@playwright/test';
 import { resolveE2ETarget } from '../../scripts/lib/e2e-target.mjs';
 
 /**
- * Playwright config for portal e2e. Local runs build the real server artifact
- * and bind it to port 4322 (one above the default dev port so concurrent local
- * work doesn't conflict). The server is started/stopped per `webServer` config.
+ * Playwright config for portal e2e. Local runs build the portal Worker and run
+ * the built bundle in `wrangler dev --local` on port 4322 (one above the
+ * default dev port so concurrent local work doesn't conflict); see
+ * tests/e2e/start-worker.mjs. Every run starts from an empty Durable Object
+ * store in a fresh temporary directory, which tests/e2e/global-setup.ts seeds
+ * with the fixture content through the local-E2E-only seeding route.
  */
 
-/**
- * Where the e2e dev server keeps its datastore.
- *
- * Without this the server writes to `packages/site-template/fixtures/`,
- * which is committed seed content — so driving the real editor left the
- * working tree dirty (a rewritten `pages/home.json`, fresh
- * `pages/*\/revisions/*.json`, a `forms/` collection) after every run.
- * Ignoring those paths isn't available to us: the same directories hold
- * seed content the smoke build asserts on.
- *
- * The path is a fixed name rather than an `mkdtemp` for two reasons.
- * Playwright re-evaluates this config in its worker processes, so a
- * module-scope `mkdtempSync` would strand one orphan tree per worker.
- * Freshness comes from `seed-fixtures.mjs` wiping and re-copying on each start.
- */
-const E2E_FIXTURES_DIR = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
 const LOCAL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
 const target = resolveE2ETarget(process.env);
 const fullRemoteBrowsers = process.env.TYPEROLL_E2E_FULL_BROWSERS === 'true';
@@ -32,33 +17,45 @@ if (!target.isRemote && !process.env.TYPEROLL_E2E_AUTH_SECRET) {
   process.env.TYPEROLL_E2E_AUTH_SECRET = LOCAL_E2E_AUTH_SECRET;
 }
 
+/**
+ * The Worker's variables for local E2E mode (src/lib/local-e2e.ts). Written to
+ * a per-run `.dev.vars`; there is deliberately no AUTH_SECRET, so the signed
+ * persona exchange and the development user are available.
+ */
+export const LOCAL_WORKER_VARS: Record<string, string> = {
+  TYPEROLL_LOCAL_E2E: 'allow',
+  // Local workerd has no Durable Object jurisdictions.
+  STORE_JURISDICTION: 'none',
+  PORTAL_PUBLIC_URL: target.portalUrl,
+  TYPEROLL_ORGANIZATION_ACCESS_POLICY: JSON.stringify({ initial_days: 30, read_days: 90, own_smtp: true, contact_url: 'https://example.invalid/trial' }),
+  // Organization AI keys are stored encrypted. The Anthropic key check goes
+  // to the stub that organization-ai.spec.ts serves on this port; no other
+  // spec reaches Anthropic, and there is no server-wide AI key.
+  INTEGRATIONS_SECRET_KEY: 'e2e-only-integrations-secret-key-at-least-32-characters',
+  ANTHROPIC_BASE_URL: 'http://127.0.0.1:4329',
+  FORMS_HMAC_SECRET: 'e2e-only-form-signing-secret-32-characters-minimum',
+  MCP_OAUTH_SIGNING_KEY: 'e2e-only-mcp-signing-secret-at-least-32-characters',
+  PREVIEW_HMAC_SECRET: 'e2e-only-preview-signing-secret-32-characters-minimum',
+  ACCOUNT_EMAIL: 'log',
+  TYPEROLL_E2E_AUTH_SECRET: process.env.TYPEROLL_E2E_AUTH_SECRET ?? '',
+};
+
 const webServer = target.isRemote ? undefined : {
-  command: `node ./tests/e2e/seed-fixtures.mjs "${E2E_FIXTURES_DIR}" && npm run build && node ./dist/server/entry.mjs`,
-  url: target.portalUrl,
-  reuseExistingServer: false,
+  command: `node ./tests/e2e/start-worker.mjs ${new URL(target.portalUrl).port || '4322'}`,
+  url: `${target.portalUrl}/api/healthz`,
+  // Opt-in for iterating on specs against a server started by hand with
+  // start-worker.mjs; a normal run always starts a fresh Worker and store.
+  reuseExistingServer: process.env.TYPEROLL_E2E_REUSE_SERVER === 'true',
   timeout: 360_000,
   stdout: 'pipe' as const,
   stderr: 'pipe' as const,
-  env: {
-    NODE_ENV: 'test',
-    TYPEROLL_ORGANIZATION_ACCESS_POLICY: JSON.stringify({ initial_days: 30, read_days: 90, own_smtp: true, contact_url: 'https://example.invalid/trial' }),
-    HOST: '127.0.0.1',
-    PORT: '4322',
-    PORTAL_PUBLIC_URL: target.portalUrl,
-    FIREBASE_SERVICE_ACCOUNT: '',
-    // Organization AI keys are stored encrypted. The Anthropic key check goes
-    // to the stub that organization-ai.spec.ts serves on this port; no other
-    // spec reaches Anthropic, and there is no server-wide AI key.
-    INTEGRATIONS_SECRET_KEY: 'e2e-only-integrations-secret-key-at-least-32-characters',
-    ANTHROPIC_BASE_URL: 'http://127.0.0.1:4329',
-    FORMS_HMAC_SECRET: 'e2e-only-form-signing-secret-32-characters-minimum',
-    MCP_OAUTH_SIGNING_KEY: 'e2e-only-mcp-signing-secret-at-least-32-characters',
-    PREVIEW_HMAC_SECRET: 'e2e-only-preview-signing-secret-32-characters-minimum',
-    DEPLOY_QUEUE: 'in_process',
-    TYPEROLL_FIXTURES_DIR: E2E_FIXTURES_DIR,
-    TYPEROLL_E2E_AUTH_SECRET: process.env.TYPEROLL_E2E_AUTH_SECRET,
-  },
+  env: { TYPEROLL_E2E_WORKER_VARS: JSON.stringify(LOCAL_WORKER_VARS) },
+  // Playwright SIGKILLs the server by default; SIGTERM lets start-worker.mjs
+  // stop wrangler and remove the run's state directory and `.dev.vars`.
+  gracefulShutdown: { signal: 'SIGTERM' as const, timeout: 10_000 },
 };
+
+const RESERVED_NAMES_NOT_FOUND = '--host-resolver-rules=MAP *.test ~NOTFOUND, MAP *.invalid ~NOTFOUND, MAP *.example ~NOTFOUND, MAP example.com ~NOTFOUND, MAP *.example.com ~NOTFOUND';
 
 /** Specs that also run in Firefox and WebKit (`npm run test:e2e:install` installs both). */
 const CROSS_ENGINE_TESTS = /(?:editor-draft-recovery|forms-multistep-validation|address-field-parity|media-and-carousel|mobile-site-switcher|fluid-typography|contextual-spacing|design-tokens|post-card-hit-area|migration-design|link-role-hover|preview-links)\.spec\.ts/;
@@ -70,7 +67,7 @@ const CROSS_ENGINE_SPECS = [
 export default defineConfig({
   testDir: './tests/e2e',
   testMatch: target.isRemote ? /target-contract\.spec\.ts/ : undefined,
-  fullyParallel: false, // datastore writes are global per fixtures dir
+  fullyParallel: false, // the specs share one store
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
@@ -92,10 +89,14 @@ export default defineConfig({
       { name: 'webkit-desktop', grepInvert: /@server/, use: { ...devices['Desktop Safari'] } },
     ] : []),
   ] : [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Reserved names (RFC 2606/6761) never resolve. Answer them at once instead
+    // of asking the machine's resolver, which may hang: specs redirect to such
+    // hosts (OAuth clients) and must stay offline and deterministic.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { args: [RESERVED_NAMES_NOT_FOUND] } } },
     // Browser-engine-specific behaviour (native form validation) runs in
     // every engine; the rest of the suite stays Chromium-only.
     ...CROSS_ENGINE_SPECS.map(({ name, device }) => ({ name, testMatch: CROSS_ENGINE_TESTS, use: { ...devices[device] } })),
   ],
   webServer,
+  globalSetup: target.isRemote ? undefined : './tests/e2e/global-setup.ts',
 });

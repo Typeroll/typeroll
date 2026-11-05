@@ -1,8 +1,8 @@
 import type { APIRoute } from 'astro';
 import { clearSession, revokeCurrentSession } from '../../../lib/auth';
 
-// Sign-out revokes this browser's Firebase sign-in on the server, so a copy of
-// the cookie stops working as well, then deletes the cookie. Other devices and
+// Sign-out deletes this browser's session on the server, so a copy of the
+// cookie stops working as well, then deletes the cookie. Other devices and
 // OAuth/MCP connections stay signed in.
 export const POST: APIRoute = async ({ cookies, redirect }) => {
   try {

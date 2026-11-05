@@ -65,7 +65,7 @@ and the [connection guide](packages/docs-site/src/content/docs/getting-started/m
 - the WordPress migration workflow, URL coverage tools, and helper plugin;
 - a REST API and `@typeroll/mcp-server` for agent-driven site management;
 - static site generation and Cloudflare Pages deployment support;
-- Firebase/Firestore, R2, and local fixture-store adapters.
+- the Durable Object document store, R2 media storage, and a local fixture store.
 
 Forms is a core module in both the open-source edition and Typeroll Cloud. A
 self-hosted installation stores submissions in its own datastore and sends
@@ -99,7 +99,8 @@ npm run dev:portal
 ```
 
 The development server uses the fixture datastore and a local development
-identity when Firebase is not configured. Open `http://localhost:4321`.
+identity when sign-in (`AUTH_SECRET`) is not configured. Open
+`http://localhost:4321`.
 
 Run the static renderer separately with:
 
@@ -114,23 +115,21 @@ node scripts/oss-release-check.mjs
 ```
 
 Maintainer releases use one ordered train after successful CI on public
-`main`: immutable Core image and tag, MCP package and tag, public docs, then a
-Cloud-consumable release manifest. See [docs/releasing.md](docs/releasing.md).
+`main`: immutable Core Worker bundle and tag, MCP package and tag, public docs,
+then a Cloud-consumable release manifest. See [docs/releasing.md](docs/releasing.md).
 
 See the [self-hosting guide](https://typeroll.com/docs/guides/self-hosting/)
 for production configuration.
 
-The supported production reference profile is fully serverless in a
-customer-owned GCP/Firebase project: Cloud Run hosts portal and Forms, Cloud
-Tasks invokes deploy work, and Cloud Scheduler invokes publish sweeps. It uses
-one immutable Core image digest and Application Default Credentials, with no
-VM, service-account key, or always-running worker. Start with
-`config/self-host-gcp.example.json`, then run `npm run self-host:gcp:plan` and
-the dry-run-first `npm run self-host:gcp:apply`. The read-only
-`npm run self-host:gcp:doctor` verifies the control plane without reading
-secret values. `compose.yaml` remains a portable fallback, not the supported
-production profile. See the self-hosting guide before changing remote
-resources.
+A self-hosted installation runs in your own Cloudflare account: the portal and
+Forms Workers from the same released, provenance-verified bundle Typeroll Cloud
+deploys, Durable Objects for content and accounts, and R2 for media, all in the
+EU jurisdiction. Start with `config/self-host-cloudflare.example.json` and
+`.env.self-host.example`, review `npm run self-host:cloudflare:plan`, then run
+`npm run self-host:cloudflare:apply`. `npm run self-host:cloudflare:doctor`
+checks both Workers, and `self-host:cloudflare:backup` / `restore` export and
+restore the document store. The earlier Google Cloud profile and Docker Compose
+fallback are removed.
 
 ## Cloud and premium products
 

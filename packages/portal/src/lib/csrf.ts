@@ -18,12 +18,11 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 //   /api/extensions/token — server-to-server launch-code exchange authenticated
 //     with an Extension client secret and a short-lived single-use code
 //   /api/auth/dev-session — local-only test authentication
-//   /api/internal/deploy-worker — Cloud Tasks POSTs here with a Google
-//     OIDC token (Bearer eyJ...) verified inside the route. Without
-//     this exemption the CSRF check rejected the worker's invocation
-//     and deploy jobs stayed stuck in 'queued' (the bearer doesn't
-//     start with typeroll_live_ so the API-key bypass didn't apply).
+const CREDENTIAL_PATH = /^\/api\/auth\/(?!dev-session$|e2e-session$|logout$)/;
+
 const CSRF_EXEMPT_PATHS = new Set([
+  // Bearer-token only (TYPEROLL_STORE_TRANSFER_TOKEN), never cookies; 404 without it.
+  '/api/internal/store-transfer',
   // Exact SNS topic allowlist + certificate/signature verification in the route.
   '/api/webhooks/email/ses',
   '/api/webhooks/email/inbound-ses',
@@ -52,19 +51,6 @@ const CSRF_EXEMPT_PREFIXES = [
   // generic portal-origin check must not reject that customer-site Origin
   // before the route-specific check can run.
   '/api/extensions/public-token/',
-  // Every /api/internal/ route is called by a Google service (Cloud Tasks,
-  // Cloud Scheduler) with an OIDC token and NO Origin header, and each one
-  // verifies that token itself — the signature IS the auth. Exempting the
-  // prefix rather than listing paths is deliberate: /api/internal/deploy-worker
-  // was listed individually after this exact check silently 403'd it and left
-  // deploy jobs stuck in 'queued', and /api/internal/publish-sweep then hit the
-  // identical wall, which is how the sweep could never have run even once a
-  // scheduler job existed. A third route would have been a third occurrence.
-  //
-  // ⚠️ The trailing slash is load-bearing. '/api/internal' would also match
-  // '/api/internal-admin/*' — the cross-tenant operator console, which IS
-  // cookie-authed and browser-driven and must keep its CSRF protection.
-  '/api/internal/',
 ];
 
 // Hosts the portal is legitimately served on. We can't trust `url.origin`
@@ -128,7 +114,8 @@ function originAllowed(origin: string): boolean {
 export function enforceCsrf(args: { request: Request; url: URL }): Response | null {
   const { request, url } = args;
   if (SAFE_METHODS.has(request.method)) return null;
-  if (url.pathname === '/api/auth/session' || url.pathname === '/api/mcp/oauth/complete') return requireAuthOrigin(request);
+  // Credential endpoints (Better Auth and the confirmation routes) require this exact portal origin.
+  if (CREDENTIAL_PATH.test(url.pathname) || url.pathname === '/api/mcp/oauth/complete') return requireAuthOrigin(request);
   if (CSRF_EXEMPT_PATHS.has(url.pathname)) return null;
   if (CSRF_EXEMPT_PREFIXES.some((p) => url.pathname.startsWith(p))) return null;
 

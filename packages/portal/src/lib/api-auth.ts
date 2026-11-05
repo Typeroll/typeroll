@@ -243,7 +243,7 @@ async function requireExtensionApiCredential(
   if (isWrite && isArchivedSite(site)) {
     return { ok: false, response: json({ error: ARCHIVED_SITE_MESSAGE }, 409) };
   }
-  const limit = rateLimit(`${isWrite ? 'ew' : 'er'}:${installationId}`, isWrite ? WRITE_LIMIT : READ_LIMIT, WINDOW_MS);
+  const limit = await rateLimit(`${isWrite ? 'ew' : 'er'}:${installationId}`, isWrite ? WRITE_LIMIT : READ_LIMIT, WINDOW_MS, { scope: paths.site(ownerOrgId, urlSiteId) });
   if (!limit.allowed) return { ok: false, response: json({ error: 'Rate limit exceeded' }, 429) };
   return {
     ok: true,
@@ -345,7 +345,7 @@ async function resolveAnyApiKey(request: Request): Promise<GuardResult<ApiContex
     }
     const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
     if (isWrite && verified.readOnly) return { ok: false, response: json({ error: 'This token is read-only.', code: 'token_read_only' }, 403) };
-    const rl = rateLimit(`${isWrite ? 'w' : 'r'}:${verified.prefix}`, isWrite ? WRITE_LIMIT : READ_LIMIT, WINDOW_MS);
+    const rl = await rateLimit(`${isWrite ? 'w' : 'r'}:${verified.prefix}`, isWrite ? WRITE_LIMIT : READ_LIMIT, WINDOW_MS);
     if (!rl.allowed) return { ok: false, response: json({ error: 'Rate limit exceeded' }, 429) };
     return { ok: true, value: {
       personalUserId: verified.personalUserId, personalAllowedOrgIds: verified.allowedOrgIds, orgId, tokenOrgId: orgId, tokenSiteId: null,
@@ -381,7 +381,7 @@ async function resolveAnyApiKey(request: Request): Promise<GuardResult<ApiContex
 
   const isWrite = request.method !== 'GET' && request.method !== 'HEAD';
   const limit = isWrite ? WRITE_LIMIT : READ_LIMIT;
-  const rl = rateLimit(`${isWrite ? 'w' : 'r'}:${verified.prefix}`, limit, WINDOW_MS);
+  const rl = await rateLimit(`${isWrite ? 'w' : 'r'}:${verified.prefix}`, limit, WINDOW_MS);
   if (!rl.allowed) {
     const retryAfter = Math.ceil((rl.resetAt - Date.now()) / 1000);
     return {
@@ -515,7 +515,7 @@ async function resolveApiKey(
   // chatty read agent doesn't starve a deploy-trigger write.
   const bucketKey = `${isWrite ? 'w' : 'r'}:${verified.prefix}`;
   const limit = isWrite ? WRITE_LIMIT : READ_LIMIT;
-  const rl = rateLimit(bucketKey, limit, WINDOW_MS);
+  const rl = await rateLimit(bucketKey, limit, WINDOW_MS);
   if (!rl.allowed) {
     const retryAfter = Math.ceil((rl.resetAt - Date.now()) / 1000);
     return {

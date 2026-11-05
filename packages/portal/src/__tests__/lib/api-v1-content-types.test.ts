@@ -266,9 +266,11 @@ describe('changing a Page content type through the public API', () => {
     const { getStore } = await import('../../lib/datastore');
     const store = getStore();
     const replace = store.compareAndReplaceDoc.bind(store);
-    const spy = vi.spyOn(store, 'compareAndReplaceDoc').mockImplementationOnce(async (path, expected, data) => {
-      await store.updateDoc(path, { title: 'Concurrent edit' });
-      return replace(path, expected, data);
+    // Interfere with the page write only (the API key's rate limit also uses compare-and-replace).
+    let interfered = false;
+    const spy = vi.spyOn(store, 'compareAndReplaceDoc').mockImplementation(async (path, expected, data, effects) => {
+      if (!interfered && path === paths.page(ORG, SITE, created.id, 'main')) { interfered = true; await store.updateDoc(path, { title: 'Concurrent edit' }); }
+      return replace(path, expected, data, effects);
     });
     try {
       expect((await change(created.id, { content_type: 'page', fields: {} })).status).toBe(409);

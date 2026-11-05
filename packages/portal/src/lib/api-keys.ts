@@ -39,7 +39,7 @@ import { paths } from '@typeroll/shared';
 import type { Member, SiteApiKey } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { organizationMembership } from './organization-session';
-import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
+import { accountAllowsDelegatedAccess } from './identity/account-standing';
 
 const KEY_VARIANT = 'live';
 const PREFIX_BYTES = 6;  // hex-encoded → 12 chars
@@ -314,16 +314,9 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
     // checks below end it as soon as the person loses access.
     const createdAt = Date.parse(lookup.oauth_created_at || '');
     if (!Number.isFinite(createdAt)) return null;
-    if (isFirebaseAdminConfigured()) {
-      // Delegated credentials follow the person: a disabled account, revoked
-      // tokens or an unconfirmed email address (same rule as portal sessions)
-      // end access on the next request.
-      try {
-        const { getAuth } = await import('firebase-admin/auth');
-        const user = await getAuth(await getFirebaseAdminApp()).getUser(lookup.personal_user_id);
-        if (user.disabled || !user.emailVerified || Date.parse(user.tokensValidAfterTime || '') > createdAt) return null;
-      } catch { return null; }
-    }
+    // Delegated credentials follow the person: a disabled account, revoked
+    // credentials or an unconfirmed email address end access at once.
+    if (!await accountAllowsDelegatedAccess(lookup.personal_user_id, createdAt)) return null;
     if (lookup.expires_at && Date.now() >= Date.parse(lookup.expires_at)) return null;
     void recordPersonalUse(lookup.personal_user_id, parsed.prefix);
     return { orgId: '', siteId: null, prefix: parsed.prefix, personalUserId: lookup.personal_user_id,
@@ -335,13 +328,7 @@ export async function verifyApiToken(token: string): Promise<VerifiedKey | null>
     const createdAt = Date.parse(lookup.oauth_created_at || '');
     if (!Number.isFinite(createdAt)) return null;
     if (!member || !['owner', 'admin'].includes(member.role)) return null;
-    if (isFirebaseAdminConfigured()) {
-      try {
-        const { getAuth } = await import('firebase-admin/auth');
-        const user = await getAuth(await getFirebaseAdminApp()).getUser(lookup.oauth_user_id);
-        if (user.disabled || !user.emailVerified || Date.parse(user.tokensValidAfterTime || '') > Date.parse(lookup.oauth_created_at || '')) return null;
-      } catch { return null; }
-    }
+    if (!await accountAllowsDelegatedAccess(lookup.oauth_user_id, createdAt)) return null;
   }
   return { orgId: lookup.org_id, siteId: lookup.site_id, prefix: parsed.prefix };
 }
@@ -359,6 +346,9 @@ export async function recordKeyUse(
   prefix: string,
   ip?: string,
 ): Promise<void> {
+  // A personal connection has no organization and no key metadata document
+  // (recordPersonalUse covers it); `organizations//…` is not a document path.
+  if (!orgId) return;
   try {
     const store = getStore();
     const existing = await store.getDoc<SiteApiKey>(metaPath(orgId, siteId, prefix));

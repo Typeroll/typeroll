@@ -24,7 +24,8 @@ export async function adoptCustomerPublishingForMedia(orgId: string, siteId: str
   const path = paths.site(orgId, siteId);
   const site = await store.getDoc<Site>(path);
   if (!site) throw new ConnectionError('Site not found.', 404);
-  if (site.publishing_mode === 'customer_git' || retainsManagedMedia(site)) return false;
+  // A hosted site keeps its mode; media never changes how it publishes.
+  if (site.publishing_mode === 'customer_git' || site.publishing_mode === 'hosted' || retainsManagedMedia(site)) return false;
   const domains = await getSiteDomains(orgId, siteId);
   if (site.domain && !domains.desired.website_host) {
     await saveSiteDomains(orgId, siteId, {

@@ -11,7 +11,7 @@ test('remote qualification runs server contracts once and browser contracts in e
   ], { encoding: 'utf8', env: { ...process.env,
     TYPEROLL_E2E_TARGET: 'cloud', TYPEROLL_E2E_FULL_BROWSERS: 'true',
     TYPEROLL_E2E_PORTAL_URL: 'https://portal.example.invalid', TYPEROLL_E2E_FORMS_URL: 'https://forms.example.invalid',
-    TYPEROLL_E2E_EXPECTED_DIGEST: 'sha256:' + 'a'.repeat(64), TYPEROLL_E2E_FIREBASE_API_KEY: 'public-test-key',
+    TYPEROLL_E2E_EXPECTED_DIGEST: 'sha256:' + 'a'.repeat(64),
   } }));
   const byTitle = new Map();
   for (const spec of report.suites.flatMap(suite => suite.specs)) {

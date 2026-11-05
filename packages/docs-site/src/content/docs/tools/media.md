@@ -264,23 +264,27 @@ before you reference it. Returns `media_id`, `cdn_url` and `filename`.
 ## `finalize_media`
 
 Call after a successful direct upload of an image. It sets a one-year immutable
-`Cache-Control` on the stored original and generates AVIF and WebP variants if
-they are missing. It is safe to call twice. Pass `expected_sha256` (the SHA-256
+`Cache-Control` on the stored original. Responsive AVIF and WebP variants are
+not made here: the Organization's build engine generates them during the next
+publication. It is safe to call twice. Pass `expected_sha256` (the SHA-256
 of your source file) so a corrupted transfer is rejected with HTTP 422 instead
 of being cached. The response includes the stored `sha256` and `size_bytes`.
 Truncated SVG files are rejected.
 
 ## `finalize_all_media`
 
-Applies the same cache headers and variants to every item in the library that
-lacks them. Use it once on an older site. It runs synchronously, can take
+Applies the same cache headers to every item in the library that lacks them. Use it once on an older site. It runs synchronously, can take
 minutes on a large library and is idempotent.
 
 ## `generate_image_variants`
 
-Regenerates the WebP and AVIF variants (320, 640, 1024 and 1920 pixels wide,
-never upscaled) for one image. Non-image files are skipped. Prefer
-`finalize_media` for new uploads; use this tool only to rerun variants.
+Reports what happens to one image's WebP and AVIF variants (320, 640, 1024 and
+1920 pixels wide and the original width, never upscaled). Variants are made at
+build time: the Organization's build engine generates them during the next
+publication, from the image in Organization storage, so the response says
+`variants_pending: true` and nothing is transcoded by the call itself. An image
+still in draft storage gets its variants after it moves to Organization
+storage. Non-image files are skipped.
 
 ## `suggest_alt_text_context`
 

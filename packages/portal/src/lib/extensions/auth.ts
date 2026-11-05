@@ -14,6 +14,7 @@ import {
 import { generateDocId, getStore } from '../datastore';
 import { recordExtensionAudit } from './registry';
 import { resolveExtensionVersion } from './resolution';
+import { isLoopbackPortal, isLoopbackUrl } from '../local-e2e';
 
 const LAUNCH_TTL_SECONDS = 60;
 const USER_TOKEN_TTL_SECONDS = 5 * 60;
@@ -50,7 +51,8 @@ function signingKey(): { privateKey: crypto.KeyObject; publicKey: crypto.KeyObje
     try { jwk = JSON.parse(configured) as crypto.JsonWebKey; } catch { throw new ExtensionAuthError('EXTENSION_SIGNING_PRIVATE_JWK is invalid', 500); }
     privateKey = crypto.createPrivateKey({ key: jwk, format: 'jwk' });
   } else {
-    if (process.env.NODE_ENV === 'production') {
+    // A loopback portal (local Worker) signs with a per-isolate key like development does.
+    if (process.env.NODE_ENV === 'production' && !isLoopbackPortal()) {
       throw new ExtensionAuthError('EXTENSION_SIGNING_PRIVATE_JWK is required in production', 500);
     }
     ephemeralKeyPair ??= crypto.generateKeyPairSync('ec', { namedCurve: 'P-256' });
@@ -67,7 +69,7 @@ export function extensionIssuer(): string {
   if (!raw) throw new ExtensionAuthError('PORTAL_PUBLIC_URL is required for Extension auth', 500);
   try {
     const url = new URL(raw);
-    if ((process.env.NODE_ENV === 'production' && url.protocol !== 'https:') || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
+    if ((process.env.NODE_ENV === 'production' && url.protocol !== 'https:' && !isLoopbackUrl(url)) || url.username || url.password || url.pathname !== '/' || url.search || url.hash) {
       throw new Error();
     }
     return url.origin;

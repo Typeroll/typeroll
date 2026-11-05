@@ -5,11 +5,17 @@
  * build, and a site that never opted in keeps deploying only when a human
  * presses the button.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 import { DEFAULT_DEBOUNCE_MINUTES, isDeployDue } from '../../lib/auto-deploy';
+
+// Publishing setup (connections, build engine) has its own coverage in publishing-readiness.
+vi.mock('../../lib/publishing/readiness', async importOriginal => ({
+  ...await importOriginal<typeof import('../../lib/publishing/readiness')>(),
+  assertPublishingReady: async () => ({ ready: true, mode: 'customer_git', required: [] }),
+}));
 
 const site = (over: Partial<Site>): Site =>
   ({ id: 's', name: 'S', hosting_adapter: 'cloudflare', ...over }) as Site;

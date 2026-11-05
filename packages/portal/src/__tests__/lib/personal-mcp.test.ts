@@ -13,9 +13,6 @@ import { POST as complete } from '../../pages/api/mcp/oauth/complete';
 import { signClientId, exchangeAuthorizationCode } from '../../lib/mcp-tokens';
 import crypto from 'node:crypto';
 
-const account = vi.hoisted(() => ({ configured: false, getUser: vi.fn() }));
-vi.mock('../../lib/firebase-admin', () => ({ isFirebaseAdminConfigured: () => account.configured, getFirebaseAdminApp: async () => ({}) }));
-vi.mock('firebase-admin/auth', () => ({ getAuth: () => ({ getUser: account.getUser }) }));
 vi.mock('../../lib/auth', () => ({ getSession: async () => ({ userId: 'person', email: 'person@example.test', orgId: 'alpha' }) }));
 let token: string;
 let prefix: string;
@@ -41,7 +38,7 @@ async function callTool(name: string, args: Record<string, unknown> = {}) {
   return body.result;
 }
 beforeEach(async () => {
-  account.configured = false; account.getUser.mockReset();
+
   makeTmpFixtures(); await resetDatastore();
   process.env.PORTAL_PUBLIC_URL = origin;
   process.env.MCP_OAUTH_SIGNING_KEY = 'synthetic-personal-mcp-signing-key-32-characters';
@@ -197,22 +194,20 @@ it('allows personal editor block authoring but keeps site instructions administr
   expect((await main.json()).settings.agent_instructions).toBe('Use clear language.');
 });
 
-it('fails closed for disabled, deleted or revoked user accounts and provider failures', async () => {
-  account.configured = true;
-  account.getUser.mockResolvedValue({ disabled: false, emailVerified: true, tokensValidAfterTime: '2020-01-01T00:00:00Z' });
-  expect(await verifyApiToken(token)).toMatchObject({ personalUserId: 'person' });
-  account.getUser.mockResolvedValue({ disabled: false, emailVerified: false, tokensValidAfterTime: '2020-01-01T00:00:00Z' });
-  expect(await verifyApiToken(token)).toBeNull();
-  account.getUser.mockResolvedValue({ disabled: false, tokensValidAfterTime: '2020-01-01T00:00:00Z' });
-  expect(await verifyApiToken(token)).toBeNull();
-  account.getUser.mockResolvedValue({ disabled: true, emailVerified: true });
-  expect(await verifyApiToken(token)).toBeNull();
-  account.getUser.mockResolvedValue({ disabled: false, emailVerified: true, tokensValidAfterTime: new Date(Date.now() + 1000).toISOString() });
-  expect(await verifyApiToken(token)).toBeNull();
-  for (const code of ['auth/user-not-found', 'auth/internal-error']) {
-    account.getUser.mockRejectedValue(Object.assign(new Error('Synthetic account lookup failure'), { code }));
+it('fails closed for disabled, deleted, unconfirmed or revoked accounts', async () => {
+  const user = 'auth_user/person';
+  process.env.AUTH_SECRET = 'test-auth-secret-0123456789abcdef-0123456789';
+  try {
     expect(await verifyApiToken(token)).toBeNull();
-  }
+    await getStore().setDoc(user, { email: 'person@example.test', emailVerified: true, credentialsValidAfter: '2020-01-01T00:00:00Z' });
+    expect(await verifyApiToken(token)).toMatchObject({ personalUserId: 'person' });
+    await getStore().updateDoc(user, { emailVerified: false });
+    expect(await verifyApiToken(token)).toBeNull();
+    await getStore().setDoc(user, { email: 'person@example.test', emailVerified: true, disabled: true });
+    expect(await verifyApiToken(token)).toBeNull();
+    await getStore().setDoc(user, { email: 'person@example.test', emailVerified: true, credentialsValidAfter: new Date(Date.now() + 1000).toISOString() });
+    expect(await verifyApiToken(token)).toBeNull();
+  } finally { delete process.env.AUTH_SECRET; }
 });
 
 it('requires owning organization admin access for a personal connection to approve zone cache recovery', async () => {

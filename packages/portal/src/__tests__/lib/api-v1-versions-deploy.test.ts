@@ -13,6 +13,11 @@ vi.mock('../../lib/deploy/queue', async importOriginal => ({
   ...await importOriginal<typeof import('../../lib/deploy/queue')>(),
   getDeployQueue: () => ({enqueue}),
 }));
+// Publishing setup (connections, build engine) has its own coverage in publishing-readiness.
+vi.mock('../../lib/publishing/readiness', async importOriginal => ({
+  ...await importOriginal<typeof import('../../lib/publishing/readiness')>(),
+  publishingReadiness: async () => ({ ready: true, mode: 'customer_git', required: [] }),
+}));
 const ORG = 'orgone';
 const SITE = 'mysite';
 

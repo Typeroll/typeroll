@@ -9,18 +9,16 @@
 //      hero PNGs. The autopilot.se Lighthouse report flagged 1.1 MiB
 //      avoidable transfer from this alone.
 //
-//   2. Variants (the 320/640/1024/1920 × {webp,avif} pipeline in
-//      lib/image-variants.ts) need to be generated, but the trigger was
-//      "agent calls generate-variants per media". Sites where no agent
-//      ever ran the sweep ship the original PNG at full resolution to
-//      every viewport.
+//   2. Responsive variants are not generated here. The customer build
+//      engine's media step generates them for organization storage, and a
+//      finalized legacy item is moved there (requestMediaMigration) before it
+//      is published. The portal runs on Workers and does not transcode images.
 //
-// Solution: `finalizeMedia(orgId, siteId, mediaId)` does both atomically:
+// Solution: `finalizeMedia(orgId, siteId, mediaId)` applies the cache headers:
 //   - CopyObject in place with `MetadataDirective: 'REPLACE'` to apply
 //     immutable Cache-Control (and preserve original ContentType). Same
 //     bytes — just rewrites the metadata. Cheap; R2 doesn't bill
 //     per-byte for an in-place copy.
-//   - Runs the variant pipeline if the doc doesn't already carry variants.
 //
 // SVG is the exception to "same bytes": an SVG opened directly is a document
 // in the media origin, so finalize publishes only sanitized bytes
@@ -31,14 +29,13 @@
 // and the record carries `svg_unsanitized` so deploys warn about it.
 //
 // Idempotent: calling twice on the same media is a no-op the second time
-// for both halves (CacheControl is already set; variants array is
-// already populated). That makes the same function usable for
+// (CacheControl is already set). That makes the same function usable for
 // "call after upload" and "backfill the library" — see the
 // `/media/{mediaId}/finalize` endpoint and the bulk variant.
 
 import type { S3Client } from '@aws-sdk/client-s3';
+import { r2Endpoint } from './r2-endpoint';
 import { getStore } from './datastore';
-import { generateImageVariants } from './image-variants';
 import { paths } from '@typeroll/shared';
 import type { Media } from '@typeroll/shared';
 import { ConnectionError } from './publishing/connections';
@@ -143,7 +140,7 @@ export async function finalizeMedia(
   const { S3Client, CopyObjectCommand, GetObjectCommand } = await import('@aws-sdk/client-s3');
   const r2 = new S3Client({
     region: 'auto',
-    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
+    endpoint: r2Endpoint(config.accountId, config.bucket),
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
@@ -179,46 +176,13 @@ export async function finalizeMedia(
     ContentType: media.mime_type,
   }));
 
-  // Variant generation — skip when the doc already carries variants.
-  // Re-running would re-upload the same bytes for no gain.
-  const hasVariants = Array.isArray(media.variants) && media.variants.length > 0;
-  if (hasVariants) {
-    return {
-      cache_headers_applied: true,
-      variants_generated: false,
-      variant_count: media.variants?.length ?? 0,
-      width: media.width,
-      height: media.height,
-      sha256,
-      size_bytes: bytes.length,
-    };
-  }
-
-  const result = await generateImageVariants(media, config);
-  if (!result) {
-    // Non-image (PDF etc.) — cache headers applied, no variants to make.
-    return {
-      cache_headers_applied: true,
-      variants_generated: false,
-      variant_count: 0,
-      sha256,
-      size_bytes: bytes.length,
-    };
-  }
-
-  await store.setDoc(`${paths.media(orgId, siteId)}/${mediaId}`, {
-    ...media,
-    width: result.source_width,
-    height: result.source_height,
-    variants: result.variants,
-  });
-
+  // Variants come from the build engine after the item moves to organization
+  // storage; existing ones are reported as they are.
   return {
     cache_headers_applied: true,
-    variants_generated: true,
-    variant_count: result.variants.length,
-    width: result.source_width,
-    height: result.source_height,
+    variants_generated: false,
+    variant_count: media.variants?.length ?? 0,
+    ...(media.width && media.height ? { width: media.width, height: media.height } : {}),
     sha256,
     size_bytes: bytes.length,
   };

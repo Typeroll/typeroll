@@ -1,5 +1,5 @@
-import crypto from 'node:crypto';
 import { getStore } from './datastore';
+import { consumeRateLimit } from './identity/store-adapter';
 
 /** Browser credential endpoints require this exact deployment's origin. */
 export function requireAuthOrigin(request: Request): Response | null {
@@ -10,27 +10,16 @@ export function requireAuthOrigin(request: Request): Response | null {
   });
 }
 
-/** Shared fixed-window limit. CAS prevents concurrent Cloud Run instances
- * from independently admitting the same budget. One reused document per key;
- * only hashes of identifiers are stored. Storage failure fails closed. */
+/** Shared fixed-window limit in the store; concurrent requests cannot both
+ * take the last slot. Only hashes of identifiers are stored. Storage failure
+ * fails closed. */
 export async function limitAuthRequest(key: string, limit = 30, windowMs = 60_000): Promise<Response | null> {
-  const store = getStore();
-  const path = `auth_rate_limits/${crypto.createHash('sha256').update(key).digest('hex')}`;
-  const now = Date.now();
   try {
-    for (let attempt = 0; attempt < 8; attempt++) {
-      const current = await store.getDoc<{ count: number; reset_at: number }>(path);
-      if (current && current.reset_at > now && current.count >= limit) {
-        return new Response(JSON.stringify({ error: 'Too many attempts. Please wait and try again.' }), {
-          status: 429, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Retry-After': String(Math.max(1, Math.ceil((current.reset_at - now) / 1000))) },
-        });
-      }
-      const active = current && current.reset_at > now;
-      if (await store.compareAndReplaceDoc(path, current, {
-        count: active ? current.count + 1 : 1,
-        reset_at: active ? current.reset_at : now + windowMs,
-      })) return null;
-    }
+    const result = await consumeRateLimit(getStore(), 'auth_rate_limits', key, limit, windowMs);
+    if (result.allowed) return null;
+    return new Response(JSON.stringify({ error: 'Too many attempts. Please wait and try again.' }), {
+      status: 429, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Retry-After': String(result.retryAfterSeconds) },
+    });
   } catch { /* Authentication must not bypass the budget when storage fails. */ }
   return new Response(JSON.stringify({ error: 'Sign-in is temporarily busy. Please try again shortly.' }), {
     status: 503, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Retry-After': '5' },

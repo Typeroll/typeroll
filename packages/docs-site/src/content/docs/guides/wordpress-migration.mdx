@@ -141,8 +141,7 @@ first in both the portal and the API. See
 The workflow reads only the source site, and the source must be reachable on
 the public internet. The WordPress URL and every redirect it follows must
 resolve to public addresses; private, loopback and link-local addresses are
-refused. A self-hosted server can import an intranet WordPress by setting
-`TYPEROLL_ALLOW_PRIVATE_NETWORK_FETCH=1`; see [Self-hosting](../self-hosting/).
+refused, on Typeroll Cloud and self-hosted installations alike.
 When an item's REST body is nearly empty, the importer renders its page only if
 the item's link belongs to the source site (same host, ignoring `www.`). Other
 links are logged and not fetched.

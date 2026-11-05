@@ -35,11 +35,17 @@ export function needsFallbackProvisioning(
   requestedSlug: string,
 ): boolean {
   // Customer Git sites publish through the organization's own hosting; the
-  // platform never provisions a fallback hostname for them.
-  if (site.publishing_mode === 'customer_git') return false;
+  // platform never provisions a fallback hostname for them. Hosted sites get
+  // their platform address from the hosting service, never a Pages project.
+  if (site.publishing_mode === 'customer_git' || site.publishing_mode === 'hosted') return false;
   return site.slug !== requestedSlug ||
     !site.hosting_config?.fallback_subdomain ||
     !site.hosting_config?.pages_project;
+}
+
+/** Only former managed sites (no explicit mode) ever had platform Pages projects. */
+function managedPublishing(site: Site | null): boolean {
+  return site?.publishing_mode !== 'customer_git' && site?.publishing_mode !== 'hosted';
 }
 
 function cfFromEnv(): CloudflareApi | null {
@@ -61,7 +67,7 @@ function cfFromEnv(): CloudflareApi | null {
  *      their site before pointing their real domain at us.
  */
 export async function provisionSiteHosting(orgId: string, siteId: string): Promise<ProvisionResult | null> {
-  if ((await getStore().getDoc<Site>(paths.site(orgId, siteId)))?.publishing_mode === 'customer_git') return null;
+  if (!managedPublishing(await getStore().getDoc<Site>(paths.site(orgId, siteId)))) return null;
   const cf = cfFromEnv();
   if (!cf) return null;
 
@@ -209,7 +215,7 @@ export async function reprovisionFallbackSubdomain(args: {
   if (!cf) return null;
   const base = process.env.SITES_BASE_DOMAIN;
   if (!base) return null;
-  if ((await getStore().getDoc<Site>(paths.site(args.orgId, args.siteId)))?.publishing_mode === 'customer_git') return null;
+  if (!managedPublishing(await getStore().getDoc<Site>(paths.site(args.orgId, args.siteId)))) return null;
 
   const pagesProject = pagesProjectNameForSite(args.orgId, args.siteId);
   const newHost = `${args.newSlug}.${base}`;

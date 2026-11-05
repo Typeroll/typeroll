@@ -10,13 +10,11 @@
  * endpoint with a real form token.
  */
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { buildCoreBlockRegistry, FORM_SHELL_CSS, FORMS_RUNTIME_JS, renderFormHtml, type Form } from '@typeroll/shared';
 
-const FIXTURES = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
-const FORMS_DIR = path.join(FIXTURES, 'organizations/default/sites/default/forms');
+import { DEFAULT_SITE, e2eStore } from './helpers/store';
+
+const FORMS = `${DEFAULT_SITE}/forms`;
 // forms-signing.ts POW_BITS: with a proof the per-IP budget is the normal one.
 const POW_BITS = 15;
 
@@ -39,8 +37,7 @@ test('a required field in step 2 does not block step 1 and is enforced in step 2
     ],
   };
   const { id: _id, ...doc } = form;
-  await fs.mkdir(FORMS_DIR, { recursive: true });
-  await fs.writeFile(path.join(FORMS_DIR, `${formId}.json`), JSON.stringify(doc));
+  await e2eStore.set(`${FORMS}/${formId}`, doc);
   try {
     const tokenResponse = await page.request.get(`/api/sites/default/forms/${formId}/token`);
     expect(tokenResponse.ok()).toBe(true);
@@ -97,7 +94,7 @@ test('a required field in step 2 does not block step 1 and is enforced in step 2
     expect(list).toHaveLength(1);
     expect(list[0]).toMatchObject({ status: 'complete', data: { email: 'ada@example.test', company: 'Acme' } });
   } finally {
-    await fs.rm(path.join(FORMS_DIR, `${formId}.json`), { force: true });
+    await e2eStore.deleteTree(`${FORMS}/${formId}`);
   }
 });
 
@@ -121,8 +118,7 @@ test('render version 5: Continue, Back with kept answers and one submission', as
     ],
   };
   const { id: _id, ...doc } = form;
-  await fs.mkdir(FORMS_DIR, { recursive: true });
-  await fs.writeFile(path.join(FORMS_DIR, `${formId}.json`), JSON.stringify(doc));
+  await e2eStore.set(`${FORMS}/${formId}`, doc);
   try {
     const { token } = await (await page.request.get(`/api/sites/default/forms/${formId}/token`)).json() as { token: string };
     const origin = new URL(baseURL!).origin;
@@ -172,6 +168,6 @@ test('render version 5: Continue, Back with kept answers and one submission', as
     expect(submissions).toHaveLength(1);
     expect(submissions[0]).toMatchObject({ status: 'complete', data: { email: 'ada@example.test', company: 'Acme' } });
   } finally {
-    await fs.rm(path.join(FORMS_DIR, `${formId}.json`), { force: true });
+    await e2eStore.deleteTree(`${FORMS}/${formId}`);
   }
 });

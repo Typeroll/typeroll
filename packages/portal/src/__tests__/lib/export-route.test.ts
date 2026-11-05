@@ -1,6 +1,6 @@
 // Content export (anti-lock-in): GET /api/sites/{siteId}/export streams a
 // zip of the site's full content in fixtures layout — the same
-// materializeFixtures snapshot deploys build from — plus a manifest with
+// chain-resolved content snapshot (lib/export.ts) — plus a manifest with
 // media URLs. Admin-gated on both the cookie route and the v1 bearer route.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';

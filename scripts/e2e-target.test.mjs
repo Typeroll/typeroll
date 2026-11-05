@@ -10,7 +10,6 @@ test('resolves an isolated local target without remote credentials', () => {
     kind: 'local',
     portalUrl: 'http://127.0.0.1:4322',
     formsUrl: 'http://127.0.0.1:4322',
-    firebaseApiKey: null,
     expectedDigest: null,
     isRemote: false,
   });
@@ -21,7 +20,6 @@ test('requires separate HTTPS origins and an immutable digest remotely', () => {
     TYPEROLL_E2E_TARGET: 'self_host',
     TYPEROLL_E2E_PORTAL_URL: 'https://cms.e2e.example.test/path',
     TYPEROLL_E2E_FORMS_URL: 'https://forms.e2e.example.test',
-    TYPEROLL_E2E_FIREBASE_API_KEY: 'public-api-key',
     TYPEROLL_E2E_EXPECTED_DIGEST: DIGEST,
   };
   assert.equal(resolveE2ETarget(env).portalUrl, 'https://cms.e2e.example.test');
@@ -35,7 +33,6 @@ test('checks both service origins and rejects digest drift', async () => {
     TYPEROLL_E2E_TARGET: 'cloud',
     TYPEROLL_E2E_PORTAL_URL: 'https://cloud.e2e.example.test',
     TYPEROLL_E2E_FORMS_URL: 'https://forms.cloud.e2e.example.test',
-    TYPEROLL_E2E_FIREBASE_API_KEY: 'public-api-key',
     TYPEROLL_E2E_EXPECTED_DIGEST: DIGEST,
   });
   const fetchImpl = async (url) => ({

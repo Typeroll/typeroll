@@ -4,10 +4,9 @@
 // makes ONE short attempt (SYNC_TIMEOUT_MS) for at most a few webhooks per
 // run (see `syncWebhooks` in ./actions); everything else is persisted as a
 // `pending` delivery and retried in the background through the
-// scheduled-work index (lib/scheduling, kind `form_webhook_retry`). Cloud
-// Tasks, the in-process timer, the self-host worker loop or the periodic
-// sweep (/api/internal/publish-sweep) delivers that entry to
-// executeScheduledWork, which calls retryFormWebhookDelivery below.
+// scheduled-work index (lib/scheduling, kind `form_webhook_retry`). The
+// site object's alarm (the in-process timer in development) delivers that
+// entry to executeScheduledWork, which calls retryFormWebhookDelivery below.
 //
 // Each attempt is claimed on the delivery record with a compare-and-update
 // lease, so a late, repeated or concurrent delivery of the same work entry
@@ -22,7 +21,7 @@ import type { Form, FormAction, FormWebhookDelivery } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { decryptSecret } from '../secret-crypto';
 import type { ActionContext } from './actions';
-import { notifyScheduledWrites, workPath, type ScheduledWork } from '../scheduling/index';
+import { putScheduledWork } from '../scheduling/index';
 import { OutboundRequestError, parseOutboundUrl, resolveOutboundAddresses, safeFetch, type OutboundPolicy } from '../net/safe-fetch';
 
 /** Deadline of the one attempt made inside the visitor's request. */
@@ -161,13 +160,7 @@ async function recordOutcome(path: string, owner: string, attempts: number, outc
 
 /** Index the delivery's next background attempt. */
 async function scheduleRetry(source: string, due: number): Promise<void> {
-  const work: ScheduledWork = {
-    kind: 'form_webhook_retry', source, due_at: due, payload: {},
-    generation: crypto.randomUUID(), lease_until: 0, lease_owner: null,
-  };
-  const path = workPath(source, 'form_webhook_retry');
-  await getStore().setDoc(path, work as unknown as Record<string, unknown>);
-  await notifyScheduledWrites([{ path, data: work }]);
+  await putScheduledWork({ kind: 'form_webhook_retry', source, due_at: due, payload: {}, generation: crypto.randomUUID() });
 }
 
 /**

@@ -2,6 +2,8 @@ import { beforeEach, expect, it, vi } from 'vitest';
 vi.mock('../../lib/api-keys', () => ({ verifyApiToken: vi.fn(async () => ({ siteId: 'site', orgId: 'org' })) }));
 vi.mock('../../lib/mcp-tokens', () => ({ verifyToken: vi.fn(() => null) }));
 vi.mock('../../lib/api-auth', () => ({ listAllowedSites: vi.fn(async () => []) }));
+// The store-backed limiter would write to the shared fixtures directory.
+vi.mock('../../lib/rate-limit', () => ({ rateLimit: async () => ({ allowed: true, remaining: 1, resetAt: 0 }) }));
 import { POST } from '../../pages/api/mcp/index';
 import { TyperollClient } from '@typeroll/mcp-server/client';
 beforeEach(() => { vi.stubEnv('PORTAL_PUBLIC_URL', 'https://portal.test'); });

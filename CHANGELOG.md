@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.0 (candidate, MCP 0.45.117)
+
+- **Breaking for self-hosters: the Google Cloud profile and the Docker Compose
+  fallback are removed.** Self-hosting now runs in your own Cloudflare account:
+  `npm run self-host:cloudflare:plan` and `self-host:cloudflare:apply` install
+  the released portal and Forms Worker bundle after verifying its digest and
+  GitHub build provenance, create the R2 buckets in the EU jurisdiction and
+  set secrets by name; `self-host:cloudflare:doctor` checks `/api/version` and
+  `/api/readyz`; `self-host:cloudflare:backup` and `restore` export and
+  restore the document store through the EU backups bucket. The
+  `self-host:check`, `bootstrap`, `migrate`, `backup`, `restore` and
+  `self-host:gcp:*` commands, `compose.yaml` and the Firestore runtime store
+  are gone. See the [self-hosting guide](https://typeroll.com/docs/guides/self-hosting/).
+- The document store has a TTL: a document with a top-level `delete_at` is
+  removed by the alarm of the store object that holds it once that time has
+  passed. Form submission retention, rate-limit counters, expired sessions and
+  verification tokens, and MCP authorization codes and refresh-use markers use
+  it; no scheduled job looks for expired records.
+- `/api/readyz` reports `datastore_runtime` instead of `firebase_admin`: a
+  deployed installation must run on the Durable Object store in the EU
+  jurisdiction. A new installation records its data schema in its empty store
+  (`TYPEROLL_STORE_BOOTSTRAP=empty`); a store with data but no schema record is
+  never adopted and the portal answers 503 until it is restored or migrated.
+
 ## 0.2.157 (candidate, MCP 0.45.116)
 
 - Publication cache recovery stays on the site's own addresses. A stale file
