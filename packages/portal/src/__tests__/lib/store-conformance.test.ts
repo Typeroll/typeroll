@@ -94,7 +94,7 @@ for (const backend of backends) describe(`store contract: ${backend.name}`, () =
     await store.setDoc('organizations/o/sites/s/deploys/d', { status: 'running', continuation: { due_at: due, token: 't' }, version_id: 'main', environment: 'production' });
     // A sharded store keeps each object's index beside its sources; its alarms replace the global sweep.
     const index = backend.globalIndex === false
-      ? await (store as ShardedStore & { store(name: string): ReadWriteStore })['store'](await (store as ShardedStore).shardName('organizations/o/sites/s/deploys/d')).listDocs<{ source: string; due_at: number }>('scheduled_work')
+      ? await (store as unknown as { store(name: string): ReadWriteStore }).store(await (store as ShardedStore).shardName('organizations/o/sites/s/deploys/d')).listDocs<{ source: string; due_at: number }>('scheduled_work')
       : await store.listDocs<{ source: string; due_at: number }>('scheduled_work');
     expect(index).toEqual([expect.objectContaining({ source: 'organizations/o/sites/s/deploys/d', due_at: due })]);
   });

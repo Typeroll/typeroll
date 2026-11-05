@@ -17,7 +17,6 @@ import { listOrganizations } from '../lib/organization-session';
 import SiteSwitcher from '../components/SiteSwitcher.tsx';
 import VersionPicker from '../components/VersionPicker.tsx';
 import Icon from '../components/Icon.astro';
-import RuntimeConfig from '../components/RuntimeConfig.astro';
 import { canUseAiChat, AI_SETTINGS_PATH } from '../lib/ai/organization-ai';
 import { resolveOwnerOrgAccess } from '../lib/member-role';
 
@@ -131,7 +130,6 @@ const initials = (session.displayName ?? session.email ?? 'U')
       href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Fraunces:ital,opsz,wght@1,9..144,500;1,9..144,600&display=swap"
       rel="stylesheet"
     />
-    <RuntimeConfig />
   </head>
   <body>
     {bare ? (

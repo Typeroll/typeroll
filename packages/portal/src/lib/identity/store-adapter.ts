@@ -130,7 +130,7 @@ export function storeAdapter({ store, prefix, adapterId = 'typeroll-store' }: St
             await uniqueEffects(model, id, next, null);
             throw new UniqueConstraintError(model, 'id');
           }
-          return { ...next, id } as typeof data;
+          return { ...next, id } as unknown as typeof data;
         },
 
         async findOne({ model, where, join }) {

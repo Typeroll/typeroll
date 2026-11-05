@@ -20,14 +20,6 @@ interface ImportMetaEnv {
   readonly R2_PUBLIC_BASE_URL: string;
   readonly POSTMARK_API_KEY?: string;
   readonly TYPEROLL_FIXTURES_DIR?: string;
-
-  // Public runtime configuration embedded in HTML by RuntimeConfig.astro.
-  readonly PUBLIC_FIREBASE_API_KEY: string;
-  readonly PUBLIC_FIREBASE_AUTH_DOMAIN: string;
-  readonly PUBLIC_FIREBASE_PROJECT_ID: string;
-  readonly PUBLIC_FIREBASE_APP_ID: string;
-  /** "true" shows "Continue with GitHub" (read at request time by /login). */
-  readonly PUBLIC_FIREBASE_GITHUB_SIGNIN?: string;
 }
 
 interface ImportMeta {

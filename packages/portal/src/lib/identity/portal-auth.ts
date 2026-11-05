@@ -67,6 +67,9 @@ export function portalAuthOptions(config: PortalAuthConfig) {
         // Set by platform operators; a disabled person cannot sign in and
         // existing sessions stop working.
         disabled: { type: 'boolean', required: false, defaultValue: false, input: false },
+        // Delegated credentials (MCP/OAuth connections) granted before this
+        // moment stop working; set when an operator revokes them.
+        credentialsValidAfter: { type: 'date', required: false, input: false, returned: false },
       },
     },
     emailAndPassword: {

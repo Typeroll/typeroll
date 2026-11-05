@@ -1,6 +1,7 @@
 import { getStore } from './datastore';
 import { requireCurrentDataSchema } from './data-schema';
 import { serviceRole, type ServiceRole } from './release';
+import { isIdentityConfigured } from './identity/portal-auth';
 
 export type ReadinessState = 'pass' | 'fail' | 'disabled';
 
@@ -47,14 +48,6 @@ function firebaseAdminCheck(env: NodeJS.ProcessEnv, required: boolean): Readines
   if (!raw) {
     const check = requirement(env, 'firebase_admin', ['FIREBASE_PROJECT_ID'], required);
     if (check.state !== 'pass') return check;
-    if (env.PUBLIC_FIREBASE_PROJECT_ID?.trim() && env.PUBLIC_FIREBASE_PROJECT_ID.trim() !== projectId) {
-      return {
-        name: 'firebase_admin',
-        state: 'fail',
-        required,
-        detail: 'FIREBASE_PROJECT_ID does not match PUBLIC_FIREBASE_PROJECT_ID',
-      };
-    }
     return { ...check, detail: 'application_default_credentials' };
   }
   try {
@@ -79,6 +72,14 @@ function firebaseAdminCheck(env: NodeJS.ProcessEnv, required: boolean): Readines
       detail: 'service account is not valid JSON',
     };
   }
+}
+
+function identityCheck(env: NodeJS.ProcessEnv, required: boolean): ReadinessCheck {
+  const check = requirement(env, 'identity', ['AUTH_SECRET'], required);
+  if (check.state !== 'pass') return check;
+  return isIdentityConfigured(env)
+    ? check
+    : { name: 'identity', state: required ? 'fail' : 'disabled', required, detail: 'AUTH_SECRET must be at least 32 characters' };
 }
 
 function queueCheck(env: NodeJS.ProcessEnv, role: ServiceRole): ReadinessCheck {
@@ -113,12 +114,8 @@ function configChecks(env: NodeJS.ProcessEnv): { role: ServiceRole; checks: Read
 
   if (role === 'portal') {
     checks.push(
-      requirement(env, 'firebase_web', [
-        'PUBLIC_FIREBASE_API_KEY',
-        'PUBLIC_FIREBASE_AUTH_DOMAIN',
-        'PUBLIC_FIREBASE_PROJECT_ID',
-        'PUBLIC_FIREBASE_APP_ID',
-      ], production),
+      identityCheck(env, production),
+      requirement(env, 'account_email', ['ACCOUNT_EMAIL'], production),
       requirement(env, 'portal_public_url', ['PORTAL_PUBLIC_URL'], production),
       requirement(env, 'forms_signing', ['FORMS_HMAC_SECRET'], production),
     );

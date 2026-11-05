@@ -71,19 +71,17 @@ describe('local E2E authentication', () => {
     expect(readE2ESessionCookie(`${prefix}.${persona}.other.${sig}`)).toBeNull();
   });
 
-  it('fails closed in production and whenever Firebase is configured', () => {
+  it('fails closed in production and whenever accounts are configured', () => {
     process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
     process.env.NODE_ENV = 'production';
-    process.env.FIREBASE_SERVICE_ACCOUNT = '';
-    process.env.FIREBASE_PROJECT_ID = '';
+    delete process.env.AUTH_SECRET;
     expect(isE2EAuthEnabled()).toBe(false);
     delete process.env.NODE_ENV;
     expect(isE2EAuthEnabled()).toBe(false);
     process.env.NODE_ENV = 'test';
-    process.env.FIREBASE_SERVICE_ACCOUNT = '{"project_id":"real"}';
+    expect(isE2EAuthEnabled()).toBe(true);
+    process.env.AUTH_SECRET = 'real-auth-secret-0123456789abcdef-0123456789';
     expect(isE2EAuthEnabled()).toBe(false);
-    process.env.FIREBASE_SERVICE_ACCOUNT = '';
-    process.env.FIREBASE_PROJECT_ID = 'real-project';
-    expect(isE2EAuthEnabled()).toBe(false);
+    delete process.env.AUTH_SECRET;
   });
 });

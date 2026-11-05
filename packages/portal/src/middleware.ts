@@ -7,8 +7,7 @@ import { requireCurrentDataSchema } from './lib/data-schema';
 import { defineMiddleware } from 'astro:middleware';
 import { MAIN_VERSION_ID } from '@typeroll/shared';
 import { enforceCsrf } from './lib/csrf';
-import { getSessionIdentity, sessionNeedsRefresh, refreshSessionForUser } from './lib/auth';
-import { firebaseApiKey } from './lib/runtime-config-server';
+import { getSessionIdentity } from './lib/auth';
 import { serviceRole } from './lib/release';
 import { StorageDocumentError } from './lib/firestore-codec';
 
@@ -164,21 +163,6 @@ export const onRequest = defineMiddleware(async (context, next) => {
       return context.redirect(pathname === '/app' ? '/onboarding' : `/onboarding?next=${encodeURIComponent(context.url.pathname + context.url.search)}`);
     }
 
-    // Rolling session refresh: Firebase caps one session cookie at 14 days,
-    // so "signed in until I log out" is implemented by re-minting the cookie
-    // on activity — at most ~daily (sessionNeedsRefresh), page GETs only,
-    // and strictly best-effort: a refresh failure must never break the page
-    // view, the current cookie is still valid.
-    if (session?.orgId && context.request.method === 'GET' && sessionNeedsRefresh(session)) {
-      const apiKey = firebaseApiKey();
-      if (apiKey) {
-        try {
-          await refreshSessionForUser(context.cookies, session.userId, apiKey);
-        } catch {
-          /* best-effort — keep serving with the existing cookie */
-        }
-      }
-    }
   }
 
   try { return applyFramingPolicy(pathname, await withAccessRequest(context.request, next)); }

@@ -3,7 +3,7 @@ import { isDevAuthEnabled } from '../../../lib/auth';
 import { safeReturnPath } from '../../../lib/return-path';
 
 // Sets a non-verified `dev` session for local development. Disabled in
-// production and whenever Firebase is configured.
+// production and whenever accounts (AUTH_SECRET) are configured.
 export const POST: APIRoute = async ({ cookies, redirect, request }) => {
   if (!isDevAuthEnabled()) {
     return new Response('Dev session is disabled', { status: 403 });

@@ -20,10 +20,8 @@ function productionPortalEnv(): NodeJS.ProcessEnv {
   return {
     NODE_ENV: 'production',
     FIREBASE_SERVICE_ACCOUNT: firebaseAdmin,
-    PUBLIC_FIREBASE_API_KEY: 'public-api-key',
-    PUBLIC_FIREBASE_AUTH_DOMAIN: 'test.firebaseapp.com',
-    PUBLIC_FIREBASE_PROJECT_ID: 'test-project',
-    PUBLIC_FIREBASE_APP_ID: 'test-app',
+    AUTH_SECRET: 'test-only-auth-secret-0123456789abcdef',
+    ACCOUNT_EMAIL: '{"type":"postmark","from":"Typeroll <no-reply@example.test>","config":{}}',
     PORTAL_PUBLIC_URL: 'https://portal.example.test',
     FORMS_HMAC_SECRET: 'test-only-secret',
     DEPLOY_QUEUE: 'cloud_tasks',
@@ -88,16 +86,12 @@ describe('readiness report', () => {
     });
   });
 
-  it('rejects a keyless runtime pointed at a different browser project', async () => {
-    const env = productionPortalEnv();
-    delete env.FIREBASE_SERVICE_ACCOUNT;
-    env.FIREBASE_PROJECT_ID = 'different-project';
-
-    const report = await readinessReport(env, async () => undefined);
+  it('rejects an auth secret that is too short', async () => {
+    const report = await readinessReport({ ...productionPortalEnv(), AUTH_SECRET: 'short' }, async () => undefined);
 
     expect(report.ready).toBe(false);
-    expect(report.checks.find((check) => check.name === 'firebase_admin')?.detail)
-      .toBe('FIREBASE_PROJECT_ID does not match PUBLIC_FIREBASE_PROJECT_ID');
+    expect(report.checks.find((check) => check.name === 'identity')).toMatchObject({ state: 'fail', detail: 'AUTH_SECRET must be at least 32 characters' });
+    expect(JSON.stringify(report)).not.toContain('short');
   });
 
   it('reports missing production requirements without exposing their values', async () => {
@@ -106,11 +100,13 @@ describe('readiness report', () => {
     expect(report.ready).toBe(false);
     expect(report.checks.filter((check) => check.state === 'fail').map((check) => check.name)).toEqual([
       'firebase_admin',
-      'firebase_web',
+      'identity',
+      'account_email',
       'portal_public_url',
       'forms_signing',
     ]);
     expect(JSON.stringify(report)).not.toContain('test-only-secret');
+    expect(JSON.stringify(report)).not.toContain('test-only-auth-secret');
   });
 
   it('fails when the datastore probe is unreachable', async () => {
@@ -137,7 +133,7 @@ describe('readiness report', () => {
     }, async () => undefined);
 
     expect(report.ready).toBe(true);
-    expect(report.checks.some((check) => check.name === 'firebase_web')).toBe(false);
+    expect(report.checks.some((check) => check.name === 'identity')).toBe(false);
     expect(report.checks.find((check) => check.name === 'deploy_queue')?.state).toBe('disabled');
   });
 

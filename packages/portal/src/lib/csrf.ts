@@ -23,6 +23,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 //     this exemption the CSRF check rejected the worker's invocation
 //     and deploy jobs stayed stuck in 'queued' (the bearer doesn't
 //     start with typeroll_live_ so the API-key bypass didn't apply).
+const CREDENTIAL_PATH = /^\/api\/auth\/(?!dev-session$|e2e-session$|logout$)/;
+
 const CSRF_EXEMPT_PATHS = new Set([
   // Exact SNS topic allowlist + certificate/signature verification in the route.
   '/api/webhooks/email/ses',
@@ -128,7 +130,8 @@ function originAllowed(origin: string): boolean {
 export function enforceCsrf(args: { request: Request; url: URL }): Response | null {
   const { request, url } = args;
   if (SAFE_METHODS.has(request.method)) return null;
-  if (url.pathname === '/api/auth/session' || url.pathname === '/api/mcp/oauth/complete') return requireAuthOrigin(request);
+  // Credential endpoints (Better Auth and the confirmation routes) require this exact portal origin.
+  if (CREDENTIAL_PATH.test(url.pathname) || url.pathname === '/api/mcp/oauth/complete') return requireAuthOrigin(request);
   if (CSRF_EXEMPT_PATHS.has(url.pathname)) return null;
   if (CSRF_EXEMPT_PREFIXES.some((p) => url.pathname.startsWith(p))) return null;
 

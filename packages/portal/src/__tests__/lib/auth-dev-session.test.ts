@@ -16,7 +16,7 @@ afterEach(() => {
 });
 
 describe('development authentication', () => {
-  it('provides the built-in user outside production when Firebase is absent', async () => {
+  it('provides the built-in user outside production when accounts are not configured', async () => {
     vi.stubEnv('NODE_ENV', 'development');
     delete process.env.FIREBASE_SERVICE_ACCOUNT;
     delete process.env.FIREBASE_PROJECT_ID;
@@ -31,16 +31,16 @@ describe('development authentication', () => {
     });
   });
 
-  it('disables development auth when the Cloud Run Firebase project is configured', async () => {
+  it('disables development auth when accounts are configured', async () => {
     vi.stubEnv('NODE_ENV', 'development');
-    vi.stubEnv('FIREBASE_PROJECT_ID', 'customer-project');
+    vi.stubEnv('AUTH_SECRET', 'real-auth-secret-0123456789abcdef-0123456789');
 
     const { isDevAuthEnabled } = await import('../../lib/auth');
 
     expect(isDevAuthEnabled()).toBe(false);
   });
 
-  it('fails closed in production when Firebase is absent', async () => {
+  it('fails closed in production when accounts are not configured', async () => {
     vi.stubEnv('NODE_ENV', 'production');
     delete process.env.FIREBASE_SERVICE_ACCOUNT;
 

@@ -2235,13 +2235,4 @@ export const paths = {
     `org_share_index/${orgId}/shares`,
   sharesWithOrgEntry: (orgId: string, shareId: string) =>
     `org_share_index/${orgId}/shares/${shareId}`,
-
-  // Portal sign-out denylist. Doc id is sha256(`${uid}:${auth_time}`) of one
-  // Firebase sign-in; a revoked sign-in rejects every session cookie carrying
-  // that key. Lineage docs map a cookie re-minted by the rolling refresh to
-  // the sign-in it continues (`root_key`), so sign-out revokes every copy.
-  // Both carry a native `expires_at` timestamp for a Firestore TTL policy.
-  revokedSession: (key: string) => `revoked_sessions/${key}`,
-  sessionLineages: () => `session_lineage`,
-  sessionLineage: (key: string) => `session_lineage/${key}`,
 };

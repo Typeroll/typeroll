@@ -1,13 +1,13 @@
 // POST /api/auth/verification-email — send a new email confirmation link to
 // the signed-in account. One of the few routes that accepts an unconfirmed
-// identity (getSessionIdentity); it can only send Firebase's own message to
-// the address already on the account.
+// identity (getSessionIdentity); it can only send a confirmation link to the
+// address already on the account.
 
 import type { APIRoute } from 'astro';
 import { getSessionIdentity } from '../../../lib/auth';
 import { authClientAddress, limitAuthRequest, readAuthBody, requireAuthOrigin } from '../../../lib/auth-request';
 import { safeReturnPath } from '../../../lib/return-path';
-import { sendVerificationEmail, verificationContinueUrl } from '../../../lib/email-verification';
+import { sendVerificationEmail } from '../../../lib/email-verification';
 
 export const prerender = false;
 const json = (body: unknown, status: number) => new Response(JSON.stringify(body), {
@@ -36,10 +36,8 @@ export const POST: APIRoute = async ({ request, cookies, clientAddress }) => {
     next = safeReturnPath(text ? (JSON.parse(text) as { next?: unknown } | null)?.next : null);
   } catch { return json({ error: 'Invalid request.' }, 400); }
 
-  const portalOrigin = new URL(process.env.PORTAL_PUBLIC_URL || request.url).origin;
   try {
-    const result = await sendVerificationEmail(identity, verificationContinueUrl(portalOrigin, next));
-    if (result === 'throttled') return json({ error: 'Too many attempts. Please wait a few minutes and try again.' }, 429);
+    await sendVerificationEmail(identity, next);
     return json({ ok: true, verified: false }, 202);
   } catch (error) {
     console.error('[verification-email] failed:', error instanceof Error ? error.message : 'unknown error');
