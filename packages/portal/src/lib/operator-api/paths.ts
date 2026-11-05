@@ -25,7 +25,8 @@ const DOCUMENTS = [
   doc('organizations/S/extensions/S', 'read', 'write'),
   doc('organizations/S/extensions/S/versions/S', 'read', 'write'),
   doc('extension_catalog/S', 'read', 'write'),
-  doc('extension_admin_approvals/S', 'read'),
+  // Host approval of a native admin page; written only by platform operators.
+  doc('extension_admin_approvals/S', 'read', 'write'),
   // Operator records.
   doc('platform_operation_locks/S', 'read', 'write', 'delete'),
   doc('platform_audit/S', 'read', 'write'),
