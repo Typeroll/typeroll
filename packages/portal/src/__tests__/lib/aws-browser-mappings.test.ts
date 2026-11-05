@@ -1,11 +1,11 @@
 // The Workers build applies the "browser" file mappings of the AWS SDK and
-// Smithy packages (build/aws-browser-mappings.mjs); a mix of Node and browser
+// Smithy packages (vite/aws-browser-mappings.mjs); a mix of Node and browser
 // variants throws in `new S3Client()` and when reading responses on workerd.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { awsBrowserMappings } from '../../../build/aws-browser-mappings.mjs';
+import { awsBrowserMappings } from '../../../vite/aws-browser-mappings.mjs';
 
 function fixture(name: string, browser: Record<string, string> | undefined) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'aws-mappings-'));

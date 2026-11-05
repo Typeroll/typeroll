@@ -1,7 +1,7 @@
 import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
-import { awsBrowserMappings } from './build/aws-browser-mappings.mjs';
+import { awsBrowserMappings } from './vite/aws-browser-mappings.mjs';
 
 
 // Portal is SSR by default and runs as a Cloudflare Worker (src/worker.ts,
