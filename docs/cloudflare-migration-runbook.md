@@ -148,6 +148,17 @@ aws s3 cp cutover/$RUN/store.ndjson "s3://$MIGRATION_BUCKET/$RUN/store.ndjson" \
   --endpoint-url "https://$CLOUDFLARE_ACCOUNT_ID.eu.r2.cloudflarestorage.com"
 ```
 
+### 4b. Move private platform buckets to the EU jurisdiction
+
+A platform bucket created before the move (for example the private drafts
+bucket) lives in the default jurisdiction. Create the EU bucket of the same
+name, copy the objects with the S3 API (source endpoint
+`https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com`, target
+`https://$CLOUDFLARE_ACCOUNT_ID.eu.r2.cloudflarestorage.com`), compare object
+counts, and list the bucket in the portal's `R2_EU_BUCKETS` variable so the
+portal uses the EU endpoint for it. Delete the old bucket after the 14-day
+fallback period.
+
 ### 5. Import into the objects (10–20 min)
 
 Call the operator-only migration entry point of the portal Worker for the run

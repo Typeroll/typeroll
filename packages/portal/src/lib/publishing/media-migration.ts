@@ -1,4 +1,5 @@
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { r2Endpoint } from '../r2-endpoint';
 import { copyWithTransferService } from '../media/remote-transfer';
 import { createHash, randomUUID } from 'node:crypto';
 import { S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
@@ -295,7 +296,7 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
                 if (media.storage?.state === 'uploading') pending++;
                 else {
                   const sourceLocation = media.storage ?? { provider: 'legacy_r2' as const, account_id: process.env.R2_ACCOUNT_ID!, bucket: process.env.R2_BUCKET!, key: media.r2_key };
-                  const source = sourceLocation.provider === 'legacy_r2' ? new S3Client({ region: 'auto', endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`, forcePathStyle: true,
+                  const source = sourceLocation.provider === 'legacy_r2' ? new S3Client({ region: 'auto', endpoint: r2Endpoint(process.env.R2_ACCOUNT_ID!, sourceLocation.bucket), forcePathStyle: true,
                     credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID!, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY! } }) : await storageClient(orgId, sourceLocation);
                   try {
                     const prefix = await siteMediaPrefix(orgId, site.id);

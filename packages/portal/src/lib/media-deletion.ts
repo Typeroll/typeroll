@@ -20,6 +20,7 @@
 // bucket, and REPORT what failed rather than swallowing it. Callers decide
 // whether a failure should block; they cannot decide if they are not told.
 
+import { r2Endpoint } from './r2-endpoint';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { storageClient } from './publishing/media-storage';
@@ -118,7 +119,7 @@ async function deleteObject(orgId: string, object: MediaObject): Promise<void> {
   }
   const client = new S3Client({
     region: 'auto',
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    endpoint: r2Endpoint(accountId, bucket),
     credentials: {
       accessKeyId: process.env.R2_ACCESS_KEY_ID,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,

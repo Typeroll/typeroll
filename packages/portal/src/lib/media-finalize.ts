@@ -34,6 +34,7 @@
 // `/media/{mediaId}/finalize` endpoint and the bulk variant.
 
 import type { S3Client } from '@aws-sdk/client-s3';
+import { r2Endpoint } from './r2-endpoint';
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
 import type { Media } from '@typeroll/shared';
@@ -139,7 +140,7 @@ export async function finalizeMedia(
   const { S3Client, CopyObjectCommand, GetObjectCommand } = await import('@aws-sdk/client-s3');
   const r2 = new S3Client({
     region: 'auto',
-    endpoint: `https://${config.accountId}.r2.cloudflarestorage.com`,
+    endpoint: r2Endpoint(config.accountId, config.bucket),
     credentials: {
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
