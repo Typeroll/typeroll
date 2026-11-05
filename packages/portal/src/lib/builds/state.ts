@@ -10,6 +10,13 @@ export const assetCachePath = (identity: BuildIdentity) => `organizations/${iden
 export interface AssetCachePointer extends RenderCachePointer { identity: BuildIdentity }
 
 export type BuildProvider = 'cloudflare' | 'github';
+export const selectionPath = (org: string) => `organizations/${org}/publishing/build_selection`;
+/**
+ * auto_update: update an outdated build engine as a step of the next
+ * publication. On for organizations whose engine was first set up from Core
+ * 0.2.156; off (absent) for existing ones until an admin turns it on.
+ */
+export interface BuildSelection { provider: BuildProvider; revision: string; auto_update?: boolean }
 export interface EngineConfiguration { publication_validation?: number; media_preparation?: boolean; static_verification?: boolean;
   /** Digest of the generated engine source installed by the last setup; see engine-source.ts. */
   engine_source_sha256?: string;
@@ -19,6 +26,8 @@ export interface EngineConfiguration { publication_validation?: number; media_pr
   worker_tag: string; trigger_uuid: string; runner_commit: string;
   token_hash: string; encrypted_token: string; status: 'preparing' | 'qualifying' | 'ready' | 'disabled';
   qualification_key?: string; provider_build_id?: string; setup_lease_until: number;
+  /** The ready engine an update replaced, restored if the update does not pass verification. */
+  previous?: Omit<EngineConfiguration, 'previous'> | null;
 }
 export const engineConfigurationPath = (org: string, provider: BuildProvider = 'cloudflare') => `organizations/${org}/publishing_private/${provider === 'github' ? 'github_build_engine' : 'build_engine'}`;
 export const buildInputPath = (org: string, key: string) => `organizations/${org}/build_inputs/${key}`;

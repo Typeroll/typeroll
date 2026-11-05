@@ -6,7 +6,7 @@ import { buildServer } from '../src/server.js';
 
 const organizationTools = [
   'check_organization_github_permissions', 'diagnose_organization_github_connection', 'diagnose_organization_cloudflare_connection',
-  'setup_organization_build_engine', 'select_organization_build_provider', 'cancel_organization_build',
+  'setup_organization_build_engine', 'select_organization_build_provider', 'cancel_organization_build', 'set_organization_build_auto_update',
   'read_organization_build_engine', 'check_organization_build_access',
   'list_hosting_groups', 'save_hosting_group', 'connect_hosting_group',
   'list_organization_publishing_domains', 'configure_organization_publishing_domains',
@@ -105,7 +105,9 @@ describe('organization publishing through the MCP transport', () => {
       expect((await s.client.callTool({ name: 'setup_organization_build_engine', arguments: { provider: 'github', revision: 'engine-revision' } })).isError).not.toBe(true);
       expect((await s.client.callTool({ name: 'select_organization_build_provider', arguments: { provider: 'github', revision: 'selection-revision' } })).isError).not.toBe(true);
       expect((await s.client.callTool({ name: 'cancel_organization_build', arguments: { key: 'a'.repeat(64) } })).isError).not.toBe(true);
-      expect(s.bodies).toEqual([{ provider: 'github', revision: 'engine-revision', action: 'setup' }, { provider: 'github', revision: 'selection-revision', action: 'select' }, { key: 'a'.repeat(64), action: 'cancel' }]);
+      expect((await s.client.callTool({ name: 'set_organization_build_auto_update', arguments: { enabled: true, revision: 'selection-revision' } })).isError).not.toBe(true);
+      expect(s.bodies).toEqual([{ provider: 'github', revision: 'engine-revision', action: 'setup' }, { provider: 'github', revision: 'selection-revision', action: 'select' }, { key: 'a'.repeat(64), action: 'cancel' },
+        { enabled: true, revision: 'selection-revision', action: 'auto_update' }]);
     } finally { await s.close(); }
   });
 

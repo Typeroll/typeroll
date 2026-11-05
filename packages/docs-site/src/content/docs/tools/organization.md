@@ -311,6 +311,7 @@ that read and needs an organization key.
 | Check permissions and qualification            | `check_organization_build_access`       |
 | Check GitHub Actions and Workflows permissions | `check_organization_github_permissions` |
 | Choose the engine for new publications         | `select_organization_build_provider`    |
+| Keep the build engine updated automatically    | `set_organization_build_auto_update`    |
 | Cancel an active GitHub build                  | `cancel_organization_build`             |
 
 - `setup_organization_build_engine` prepares the selected provider's engine and
@@ -325,6 +326,14 @@ that read and needs an organization key.
   connection use `diagnose_organization_github_connection`.
 - `select_organization_build_provider` switches new publications to a verified
   engine. Builds already started keep their provider, source and version.
+- `set_organization_build_auto_update` turns automatic engine updates on or off
+  (`enabled`, plus `selection.revision` from `read_organization_build_engine`).
+  When on, the next publication that finds an outdated Cloudflare or GitHub
+  engine updates it and runs its verification build before building the site.
+  If verification fails, the previous engine is restored and the publication
+  continues on it. A build that fails in a way the newer engine is known to fix
+  is updated and built once more. The deploy status reports what happened in
+  `engine_update`. New organizations start with it on; existing ones opt in.
 - `cancel_organization_build` cancels an active GitHub build by its `key` from
   `active_jobs`. The attempt can no longer publish. Completed builds cannot be
   cancelled.

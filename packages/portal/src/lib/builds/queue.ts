@@ -70,6 +70,17 @@ export class OrganizationBuildQueue {
     if (!existing || Object.keys(identity).some(key => existing.identity[key as keyof BuildIdentity] !== identity[key as keyof BuildIdentity])) throw new ConnectionError('The frozen build identity changed.', 409);
     return { key, task: existing };
   }
+  /** Run a failed or cancelled task again, unchanged, on another engine revision (after an engine update). */
+  async requeue(org: string, key: string, engineRevision: string) {
+    const path = `${buildTasksPath(org)}/${pathPart(key)}`;
+    const existing = await this.store.getDoc<BuildTask>(path);
+    if (!existing || !['failed', 'cancelled'].includes(existing.status)) return existing;
+    const now = this.clock();
+    await this.store.compareAndUpdateDoc<BuildTask>(path, value => value.status === existing.status && value.engine_revision === existing.engine_revision && value.attempt === existing.attempt, {
+      engine_revision: engineRevision, status: 'queued', queued_at: now, deadline: now + (existing.media_total ? MEDIA_BUILD_DEADLINE_MS : 45 * 60_000),
+      media_cursor: 0, media_batches: 0, attempt: 0, lease_id: null, lease_until: 0, token_hash: null, artifact_sha256: null, artifact_key: null, error_code: null, error_detail: null });
+    return this.store.getDoc<BuildTask>(path);
+  }
   async claim(org: string, engineRevision: string, protocol: number, expected?: { key: string; dispatch_id: string }) {
     if (protocol !== BUILD_PROTOCOL) throw new ConnectionError('Update the build engine before claiming work.', 409, 'build_protocol_unsupported');
     // One equality filter avoids requiring a provider-specific composite index.

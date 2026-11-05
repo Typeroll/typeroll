@@ -39,24 +39,40 @@ describe('sandbox binary sources', () => {
   });
 });
 
-describe('sandbox /proc on hosts that refuse a nested procfs (Cloudflare, Nov 2026)', async () => {
-  const { sandboxProcfs, SANDBOX_PROC, SANDBOX_NO_PROC } = await import('../../lib/builds/executor.mjs');
-  const refused = Object.assign(Error('build_process_exit_1'), { output: "bwrap: Can't mount proc on /newroot/proc: Operation not permitted\n" });
-  it('keeps a private /proc where the host allows one', async () => {
-    expect(await sandboxProcfs(async () => {})).toBe(SANDBOX_PROC);
+describe('sandbox mounts a build host may refuse (Cloudflare refused /proc in Nov 2026)', async () => {
+  const { sandboxMounts, sandboxFeatures, SANDBOX_PROC, SANDBOX_NO_PROC, SANDBOX_MINIMAL_DEV } = await import('../../lib/builds/executor.mjs');
+  const features = sandboxFeatures('/tmp/typeroll-build-x/sandbox-tmp');
+  const refusal = (line: string) => Object.assign(Error('build_process_exit_1'), { output: `${line}\n` });
+  const host = (refuses: Record<string, string>) => async (args: string[]) => {
+    for (const [mount, line] of Object.entries(refuses)) if (args.includes(mount)) throw refusal(line);
+  };
+  it('keeps every private mount where the host allows them', async () => {
+    expect(await sandboxMounts(async () => {}, features)).toEqual([...SANDBOX_PROC, '--dev', '/dev', '--tmpfs', '/tmp']);
   });
-  it('builds without /proc only when the host refuses exactly that mount', async () => {
+  it('falls back only for the mounts the host refuses, one at a time', async () => {
     const logs: string[] = [];
-    expect(await sandboxProcfs(async (proc: string[]) => { if (proc === SANDBOX_PROC) throw refused; }, (message: string) => logs.push(message))).toBe(SANDBOX_NO_PROC);
+    expect(await sandboxMounts(host({ '--proc': "bwrap: Can't mount proc on /newroot/proc: Operation not permitted" }), features, (message: string) => logs.push(message)))
+      .toEqual([...SANDBOX_NO_PROC, '--dev', '/dev', '--tmpfs', '/tmp']);
     expect(logs).toEqual([expect.stringContaining('building without /proc')]);
-    const other = Object.assign(Error('build_process_exit_1'), { output: 'bwrap: setting up uid map: Permission denied' });
-    await expect(sandboxProcfs(async () => { throw other; })).rejects.toBe(other);
+    const all = await sandboxMounts(host({ '--proc': "bwrap: Can't mount proc on /newroot/proc: Operation not permitted",
+      '--dev': "bwrap: Can't mount devpts on /newroot/dev/pts: Operation not permitted", '--tmpfs': "bwrap: Can't mount tmpfs on /newroot/tmp: Operation not permitted" }), features, () => {});
+    expect(all).toEqual([...SANDBOX_NO_PROC, ...SANDBOX_MINIMAL_DEV, '--bind', '/tmp/typeroll-build-x/sandbox-tmp', '/tmp']);
   });
-  it('never exposes the host /proc to build code', () => {
-    for (const args of [SANDBOX_PROC, SANDBOX_NO_PROC]) {
-      for (let i = 0; i < args.length; i++) if (['--bind', '--ro-bind', '--dev-bind', '--bind-try', '--dev-bind-try'].includes(args[i]!)) expect(args[i + 1]).not.toBe('/proc');
+  it('stops on any other refusal, and when a fallback is refused too', async () => {
+    const other = refusal('bwrap: setting up uid map: Permission denied');
+    await expect(sandboxMounts(async () => { throw other; }, features)).rejects.toBe(other);
+    let probes = 0;
+    const stubborn = refusal("bwrap: Can't mount proc on /newroot/proc: Operation not permitted");
+    await expect(sandboxMounts(async () => { probes++; throw stubborn; }, features, () => {})).rejects.toBe(stubborn);
+    expect(probes).toBe(2);
+  });
+  it('never exposes the host /proc, the whole host /dev or a shared /tmp to build code', () => {
+    const binds = ['--bind', '--ro-bind', '--dev-bind', '--bind-try', '--ro-bind-try', '--dev-bind-try'];
+    for (const feature of features) for (const args of [feature.preferred, feature.fallback]) {
+      for (let i = 0; i < args.length; i++) if (binds.includes(args[i]!)) expect(['/proc', '/dev', '/tmp']).not.toContain(args[i + 1]);
     }
     expect(SANDBOX_NO_PROC.filter((_, i) => SANDBOX_NO_PROC[i - 1] === '--ro-bind-try')).toEqual(['/proc/cpuinfo', '/proc/stat']);
+    expect(SANDBOX_MINIMAL_DEV.filter((_, i) => SANDBOX_MINIMAL_DEV[i - 1] === '--dev-bind')).toEqual(['/dev/null', '/dev/zero', '/dev/random', '/dev/urandom']);
   });
   it('tells an old engine to update instead of reporting a dependency failure', async () => {
     const { buildFailureMessage } = await import('../../lib/builds/failure-message');

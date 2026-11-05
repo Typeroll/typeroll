@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.2.156 (candidate, MCP 0.45.115)
+
+- A link style's `visited` colour now reaches published sites. The publication
+  projection copied `hover` but dropped `visited`, so the `:visited` rule from
+  0.2.153 appeared in previews but never in published CSS. A test now fails when
+  a stored style field is missing from the publication.
+- A publication that stops with `publication_internal_error` now logs the
+  error's name, message and a short stack (signed URL queries and bearer tokens
+  removed), so the cause can be found from the job ID.
+- The organization build engine can keep itself current. With **Keep the build
+  engine updated automatically** on the Builds card (MCP
+  `set_organization_build_auto_update`), a publication that finds an outdated
+  Cloudflare or GitHub engine installs the new one and runs its verification
+  build before building the site. If verification fails, the previous engine is
+  restored and the publication continues on it. A build that fails in a way the
+  newer engine is known to fix, such as a sandbox mount the provider stopped
+  allowing, is updated and built once more from the same frozen source. Each
+  publication reports what it did in `engine_update`. On for organizations whose
+  first engine is set up from this release; existing organizations opt in.
+- A failed engine update, manual or automatic, now restores the previous ready
+  engine instead of leaving the organization unable to publish.
+- Build engines probe each sandbox mount a host may refuse (`/proc`, `/dev`,
+  `/tmp`) and fall back to an isolated alternative for that mount only, so a
+  provider change of that kind no longer stops builds.
+- An unexpected error behind a publishing or build-runner HTTP 502 is now
+  logged as a `publishing_connection_failed` event with its error name, code,
+  provider status and a short stack, with signed URL queries and bearer tokens
+  removed. Build-runner entries name the organization and action. Previously a
+  failed runner claim returned a generic 502 and left no trace of its cause.
+
 ## 0.2.155 (candidate)
 
 - Connecting an AI client takes one step. **Account → AI connections** has

@@ -26,7 +26,7 @@ it('preserves in-flight Cloudflare tasks and saved engines when selecting GitHub
   const queue = new OrganizationBuildQueue();
   const queued = await queue.enqueue(identity('one'), 'cf-engine');
   await store.setDoc(buildInputPath('org', queued.key), { provider: 'cloudflare', kind: 'publication', source_key: 'source', storage_account_id: base.account_id });
-  expect(await readBuildSelection('org')).toEqual({ provider: 'cloudflare', revision: 'initial' });
+  expect(await readBuildSelection('org')).toEqual({ provider: 'cloudflare', revision: 'initial', auto_update: false });
   const selected = await configureBuildSettings('org', { action: 'select', provider: 'github', revision: 'initial' });
   expect(selected.selection.provider).toBe('github');
   expect(await store.getDoc(engineConfigurationPath('org'))).toEqual({ ...base, id: 'build_engine' });

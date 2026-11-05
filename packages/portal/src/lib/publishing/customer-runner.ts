@@ -52,6 +52,9 @@ import { recordCustomerCompute } from './compute-cost';
 import { readEngineConfiguration, type BuildProvider } from '../builds/state';
 import { selectedBuildProvider } from '../builds/selection';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
+import { redactFailureText } from './http';
+import { prepareEngineForBuild, engineUpdateRetryAllowed, type EngineUpdateRecord } from '../builds/auto-update';
+import type { BuildDiagnostic } from '../builds/diagnostics.mjs';
 import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
 import { uploadStaticBuild, finalizeDirectUpload } from '../builds/upload';
 import { claimCloudflareResource, generatedCloudflareNames } from './cloudflare-account-claims';
@@ -99,7 +102,7 @@ async function pendingRedirect(jobPath: string, publication: GitPublication, pre
 }
 
 interface Target { job_id: string | null; lease_id: string | null; lease_until: number; last_publication?: GitPublication }
-export type GitJob = DeployJob & { media_delivery?: (import('./media-domain').MediaDeliveryPending & { checked_at: string }) | null; pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; source_publication?: GitPublication; clear_authored_noindex?: boolean };
+export type GitJob = DeployJob & { media_delivery?: (import('./media-domain').MediaDeliveryPending & { checked_at: string }) | null; pages_domain?: PagesDomainObservation | null; cache_recovery?: CacheRecovery; failure?: { code: string; stage?: string } | null; verification_retry?: { request_id: string; requested_at: string; failure: any }; coordinator_retries?: number; observation_started_at?: string; git_publication?: GitPublication; publication_intent?: 'domain_prepare'; domain_revision?: string; engine_update?: EngineUpdateRecord; source_publication?: GitPublication; clear_authored_noindex?: boolean };
 /** One bounded queue attempt. Build waiting is durable queue backoff, never a sleeping Astro process. */
 export async function executeCustomerPublication(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const attemptStarted = performance.now();
@@ -462,10 +465,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         ...(job.source_publication ? {source_publication_id: job.source_publication.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}), ...await saveSnapshot(args, frozen) };
       const selectedProvider = await selectedBuildProvider(args.orgId);
       const engine = await readEngineConfiguration(args.orgId, selectedProvider);
-      if (site?.publishing_migration && engine?.status !== 'ready') throw new ConnectionError('Restore the shared build engine before publishing this migrated site.', 409, 'shared_build_setup_required');
+      // An engine update in progress (by another publication or an admin) is awaited before the build, not refused.
+      const usable = engine?.status === 'ready' || (!!engine?.previous && (engine.status === 'preparing' || engine.status === 'qualifying'));
+      if (site?.publishing_migration && !usable) throw new ConnectionError('Restore the shared build engine before publishing this migrated site.', 409, 'shared_build_setup_required');
       if (selectedProvider === 'github' && !engine) throw new ConnectionError('Finish build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
-      if (engine && engine.status !== 'ready') throw new ConnectionError('Finish shared build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
-      if (engine?.status === 'ready') { publication.build_engine_revision = engine.revision; publication.build_provider = engine.provider ?? 'cloudflare'; }
+      if (engine && !usable) throw new ConnectionError('Finish shared build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
+      if (engine && usable) { publication.build_engine_revision = engine.revision; publication.build_provider = engine.provider ?? 'cloudflare'; }
       // Domain publication replaces main immediately; DNS approval never pushes a second branch.
       await assertLease();
       await store.updateDoc(jobPath, { git_publication: publication });
@@ -604,13 +609,32 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (!publication.commit) throw new Error('Frozen publication has no Git commit');
     let deployment = publication.deployment_receipt ?? (publication.deployment_id ? await cloudflare(`${projectRoot}/deployments/${encodeURIComponent(publication.deployment_id)}`) : await findPublicationDeployment(cloudflare, projectRoot, { project: publication.project, commit: publication.commit, branch: publication.branch, ignoreSkipped: Boolean(publication.build_engine_revision) }));
     if (publication.build_engine_revision) {
+      if (!publication.build_task_key) {
+        // Nothing has been built with the bound engine yet: an outdated engine may be updated first.
+        const current = await store.getDoc<GitJob>(jobPath);
+        const step = await prepareEngineForBuild(args.orgId, publication.build_provider ?? 'cloudflare', current?.engine_update);
+        if (step.state === 'waiting') {
+          await assertLease();
+          await store.updateDoc(jobPath, { engine_update: step.record, phase: step.phase });
+          return await waitForPublicationCondition(jobPath, 'build_engine_update');
+        }
+        const updates: Record<string, unknown> = {};
+        if (step.record) updates.engine_update = step.record;
+        if (step.warning) updates.warnings = [...((current as any)?.warnings ?? []), step.warning];
+        if (step.engine.revision !== publication.build_engine_revision) {
+          publication = { ...publication, build_engine_revision: step.engine.revision };
+          updates.git_publication = publication;
+        }
+        if (Object.keys(updates).length) { await assertLease(); await store.updateDoc(jobPath, updates); }
+      }
       const engine = await readEngineConfiguration(args.orgId, publication.build_provider ?? 'cloudflare');
       if (!engine || engine.status !== 'ready' || engine.revision !== publication.build_engine_revision) throw new ConnectionError('The shared build engine changed. Retry this publication.', 409);
       if (!publication.build_task_key) {
         if (!engine.static_verification) throw new ConnectionError('Update the build engine in Publishing → Builds before publishing.', 409, 'build_engine_update_required');
         const source = await publicationSourceTree(await readSnapshot(args, publication));
+        const retry = (await store.getDoc<GitJob>(jobPath))?.engine_update?.reason === 'known_failure';
         const queued = await enqueueBuild(engine, { org_id: args.orgId, site_id: args.siteId, version_id: args.versionId, job_id: args.jobId,
-          publication_id: publication.publication_id, commit: publication.commit, branch: publication.branch }, source);
+          publication_id: publication.publication_id, commit: publication.commit!, branch: publication.branch }, source, 'publication', { requeueFailed: retry });
         // A stopped background preparation means this build encodes the images itself: say why it takes longer (SE-07).
         const preparation = await mediaPreparationStatus(args.orgId, args.siteId).catch(() => null);
         if (preparation?.state === 'failed' || (preparation?.state === 'queued' && preparation.error_code)) {
@@ -886,6 +910,18 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       console.info(JSON.stringify({ event: 'publication_retry', job_id: args.jobId, phase: failedJob?.phase, code: error instanceof ProviderTransportError ? error.code : 'publication_service_unavailable' }));
       return await waitForPublicationCondition(jobPath, (await store.getDoc<GitJob>(jobPath))?.phase ?? 'provider');
     }
+    // A failure a current engine is known to fix: update the engine and build the same frozen source once more.
+    const failedPublication = failedJob?.git_publication;
+    if (error instanceof ConnectionError && failedPublication?.build_task_key && !failedPublication.static_checks_key && failedJob?.engine_update?.reason !== 'known_failure' &&
+        await engineUpdateRetryAllowed(args.orgId, failedPublication.build_provider ?? 'cloudflare', error.code, error.details?.build_diagnostic as BuildDiagnostic | null | undefined)) {
+      await assertLease();
+      const { [failedPublication.build_task_key]: _signal, ...signals } = (failedJob as any).completion_signals ?? {};
+      await store.updateDoc(jobPath, { git_publication: { ...failedPublication, build_task_key: null }, completion_signals: signals, coordinator_retries: 0,
+        engine_update: { reason: 'known_failure', state: 'waiting_for_builds', from_revision: failedPublication.build_engine_revision ?? '', requested_at: Date.now(), failure: error.message, failure_code: error.code ?? null } satisfies EngineUpdateRecord,
+        phase: 'updating the build engine after a build failure it fixes' });
+      console.info(JSON.stringify({ event: 'publication_engine_update_retry', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, code: error.code }));
+      return await waitForPublicationCondition(jobPath, 'build_engine_update');
+    }
     if (failedJob?.git_publication?.build_task_key) {
       const failedTask = await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${failedJob.git_publication.build_task_key}`);
       if (failedTask?.seo_report) await store.updateDoc(jobPath, { seo_report: failedTask.seo_report });
@@ -896,7 +932,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes, provider_reason: error.reason, provider_operation: error.operation, provider_error_types: error.errorTypes } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
-    console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
+    // An unclassified error reaches the job only as publication_internal_error: log what it was (ECH7F4UqvST8aaG2uMrB).
+    const errorCode = (error as { code?: unknown } | null)?.code;
+    const internal = failure.code === 'publication_internal_error' && error instanceof Error ? { error_name: error.name, error_message: redactFailureText(error.message),
+      ...(typeof errorCode === 'string' || typeof errorCode === 'number' ? { error_code: errorCode } : {}),
+      ...(error.stack ? { stack: redactFailureText(error.stack.split('\n').slice(1, 8).join('\n')) } : {}) } : {};
+    console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure, ...internal }));
     const message = error instanceof ProviderError && error.provider === 'Cloudflare' && failure.stage === 'creating Cloudflare Pages project'
       ? projectCreationMessage(error, failedJob?.git_publication)
       : error instanceof DerivationError ? `An app could not prepare publication data (${error.provider}). ${error.message} The live site has not changed.`

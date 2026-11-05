@@ -101,7 +101,9 @@ export async function configureGithubEngine(org: string, input: Record<string, u
     catch (error) {
       if (!(error instanceof ConnectionError)) throw error;
       await getStore().compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, 'github'), value => value.revision === previous.revision && value.status === 'qualifying', { status: 'disabled' });
-      await getStore().updateDoc(enginePath(org, 'github'), { revision: randomUUID(), state: 'error', enabled: false, issue: { code: error.code ?? 'github_qualification_failed', message: error.message } });
+      const issue = { code: error.code ?? 'github_qualification_failed', message: error.message };
+      if (!await (await import('./engine-restore')).restorePreviousEngine(org, previous, issue))
+        await getStore().updateDoc(enginePath(org, 'github'), { revision: randomUUID(), state: 'error', enabled: false, issue });
     }
     return readGithubEngine(org);
   }
@@ -133,7 +135,8 @@ export async function configureGithubEngine(org: string, input: Record<string, u
   const pending = await store.listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'status', op: 'in', value: ['queued', 'running'] }], limit: 100 });
   if (previous && pending.some(task => task.engine_revision === previous.revision)) throw new ConnectionError('Wait for current GitHub builds to finish before updating this engine.', 409);
   const revision = randomUUID();
-  let config: EngineConfiguration = { media_preparation: true, static_verification: true, publication_validation: 1, engine_source_sha256: GITHUB_ENGINE_SOURCE, provider: 'github', revision, owner: connection.github.owner, installation_id: connection.github.installation_id,
+  const { previous: _older, ...replaced } = previous ?? { previous: null };
+  let config: EngineConfiguration = { previous: previous?.status === 'ready' ? replaced as Omit<EngineConfiguration, 'previous'> : null, media_preparation: true, static_verification: true, publication_validation: 1, engine_source_sha256: GITHUB_ENGINE_SOURCE, provider: 'github', revision, owner: connection.github.owner, installation_id: connection.github.installation_id,
     account_id: cf.cloudflare.account_id, worker_tag: '', trigger_uuid: '', runner_commit: '', token_hash: '', encrypted_token: '', status: 'preparing', setup_lease_until: Date.now() + 180000 };
   if (previous) {
     if (!await store.compareAndUpdateDoc<EngineConfiguration>(path, value => value.revision === previous.revision && value.setup_lease_until <= Date.now(), config)) throw new ConnectionError('GitHub build settings changed.', 409);
@@ -171,7 +174,9 @@ export async function configureGithubEngine(org: string, input: Record<string, u
   } catch (error) {
     if (config.qualification_key) await new (await import('./queue')).OrganizationBuildQueue().cancel(org, config.qualification_key);
     await store.compareAndUpdateDoc<EngineConfiguration>(path, value => value.revision === revision, { status: 'disabled', setup_lease_until: 0 });
-    await store.updateDoc(enginePath(org, 'github'), { revision: randomUUID(), state: 'error', enabled: false, issue: { code: 'github_build_setup_failed', message: error instanceof ConnectionError ? error.message : 'GitHub setup could not finish. Check the organization connections and retry.' } });
+    const issue = { code: 'github_build_setup_failed', message: error instanceof ConnectionError ? error.message : 'GitHub setup could not finish. Check the organization connections and retry.' };
+    if (await (await import('./engine-restore')).restorePreviousEngine(org, config, issue)) return readGithubEngine(org);
+    await store.updateDoc(enginePath(org, 'github'), { revision: randomUUID(), state: 'error', enabled: false, issue });
     throw error;
   }
 }

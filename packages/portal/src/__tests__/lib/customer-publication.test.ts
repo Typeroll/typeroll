@@ -1,5 +1,5 @@
 import { resolvePublicationReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
-import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
@@ -11,6 +11,7 @@ import { captureImpact } from '../../lib/publishing/impact';
 import { previewPublicationImpact } from '../../lib/publishing/impact-preview';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 import { checkLiveMedia } from '../../lib/publishing/media-serving';
+import { CLOUDFLARE_ENGINE_SOURCE } from '../../lib/builds/setup';
 
 async function executeCustomerPublication(args: Parameters<typeof executePublicationPhase>[0]) {
   for (let step = 0; step < 4; step++) {
@@ -32,6 +33,9 @@ vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: 
 vi.mock('../../lib/extensions/auth', async original => ({ ...await original<object>(), signInstallationAssertion: () => 'synthetic-proof' }));
 vi.mock('../../lib/extensions/admin-request', async original => ({ ...await original<object>(), requestApprovedAdmin: mocks.derive }));
 vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completedBuild: mocks.built }));
+// Engine updates replace provider resources; the runner tests drive their outcome through the engine state.
+const engineSetup = vi.hoisted(() => vi.fn());
+vi.mock('../../lib/builds/setup', async original => ({ ...await original<object>(), configureBuildEngine: engineSetup }));
 vi.mock('../../lib/builds/upload', () => ({ uploadStaticBuild: mocks.upload, finalizeDirectUpload: mocks.direct }));
 vi.mock('../../lib/builds/publication', async original => ({ ...await original<object>(), saveStaticChecks: async () => 'builds/org/checks/verified.json', verifyStaticBatch: mocks.verify, verifyCustomerCandidate: mocks.candidateVerification, saveCustomerVerification: mocks.verificationPlan }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
@@ -468,7 +472,7 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   });
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
   expect(await executeCustomerPublication(args)).toBe('waiting');
-  expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ revision: 'engine-1' }), expect.objectContaining({ org_id: 'org', site_id: 'site', version_id: 'main', branch: 'main', commit: 'b'.repeat(40) }), expect.any(Object));
+  expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ revision: 'engine-1' }), expect.objectContaining({ org_id: 'org', site_id: 'site', version_id: 'main', branch: 'main', commit: 'b'.repeat(40) }), expect.any(Object), 'publication', { requeueFailed: false });
   expect(mocks.upload).not.toHaveBeenCalled();
   await getStore().updateDoc(jobPath, { started_at: new Date(Date.now() - 2 * 60 * 60_000).toISOString() });
   await getStore().setDoc('organizations/org/build_tasks/task', { status: 'queued', deadline: Date.now() + 60_000, media_total: 1001, media_cursor: 750 });
@@ -495,6 +499,81 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   expect(mocks.push).toHaveBeenCalledTimes(1); expect(mocks.enqueue).toHaveBeenCalledTimes(1); expect(mocks.upload).toHaveBeenCalledTimes(1);
   expect(mocks.push.mock.calls[0][1].files['publication.json']).not.toContain('New unsaved');
 });
+it('logs what an unclassified error was, without secrets, when a publication stops with publication_internal_error', async () => {
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+  fonts.freeze.mockRejectedValue(new TypeError('Cannot read properties of undefined (reading \'family\') at https://fonts.example.invalid/css?key=do-not-log'));
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed' });
+  const entry = logged.mock.calls.map(call => { try { return JSON.parse(String(call[0])); } catch { return null; } }).find(value => value?.event === 'customer_publication_failed');
+  expect(entry).toMatchObject({ code: 'publication_internal_error', error_name: 'TypeError', error_message: expect.stringContaining("reading 'family'") });
+  expect(entry.stack).toEqual(expect.any(String));
+  expect(JSON.stringify(entry)).not.toContain('do-not-log');
+  logged.mockRestore();
+});
+
+describe('keeping the organization build engine current', () => {
+  const enginePath = 'organizations/org/publishing_private/build_engine';
+  const outdated = { status: 'ready', static_verification: true, media_preparation: true, publication_validation: 1, provider: 'cloudflare', revision: 'engine-1', account_id: 'a'.repeat(32), engine_source_sha256: 'older-source' };
+  const current = { ...outdated, revision: 'engine-2', engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE };
+  const procRefused = { cause: null, lines: ["bwrap: Can't mount proc on /newroot/proc: Operation not permitted"] };
+  beforeEach(async () => {
+    const provider = mocks.cloudflare.getMockImplementation()!;
+    mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
+    engineSetup.mockImplementation(async () => { await getStore().setDoc(enginePath, { ...current, status: 'qualifying', previous: outdated }); return {}; });
+    mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
+  });
+
+  it('updates an outdated engine before the build and builds on the new revision', async () => {
+    await getStore().setDoc('organizations/org/publishing/build_selection', { provider: 'cloudflare', revision: 'selection', auto_update: true });
+    await getStore().setDoc(enginePath, outdated);
+    expect(await executeCustomerPublication(args)).toBe('waiting');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    expect(engineSetup).toHaveBeenCalledWith('org', expect.objectContaining({ action: 'setup' }));
+    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'updating the build engine', engine_update: { reason: 'update_available', state: 'started', from_revision: 'engine-1' } });
+    await getStore().setDoc(enginePath, current);
+    expect(await executeCustomerPublication(args)).toBe('waiting');
+    expect(mocks.enqueue).toHaveBeenCalledWith(expect.objectContaining({ revision: 'engine-2' }), expect.anything(), expect.any(Object), 'publication', { requeueFailed: false });
+    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ git_publication: { build_engine_revision: 'engine-2', build_task_key: 'task' }, engine_update: { state: 'updated', to_revision: 'engine-2' } });
+  });
+
+  it('retries a build a current engine fixes once, on the updated engine, and reports a second failure', async () => {
+    await getStore().setDoc('organizations/org/publishing/build_selection', { provider: 'cloudflare', revision: 'selection', auto_update: false });
+    await getStore().setDoc(enginePath, outdated);
+    expect(await executeCustomerPublication(args)).toBe('waiting');
+    expect(mocks.enqueue).toHaveBeenCalledTimes(1);
+    await getStore().updateDoc('organizations/org/publishing/build_selection', { auto_update: true });
+    await getStore().setDoc('organizations/org/build_tasks/task', { status: 'failed', deadline: Date.now() + 60_000 });
+    const failure = new ConnectionError('The build failed while installing the site’s build dependencies.', 502, 'dependencies_build_process_exit_1', { build_diagnostic: procRefused });
+    mocks.built.mockRejectedValue(failure);
+    expect(await executeCustomerPublication(args)).toBe('waiting');
+    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running', git_publication: { build_task_key: null },
+      engine_update: { reason: 'known_failure', failure_code: 'dependencies_build_process_exit_1' } });
+    expect(await executeCustomerPublication(args)).toBe('waiting');
+    expect(engineSetup).toHaveBeenCalledTimes(1);
+    await getStore().setDoc(enginePath, current);
+    mocks.built.mockResolvedValue(null);
+    await getStore().setDoc('organizations/org/build_tasks/task', { status: 'queued', deadline: Date.now() + 60_000, lease_until: Date.now() + 60_000 });
+    expect(await executeCustomerPublication(args)).toBe('waiting');
+    expect(mocks.enqueue).toHaveBeenLastCalledWith(expect.objectContaining({ revision: 'engine-2' }), expect.anything(), expect.any(Object), 'publication', { requeueFailed: true });
+    // The same failure on the updated engine is reported, not retried again.
+    await getStore().setDoc('organizations/org/build_tasks/task', { status: 'failed', deadline: Date.now() + 60_000 });
+    mocks.built.mockRejectedValue(failure);
+    expect(await executeCustomerPublication(args)).toBe('ran');
+    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('installing the site’s build dependencies') });
+    expect(mocks.enqueue).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports a known failure as before when automatic updates are off', async () => {
+    await getStore().setDoc(enginePath, outdated);
+    expect(await executeCustomerPublication(args)).toBe('waiting');
+    await getStore().setDoc('organizations/org/build_tasks/task', { status: 'failed', deadline: Date.now() + 60_000 });
+    mocks.built.mockRejectedValue(new ConnectionError('Update the build engine.', 502, 'dependencies_build_process_exit_1', { build_diagnostic: procRefused }));
+    expect(await executeCustomerPublication(args)).toBe('ran');
+    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed' });
+    expect(engineSetup).not.toHaveBeenCalled();
+  });
+});
+
 it('does not fall back to per-site Git builds when shared engine setup is unfinished', async () => {
   await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'qualifying', revision: 'engine-1' });
   expect(await executeCustomerPublication(args)).toBe('ran');

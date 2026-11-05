@@ -204,3 +204,20 @@ it('shows durable media progress with a clear explanation that the browser can b
   expect(container.textContent).toContain('Continues automatically; you can close this page.');
   expect(container.textContent).toContain('redesign');
 });
+
+it('turns automatic engine updates on with the current selection revision', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const engine = { provider: 'cloudflare', state: 'ready', revision: 'engine', enabled: true, worker_name: 'builder', issue: null, update_available: true };
+  const settings = (auto_update: boolean, revision: string) => ({ ...engine, selection: { provider: 'cloudflare', revision, auto_update }, engines: { cloudflare: engine, github: { provider: 'github', state: 'not_configured', revision: 'initial', enabled: false, worker_name: '' } }, active_jobs: [], awaiting_approval: [] });
+  const request = vi.fn(async (_url: unknown, init?: RequestInit) => Response.json(init?.method === 'POST' ? settings(true, 'selection-2') : settings(false, 'selection-1')));
+  vi.stubGlobal('fetch', request);
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  expect(container.textContent).toContain('select Update build engine when no build is running');
+  const toggle = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  expect(toggle.checked).toBe(false);
+  await act(async () => { toggle.click(); });
+  expect(JSON.parse(request.mock.calls.find(([, init]) => init?.method === 'POST')![1]!.body as string)).toEqual({ action: 'auto_update', enabled: true, revision: 'selection-1' });
+  expect(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true);
+  expect(container.textContent).toContain('the next publication updates it first');
+});

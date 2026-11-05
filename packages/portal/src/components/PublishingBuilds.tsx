@@ -119,6 +119,18 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
     } catch (e) { setError(e instanceof Error ? e.message : 'Could not update build settings.'); }
     finally { inFlight.current = false; setBusy(false); }
   }
+  async function autoUpdate(enabled: boolean) {
+    if (!settings || !engine || inFlight.current) return;
+    inFlight.current = true; setBusy(true); setError(''); setNotice('');
+    try {
+      const response = await fetch('/api/orgs/publishing/builds', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'auto_update', enabled, revision: settings.selection.revision }) });
+      const value = await response.json();
+      if (!response.ok) throw Error(value.error || 'Could not update build settings.');
+      adopt(value, engine.provider);
+      setNotice(enabled ? 'Saved. The next publication updates an outdated engine first.' : 'Saved. Update the engine yourself when an update is available.');
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not update build settings.'); }
+    finally { inFlight.current = false; setBusy(false); }
+  }
   async function copy(value: string, label: string) {
     try { await navigator.clipboard.writeText(value); setNotice(`${label} copied.`); }
     catch { setError(`Could not copy ${label.toLowerCase()}. Select the text and copy it manually.`); }
@@ -148,7 +160,11 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
     {readyToSetUp && <div className="publishing-builds__setup"><h3>Next: {setupLabel.toLowerCase()}</h3><p>Click <strong>{setupLabel}</strong> below. Typeroll will prepare the build environment and run a test build automatically. The status here will update when it finishes.</p><p>This sets up builds for your organization. It does not publish or change any live site.</p></div>}
     {verifying && <p>Typeroll is running a test build. You can leave this page; setup continues in the background. The status updates automatically.</p>}
     {state === 'ready' && <p>{active ? 'Shared builds are active. New publications build in this account and upload static files to the site’s Hosting Group.' : 'This engine is ready. Select it below to use it for new publications.'}</p>}
-    {state === 'ready' && engine?.update_available && <p role="status"><strong>Build engine update available.</strong> This engine runs older code than this version of Typeroll. Publishing still works; select <strong>Update build engine</strong> when no build is running to get the newest fixes, including the cause of a failed build in the deploy status.</p>}
+    {state === 'ready' && engine?.update_available && <p role="status"><strong>Build engine update available.</strong> This engine runs older code than this version of Typeroll. Publishing still works; {settings?.selection.auto_update ? 'the next publication updates it first.' : <>select <strong>Update build engine</strong> when no build is running to get the newest fixes, including the cause of a failed build in the deploy status.</>}</p>}
+    {settings && engine && !['not_configured', 'approval_required'].includes(state ?? '') && <div className="field">
+      <label><input type="checkbox" checked={settings.selection.auto_update} disabled={busy} onChange={event => void autoUpdate(event.target.checked)} /> Keep the build engine updated automatically</label>
+      <p className="muted">When a newer engine is available, the next publication installs it and runs a test build before building the site. If the test build fails, the previous engine is put back and the publication continues on it. A build that fails in a way the newer engine fixes is updated and built once more.</p>
+    </div>}
     {github && state !== 'ready' && <p>Set up once for this organization. Typeroll creates a private build repository and runs a verification build through the existing GitHub connection.</p>}
     {needsToken && <div className="publishing-builds__setup">
       <h3>One-time setup in Cloudflare</h3>

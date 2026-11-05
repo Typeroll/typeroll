@@ -175,11 +175,14 @@ function cssFieldError(css: unknown): string | null {
 }
 
 /** Validate an untrusted style. Returns the normalized style or errors. */
+/** Every stored SiteStyle field. A publication projects all of them except updated_at (scripts/lib/static-publication.mjs). */
+export const SITE_STYLE_FIELDS = ['id', 'name', 'role', 'targets', 'description', 'base', 'at', 'hover', 'visited', 'css', 'parts', 'updated_at'] as const;
+
 export function validateSiteStyle(input: unknown): { style?: SiteStyle; errors: string[] } {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { errors: ['style must be an object'] };
   const s = input as Record<string, unknown>;
   const errors: string[] = [];
-  const known = new Set(['id', 'name', 'role', 'targets', 'description', 'base', 'at', 'hover', 'visited', 'css', 'parts', 'updated_at']);
+  const known = new Set<string>(SITE_STYLE_FIELDS);
   for (const key of Object.keys(s)) if (!known.has(key)) errors.push(`${key} is not a style field`);
   if (typeof s.id !== 'string' || !STYLE_ID_PATTERN.test(s.id)) errors.push('id must start with a letter and contain only a-z, 0-9 and - (max 48)');
   if (typeof s.name !== 'string' || !s.name.trim() || s.name.length > 80) errors.push('name is required (max 80 characters)');
