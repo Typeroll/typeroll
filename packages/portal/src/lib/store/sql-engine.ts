@@ -82,6 +82,20 @@ export function deepMerge(base: Record<string, any>, patch: Record<string, any>)
 }
 
 /** Firestore query semantics: a missing field never matches, comparisons need the same type. */
+const SQL_FIELD = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/;
+const sqlScalar = (value: unknown): value is string | number => typeof value === 'string' || (typeof value === 'number' && Number.isFinite(value));
+
+/** A filter SQLite can evaluate with the same result, or null. A missing field is NULL and never equal. */
+function sqlFilter(filter: Filter): { sql: string; params: unknown[] } | null {
+  if (!SQL_FIELD.test(filter.field)) return null;
+  const field = `json_extract(data, '$.${filter.field}')`;
+  if (filter.op === '==' && sqlScalar(filter.value)) return { sql: `${field} = ?`, params: [filter.value] };
+  if (filter.op === 'in' && Array.isArray(filter.value) && filter.value.length > 0 && filter.value.length <= 30 && filter.value.every(sqlScalar)) {
+    return { sql: `${field} IN (${filter.value.map(() => '?').join(', ')})`, params: filter.value };
+  }
+  return null;
+}
+
 export function matchesFilter(doc: Record<string, unknown>, filter: Filter): boolean {
   if (!Object.hasOwn(doc, filter.field)) return false;
   const value = doc[filter.field];
@@ -133,9 +147,20 @@ export class SqlDocumentEngine {
   list(collection: string, options?: { filters?: Filter[]; limit?: number; startAfterId?: string } | null): StoredDoc[] {
     assertCollectionPath(collection);
     const opts = options ?? {};
-    const rows = opts.startAfterId
-      ? this.sql.exec<Row>('SELECT path, id, data, revision FROM documents WHERE parent = ? AND id > ? ORDER BY id', collection, opts.startAfterId)
-      : this.sql.exec<Row>('SELECT path, id, data, revision FROM documents WHERE parent = ? ORDER BY id', collection);
+    // Equality and `in` filters on plain top-level fields narrow the scan in
+    // SQL; every filter is still checked on the parsed document. When all of
+    // them were pushed down, the limit applies in SQL too.
+    const where = ['parent = ?'], params: unknown[] = [collection];
+    if (opts.startAfterId) { where.push('id > ?'); params.push(opts.startAfterId); }
+    let exact = true;
+    for (const filter of opts.filters ?? []) {
+      const pushed = sqlFilter(filter);
+      if (!pushed) { exact = false; continue; }
+      where.push(pushed.sql);
+      params.push(...pushed.params);
+    }
+    const limit = exact && opts.limit ? ` LIMIT ${Math.max(1, Math.floor(opts.limit))}` : '';
+    const rows = this.sql.exec<Row>(`SELECT path, id, data, revision FROM documents WHERE ${where.join(' AND ')} ORDER BY id${limit}`, ...params);
     const result: StoredDoc[] = [];
     for (const row of rows) {
       const doc = toDoc(row);

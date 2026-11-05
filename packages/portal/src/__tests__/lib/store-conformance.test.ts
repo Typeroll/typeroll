@@ -132,3 +132,22 @@ for (const backend of backends) describe(`store contract: ${backend.name}`, () =
     });
   }
 });
+
+describe('SQL filter pushdown', () => {
+  it('returns the same documents as the full scan, including type and missing-field cases', async () => {
+    const store = new SqlStore(localTransport(new SqlDocumentEngine(nodeSqliteDriver())), () => `id${++counter}`);
+    await store.setDoc('items/a', { kind: 'x', n: 1 });
+    await store.setDoc('items/b', { kind: 'y', n: 1.0 });
+    await store.setDoc('items/c', { kind: '1', n: '1' });
+    await store.setDoc('items/d', { other: true });
+    await store.setDoc('items/e', { kind: 'x', n: 2, nested: { kind: 'x' } });
+    const ids = async (filters: Parameters<typeof store.listDocs>[1]) => (await store.listDocs('items', filters)).map(doc => doc.id);
+    expect(await ids({ filters: [{ field: 'kind', op: '==', value: 'x' }] })).toEqual(['a', 'e']);
+    expect(await ids({ filters: [{ field: 'n', op: '==', value: 1 }] })).toEqual(['a', 'b']);
+    expect(await ids({ filters: [{ field: 'kind', op: '==', value: 1 }] })).toEqual([]);
+    expect(await ids({ filters: [{ field: 'kind', op: 'in', value: ['y', '1'] }] })).toEqual(['b', 'c']);
+    expect(await ids({ filters: [{ field: 'kind', op: '==', value: 'x' }], limit: 1 })).toEqual(['a']);
+    expect(await ids({ filters: [{ field: 'kind', op: '==', value: 'x' }, { field: 'n', op: '>', value: 1 }], limit: 1 })).toEqual(['e']);
+    expect(await ids({ filters: [{ field: 'other', op: '==', value: true }] })).toEqual(['d']);
+  });
+});
