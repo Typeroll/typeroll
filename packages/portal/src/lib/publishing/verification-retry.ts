@@ -7,7 +7,7 @@ import type { GitJob } from './customer-runner';
 
 const unavailable = () => new ConnectionError('This deployment cannot resume verification. A finished, already-served publication with unchanged hosting is required.', 409, 'verification_retry_unavailable');
 
-/** No source, build, upload or DNS operation is authorized by this recovery. Cache refresh requires separate approval. */
+/** No source, build, upload or DNS operation is authorized by this recovery; only path-scoped cache refreshes of the site's own addresses. */
 export async function assertVerificationRetry(org: string, site: string, job: GitJob, resumed = false) {
   const publication = job.git_publication;
   const failure = resumed ? job.verification_retry?.failure : job.failure;
@@ -44,19 +44,16 @@ export async function retryPublicationVerification(org: string, site: string, jo
   if (!job || job.version_id !== version) throw new ConnectionError('Deployment not found in this version.', 404);
   if (job.status === 'running' && job.verification_retry) return { job_id: jobId, already_running: true };
   await assertVerificationRetry(org, site, job);
-  const recovery = job.cache_recovery;
-  if (approvedCacheZone !== undefined && (typeof approvedCacheZone !== 'string' ||
-      job.failure?.code !== 'publication_cache_refresh_required' || !recovery || recovery.state !== 'approval_required' ||
-      recovery.publication_id !== job.git_publication!.publication_id || recovery.zone_id !== approvedCacheZone)) {
-    throw new ConnectionError('Review the current failed publication and its cache zone before approving a zone-wide refresh.', 409, 'publication_cache_scope_changed');
+  if (approvedCacheZone !== undefined) {
+    throw new ConnectionError('Zone-wide cache refreshes are no longer offered: they cannot remove files Cloudflare Pages caches per URL, and they clear other sites in the zone. Retry verification without approve_cache_zone_id.', 409, 'publication_cache_zone_refresh_retired');
   }
   const now = new Date().toISOString(), token = randomUUID();
   const saved = await store.compareAndReplaceDoc(path, job, {
-    ...job, ...(approvedCacheZone ? { cache_recovery: { ...recovery!, state: 'zone_approved', updated_at: now } } : {}), status: 'running', phase: 'retrying public verification', observation_started_at: now,
+    ...job, status: 'running', phase: 'retrying public verification', observation_started_at: now,
     finished_at: null, error: null, failure: null, coordinator_retries: 0,
     verification_retry: { request_id: token, requested_at: now, failure: job.failure },
     continuation: { token, reason: 'retry_public_verification', due_at: Date.now(), attempt: 0 },
   });
   if (!saved) throw new ConnectionError('Deployment state changed. Read its status before retrying.', 409, 'verification_retry_conflict');
-  return { job_id: jobId, verification_only: !approvedCacheZone, ...(approvedCacheZone ? { cache_refresh: "zone" } : {}), publication_id: job.git_publication!.publication_id };
+  return { job_id: jobId, verification_only: true, publication_id: job.git_publication!.publication_id };
 }

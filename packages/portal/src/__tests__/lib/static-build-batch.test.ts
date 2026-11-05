@@ -83,3 +83,17 @@ it('records the failed route and response status without any response body', asy
   expect(await check()).toBe(true);
   expect(await getStore().getDoc(job)).toMatchObject({ static_probe: null, verification_message: null });
 });
+
+it('reports removed content-addressed files an edge cache still serves, once, as a warning', async () => {
+  mocked.checks = [{ route: '/_assets/share/share-21511b30bb39f2992024.jpg', status: 404 }];
+  mocked.verify.mockImplementation(async (_origin: string, check: any, options: any) => {
+    options.onRetained?.({ route: check.route, cf_ray: 'a55a9bf08ba4f52a-CDG', sha256: '21511b30bb39f2992024'.padEnd(64, '0'), response_headers: { cf_cache_status: 'HIT' } });
+    return true;
+  });
+  await getStore().setDoc(job, { warnings: ['earlier'] });
+  expect(await check()).toBe(true);
+  const saved = await getStore().getDoc<any>(job);
+  expect(saved.retained_immutable).toEqual([expect.objectContaining({ origin: 'https://site.example.com', route: '/_assets/share/share-21511b30bb39f2992024.jpg', cf_ray: 'a55a9bf08ba4f52a-CDG' })]);
+  expect(saved.warnings).toHaveLength(2);
+  expect(saved.warnings[1]).toContain('still served from Cloudflare');
+});

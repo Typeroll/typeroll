@@ -16,7 +16,7 @@ import { readSnapshot, saveSnapshot } from './publication-snapshot';
 import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
 import { hostingDns } from './hosting-dns';
 import { purgePublicationHost } from './publication-cache';
-import { applyApprovedCacheRefresh, recoverPublicationCache, type CacheRecovery } from './cache-recovery';
+import { recoverPublicationCache, type CacheRecovery } from './cache-recovery';
 import { randomUUID } from 'node:crypto';
 import { paths, CORE_BLOCK_TYPES, type DeployJob, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
@@ -497,13 +497,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       publication.destination ? !samePublicationHosts(publication.destination.hosts, domains.desired) || !sameRedirectHosts(publication.destination.hosts, domains.desired) || publication.destination.dns_mode !== domains.dns_mode : publication.domain_revision !== domains.revision)) {
       throw new ConnectionError('Publishing accounts or domain settings changed. Start a new deployment.', 409);
     }
-    if (job.verification_retry) {
-      if (await applyApprovedCacheRefresh(args.orgId, jobPath, publication)) return await waitForPublicationCondition(jobPath, 'verifying refreshed cache');
-    }
     // A domain preparation that has not switched traffic resumes its own checkpointed flow, which verifies the current address.
     if (job.verification_retry && !(preparingDomain && !publication.traffic_applied)) {
-      // Recovery keeps the served artifact. A separately approved cache refresh
-      // may run here, but never source generation, builds, uploads or DNS.
+      // Recovery keeps the served artifact. A path-scoped cache refresh of this
+      // site's own address may run here, but never source generation, builds,
+      // uploads, DNS or a zone-wide purge.
       const frozen = await readSnapshot(args, publication);
       const mediaHost = frozen.media_manifest?.delivery === 'static' ? frozen.media_manifest.media_host : null;
       const origins = [...new Set([`https://${publication.website_host}`, ...(mediaHost ? [`https://${mediaHost}`] : [])])];
@@ -511,7 +509,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         const markerReady = await probePublication(origin, '/.well-known/typeroll/publication.json', publication.publication_id);
         if (!markerReady || !await verifyStaticBatch(args.orgId, jobPath, publication.probe_checks_key!, origin, true)) {
           if (markerReady) {
-            await recoverPublicationCache(args.orgId, jobPath, publication, origin, undefined, false);
+            await recoverPublicationCache(args.orgId, jobPath, publication, origin);
           }
           await store.updateDoc(jobPath, { phase: 'retrying public verification' });
           return await waitForPublicationCondition(jobPath, 'retrying public verification');
