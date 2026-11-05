@@ -22,9 +22,9 @@ import { sendAccountMail, verificationMail, passwordResetMail } from './account-
 import { firebaseScryptParamsFromEnv, isFirebaseScryptHash, verifyFirebaseScrypt } from './firebase-scrypt';
 import { storeAdapter, storeRateLimitStorage } from './store-adapter';
 
-export const PORTAL_AUTH_BASE_PATH = '/api/auth';
-export const PORTAL_AUTH_PREFIX = 'auth';
-export const PORTAL_COOKIE_PREFIX = 'typeroll';
+import { PORTAL_AUTH_BASE_PATH, PORTAL_AUTH_PREFIX, PORTAL_COOKIE_PREFIX } from './constants';
+
+export { PORTAL_AUTH_BASE_PATH, PORTAL_AUTH_PREFIX, PORTAL_COOKIE_PREFIX };
 const SESSION_LIFETIME_S = 14 * 24 * 60 * 60;
 const MIN_SECRET_LENGTH = 32;
 

@@ -162,12 +162,12 @@ describe('import and read-compare', () => {
     const result = await runImport(target, source, manifest, { maxBytes: 1024 });
     expect(importFailed(result.report)).toBe(false);
     expect(result.site_objects_created).toBe(3);
-    expect(result.report).toMatchObject({ records: db.docs.size, created: db.docs.size - DROPPED, unchanged: 0, overwritten: 0, orgCopies: { created: 3 } });
+    expect(result.report).toMatchObject({ records: db.docs.size, created: db.docs.size - DROPPED, unchanged: 0, overwritten: 0, orgCopies: { created: 5 } });
     expect(Object.values(result.report.dropped).reduce((a, b) => a + b, 0)).toBe(DROPPED);
 
     const report = await runCompare(target, source, manifest);
     expect(compareFailed(report)).toBe(false);
-    expect(report).toMatchObject({ records: db.docs.size, equal: db.docs.size - DROPPED, dropped: DROPPED, orgCopies: { equal: 3 } });
+    expect(report).toMatchObject({ records: db.docs.size, equal: db.docs.size - DROPPED, dropped: DROPPED, orgCopies: { equal: 5 } });
     expect(report.collections['organizations/sites/versions/pages']).toEqual({ compared: 3, equal: 3, different: 0, missing: 0, dropped: 0 });
 
     // Readers get plain JSON through the ordinary store: trees decoded, timestamps as ISO strings.
@@ -197,7 +197,7 @@ describe('import and read-compare', () => {
     const first = await runImport(localShardedTarget(dir), source, manifest);
     const again = await runImport(localShardedTarget(dir), source, manifest);
     expect(again.site_objects_created).toBe(0);
-    expect(again.report).toMatchObject({ created: 0, unchanged: first.report.created, overwritten: 0, conflicts: [], orgCopies: { created: 0, unchanged: 3 } });
+    expect(again.report).toMatchObject({ created: 0, unchanged: first.report.created, overwritten: 0, conflicts: [], orgCopies: { created: 0, unchanged: 5 } });
   });
 
   it('resumes from a checkpoint after an interruption, also inside a step', async () => {
@@ -281,7 +281,7 @@ describe('import and read-compare', () => {
     // The import's own documents (site ownership rows) are added, dropped collections are gone.
     expect(back.records).toBe(manifest.records - DROPPED + 3);
     expect(back.sites).toEqual(manifest.sites);
-    // Organization copies of site documents are not exported twice.
+    // Copies of site documents (in organizations) and organizations (in the global object) are not exported twice.
     expect(skipped['org:acme']).toBe(2);
     // Read back into a fresh target, the round trip compares equal against the original export.
     const second = localShardedTarget(path.join(dir, 'second'));

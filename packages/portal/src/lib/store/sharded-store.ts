@@ -29,6 +29,16 @@ export function shardFor(path: string): Shard {
 }
 
 const isSiteDoc = (path: string) => /^organizations\/[^/]+\/sites\/[^/]+$/.test(path);
+const isOrgDoc = (path: string) => /^organizations\/[^/]+$/.test(path);
+/**
+ * Documents with a read-only copy in another object, written in the same
+ * commit through the outbox: a site document in its organization's object (so
+ * the organization can list its sites) and an organization document in the
+ * global object (so organizations can be listed).
+ */
+const mirrorOf = (path: string): string | null =>
+  isSiteDoc(path) ? `org:${(shardFor(path) as { org: string }).org}` : isOrgDoc(path) ? 'global' : null;
+const isMirrored = (path: string) => mirrorOf(path) !== null;
 export const ownerPath = (org: string, site: string) => `site_owners/${org}:${site}`;
 const OUTBOX = '_outbox';
 
@@ -76,8 +86,8 @@ export class ShardedStore implements ReadWriteStore {
   private async applyOutbox(source: string, id: string, entry: OutboxEntry, current = false) {
     for (const write of entry.writes) {
       const target = this.store(write.shard);
-      // A late re-application copies a site document as it is now, never an older snapshot.
-      const data = current && isSiteDoc(write.path) && write.shard.startsWith('org:') ? await this.store(source).getDoc(write.path) : write.data;
+      // A late re-application copies a mirrored document as it is now, never an older snapshot.
+      const data = current && mirrorOf(write.path) === write.shard ? await this.store(source).getDoc(write.path) : write.data;
       if (data) await target.setDoc(write.path, stripId(data));
       else await target.deleteDoc(write.path);
     }
@@ -100,16 +110,13 @@ export class ShardedStore implements ReadWriteStore {
     return pending.length;
   }
 
-  /**
-   * A site document lives in the site's object; its organization keeps a copy
-   * so it can list its sites. Both change in one commit through the outbox.
-   */
+  /** A mirrored document and its copy change in one commit through the outbox. */
   private async siteDoc<T>(path: string, decide: Parameters<SqlStore['mutate']>[1] extends (...args: infer A) => any ? (...args: A) => { after: Record<string, any> | null; result: T } | { skip: true; result: T } : never): Promise<T> {
-    const source = await this.shardName(path), org = shardFor(path) as { org: string };
+    const source = await this.shardName(path), mirror = mirrorOf(path)!;
     const id = randomUUID();
     let entry: OutboxEntry | null = null;
     const result = await this.store(source).mutate(path, decide, after => {
-      entry = { writes: [{ shard: `org:${org.org}`, path, data: after }], created_at: Date.now() };
+      entry = { writes: [{ shard: mirror, path, data: after }], created_at: Date.now() };
       return [{ path: `${OUTBOX}/${id}`, data: entry }];
     });
     if (entry && await this.store(source).getDoc(`${OUTBOX}/${id}`)) await this.applyOutbox(source, id, entry);
@@ -121,27 +128,27 @@ export class ShardedStore implements ReadWriteStore {
   }
 
   async setDoc(path: string, data: Record<string, any>): Promise<void> {
-    if (isSiteDoc(path)) return this.siteDoc(path, () => ({ after: data, result: undefined }));
+    if (isMirrored(path)) return this.siteDoc(path, () => ({ after: data, result: undefined }));
     await (await this.storeFor(path)).setDoc(path, data);
   }
 
   async createDocIfMissing(path: string, data: Record<string, any>): Promise<boolean> {
-    if (isSiteDoc(path)) return this.siteDoc(path, before => before ? { skip: true, result: false } : { after: data, result: true });
+    if (isMirrored(path)) return this.siteDoc(path, before => before ? { skip: true, result: false } : { after: data, result: true });
     return (await this.storeFor(path)).createDocIfMissing(path, data);
   }
 
   async updateDoc(path: string, data: Record<string, any>): Promise<void> {
-    if (isSiteDoc(path)) return this.siteDoc(path, before => ({ after: deepMerge(before ?? {}, data), result: undefined }));
+    if (isMirrored(path)) return this.siteDoc(path, before => ({ after: deepMerge(before ?? {}, data), result: undefined }));
     await (await this.storeFor(path)).updateDoc(path, data);
   }
 
   async deleteDoc(path: string): Promise<void> {
-    if (isSiteDoc(path)) return this.siteDoc(path, () => ({ after: null, result: undefined }));
+    if (isMirrored(path)) return this.siteDoc(path, () => ({ after: null, result: undefined }));
     await (await this.storeFor(path)).deleteDoc(path);
   }
 
   async compareAndUpdateDoc<T = unknown>(path: string, check: (current: T & { id: string }) => boolean, data: Record<string, any>): Promise<(T & { id: string }) | null> {
-    if (isSiteDoc(path)) return this.siteDoc<(T & { id: string }) | null>(path, before =>
+    if (isMirrored(path)) return this.siteDoc<(T & { id: string }) | null>(path, before =>
       before && check(structuredClone(before) as T & { id: string }) ? { after: deepMerge(before, data), result: before as T & { id: string } } : { skip: true, result: null });
     return (await this.storeFor(path)).compareAndUpdateDoc(path, check, data);
   }
@@ -152,7 +159,8 @@ export class ShardedStore implements ReadWriteStore {
   }
 
   async listDocs<T = unknown>(collection: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<Array<T & { id: string }>> {
-    if (collection === 'organizations') throw new Error('Listing all organizations is not supported; use an index');
+    // Organizations are listed from their copies in the global object.
+    if (collection === 'organizations') return this.store('global').listDocs<T>(collection, opts);
     // A collection lives with the document that owns it; root collections are global.
     const owner = collection.includes('/') ? collection.slice(0, collection.lastIndexOf('/')) : null;
     return (owner ? await this.storeFor(owner) : this.store('global')).listDocs<T>(collection, opts);
@@ -176,14 +184,14 @@ export class ShardedStore implements ReadWriteStore {
           continue;
         }
         let own = effect;
-        // A merge into a site document becomes a guarded replacement, so its organization's copy is exact.
-        if (isSiteDoc(effect.path) && !effect.guardOnly && !effect.replace) {
+        // A merge into a mirrored document becomes a guarded replacement, so its copy is exact.
+        if (isMirrored(effect.path) && !effect.guardOnly && !effect.replace) {
           const current = await store.getDoc(effect.path);
           own = { ...effect, data: deepMerge(current ?? {}, effect.data), replace: true, expected: Object.hasOwn(effect, 'expected') ? effect.expected : current };
           if (Object.hasOwn(effect, 'expected') && !deepEqual(effect.expected ?? null, current)) return false;
         }
         if (effect.path !== path) local.push(own);
-        if (isSiteDoc(effect.path) && !effect.guardOnly) remote.push({ shard: `org:${(shardFor(effect.path) as { org: string }).org}`, path: effect.path, data: stripId(own.data) });
+        if (isMirrored(effect.path) && !effect.guardOnly) remote.push({ shard: mirrorOf(effect.path)!, path: effect.path, data: stripId(own.data) });
       }
       const id = randomUUID();
       const entry: OutboxEntry | null = remote.length ? { writes: remote, created_at: Date.now() } : null;
@@ -192,7 +200,7 @@ export class ShardedStore implements ReadWriteStore {
         return true;
       }
       // Retry only when a site document we read changed underneath; otherwise the caller's condition failed.
-      const rewrote = effects.some(effect => isSiteDoc(effect.path) && !effect.replace && !Object.hasOwn(effect, 'expected'));
+      const rewrote = effects.some(effect => isMirrored(effect.path) && !effect.replace && !Object.hasOwn(effect, 'expected'));
       if (!rewrote || !deepEqual(await store.getDoc(path), expected ?? null)) return false;
     }
     return false;

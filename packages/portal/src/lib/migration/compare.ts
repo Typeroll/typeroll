@@ -77,8 +77,10 @@ export function shardedReader(target: MigrationTarget): CompareReader {
       return result;
     },
     async orgCopy(path) {
+      // A site document's copy lives in its organization, an organization's in the global object.
       const { org } = shardFor(path) as { org: string };
-      return (await target.transport(`org:${org}`).get(path))?.data ?? null;
+      const mirror = /^organizations\/[^/]+$/.test(path) ? 'global' : `org:${org}`;
+      return (await target.transport(mirror).get(path))?.data ?? null;
     },
   };
 }
@@ -112,7 +114,7 @@ export async function compareLines(reader: CompareReader, lines: Array<{ line: n
     const at = firstDifference(want, logicalValue(path, found));
     if (at) { report.different.push({ line, path, at }); group.different++; continue; }
     report.equal++; group.equal++;
-    if (reader.orgCopy && /^organizations\/[^/]+\/sites\/[^/]+$/.test(path)) {
+    if (reader.orgCopy && /^organizations\/[^/]+(\/sites\/[^/]+)?$/.test(path)) {
       const copy = await reader.orgCopy(path);
       const copyAt = copy ? firstDifference(want, logicalValue(path, copy)) : '/';
       if (copyAt) report.orgCopies.different.push({ path, at: copyAt });

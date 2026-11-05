@@ -21,7 +21,8 @@
 import type { AstroCookies } from 'astro';
 import { resolveOrganizationSession, clearOrganization } from './organization-session';
 import { readE2ESessionCookie } from './e2e-auth';
-import { getPortalAuth, isIdentityConfigured, PORTAL_COOKIE_PREFIX } from './identity/portal-auth';
+import { getPortalAuth, isIdentityConfigured } from './identity/portal-auth';
+import { PORTAL_COOKIE_PREFIX } from './identity/constants';
 
 export interface Session {
   userId: string;
@@ -47,8 +48,10 @@ export function isPendingSession(session: Session): boolean {
 }
 
 const DEV_COOKIE = 'typeroll_session';
-const SESSION_COOKIE_NAMES = [`__Secure-${PORTAL_COOKIE_PREFIX}.session_token`, `${PORTAL_COOKIE_PREFIX}.session_token`];
-const REMEMBER_COOKIE_NAMES = [`__Secure-${PORTAL_COOKIE_PREFIX}.dont_remember`, `${PORTAL_COOKIE_PREFIX}.dont_remember`];
+// Computed on use: the bundled Worker evaluates chunks in an order where an
+// imported constant can still be undefined while this module initializes.
+const sessionCookieNames = () => [`__Secure-${PORTAL_COOKIE_PREFIX}.session_token`, `${PORTAL_COOKIE_PREFIX}.session_token`];
+const rememberCookieNames = () => [`__Secure-${PORTAL_COOKIE_PREFIX}.dont_remember`, `${PORTAL_COOKIE_PREFIX}.dont_remember`];
 const DEV_USER: Session = {
   userId: 'dev-user',
   email: 'dev@typeroll.local',
@@ -140,7 +143,11 @@ function accountSession(cookies: AstroCookies, cookieHeader: string): Promise<Ac
       // A failed lookup or a disabled person never restores access.
       if (!value?.user || value.user.disabled) return null;
       return value;
-    })().catch(() => null);
+    })().catch(error => {
+      // Fail closed; log the cause without cookie or identity details.
+      console.error('[auth] session lookup failed:', error instanceof Error ? error.message : 'unknown error');
+      return null;
+    });
     byValue.set(cookieHeader, found);
   }
   return found;
@@ -148,11 +155,11 @@ function accountSession(cookies: AstroCookies, cookieHeader: string): Promise<Ac
 
 function sessionCookieHeader(cookies: AstroCookies): string | null {
   const parts: string[] = [];
-  for (const name of [...SESSION_COOKIE_NAMES, ...REMEMBER_COOKIE_NAMES]) {
+  for (const name of [...sessionCookieNames(), ...rememberCookieNames()]) {
     const value = cookies.get(name, { decode: v => v })?.value;
     if (value) parts.push(`${name}=${value}`);
   }
-  return parts.some(part => SESSION_COOKIE_NAMES.some(name => part.startsWith(`${name}=`))) ? parts.join('; ') : null;
+  return parts.some(part => sessionCookieNames().some(name => part.startsWith(`${name}=`))) ? parts.join('; ') : null;
 }
 
 async function confirmedIdentity(cookies: AstroCookies, session: Session): Promise<SessionIdentity> {
@@ -185,7 +192,7 @@ export function applySetCookies(cookies: AstroCookies, headers: Headers | null |
 }
 
 export function clearSession(cookies: AstroCookies): void {
-  for (const name of [DEV_COOKIE, ...SESSION_COOKIE_NAMES, ...REMEMBER_COOKIE_NAMES]) cookies.delete(name, { path: '/' });
+  for (const name of [DEV_COOKIE, ...sessionCookieNames(), ...rememberCookieNames()]) cookies.delete(name, { path: '/' });
   clearOrganization(cookies);
 }
 

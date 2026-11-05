@@ -9,6 +9,7 @@ import { cloudflareStore, storeObject, type StoreEnv } from './lib/runtime/cloud
 import { scheduledDocumentStore, type ScheduledDelivery, type ScheduledDocumentStore } from './lib/store/object-scheduler';
 import { deliverScheduledWork } from './lib/scheduling/worker';
 import { drainObjectOutbox, sweepScheduledObjects } from './lib/scheduling/sweep';
+import { createOperatorApi, type OperatorApiMethods } from './lib/operator-api';
 
 setRuntimeStore(() => cloudflareStore(env as unknown as StoreEnv));
 
@@ -51,6 +52,26 @@ export class DocumentStore extends DurableObject<PortalEnv> {
 export class Scheduler extends WorkerEntrypoint<PortalEnv> {
   deliver(delivery: ScheduledDelivery) { return deliverScheduledWork(delivery); }
   drainOutbox(object: string) { return drainObjectOutbox(object); }
+}
+
+/**
+ * The narrow internal API for the operator Worker. Reachable only through the
+ * `CORE_API` service binding that the operator's configuration declares; it
+ * has no route on the internet.
+ */
+export class OperatorApi extends WorkerEntrypoint<PortalEnv> implements OperatorApiMethods {
+  readonly #api = createOperatorApi();
+  describe() { return this.#api.describe(); }
+  getDocument(...args: Parameters<OperatorApiMethods['getDocument']>) { return this.#api.getDocument(...args); }
+  getDocuments(...args: Parameters<OperatorApiMethods['getDocuments']>) { return this.#api.getDocuments(...args); }
+  listDocuments(...args: Parameters<OperatorApiMethods['listDocuments']>) { return this.#api.listDocuments(...args); }
+  commit(...args: Parameters<OperatorApiMethods['commit']>) { return this.#api.commit(...args); }
+  listPeople(...args: Parameters<OperatorApiMethods['listPeople']>) { return this.#api.listPeople(...args); }
+  getPerson(...args: Parameters<OperatorApiMethods['getPerson']>) { return this.#api.getPerson(...args); }
+  updatePerson(...args: Parameters<OperatorApiMethods['updatePerson']>) { return this.#api.updatePerson(...args); }
+  revokePersonCredentials(...args: Parameters<OperatorApiMethods['revokePersonCredentials']>) { return this.#api.revokePersonCredentials(...args); }
+  seedE2EPersonas(...args: Parameters<OperatorApiMethods['seedE2EPersonas']>) { return this.#api.seedE2EPersonas(...args); }
+  inspectE2EPersonas(...args: Parameters<OperatorApiMethods['inspectE2EPersonas']>) { return this.#api.inspectE2EPersonas(...args); }
 }
 
 export default {

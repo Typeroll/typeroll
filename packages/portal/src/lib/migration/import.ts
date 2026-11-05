@@ -51,6 +51,9 @@ export const emptyImportReport = (): ImportReport => ({
 export const importFailed = (report: ImportReport) => report.conflicts.length > 0 || report.errors.length > 0;
 
 const isSiteDoc = (path: string) => /^organizations\/[^/]+\/sites\/[^/]+$/.test(path);
+const isOrgDoc = (path: string) => /^organizations\/[^/]+$/.test(path);
+/** Where a document's read-only copy lives (same rule as ShardedStore). */
+const mirrorShard = (path: string) => isOrgDoc(path) ? 'global' : `org:${(shardFor(path) as { org: string }).org}`;
 const COMMIT_BYTES = 4_000_000, COMMIT_DOCS = 200, ATTEMPTS = 5, UNASSIGNED = '';
 
 /** Object name for a path; for a site without an ownership row, null unless `create`. */
@@ -141,18 +144,19 @@ export async function importLines(target: MigrationTarget, lines: Array<{ line: 
         const decision = decisions.get(doc.path)!;
         if (decision === 'conflict') report.conflicts.push({ line: doc.line, path: doc.path });
         else report[decision]++;
-        if (isSiteDoc(doc.path)) siteDocs.push({ path: doc.path, data: decision === 'conflict' ? null : doc.data });
+        if (isSiteDoc(doc.path) || isOrgDoc(doc.path)) siteDocs.push({ path: doc.path, data: decision === 'conflict' ? null : doc.data });
       }
     }
   }
 
-  // Organization copies mirror the site object's value (also after a conflict left it alone).
+  // Copies mirror the owning object's value (also after a conflict left it alone):
+  // site documents in their organization, organization documents in the global object.
   for (const doc of siteDocs) {
     const shard = await resolveShard(target, doc.path, false);
     const data = doc.data ?? (shard ? (await target.transport(shard).get(doc.path))?.data ?? null : null);
     if (!data) continue;
-    const org = `org:${(shardFor(doc.path) as { org: string }).org}`;
-    const decision = (await writeObject(dryRun ? null : target.transport(org), [{ path: doc.path, data }], { force: true, dryRun })).get(doc.path)!;
+    const mirror = mirrorShard(doc.path);
+    const decision = (await writeObject(dryRun ? null : target.transport(mirror), [{ path: doc.path, data }], { force: true, dryRun })).get(doc.path)!;
     report.orgCopies[decision === 'overwritten' ? 'updated' : decision === 'created' ? 'created' : 'unchanged']++;
   }
 }

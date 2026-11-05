@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { SqlDocumentEngine } from '../../lib/store/sql-engine';
 import { localTransport, type StoreTransport } from '../../lib/store/sql-store';
 import { nodeSqliteDriver } from '../../lib/store/node-sqlite';
@@ -77,4 +77,21 @@ it('re-applies an outbox entry left behind by a crash', async () => {
   fail = false;
   expect(await store.drainOutbox(await store.shardName('organizations/o/sites/s'))).toBe(1);
   expect(await store.listDocs('organizations/o/sites')).toEqual([{ id: 's', name: 'Site' }]);
+});
+
+describe('organization listing', () => {
+  it('lists organizations from their copies in the global object', async () => {
+    const engines = new Map<string, SqlDocumentEngine>();
+    const store = new ShardedStore({ transport: name => {
+      if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+      return localTransport(engines.get(name)!);
+    } }, () => 'id');
+    await store.setDoc('organizations/a', { name: 'A' });
+    expect(await store.compareAndReplaceDoc('organizations/b', null, { name: 'B' })).toBe(true);
+    await store.updateDoc('organizations/a', { plan: 'pro' });
+    expect((await store.listDocs<{ name: string; plan?: string }>('organizations')).map(o => [o.id, o.name, o.plan])).toEqual([['a', 'A', 'pro'], ['b', 'B', undefined]]);
+    await store.deleteDoc('organizations/b');
+    expect((await store.listDocs('organizations')).map(o => o.id)).toEqual(['a']);
+    expect(await engines.get('org:a')!.get('organizations/a')).toBeTruthy();
+  });
 });
