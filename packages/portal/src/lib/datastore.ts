@@ -13,6 +13,9 @@ import { fileURLToPath } from 'node:url';
 import { scheduledIndexWrites, notifyScheduledWrites } from './scheduling/index';
 import { nodeSqliteDriver } from './store/node-sqlite';
 import { SqlDocumentEngine } from './store/sql-engine';
+
+/** Top-level document field read as a TTL: the store removes the document after this time. */
+export { TTL_FIELD } from './store/sql-engine';
 import { SqlStore, localTransport } from './store/sql-store';
 
 export interface Filter {

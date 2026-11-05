@@ -121,12 +121,30 @@ export function deepEqual(a: unknown, b: unknown): boolean {
   return false;
 }
 
+/**
+ * The document's TTL: a top-level `delete_at` (epoch milliseconds, an ISO
+ * date or a Date), as a Firestore TTL policy field. The object that holds the
+ * document deletes it once that time has passed (see ObjectScheduler); until
+ * then readers still see it, so callers keep checking their own expiry.
+ */
+export const TTL_FIELD = 'delete_at';
+export function expiryOf(data: Record<string, unknown>): number | null {
+  const value = data[TTL_FIELD] as unknown;
+  const time = typeof value === 'number' ? value : value instanceof Date ? value.valueOf() : typeof value === 'string' ? Date.parse(value) : NaN;
+  return Number.isFinite(time) ? Math.floor(time) : null;
+}
+
 type Row = { path: string; id: string; data: string; revision: number };
 const toDoc = (row: Row): StoredDoc => ({ path: row.path, id: row.id, data: JSON.parse(row.data), revision: row.revision });
 
 export class SqlDocumentEngine {
   constructor(private readonly sql: SqlDriver) {
     for (const statement of SCHEMA) this.sql.exec(statement);
+    // Added after the first schema; databases created before it gain the column here.
+    if (!this.sql.exec<{ name: string }>('PRAGMA table_info(documents)').some(column => column.name === 'delete_at')) {
+      this.sql.exec('ALTER TABLE documents ADD COLUMN delete_at INTEGER');
+    }
+    this.sql.exec('CREATE INDEX IF NOT EXISTS documents_delete_at ON documents(delete_at) WHERE delete_at IS NOT NULL');
   }
 
   sequence(): number {
@@ -196,9 +214,9 @@ export class SqlDocumentEngine {
     const { id: _id, ...incoming } = clean(write.data) as Record<string, any>;
     void _id;
     const data = write.op === 'merge' && row ? deepMerge(JSON.parse(row.data), incoming) : incoming;
-    this.sql.exec(`INSERT INTO documents (path, parent, id, data, revision, seq) VALUES (?, ?, ?, ?, ?, ?)
-      ON CONFLICT(path) DO UPDATE SET data = excluded.data, revision = excluded.revision, seq = excluded.seq`,
-    write.path, parentOf(write.path), idOf(write.path), JSON.stringify(data), (row?.revision ?? 0) + 1, seq);
+    this.sql.exec(`INSERT INTO documents (path, parent, id, data, revision, seq, delete_at) VALUES (?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(path) DO UPDATE SET data = excluded.data, revision = excluded.revision, seq = excluded.seq, delete_at = excluded.delete_at`,
+    write.path, parentOf(write.path), idOf(write.path), JSON.stringify(data), (row?.revision ?? 0) + 1, seq, expiryOf(data));
     this.sql.exec('DELETE FROM deletions WHERE path = ?', write.path);
   }
 
@@ -212,6 +230,25 @@ export class SqlDocumentEngine {
       this.sql.exec("INSERT INTO meta (key, value) VALUES ('seq', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value", seq);
       for (const item of paths) this.apply({ path: item, op: 'delete' }, seq);
       return paths.length;
+    });
+  }
+
+  /** Earliest `delete_at` of any document, or null. */
+  nextExpiry(): number | null {
+    return this.sql.exec<{ t: number | null }>('SELECT MIN(delete_at) AS t FROM documents WHERE delete_at IS NOT NULL')[0]?.t ?? null;
+  }
+
+  /**
+   * Delete up to `limit` documents whose `delete_at` has passed (the TTL).
+   * No tombstone is kept: an expired document counts as already gone, and a
+   * writer that still holds its revision conflicts and re-reads.
+   */
+  removeExpired(now: number, limit = 500): number {
+    return this.sql.transaction(() => {
+      const expired = this.sql.exec<{ path: string }>('SELECT path FROM documents WHERE delete_at IS NOT NULL AND delete_at <= ? ORDER BY delete_at LIMIT ?',
+        now, Math.max(1, Math.floor(limit))).map(row => row.path);
+      for (const path of expired) this.sql.exec('DELETE FROM documents WHERE path = ?', path);
+      return expired.length;
     });
   }
 

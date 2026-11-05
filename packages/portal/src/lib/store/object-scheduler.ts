@@ -10,11 +10,15 @@
 // late or repeated delivery harmless. A failed or unconsumed delivery backs
 // off in the mirror only, never in the durable document.
 //
+// The same alarm is the store's TTL: a document with a past `delete_at` is
+// removed on the next alarm, which is set for the earliest expiry rounded up
+// to a step (15 minutes), so no Cron job has to look for expired records.
+//
 // Each object also reports its earliest due time to the global
 // `scheduled_objects` index (through its own outbox), so a Cron sweep can poke
 // objects whose alarm was lost without scanning every object.
 
-import { documentStoreMethods, type DocumentStoreRpc, type DurableSqlStorage } from './durable-object';
+import { documentStoreMethods, type DocumentStoreHousekeeping, type DocumentStoreRpc, type DurableSqlStorage } from './durable-object';
 import type { CommitResult, Precondition, Write } from './sql-engine';
 
 export const SCHEDULED_WORK = 'scheduled_work';
@@ -56,6 +60,8 @@ export interface ObjectSchedulerOptions {
   batch?: number;
   /** A later due time is reported only when it moved by more than this. */
   reportSlackMs?: number;
+  /** Expired documents (`delete_at`) are removed on alarms rounded up to this step, so a busy object is not woken per expiry. */
+  ttlStepMs?: number;
 }
 
 type Row = { path: string; kind: string; generation: string; due_at: number; ready_at: number; attempts: number; retry_at: number };
@@ -74,10 +80,12 @@ export class ObjectScheduler {
   private readonly grace: number;
   private readonly batch: number;
   private readonly slack: number;
+  private readonly ttlStep: number;
   /** The alarm this instance last set; undefined when unknown (new instance, alarm fired). */
   private armed: number | null | undefined;
 
-  constructor(private readonly storage: AlarmStorage, private readonly store: DocumentStoreRpc, private readonly options: ObjectSchedulerOptions) {
+  constructor(private readonly storage: AlarmStorage, private readonly store: DocumentStoreRpc, private readonly options: ObjectSchedulerOptions,
+    private readonly ttl?: DocumentStoreHousekeeping) {
     for (const statement of SCHEMA) storage.sql.exec(statement);
     this.now = options.now ?? Date.now;
     this.floor = options.retryFloorMs ?? 5_000;
@@ -85,6 +93,31 @@ export class ObjectScheduler {
     this.grace = options.outboxGraceMs ?? 30_000;
     this.batch = options.batch ?? 25;
     this.slack = options.reportSlackMs ?? 10 * 60_000;
+    this.ttlStep = options.ttlStepMs ?? 15 * 60_000;
+  }
+
+  /** When the next expired document should be removed, rounded up to the TTL step. */
+  private expiryDue(): number | null {
+    const next = this.ttl?.nextExpiry() ?? null;
+    return next === null ? null : Math.ceil(next / this.ttlStep) * this.ttlStep;
+  }
+
+  /** True when a commit added an expiry earlier than the alarm that is set. */
+  expiryNeedsAlarm(): boolean {
+    const due = this.expiryDue();
+    return due !== null && (this.armed == null || due < this.armed);
+  }
+
+  /** Remove expired documents in bounded batches; what is left re-arms the alarm at once. */
+  private removeExpired(now: number) {
+    if (!this.ttl) return;
+    let removed = 0;
+    for (let batch = 0; batch < 10; batch++) {
+      const count = this.ttl.removeExpired(now, 500);
+      removed += count;
+      if (count < 500) break;
+    }
+    if (removed) console.info(JSON.stringify({ event: 'expired_documents_removed', object: this.options.name, removed }));
   }
 
   private exec<T>(sql: string, ...params: unknown[]): T[] { return this.storage.sql.exec(sql, ...params).toArray() as T[]; }
@@ -158,10 +191,10 @@ export class ObjectScheduler {
     });
   }
 
-  /** Set the object's alarm to its earliest due item or outbox entry; clear it when there is none. */
+  /** Set the object's alarm to its earliest due item, outbox entry or expiry; clear it when there is none. */
   async arm(exact = false): Promise<number | null> {
     this.report(this.nextDue(), exact);
-    const candidates = [this.nextDue(), this.outboxDue()].filter((value): value is number => value !== null);
+    const candidates = [this.nextDue(), this.outboxDue(), this.expiryDue()].filter((value): value is number => value !== null);
     const at = candidates.length ? Math.min(...candidates) : null;
     if (at === this.armed) return at;
     if (at === null) await this.storage.deleteAlarm();
@@ -179,6 +212,7 @@ export class ObjectScheduler {
       try { await this.options.hooks.drainOutbox(this.options.name); }
       catch { console.error(JSON.stringify({ event: 'outbox_drain_failed', object: this.options.name })); }
     }
+    this.removeExpired(now);
     const due = this.exec<Row>(`SELECT * FROM scheduling_due WHERE MAX(ready_at, retry_at) <= ?
       ORDER BY kind = 'page_schedule' DESC, due_at LIMIT ?`, now, this.batch);
     // Page transitions first: they create the site publications that follow them.
@@ -221,8 +255,8 @@ export interface ScheduledDocumentStore extends Omit<DocumentStoreRpc, 'commit' 
 
 /** For the store object class: engine methods plus `alarm()` and `wake()`. */
 export function scheduledDocumentStore(storage: AlarmStorage, options: ObjectSchedulerOptions): ScheduledDocumentStore {
-  const store = documentStoreMethods(storage);
-  const scheduler = new ObjectScheduler(storage, store, options);
+  const { nextExpiry, removeExpired, ...store } = documentStoreMethods(storage);
+  const scheduler = new ObjectScheduler(storage, store, options, { nextExpiry, removeExpired });
   return {
     ...store,
     async commit(preconditions, writes) {
@@ -233,7 +267,7 @@ export function scheduledDocumentStore(storage: AlarmStorage, options: ObjectSch
         if (committed.ok) touched = scheduler.refresh(writes.map(write => write.path));
         return committed;
       });
-      if (touched) await scheduler.arm();
+      if (touched || (result.ok && scheduler.expiryNeedsAlarm())) await scheduler.arm();
       return result;
     },
     async deleteTree(path) {

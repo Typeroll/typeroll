@@ -13,8 +13,9 @@ it('exports an OperatorApi entrypoint delegating every operator API method', () 
   expect(source).toMatch(/async scheduled\(/);
 });
 
-it('removes expired sign-in records from the Cron handler', () => {
+it('leaves expiry to the store TTL: the Cron handler only wakes overdue objects', () => {
   const source = fs.readFileSync(path.resolve(__dirname, '../../worker.ts'), 'utf8');
   const scheduled = source.slice(source.indexOf('async scheduled('));
-  expect(scheduled).toMatch(/removeExpiredAuthRecords\(getStore\(\)\)/);
+  expect(scheduled).toMatch(/sweepScheduledObjects\(/);
+  expect(scheduled).not.toMatch(/removeExpired|retention/);
 });

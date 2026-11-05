@@ -50,6 +50,25 @@ describe('identity store adapter', () => {
     await expect(db.update({ model: 'user', where: [{ field: 'id', value: first.id }], update: { email: 'same@x.test' } })).rejects.toThrow(/already exists/);
   });
 
+  it('gives sessions a store TTL a day after expiry that follows renewals, and hides it from Better Auth', async () => {
+    const db = adapter();
+    const day = 24 * 60 * 60 * 1000, expires = new Date(Date.parse('2026-11-12T00:00:00.000Z'));
+    const session = await db.create<Record<string, unknown>, { id: string }>({ model: 'session', data: { token: 'tok', userId: 'u1', expiresAt: expires, createdAt: now(), updatedAt: now() } });
+    const stored = await store.getDoc<Record<string, unknown>>(`auth_session/${session.id}`);
+    expect(stored!.delete_at).toBe(expires.valueOf() + day);
+    const index = (await store.listDocs<Record<string, unknown>>('auth_unique')).find(doc => doc.owner === session.id);
+    expect(index!.delete_at).toBe(expires.valueOf() + day);
+    expect(await db.findOne({ model: 'session', where: [{ field: 'token', value: 'tok' }] })).not.toHaveProperty('delete_at');
+
+    const renewed = new Date(expires.valueOf() + 7 * day);
+    await db.update({ model: 'session', where: [{ field: 'id', value: session.id }], update: { expiresAt: renewed } });
+    expect((await store.getDoc<Record<string, unknown>>(`auth_session/${session.id}`))!.delete_at).toBe(renewed.valueOf() + day);
+    expect((await store.listDocs<Record<string, unknown>>('auth_unique')).find(doc => doc.owner === session.id)!.delete_at).toBe(renewed.valueOf() + day);
+    // Users are never given a TTL.
+    const user = await db.create<Record<string, unknown>, { id: string }>({ model: 'user', data: { email: 'ttl@x.test', name: 't', emailVerified: false, createdAt: now(), updatedAt: now() } });
+    expect(await store.getDoc(`auth_user/${user.id}`)).not.toHaveProperty('delete_at');
+  });
+
   it('keeps instances with different prefixes apart', async () => {
     const portal = adapter();
     const operator = storeAdapter({ store: () => store, prefix: 'operator_auth' })({} as never);

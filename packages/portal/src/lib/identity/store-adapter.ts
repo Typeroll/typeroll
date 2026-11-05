@@ -19,11 +19,15 @@
 import { createHash } from 'node:crypto';
 import { createAdapterFactory, type CleanedWhere } from 'better-auth/adapters';
 import type { BetterAuthRateLimitStorage } from 'better-auth';
-import type { ConditionalEffect, Filter, ReadWriteStore } from '../datastore';
+import { TTL_FIELD, type ConditionalEffect, type Filter, type ReadWriteStore } from '../datastore';
 
 const CONSUMED = '__consumed';
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
 const MAX_ATTEMPTS = 16;
+/** Models whose rows carry `expiresAt` and are removed by the store's TTL. */
+const EXPIRING_MODELS = new Set(['session', 'verification']);
+/** A record is removed one day after it expired, so one still being exchanged at its expiry is never touched. */
+export const EXPIRED_RECORD_GRACE_MS = 24 * 60 * 60 * 1000;
 
 type Row = Record<string, unknown> & { id: string };
 
@@ -71,8 +75,13 @@ export function storeAdapter({ store, prefix, adapterId = 'typeroll-store' }: St
         `${prefix}_unique/${createHash('sha256').update(`${model}\u0000${field}\u0000${JSON.stringify(value)}`).digest('hex')}`;
 
       const visible = (row: Row | null): row is Row => !!row && row[CONSUMED] !== true;
-      const output = (row: Row): Row => { const { [CONSUMED]: _consumed, ...rest } = row; void _consumed; return rest as Row; };
-      const stored = (data: Record<string, unknown>) => { const { id: _id, [CONSUMED]: _c, ...rest } = data; void _id; void _c; return rest; };
+      const output = (row: Row): Row => { const { [CONSUMED]: _consumed, [TTL_FIELD]: _ttl, ...rest } = row; void _consumed; void _ttl; return rest as Row; };
+      const stored = (model: string, data: Record<string, unknown>) => {
+        const { id: _id, [CONSUMED]: _c, [TTL_FIELD]: _ttl, ...rest } = data; void _id; void _c; void _ttl;
+        // Sessions and verification tokens expire; the store removes them a day later.
+        const expires = EXPIRING_MODELS.has(getDefaultModelName(model)) ? Date.parse(String(rest.expiresAt ?? '')) : NaN;
+        return Number.isFinite(expires) ? { ...rest, [TTL_FIELD]: expires + EXPIRED_RECORD_GRACE_MS } : rest;
+      };
 
       async function rows(model: string, where: CleanedWhere[] = []): Promise<Row[]> {
         const s = store();
@@ -92,14 +101,16 @@ export function storeAdapter({ store, prefix, adapterId = 'typeroll-store' }: St
         for (const field of uniqueFields(model)) {
           const value = next[field];
           if (value === undefined || value === null) continue;
-          if (previous && isSame(previous[field], value)) continue;
+          // An unchanged value is re-claimed only to move the claim's expiry with its row.
+          if (previous && isSame(previous[field], value) && isSame(previous[TTL_FIELD], next[TTL_FIELD])) continue;
           const path = indexPath(model, field, value);
           const index = await s.getDoc<{ owner: string; model: string; field: string }>(path);
           if (index && index.owner !== id) {
             const owner = typeof index.owner === 'string' && ID.test(index.owner) ? await s.getDoc<Row>(docPath(model, index.owner)) : null;
             if (visible(owner) && isSame(owner[field], value)) throw new UniqueConstraintError(model, field);
           }
-          effects.push({ path, data: { model, field, owner: id }, expected: index ?? null, replace: true });
+          const ttl = next[TTL_FIELD] === undefined ? {} : { [TTL_FIELD]: next[TTL_FIELD] };
+          effects.push({ path, data: { model, field, owner: id, ...ttl }, expected: index ?? null, replace: true });
         }
         return effects;
       }
@@ -110,7 +121,7 @@ export function storeAdapter({ store, prefix, adapterId = 'typeroll-store' }: St
         for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
           const [current] = await rows(model, where);
           if (!current) return null;
-          const next = { ...stored(current), ...stored(compute(current)) };
+          const next = stored(model, { ...current, ...compute(current) });
           const effects = await uniqueEffects(model, current.id, next, current);
           if (await s.compareAndReplaceDoc(docPath(model, current.id), current, next, effects)) {
             return { ...next, id: current.id };
@@ -123,7 +134,7 @@ export function storeAdapter({ store, prefix, adapterId = 'typeroll-store' }: St
         async create({ model, data }) {
           const row = data as Record<string, unknown>;
           const id = String(row.id ?? '');
-          const next = stored(row);
+          const next = stored(model, row);
           const effects = await uniqueEffects(model, id, next, null);
           if (!await store().compareAndReplaceDoc(docPath(model, id), null, next, effects)) {
             // A concurrent claim of a unique value (thrown here), or an existing id.
@@ -225,7 +236,9 @@ export async function consumeRateLimit(store: ReadWriteStore, collectionPath: st
     if (active && current!.count >= max) {
       return { allowed: false, retryAfterSeconds: Math.max(1, Math.ceil((current!.reset_at - now) / 1000)) };
     }
-    const next = { count: active ? current!.count + 1 : 1, reset_at: active ? current!.reset_at : now + windowMs };
+    const resetAt = active ? current!.reset_at : now + windowMs;
+    // `delete_at`: the store object removes the counter once its window is over.
+    const next = { count: active ? current!.count + 1 : 1, reset_at: resetAt, delete_at: resetAt };
     if (await store.compareAndReplaceDoc(path, current, next)) return { allowed: true, retryAfterSeconds: 0 };
   }
   throw new Error('Rate limit storage is contended');

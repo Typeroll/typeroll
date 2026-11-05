@@ -35,8 +35,14 @@ export interface DocumentStoreRpc {
   paths(after?: string, limit?: number): string[];
 }
 
+/** Housekeeping the object runs on itself; not part of the RPC surface. */
+export interface DocumentStoreHousekeeping {
+  nextExpiry(): number | null;
+  removeExpired(now: number, limit?: number): number;
+}
+
 /** Engine methods bound for an object class: `Object.assign(this, documentStoreMethods(ctx.storage))`. */
-export function documentStoreMethods(storage: DurableSqlStorage): DocumentStoreRpc {
+export function documentStoreMethods(storage: DurableSqlStorage): DocumentStoreRpc & DocumentStoreHousekeeping {
   const engine = new SqlDocumentEngine(durableObjectDriver(storage));
   return {
     get: path => engine.get(path),
@@ -48,6 +54,8 @@ export function documentStoreMethods(storage: DurableSqlStorage): DocumentStoreR
     changedSince: (seq, root) => engine.changedSince(seq, root),
     exportTree: (root, afterPath, limit) => engine.exportTree(root, afterPath, limit),
     paths: (after, limit) => engine.paths(after, limit),
+    nextExpiry: () => engine.nextExpiry(),
+    removeExpired: (now, limit) => engine.removeExpired(now, limit),
   };
 }
 

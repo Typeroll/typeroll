@@ -4,7 +4,9 @@
 // key is one document, consumed with compare-and-replace: concurrent requests
 // cannot both take the last slot. Only a hash of the key is stored. Pass
 // `scope` (an organization or site path) to keep the counter in that object
-// instead of the global one. Storage failure fails closed.
+// instead of the global one. A counter carries its window end as `delete_at`,
+// so its store object removes it once the window is over. Storage failure
+// fails closed.
 
 import { createHash } from 'node:crypto';
 import { getStore } from './datastore';
@@ -39,7 +41,8 @@ export async function rateLimit(key: string, limit: number, windowMs: number, op
       const current = await store.getDoc<{ count: number; reset_at: number }>(path);
       const active = !!current && current.reset_at > now;
       if (active && current!.count >= limit) return { allowed: false, remaining: 0, resetAt: current!.reset_at };
-      const next = { count: active ? current!.count + 1 : 1, reset_at: active ? current!.reset_at : now + windowMs };
+      const resetAt = active ? current!.reset_at : now + windowMs;
+      const next = { count: active ? current!.count + 1 : 1, reset_at: resetAt, delete_at: resetAt };
       if (await store.compareAndReplaceDoc(path, current, next)) {
         return { allowed: true, remaining: Math.max(0, limit - next.count), resetAt: next.reset_at };
       }

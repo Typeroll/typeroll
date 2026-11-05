@@ -7,7 +7,8 @@
 // one chain: a request while it runs marks it to run again, a request while a
 // delivery is pending keeps the earlier time, and a delivery from a replaced
 // generation is dropped. The record lives in the store, so the rule holds for
-// every transport (store-object alarms, local timers).
+// every transport (store-object alarms, local timers). An idle chain's
+// record expires through the store's TTL a week after its last delivery.
 
 import { createHash } from 'node:crypto';
 import { getStore } from '../datastore';
@@ -16,8 +17,10 @@ import { getStore } from '../datastore';
 export const CHAIN_FLOOR_MS = 5_000;
 /** A delivery that runs longer than this is presumed lost; the chain may restart. */
 export const CHAIN_LEASE_MS = 5 * 60_000;
+/** An idle chain record is removed this long after its last change. */
+export const CHAIN_IDLE_TTL_MS = 7 * 24 * 60 * 60_000;
 
-interface ChainRecord { key: string; generation: number; due_at: number | null; lease_until: number; rerun: boolean; deliveries: number; updated_at: number }
+interface ChainRecord { key: string; generation: number; due_at: number | null; lease_until: number; rerun: boolean; deliveries: number; updated_at: number; delete_at?: number | null }
 export type Enqueue = (generation: number, delayMs: number) => Promise<void>;
 
 const chainPath = (key: string) => `scheduling_chains/${createHash('sha256').update(key).digest('hex')}`;
@@ -30,6 +33,8 @@ async function update(key: string, decide: (record: ChainRecord) => ChainRecord 
     const base = current ? (({ id: _id, ...rest }) => rest)(current as ChainRecord & { id: string }) as ChainRecord : fresh(key, Date.now());
     const next = decide(structuredClone(base));
     if (!next) return null;
+    // Idle: nothing pending and no delivery running. Only then may the record expire.
+    next.delete_at = next.due_at === null && !next.rerun && next.lease_until <= next.updated_at ? next.updated_at + CHAIN_IDLE_TTL_MS : null;
     if (await store.compareAndReplaceDoc(path, current, next)) return next;
   }
   throw new Error(`Scheduling chain ${key} is contended; retry`);
