@@ -36,7 +36,7 @@ describe('release manifest', () => {
     expect(releaseManifest({
       SERVICE_ROLE: 'forms',
       TYPEROLL_SOURCE_SHA: 'abc123',
-      TYPEROLL_IMAGE_DIGEST: 'sha256:deadbeef',
+      TYPEROLL_BUNDLE_DIGEST: 'sha256:deadbeef',
     })).toEqual({
       core_version: CORE_VERSION,
       data_schema_version: DATA_SCHEMA_VERSION,
@@ -46,7 +46,7 @@ describe('release manifest', () => {
       extension_runtime_version: EXTENSION_RUNTIME_VERSION,
       mcp_version: MCP_VERSION,
       source_sha: 'abc123',
-      image_digest: 'sha256:deadbeef',
+      bundle_digest: 'sha256:deadbeef',
       service_role: 'forms',
     });
   });
