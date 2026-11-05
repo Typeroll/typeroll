@@ -4,13 +4,31 @@
 // Vite `?raw` imports, workspace packages exporting TypeScript), so the entry
 // point is bundled with the repository's esbuild into the portal's
 // node_modules cache. npm packages stay external and resolve from there.
+// Each process bundles into its own directory, so parallel callers (the
+// migrate-store and self-host backup tests) never delete each other's output.
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const ENTRY = path.join(ROOT, 'packages/portal/src/lib/migration/index.ts');
-const OUTDIR = path.join(ROOT, 'packages/portal/node_modules/.cache/typeroll-migrate-store');
+const CACHE = path.join(ROOT, 'packages/portal/node_modules/.cache/typeroll-migrate-store');
+const PROCESS_DIR = /^(\d+)-[0-9a-f]+$/;
+
+function processAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch (error) { return error.code === 'EPERM'; }
+}
+
+/** Remove the bundles of processes that have exited (and the old shared layout). */
+function removeStaleBundles() {
+  if (!fs.existsSync(CACHE)) return;
+  for (const entry of fs.readdirSync(CACHE)) {
+    const match = PROCESS_DIR.exec(entry);
+    if (match && processAlive(Number(match[1]))) continue;
+    fs.rmSync(path.join(CACHE, entry), { recursive: true, force: true });
+  }
+}
 
 const sourcesPlugin = {
   name: 'typeroll-sources',
@@ -36,7 +54,9 @@ export function loadMigrationLibrary() {
 
 async function bundleAndImport() {
   const { build } = await import('esbuild');
-  fs.rmSync(OUTDIR, { recursive: true, force: true });
+  removeStaleBundles();
+  const OUTDIR = path.join(CACHE, `${process.pid}-${randomBytes(4).toString('hex')}`);
+  process.once('exit', () => fs.rmSync(OUTDIR, { recursive: true, force: true }));
   await build({
     // Splitting keeps dynamic imports (Workers-only modules such as `cloudflare:sockets`) out of the startup path.
     entryPoints: { migration: ENTRY }, outdir: OUTDIR, outExtension: { '.js': '.mjs' }, splitting: true,
