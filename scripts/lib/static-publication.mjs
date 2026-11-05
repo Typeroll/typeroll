@@ -35,7 +35,7 @@ function projectStyleProps(value) {
   if (value.border !== undefined) output.border = projectStrings(value.border, ['width', 'style', 'color', 'sides']);
   return output;
 }
-function projectStyle(style) {
+export function projectStyle(style) {
   if (!style || typeof style !== 'object' || Array.isArray(style)) throw new Error('Invalid public style');
   const output = projectStrings(style, ['id', 'name', 'role', 'description', 'css']);
   output.targets = projectStringArray(style.targets ?? [], 'style.targets');
@@ -44,6 +44,8 @@ function projectStyle(style) {
   output.base = projectStyleProps(style.base ?? {});
   if (style.at !== undefined) output.at = Object.fromEntries(['tablet', 'laptop', 'desktop', 'wide'].filter(bp => style.at?.[bp] !== undefined).map(bp => [bp, projectStyleProps(style.at[bp])]));
   if (style.hover !== undefined) output.hover = projectStyleProps(style.hover);
+  // Link role only; without it the published CSS has no :visited rule (SE-04).
+  if (style.visited !== undefined) output.visited = projectStyleProps(style.visited);
   return output;
 }
 
