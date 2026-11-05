@@ -458,7 +458,7 @@ export default function PublishMenu({
           </div>
           </div>
           <div className="pmenu__section pmenu__deploy-footer">
-            <PublishingRequirements setup={publishingSetup} error={setupError} retry={() => { void refreshSetup(); }} />
+            <div className="pmenu__setup"><PublishingRequirements setup={publishingSetup} error={setupError} retry={() => { void refreshSetup(); }} /></div>
             <div className="pmenu__actions">
               {publishingSetup?.mode !== 'customer_git' && <select
                 aria-label="Deployment environment"
@@ -583,8 +583,9 @@ export default function PublishMenu({
           .pmenu__trigger { min-height: 44px; white-space: nowrap; }
           .pmenu__panel { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; }
           .pmenu__body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
-          /* A long setup notice must not squeeze the body away on short (landscape) screens. */
-          .pmenu__deploy-footer { flex-shrink: 0; max-height: 50%; overflow-y: auto; overscroll-behavior: contain; background: #1f1f23; border-radius: 0 0 10px 10px; }
+          .pmenu__deploy-footer { flex-shrink: 0; background: #1f1f23; border-radius: 0 0 10px 10px; }
+          /* A long setup notice scrolls on its own, so it cannot squeeze the body away on short (landscape) screens. */
+          .pmenu__setup { max-height: 30dvh; overflow-y: auto; overscroll-behavior: contain; }
           .pmenu__deploy-footer .pmenu__actions { flex-wrap: nowrap; margin-top: 0; }
           .pmenu__deploy-footer .pmenu__btn { flex: 1; }
           .pmenu__mobile-header { flex-shrink: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; position: sticky; top: 0; padding: 4px 12px; background: #1f1f23; border-bottom: 1px solid #34343a; z-index: 1; }
