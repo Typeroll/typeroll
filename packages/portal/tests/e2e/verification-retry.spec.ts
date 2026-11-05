@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { gotoReady } from './helpers/ready';
+import { stubPublishingReady } from './helpers/publishing';
 
 for (const width of [390, 1280]) test(`retries the same failed verification twice at ${width}px`, async ({ page }, info) => {
   let attempts = 0, polls = 0, ready = false;
@@ -16,6 +17,7 @@ for (const width of [390, 1280]) test(`retries the same failed verification twic
     polls++;
     return route.fulfill({ json: attempts === 1 ? failed : { id: 'retry-test', status: ready ? 'succeeded' : 'running', phase: ready ? 'live' : 'retrying public verification' } });
   });
+  await stubPublishingReady(page);
   await page.setViewportSize({ width, height: 900 });
   await gotoReady(page, '/app/sites/default');
   const retry = page.getByRole('button', { name: 'Retry verification', exact: true });
@@ -46,6 +48,7 @@ for (const width of [390, 1280]) test(`offers only a verification retry for a st
     return route.fulfill({ json: { latest_job: failed } });
   });
   await page.route('**/api/sites/default/deploys/cache-test', route => route.fulfill({ json: { id: 'cache-test', status: 'running', phase: 'retrying public verification' } }));
+  await stubPublishingReady(page);
   await page.setViewportSize({ width, height: 900 });
   await gotoReady(page, '/app/sites/default');
   const retry = page.getByRole('button', { name: 'Retry verification', exact: true });

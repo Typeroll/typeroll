@@ -1,8 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { authenticatePersona } from './helpers/auth';
+import { CORE_SITE, e2eStore } from './helpers/store';
 
 const org = 'e2e-core', site = 'e2e-domain-site';
 const endpoint = `**/api/sites/${site}/publishing/domains`;
@@ -10,11 +8,8 @@ const endpoint = `**/api/sites/${site}/publishing/domains`;
 /** A separate customer publishing site, so the shared E2E site keeps its own publishing mode. */
 async function customerPublishingSite() {
   if ((process.env.TYPEROLL_E2E_TARGET ?? 'local') !== 'local') test.skip(true, 'Synthetic fixture only supports local execution');
-  const root = join(tmpdir(), 'typeroll-e2e-fixtures');
-  const source = JSON.parse(await readFile(join(root, `organizations/${org}/sites/e2e-core-site.json`), 'utf8'));
-  const file = join(root, `organizations/${org}/sites/${site}.json`);
-  await mkdir(dirname(file), { recursive: true });
-  await writeFile(file, JSON.stringify({ ...source, name: 'Synthetic domain site', slug: site, publishing_mode: 'customer_git' }));
+  const source = await e2eStore.read(CORE_SITE);
+  await e2eStore.set(`organizations/${org}/sites/${site}`, { ...source, name: 'Synthetic domain site', slug: site, publishing_mode: 'customer_git' });
 }
 
 const base = {

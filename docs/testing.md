@@ -8,7 +8,7 @@ contributor rules are in [`AGENTS.md`](../AGENTS.md).
 | Tool       | Where             | What it does                                       |
 | ---------- | ----------------- | -------------------------------------------------- |
 | Vitest 4   | `portal`, `shared`| Unit + integration. Native ESM, jest-compatible API. |
-| Playwright | `portal`          | E2E in headless Chromium against a built server artifact. |
+| Playwright | `portal`          | E2E in Chromium, Firefox and WebKit against the built Worker in `wrangler dev --local`. |
 | GitHub Actions | `.github/workflows/test.yml` | Runs unit on every push/PR; e2e on top. |
 
 ## Running tests
@@ -16,7 +16,7 @@ contributor rules are in [`AGENTS.md`](../AGENTS.md).
 ```bash
 # From repo root — all packages
 npm test                         # unit + integration
-npm run test:e2e                 # Playwright (builds and starts the server on :4322)
+npm run test:e2e                 # Playwright (builds the Worker and runs it on :4322)
 
 # Watch mode while iterating in one package
 npm run test:watch -w @typeroll/portal
@@ -43,12 +43,15 @@ The manifest also reserves `operator`, `app_entitled`, and `app_unentitled` for
 Typeroll Cloud. Core never seeds or interprets those private control-plane and
 Apps entitlements.
 
-Local Playwright runs need no credentials. The seeder creates the five Core
-personas in a throwaway fixture copy and the test server exposes a signed,
-local-only session exchange. That exchange requires a per-process HMAC secret,
-is available only with `NODE_ENV=test`, is unavailable when sign-in is
-configured (`AUTH_SECRET`), and fails closed in every other process mode.
-The ordinary `dev-user` fallback remains available for older local tests.
+Local Playwright runs need no credentials. Global setup seeds the five Core
+personas with the fixture content, and the local Worker exposes a signed,
+local-only session exchange. That exchange requires a per-run HMAC secret and
+local E2E mode (`src/lib/local-e2e.ts`): the explicit switch
+`TYPEROLL_LOCAL_E2E=allow`, `STORE_JURISDICTION=none` (only local workerd has
+no jurisdiction), a loopback `PORTAL_PUBLIC_URL` and no `AUTH_SECRET`. It does
+not depend on `NODE_ENV`, which the Worker build fixes to `production`, and it
+fails closed whenever any condition is missing. The ordinary `dev-user`
+fallback is available in the same mode for older local tests.
 
 Remote `self_host` and `cloud` targets use stable portal accounts, real
 password login, and one site-scoped E2E API key. Every credential is injected
@@ -195,21 +198,48 @@ test('user can do the foo', async ({ page }) => {
 });
 ```
 
-Local E2E specs run against `http://127.0.0.1:4322`. The config in
-`playwright.config.ts` builds the server artifact and starts it without
-`AUTH_SECRET` on a throwaway fixtures copy; the default development session and
-the isolated E2E persona exchange are both available.
+Local E2E specs run against `http://127.0.0.1:4322` (`TYPEROLL_E2E_PORTAL_URL`
+moves it to another loopback port). The `webServer` in `playwright.config.ts`
+runs `tests/e2e/start-worker.mjs`, which builds the portal and runs the built
+bundle (`dist/server/wrangler.json`) in `wrangler dev --local`: the same Worker,
+Durable Object store and scheduler that deploy, in local E2E mode without
+`AUTH_SECRET`. The default development session and the isolated E2E persona
+exchange are both available.
 
-### E2E writes go to a throwaway fixtures copy
+### Each run gets its own store
 
-The suite drives the real editor, so it provokes real datastore writes — page saves, revision snapshots, created forms. Those used to land in `packages/site-template/fixtures/`, which is committed seed content, leaving `git status` dirty after every run. Gitignoring the paths wasn't available: `pages/home.json` is genuine seed, and the per-page `revisions/` folders hold snapshots the smoke build reads.
+The suite drives the real editor, so it provokes real writes — page saves,
+revision snapshots, created forms. The Worker keeps them in Durable Objects
+under a fresh temporary directory per run, so nothing reaches the committed
+`packages/site-template/fixtures/` tree:
 
-So the server gets its own copy. `tests/e2e/seed-fixtures.mjs` wipes and re-copies the fixtures tree into `$TMPDIR/typeroll-e2e-fixtures` on each start, and `webServer.env.TYPEROLL_FIXTURES_DIR` points the server at it — the same isolation `makeTmpFixtures()` gives unit tests, one level up. Two details worth keeping if you touch this:
+- `start-worker.mjs` creates the directory (not the config: Playwright
+  evaluates the config again in every worker process), writes the Worker's
+  `.dev.vars` there with mode `0600` (`--env-file`, so a developer's own
+  `.dev.vars` is never read), persists the store there and removes it when the
+  server stops. It refuses variables that do not describe local E2E mode.
+- `tests/e2e/global-setup.ts` runs after the server is up and seeds the
+  committed fixtures (minus runtime-only collections such as `working_copies/`,
+  `api_keys/` and `deploys/`), the `default` organization and the Core personas
+  through `POST /api/internal/e2e-store`.
+- Specs arrange and inspect documents through `tests/e2e/helpers/store.ts`
+  (`e2eStore.get/set/delete/deleteTree/list`) on the same route. Specs that
+  also build a static site write a temporary JSON fixtures tree for that build
+  with `writeFixtureTree` from `tests/e2e/seed-store.mjs`.
 
-- **Seeding runs inside the `webServer` command, not `globalSetup`.** Playwright starts `webServer` first, so a global-setup seed would arrive after the server had already booted against an empty directory.
-- **The destination is a fixed name, not an `mkdtemp`.** Playwright re-evaluates the config in its worker processes, so a module-scope `mkdtempSync` would strand an orphan tree per worker.
+The route answers 404 unless local E2E mode is on, the request reached a
+loopback host and it carries the per-run E2E secret.
+`src/__tests__/lib/e2e-local-worker.test.ts` and `e2e-store.test.ts` pin this.
 
-The copy skips the runtime-only collections (`working_copies/`, `api_keys/`, `deploys/`, …) that a local dev session leaves behind, so a run tests against the same shape a fresh checkout has. `src/__tests__/lib/e2e-fixtures-isolation.test.ts` pins all of this.
+To iterate on specs, start the server once by hand and reuse it:
+
+```bash
+cd packages/portal
+TYPEROLL_E2E_WORKER_VARS='…' node tests/e2e/start-worker.mjs 4322   # vars as in playwright.config.ts
+TYPEROLL_E2E_REUSE_SERVER=true npx playwright test some.spec.ts --project=chromium
+```
+
+`TYPEROLL_E2E_SKIP_BUILD=true` skips the build when `dist/` is current.
 
 ## Coverage philosophy
 

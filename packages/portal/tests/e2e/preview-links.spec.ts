@@ -5,22 +5,19 @@
  * links keep navigating the preview with its ticket.
  */
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 
-const SITE = path.join(os.tmpdir(), 'typeroll-e2e-fixtures', 'organizations/default/sites/default');
 const DOCS = 'https://docs.typeroll.test/blocks/reusable/';
 
 test('an off-site link opens in a new tab and the preview stays on the page', async ({ page, baseURL }) => {
   const id = `e2epreviewlinks${Date.now()}`;
-  const pageFile = path.join(SITE, 'versions/main/pages', `${id}.json`);
+  const pageDoc = `${DEFAULT_MAIN}/pages/${id}`;
   const html = `<p><a href="${DOCS}">Reusable blocks ↗</a> <a href="/${id}/">This page</a></p>`;
-  await fs.writeFile(pageFile, JSON.stringify({
+  await e2eStore.set(pageDoc, {
     title: 'Preview links', slug: id, path: `/${id}`, content_mode: 'blocks', status: 'published',
     content_type: 'page', fields: {}, date_updated: new Date().toISOString(),
     blocks: [{ id: 'links', type: 'core/prose', data: { html } }],
-  }));
+  });
   try {
     // Offline: the destination is answered locally and never reaches the network.
     await page.context().route('https://docs.typeroll.test/**', (route) =>
@@ -54,6 +51,6 @@ test('an off-site link opens in a new tab and the preview stays on the page', as
     await page.waitForURL((current) => current.pathname === `/preview/default/${id}/` && current.searchParams.has('t'));
     expect(page.context().pages()).toHaveLength(2);
   } finally {
-    await fs.rm(pageFile, { force: true });
+    await e2eStore.deleteTree(pageDoc);
   }
 });

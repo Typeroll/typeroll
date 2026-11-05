@@ -1,12 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { gotoReady, reloadReady } from './helpers/ready';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 
 test.use({ hasTouch: true });
 
-const version = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main');
+const pagesCollection = `${DEFAULT_MAIN}/pages`;
 
 async function fits(page: Page, selector: string) {
   const box = await page.locator(selector).boundingBox();
@@ -21,10 +19,9 @@ async function fits(page: Page, selector: string) {
 for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
   test(`block editor supports editing and saving at ${width}x${height}`, async ({ page }, testInfo) => {
     const id = `mobile-editor-${width}`;
-    const file = path.join(version, `pages/${id}.json`);
-    mkdirSync(path.dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify({ id, title: 'A long mobile page title that should stay readable', slug: id, path: `/${id}/`,
-      status: 'draft', content_mode: 'blocks', blocks: [{ id: 'mobile-heading', type: 'core/heading', data: { text: 'Original heading', level: 'h1' } }] }));
+    const pageDoc = `${pagesCollection}/${id}`;
+    await e2eStore.set(pageDoc, { id, title: 'A long mobile page title that should stay readable', slug: id, path: `/${id}/`,
+      status: 'draft', content_mode: 'blocks', blocks: [{ id: 'mobile-heading', type: 'core/heading', data: { text: 'Original heading', level: 'h1' } }] });
     try {
       await page.setViewportSize({ width, height });
       await gotoReady(page, `/app/sites/default/pages/${id}`);
@@ -78,14 +75,14 @@ for (const [width, height] of [[320, 568], [390, 844], [844, 390]]) {
       await expect(page.locator('.block-editor__status')).toContainText('Saved · draft');
       await expect(page.getByLabel('Page title', { exact: true })).toHaveValue('Mobile draft title');
       await expect(page.frameLocator('iframe[title="Preview"]').getByRole('heading', { name: 'Edited on mobile', level: 2, exact: true })).toBeVisible();
-    } finally { rmSync(file, { force: true }); }
+    } finally { await e2eStore.deleteTree(pageDoc); }
   });
 }
 
 test('HTML editor fits a phone and switches between editing and preview', async ({ page }, testInfo) => {
-  const file = path.join(version, 'pages/mobile-html-editor.json');
-  writeFileSync(file, JSON.stringify({ id: 'mobile-html-editor', title: 'HTML mobile page', slug: 'mobile-html-editor',
-    path: '/mobile-html-editor/', status: 'draft', content_mode: 'html', html_content: '<h1>HTML mobile preview</h1>' }));
+  const pageDoc = `${pagesCollection}/mobile-html-editor`;
+  await e2eStore.set(pageDoc, { id: 'mobile-html-editor', title: 'HTML mobile page', slug: 'mobile-html-editor',
+    path: '/mobile-html-editor/', status: 'draft', content_mode: 'html', html_content: '<h1>HTML mobile preview</h1>' });
   try {
     await page.setViewportSize({ width: 320, height: 568 });
     await gotoReady(page, '/app/sites/default/pages/mobile-html-editor');
@@ -100,5 +97,5 @@ test('HTML editor fits a phone and switches between editing and preview', async 
     await fits(page, '.editor__preview-pane');
     await expect(page.frameLocator('iframe[title="Page preview"]').getByRole('heading', { name: 'HTML mobile preview', exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('html-mobile-preview.png') });
-  } finally { rmSync(file, { force: true }); }
+  } finally { await e2eStore.deleteTree(pageDoc); }
 });

@@ -1,25 +1,21 @@
 import { test, expect } from '@playwright/test';
-import { mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { gotoReady } from './helpers/ready';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 
-const root = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main');
-const pageFile = path.join(root, 'pages/render-v2.json');
-const settingsFile = path.join(root, 'settings/default.json');
+const pageDoc = `${DEFAULT_MAIN}/pages/render-v2`;
+const settingsDoc = `${DEFAULT_MAIN}/settings/default`;
 
 test('render version 2: heading parts with styles, class on the element and paragraph styles', async ({ page }, info) => {
-  const originalSettings = readFileSync(settingsFile, 'utf8');
-  mkdirSync(path.dirname(pageFile), { recursive: true });
-  writeFileSync(pageFile, JSON.stringify({
+  const originalSettings = await e2eStore.read(settingsDoc);
+  await e2eStore.set(pageDoc, {
     id: 'render-v2', title: 'Render v2', slug: 'render-v2', status: 'draft', content_mode: 'blocks',
     blocks: [
       { id: 'title', name: 'Hero heading', type: 'core/heading', data: { text: 'AI partner', level: 'h1', eyebrow: 'For leadership teams' } },
       { id: 'intro', name: 'Intro text', type: 'core/prose', data: { html: '<p>One day to a plan.</p>' } },
       { id: 'legacy', name: 'Legacy text', type: 'core/prose', data: { html: '<p class="kicker">How it works</p><h2>Three steps</h2><p>Body copy.</p>' } },
     ],
-  }));
-  writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(originalSettings), render_version: 2 }));
+  });
+  await e2eStore.set(settingsDoc, { ...originalSettings, render_version: 2 });
   try {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await gotoReady(page, '/app/sites/default/styles');
@@ -62,7 +58,7 @@ test('render version 2: heading parts with styles, class on the element and para
     await expect(page.getByText('so it is edited as source')).toBeVisible();
     await expect(page.getByRole('button', { name: /Convert/ })).toHaveCount(0);
   } finally {
-    rmSync(pageFile, { force: true });
-    writeFileSync(settingsFile, originalSettings);
+    await e2eStore.deleteTree(pageDoc);
+    await e2eStore.set(settingsDoc, originalSettings);
   }
 });

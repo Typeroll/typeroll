@@ -1,19 +1,16 @@
 import { test, expect } from '@playwright/test';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { authenticatePersona } from './helpers/auth';
 import { gotoReady } from './helpers/ready';
+import { CORE_MAIN, CORE_SITE, e2eStore } from './helpers/store';
 
 test('site navigation handles a published virtual Main alongside a branch', async ({ page }, testInfo) => {
   await authenticatePersona(page, 'owner');
-  const versions = path.join(os.tmpdir(), 'typeroll-e2e-fixtures', 'organizations/e2e-core/sites/e2e-core-site/versions');
-  const mainFile = path.join(versions, 'main.json');
-  const branchFile = path.join(versions, 'a-version-picker-regression.json');
-  const originalMain = existsSync(mainFile) ? readFileSync(mainFile) : null;
-  mkdirSync(versions, { recursive: true });
-  writeFileSync(mainFile, JSON.stringify({ last_deployed_at: '2026-09-18T10:00:00.000Z', deploy_url: 'https://example.test' }));
-  writeFileSync(branchFile, JSON.stringify({ name: 'Version picker regression', kind: 'branch', base_version_id: 'main', robots_blocked: true, created_at: '2026-09-18T09:00:00.000Z' }));
+  const branchDoc = `${CORE_SITE}/versions/a-version-picker-regression`;
+  const originalMain = await e2eStore.get(CORE_MAIN);
+  await e2eStore.setMany([
+    [CORE_MAIN, { last_deployed_at: '2026-09-18T10:00:00.000Z', deploy_url: 'https://example.test' }],
+    [branchDoc, { name: 'Version picker regression', kind: 'branch', base_version_id: 'main', robots_blocked: true, created_at: '2026-09-18T09:00:00.000Z' }],
+  ]);
   try {
     for (const width of [375, 1280]) {
       await page.setViewportSize({ width, height: 900 });
@@ -28,17 +25,15 @@ test('site navigation handles a published virtual Main alongside a branch', asyn
       await page.screenshot({ path: testInfo.outputPath(`published-main-navigation-${width}.png`), animations: 'disabled' });
     }
   } finally {
-    if (originalMain) writeFileSync(mainFile, originalMain); else rmSync(mainFile, { force: true });
-    rmSync(branchFile, { force: true });
+    if (originalMain) await e2eStore.set(CORE_MAIN, originalMain); else await e2eStore.delete(CORE_MAIN);
+    await e2eStore.deleteTree(branchDoc);
   }
 });
 
 test('branch actions are styled before their dialog first opens', async ({ page, context }) => {
   await authenticatePersona(page, 'owner');
-  const versions = path.join(os.tmpdir(), 'typeroll-e2e-fixtures', 'organizations/e2e-core/sites/e2e-core-site/versions');
-  const branchFile = path.join(versions, 'a-version-actions.json');
-  mkdirSync(versions, { recursive: true });
-  writeFileSync(branchFile, JSON.stringify({ name: 'Version actions', kind: 'branch', base_version_id: 'main', robots_blocked: true, created_at: '2026-11-02T09:00:00.000Z' }));
+  const branchDoc = `${CORE_SITE}/versions/a-version-actions`;
+  await e2eStore.set(branchDoc, { name: 'Version actions', kind: 'branch', base_version_id: 'main', robots_blocked: true, created_at: '2026-11-02T09:00:00.000Z' });
   try {
     await page.setViewportSize({ width: 1280, height: 900 });
     const response = await gotoReady(page, '/app/sites/e2e-core-site');
@@ -62,6 +57,6 @@ test('branch actions are styled before their dialog first opens', async ({ page,
       expect(await button.locator('.vp__action-icon').evaluate(icon => getComputedStyle(icon).borderTopStyle)).toBe('solid');
     }
   } finally {
-    rmSync(branchFile, { force: true });
+    await e2eStore.deleteTree(branchDoc);
   }
 });

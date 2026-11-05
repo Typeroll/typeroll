@@ -1,7 +1,5 @@
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { gotoReady } from './helpers/ready';
+import { DEFAULT_MAIN, PORTAL_ORIGIN, e2eStore } from './helpers/store';
 import { test, expect } from '@playwright/test';
 import { buildCoreBlockRegistry, collectBlockAssets, renderBlocks, siteThemeCss, siteStylesCss, defaultSiteSettings, resolveBreakpointWidths, type Block } from '@typeroll/shared';
 import { sanitizeBody } from '../../../site-template/src/lib/sanitize';
@@ -37,18 +35,16 @@ test.afterEach(async ({ page }, info) => {
   if (!info.title.startsWith('editor stores palette')) return;
   await page.goto('about:blank');
   try {
-    const response = await page.request.delete('/api/sites/default/working-copy/page/token-editor', { timeout: 10_000, headers: { Origin: 'http://127.0.0.1:4322' } });
+    const response = await page.request.delete('/api/sites/default/working-copy/page/token-editor', { timeout: 10_000, headers: { Origin: PORTAL_ORIGIN } });
     expect(response.ok()).toBe(true);
   } finally {
-    rmSync(path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/token-editor.json'), { force: true });
+    await e2eStore.deleteTree(`${DEFAULT_MAIN}/pages/token-editor`);
   }
 });
 
 test('editor stores palette and scale names and labels fixed values as exceptions', async ({page}, info) => {
-  const file = path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/token-editor.json');
-  await page.request.delete('/api/sites/default/working-copy/page/token-editor', { headers: { Origin: 'http://127.0.0.1:4322' } });
-  mkdirSync(path.dirname(file),{recursive:true});
-  writeFileSync(file, JSON.stringify({id:'token-editor',title:'Token editor',slug:'token-editor',status:'draft',content_mode:'blocks',blocks:[{id:'heading',type:'core/heading',data:{text:'Palette preview',level:'h2'}}]}));
+  await page.request.delete('/api/sites/default/working-copy/page/token-editor', { headers: { Origin: PORTAL_ORIGIN } });
+  await e2eStore.set(`${DEFAULT_MAIN}/pages/token-editor`, {id:'token-editor',title:'Token editor',slug:'token-editor',status:'draft',content_mode:'blocks',blocks:[{id:'heading',type:'core/heading',data:{text:'Palette preview',level:'h2'}}]});
     await page.setViewportSize({width:1280,height:1000});
     await gotoReady(page,'/app/sites/default/pages/token-editor');
     await page.getByRole('button',{name:'Structure',exact:true}).click();

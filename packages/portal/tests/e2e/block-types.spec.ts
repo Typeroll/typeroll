@@ -1,19 +1,11 @@
 import { test, expect, type Page } from '@playwright/test';
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { authenticatePersona } from './helpers/auth';
 import { gotoReady } from './helpers/ready';
+import { CORE_MAIN, DEFAULT_MAIN, PORTAL_ORIGIN, e2eStore } from './helpers/store';
 
-const fixtures = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations');
-const main = path.join(fixtures, 'default/sites/default/versions/main');
-const coreMain = path.join(fixtures, 'e2e-core/sites/e2e-core-site/versions/main');
-const settingsFile = path.join(main, 'settings/default.json');
-
-function writeJson(file: string, value: unknown): void {
-  mkdirSync(path.dirname(file), { recursive: true });
-  writeFileSync(file, JSON.stringify(value));
-}
+const main = DEFAULT_MAIN;
+const coreMain = CORE_MAIN;
+const settingsFile = `${main}/settings/default`;
 
 /** No horizontal page scroll at the current width. */
 async function expectNoOverflow(page: Page): Promise<void> {
@@ -21,14 +13,14 @@ async function expectNoOverflow(page: Page): Promise<void> {
 }
 
 test('an admin builds the icon list from its starter and fills it in on a page', async ({ page }, info) => {
-  const written = [path.join(main, 'pages/block-types-a.json'), path.join(main, 'pages/contact-us.json'), path.join(main, 'block_types/icon_list.json')];
-  const originalSettings = readFileSync(settingsFile, 'utf8');
+  const written = [`${main}/pages/block-types-a`, `${main}/pages/contact-us`, `${main}/block_types/icon_list`];
+  const originalSettings = await e2eStore.read(settingsFile);
   // Version 4 renders an icon inside a linked card without a nested link.
-  writeFileSync(settingsFile, JSON.stringify({ ...JSON.parse(originalSettings), render_version: 4 }));
-  writeJson(written[0]!, { id: 'block-types-a', title: 'Why us', slug: 'why-us', status: 'draft', content_mode: 'blocks', blocks: [
+  await e2eStore.set(settingsFile, { ...originalSettings, render_version: 4 });
+  await e2eStore.set(written[0]!, { id: 'block-types-a', title: 'Why us', slug: 'why-us', status: 'draft', content_mode: 'blocks', blocks: [
     { id: 'intro', name: 'Intro', type: 'core/heading', data: { text: 'Why choose us', level: 'h2' } },
   ] });
-  writeJson(written[1]!, { id: 'contact-us', title: 'Contact us', slug: 'contact-us', status: 'published', content_mode: 'blocks', blocks: [] });
+  await e2eStore.set(written[1]!, { id: 'contact-us', title: 'Contact us', slug: 'contact-us', status: 'published', content_mode: 'blocks', blocks: [] });
   page.on('dialog', dialog => void dialog.accept());
   try {
     await page.setViewportSize({ width: 1440, height: 1000 });
@@ -64,7 +56,7 @@ test('an admin builds the icon list from its starter and fills it in on a page',
     await page.getByRole('button', { name: 'Create block type' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Created' })).toBeVisible();
     await expect(page.getByRole('link', { name: /Icon list/ })).toHaveAttribute('aria-current', 'page');
-    const stored = JSON.parse(readFileSync(written[2]!, 'utf8'));
+    const stored = await e2eStore.read(written[2]!);
     expect(stored.schema[0].fields.find((field: { name: string }) => field.name === 'title').label).toBe('Title');
     expect(stored.composition[0].type).toBe('core/repeater');
 
@@ -122,16 +114,16 @@ test('an admin builds the icon list from its starter and fills it in on a page',
     await expectNoOverflow(page);
     await page.screenshot({ path: info.outputPath('page-inspector-390.png'), fullPage: true });
   } finally {
-    for (const file of written) rmSync(file, { force: true });
-    writeFileSync(settingsFile, originalSettings);
+    await e2eStore.deleteTree(...written);
+    await e2eStore.set(settingsFile, originalSettings);
   }
 });
 
 test('an admin turns a section on a page into a block type and the page keeps its text', async ({ page }, info) => {
-  const pageFile = path.join(main, 'pages/turn-into.json');
-  const typeFile = path.join(main, 'block_types/offer_banner.json');
-  await page.request.delete('/api/sites/default/working-copy/page/turn-into', { headers: { Origin: 'http://127.0.0.1:4322' } });
-  writeJson(pageFile, { id: 'turn-into', title: 'Offers', slug: 'offers', status: 'draft', content_mode: 'blocks', blocks: [
+  const pageFile = `${main}/pages/turn-into`;
+  const typeFile = `${main}/block_types/offer_banner`;
+  await page.request.delete('/api/sites/default/working-copy/page/turn-into', { headers: { Origin: PORTAL_ORIGIN } });
+  await e2eStore.set(pageFile, { id: 'turn-into', title: 'Offers', slug: 'offers', status: 'draft', content_mode: 'blocks', blocks: [
     { id: 'offer', name: 'Offer section', type: 'core/section', data: {}, children: [
       { id: 'offer-h', type: 'core/heading', data: { text: 'Spring offer', level: 'h2' } },
       { id: 'offer-p', type: 'core/prose', data: { html: '<p>Half price on all plans.</p>' } },
@@ -164,7 +156,7 @@ test('an admin turns a section on a page into a block type and the page keeps it
     await expect(banner.getByText('Half price on all plans.')).toBeVisible();
     await expect(banner.getByRole('link', { name: 'See plans' })).toHaveAttribute('href', /pricing/);
 
-    const stored = JSON.parse(readFileSync(typeFile, 'utf8'));
+    const stored = await e2eStore.read(typeFile);
     expect(stored.composition[0].children[0].data.text).toBe('{{props.heading}}');
     expect(stored.composition[0].children[2].data.href).toBe('/pricing');
 
@@ -188,36 +180,34 @@ test('an admin turns a section on a page into a block type and the page keeps it
     await expect(preview.getByRole('heading', { name: 'Summer offer' })).toBeVisible({ timeout: 15_000 });
     await expect(preview.locator('[data-block="offer_banner"]')).toHaveCount(0);
   } finally {
-    await page.request.delete('/api/sites/default/working-copy/page/turn-into', { headers: { Origin: 'http://127.0.0.1:4322' } });
-    rmSync(pageFile, { force: true });
-    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: 'http://127.0.0.1:4322' } });
-    rmSync(typeFile, { force: true });
-    rmSync(path.join(coreMain, 'block_types/editor_test.json'), { force: true });
+    await page.request.delete('/api/sites/default/working-copy/page/turn-into', { headers: { Origin: PORTAL_ORIGIN } });
+    await e2eStore.deleteTree(pageFile);
+    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: PORTAL_ORIGIN } });
+    await e2eStore.deleteTree(typeFile, `${coreMain}/block_types/editor_test`);
   }
 });
 
 test('an editor opens the builder and edits a placed composed block', async ({ page }, info) => {
-  const typeFile = path.join(coreMain, 'block_types/team_note.json');
-  const pageFile = path.join(coreMain, 'pages/editor-composed.json');
-  writeJson(typeFile, {
+  const typeFile = `${coreMain}/block_types/team_note`;
+  const pageFile = `${coreMain}/pages/editor-composed`;
+  await e2eStore.set(typeFile, {
     id: 'team_note', name: 'team_note', label: 'Team note', category: 'content', container: false, origin: 'user', created_at: '2026-10-01T00:00:00.000Z', css_scope: 'block',
     description: 'A short notice from the team.',
     schema: [{ name: 'note', type: 'text', label: 'Note text', help: 'One sentence.' }],
     composition: [{ id: 'n', type: 'core/text', data: { text: '{{props.note}}' } }],
   });
-  writeJson(pageFile, { id: 'editor-composed', title: 'Notices', slug: 'notices', status: 'draft', content_mode: 'blocks', blocks: [
+  await e2eStore.set(pageFile, { id: 'editor-composed', title: 'Notices', slug: 'notices', status: 'draft', content_mode: 'blocks', blocks: [
     { id: 'note1', name: 'Team note', type: 'team_note', data: { note: 'Office closed on Friday' } },
   ] });
   try {
     await authenticatePersona(page, 'editor');
-    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: 'http://127.0.0.1:4322' } });
+    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: PORTAL_ORIGIN } });
     await page.setViewportSize({ width: 1440, height: 1000 });
     await gotoReady(page, '/app/sites/e2e-core-site/blocks');
     await expect(page.getByRole('button', { name: 'New block type' }).first()).toBeVisible();
     await page.screenshot({ path: info.outputPath('editor-builder-1440.png') });
-    const origin = process.env.TYPEROLL_E2E_PORTAL_URL ?? 'http://127.0.0.1:4322';
     const created = await page.request.post('/api/sites/e2e-core-site/blocks/types', {
-      headers: { Origin: origin },
+      headers: { Origin: PORTAL_ORIGIN },
       data: { name: 'editor_test', label: 'Editor test', schema: [], template: '<p>x</p>' },
     });
     expect(created.status()).toBe(200);
@@ -236,9 +226,7 @@ test('an editor opens the builder and edits a placed composed block', async ({ p
     await expect(preview.locator('[data-block="team_note"]')).toHaveText('Office open on Friday', { timeout: 15_000 });
     await page.screenshot({ path: info.outputPath('editor-props-1440.png') });
   } finally {
-    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: 'http://127.0.0.1:4322' } });
-    rmSync(typeFile, { force: true });
-    rmSync(path.join(coreMain, 'block_types/editor_test.json'), { force: true });
-    rmSync(pageFile, { force: true });
+    await page.request.delete('/api/sites/e2e-core-site/working-copy/page/editor-composed', { headers: { Origin: PORTAL_ORIGIN } });
+    await e2eStore.deleteTree(typeFile, `${coreMain}/block_types/editor_test`, pageFile);
   }
 });

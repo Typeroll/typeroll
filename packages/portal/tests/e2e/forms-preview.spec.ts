@@ -5,18 +5,13 @@
  * submit endpoint, so no submission is stored.
  */
 import { test, expect } from '@playwright/test';
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
-
-const SITE = path.join(os.tmpdir(), 'typeroll-e2e-fixtures', 'organizations/default/sites/default');
+import { DEFAULT_MAIN, DEFAULT_SITE, e2eStore } from './helpers/store';
 
 test('a preview link clicks through a multi-step form without creating a submission', async ({ page, baseURL }) => {
   const id = `e2epreviewform${Date.now()}`;
-  const formFile = path.join(SITE, 'forms', `${id}.json`);
-  const pageFile = path.join(SITE, 'versions/main/pages', `${id}.json`);
-  await fs.mkdir(path.dirname(formFile), { recursive: true });
-  await fs.writeFile(formFile, JSON.stringify({
+  const formDoc = `${DEFAULT_SITE}/forms/${id}`;
+  const pageDoc = `${DEFAULT_MAIN}/pages/${id}`;
+  await e2eStore.set(formDoc, {
     name: 'Preview lead',
     actions: [{ type: 'email', config: { to: 'owner@example.test', subject: 'Lead' } }],
     created_at: new Date().toISOString(),
@@ -30,12 +25,12 @@ test('a preview link clicks through a multi-step form without creating a submiss
         { id: 'company', type: 'form/text', data: { name: 'company', label: 'Company', required: true } },
       ] },
     ],
-  }));
-  await fs.writeFile(pageFile, JSON.stringify({
+  });
+  await e2eStore.set(pageDoc, {
     title: 'Preview form', slug: id, path: `/${id}`, content_mode: 'blocks', status: 'published',
     content_type: 'page', fields: {}, date_updated: new Date().toISOString(),
     blocks: [{ id: 'form', type: 'core/form', data: { form_id: id } }],
-  }));
+  });
   try {
     const link = await page.request.post('/api/sites/default/preview-link', { headers: { Origin: new URL(baseURL!).origin }, data: { path: id } });
     expect(link.status(), await link.text()).toBe(200);
@@ -88,7 +83,6 @@ test('a preview link clicks through a multi-step form without creating a submiss
     expect(submissions.ok()).toBe(true);
     expect((await submissions.json() as { submissions: unknown[] }).submissions).toEqual([]);
   } finally {
-    await fs.rm(formFile, { force: true });
-    await fs.rm(pageFile, { force: true });
+    await e2eStore.deleteTree(formDoc, pageDoc);
   }
 });

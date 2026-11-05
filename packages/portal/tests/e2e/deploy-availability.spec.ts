@@ -1,17 +1,12 @@
 import { test, expect } from '@playwright/test';
-import { existsSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
 import { gotoReady, reloadReady, waitForHydration } from './helpers/ready';
+import { DEFAULT_MAIN, DEFAULT_SITE, e2eStore } from './helpers/store';
 
-const root = path.join(tmpdir(), 'typeroll-e2e-fixtures/organizations/default/sites/default');
 for (const surface of ['editor', 'overview', 'pages']) {
   test(`${surface} resumes distribution and reveals the link automatically`, async ({ page }, testInfo) => {
-    const versionFile = path.join(root, 'versions/main.json');
-    const siteFile = `${root}.json`;
-    const pageFile = path.join(root, 'versions/main/pages/availability.json');
-    const originalVersion = existsSync(versionFile) ? readFileSync(versionFile) : null;
-    const originalSite = readFileSync(siteFile);
+    const pageDoc = `${DEFAULT_MAIN}/pages/availability`;
+    const originalVersion = await e2eStore.get(DEFAULT_MAIN);
+    const originalSite = await e2eStore.read(DEFAULT_SITE);
     const version = { id: 'main', name: 'Main', kind: 'main', created_at: '2020-01-01T00:00:00Z',
       last_deployed_at: '2020-01-02T12:00:00Z', last_deployed_content_at: '2020-01-02T11:00:00Z' };
     let ready = false;
@@ -21,10 +16,12 @@ for (const surface of ['editor', 'overview', 'pages']) {
     page.on('framenavigated', frame => { if (frame === page.mainFrame()) navigations++; });
     const job = () => ({ id: 'availability-test', status: ready ? 'succeeded' : 'running', phase: ready ? 'done' : 'distributing' });
     try {
-      writeFileSync(siteFile, JSON.stringify({ ...JSON.parse(originalSite.toString()), domain: 'available.example.com' }));
-      writeFileSync(versionFile, JSON.stringify({ ...version, distributing_deploy_id: 'new-publication' }));
-      writeFileSync(pageFile, JSON.stringify({ id: 'availability', title: 'Availability test', slug: 'availability', status: 'published',
-        content_mode: 'blocks', date_updated: '2020-01-02T10:00:00Z', blocks: [] }));
+      await e2eStore.setMany([
+        [DEFAULT_SITE, { ...originalSite, domain: 'available.example.com' }],
+        [DEFAULT_MAIN, { ...version, distributing_deploy_id: 'new-publication' }],
+        [pageDoc, { id: 'availability', title: 'Availability test', slug: 'availability', status: 'published',
+          content_mode: 'blocks', date_updated: '2020-01-02T10:00:00Z', blocks: [] }],
+      ]);
       await page.route('**/api/sites/default/deploy', route => route.fulfill({ json: { jobs: [job()], active_job: ready ? null : job() } }));
       await page.route('**/api/sites/default/deploys/availability-test', route => route.fulfill({ json: job() }));
       await page.setViewportSize({ width: 390, height: 844 });
@@ -37,7 +34,7 @@ for (const surface of ['editor', 'overview', 'pages']) {
       // An explicit reload must resume the same job without another deploy.
       await reloadReady(page);
       const before = navigations;
-      writeFileSync(versionFile, JSON.stringify(version));
+      await e2eStore.set(DEFAULT_MAIN, version);
       ready = true;
       await expect.poll(() => navigations, { timeout: 12_000 }).toBeGreaterThan(before);
       // The page reloaded itself; act on it once the new document has hydrated.
@@ -47,9 +44,9 @@ for (const surface of ['editor', 'overview', 'pages']) {
       await page.screenshot({ path: testInfo.outputPath(`${surface}-ready-mobile.png`) });
       expect(errors).toEqual([]);
     } finally {
-      writeFileSync(siteFile, originalSite);
-      if (originalVersion) writeFileSync(versionFile, originalVersion); else rmSync(versionFile, { force: true });
-      rmSync(pageFile, { force: true });
+      await e2eStore.set(DEFAULT_SITE, originalSite);
+      if (originalVersion) await e2eStore.set(DEFAULT_MAIN, originalVersion); else await e2eStore.delete(DEFAULT_MAIN);
+      await e2eStore.deleteTree(pageDoc);
     }
   });
 }

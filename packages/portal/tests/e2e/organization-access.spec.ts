@@ -1,13 +1,8 @@
 import { test, expect } from '@playwright/test';
-import { readFileSync, writeFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { authenticatePersona } from './helpers/auth';
-const origin = 'http://127.0.0.1:4322';
-test.afterEach(() => {
-  const root = path.join(os.tmpdir(), 'typeroll-e2e-fixtures');
-  for (const relative of ['organizations/trial-browser', 'organizations/trial-browser.json', 'user_organizations/typeroll-e2e-owner/organizations/trial-browser.json'])
-    rmSync(path.join(root, relative), { recursive: true, force: true });
+import { PORTAL_ORIGIN as origin, e2eStore } from './helpers/store';
+test.afterEach(async () => {
+  await e2eStore.deleteTree('organizations/trial-browser', 'user_organizations/typeroll-e2e-owner/organizations/trial-browser');
 });
 test('trial onboarding, expiry, export access and recovery remain clear on mobile and desktop', async ({ page }, info) => {
   await authenticatePersona(page, 'owner');
@@ -30,12 +25,12 @@ test('trial onboarding, expiry, export access and recovery remain clear on mobil
     if (width <= 960) await expect.poll(() => page.locator('.app-sidebar').evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(0);
     await page.screenshot({ path: info.outputPath(`trial-${width}.png`), fullPage: true });
   }
-  // Synthetic filesystem data only; no production account or clock changes.
-  const file = path.join(os.tmpdir(), 'typeroll-e2e-fixtures/organizations/trial-browser.json');
-  const org = JSON.parse(readFileSync(file, 'utf8'));
+  // Synthetic local store data only; no production account or clock changes.
+  const orgDoc = 'organizations/trial-browser';
+  const org = await e2eStore.read(orgDoc);
   const now = Date.now();
   org.service_access.initial_period = { starts_at: new Date(now - 31 * 86400000).toISOString(), ends_at: new Date(now - 86400000).toISOString(), read_until: new Date(now + 89 * 86400000).toISOString() };
-  writeFileSync(file, JSON.stringify(org));
+  await e2eStore.set(orgDoc, org);
   await page.reload();
   await expect(page.getByText('Read and export access only.', { exact: true })).toBeVisible();
   const denied = await page.request.post('/api/sites/create', { headers: { Origin: origin }, data: { name: 'Must not create' } });
@@ -46,7 +41,7 @@ test('trial onboarding, expiry, export access and recovery remain clear on mobil
   await page.screenshot({ path: info.outputPath('expired-mobile.png'), fullPage: true });
   expect((await page.request.get('/api/orgs')).status()).toBe(200);
   org.service_access.override = { state: 'active', ends_at: null, read_until: null };
-  writeFileSync(file, JSON.stringify(org));
+  await e2eStore.set(orgDoc, org);
   await page.reload();
   await expect(page.getByText('Editing and publishing are available.', { exact: true })).toBeVisible();
   expect((await page.request.get('/api/orgs/access')).status()).toBe(200);

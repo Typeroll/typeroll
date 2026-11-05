@@ -1,13 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { gotoReady } from './helpers/ready';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 
 test('inspector keeps content visible, collapses presentation, and resets an exact size', async ({page}, info) => {
-  const file=path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/presentation-inspector.json');
-  mkdirSync(path.dirname(file),{recursive:true});
-  writeFileSync(file,JSON.stringify({id:'presentation-inspector',title:'Inspector',slug:'presentation-inspector',status:'draft',content_mode:'blocks',blocks:[{id:'h',type:'core/heading',data:{text:'Inspector heading',level:'h2',font_size_px:24}}]}));
+  const doc=`${DEFAULT_MAIN}/pages/presentation-inspector`;
+  await e2eStore.set(doc,{id:'presentation-inspector',title:'Inspector',slug:'presentation-inspector',status:'draft',content_mode:'blocks',blocks:[{id:'h',type:'core/heading',data:{text:'Inspector heading',level:'h2',font_size_px:24}}]});
   try {
     await page.setViewportSize({width:1440,height:1000});
     await gotoReady(page, '/app/sites/default/pages/presentation-inspector');
@@ -29,13 +26,12 @@ test('inspector keeps content visible, collapses presentation, and resets an exa
     await page.locator('button[title*="wide starts at 1536px"]').first().click();
     expect(await page.frameLocator('iframe[title="Preview"]').locator('html').evaluate(() => window.innerWidth)).toBe(1536);
     await page.screenshot({path:info.outputPath('inspector-1440.png')});
-  } finally { rmSync(file,{force:true}); }
+  } finally { await e2eStore.deleteTree(doc); }
 });
 
 test('image framing is editable in the native inspector and updates the real preview', async ({page}) => {
-  const file=path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/framing-inspector.json');
-  mkdirSync(path.dirname(file),{recursive:true});
-  writeFileSync(file,JSON.stringify({id:'framing-inspector',title:'Image framing',slug:'framing-inspector',status:'draft',content_mode:'blocks',blocks:[{id:'illustration',type:'core/image',data:{src:'https://media.example.test/inspector.svg',alt:'Inspector illustration',original_width:600,original_height:150}}]}));
+  const doc=`${DEFAULT_MAIN}/pages/framing-inspector`;
+  await e2eStore.set(doc,{id:'framing-inspector',title:'Image framing',slug:'framing-inspector',status:'draft',content_mode:'blocks',blocks:[{id:'illustration',type:'core/image',data:{src:'https://media.example.test/inspector.svg',alt:'Inspector illustration',original_width:600,original_height:150}}]});
   await page.route('https://media.example.test/inspector.svg',r=>r.fulfill({contentType:'image/svg+xml',body:'<svg xmlns="http://www.w3.org/2000/svg" width="600" height="150"><rect width="600" height="150" fill="#cde5df"/></svg>'}));
   try {
     await page.setViewportSize({width:1440,height:1000});
@@ -53,5 +49,5 @@ test('image framing is editable in the native inspector and updates the real pre
     await page.getByRole('button',{name:'Reset image scale inside frame (%)',exact:true}).click();
     await expect(scale).toHaveValue('100');
     await expect(preview.locator('[data-block="image"]')).toHaveCSS('--scale_percent','100');
-  } finally { rmSync(file,{force:true}); }
+  } finally { await e2eStore.deleteTree(doc); }
 });

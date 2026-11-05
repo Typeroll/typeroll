@@ -1,9 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
 import { buildCoreBlockRegistry, collectBlockAssets, renderBlocks, type Block } from '@typeroll/shared';
 import { gotoReady } from './helpers/ready';
+import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 
 const registry = buildCoreBlockRegistry();
 const links = Array.from({ length: 12 }, (_, index) => ({ label: `Moving guide ${index + 1}`, href: '#content' }));
@@ -88,11 +86,10 @@ test('template list and creation fields use readable portal colors on mobile and
 });
 
 test('native inspector edits and resets a gradient in the real page preview', async ({ page }) => {
-  const file = path.join(os.tmpdir(),'typeroll-e2e-fixtures/organizations/default/sites/default/versions/main/pages/surface-editor.json');
-  mkdirSync(path.dirname(file),{recursive:true});
-  writeFileSync(file,JSON.stringify({id:'surface-editor',title:'Surface editor',slug:'surface-editor',status:'draft',content_mode:'blocks',blocks:[{
+  const pageDoc = `${DEFAULT_MAIN}/pages/surface-editor`;
+  await e2eStore.set(pageDoc,{id:'surface-editor',title:'Surface editor',slug:'surface-editor',status:'draft',content_mode:'blocks',blocks:[{
     id:'surface',name:'Surface',type:'core/container',data:{background_gradient:{from:'#f8fbff',to:'#e8f4fc',angle:135}},children:[{id:'heading',type:'core/heading',data:{text:'Surface preview',level:'h2'}}],
-  }]}));
+  }]});
   try {
     await page.setViewportSize({width:1440,height:1000});
     await gotoReady(page, '/app/sites/default/pages/surface-editor');
@@ -105,5 +102,5 @@ test('native inspector edits and resets a gradient in the real page preview', as
     await expect(surface).toHaveCSS('background-image',/90deg/);
     await page.getByRole('button',{name:'Reset linear gradient (optional)',exact:true}).click();
     await expect(surface).not.toHaveCSS('background-image',/gradient\(/);
-  } finally { rmSync(file,{force:true}); }
+  } finally { await e2eStore.deleteTree(pageDoc); }
 });

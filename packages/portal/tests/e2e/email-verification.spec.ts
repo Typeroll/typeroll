@@ -1,8 +1,9 @@
 import { test, expect, type Page } from '@playwright/test';
 import crypto from 'node:crypto';
 import { authenticatePersona } from './helpers/auth';
+import { PORTAL_ORIGIN } from './helpers/store';
 
-const origin = 'http://127.0.0.1:4322';
+const origin = PORTAL_ORIGIN;
 
 async function expectCheckEmail(page: Page, next: string | null) {
   await expect(page.getByRole('heading', { name: 'Check your email', exact: true })).toBeVisible();

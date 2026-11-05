@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import crypto from 'node:crypto';
 import { authenticatePersona } from './helpers/auth';
-const origin = 'http://127.0.0.1:4322';
+import { PORTAL_ORIGIN as origin } from './helpers/store';
 const verifier = 'synthetic-pkce-verifier-for-browser-consent-test';
 const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
 

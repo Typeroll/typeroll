@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { authenticatePersona } from './helpers/auth';
+import { PORTAL_ORIGIN } from './helpers/store';
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/orgs/publishing/zones', route => route.fulfill({ json: { account_name: 'Example', zones: [] } }));
@@ -59,7 +60,7 @@ test('organization domain settings reject a non-admin session', async ({ page })
   await authenticatePersona(page, 'editor');
   expect((await page.request.get('/api/orgs/publishing/domains')).status()).toBe(403);
   expect((await page.request.put('/api/orgs/publishing/domains', {
-    headers: { Origin: 'http://127.0.0.1:4322' }, data: { revision: 'initial', media_host: 'media.example.com', sites_domain: 'sites.example.com', dns_mode: 'automatic' },
+    headers: { Origin: PORTAL_ORIGIN }, data: { revision: 'initial', media_host: 'media.example.com', sites_domain: 'sites.example.com', dns_mode: 'automatic' },
   })).status()).toBe(403);
 });
 
