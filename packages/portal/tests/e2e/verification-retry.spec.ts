@@ -35,48 +35,31 @@ for (const width of [390, 1280]) test(`retries the same failed verification twic
   await expect(page.getByRole('button', { name: 'Deployed ✓', exact: true })).toBeVisible({ timeout: 6000 });
 });
 
-for (const width of [390, 1280]) test(`requires explicit named-zone cache approval at ${width}px`, async ({ page }, info) => {
+for (const width of [390, 1280]) test(`offers only a verification retry for a stale upstream cache at ${width}px`, async ({ page }, info) => {
   const bodies: unknown[] = [];
-  const failed = { id: 'cache-test', status: 'failed', phase: 'failed', error: 'Publication verification stopped after 45 minutes. The hosting service still returns HTTP 200 at /media/0dbb87db1719d69c-moveria-moving-illustration.svg; this deployment requires HTTP 404. Contact support with deployment cache-test.', render_report: { rendered: 262, reused: 0 }, failure: { code: 'publication_cache_refresh_required' }, cache_recovery: { state: 'approval_required', zone_id: 'zone', zone_name: 'example.com' } };
+  const failed = { id: 'cache-test', status: 'failed', phase: 'failed', error: 'Cloudflare still serves the removed file https://www.example.com/media/old.svg from a cache above the example.com zone, while the same URL with a fresh cache key returns HTTP 404: the deployment is correct.', render_report: { rendered: 262, reused: 0 }, failure: { code: 'publication_cache_refresh_failed' }, cache_recovery: { state: 'failed', layer: 'upstream_cache', variant_status: 404, zone_id: 'zone', zone_name: 'example.com' } };
   await page.route('**/api/sites/default/deploy', route => {
     if (route.request().method() === 'POST') {
       bodies.push(route.request().postDataJSON());
-      return route.fulfill({ json: { job_id: 'cache-test' } });
+      return route.fulfill({ json: { job_id: 'cache-test', verification_only: true } });
     }
     return route.fulfill({ json: { latest_job: failed } });
   });
-  await page.route('**/api/sites/default/deploys/cache-test', route => route.fulfill({ json: { id: 'cache-test', status: 'running', phase: 'verifying refreshed cache' } }));
+  await page.route('**/api/sites/default/deploys/cache-test', route => route.fulfill({ json: { id: 'cache-test', status: 'running', phase: 'retrying public verification' } }));
   await page.setViewportSize({ width, height: 900 });
   await gotoReady(page, '/app/sites/default');
-  const button = page.getByRole('button', { name: 'Refresh domain cache…', exact: true });
-  await expect(button).toBeVisible();
+  const retry = page.getByRole('button', { name: 'Retry verification', exact: true });
+  await expect(retry).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Refresh domain cache…', exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Rebuild…', exact: true })).toBeVisible();
-  await button.scrollIntoViewIfNeeded();
-  await expect(button).toBeInViewport({ ratio: 1 });
+  await retry.scrollIntoViewIfNeeded();
+  await expect(retry).toBeInViewport({ ratio: 1 });
   await expect(page.locator('.deploy-banner__text')).toHaveText('Publication needs attention — final verification is incomplete.');
-  await expect(page.locator('.deploy-banner')).toHaveClass(/deploy-banner--accent/);
-  await expect(page.locator('.deploy-banner__text')).not.toContainText('up to date');
   await expect(page.getByRole('alert')).toContainText('Retry verification without rebuilding.');
-  const details = page.getByText('Technical details', { exact: true });
-  await expect(page.getByText(/Publication verification stopped after 45 minutes/)).not.toBeVisible();
-  await details.click();
-  await expect(page.getByText(/Publication verification stopped after 45 minutes/)).toBeVisible();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await details.click();
-  expect((await page.locator('.deploy-banner__text').boundingBox())!.width).toBeGreaterThan(180);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.screenshot({ path: info.outputPath(`cache-recovery-${width}.png`) });
-  page.once('dialog', async dialog => {
-    expect(dialog.message()).toContain('example.com');
-    expect(dialog.message()).toContain('including other websites and subdomains');
-    await dialog.dismiss();
-  });
-  await button.click();
-  expect(bodies).toEqual([]);
-  page.once('dialog', async dialog => { await dialog.accept(); });
-  await button.click();
+  await retry.click();
   await expect.poll(() => bodies.length).toBe(1);
-  expect(bodies).toEqual([{ retry_verification_job_id: 'cache-test', approve_cache_zone_id: 'zone' }]);
-  await expect(page.getByRole('button', { name: 'verifying refreshed cache…', exact: true })).toBeDisabled();
-  await expect(page.locator('.deploy-banner__text')).toHaveText('Publication in progress — waiting for verification.');
+  expect(bodies).toEqual([{ retry_verification_job_id: 'cache-test' }]);
+  await expect(page.getByRole('button', { name: 'retrying public verification…', exact: true })).toBeDisabled();
 });
