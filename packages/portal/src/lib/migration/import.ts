@@ -13,7 +13,7 @@
 // always mirrors the site object's final value.
 
 import type { ShardedStore } from '../store/sharded-store';
-import { ownerPath, shardFor } from '../store/sharded-store';
+import { fixedObjectName, ownerPath, shardFor } from '../store/sharded-store';
 import type { StoreTransport } from '../store/sql-store';
 import type { Precondition, StoredDoc, Write } from '../store/sql-engine';
 import { canonicalJson, parseRecordLine } from './format';
@@ -59,8 +59,7 @@ const COMMIT_BYTES = 4_000_000, COMMIT_DOCS = 200, ATTEMPTS = 5, UNASSIGNED = ''
 /** Object name for a path; for a site without an ownership row, null unless `create`. */
 export async function resolveShard(target: MigrationTarget, path: string, create: boolean): Promise<string | null> {
   const shard = shardFor(path);
-  if (shard.kind === 'global') return 'global';
-  if (shard.kind === 'org') return `org:${shard.org}`;
+  if (shard.kind !== 'site') return fixedObjectName(shard);
   if (create) return `site:${await target.store.siteUid(shard.org, shard.site)}`;
   const owner = await target.transport('global').get(ownerPath(shard.org, shard.site));
   return owner ? `site:${owner.data.uid}` : null;

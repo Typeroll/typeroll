@@ -95,3 +95,22 @@ describe('organization listing', () => {
     expect(await engines.get('org:a')!.get('organizations/a')).toBeTruthy();
   });
 });
+
+describe('rate-limit counters', () => {
+  it('spreads hashed counters over counter objects and keeps them off the global object', async () => {
+    const engines = new Map<string, SqlDocumentEngine>();
+    const store = new ShardedStore({ transport: name => {
+      if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+      return localTransport(engines.get(name)!);
+    } }, () => 'id');
+    const a = `rate_limits/ab${'0'.repeat(62)}`, b = `auth_rate_limits/cd${'1'.repeat(62)}`;
+    expect(shardFor(a)).toEqual({ kind: 'counter', bucket: 'ab' });
+    expect(await store.compareAndReplaceDoc(a, null, { count: 1 })).toBe(true);
+    await store.setDoc(b, { count: 2 });
+    expect(await store.getDoc(a)).toMatchObject({ count: 1 });
+    expect([...engines.keys()].sort()).toEqual(['counters:ab', 'counters:cd']);
+    expect(shardFor('rate_limits/not-a-hash')).toEqual({ kind: 'global' });
+    await expect(store.listDocs('rate_limits')).rejects.toThrow(/counter objects/);
+    expect(shardFor('organizations/o/sites/s/rate_limits/x').kind).toBe('site');
+  });
+});

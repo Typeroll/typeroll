@@ -4,7 +4,7 @@
 // organization's copy. Differences name the first differing JSON pointer, never
 // the values, so a report can be shared without customer data or secrets.
 
-import { ownerPath, shardFor } from '../store/sharded-store';
+import { fixedObjectName, ownerPath, shardFor } from '../store/sharded-store';
 import { canonicalJson, collectionGroup, isPlainObject, parseRecordLine, type ExportRecord } from './format';
 import type { MigrationTarget } from './import';
 import { logicalValue, transformRecord } from './transform';
@@ -63,7 +63,7 @@ export function shardedReader(target: MigrationTarget): CompareReader {
       const groups = new Map<string | null, number[]>();
       for (let i = 0; i < paths.length; i++) {
         const shard = shardFor(paths[i]!);
-        const name = shard.kind === 'global' ? 'global' : shard.kind === 'org' ? `org:${shard.org}` : await siteShard(shard.org, shard.site);
+        const name = shard.kind === 'site' ? await siteShard(shard.org, shard.site) : fixedObjectName(shard);
         let group = groups.get(name);
         if (!group) groups.set(name, group = []);
         group.push(i);

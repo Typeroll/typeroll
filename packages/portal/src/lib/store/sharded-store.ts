@@ -14,13 +14,30 @@ import type { ConditionalEffect, ReadWriteStore } from '../datastore';
 import { clean, deepEqual, deepMerge, type Filter } from './sql-engine';
 import { SqlStore, type StoreTransport } from './sql-store';
 
-export type Shard = { kind: 'global' } | { kind: 'org'; org: string } | { kind: 'site'; org: string; site: string };
+export type Shard = { kind: 'global' } | { kind: 'org'; org: string } | { kind: 'site'; org: string; site: string } | { kind: 'counter'; bucket: string };
 
 const SITE = /^organizations\/([^/]+)\/sites\/([^/]+)(?:\/|$)/;
 const ORG = /^organizations\/([^/]+)(?:\/|$)/;
 
+/**
+ * Rate-limit counters (hashed keys) are spread over 256 counter objects so hot
+ * anonymous limits (forms, analytics, API) never queue behind the global object.
+ */
+const COUNTER = /^(?:rate_limits|auth_rate_limits)\/([0-9a-f]{2})[0-9a-f]{62}$/;
+const COUNTER_COLLECTION = /^(?:rate_limits|auth_rate_limits)$/;
+
+/** The object name of a shard that needs no lookup; null for a site (named by its uid). */
+export function fixedObjectName(shard: Shard): string | null {
+  if (shard.kind === 'global') return 'global';
+  if (shard.kind === 'org') return `org:${shard.org}`;
+  if (shard.kind === 'counter') return `counters:${shard.bucket}`;
+  return null;
+}
+
 /** Which object holds a document path, or the documents of a collection path. */
 export function shardFor(path: string): Shard {
+  const counter = path.match(COUNTER);
+  if (counter) return { kind: 'counter', bucket: counter[1]! };
   const site = path.match(SITE);
   if (site) return { kind: 'site', org: site[1]!, site: site[2]! };
   const org = path.match(ORG);
@@ -72,8 +89,7 @@ export class ShardedStore implements ReadWriteStore {
   /** Object name for a document path (or `collection/_` for a collection). */
   async shardName(path: string): Promise<string> {
     const shard = shardFor(path);
-    if (shard.kind === 'global') return 'global';
-    if (shard.kind === 'org') return `org:${shard.org}`;
+    if (shard.kind !== 'site') return fixedObjectName(shard)!;
     return `site:${await this.siteUid(shard.org, shard.site)}`;
   }
   private async storeFor(path: string) { return this.store(await this.shardName(path)); }
@@ -159,6 +175,7 @@ export class ShardedStore implements ReadWriteStore {
   }
 
   async listDocs<T = unknown>(collection: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<Array<T & { id: string }>> {
+    if (COUNTER_COLLECTION.test(collection)) throw new Error(`${collection} is spread over counter objects and cannot be listed`);
     // Organizations are listed from their copies in the global object.
     if (collection === 'organizations') return this.store('global').listDocs<T>(collection, opts);
     // A collection lives with the document that owns it; root collections are global.
