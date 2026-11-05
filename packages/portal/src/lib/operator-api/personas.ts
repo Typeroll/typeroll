@@ -6,6 +6,8 @@
 // and membership indexes, and API-key lookups marked `is_test_credential`.
 // Passwords are hashed by the portal's Better Auth instance.
 
+import { storeBackend } from '../datastore';
+import { INSTALLATION_PATH } from '../data-schema';
 import type { ReadWriteStore } from '../datastore';
 import { PORTAL_AUTH_PREFIX, type PortalAuth } from '../identity/portal-auth';
 import {
@@ -46,6 +48,11 @@ export class OperatorPersonas {
 
   async seedE2EPersonas(request: PersonaSeedRequest): Promise<PersonaInspection> {
     const context = await this.context();
+    // Seeding an object store without its installation record would leave
+    // data the schema check can never adopt (every request then answers 503).
+    if (storeBackend() === 'durable_object' && !await this.deps.store().getDoc(INSTALLATION_PATH)) {
+      throw new OperatorApiError('not_enabled', 'the store has no installation record yet; import or bootstrap it before seeding personas');
+    }
     if (!request || !Array.isArray(request.personas) || !Array.isArray(request.documents) || request.documents.length > MAX_DOCUMENTS) {
       throw new OperatorApiError('invalid_request', 'personas and documents are required');
     }
