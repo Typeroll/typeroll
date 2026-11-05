@@ -20,14 +20,11 @@
     "core:release:verify": "node scripts/verify-core-release.mjs",
     "release:plan": "node scripts/oss-release-plan.mjs",
     "release:bump": "node scripts/oss-release-bump.mjs",
-    "self-host:check": "node scripts/self-host-doctor.mjs",
-    "self-host:bootstrap": "node scripts/self-host-bootstrap.mjs",
-    "self-host:migrate": "node scripts/self-host-migrate.mjs",
-    "self-host:backup": "node scripts/self-host-backup.mjs",
-    "self-host:restore": "node scripts/self-host-restore.mjs",
-    "self-host:gcp:plan": "node scripts/self-host-gcp-plan.mjs",
-    "self-host:gcp:apply": "node scripts/self-host-gcp-apply.mjs",
-    "self-host:gcp:doctor": "node scripts/self-host-gcp-doctor.mjs",
+    "self-host:cloudflare:plan": "node scripts/self-host-cloudflare.mjs plan",
+    "self-host:cloudflare:apply": "node scripts/self-host-cloudflare.mjs apply",
+    "self-host:cloudflare:doctor": "node scripts/self-host-cloudflare.mjs doctor",
+    "self-host:cloudflare:backup": "node scripts/self-host-cloudflare.mjs backup",
+    "self-host:cloudflare:restore": "node scripts/self-host-cloudflare.mjs restore",
     "e2e:personas": "node scripts/e2e-personas.mjs",
     "e2e:target:check": "node scripts/e2e-target-check.mjs",
     "e2e:agent": "node scripts/e2e-agent-journey.mjs",
@@ -43,7 +40,6 @@
   "dependencies": {
     "@aws-sdk/client-s3": "3.1123.0",
     "esbuild": "0.28.2",
-    "firebase-admin": "14.5.0",
     "google-auth-library": "10.9.1"
   },
   "overrides": {
@@ -67,6 +63,7 @@
     }
   },
   "devDependencies": {
+    "firebase-admin": "14.5.0",
     "miniflare": "5.20260930.0-alpha"
   }
 }
