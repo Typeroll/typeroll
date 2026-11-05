@@ -4,6 +4,7 @@ import {
   recordCloudflareFlowFailure, startCloudflareConnection,
 } from '../../../../../lib/publishing/cloudflare-oauth';
 import { publishingAdmin } from '../../../../../lib/publishing/http';
+import { portalCookiesSecure } from '../../../../../lib/local-e2e';
 
 const SETTINGS = '/app/settings/publishing';
 const COOKIE_PATH = '/api/orgs/publishing/cloudflare';
@@ -55,7 +56,7 @@ export const GET: APIRoute = async (context) => {
       if (continuation) {
         const next = await startCloudflareConnection(guard.value, continuation.next, false, false, { then: continuation.then });
         context.cookies.set(CLOUDFLARE_COOKIE, next.browser, { path: COOKIE_PATH, httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: next.maxAge });
+          secure: portalCookiesSecure() || context.url.protocol === 'https:', sameSite: 'lax', maxAge: next.maxAge });
         return redirect(next.url);
       }
     } catch { /* The finished connection is saved; the other card still offers Approve update. */ }

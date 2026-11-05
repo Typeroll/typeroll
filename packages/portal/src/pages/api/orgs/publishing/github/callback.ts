@@ -4,6 +4,7 @@ import {
   resumeGithubInstallation, startGithubConnection,
 } from '../../../../../lib/publishing/github-connection';
 import { publishingAdmin } from '../../../../../lib/publishing/http';
+import { portalCookiesSecure } from '../../../../../lib/local-e2e';
 
 const SETTINGS = '/app/settings/publishing';
 const redirect = (location: string) => new Response(null, { status: 303, headers: { Location: location,
@@ -55,7 +56,7 @@ export const GET: APIRoute = async (context) => {
         // that implicit authorization did not carry our PKCE challenge.
         const next = await startGithubConnection(guard.value, resumed.owner);
         context.cookies.set(GITHUB_COOKIE, next.browser, { path: '/api/orgs/publishing/github', httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: next.maxAge });
+          secure: portalCookiesSecure() || context.url.protocol === 'https:', sameSite: 'lax', maxAge: next.maxAge });
         continuing = true;
         return redirect(next.url);
       }

@@ -34,6 +34,17 @@ export function isLoopbackPortal(env: Record<string, string | undefined> = proce
   return isLoopbackUrl(env.PORTAL_PUBLIC_URL);
 }
 
+/**
+ * Whether the portal's own cookies carry `Secure`: always in production,
+ * except on a plain-http loopback portal (a local Worker), where clients other
+ * than browsers would otherwise drop them. Better Auth applies the same rule.
+ */
+export function portalCookiesSecure(env: Record<string, string | undefined> = process.env): boolean {
+  if (env.NODE_ENV !== 'production') return false;
+  const portal = env.PORTAL_PUBLIC_URL?.trim();
+  return !(isLoopbackPortal(env) && portal?.startsWith('http:'));
+}
+
 export function isLocalE2EMode(env: Record<string, string | undefined> = process.env): boolean {
   return env.TYPEROLL_LOCAL_E2E?.trim() === 'allow'
     && !env.AUTH_SECRET?.trim()

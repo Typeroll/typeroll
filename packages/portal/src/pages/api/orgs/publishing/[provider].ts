@@ -6,6 +6,7 @@ import { connectCloudflare, prepareCloudflareMedia, connectCloudflareMedia } fro
 import { GITHUB_COOKIE, startGithubConnection, startGithubInstallation, selectGithubOrganization } from '../../../../lib/publishing/github-connection';
 import { connectionBody, connectionFailure, privateJson, publishingAdmin } from '../../../../lib/publishing/http';
 import { CLOUDFLARE_COOKIE, startCloudflareConnection, startCloudflarePermissionUpdate, selectCloudflareAccount } from '../../../../lib/publishing/cloudflare-oauth';
+import { portalCookiesSecure } from '../../../../lib/local-e2e';
 
 export const POST: APIRoute = async (context) => {
   const guard = await publishingAdmin(context);
@@ -25,7 +26,7 @@ export const POST: APIRoute = async (context) => {
         const result = body.action === 'approve_update' ? await startCloudflarePermissionUpdate(guard.value, groupId)
           : await startCloudflareConnection(guard.value, groupId, body.build_access === true, body.analytics_access === true);
         context.cookies.set(CLOUDFLARE_COOKIE, result.browser, { path: '/api/orgs/publishing/cloudflare', httpOnly: true,
-          secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: result.maxAge });
+          secure: portalCookiesSecure() || context.url.protocol === 'https:', sameSite: 'lax', maxAge: result.maxAge });
         return privateJson({ authorization_url: result.url, ...('hosting_group_ids' in result ? { hosting_group_ids: result.hosting_group_ids } : {}) });
       }
       if (body.action === 'select' && typeof body.account_id === 'string') {
@@ -44,7 +45,7 @@ export const POST: APIRoute = async (context) => {
     const result = body.action === 'install' ? await startGithubInstallation(guard.value)
       : await startGithubConnection(guard.value, typeof body?.owner === 'string' ? body.owner.trim() : '');
     context.cookies.set(GITHUB_COOKIE, result.browser, { path: '/api/orgs/publishing/github', httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' || context.url.protocol === 'https:', sameSite: 'lax', maxAge: result.maxAge });
+      secure: portalCookiesSecure() || context.url.protocol === 'https:', sameSite: 'lax', maxAge: result.maxAge });
     return privateJson({ authorization_url: result.url });
   } catch (error) { return connectionFailure(error); }
 };
