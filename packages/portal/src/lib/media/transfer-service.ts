@@ -5,6 +5,7 @@ import { ConnectionError, getConnection, openCredentials, sealCredentials } from
 import { cloudflareClient, type CloudflareStoredCredentials } from '../publishing/cloudflare-oauth';
 import { claimCloudflareResource, mediaTransferWorkerName } from '../publishing/cloudflare-account-claims';
 import { ProviderError } from '../publishing/providers.mjs';
+import { withoutRedirects } from '../net/no-redirect.mjs';
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const sourceHash = hash(workerSource);
@@ -75,7 +76,7 @@ export async function customerTransferService(org: string, force = false): Promi
       for (let attempt = 0; attempt < 6; attempt++) {
         const health = JSON.stringify({ protocol: 1, id: randomUUID(), expires_at: Date.now() + 90000 });
         try {
-          const response = await fetch(url.replace('/transfer', '/health'), { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10000), headers: { 'Content-Type': 'application/json', 'x-typeroll-signature': createHmac('sha256', secret).update(health).digest('hex') }, body: health });
+          const response = await withoutRedirects()(url.replace('/transfer', '/health'), { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'Content-Type': 'application/json', 'x-typeroll-signature': createHmac('sha256', secret).update(health).digest('hex') }, body: health });
           const text = await response.text(), supplied = response.headers.get('x-typeroll-signature');
           healthy = response.ok && text.length < 1024 && /^[a-f0-9]{64}$/.test(supplied ?? '') && timingSafeEqual(Buffer.from(supplied!, 'hex'), createHmac('sha256', secret).update(text).digest()) && JSON.parse(text).worker_sha === sourceHash && JSON.parse(text).id === JSON.parse(health).id;
           if (healthy) break;

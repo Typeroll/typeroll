@@ -19,7 +19,7 @@ beforeEach(async () => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
 function provider(accounts = [first], exchange = token) {
   return vi.fn<typeof fetch>(async (url, init) => {
-    expect(init?.redirect).toBe('error');
+    expect(init?.redirect).toBe('manual');
     const path = new URL(String(url)).pathname;
     if (path === '/oauth2/token') return Response.json(exchange);
     if (path === '/client/v4/accounts') return Response.json({ success: true, result: accounts });

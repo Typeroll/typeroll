@@ -13,6 +13,7 @@
 import { paths, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { decryptSecret, encryptSecret, isSecretCryptoConfigured } from '../secret-crypto';
+import { withoutRedirects } from '../net/no-redirect.mjs';
 
 export const TURNSTILE_RESPONSE_FIELD = 'cf-turnstile-response';
 export const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
@@ -71,7 +72,7 @@ export async function verifyTurnstileResponse(secret: string, response: string, 
   const body = new URLSearchParams({ secret, response });
   if (remoteIp) body.set('remoteip', remoteIp);
   try {
-    const reply = await fetchImpl(TURNSTILE_VERIFY_URL, { method: 'POST', body, redirect: 'error', signal: AbortSignal.timeout(8000) });
+    const reply = await withoutRedirects(fetchImpl)(TURNSTILE_VERIFY_URL, { method: 'POST', body, redirect: 'manual', signal: AbortSignal.timeout(8000) });
     if (!reply.ok) return { result: 'unavailable', codes: [`http_${reply.status}`] };
     const json = await reply.json() as { success?: boolean; 'error-codes'?: unknown };
     const codes = Array.isArray(json['error-codes']) ? json['error-codes'].filter((code): code is string => typeof code === 'string') : [];

@@ -5,6 +5,7 @@ import { ConnectionError } from '../publishing/connections';
 
 export interface TransferReceipt { protocol: 1; id: string; sha256: string; size: number; etag: string }
 import { customerTransferService } from './transfer-service';
+import { withoutRedirects } from '../net/no-redirect.mjs';
 export { remoteTransfersEnabled } from './transfer-service';
 const sign = (secret: string, body: string) => createHmac('sha256', secret).update(body).digest('hex');
 /** A receipt is accepted only from the authenticated service and for this exact, fresh request. */
@@ -20,7 +21,7 @@ async function requestTransfer(orgId: string, input: Record<string, unknown>, fe
     const job = { ...input, protocol: 1, id: randomUUID(), expires_at: Date.now() + 90000 }, body = JSON.stringify(job);
     let response: Response;
     try {
-      response = await fetchImpl(service.url, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(90000),
+      response = await withoutRedirects(fetchImpl)(service.url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(90000),
         headers: { 'Content-Type': 'application/json', 'x-typeroll-signature': sign(service.secret, body) }, body });
     } catch {
       if (attempt < 2) { retrying(attempt, 'network'); await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }

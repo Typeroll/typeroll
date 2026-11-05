@@ -1,4 +1,5 @@
 import { createHash, createSign } from 'node:crypto';
+import { withoutRedirects } from '../net/no-redirect.mjs';
 
 const GH = 'https://api.github.com';
 const CF = 'https://api.cloudflare.com/client/v4';
@@ -102,9 +103,9 @@ export function createProviderClient(provider, token, fetchImpl = fetch) {
     }
     let response;
     try {
-      response = await fetchImpl(`${base}${route}`, {
+      response = await withoutRedirects(fetchImpl)(`${base}${route}`, {
         method,
-        redirect: 'error',
+        redirect: 'manual',
         signal: AbortSignal.timeout(30_000),
         headers: {
           Authorization: `Bearer ${token}`,

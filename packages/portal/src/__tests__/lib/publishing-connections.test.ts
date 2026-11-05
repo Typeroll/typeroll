@@ -56,7 +56,7 @@ function providerFetch(overrides: Record<string, unknown> = {}) {
       [`/client/v4/accounts/${accountId}/r2/buckets/agency-media/domains/custom`]: { success: true, result: { domains: [] } },
       ...overrides,
     };
-    expect(init?.redirect).toBe('error');
+    expect(init?.redirect).toBe('manual');
     if (!(path in results)) throw new Error('Unexpected provider request');
     const result = results[path];
     return result instanceof Response ? result : Response.json(result);
@@ -329,7 +329,7 @@ describe('Cloudflare connection and encrypted credentials', () => {
       const pathname = new URL(String(url)).pathname;
       if (pathname === '/oauth2/token') return Response.json({ access_token: 'rotated-access', refresh_token: 'rotated-refresh', expires_in: 3600, token_type: 'Bearer', scope: CLOUDFLARE_SCOPES.join(' ') });
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
-      expect(init?.redirect).toBe('error');
+      expect(init?.redirect).toBe('manual');
       if (pathname.endsWith('/domains/managed')) return Response.json({ success: true, result: { enabled: false } });
       if (pathname.endsWith('/domains/custom')) return Response.json({ success: true, result: { domains: [] } });
       if (pathname.endsWith('/lifecycle')) {

@@ -54,7 +54,7 @@ function providerFetch(overrides: Record<string, unknown> = {}) {
       '/orgs/owned-org': { id: 56 }, '/orgs/member-org': { id: 57 }, '/users/synthetic-owner': { id: 78, type: 'User' },
       ...overrides,
     };
-    expect(init?.redirect).toBe('error');
+    expect(init?.redirect).toBe('manual');
     const key = target.pathname + target.search;
     if (!(key in results)) throw new Error(`Unexpected provider request ${key}`);
     const result = results[key];

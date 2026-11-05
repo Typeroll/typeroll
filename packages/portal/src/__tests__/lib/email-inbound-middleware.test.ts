@@ -63,7 +63,7 @@ describe('incoming SNS requests through portal middleware', () => {
   it('confirms a signed subscription through the regional SNS endpoint without Origin', async () => {
     const { response } = await request(envelope('SubscriptionConfirmation'));
     expect(response.status).toBe(200);
-    expect(fetch).toHaveBeenCalledWith('https://sns.eu-central-1.amazonaws.com/', expect.objectContaining({ method: 'POST', redirect: 'error' }));
+    expect(fetch).toHaveBeenCalledWith('https://sns.eu-central-1.amazonaws.com/', expect.objectContaining({ method: 'POST', redirect: 'manual' }));
     expect(receive).not.toHaveBeenCalled();
   });
   it.each(['signature', 'topic'])('still rejects an invalid %s inside the route', async kind => {

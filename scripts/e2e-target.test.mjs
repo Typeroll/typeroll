@@ -38,15 +38,15 @@ test('checks both service origins and rejects digest drift', async () => {
   const fetchImpl = async (url) => ({
     ok: true,
     json: async () => url.endsWith('/api/version')
-      ? { core_version: '0.1.0', image_digest: DIGEST }
+      ? { core_version: '0.1.0', bundle_digest: DIGEST }
       : url.endsWith('/healthz') ? { status: 'ok' } : { ready: true },
   });
-  assert.equal((await checkE2ETarget(target, fetchImpl)).version.image_digest, DIGEST);
+  assert.equal((await checkE2ETarget(target, fetchImpl)).version.bundle_digest, DIGEST);
   await assert.rejects(
     checkE2ETarget(target, async (url) => ({
       ok: true,
       json: async () => url.endsWith('/api/version')
-        ? { image_digest: `sha256:${'b'.repeat(64)}` }
+        ? { bundle_digest: `sha256:${'b'.repeat(64)}` }
         : url.endsWith('/healthz') ? { status: 'ok' } : { ready: true },
     })),
     /instead of the expected digest/,
