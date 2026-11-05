@@ -52,6 +52,8 @@ const webServer = target.isRemote ? undefined : {
   env: { TYPEROLL_E2E_WORKER_VARS: JSON.stringify(LOCAL_WORKER_VARS) },
 };
 
+const RESERVED_NAMES_NOT_FOUND = '--host-resolver-rules=MAP *.test ~NOTFOUND, MAP *.invalid ~NOTFOUND, MAP *.example ~NOTFOUND, MAP example.com ~NOTFOUND, MAP *.example.com ~NOTFOUND';
+
 /** Specs that also run in Firefox and WebKit (`npm run test:e2e:install` installs both). */
 const CROSS_ENGINE_TESTS = /(?:editor-draft-recovery|forms-multistep-validation|address-field-parity|media-and-carousel|mobile-site-switcher|fluid-typography|contextual-spacing|design-tokens|post-card-hit-area|migration-design|link-role-hover|preview-links)\.spec\.ts/;
 const CROSS_ENGINE_SPECS = [
@@ -84,7 +86,10 @@ export default defineConfig({
       { name: 'webkit-desktop', grepInvert: /@server/, use: { ...devices['Desktop Safari'] } },
     ] : []),
   ] : [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    // Reserved names (RFC 2606/6761) never resolve. Answer them at once instead
+    // of asking the machine's resolver, which may hang: specs redirect to such
+    // hosts (OAuth clients) and must stay offline and deterministic.
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: { args: [RESERVED_NAMES_NOT_FOUND] } } },
     // Browser-engine-specific behaviour (native form validation) runs in
     // every engine; the rest of the suite stays Chromium-only.
     ...CROSS_ENGINE_SPECS.map(({ name, device }) => ({ name, testMatch: CROSS_ENGINE_TESTS, use: { ...devices[device] } })),
