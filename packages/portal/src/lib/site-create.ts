@@ -15,7 +15,7 @@ import { getStore, generateDocId } from './datastore';
 import { randomMediaId } from './media-keys';
 import { defaultHeaderHtml, defaultFooterHtml } from './default-partials';
 import { provisionSiteHosting } from './hosting/site-provisioning';
-import { declareDomainAtCreation } from './site-domain';
+import { ConnectionError } from './publishing/connections';
 import { newSitePublishingMode } from './publishing/readiness';
 import { getSiteDomains, saveSiteDomains } from './publishing/domain-config';
 import { SiteIdTakenError } from './site-create-input';
@@ -96,7 +96,7 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
 
   // NOTE: `domain` is deliberately NOT written here — a bare domain with no
   // lifecycle fields renders as "Live — DNS verified" (legacy-compat). The
-  // typed domain goes through declareDomainAtCreation below.
+  // typed domain becomes the site's desired website host below.
   const site: Omit<Site, 'id'> = {
     ...reservedSite,
     hosting_adapter: 'cloudflare',
@@ -142,10 +142,16 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
   });
 
   if (domain) {
-    if (reservedSite.publishing_mode === 'customer_git') {
+    // The site publishes through its organization: the typed domain is saved
+    // as the future website host, prepared and verified by Publishing. An
+    // invalid one is dropped; it never fails the site that was just created.
+    try {
       const config = await getSiteDomains(input.orgId, siteId);
       await saveSiteDomains(input.orgId, siteId, { revision: config.revision, website_host: domain, dns_mode: 'automatic' });
-    } else await declareDomainAtCreation(input.orgId, siteId, domain);
+    } catch (error) {
+      if (!(error instanceof ConnectionError) || error.status !== 400) throw error;
+      console.warn(`[create-site] dropped invalid domain "${domain}" for ${siteId}: ${error.message}`);
+    }
   }
 
   return { siteId, site: { ...(site as Site), id: siteId } };

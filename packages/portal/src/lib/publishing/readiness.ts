@@ -10,11 +10,20 @@ import { getStore } from '../datastore';
 import { getConnection, connectionSummary, ConnectionError } from './connections';
 import { getOrganizationDomains, getSiteDomains, activePublicationDomains } from './domain-config';
 
-export function newSitePublishingMode(): 'customer_git' | 'managed' {
-  const mode = process.env.NEW_SITE_PUBLISHING_MODE ?? 'managed';
-  if (mode !== 'customer_git' && mode !== 'managed') throw new Error('Invalid NEW_SITE_PUBLISHING_MODE');
-  return mode;
+/** Every new site publishes through its organization's build engine and hosting. */
+export function newSitePublishingMode(): 'customer_git' {
+  return 'customer_git';
 }
+
+/**
+ * Typeroll no longer builds sites on its own servers. A site still in the
+ * former managed mode publishes again once it is migrated to customer
+ * publishing (migrate_managed_site_publishing, or Site settings → Publishing).
+ */
+export const MANAGED_PUBLISHING_REMOVED = {
+  code: 'managed_publishing_migration_required',
+  message: 'This site still uses Typeroll-managed publishing, which is no longer available. Migrate it to your organization’s publishing in Site settings → Publishing (or with migrate_managed_site_publishing), then publish again. The live site is unchanged.',
+} as const;
 
 export interface PublishingRequirement { code: string; message: string; settings_url: string }
 
@@ -34,7 +43,10 @@ export async function publishingReadiness(orgId: string, siteId: string, version
       required.push({ code: 'content_export_invalid', message: error instanceof Error ? error.message : 'Content cannot be exported.', settings_url: `/app/sites/${encodeURIComponent(siteId)}/pages` });
     }
   }
-  if (site.publishing_mode !== 'customer_git') return { ready: required.length === 0, mode: 'managed' as const, required };
+  if (site.publishing_mode !== 'customer_git') {
+    required.push({ ...MANAGED_PUBLISHING_REMOVED, settings_url: `/app/sites/${encodeURIComponent(siteId)}/settings` });
+    return { ready: false, mode: 'managed' as const, required };
+  }
   const group = await siteHostingGroup(orgId, siteId);
   const [github, cloudflare, organization, savedDomains, media, storage] = await Promise.all([
     getConnection(orgId, 'github'), getConnection(orgId, 'cloudflare', group.id), getOrganizationDomains(orgId), getSiteDomains(orgId, siteId),

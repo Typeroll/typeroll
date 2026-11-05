@@ -6,10 +6,9 @@
 // as verified/live in DomainManager (observed with gruppsupporter.se).
 //
 // Two layers are pinned down here:
-//   1. POST /api/sites/create with a domain routes through the same
-//      domain-first flow as DomainManager (requestDomain → CF Pages
-//      registration → status 'pending'), degrading to 'failed' — never
-//      an implied live — when CF is unavailable.
+//   1. POST /api/sites/create with a domain saves it as the future website
+//      host in Publishing (prepared and verified there) — never an implied
+//      live domain — and drops an invalid one.
 //   2. getDomainState's legacy fallback only reads a missing
 //      domain_status as 'live' when domain_verified_at proves DNS was
 //      once confirmed.
@@ -91,62 +90,35 @@ afterEach(() => {
 });
 
 describe('POST /api/sites/create with a domain', () => {
-  it('routes the domain through the domain-first flow: CF registration + status pending — never live/verified', async () => {
+  it('saves the domain as the future website host of a site that publishes through its organization — never live', async () => {
     process.env.CLOUDFLARE_ACCOUNT_ID = 'test-acct';
     process.env.CLOUDFLARE_API_TOKEN = 'test-token';
 
     const res = await postCreate({ name: 'Gruppsupporter', domain: 'gruppsupporter.se' });
     expect(res.status).toBe(302);
 
-    // The apex/www pair was registered on CF Pages, same as DomainManager.
-    const attached = cfCalls
-      .filter((c) => c.method === 'attachCustomDomain')
-      .map((c) => c.args[1]);
-    expect(attached).toContain('gruppsupporter.se');
-    expect(attached).toContain('www.gruppsupporter.se');
-
+    // Typeroll provisions nothing on its own Cloudflare account.
+    expect(cfCalls).toEqual([]);
     const site = await readSite('gruppsupporter');
-    expect(site?.domain).toBe('gruppsupporter.se');
-    expect(site?.domain_status).toBe('pending');
-    expect(site?.domain_dns_target).toMatch(/\.pages\.dev$/);
+    expect(site?.publishing_mode).toBe('customer_git');
+    expect(site?.domain).toBeUndefined();
+    expect(site?.domain_status).toBeUndefined();
 
-    // The user-visible state: "point your DNS", not "Live — DNS verified".
-    const { getDomainState } = await import('../../lib/site-domain');
-    const state = await getDomainState(ORG, 'gruppsupporter');
-    expect(state?.status).toBe('pending');
-    expect(state?.status).not.toBe('live');
-    expect(state?.status).not.toBe('verified');
+    const { getSiteDomains } = await import('../../lib/publishing/domain-config');
+    const domains = await getSiteDomains(ORG, 'gruppsupporter');
+    expect(domains.desired.website_host).toBe('gruppsupporter.se');
+    expect(domains.state).not.toBe('live');
   });
 
-  it('records the domain as failed (with reason) when Cloudflare is not configured — site creation still succeeds', async () => {
-    const res = await postCreate({ name: 'No CF Site', domain: 'nocf.example.com' });
-    expect(res.status).toBe(302);
-
-    const site = await readSite('no-cf-site');
-    expect(site?.name).toBe('No CF Site');
-    expect(site?.domain).toBe('nocf.example.com');
-    expect(site?.domain_status).toBe('failed');
-    expect(site?.domain_failure_reason).toMatch(/Cloudflare/);
-
-    const { getDomainState } = await import('../../lib/site-domain');
-    const state = await getDomainState(ORG, 'no-cf-site');
-    expect(state?.status).toBe('failed');
-  });
-
-  it('drops an invalid domain instead of persisting it', async () => {
-    process.env.CLOUDFLARE_ACCOUNT_ID = 'test-acct';
-    process.env.CLOUDFLARE_API_TOKEN = 'test-token';
-
+  it('drops an invalid domain instead of persisting it or failing the new site', async () => {
     const res = await postCreate({ name: 'Typo Site', domain: 'not a domain' });
     expect(res.status).toBe(302);
 
     const site = await readSite('typo-site');
     expect(site?.name).toBe('Typo Site');
     expect(site?.domain).toBeUndefined();
-    expect(site?.domain_status).toBeUndefined();
-
-    const { getDomainState } = await import('../../lib/site-domain');
-    expect(await getDomainState(ORG, 'typo-site')).toBeNull();
+    const { getSiteDomains } = await import('../../lib/publishing/domain-config');
+    expect((await getSiteDomains(ORG, 'typo-site')).desired.website_host).toBeNull();
   });
 });
 

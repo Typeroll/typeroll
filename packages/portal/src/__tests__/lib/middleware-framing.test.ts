@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('astro:middleware', () => ({ defineMiddleware: (handler: unknown) => handler }));
-vi.mock('../../lib/load-env', () => ({}));
 vi.mock('../../lib/data-schema', () => ({ requireCurrentDataSchema: vi.fn() }));
 vi.mock('../../lib/auth', () => ({
   getSessionIdentity: vi.fn(async () => null),

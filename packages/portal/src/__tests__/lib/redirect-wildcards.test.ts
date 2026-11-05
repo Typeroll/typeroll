@@ -7,12 +7,16 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
-import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
-import type { Page, Redirect, Site, SiteVersion } from '@typeroll/shared';
+import { MAIN_VERSION_ID, pagesRedirectsFile, paths } from '@typeroll/shared';
+import type { Page, Redirect, Site, SiteVersion, TrailingSlashPolicy } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
-import { buildRedirectsFile } from '../../lib/deploy/runner';
 import { partitionShadowedRedirects } from '../../lib/redirect-hygiene';
 import { checkRedirectWrite, redirectDocId } from '../../lib/redirect-write';
+
+// The `_redirects` file every publication ships (shared/pages-redirect-file);
+// null when there is nothing to emit.
+const buildRedirectsFile = (site: Partial<Site> | null | undefined, redirects: Array<Pick<Redirect, 'from_path' | 'to_path' | 'status_code'>>, trailingSlash: TrailingSlashPolicy = 'ignore') =>
+  pagesRedirectsFile(redirects, { trailing_slash: trailingSlash }, site ?? {}) || null;
 
 const ORG = 'orgone';
 const SITE = 'mysite';

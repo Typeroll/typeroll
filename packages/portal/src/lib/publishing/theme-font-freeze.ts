@@ -1,6 +1,3 @@
-import fs from 'node:fs/promises';
-import os from 'node:os';
-import path from 'node:path';
 import { captureThemeFonts, themeFontsCssUrl, type FrozenThemeFonts } from '../extensions/theme-fonts';
 import { createSafeFetch } from '../net/safe-fetch';
 import { ConnectionError } from './connections';
@@ -22,14 +19,11 @@ export async function freezeThemeFonts(fonts: Fonts, previous: FrozenThemeFonts 
   const delay = options.delay ?? (ms => new Promise(resolve => setTimeout(resolve, ms)));
   let lastError = 'Theme fonts could not be copied';
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
-    const work = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-theme-fonts-'));
     try {
-      return await captureThemeFonts(work, fonts, fetchImpl);
+      return await captureThemeFonts(fonts, fetchImpl);
     } catch (error) {
       lastError = error instanceof Error ? error.message : lastError;
       if (attempt < ATTEMPTS) await delay(attempt * 1500);
-    } finally {
-      await fs.rm(work, { recursive: true, force: true });
     }
   }
   if (previous?.css_url === cssUrl && previous.files?.length) {

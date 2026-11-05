@@ -126,7 +126,7 @@ export async function executeScheduledWork(id: string, generation?: string, now 
       await deliverMediaMigration(current.payload.org_id, current.payload.site_id ?? undefined, Number(current.generation));
     } else if (current.kind === 'deploy_dispatch') {
       // An accepted deploy request (deploy/queue.ts). The job document decides whether it still runs.
-      if (!await runDeployDispatch(current)) throw new Error('Deploy is waiting for a build slot or a concurrent update; retry delivery');
+      if (!await runDeployDispatch(current)) throw new Error('Deploy is waiting for a concurrent update; retry delivery');
     } else if (current.kind === 'site_publish') {
       const site = await store.getDoc<any>(current.source);
       if (site) {
@@ -158,7 +158,7 @@ export async function executeScheduledWork(id: string, generation?: string, now 
       const job = await store.getDoc<any>(current.source);
       if (job && ['queued', 'running'].includes(job.status) && job.phase !== 'awaiting domain cutover approval') {
         const { executeDeployJob } = await import('../deploy/queue');
-        const outcome = await executeDeployJob({ orgId: org, siteId, jobId: parts[5], versionId: job.version_id, environment: job.environment, dryRun: job.dry_run === true }, { slotWaitMs: 0 });
+        const outcome = await executeDeployJob({ orgId: org, siteId, jobId: parts[5], versionId: job.version_id, environment: job.environment, dryRun: job.dry_run === true });
         if (outcome === 'deferred') throw new Error('Publication is already executing; retry delivery');
         if (outcome === 'continue') {
           const { schedulePublication } = await import('./continuation');
@@ -208,10 +208,9 @@ async function runDeployDispatch(work: ScheduledWork): Promise<boolean> {
   const { isExternalDeploy } = await import('../deploy/in-flight');
   if (job.status !== 'queued' && !(job.status === 'running' && isExternalDeploy(job))) return true;
   const { executeDeployJob } = await import('../deploy/queue');
-  const { slotWaitMs } = await import('../deploy/concurrency');
   // dryRun travels with the request: dropping it once turned dry runs into production deploys.
   const outcome = await executeDeployJob({ orgId: org!, siteId: siteId!, jobId: jobId!, versionId: work.payload.version_id,
-    environment: work.payload.environment, dryRun: work.payload.dry_run === true }, { slotWaitMs: slotWaitMs() });
+    environment: work.payload.environment, dryRun: work.payload.dry_run === true });
   if (outcome === 'ran') return true;
   const pending = await store.getDoc<DeployJob & { continuation?: { token?: string } }>(jobPath);
   if (!pending || !isExternalDeploy(pending) || !['queued', 'running'].includes(pending.status)) return outcome !== 'deferred';

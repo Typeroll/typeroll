@@ -56,7 +56,7 @@ import { redactFailureText } from './http';
 import { prepareEngineForBuild, engineUpdateRetryAllowed, type EngineUpdateRecord } from '../builds/auto-update';
 import type { BuildDiagnostic } from '../builds/diagnostics.mjs';
 import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
-import { uploadStaticBuild, finalizeDirectUpload } from '../builds/upload';
+import { finalizeDirectUpload } from '../builds/upload';
 import { claimCloudflareResource, generatedCloudflareNames } from './cloudflare-account-claims';
 import { prepareStaticProject, saveStaticChecks, verifyStaticBatch, saveCustomerVerification, verifyCustomerCandidate, type CustomerVerification } from '../builds/publication';
 
@@ -657,6 +657,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
             : publication.build_provider === 'github' ? 'building on GitHub Actions' : 'building on Cloudflare' });
           return await waitForBuild(jobPath, args.orgId, publication.build_task_key!);
         }
+        // Build engines upload the static files to Pages themselves and return a
+        // receipt. An engine that returns the whole site predates that; the
+        // coordinator never uploads site files itself.
+        if (!result.direct) throw new ConnectionError('This build engine returned the whole site instead of a direct upload receipt. Update the build engine in Publishing → Builds, then retry the publication.', 409, 'build_engine_update_required');
         const staticChecks = await saveStaticChecks(args.orgId, result.files, acquired.last_publication?.static_checks_key ?? undefined, result.direct);
         publication = { ...publication, static_checks_key: staticChecks };
         if (result.direct && engine.static_verification) publication = { ...publication, ...await saveCustomerVerification(args.orgId, publication, result.direct, acquired.last_publication) };
@@ -676,8 +680,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         }
         if (!deployment) {
           await assertLease();
-          deployment = result.direct ? await finalizeDirectUpload(cloudflare, { account: publication.account_id, project: publication.project, branch: publication.branch, commit: publication.commit! }, result.direct) : await uploadStaticBuild(cloudflare, { org: args.orgId, group: group.id, account: publication.account_id,
-            project: publication.project, branch: publication.branch, commit: publication.commit! }, result.files);
+          deployment = await finalizeDirectUpload(cloudflare, { account: publication.account_id, project: publication.project, branch: publication.branch, commit: publication.commit! }, result.direct);
         }
       }
     }

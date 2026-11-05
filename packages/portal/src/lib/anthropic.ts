@@ -8,7 +8,6 @@ import { listContentTypes } from './content-type-service';
 // redirects — and the system prompt teaches it the conventions of the
 // platform (HTML mode, CSS variables, status flow, listing patterns).
 
-import './load-env';
 import Anthropic from '@anthropic-ai/sdk';
 import { vstore } from './version-store';
 import { getStore } from './datastore';

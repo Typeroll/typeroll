@@ -1,6 +1,6 @@
 // The deploy queue writes one scheduled `deploy_dispatch` entry per job; the
-// scheduling executor delivers it to executeDeployJob. No astro build runs
-// here: executeDeployJob is a mock, the job document and the entry are real.
+// scheduling executor delivers it to executeDeployJob. Delivery tests mock
+// executeDeployJob; the job document and the entry are real.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -58,6 +58,14 @@ describe('enqueue', () => {
     expect(await entry()).toBeNull();
   });
 
+  it('refuses a site still in managed publishing with the migration it needs', async () => {
+    mocks.ready.mockImplementation((await vi.importActual<typeof import('../../lib/publishing/readiness')>('../../lib/publishing/readiness')).assertPublishingReady);
+    await getStore().updateDoc(paths.site(ORG, SITE), { publishing_mode: 'managed' });
+    await expect(getDeployQueue().enqueue(args)).rejects.toMatchObject({ status: 409, code: 'publishing_setup_required',
+      required: expect.arrayContaining([expect.objectContaining({ code: 'managed_publishing_migration_required' })]) });
+    expect(await entry()).toBeNull();
+  });
+
   it('accepts a random continuation identity and refuses a path-like one', () => {
     expect(deployTaskIdentity({ jobId: JOB, dispatchKey: '0b6f1c2e-6d0e-4d3a-9a51-1f1b6a7c0c55' })).toBe(`${JOB}-0b6f1c2e-6d0e-4d3a-9a51-1f1b6a7c0c55`);
     expect(() => deployTaskIdentity({ jobId: JOB, dispatchKey: '../other' })).toThrow('identity');
@@ -71,7 +79,7 @@ describe('delivery', () => {
     await executeScheduledWork(id, generation);
     await executeScheduledWork(id, generation);
     expect(mocks.execute).toHaveBeenCalledOnce();
-    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({ jobId: JOB, orgId: ORG, siteId: SITE, dryRun: true }), expect.objectContaining({ slotWaitMs: expect.any(Number) }));
+    expect(mocks.execute).toHaveBeenCalledWith(expect.objectContaining({ jobId: JOB, orgId: ORG, siteId: SITE, dryRun: true }));
     expect((await entry())!.due_at).toBe(Number.MAX_SAFE_INTEGER);
   });
 
@@ -106,5 +114,22 @@ describe('delivery', () => {
     await getDeployQueue().enqueue({ ...args, dispatchKey: 'b'.repeat(16) });
     await executeScheduledWork(id, (await entry())!.generation);
     expect(mocks.execute).not.toHaveBeenCalled();
+  });
+});
+
+describe('execution', () => {
+  const actual = () => vi.importActual<typeof import('../../lib/deploy/queue')>('../../lib/deploy/queue');
+
+  it('fails a managed-mode job with a named error instead of building it in the portal', async () => {
+    await getStore().updateDoc(paths.site(ORG, SITE), { publishing_mode: 'managed' });
+    expect(await (await actual()).executeDeployJob(args)).toBe('ran');
+    expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', phase: 'failed',
+      failure: { code: 'managed_publishing_migration_required' }, error: expect.stringContaining('Migrate it to your organization') });
+  });
+
+  it('leaves a finished managed-mode job as it is', async () => {
+    await getStore().updateDoc(jobPath, { status: 'succeeded', finished_at: '2026-01-01T00:00:00.000Z' });
+    expect(await (await actual()).executeDeployJob(args)).toBe('ran');
+    expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'succeeded', finished_at: '2026-01-01T00:00:00.000Z' });
   });
 });

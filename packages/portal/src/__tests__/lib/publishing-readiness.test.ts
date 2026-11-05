@@ -64,11 +64,13 @@ it('requires a temporary base for first publication and keeps saved future hosts
   expect((await publishingReadiness('org', 'site')).ready).toBe(true);
   expect((await publishingReadiness('org', 'site', 'new-version')).required).toContainEqual(expect.objectContaining({ code: 'publishing_domain_required' }));
 });
-it('requires media setup where needed and preserves managed-site publishing', async () => {
+it('requires media setup where needed and refuses a site still in managed publishing until it is migrated', async () => {
   await getStore().setDoc(`${paths.media('org', 'site')}/image`, { filename: 'image.png' });
   expect((await publishingReadiness('org', 'site')).required.map(item => item.code)).toEqual(['media_storage_required', 'media_domain_required']);
   await getStore().setDoc(paths.site('org', 'site'), { publishing_mode: 'managed' });
-  expect((await publishingReadiness('org', 'site')).ready).toBe(true);
+  const managed = await publishingReadiness('org', 'site');
+  expect(managed).toMatchObject({ ready: false, mode: 'managed' });
+  expect(managed.required).toEqual([expect.objectContaining({ code: 'managed_publishing_migration_required', settings_url: '/app/sites/site/settings' })]);
 });
 it.each([['UI', deployUi], ['API/MCP', deployApi]] as const)('rejects %s deployment before creating a job', async (_label, route) => {
   await engine('cloudflare', { static_verification: false });
@@ -91,15 +93,18 @@ it('blocks queue admissions but allows an accepted publication continuation to u
   await expect(queue.enqueue({ ...args, dispatchKey: 'b'.repeat(16) })).rejects.toMatchObject({ code: 'publishing_setup_required' });
 });
 
-it('blocks invalid IDs and unknown block exports before a job is created, including managed sites', async () => {
+it('blocks invalid IDs and unknown block exports before a job is created', async () => {
   const store = getStore();
   const pagePath = `${paths.pages('org', 'site', 'main')}/broken`;
   await store.setDoc(pagePath, { content_mode: 'blocks', status: 'published', blocks: [{ type: 'core/prose', data: {} }] });
   let result = await publishingReadiness('org', 'site');
   expect(result.ready).toBe(false);
   expect(result.required).toContainEqual(expect.objectContaining({ code: 'content_export_invalid', message: expect.stringContaining('pages/broken.blocks[0].id') }));
-  await store.setDoc(paths.site('org', 'site'), { publishing_mode: 'managed' });
-  expect((await publishingReadiness('org', 'site')).ready).toBe(false);
+  // A site still in managed publishing reports the content error beside its migration.
+  const site = await store.getDoc<Record<string, unknown>>(paths.site('org', 'site'));
+  await store.updateDoc(paths.site('org', 'site'), { publishing_mode: 'managed' });
+  expect((await publishingReadiness('org', 'site')).required.map(item => item.code)).toEqual(['content_export_invalid', 'managed_publishing_migration_required']);
+  await store.updateDoc(paths.site('org', 'site'), { publishing_mode: site?.publishing_mode ?? null });
   await store.updateDoc(pagePath, { blocks: [{ id: 'b', type: 'missing/block', data: {} }] });
   expect((await publishingReadiness('org', 'site')).required[0].message).toContain('Unsupported publication block type');
   await store.updateDoc(pagePath, { blocks: [{ id: 'b', type: 'core/repeater', data: { item_block: 'missing-card' } }] });

@@ -1,7 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { buildRedirectsFile } from '../../lib/deploy/runner';
+import { pagesRedirectsFile } from '@typeroll/shared';
 import { partitionShadowedRedirects } from '../../lib/redirect-hygiene';
-import type { Site } from '@typeroll/shared';
+import type { Redirect, Site, TrailingSlashPolicy } from '@typeroll/shared';
+
+// The `_redirects` file every publication ships (shared/pages-redirect-file);
+// null when there is nothing to emit.
+const buildRedirectsFile = (site: Partial<Site> | null | undefined, redirects: Array<Pick<Redirect, 'from_path' | 'to_path' | 'status_code'>>, trailingSlash: TrailingSlashPolicy = 'ignore') =>
+  pagesRedirectsFile(redirects, { trailing_slash: trailingSlash }, site ?? {}) || null;
 
 const baseSite: Partial<Site> = {
   id: 's', name: 's', hosting_adapter: 'cloudflare',

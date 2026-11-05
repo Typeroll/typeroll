@@ -12,12 +12,9 @@
  * (poll endpoint, dashboard, deploy button) never see the transport.
  */
 
-import { runDeploy } from './runner';
 import { getStore } from '../datastore';
-import { computeDeployCost, getRateCard, PhaseTimer } from './cost';
-import { acquireBuildSlot } from './concurrency';
-import { paths, MAIN_VERSION_ID } from '@typeroll/shared';
-import { assertPublishingReady } from '../publishing/readiness';
+import { paths } from '@typeroll/shared';
+import { assertPublishingReady, MANAGED_PUBLISHING_REMOVED } from '../publishing/readiness';
 import { putScheduledWork } from '../scheduling/index';
 
 export interface EnqueueArgs {
@@ -27,12 +24,9 @@ export interface EnqueueArgs {
   versionId: string;
   environment: 'staging' | 'production';
   /**
-   * Skip the hosting-adapter upload phase. Build runs as normal —
-   * materializing fixtures, running astro build, writing _redirects/
-   * _headers, bundling block assets — but the resulting dist/ never
-   * leaves the worker. Useful for agents that want to validate a
-   * structural change (new collection routes, schema bump) without
-   * risking the live site.
+   * Validate the publication without replacing the live site: the frozen
+   * publication is prepared and checked, but never deployed. Useful for agents
+   * that want to validate a structural change without risking the live site.
    */
   dryRun?: boolean;
   /** A separately deduplicated continuation of the same frozen publication. */
@@ -73,118 +67,36 @@ export class ScheduledDeployQueue implements DeployQueue {
 }
 
 /**
- * `deferred` means no build slot was free within the wait budget — the caller
- * should hand the task back so it is redelivered, NOT mark the job failed. A
- * congested platform is not a broken build, and showing the user a failure
- * they can't act on is worse than a late deploy.
+ * `deferred` means the publication is already executing elsewhere (its lease is
+ * held): the delivery is handed back and redelivered, never marked failed.
+ * `continue` means the next coordinator phase has been durably saved; consume
+ * this delivery.
  */
-/** continue means the next coordinator phase has been durably saved; consume this delivery. */
 export type DeployRunOutcome = 'ran' | 'deferred' | 'continue' | 'waiting';
-
-async function runDeployInline(
-  args: EnqueueArgs,
-  opts: { slotWaitMs?: number } = {},
-): Promise<DeployRunOutcome> {
-  const site = await getStore().getDoc<{ publishing_mode?: string }>(paths.site(args.orgId, args.siteId));
-  const retry = site?.publishing_mode !== 'customer_git' && (await getStore().getDoc<{ verification_retry?: unknown }>(paths.deploy(args.orgId, args.siteId, args.jobId)))?.verification_retry;
-  if (site?.publishing_mode === 'customer_git' || retry) {
-    const { executeCustomerPublication } = await import('../publishing/customer-runner');
-    return executeCustomerPublication(args);
-  }
-  // One build per process at a time (DEPLOY_MAX_CONCURRENT, default 1). Taken
-  // here for the same reason cost accounting lives here: this is the ONE
-  // execution path every delivery shares.
-  const slot = await acquireBuildSlot(opts.slotWaitMs ?? Infinity);
-  if (!slot) return 'deferred';
-  try {
-    await runDeployBody(args);
-    return 'ran';
-  } finally {
-    slot.release();
-  }
-}
-
-async function runDeployBody(args: EnqueueArgs): Promise<void> {
-  const store = getStore();
-  const jobPath = paths.deploy(args.orgId, args.siteId, args.jobId);
-  // Wrap each store write in its own swallow so a failed status update
-  // (e.g. underlying fixtures dir was torn down by a test) doesn't
-  // bubble out as an unhandled rejection.
-  const safeUpdate = async (patch: Record<string, unknown>): Promise<void> => {
-    try { await store.updateDoc(jobPath, patch); } catch { /* best effort */ }
-  };
-
-  // Cost accounting. This function is the ONE execution path every queue
-  // backend uses, so metering here
-  // covers every deploy without either caller having to remember to.
-  //
-  // The clock starts before runDeploy and stops in the finally: a failed
-  // build burns the same instance-time as a successful one, so it gets a
-  // cost row too. Otherwise a site stuck in a build-failure loop would look
-  // free in the report — exactly backwards.
-  const rates = getRateCard();
-  const timer = new PhaseTimer();
-  const startedMs = Date.now();
-  let outputBytes: number | undefined;
-  let outputFiles: number | undefined;
-
-  await safeUpdate({ status: 'running', phase: 'starting' });
-  try {
-    if (!args.dryRun) await assertPublishingReady(args.orgId, args.siteId, args.versionId, { checkBuild: false });
-    const result = await runDeploy({
-      orgId: args.orgId,
-      siteId: args.siteId,
-      versionId: args.versionId ?? MAIN_VERSION_ID,
-      environment: args.environment,
-      buildOnly: args.dryRun === true,
-      onPhase: (phase) => {
-        timer.enter(phase);
-        return safeUpdate({ phase });
-      },
-    });
-    outputBytes = result.outputBytes;
-    outputFiles = result.outputFiles;
-    await safeUpdate({
-      status: result.availability ? 'running' : 'succeeded',
-      phase: result.availability ? 'distributing' : args.dryRun ? 'done (dry-run, no upload)' : 'done',
-      ...(!result.availability ? { finished_at: new Date().toISOString() } : { availability: result.availability }),
-      deploy_url: args.dryRun ? null : (result.deploy?.url ?? null),
-      dry_run: args.dryRun === true,
-      warnings: result.warnings ?? [],
-      cost: computeDeployCost({
-        durationMs: Date.now() - startedMs,
-        rates,
-        phaseMs: timer.finish(),
-        outputBytes,
-        outputFiles,
-      }),
-    });
-  } catch (e) {
-    await safeUpdate({
-      status: 'failed',
-      phase: 'failed',
-      finished_at: new Date().toISOString(),
-      error: e instanceof Error ? e.message : String(e),
-      cost: computeDeployCost({
-        durationMs: Date.now() - startedMs,
-        rates,
-        phaseMs: timer.finish(),
-      }),
-    });
-  }
-}
 
 /**
  * The execution path of every delivered deploy (scheduling/worker.ts).
  *
- * Deliveries pass a finite `slotWaitMs`: a handed-back delivery is retried by
- * the scheduling transport. Without one it waits for a slot indefinitely.
+ * Every site publishes through its organization's build engine and hosting
+ * (customer publishing). Typeroll no longer builds sites itself: a site still
+ * in the former managed mode fails with a named error until it is migrated.
  */
-export async function executeDeployJob(
-  args: EnqueueArgs,
-  opts: { slotWaitMs?: number } = {},
-): Promise<DeployRunOutcome> {
-  return runDeployInline(args, opts);
+export async function executeDeployJob(args: EnqueueArgs): Promise<DeployRunOutcome> {
+  const store = getStore();
+  const site = await store.getDoc<{ publishing_mode?: string }>(paths.site(args.orgId, args.siteId));
+  const jobPath = paths.deploy(args.orgId, args.siteId, args.jobId);
+  // A verification retry of a publication that already ran on customer
+  // publishing resumes there even if the site's mode was changed since.
+  const retry = site?.publishing_mode !== 'customer_git' && (await store.getDoc<{ verification_retry?: unknown }>(jobPath))?.verification_retry;
+  if (site?.publishing_mode === 'customer_git' || retry) {
+    const { executeCustomerPublication } = await import('../publishing/customer-runner');
+    return executeCustomerPublication(args);
+  }
+  await store.compareAndUpdateDoc(jobPath, job => ['queued', 'running'].includes(String((job as { status?: unknown }).status)), {
+    status: 'failed', phase: 'failed', finished_at: new Date().toISOString(),
+    error: MANAGED_PUBLISHING_REMOVED.message, failure: { code: MANAGED_PUBLISHING_REMOVED.code },
+  }).catch(() => { /* the job document is gone; nothing to report on */ });
+  return 'ran';
 }
 
 let cached: DeployQueue | null = null;

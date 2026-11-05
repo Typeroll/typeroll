@@ -1,8 +1,4 @@
 import { withAccessRequest, OrganizationAccessError } from './lib/organization-access';
-// load-env runs at module init, so .env values are in process.env before
-// any route handler tries to read them. Mounted here because middleware is
-// loaded once at SSR boot — earlier than any per-route module import.
-import './lib/load-env';
 import { requireCurrentDataSchema } from './lib/data-schema';
 import { defineMiddleware } from 'astro:middleware';
 import { MAIN_VERSION_ID } from '@typeroll/shared';

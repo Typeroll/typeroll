@@ -1684,7 +1684,7 @@ export interface AnalyticsEvent {
  * Per-site state for one app. Mirrors the EmailConnector convention:
  * provider-agnostic `config`, secret values stored under `${key}_enc` as
  * AES-256-GCM ciphertext. Only the app's declared PUBLIC keys are ever
- * written into a build snapshot (see materializeFixtures); secrets and
+ * written into a publication snapshot (see publicAppsSnapshot); secrets and
  * server-only config never reach the customer site.
  */
 export interface AppState {

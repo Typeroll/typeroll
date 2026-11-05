@@ -28,7 +28,6 @@ import { vstore } from './version-store';
 import { mediaTransferAvailability } from './wp/media';
 import { usesPrivateMedia } from './publishing/media-policy';
 import { ConnectionError } from './publishing/connections';
-import { getHostingAdapter } from './hosting';
 import { publicUrlsFor } from './site-public-urls';
 import { createSafeFetch, migrationSourcePolicy, parseOutboundUrl } from './net/safe-fetch';
 
@@ -106,25 +105,15 @@ export async function runMigrationPreflight(
     checks.push({ id: 'hosting', label: 'Publishing', status: 'ok', severity: 'blocker',
       detail: 'After connecting your organization’s storage, content can be imported and previewed before connecting GitHub or website domains. Publishing verifies those requirements separately.' });
   } else {
-    const adapter = getHostingAdapter(site?.hosting_adapter ?? 'cloudflare', site?.hosting_config);
-    checks.push(adapter.name !== 'stub'
-      ? {
-          id: 'hosting',
-          label: 'Hosting adapter',
-          status: 'ok',
-          severity: 'blocker',
-          detail: `Deploys go to ${adapter.name}.`,
-        }
-      : {
-          id: 'hosting',
-          label: 'Hosting adapter',
-          status: 'fail',
-          severity: 'blocker',
-          detail:
-            'No hosting credentials — deploys run against the stub adapter, which returns a job id and ' +
-            'publishes nothing. Builds would report success while the site never goes live.',
-          fix: 'Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN, and make sure the site has a Pages project (hosting_config.pages_project).',
-        });
+    // Only a site still in the former managed mode gets here.
+    checks.push({
+      id: 'hosting',
+      label: 'Publishing',
+      status: 'fail',
+      severity: 'blocker',
+      detail: 'This site still uses Typeroll-managed publishing, which is no longer available: imported content could not be published.',
+      fix: 'Migrate the site to your organization’s publishing in Site settings → Publishing, or connect the organization’s own storage in Publishing.',
+    });
   }
 
   // ─── Warnings ──────────────────────────────────────────────────────────
