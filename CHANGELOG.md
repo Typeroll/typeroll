@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 (candidate, MCP 0.45.117)
 
 - **Breaking for self-hosters: the Google Cloud profile and the Docker Compose
   fallback are removed.** Self-hosting now runs in your own Cloudflare account:
