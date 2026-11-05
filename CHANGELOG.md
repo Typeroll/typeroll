@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 (candidate, MCP 0.45.117)
+
+- Outbound calls from the portal and Forms Workers no longer fail before they
+  are sent. Workers implements only `redirect: 'follow'` and `'manual'`, so
+  Cloudflare and GitHub publishing, the OAuth token exchanges, SES
+  notifications, Turnstile, Web Analytics and media transfers now ask for
+  `manual` and refuse a redirect themselves, as before.
+- `npm run e2e:target:check` compares the expected digest with the
+  `bundle_digest` the target serves at `/api/version`.
+
 ## 0.3.0 (candidate, MCP 0.45.117)
 
 - **Breaking for self-hosters: the Google Cloud profile and the Docker Compose
