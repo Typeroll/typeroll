@@ -11,6 +11,9 @@ import { fileURLToPath } from 'node:url';
 import { getFirebaseAdminApp, isFirebaseAdminConfigured } from './firebase-admin';
 import { encodeFirestoreDocument, decodeNestedArrays } from './firestore-codec';
 import { scheduledIndexWrites, notifyScheduledWrites, isScheduledSource, type IndexWrite } from './scheduling/index';
+import { nodeSqliteDriver } from './store/node-sqlite';
+import { SqlDocumentEngine } from './store/sql-engine';
+import { SqlStore, localTransport } from './store/sql-store';
 
 export interface Filter {
   field: string;
@@ -34,6 +37,11 @@ function inReadContext<T>(reader: SnapshotReader, work: () => Promise<T>): Promi
     return () => { throw new Error('Writes are not allowed while capturing publication content'); };
   } }) as ReadWriteStore;
   return readContext.run(readOnly, work);
+}
+
+/** Run `work` with reads routed to `reader` and every write refused. */
+export function runReadOnly<T>(reader: SnapshotReader, work: () => Promise<T>): Promise<T> {
+  return inReadContext(reader, work);
 }
 
 export interface ReadWriteStore {
@@ -541,13 +549,21 @@ export function getStore(): ReadWriteStore {
   const snapshot = readContext.getStore();
   if (snapshot) return snapshot;
   if (cached) return cached;
-  if (isFirebaseAdminConfigured()) {
+  const sqlite = process.env.TYPEROLL_STORE?.match(/^sqlite:(.+)$/)?.[1];
+  if (sqlite) {
+    cached = createSqliteStore(sqlite);
+  } else if (isFirebaseAdminConfigured()) {
     cached = new FirestoreStore();
   } else {
     const dir = process.env.TYPEROLL_FIXTURES_DIR || defaultFixturesDir();
     cached = new FixtureStore(dir);
   }
   return cached;
+}
+
+/** The SQL document store on a local SQLite file (`TYPEROLL_STORE=sqlite:<file>`). */
+function createSqliteStore(file: string): ReadWriteStore {
+  return new SqlStore(localTransport(new SqlDocumentEngine(nodeSqliteDriver(file))), generateId);
 }
 
 export function generateDocId(): string {
