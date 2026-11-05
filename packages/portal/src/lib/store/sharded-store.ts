@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { ConditionalEffect, ReadWriteStore } from '../datastore';
-import { deepEqual, deepMerge, type Filter } from './sql-engine';
+import { clean, deepEqual, deepMerge, type Filter } from './sql-engine';
 import { SqlStore, type StoreTransport } from './sql-store';
 
 export type Shard = { kind: 'global' } | { kind: 'org'; org: string } | { kind: 'site'; org: string; site: string };
@@ -68,19 +68,35 @@ export class ShardedStore implements ReadWriteStore {
   }
   private async storeFor(path: string) { return this.store(await this.shardName(path)); }
 
-  private async applyOutbox(source: string, id: string, entry: OutboxEntry) {
-    for (const write of entry.writes) {
-      const target = this.store(write.shard);
-      if (write.data) await target.setDoc(write.path, write.data);
-      else await target.deleteDoc(write.path);
-    }
-    await this.store(source).deleteDoc(`${OUTBOX}/${id}`);
+  /** The store of one named object, e.g. for the scheduled work a Durable Object delivers. */
+  objectStore(name: string): ReadWriteStore {
+    return this.store(name);
   }
 
-  /** Re-apply outbox entries a crash left behind in one object. Safe to repeat. */
-  async drainOutbox(shard: string): Promise<number> {
-    const pending = await this.store(shard).listDocs<OutboxEntry>(OUTBOX);
-    for (const entry of pending) await this.applyOutbox(shard, entry.id, entry);
+  private async applyOutbox(source: string, id: string, entry: OutboxEntry, current = false) {
+    for (const write of entry.writes) {
+      const target = this.store(write.shard);
+      // A late re-application copies a site document as it is now, never an older snapshot.
+      const data = current && isSiteDoc(write.path) && write.shard.startsWith('org:') ? await this.store(source).getDoc(write.path) : write.data;
+      if (data) await target.setDoc(write.path, stripId(data));
+      else await target.deleteDoc(write.path);
+    }
+    // Remove the entry only if nobody replaced it meanwhile (an entry with a fixed id is rewritten in place).
+    const expected = clean(stripId(entry as unknown as Record<string, any>));
+    await this.store(source).mutate(`${OUTBOX}/${id}`, before => before && deepEqual(stripId(before), expected)
+      ? { after: null, result: undefined } : { skip: true, result: undefined });
+  }
+
+  /**
+   * Re-apply outbox entries a crash left behind in one object, oldest first.
+   * `minAgeMs` leaves fresh entries to the writer that is applying them. Safe to repeat.
+   */
+  async drainOutbox(shard: string, opts: { minAgeMs?: number; now?: number } = {}): Promise<number> {
+    const cutoff = (opts.now ?? Date.now()) - (opts.minAgeMs ?? 0);
+    const pending = (await this.store(shard).listDocs<OutboxEntry>(OUTBOX))
+      .filter(entry => !(entry.created_at > cutoff))
+      .sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0));
+    for (const entry of pending) await this.applyOutbox(shard, entry.id, entry, true);
     return pending.length;
   }
 

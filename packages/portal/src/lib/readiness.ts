@@ -2,6 +2,7 @@ import { getStore } from './datastore';
 import { requireCurrentDataSchema } from './data-schema';
 import { serviceRole, type ServiceRole } from './release';
 import { isIdentityConfigured } from './identity/portal-auth';
+import { schedulingMode, type SchedulingMode } from './scheduling/transport';
 
 export type ReadinessState = 'pass' | 'fail' | 'disabled';
 
@@ -82,29 +83,19 @@ function identityCheck(env: NodeJS.ProcessEnv, required: boolean): ReadinessChec
     : { name: 'identity', state: required ? 'fail' : 'disabled', required, detail: 'AUTH_SECRET must be at least 32 characters' };
 }
 
+/** Scheduled work and deploys are delivered by the scheduling transport (lib/scheduling/transport.ts). */
 function queueCheck(env: NodeJS.ProcessEnv, role: ServiceRole): ReadinessCheck {
   if (role === 'forms') {
     return { name: 'deploy_queue', state: 'disabled', required: false, detail: 'not used by forms role' };
   }
-  const mode = (env.DEPLOY_QUEUE ?? 'in_process').trim().toLowerCase();
-  if (mode === 'in_process') {
-    if (role === 'worker') {
-      return { name: 'deploy_queue', state: 'fail', required: true, detail: 'worker role requires firestore or cloud_tasks' };
-    }
-    return { name: 'deploy_queue', state: 'pass', required: true, detail: 'in_process' };
+  let mode: SchedulingMode;
+  try { mode = schedulingMode(env); }
+  catch { return { name: 'deploy_queue', state: 'fail', required: true, detail: `unsupported TYPEROLL_SCHEDULER ${env.TYPEROLL_SCHEDULER?.trim()}` }; }
+  // Timers in one process lose accepted work on restart; production needs the durable transport.
+  if (env.NODE_ENV === 'production' && mode !== 'durable_object') {
+    return { name: 'deploy_queue', state: 'fail', required: true, detail: `${mode} scheduling is for development only; set TYPEROLL_SCHEDULER=durable_object` };
   }
-  if (mode === 'firestore') {
-    return { name: 'deploy_queue', state: 'pass', required: true, detail: 'firestore' };
-  }
-  if (mode !== 'cloud_tasks') {
-    return { name: 'deploy_queue', state: 'fail', required: true, detail: `unsupported mode ${mode}` };
-  }
-  const check = requirement(
-    env,
-    'deploy_queue',
-    ['CLOUD_TASKS_QUEUE', 'DEPLOY_WORKER_URL', 'CLOUD_TASKS_SERVICE_ACCOUNT'],
-  );
-  return check.state === 'pass' ? { ...check, detail: 'cloud_tasks' } : check;
+  return { name: 'deploy_queue', state: 'pass', required: true, detail: mode };
 }
 
 function configChecks(env: NodeJS.ProcessEnv): { role: ServiceRole; checks: ReadinessCheck[] } {

@@ -8,7 +8,8 @@ import { engineConfigurationPath } from '../../lib/builds/state';
 import { enginePath } from '../../lib/builds/cloudflare';
 import { connectionPath } from '../../lib/publishing/connections';
 import { organizationDomainConfigPath, siteDomainConfigPath } from '../../lib/publishing/domain-config';
-import { FirestoreDeployQueue, FIRESTORE_DEPLOY_QUEUE_PATH } from '../../lib/deploy/queue';
+import { ScheduledDeployQueue } from '../../lib/deploy/queue';
+import { workPath } from '../../lib/scheduling/index';
 import { generatedCloudflareNames } from '../../lib/publishing/cloudflare-account-claims';
 import { POST as deployUi } from '../../pages/api/sites/[siteId]/deploy';
 import { POST as deployApi } from '../../pages/api/v1/sites/[siteId]/deploy';
@@ -79,12 +80,13 @@ it.each([['UI', deployUi], ['API/MCP', deployApi]] as const)('rejects %s deploym
 
 it('blocks queue admissions but allows an accepted publication continuation to use its frozen engine', async () => {
   await engine('cloudflare', { static_verification: false });
-  const queue = new FirestoreDeployQueue();
+  const queue = new ScheduledDeployQueue();
   const args = { orgId: 'org', siteId: 'site', versionId: 'main', jobId: 'accepted', environment: 'production' as const };
+  const dispatch = workPath(paths.deploy('org', 'site', 'accepted'), 'deploy_dispatch');
   await expect(queue.enqueue(args)).rejects.toMatchObject({ code: 'publishing_setup_required' });
-  expect(await getStore().listDocs(FIRESTORE_DEPLOY_QUEUE_PATH)).toEqual([]);
+  expect(await getStore().getDoc(dispatch)).toBeNull();
   await queue.enqueue({ ...args, dispatchKey: 'a'.repeat(16) });
-  expect(await getStore().listDocs(FIRESTORE_DEPLOY_QUEUE_PATH)).toHaveLength(1);
+  expect(await getStore().getDoc(dispatch)).toMatchObject({ kind: 'deploy_dispatch' });
   await getStore().setDoc(connectionPath('org', 'github'), { status: 'disconnected' });
   await expect(queue.enqueue({ ...args, dispatchKey: 'b'.repeat(16) })).rejects.toMatchObject({ code: 'publishing_setup_required' });
 });

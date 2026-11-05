@@ -1,33 +1,44 @@
 import { readOrganizationAccess } from '../organization-access';
 import { createHash, randomUUID } from 'node:crypto';
-import { getStore } from '../datastore';
+import { getStore, type ReadWriteStore } from '../datastore';
 import { paths, type DeployJob } from '@typeroll/shared';
 import { ConnectionError } from '../publishing/connections';
 import { findActiveDeploy } from '../deploy/in-flight';
 import { WORK_COLLECTION, workPath, notifyScheduledWrites, type ScheduledWork } from './index';
+import { objectWorkStore, workLocation } from './objects';
+import type { ScheduledDelivery } from '../store/object-scheduler';
 
 export interface WorkResult { pages_published: number; pages_unpublished: number; deployed: string[]; auto_deployed: string[]; skipped_in_flight: string[]; errors: string[] }
 export const emptyWorkResult = (): WorkResult => ({ pages_published: 0, pages_unpublished: 0, deployed: [], auto_deployed: [], skipped_in_flight: [], errors: [] });
 const digest = (s: string) => createHash('sha256').update(s).digest('hex');
 
-/** Generation and lease checks make delayed and duplicate deliveries harmless. */
-export async function executeScheduledWork(id: string, generation?: string, now = new Date(), result = emptyWorkResult()): Promise<WorkResult> {
+/** A store object's alarm hands one due item to the executor (bound by the Worker). Throws to retry. */
+export async function deliverScheduledWork(delivery: Pick<ScheduledDelivery, 'object' | 'id' | 'generation'>): Promise<void> {
+  await executeScheduledWork(delivery.id, delivery.generation, new Date(), emptyWorkResult(), delivery.object);
+}
+
+/**
+ * Generation and lease checks make delayed and duplicate deliveries harmless.
+ * `object` names the store object holding the work (sharded store); omitted in a single store.
+ */
+export async function executeScheduledWork(id: string, generation?: string, now = new Date(), result = emptyWorkResult(), object?: string | null): Promise<WorkResult> {
   if (!/^[a-f0-9]{64}$/.test(id)) throw new Error('Invalid work identity');
-  const store = getStore(), path = `${WORK_COLLECTION}/${id}`;
-  const current = await store.getDoc<ScheduledWork>(path);
+  if (object !== undefined && object !== null && !/^(global|org:[A-Za-z0-9_-]{1,200}|site:[A-Za-z0-9-]{1,64})$/.test(object)) throw new Error('Invalid store object');
+  const store = getStore(), work = objectWorkStore(object), path = `${WORK_COLLECTION}/${id}`;
+  const current = await work.getDoc<ScheduledWork>(path);
   if (!current || (generation && current.generation !== generation) || current.due_at === Number.MAX_SAFE_INTEGER) return result;
   if (current.due_at > now.valueOf()) {
     await notifyScheduledWrites([{ path, data: current }]);
     return result;
   }
   const owner = randomUUID();
-  const acquired = await store.compareAndUpdateDoc<ScheduledWork>(path, work => work.generation === current.generation && (work.lease_until ?? 0) <= now.valueOf(),
+  const acquired = await work.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation && (value.lease_until ?? 0) <= now.valueOf(),
     { lease_until: now.valueOf() + 300000, lease_owner: owner });
   if (!acquired) throw new Error('Scheduled work is already running');
   try {
     const parts = current.source.split('/'), org = parts[1], siteId = parts[3];
     if (['page_schedule', 'site_publish'].includes(current.kind) && !(await readOrganizationAccess(org)).can_write) {
-      await store.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation && value.lease_owner === owner,
+      await work.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation && value.lease_owner === owner,
         { due_at: Number.MAX_SAFE_INTEGER, lease_until: 0, lease_owner: null, blocked_by: 'organization_access' });
       return result;
     }
@@ -78,7 +89,7 @@ export async function executeScheduledWork(id: string, generation?: string, now 
       const { runAbandonedPartial } = await import('../forms/abandoned');
       const next = await runAbandonedPartial(current.source, now.valueOf());
       if (next !== null) {
-        await postpone(path, current.generation, next);
+        await postpone(work, path, current.generation, next);
         return result;
       }
     } else if (current.kind === 'form_webhook_retry') {
@@ -87,7 +98,7 @@ export async function executeScheduledWork(id: string, generation?: string, now 
       const { retryFormWebhookDelivery } = await import('../forms/webhook');
       const next = await retryFormWebhookDelivery(current.source, now.valueOf());
       if (next !== null) {
-        await postpone(path, current.generation, next);
+        await postpone(work, path, current.generation, next);
         return result;
       }
     } else if (current.kind === 'domain_serving_check') {
@@ -96,7 +107,7 @@ export async function executeScheduledWork(id: string, generation?: string, now 
       const { runScheduledServingCheck } = await import('../publishing/serving-check');
       const next = await runScheduledServingCheck(current.source, current.payload, now.valueOf());
       if (next !== null) {
-        await postpone(path, current.generation, next);
+        await postpone(work, path, current.generation, next);
         return result;
       }
     } else if (current.kind === 'workflow_chunk') {
@@ -106,9 +117,16 @@ export async function executeScheduledWork(id: string, generation?: string, now 
       const { runScheduledWorkflowChunk } = await import('../workflows/queue');
       const retryAt = await runScheduledWorkflowChunk(current.source, current.payload);
       if (retryAt !== null) {
-        await postpone(path, current.generation, retryAt);
+        await postpone(work, path, current.generation, retryAt);
         return result;
       }
+    } else if (current.kind === 'media_chain') {
+      // One delivery of a media chain (publishing/media-migration-queue.ts); the chain record drops superseded ones.
+      const { deliverMediaMigration } = await import('../publishing/media-migration-queue');
+      await deliverMediaMigration(current.payload.org_id, current.payload.site_id ?? undefined, Number(current.generation));
+    } else if (current.kind === 'deploy_dispatch') {
+      // An accepted deploy request (deploy/queue.ts). The job document decides whether it still runs.
+      if (!await runDeployDispatch(current)) throw new Error('Deploy is waiting for a build slot or a concurrent update; retry delivery');
     } else if (current.kind === 'site_publish') {
       const site = await store.getDoc<any>(current.source);
       if (site) {
@@ -119,7 +137,7 @@ export async function executeScheduledWork(id: string, generation?: string, now 
         if (active && active.id !== jobId) {
           result.skipped_in_flight.push(`${org}/${siteId}`);
           // Completion of the active job wakes this exact pending publication.
-          await store.compareAndUpdateDoc<ScheduledWork>(path, work => work.generation === current.generation,
+          await work.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation,
             { due_at: Number.MAX_SAFE_INTEGER, lease_until: 0, lease_owner: null, blocked_by: active.id } as Partial<ScheduledWork>);
           // Close the race where completion happened immediately before parking.
           const blocker = await store.getDoc<any>(paths.deploy(org, siteId, active.id));
@@ -152,17 +170,16 @@ export async function executeScheduledWork(id: string, generation?: string, now 
       const saved = await store.getDoc<any>(current.source);
       if (!saved || ['succeeded', 'failed'].includes(saved.status)) await wakePendingSite(org, siteId, parts[5]);
     }
-    await store.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation && value.lease_owner === owner,
+    await work.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation && value.lease_owner === owner,
       { due_at: Number.MAX_SAFE_INTEGER, lease_until: 0, lease_owner: null });
     return result;
   } catch (error) {
-    await store.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation && value.lease_owner === owner, { lease_until: 0, lease_owner: null });
+    await work.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === current.generation && value.lease_owner === owner, { lease_until: 0, lease_owner: null });
     throw error;
   }
 }
 
-async function postpone(path: string, generation: string, due: number) {
-  const store = getStore();
+async function postpone(store: ReadWriteStore, path: string, generation: string, due: number) {
   const changed = await store.compareAndUpdateDoc<ScheduledWork>(path, value => value.generation === generation,
     { due_at: due, lease_until: 0, lease_owner: null, generation: randomUUID(), blocked_by: null } as Partial<ScheduledWork>);
   if (changed) {
@@ -172,12 +189,50 @@ async function postpone(path: string, generation: string, due: number) {
 }
 
 export async function wakePendingSite(org: string, siteId: string, completedJob?: string) {
-  const path = workPath(paths.site(org, siteId), 'site_publish');
-  const work = await getStore().getDoc<ScheduledWork>(path);
-  if (work && work.blocked_by && (!completedJob || work.blocked_by === completedJob)) await postpone(path, work.generation, Date.now());
+  const sitePath = paths.site(org, siteId), path = workPath(sitePath, 'site_publish');
+  const { store } = await workLocation(sitePath);
+  const work = await store.getDoc<ScheduledWork>(path);
+  if (work && work.blocked_by && (!completedJob || work.blocked_by === completedJob)) await postpone(store, path, work.generation, Date.now());
 }
 
-/** At most 100 due index entries. No organization, site, page or deploy-history scan. */
+/**
+ * One accepted deploy request: runs only while the job is queued, or running
+ * on an external engine (whose coordinator resumes in steps). True when the
+ * delivery is consumed; false hands it back for a retry.
+ */
+async function runDeployDispatch(work: ScheduledWork): Promise<boolean> {
+  const store = getStore(), jobPath = work.source;
+  const [, org, , siteId, , jobId] = jobPath.split('/');
+  const job = await store.getDoc<DeployJob & { continuation?: { token?: string } }>(jobPath);
+  if (!job) return true;
+  const { isExternalDeploy } = await import('../deploy/in-flight');
+  if (job.status !== 'queued' && !(job.status === 'running' && isExternalDeploy(job))) return true;
+  const { executeDeployJob } = await import('../deploy/queue');
+  const { slotWaitMs } = await import('../deploy/concurrency');
+  // dryRun travels with the request: dropping it once turned dry runs into production deploys.
+  const outcome = await executeDeployJob({ orgId: org!, siteId: siteId!, jobId: jobId!, versionId: work.payload.version_id,
+    environment: work.payload.environment, dryRun: work.payload.dry_run === true }, { slotWaitMs: slotWaitMs() });
+  if (outcome === 'ran') return true;
+  const pending = await store.getDoc<DeployJob & { continuation?: { token?: string } }>(jobPath);
+  if (!pending || !isExternalDeploy(pending) || !['queued', 'running'].includes(pending.status)) return outcome !== 'deferred';
+  if (outcome === 'waiting') return true;
+  if (outcome === 'continue') {
+    // Some backends save their own next checkpoint. Do not overwrite it.
+    if (!pending.continuation || pending.continuation.token === job.continuation?.token) {
+      const { schedulePublication } = await import('./continuation');
+      await schedulePublication(jobPath, 'checkpoint');
+    }
+    return true;
+  }
+  // Contention is a delivery retry, never a second observation chain.
+  return false;
+}
+
+/**
+ * The sweep of a single store (local development): at most 100 due index
+ * entries, no organization, site, page or deploy-history scan. On Cloudflare
+ * each store object delivers its own work; sweep.ts is the Cron safety net.
+ */
 export async function runDueScheduledWork(now = new Date()): Promise<WorkResult> {
   const store = getStore(), result = emptyWorkResult();
   const due = await store.listDocs<ScheduledWork>(WORK_COLLECTION, { filters: [{ field: 'due_at', op: '<=', value: now.valueOf() }], limit: 100 });
@@ -185,24 +240,14 @@ export async function runDueScheduledWork(now = new Date()): Promise<WorkResult>
   due.sort((a, b) => Number(b.kind === 'page_schedule') - Number(a.kind === 'page_schedule'));
   for (const work of due) {
     if ((work.lease_until ?? 0) > now.valueOf()) continue;
-    try {
-      if (process.env.DEPLOY_QUEUE === 'cloud_tasks') {
-        const { dispatchScheduledWork } = await import('./transport');
-        await dispatchScheduledWork(`${WORK_COLLECTION}/${work.id}`, work);
-      } else await executeScheduledWork(work.id, work.generation, now, result);
-    }
+    try { await executeScheduledWork(work.id, work.generation, now, result); }
     catch { result.errors.push(`Scheduled work ${work.id} will retry`); }
   }
   // Newly created site markers are indexed atomically with page transitions.
   if (result.pages_published + result.pages_unpublished) {
     const sites = await store.listDocs<ScheduledWork>(WORK_COLLECTION, { filters: [{ field: 'due_at', op: '<=', value: now.valueOf() }], limit: 100 });
     for (const work of sites.filter(work => work.kind === 'site_publish')) {
-      try {
-      if (process.env.DEPLOY_QUEUE === 'cloud_tasks') {
-        const { dispatchScheduledWork } = await import('./transport');
-        await dispatchScheduledWork(`${WORK_COLLECTION}/${work.id}`, work);
-      } else await executeScheduledWork(work.id, work.generation, now, result);
-    }
+      try { await executeScheduledWork(work.id, work.generation, now, result); }
       catch { result.errors.push(`Scheduled work ${work.id} will retry`); }
     }
   }

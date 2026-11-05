@@ -1,5 +1,5 @@
 // Cost accounting is wired into executeDeployJob — the ONE execution path
-// shared by the in-process queue and the Cloud Tasks worker. These tests pin
+// shared by every delivered deploy (scheduling/worker.ts). These tests pin
 // that a terminal job always carries a cost row, including when it failed
 // (a failed build burns the same instance time as a successful one, and a
 // site stuck in a failure loop must not read as free).

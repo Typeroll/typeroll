@@ -7,7 +7,7 @@
 // one chain: a request while it runs marks it to run again, a request while a
 // delivery is pending keeps the earlier time, and a delivery from a replaced
 // generation is dropped. The record lives in the store, so the rule holds for
-// every transport (Cloud Tasks today, Durable Object alarms later).
+// every transport (store-object alarms, local timers).
 
 import { createHash } from 'node:crypto';
 import { getStore } from '../datastore';

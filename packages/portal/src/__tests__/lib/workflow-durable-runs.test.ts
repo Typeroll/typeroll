@@ -280,7 +280,7 @@ describe('cancel', () => {
   });
 });
 
-describe('without Cloud Tasks', () => {
+describe('through the scheduling layer', () => {
   it('completes inline, one chunk after another', async () => {
     const engine = new WorkflowEngine(getStore(), { now: () => net.clock.t, queue: 'inline' });
     const id = await engine.create({ orgId: ORG, siteId: SITE, def: urlParityWorkflow, triggeredBy: 'manual', createdBy: 'person' });
@@ -288,8 +288,7 @@ describe('without Cloud Tasks', () => {
     await expectFinished(id);
   });
 
-  it('completes through the scheduled-work index, as the self-host worker and publish sweep run it', async () => {
-    expect(process.env.DEPLOY_QUEUE).not.toBe('cloud_tasks');
+  it('completes through the scheduled-work index, as the local sweep runs it', async () => {
     net.msPerRequest = 0;
     const { workflowId } = await startSiteWorkflow({ orgId: ORG, siteId: SITE, type: 'url_parity', versionId: 'main', createdBy: 'person' });
     expect((await read(workflowId)).status).toBe('running');

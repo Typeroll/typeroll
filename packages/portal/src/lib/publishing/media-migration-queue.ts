@@ -1,51 +1,30 @@
-import { createHash } from 'node:crypto';
+import { paths } from '@typeroll/shared';
 import { requestChain, runChainDelivery, type Enqueue } from '../scheduling/chain';
+import { putScheduledWork } from '../scheduling/index';
 import { executeMediaMigration } from './media-migration';
 
 /** One delivery chain per Organization (preparation) or per Site (migration). */
 export const mediaChainKey = (orgId: string, siteId?: string) => siteId ? `media:${orgId}:${siteId}` : `media:${orgId}`;
+/** The chain's pending delivery is scheduled work of its Organization or Site, in that store object. */
+export const mediaChainSource = (orgId: string, siteId?: string) => siteId ? paths.site(orgId, siteId) : `organizations/${orgId}`;
 
 /** Ask for media work; joins the existing chain for the same Organization or Site. */
 /** Without a Site, runs Organization media work and pending preparation; with one, that Site's migration only. */
 export async function enqueueMediaMigration(orgId: string, delayMs = 0, siteId?: string): Promise<void> {
-  const mode = (process.env.DEPLOY_QUEUE ?? 'in_process').toLowerCase();
-  if (mode === 'firestore') return; // The persisted migration itself is the portable worker's queue item.
-  await requestChain(mediaChainKey(orgId, siteId), delayMs, transport(orgId, siteId, mode));
+  await requestChain(mediaChainKey(orgId, siteId), delayMs, transport(orgId, siteId));
 }
 
 /** One delivery: runs the work, then schedules the chain's next delivery if needed. */
 export async function deliverMediaMigration(orgId: string, siteId: string | undefined, generation: number): Promise<'ran' | 'superseded'> {
-  const mode = (process.env.DEPLOY_QUEUE ?? 'in_process').toLowerCase();
-  return runChainDelivery(mediaChainKey(orgId, siteId), generation, () => executeMediaMigration(orgId, siteId), transport(orgId, siteId, mode));
+  return runChainDelivery(mediaChainKey(orgId, siteId), generation, () => executeMediaMigration(orgId, siteId), transport(orgId, siteId));
 }
 
-function transport(orgId: string, siteId: string | undefined, mode: string): Enqueue {
-  if (mode === 'in_process') return async (generation, delayMs) => {
-    const timer = setTimeout(() => {
-      void deliverMediaMigration(orgId, siteId, generation).catch(() => console.error('[media-migration] local worker interrupted; persisted work will be recovered'));
-    }, delayMs);
-    timer.unref();
-  };
-  if (mode !== 'cloud_tasks') throw new Error(`Unsupported DEPLOY_QUEUE mode: ${mode}`);
+/** The chain generation is the work generation, so a stale delivery is dropped by the chain record. */
+function transport(orgId: string, siteId: string | undefined): Enqueue {
   return async (generation, delayMs) => {
-    const queue = process.env.CLOUD_TASKS_QUEUE;
-    const workerUrl = process.env.DEPLOY_WORKER_URL;
-    const serviceAccountEmail = process.env.CLOUD_TASKS_SERVICE_ACCOUNT;
-    if (!queue || !workerUrl || !serviceAccountEmail) throw new Error('Media migration requires the configured Cloud Tasks worker.');
-    const { CloudTasksClient } = await import('@google-cloud/tasks');
-    const client = new CloudTasksClient();
-    // A deterministic name per chain generation: a repeated enqueue of the same
-    // generation is deduplicated by the queue instead of adding a delivery.
-    const identity = createHash('sha256').update(`${mediaChainKey(orgId, siteId)}:${generation}`).digest('hex');
-    try {
-      await client.createTask({ parent: queue, task: {
-        name: `${queue}/tasks/media-${identity}`,
-        ...(delayMs > 0 ? { scheduleTime: { seconds: Math.ceil((Date.now() + delayMs) / 1000) } } : {}),
-        httpRequest: { httpMethod: 'POST', url: workerUrl, headers: { 'Content-Type': 'application/json' },
-          body: Buffer.from(JSON.stringify({ kind: 'media_migration', orgId, generation, ...(siteId ? { siteId } : {}) })).toString('base64'),
-          oidcToken: { serviceAccountEmail, audience: workerUrl } },
-      } });
-    } catch (error) { if ((error as { code?: number }).code !== 6) throw error; }
-    finally { await client.close(); }
+    await putScheduledWork({
+      kind: 'media_chain', source: mediaChainSource(orgId, siteId), due_at: Date.now() + Math.max(0, delayMs),
+      generation: String(generation), payload: { org_id: orgId, site_id: siteId ?? null },
+    });
   };
 }

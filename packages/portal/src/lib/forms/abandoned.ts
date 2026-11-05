@@ -7,9 +7,9 @@
 //
 // Scheduling uses the existing scheduled-work index (lib/scheduling): the
 // submit endpoint writes one entry per partial submission, due when its
-// earliest pending action is. Cloud Tasks, the in-process timer or the
-// periodic sweep (/api/internal/publish-sweep, Cloud Scheduler every five
-// minutes) delivers it to executeScheduledWork, which calls
+// earliest pending action is. The scheduling transport (the site object's
+// alarm, or the in-process timer in development) delivers it to
+// executeScheduledWork, which calls
 // runAbandonedPartial below. That function decides everything from the
 // stored submission, so late, repeated or concurrent deliveries are harmless:
 //   - only `status: 'partial'` submissions qualify, never completed ones;
@@ -19,11 +19,10 @@
 //     with a compare-and-update before it runs, so it runs at most once.
 // Preview forms never store submissions, so they never count.
 
-import { createHash } from 'node:crypto';
 import { paths } from '@typeroll/shared';
 import type { Form, FormAction } from '@typeroll/shared';
 import { getStore } from '../datastore';
-import { notifyScheduledWrites, workPath, type ScheduledWork } from '../scheduling/index';
+import { putScheduledWork } from '../scheduling/index';
 
 const HOUR_MS = 3_600_000;
 
@@ -68,15 +67,7 @@ export async function scheduleAbandonedCheck(orgId: string, siteId: string, subm
   const due = nextAbandonedCheck(form, submission);
   if (due === null) return;
   const source = `${paths.submissions(orgId, siteId)}/${submissionId}`;
-  const payload = { updated_at: submission.updated_at ?? null };
-  const work: ScheduledWork = {
-    kind: 'form_partial_abandoned', source, due_at: due, payload,
-    generation: createHash('sha256').update(JSON.stringify({ kind: 'form_partial_abandoned', source, due, payload })).digest('hex'),
-    lease_until: 0, lease_owner: null,
-  };
-  const path = workPath(source, 'form_partial_abandoned');
-  await getStore().setDoc(path, work as unknown as Record<string, unknown>);
-  await notifyScheduledWrites([{ path, data: work }]);
+  await putScheduledWork({ kind: 'form_partial_abandoned', source, due_at: due, payload: { updated_at: submission.updated_at ?? null } });
 }
 
 /**

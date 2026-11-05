@@ -24,10 +24,7 @@ function productionPortalEnv(): NodeJS.ProcessEnv {
     ACCOUNT_EMAIL: '{"type":"postmark","from":"Typeroll <no-reply@example.test>","config":{}}',
     PORTAL_PUBLIC_URL: 'https://portal.example.test',
     FORMS_HMAC_SECRET: 'test-only-secret',
-    DEPLOY_QUEUE: 'cloud_tasks',
-    CLOUD_TASKS_QUEUE: 'projects/test/locations/test/queues/deploy',
-    DEPLOY_WORKER_URL: 'https://worker.example.test/api/internal/deploy-worker',
-    CLOUD_TASKS_SERVICE_ACCOUNT: 'worker@example.invalid',
+    TYPEROLL_SCHEDULER: 'durable_object',
   };
 }
 
@@ -58,7 +55,7 @@ describe('readiness report', () => {
 
     expect(report.ready).toBe(true);
     expect(report.role).toBe('portal');
-    expect(report.checks.find((check) => check.name === 'deploy_queue')?.detail).toBe('cloud_tasks');
+    expect(report.checks.find((check) => check.name === 'deploy_queue')?.detail).toBe('durable_object');
   });
 
   it('accepts keyless Firebase Admin credentials for Cloud Run', async () => {
@@ -104,6 +101,7 @@ describe('readiness report', () => {
       'account_email',
       'portal_public_url',
       'forms_signing',
+      'deploy_queue',
     ]);
     expect(JSON.stringify(report)).not.toContain('test-only-secret');
     expect(JSON.stringify(report)).not.toContain('test-only-auth-secret');
@@ -137,36 +135,13 @@ describe('readiness report', () => {
     expect(report.checks.find((check) => check.name === 'deploy_queue')?.state).toBe('disabled');
   });
 
-  it('accepts the Firestore queue for the self-hosted portal and worker roles', async () => {
-    const portal = await readinessReport({
-      ...productionPortalEnv(),
-      DEPLOY_QUEUE: 'firestore',
-    }, async () => undefined);
-    const worker = await readinessReport({
-      NODE_ENV: 'production',
-      SERVICE_ROLE: 'worker',
-      FIREBASE_SERVICE_ACCOUNT: firebaseAdmin,
-      DEPLOY_QUEUE: 'firestore',
-    }, async () => undefined);
-
-    expect(portal.ready).toBe(true);
-    expect(portal.checks.find((check) => check.name === 'deploy_queue')?.detail).toBe('firestore');
-    expect(worker.ready).toBe(true);
-    expect(worker.role).toBe('worker');
-  });
-
-  it('rejects an in-process queue for the worker role', async () => {
-    const report = await readinessReport({
-      NODE_ENV: 'production',
-      SERVICE_ROLE: 'worker',
-      FIREBASE_SERVICE_ACCOUNT: firebaseAdmin,
-      DEPLOY_QUEUE: 'in_process',
-    }, async () => undefined);
-
-    expect(report.ready).toBe(false);
-    expect(report.checks.find((check) => check.name === 'deploy_queue')).toMatchObject({
-      state: 'fail',
-      required: true,
-    });
+  it('requires the durable scheduler in production and accepts local timers in development', async () => {
+    const local = await readinessReport({ ...productionPortalEnv(), TYPEROLL_SCHEDULER: 'local' }, async () => undefined);
+    expect(local.ready).toBe(false);
+    expect(local.checks.find((check) => check.name === 'deploy_queue')).toMatchObject({ state: 'fail', required: true });
+    const typo = await readinessReport({ ...productionPortalEnv(), TYPEROLL_SCHEDULER: 'cloud_tasks' }, async () => undefined);
+    expect(typo.checks.find((check) => check.name === 'deploy_queue')).toMatchObject({ state: 'fail', detail: 'unsupported TYPEROLL_SCHEDULER cloud_tasks' });
+    const development = await readinessReport({ NODE_ENV: 'development' }, async () => undefined);
+    expect(development.checks.find((check) => check.name === 'deploy_queue')).toMatchObject({ state: 'pass', detail: 'local' });
   });
 });
