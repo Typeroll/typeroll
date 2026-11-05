@@ -44,18 +44,13 @@ export async function authenticatePersona(page: Page, persona: CorePersona, { em
   // Remote personas are provisioned with confirmed addresses.
   if (!emailVerified) throw new Error('Unconfirmed-email sessions are only available against the local E2E server');
 
+  // Remote targets sign in with the persona's real password through the
+  // portal's account sign-in (Better Auth); the session cookie lands in the
+  // page's browser context.
   const { email, password } = personaCredentials(persona);
-  const apiKey = required('TYPEROLL_E2E_FIREBASE_API_KEY');
-  const tokenResponse = await page.request.post(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(apiKey)}`,
-    { data: { email, password, returnSecureToken: true } },
-  );
-  if (!tokenResponse.ok()) throw new Error(`Firebase E2E login failed with ${tokenResponse.status()}`);
-  const token = await tokenResponse.json() as { idToken?: string };
-  if (!token.idToken) throw new Error('Firebase E2E login returned no ID token');
-  const sessionResponse = await page.request.post('/api/auth/session', {
+  const response = await page.request.post('/api/auth/sign-in/email', {
     headers: { Origin: portalOrigin },
-    data: { idToken: token.idToken },
+    data: { email, password },
   });
-  if (!sessionResponse.ok()) throw new Error(`Portal E2E session exchange failed with ${sessionResponse.status()}`);
+  if (!response.ok()) throw new Error(`Remote E2E password sign-in failed with ${response.status()}`);
 }
