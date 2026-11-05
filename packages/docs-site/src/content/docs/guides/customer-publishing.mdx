@@ -697,6 +697,32 @@ so and names **Update build engine**. Updated engines keep the private `/proc`
 where the host allows it and otherwise build without one; they never expose the
 host's `/proc` to build code.
 
+### Automatic engine updates
+
+From Core 0.2.156, **Keep the build engine updated automatically** on the
+Builds card (MCP `set_organization_build_auto_update`) lets publications keep
+the Cloudflare or GitHub engine current:
+
+- When a newer engine is available, the next publication installs it and runs
+  its verification build before building the site. The deploy status shows
+  **updating the build engine** meanwhile. If other sites are building, the
+  update waits for a later publication and this one builds on the current
+  engine.
+- If the verification build fails, the previous engine is put back and the
+  publication continues on it. The Builds card names the cause.
+- If a build fails in a way the newer engine is known to fix, such as a sandbox
+  mount the provider stopped allowing, the engine is updated and the same frozen
+  build runs once more. A second failure is reported as usual. Content,
+  validation and size failures are never retried this way.
+- Each publication reports what it did in `engine_update` on its deploy status.
+
+The setting is on for organizations whose first engine was set up with Core
+0.2.156 or later. Existing organizations turn it on once on the Builds card.
+Engines also probe the sandbox mounts a build host may stop allowing (`/proc`,
+`/dev` and `/tmp`) and fall back to a safe alternative for each, so a provider
+change of that kind does not stop builds in the first place. Anything else a
+host refuses stops the build with its cause.
+
 Independent `npm run build` runs reuse the same verified media; their process
 scheduling and time limits belong to your own build environment.
 

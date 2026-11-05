@@ -2,6 +2,22 @@ import type { BuildDiagnostic } from './diagnostics.mjs';
 
 /** The sandbox line an engine from before Core 0.2.154 prints on a host that refuses a nested /proc. */
 export const sandboxProcRefused = (lines: string[]) => lines.some(line => /bwrap: Can't mount proc on \/newroot\/proc/.test(line));
+/** Sandbox mounts a newer engine probes and falls back from (see sandboxFeatures in executor.mjs). */
+const SANDBOX_MOUNT_REFUSED = /bwrap: Can't mount (?:proc on \/newroot\/proc|(?:devpts|tmpfs|mqueue) on \/newroot\/dev|tmpfs on \/newroot\/tmp)/;
+/** Codes an engine reports when it is older than the coordinator it talks to. */
+const OUTDATED_ENGINE_CODE = /(?:^|_)(?:unsupported_build_runtime|invalid_pages_upload_grant|artifact_format_unsupported|build_protocol_unsupported|build_engine_update_required)$/;
+
+/**
+ * Failures a current engine is known to fix. Only these may trigger an
+ * automatic engine update and one retry of the same frozen build; a content,
+ * validation or capacity failure never does.
+ */
+export function engineUpdateFixes(code: string | null | undefined, diagnostic?: BuildDiagnostic | null): boolean {
+  if (!code) return false;
+  if (OUTDATED_ENGINE_CODE.test(code)) return true;
+  return [diagnostic?.cause ?? '', ...(diagnostic?.lines ?? [])].some(line => SANDBOX_MOUNT_REFUSED.test(line));
+}
+
 export const engineUpdateRequiredMessage = (code: string) =>
   `Cloudflare's build hosts no longer let this build engine version start its sandbox. Update the build engine in Publishing → Builds (an organization admin approves it), then retry publishing. The live site is unchanged. (${code})`;
 

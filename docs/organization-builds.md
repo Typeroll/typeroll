@@ -69,6 +69,18 @@ the trigger and secret, dispatches a verification build and updates the card
 automatically. **Update build engine** installs the current pinned executor;
 updates wait until current queued or running builds finish.
 
+With `build_selection.auto_update`, a publication updates an outdated engine
+itself just before it enqueues its build (`builds/auto-update.ts`), and once
+more after a build failure that `engineUpdateFixes` recognizes. Every update
+snapshots the ready engine in `previous`; if setup or verification fails,
+`engine-restore.ts` puts it back: on Cloudflare by restoring the trigger's
+runner token (builds are dispatched at the pinned old commit), on GitHub by
+moving `main` back to the old runner commit. Nothing runs in the background:
+the update is a step of a publication and its result is on that job.
+The executor probes the sandbox mounts in `sandboxFeatures` and falls back per
+mount; add a mount there, with a fallback that keeps the isolation guarantees,
+when a provider starts refusing another one.
+
 Cloudflare currently does not expose `API Tokens Write` in its OAuth scope
 catalog. Its build-token creation endpoint registers an existing API token
 secret/ID. Do not substitute an expiring OAuth access token. See

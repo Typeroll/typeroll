@@ -364,7 +364,7 @@ Prepare or update the organization Cloudflare or GitHub build engine and start i
 
 Permission: `read`
 
-Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization (each with job_id, site_id, kind and status: queued, running, or publishing while a built publication uploads and verifies; image preparation jobs are media-…). A job stays listed until its deploy reaches a final status, except a domain switch that is built and verified and only waits for DNS approval: it is listed under awaiting_approval, uses no build capacity, and does not block other sites from publishing. Requires an organization API key; REST: GET /api/v1/publishing/builds. No provider credentials are returned.
+Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization (each with job_id, site_id, kind and status: queued, running, or publishing while a built publication uploads and verifies; image preparation jobs are media-…). A job stays listed until its deploy reaches a final status, except a domain switch that is built and verified and only waits for DNS approval: it is listed under awaiting_approval, uses no build capacity, and does not block other sites from publishing. selection.auto_update says whether outdated engines are updated by the next publication (set_organization_build_auto_update); an engine with update_available runs older code than this Typeroll. Requires an organization API key; REST: GET /api/v1/publishing/builds. No provider credentials are returned.
 
 ### `check_organization_build_access`
 
@@ -390,6 +390,19 @@ Select a verified Cloudflare or GitHub engine for new publications. Requires an 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `provider` | body | "cloudflare" \| "github" | yes |  |
+| `revision` | body | string | yes |  |
+
+### `set_organization_build_auto_update`
+
+`POST /api/v1/publishing/builds`
+
+Permission: `write`
+
+Turn automatic build engine updates on or off for the organization (Cloudflare and GitHub engines). When on, the next publication that finds an outdated engine updates it and runs its verification build before building the site; if verification fails the previous engine is restored and the publication continues on it. A build that fails in a way the newer engine is known to fix (for example a sandbox mount the provider stopped allowing) is updated and built once more. Each publication reports what it did in engine_update. On for organizations whose first engine was set up from Core 0.2.156; existing organizations opt in here. Requires an organization API key and selection.revision from read_organization_build_engine; REST: POST /api/v1/publishing/builds with action auto_update.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `enabled` | body | boolean | yes |  |
 | `revision` | body | string | yes |  |
 
 ### `cancel_organization_build`

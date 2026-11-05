@@ -12,13 +12,14 @@ import assetsSource from './assets.mjs?raw';
 import diagnosticsSource from './diagnostics.mjs?raw';
 import { getStore } from '../datastore';
 import { encryptSecret } from '../secret-crypto';
+import { restorePreviousEngine } from './engine-restore';
 import { getConnection, ConnectionError } from '../publishing/connections';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { claimCloudflareResource, generatedCloudflareNames, isSharedCloudflareAccount } from '../publishing/cloudflare-account-claims';
 import { githubConfiguration } from '../publishing/github-connection';
 import { githubInstallationClient, publishTree, ProviderError } from '../publishing/providers.mjs';
 import { readBuildEngine, checkBuildEngine, enginePath } from './cloudflare';
-import { engineConfigurationPath, readEngineConfiguration, type EngineConfiguration } from './state';
+import { engineConfigurationPath, readEngineConfiguration, selectionPath, type EngineConfiguration } from './state';
 import { OrganizationBuildQueue, buildTasksPath, buildTaskKey, type BuildTask } from './queue';
 import { encodeSource, sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from './contract.mjs';
 import { prepareBuildRetention } from './storage';
@@ -42,7 +43,8 @@ export async function configureBuildEngine(org: string, input: Record<string, un
       catch (error) { if (error instanceof ConnectionError) {
         await new OrganizationBuildQueue().cancel(org, config.qualification_key);
         await getStore().compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org), value => value.revision === config.revision, { status: 'disabled' });
-        await getStore().updateDoc(enginePath(org), { state: 'error', enabled: false, issue: { code: error.code ?? 'build_verification_failed', message: error.message } });
+        const issue = { code: error.code ?? 'build_verification_failed', message: error.message };
+        if (!await restorePreviousEngine(org, config, issue)) await getStore().updateDoc(enginePath(org), { state: 'error', enabled: false, issue });
       } else throw error; }
       return readBuildEngine(org);
     }
@@ -64,8 +66,11 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   if (current.state === 'approval_required' || current.state === 'error') return current;
   const origin = new URL(process.env.PORTAL_PUBLIC_URL ?? '');
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) throw new ConnectionError('Shared builds require the public HTTPS address of this Typeroll server.', 409);
+  // A first engine keeps itself current; an existing organization opts in (see BuildSelection).
+  if (!previous) await store.createDocIfMissing(selectionPath(org), { provider: 'cloudflare', revision: randomUUID(), auto_update: true });
   const revision = randomUUID(), token = randomBytes(32).toString('base64url');
-  let config: EngineConfiguration = { media_preparation: true, static_verification: true, publication_validation: 1, engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
+  const { previous: _older, ...replaced } = previous ?? { previous: null };
+  let config: EngineConfiguration = { previous: previous?.status === 'ready' ? replaced as Omit<EngineConfiguration, 'previous'> : null, media_preparation: true, static_verification: true, publication_validation: 1, engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
     worker_tag: '', trigger_uuid: '', runner_commit: '', token_hash: sha256(token), encrypted_token: encryptSecret(JSON.stringify({ org, token })),
     status: 'preparing', setup_lease_until: Date.now() + 180000 };
   if (previous) {
@@ -123,6 +128,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
       await store.updateDoc(enginePath(org), { revision: randomUUID(), state: 'build_token_required', worker_found: true, account_id: config.account_id, account_name: cf.cloudflare.account_name, enabled: false,
         issue: { code: tokens.length > 1 || (shared && tokens.length) ? 'build_token_selection_required' : 'build_token_required', message: 'The build project is prepared. Open Cloudflare setup, connect the generated GitHub repository on branch main and create or select its API token. Then return and finish build setup.' } });
       await store.updateDoc(path, { ...config, status: 'disabled', setup_lease_until: 0 });
+      await restorePreviousEngine(org, config, { code: 'build_token_required', message: 'Cloudflare needs the build project connected to its generated repository and an API token selected.' });
       return readBuildEngine(org);
     }
     const connection = await client(`${base}/builds/repos/connections`, { method: 'PUT', body: { provider_type: 'github', provider_account_id: String(repo.owner.id), provider_account_name: config.owner, repo_id: String(repo.id), repo_name: current.runner_repo } });
@@ -144,6 +150,8 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   } catch (error) {
     if (config.qualification_key) await new OrganizationBuildQueue().cancel(org, config.qualification_key);
     await store.compareAndUpdateDoc<EngineConfiguration>(path, value => value.revision === config.revision, { status: 'disabled', setup_lease_until: 0 });
+    if (await restorePreviousEngine(org, config, { code: error instanceof ProviderError ? 'build_setup_failed' : (error as ConnectionError)?.code ?? 'build_setup_failed',
+      message: error instanceof ProviderError ? `Build setup stopped at ${phase} (HTTP ${error.status}).` : error instanceof ConnectionError ? error.message : 'Build setup could not finish.' })) return readBuildEngine(org);
     if (error instanceof ProviderError) {
       const buildPermission = error.provider === 'Cloudflare' && ['Workers Scripts', 'Workers Builds'].includes(phase) && [401, 403].includes(error.status);
       const detail = `HTTP ${error.status}${error.codes.length ? `, code ${error.codes.join(', ')}` : ''}`;

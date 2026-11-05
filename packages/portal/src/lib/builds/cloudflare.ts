@@ -15,7 +15,7 @@ export interface BuildEngine {
   account_name: string | null;
   state: 'not_configured' | 'approval_required' | 'build_token_required' | 'setup_required' | 'qualification_required' | 'ready' | 'error';
   checked_at: string | null;
-  issue: { code: string; message: string; http_status?: number; provider_codes?: number[] } | null;
+  issue: { code: string; message: string; http_status?: number; provider_codes?: number[]; cause_code?: string } | null;
   worker_name: string;
   worker_found?: boolean;
   runner_repo: string;

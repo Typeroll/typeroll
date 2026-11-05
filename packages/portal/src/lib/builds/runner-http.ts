@@ -20,6 +20,7 @@ import { qualificationFiles } from './qualification';
 import { enginePath, type BuildEngine } from './cloudflare';
 import { authorizeGithubClaim } from './github-claim';
 import { wakeCompletedPublication } from './publication-wakeup';
+import { restorePreviousEngine } from './engine-restore';
 
 /** These endpoints never use browser cookies or organization API keys. */
 export async function runnerRequest(request: Request, org: string, action: string) {
@@ -155,7 +156,10 @@ export async function runnerRequest(request: Request, org: string, action: strin
         { ...(validation ? { seo_report: validation } : {}), status: retryMedia ? 'queued' : 'failed', ...(retryMedia ? { queued_at: Date.now() } : {}), token_hash: null, error_code: `${stage}_${code}`, error_detail: diagnostic, lease_until: 0 });
       if (metadata.kind === 'qualification') {
         const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
-        if (disabled) await store.updateDoc(enginePath(org, provider), { state: 'error', enabled: false, issue: { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code})${diagnostic?.cause ? `: ${diagnostic.cause}` : ''}. Set up the shared engine again to retry.` } });
+        if (disabled) {
+          const issue = { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code})${diagnostic?.cause ? `: ${diagnostic.cause}` : ''}. Set up the shared engine again to retry.` };
+          if (!await restorePreviousEngine(org, disabled, issue)) await store.updateDoc(enginePath(org, provider), { state: 'error', enabled: false, issue });
+        }
       }
       await wakeCompletedPublication(org, key, metadata.kind);
       return privateJson({ ok: true });

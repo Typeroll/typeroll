@@ -5,14 +5,14 @@ import { ConnectionError } from '../publishing/connections';
 import { readBuildEngine } from './cloudflare';
 import { readGithubEngine, configureGithubEngine } from './github';
 import { configureBuildEngine } from './setup';
-import { readEngineConfiguration, assertEngineConnections, type BuildProvider } from './state';
+import { readEngineConfiguration, assertEngineConnections, selectionPath, type BuildProvider, type BuildSelection } from './state';
 import { CLOUDFLARE_ENGINE_SOURCE } from './setup';
 import { GITHUB_ENGINE_SOURCE } from './github-source';
 
-export const selectionPath = (org: string) => `organizations/${org}/publishing/build_selection`;
-export interface BuildSelection { provider: BuildProvider; revision: string }
-export async function readBuildSelection(org: string): Promise<BuildSelection> {
-  return await getStore().getDoc<BuildSelection>(selectionPath(org)) ?? { provider: 'cloudflare', revision: 'initial' };
+export { selectionPath, type BuildSelection };
+export async function readBuildSelection(org: string): Promise<BuildSelection & { auto_update: boolean }> {
+  const selection: BuildSelection = await getStore().getDoc<BuildSelection>(selectionPath(org)) ?? { provider: 'cloudflare', revision: 'initial' };
+  return { ...selection, auto_update: selection.auto_update === true };
 }
 export async function selectedBuildProvider(org: string) { return (await readBuildSelection(org)).provider; }
 export async function readBuildSettings(org: string) {
@@ -36,6 +36,16 @@ export async function configureBuildSettings(org: string, input: Record<string, 
   const provider: BuildProvider = input.provider as BuildProvider ?? 'cloudflare';
   if (input.action === 'cancel') {
     await cancelGithubTask(org, String(input.key));
+    return readBuildSettings(org);
+  }
+  if (input.action === 'auto_update') {
+    if (typeof input.enabled !== 'boolean') throw new ConnectionError('Send enabled: true or false.', 400);
+    const selection = await readBuildSelection(org);
+    if (input.revision !== selection.revision) throw new ConnectionError('Build settings changed. Reload and try again.', 409, 'build_settings_changed');
+    const store = getStore();
+    await store.createDocIfMissing(selectionPath(org), { provider: selection.provider, revision: selection.revision });
+    if (!await store.compareAndUpdateDoc<BuildSelection>(selectionPath(org), value => value.revision === selection.revision, { auto_update: input.enabled, revision: randomUUID() }))
+      throw new ConnectionError('Build settings changed. Reload and try again.', 409, 'build_settings_changed');
     return readBuildSettings(org);
   }
   if (input.action === 'select') {
