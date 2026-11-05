@@ -224,6 +224,12 @@ export class SqlDocumentEngine {
   }
 
   /** Every document under a prefix, for exports and site transfers. */
+  /** Every document path in path order after `after` (whole-object backup). */
+  paths(after = '', limit = 1000): string[] {
+    const bounded = Math.max(1, Math.min(5000, Math.floor(limit)));
+    return this.sql.exec<{ path: string }>('SELECT path FROM documents WHERE path > ? ORDER BY path LIMIT ?', after, bounded).map(row => row.path);
+  }
+
   exportTree(root: string, afterPath = '', limit = 500): StoredDoc[] {
     const prefix = `${root}/`;
     return this.sql.exec<Row>("SELECT path, id, data, revision FROM documents WHERE (path = ? OR substr(path, 1, ?) = ?) AND path > ? ORDER BY path LIMIT ?",

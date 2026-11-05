@@ -21,6 +21,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 const CREDENTIAL_PATH = /^\/api\/auth\/(?!dev-session$|e2e-session$|logout$)/;
 
 const CSRF_EXEMPT_PATHS = new Set([
+  // Bearer-token only (TYPEROLL_STORE_TRANSFER_TOKEN), never cookies; 404 without it.
+  '/api/internal/store-transfer',
   // Exact SNS topic allowlist + certificate/signature verification in the route.
   '/api/webhooks/email/ses',
   '/api/webhooks/email/inbound-ses',

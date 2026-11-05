@@ -6,6 +6,7 @@ import { DurableObject, WorkerEntrypoint, env } from 'cloudflare:workers';
 import { handle } from '@astrojs/cloudflare/handler';
 import { setRuntimeStore } from './lib/datastore';
 import { setPublicationTemplateLoader } from './lib/publishing/source-tree';
+import { setStoreTransferRuntime } from './lib/runtime/store-transfer';
 import { cloudflareMigrationTarget, cloudflareStore, storeObject, type StoreEnv } from './lib/runtime/cloudflare-store';
 import { runMigrationStep, type MigrationBucket } from './lib/migration/worker-run';
 import { getPortalAuth } from './lib/identity/portal-auth';
@@ -15,6 +16,15 @@ import { drainObjectOutbox, sweepScheduledObjects } from './lib/scheduling/sweep
 import { createOperatorApi, type OperatorApiMethods } from './lib/operator-api';
 
 setRuntimeStore(() => cloudflareStore(env as unknown as StoreEnv));
+setStoreTransferRuntime(() => {
+  const target = cloudflareMigrationTarget(env as unknown as StoreEnv);
+  const bucket = (env as unknown as { MIGRATION?: MigrationBucket }).MIGRATION;
+  return {
+    store: target.store,
+    object: name => storeObject(env as unknown as StoreEnv, name),
+    migration: bucket ? { bucket, target, auth: () => getPortalAuth() } : null,
+  };
+});
 // This release's frozen publication renderer, shipped as a static asset.
 setPublicationTemplateLoader(async () => {
   const assets = (env as unknown as { ASSETS: { fetch(request: Request): Promise<Response> } }).ASSETS;
@@ -58,6 +68,7 @@ export class DocumentStore extends DurableObject<PortalEnv> {
   sequence() { return this.store.sequence(); }
   changedSince(seq: number, root: string) { return this.store.changedSince(seq, root); }
   exportTree(root: string, afterPath?: string, limit?: number) { return this.store.exportTree(root, afterPath, limit); }
+  paths(after?: string, limit?: number) { return this.store.paths(after, limit); }
   alarm() { return this.store.alarm(); }
   wake() { return this.store.wake(); }
 }

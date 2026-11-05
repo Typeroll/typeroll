@@ -32,6 +32,7 @@ export interface DocumentStoreRpc {
   sequence(): number;
   changedSince(seq: number, root: string): boolean;
   exportTree(root: string, afterPath?: string, limit?: number): StoredDoc[];
+  paths(after?: string, limit?: number): string[];
 }
 
 /** Engine methods bound for an object class: `Object.assign(this, documentStoreMethods(ctx.storage))`. */
@@ -46,6 +47,7 @@ export function documentStoreMethods(storage: DurableSqlStorage): DocumentStoreR
     sequence: () => engine.sequence(),
     changedSince: (seq, root) => engine.changedSince(seq, root),
     exportTree: (root, afterPath, limit) => engine.exportTree(root, afterPath, limit),
+    paths: (after, limit) => engine.paths(after, limit),
   };
 }
 
