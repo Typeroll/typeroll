@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 import { localFixtureDocuments, writeFixtureTree } from './seed-store.mjs';
 
@@ -14,6 +15,8 @@ const pageFile = `${DEFAULT_MAIN}/pages/link-role-hover`;
 const typeFile = `${DEFAULT_MAIN}/content_types/hover-articles`;
 const template = fileURLToPath(new URL('../../../site-template/', import.meta.url));
 const STATIC = 'https://link-role.test';
+// Asynchronous: a synchronous build blocked the worker's event loop, and with it the browser connection, for the whole build.
+const run = promisify(execFile);
 
 test('link role hover and mapped Page dates agree in static output and preview', async ({ page }, info) => {
   test.setTimeout(180_000);
@@ -44,8 +47,8 @@ test('link role hover and mapped Page dates agree in static output and preview',
   try {
     await e2eStore.setMany(documents);
     writeFixtureTree(fixtures, new Map([...localFixtureDocuments(), ...documents]));
-    execFileSync(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
-      cwd: template, timeout: 90_000, stdio: 'pipe', env: { ...process.env, TYPEROLL_FIXTURES_DIR: fixtures,
+    await run(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
+      cwd: template, timeout: 90_000, maxBuffer: 64 * 1024 * 1024, env: { ...process.env, TYPEROLL_FIXTURES_DIR: fixtures,
         TYPEROLL_ORG_ID: 'default', TYPEROLL_SITE_ID: 'default', TYPEROLL_VERSION_ID: 'main', TYPEROLL_SITE_URL: STATIC },
     });
     const published = readFileSync(path.join(out, 'link-role-hover/index.html'), 'utf8');
@@ -69,13 +72,19 @@ test('link role hover and mapped Page dates agree in static output and preview',
     for (const [url, frame] of [[`${STATIC}/link-role-hover/`, false], ['/api/sites/default/preview/browse/link-role-hover/', true]] as const) {
       await page.goto(url);
       const scope = frame ? page.frameLocator('iframe') : page;
+      // Hide the consent dialog, then hover. Retried: the preview's iframe can
+      // still swap in the site document (whose head script, in a sandbox without
+      // cookies, shows the dialog again) after the first removal.
+      const hover = (link: ReturnType<typeof scope.locator>) => expect(async () => {
+        await scope.locator('html').evaluate(el => el.classList.remove('tr-consent-needed'));
+        await link.hover({ timeout: 2_000 });
+      }).toPass({ timeout: 30_000 });
       for (const width of [375, 768, 1280]) {
         await page.setViewportSize({ width, height: 1000 });
-        await scope.locator('html').evaluate(el => el.classList.remove('tr-consent-needed'));
         // Test mouse hover at narrow widths too; this is not a touch emulation.
         for (const selector of ['[data-block="prose"] a', '[data-block="breadcrumbs"] a', '[data-block="table_of_contents"] a']) {
           const link = scope.locator(selector).first();
-          await link.hover();
+          await hover(link);
           await expect(link).toHaveCSS('color', 'rgb(0, 86, 160)');
           await expect(link).toHaveCSS('text-decoration-line', 'underline');
         }
@@ -84,7 +93,7 @@ test('link role hover and mapped Page dates agree in static output and preview',
         if (await toggle.isVisible() && await toggle.getAttribute('aria-expanded') === 'false') await toggle.click();
         for (const name of ['Own button', 'Own navigation', 'Own card']) {
           const link = scope.locator('[data-block="button"], [data-block="navigation"], [data-block="post_card"]').getByRole('link', { name, exact: true });
-          await link.hover();
+          await hover(link);
           await expect(link).toHaveCSS('color', 'rgb(155, 18, 80)');
           await expect(link).toHaveCSS('text-decoration-line', 'none');
         }

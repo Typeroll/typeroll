@@ -1,11 +1,15 @@
 import { test, expect } from '@playwright/test';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 import { localFixtureDocuments, writeFixtureTree } from './seed-store.mjs';
+
+// Asynchronous, so the build does not block the worker's event loop.
+const run = promisify(execFile);
 
 // The portal preview reads the local E2E Worker's store; the static build reads
 // a disposable fixtures tree written per test. No API credentials, customer
@@ -42,8 +46,8 @@ test('Page listing has real responsive tracks in preview and a fresh static buil
   try {
     await e2eStore.setMany(documents);
     writeFixtureTree(fixtures, new Map([...localFixtureDocuments(), ...documents]));
-    execFileSync(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
-      cwd: template, timeout: 60_000, encoding: 'utf8', stdio: 'pipe',
+    await run(process.execPath, [path.join(template, '../../node_modules/astro/bin/astro.mjs'), 'build', '--outDir', out], {
+      cwd: template, timeout: 60_000, maxBuffer: 64 * 1024 * 1024,
       env: {
         ...process.env, TYPEROLL_FIXTURES_DIR: fixtures,
         TYPEROLL_ORG_ID: 'default', TYPEROLL_SITE_ID: 'default', TYPEROLL_VERSION_ID: 'main',
