@@ -50,14 +50,43 @@ export function mediaCheckpointPolicy(kind, progress, startedAt, deadline, now =
  */
 export const SANDBOX_PROC = ['--proc', '/proc'];
 export const SANDBOX_NO_PROC = ['--dir', '/proc', '--ro-bind-try', '/proc/cpuinfo', '/proc/cpuinfo', '--ro-bind-try', '/proc/stat', '/proc/stat'];
-const PROC_REFUSED = /bwrap: Can't mount proc on \/newroot\/proc: Operation not permitted/;
-/** Cloudflare's build containers stopped allowing a nested procfs (Nov 2026): build without /proc there, and only there. */
-export async function sandboxProcfs(probe, log = message => console.log(message)) {
-  try { await probe(SANDBOX_PROC); return SANDBOX_PROC; }
-  catch (error) {
-    if (!PROC_REFUSED.test(error?.output ?? '')) throw error;
-    log('TYPEROLL_BUILD_LOG sandbox: this host refuses a private /proc; building without /proc');
-    return SANDBOX_NO_PROC;
+/** Only the character devices a build reads; never the host's /dev as a whole. */
+export const SANDBOX_MINIMAL_DEV = ['--dir', '/dev', ...['null', 'zero', 'random', 'urandom'].flatMap(name => ['--dev-bind', `/dev/${name}`, `/dev/${name}`])];
+
+/**
+ * Mounts a build host may stop allowing without notice (Cloudflare refused a
+ * nested /proc in Nov 2026). Each has a fallback that keeps the sandbox's
+ * guarantees: no host /proc, no host /dev beyond four character devices, no
+ * shared /tmp. A refusal of anything else, such as user namespaces, stops the
+ * build: there is no safe way to build without it.
+ * @param {string} privateTmp an empty directory only this build uses
+ */
+export function sandboxFeatures(privateTmp) {
+  return [
+    { name: 'proc', preferred: SANDBOX_PROC, fallback: SANDBOX_NO_PROC, refused: /bwrap: Can't mount proc on \/newroot\/proc/, note: 'refuses a private /proc; building without /proc' },
+    { name: 'dev', preferred: ['--dev', '/dev'], fallback: SANDBOX_MINIMAL_DEV, refused: /bwrap: Can't mount (?:devpts|tmpfs|mqueue) on \/newroot\/dev/, note: 'refuses a private /dev; binding only null, zero, random and urandom' },
+    { name: 'tmp', preferred: ['--tmpfs', '/tmp'], fallback: ['--bind', privateTmp, '/tmp'], refused: /bwrap: Can't mount tmpfs on \/newroot\/tmp/, note: 'refuses a tmpfs at /tmp; using an empty private directory' },
+  ];
+}
+
+/**
+ * Probe the preferred mounts and fall back one refused mount at a time. Each
+ * mount falls back at most once, so this ends after at most one probe per mount.
+ * @param {(args: string[]) => Promise<unknown>} probe
+ * @param {ReturnType<typeof sandboxFeatures>} features
+ */
+export async function sandboxMounts(probe, features, log = message => console.log(message)) {
+  const chosen = new Map(features.map(feature => [feature.name, feature.preferred]));
+  for (;;) {
+    const args = features.flatMap(feature => chosen.get(feature.name));
+    try { await probe(args); return args; }
+    catch (error) {
+      const output = error?.output ?? '';
+      const refused = features.find(feature => chosen.get(feature.name) === feature.preferred && feature.refused.test(output));
+      if (!refused) throw error;
+      chosen.set(refused.name, refused.fallback);
+      log(`TYPEROLL_BUILD_LOG sandbox: this host ${refused.note}`);
+    }
   }
 }
 
@@ -290,11 +319,13 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     const head = ['--unshare-all', '--unshare-user', '--die-with-parent', '--new-session', '--uid', '1000', '--gid', '1000', '--cap-drop', 'ALL',
       '--ro-bind', path.join(temp, 'passwd'), '/etc/passwd', '--ro-bind', path.join(temp, 'group'), '/etc/group', '--ro-bind', '/etc/resolv.conf', '/etc/resolv.conf', '--ro-bind', '/etc/hosts', '/etc/hosts', '--ro-bind', '/usr', '/usr', '--ro-bind', '/lib', '/lib', '--ro-bind', '/lib64', '/lib64', '--symlink', 'usr/bin', '/bin',
       '--ro-bind', runtime, '/runtime'];
-    const tail = ['--dev', '/dev', '--tmpfs', '/tmp', '--bind', work, '/work', '--chdir', '/work',
+    const privateTmp = path.join(temp, 'sandbox-tmp');
+    await fs.mkdir(privateTmp, { mode: 0o700 });
+    const tail = ['--bind', work, '/work', '--chdir', '/work',
       '--remount-ro', '/', '--clearenv', '--setenv', 'PATH', '/runtime/bin:/usr/bin:/bin', '--setenv', 'HOME', '/tmp',
       '--setenv', 'ASTRO_TELEMETRY_DISABLED', '1', '--setenv', 'NODE_OPTIONS', '--max-old-space-size=768'];
-    const procfs = await sandboxProcfs(proc => command(binary, [...head, ...proc, ...tail, '/runtime/bin/node', '-e', ''], 30000));
-    const base = [...head, ...procfs, ...tail];
+    const mounts = await sandboxMounts(args => command(binary, [...head, ...args, ...tail, '/runtime/bin/node', '-e', ''], 30000), sandboxFeatures(privateTmp));
+    const base = [...head, ...mounts, ...tail];
     const run = (args, network = false, env = {}) => command(binary, [...base, ...(network ? ['--share-net'] : []),
       ...Object.entries(env).flatMap(([key, value]) => ['--setenv', key, value]), '/runtime/bin/node', ...args]);
     if (job.kind === 'qualification') {
