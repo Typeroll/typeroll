@@ -100,6 +100,9 @@ export function buildCoreIdentityDocuments(manifest, credentials, now = () => ne
   ]);
   for (const persona of corePersonas(manifest)) {
     if (!persona.org_id || !persona.member_role) continue;
+    // Accounts carry no organization claim; the portal discovers memberships here.
+    documents.set(`user_organizations/${persona.uid}`, { schema_version: 1 });
+    documents.set(`user_organizations/${persona.uid}/organizations/${persona.org_id}`, { org_id: persona.org_id });
     documents.set(`organizations/${persona.org_id}/members/${persona.uid}`, {
       email: credentials[persona.id].email,
       role: persona.member_role,
@@ -233,172 +236,129 @@ export function verifyLocalPersonas({ fixtureRoot, manifest = readPersonaManifes
   return { personaCount: corePersonas(manifest).length };
 }
 
+function remotePersonaAccounts(manifest, credentials) {
+  return corePersonas(manifest).map((persona) => ({
+    persona: persona.id,
+    uid: persona.uid,
+    email: credentials[persona.id].email,
+    password: credentials[persona.id].password,
+    name: `E2E ${persona.id}`,
+  }));
+}
+
+function coreSitePath(manifest) {
+  return `organizations/${manifest.core_fixture.owner_org_id}/sites/${manifest.core_fixture.site_id}`;
+}
+
 export async function seedRemotePersonas({ services, env, manifest = readPersonaManifest(), now = () => new Date() }) {
   const credentials = remotePersonaCredentials(manifest, env);
-  for (const persona of corePersonas(manifest)) {
-    await services.auth.upsert({
-      uid: persona.uid,
-      email: credentials[persona.id].email,
-      password: credentials[persona.id].password,
-      displayName: `E2E ${persona.id}`,
-      customClaims: {
-        is_test_account: true,
-        e2e_persona: persona.id,
-        ...(persona.org_id ? { org_id: persona.org_id } : {}),
-      },
-    });
-  }
   const documents = new Map([
     ...fixtureSiteDocuments(manifest),
     ...buildCoreIdentityDocuments(manifest, credentials, now),
     ...buildRemoteApiKeyDocuments(manifest, env, now),
   ]);
-  const sitePath = `organizations/${manifest.core_fixture.owner_org_id}/sites/${manifest.core_fixture.site_id}`;
-  const existingSite = await services.firestore.get(sitePath);
-  if (existingSite?.hosting_config) {
-    documents.set(sitePath, {
-      ...documents.get(sitePath),
-      hosting_config: existingSite.hosting_config,
-    });
-  }
-  await services.firestore.setDocuments([...documents].map(([documentPath, data]) => ({ path: documentPath, data })));
+  const sitePath = coreSitePath(manifest);
+  await services.seed({
+    personas: remotePersonaAccounts(manifest, credentials),
+    // An already provisioned hosting configuration survives reseeding.
+    documents: [...documents].map(([documentPath, data]) => (
+      documentPath === sitePath ? { path: documentPath, data, preserve: ['hosting_config'] } : { path: documentPath, data }
+    )),
+  });
   return verifyRemotePersonas({ services, env, manifest });
 }
 
 export async function verifyRemotePersonas({ services, env, manifest = readPersonaManifest() }) {
   const credentials = remotePersonaCredentials(manifest, env);
+  const identityDocuments = buildCoreIdentityDocuments(manifest, credentials, () => new Date(0));
+  const apiKeyDocuments = buildRemoteApiKeyDocuments(manifest, env, () => new Date(0));
+  const sitePath = coreSitePath(manifest);
+  const pagePath = `${sitePath}/versions/main/pages/home`;
+  const inspection = await services.inspect({
+    personas: remotePersonaAccounts(manifest, credentials).map(({ name: _name, ...persona }) => persona),
+    paths: [...identityDocuments.keys(), ...apiKeyDocuments.keys(), sitePath, pagePath],
+  });
   const errors = [];
   for (const persona of corePersonas(manifest)) {
-    const user = await services.auth.get(persona.uid);
-    if (!user) {
-      errors.push(`${persona.id}: Auth user missing`);
+    const user = inspection.personas.find((candidate) => candidate.uid === persona.uid);
+    if (!user?.exists) {
+      errors.push(`${persona.id}: account missing`);
       continue;
     }
-    if (user.email !== credentials[persona.id].email) errors.push(`${persona.id}: email differs`);
-    if (user.customClaims?.e2e_persona !== persona.id || user.customClaims?.is_test_account !== true) {
-      errors.push(`${persona.id}: test claims differ`);
-    }
-    if ((user.customClaims?.org_id ?? null) !== persona.org_id) errors.push(`${persona.id}: org claim differs`);
-    try {
-      await services.auth.verifyPassword(credentials[persona.id].email, credentials[persona.id].password);
-    } catch {
-      errors.push(`${persona.id}: password login failed`);
-    }
+    if (user.email !== credentials[persona.id].email.toLowerCase()) errors.push(`${persona.id}: email differs`);
+    if (!user.testAccount) errors.push(`${persona.id}: test marker differs`);
+    if (!user.emailVerified) errors.push(`${persona.id}: email not confirmed`);
+    if (user.disabled) errors.push(`${persona.id}: account disabled`);
+    if (!user.passwordValid) errors.push(`${persona.id}: password login failed`);
   }
-  const identityDocuments = buildCoreIdentityDocuments(manifest, credentials, () => new Date(0));
-  for (const [documentPath, expected] of identityDocuments) {
-    const actual = await services.firestore.get(documentPath);
-    if (!actual) {
-      errors.push(`${documentPath}: missing`);
-      continue;
+  const compare = (expectedDocuments, keys) => {
+    for (const [documentPath, expected] of expectedDocuments) {
+      const actual = inspection.documents[documentPath];
+      if (!actual) {
+        errors.push(`${documentPath}: missing`);
+        continue;
+      }
+      for (const key of keys) {
+        if (key in expected && actual[key] !== expected[key]) errors.push(`${documentPath}: ${key} differs`);
+      }
     }
-    for (const key of ['role', 'firebase_uid', 'permission', 'owner_org_id', 'shared_with_org_id', 'site_id', 'roles_enforced']) {
-      if (key in expected && actual[key] !== expected[key]) errors.push(`${documentPath}: ${key} differs`);
-    }
-  }
-  const apiKeyDocuments = buildRemoteApiKeyDocuments(manifest, env, () => new Date(0));
-  for (const [documentPath, expected] of apiKeyDocuments) {
-    const actual = await services.firestore.get(documentPath);
-    if (!actual) {
-      errors.push(`${documentPath}: missing`);
-      continue;
-    }
-    for (const key of ['id', 'org_id', 'site_id', 'key_hash', 'is_test_credential']) {
-      if (key in expected && actual[key] !== expected[key]) errors.push(`${documentPath}: ${key} differs`);
-    }
-  }
-  const sitePath = `organizations/${manifest.core_fixture.owner_org_id}/sites/${manifest.core_fixture.site_id}`;
-  const pagePath = `${sitePath}/versions/main/pages/home`;
-  const site = await services.firestore.get(sitePath);
+  };
+  compare(identityDocuments, ['role', 'firebase_uid', 'permission', 'owner_org_id', 'shared_with_org_id', 'site_id', 'roles_enforced', 'org_id']);
+  compare(apiKeyDocuments, ['id', 'org_id', 'site_id', 'key_hash', 'is_test_credential']);
+  const site = inspection.documents[sitePath];
   if (!site) errors.push(`${sitePath}: missing`);
   else {
     if (site.slug !== manifest.core_fixture.site_id) errors.push(`${sitePath}: slug differs`);
     if (site.domain) errors.push(`${sitePath}: domain must be empty`);
   }
-  if (!await services.firestore.get(pagePath)) errors.push(`${pagePath}: missing`);
+  if (!inspection.documents[pagePath]) errors.push(`${pagePath}: missing`);
   if (errors.length) throw new Error(`Remote E2E persona verification failed:\n${errors.join('\n')}`);
-  return { projectId: services.projectId, personaCount: corePersonas(manifest).length };
+  return { target: services.target, personaCount: corePersonas(manifest).length };
 }
 
-export function resolveFirebasePersonaTarget(env) {
-  const rawServiceAccount = env.FIREBASE_SERVICE_ACCOUNT?.trim();
-  if (rawServiceAccount) {
-    let credentials;
-    try {
-      credentials = JSON.parse(rawServiceAccount);
-    } catch {
-      throw new Error('FIREBASE_SERVICE_ACCOUNT must contain valid JSON');
-    }
-    if (!credentials?.project_id) throw new Error('FIREBASE_SERVICE_ACCOUNT must contain a project_id');
-    return { projectId: credentials.project_id, credentialKind: 'service_account', credentials };
+/**
+ * The seeding endpoint of a remote target. On Typeroll Cloud staging this is
+ * the operator's token-gated `/api/e2e-personas` route, which forwards to the
+ * portal's internal operator API; the portal itself accepts seeding only with
+ * TYPEROLL_E2E_PERSONA_SEEDING=allow and only inside the E2E namespace.
+ */
+export function resolvePersonaEndpoint(env) {
+  const raw = env.TYPEROLL_E2E_SEED_URL?.trim();
+  if (!raw) throw new Error('TYPEROLL_E2E_SEED_URL must name the target\'s persona seeding endpoint');
+  let url;
+  try {
+    url = new URL(raw);
+  } catch {
+    throw new Error('TYPEROLL_E2E_SEED_URL must be a URL');
   }
-
-  const projectId = env.GOOGLE_CLOUD_PROJECT?.trim() || env.FIREBASE_PROJECT_ID?.trim();
-  if (!projectId) {
-    throw new Error(
-      'Set FIREBASE_SERVICE_ACCOUNT or use Application Default Credentials with GOOGLE_CLOUD_PROJECT',
-    );
-  }
-  return { projectId, credentialKind: 'application_default', credentials: null };
+  const local = url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname);
+  if (url.protocol !== 'https:' && !local) throw new Error('TYPEROLL_E2E_SEED_URL must use HTTPS');
+  if (url.username || url.password || url.search || url.hash) throw new Error('TYPEROLL_E2E_SEED_URL must not carry credentials or a query');
+  const token = env.TYPEROLL_E2E_SEED_TOKEN?.trim();
+  if (!token || token.length < 32) throw new Error('TYPEROLL_E2E_SEED_TOKEN must be at least 32 characters');
+  return { url: url.href, host: url.host, token };
 }
 
-export async function createFirebasePersonaServices(env) {
-  const target = resolveFirebasePersonaTarget(env);
-  const [{ initializeApp, cert, applicationDefault }, { getAuth }, { getFirestore }] = await Promise.all([
-    import('firebase-admin/app'), import('firebase-admin/auth'), import('firebase-admin/firestore'),
-  ]);
-  const credential = target.credentialKind === 'service_account'
-    ? cert(target.credentials)
-    : applicationDefault();
-  const app = initializeApp({ credential, projectId: target.projectId }, `typeroll-e2e-personas-${Date.now()}`);
-  const auth = getAuth(app);
-  const db = getFirestore(app);
-  db.settings({ ignoreUndefinedProperties: true });
-  const firebaseApiKey = env.TYPEROLL_E2E_FIREBASE_API_KEY?.trim();
-  if (!firebaseApiKey) throw new Error('TYPEROLL_E2E_FIREBASE_API_KEY is required');
+export function createEndpointPersonaServices(env, fetchImpl = fetch) {
+  const endpoint = resolvePersonaEndpoint(env);
+  const call = async (action, payload) => {
+    const response = await fetchImpl(endpoint.url, {
+      method: 'POST',
+      redirect: 'error',
+      headers: { Authorization: `Bearer ${endpoint.token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action, ...payload }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const text = await response.text();
+    let body = null;
+    try { body = JSON.parse(text); } catch { /* reported below */ }
+    if (response.status === 404) throw new Error(`Persona seeding is not available at ${endpoint.host} (missing route or wrong token)`);
+    if (!response.ok || !body) throw new Error(`Persona ${action} at ${endpoint.host} returned ${response.status}${body?.error ? `: ${body.error}` : ''}`);
+    return body;
+  };
   return {
-    projectId: target.projectId,
-    auth: {
-      upsert: async ({ uid, email, password, displayName, customClaims }) => {
-        try {
-          await auth.updateUser(uid, { email, password, displayName, emailVerified: true, disabled: false });
-        } catch (error) {
-          if (error?.code !== 'auth/user-not-found') throw error;
-          await auth.createUser({ uid, email, password, displayName, emailVerified: true, disabled: false });
-        }
-        await auth.setCustomUserClaims(uid, customClaims);
-      },
-      get: async (uid) => {
-        try {
-          const user = await auth.getUser(uid);
-          return { uid: user.uid, email: user.email, customClaims: user.customClaims };
-        } catch (error) {
-          if (error?.code === 'auth/user-not-found') return null;
-          throw error;
-        }
-      },
-      verifyPassword: async (email, password) => {
-        const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(firebaseApiKey)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, returnSecureToken: true }),
-          signal: AbortSignal.timeout(15_000),
-        });
-        if (!response.ok) throw new Error(`Firebase password verification returned ${response.status}`);
-      },
-    },
-    firestore: {
-      get: async (documentPath) => {
-        const snapshot = await db.doc(documentPath).get();
-        return snapshot.exists ? snapshot.data() : null;
-      },
-      setDocuments: async (documents) => {
-        for (let index = 0; index < documents.length; index += 400) {
-          const batch = db.batch();
-          for (const document of documents.slice(index, index + 400)) batch.set(db.doc(document.path), document.data);
-          await batch.commit();
-        }
-      },
-    },
+    target: endpoint.host,
+    seed: (request) => call('seed', request),
+    inspect: (request) => call('inspect', request),
   };
 }

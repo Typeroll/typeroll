@@ -7,11 +7,12 @@ import test from 'node:test';
 import {
   buildRemoteApiKeyDocuments,
   corePersonas,
+  createEndpointPersonaServices,
   readPersonaManifest,
   readSecurePersonaEnvFile,
   remotePersonaCredentials,
   remoteApiKeyCredential,
-  resolveFirebasePersonaTarget,
+  resolvePersonaEndpoint,
   seedLocalPersonas,
   seedRemotePersonas,
   validatePersonaManifest,
@@ -30,27 +31,43 @@ function remoteEnvironment(manifest) {
   return env;
 }
 
+// The seeding endpoint's contract: accounts keyed by uid, documents by path,
+// `preserve` fields kept from the stored document.
 function memoryServices() {
   const users = new Map();
   const documents = new Map();
   return {
     state: { users, documents },
     services: {
-      projectId: 'typeroll-self-host-e2e',
-      auth: {
-        upsert: async (user) => users.set(user.uid, structuredClone(user)),
-        get: async (uid) => users.has(uid) ? structuredClone(users.get(uid)) : null,
-        verifyPassword: async (email, password) => {
-          const user = [...users.values()].find((candidate) => candidate.email === email);
-          if (!user || user.password !== password) throw new Error('invalid credentials');
-        },
+      target: 'operator.e2e.example.test',
+      seed: async ({ personas, documents: records }) => {
+        for (const persona of personas) {
+          users.set(persona.uid, { ...structuredClone(persona), email: persona.email.toLowerCase(), testAccount: true, emailVerified: true, disabled: false });
+        }
+        for (const record of records) {
+          const data = structuredClone(record.data);
+          for (const field of record.preserve ?? []) {
+            if (documents.get(record.path)?.[field] !== undefined) data[field] = documents.get(record.path)[field];
+          }
+          documents.set(record.path, data);
+        }
       },
-      firestore: {
-        setDocuments: async (records) => {
-          for (const record of records) documents.set(record.path, structuredClone(record.data));
-        },
-        get: async (documentPath) => documents.has(documentPath) ? structuredClone(documents.get(documentPath)) : null,
-      },
+      inspect: async ({ personas, paths }) => ({
+        personas: personas.map((persona) => {
+          const user = users.get(persona.uid);
+          return {
+            persona: persona.persona,
+            uid: persona.uid,
+            exists: !!user,
+            email: user?.email ?? null,
+            emailVerified: user?.emailVerified === true,
+            disabled: user?.disabled === true,
+            testAccount: user?.testAccount === true && user?.persona === persona.persona,
+            passwordValid: user?.password === persona.password,
+          };
+        }),
+        documents: Object.fromEntries(paths.map((documentPath) => [documentPath, documents.has(documentPath) ? structuredClone(documents.get(documentPath)) : null])),
+      }),
     },
   };
 }
@@ -99,21 +116,36 @@ test('credential files must be private before they are parsed', () => {
   }
 });
 
-test('remote persona administration supports service-account and keyless ADC targets', () => {
+test('remote personas are seeded only through an HTTPS endpoint with a dedicated token', async () => {
+  const token = 't'.repeat(40);
   assert.deepEqual(
-    resolveFirebasePersonaTarget({ FIREBASE_SERVICE_ACCOUNT: JSON.stringify({ project_id: 'service-account-project' }) }),
-    {
-      projectId: 'service-account-project',
-      credentialKind: 'service_account',
-      credentials: { project_id: 'service-account-project' },
+    resolvePersonaEndpoint({ TYPEROLL_E2E_SEED_URL: 'https://operator.e2e.example.test/api/e2e-personas', TYPEROLL_E2E_SEED_TOKEN: token }),
+    { url: 'https://operator.e2e.example.test/api/e2e-personas', host: 'operator.e2e.example.test', token },
+  );
+  assert.throws(() => resolvePersonaEndpoint({ TYPEROLL_E2E_SEED_URL: 'http://operator.e2e.example.test/x', TYPEROLL_E2E_SEED_TOKEN: token }), /HTTPS/);
+  assert.throws(() => resolvePersonaEndpoint({ TYPEROLL_E2E_SEED_URL: 'https://operator.e2e.example.test/x?token=1', TYPEROLL_E2E_SEED_TOKEN: token }), /query/);
+  assert.throws(() => resolvePersonaEndpoint({ TYPEROLL_E2E_SEED_URL: 'https://operator.e2e.example.test/x', TYPEROLL_E2E_SEED_TOKEN: 'short' }), /at least 32/);
+  assert.throws(() => resolvePersonaEndpoint({}), /TYPEROLL_E2E_SEED_URL/);
+
+  const requests = [];
+  const services = createEndpointPersonaServices(
+    { TYPEROLL_E2E_SEED_URL: 'https://operator.e2e.example.test/api/e2e-personas', TYPEROLL_E2E_SEED_TOKEN: token },
+    async (url, init) => {
+      requests.push({ url, init });
+      return new Response(JSON.stringify({ personas: [], documents: {} }), { status: 200 });
     },
   );
-  assert.deepEqual(
-    resolveFirebasePersonaTarget({ GOOGLE_CLOUD_PROJECT: 'adc-project' }),
-    { projectId: 'adc-project', credentialKind: 'application_default', credentials: null },
+  assert.equal(services.target, 'operator.e2e.example.test');
+  await services.inspect({ personas: [], paths: ['organizations/e2e-core'] });
+  assert.equal(requests[0].init.headers.Authorization, `Bearer ${token}`);
+  assert.equal(requests[0].init.redirect, 'error');
+  assert.deepEqual(JSON.parse(requests[0].init.body), { action: 'inspect', personas: [], paths: ['organizations/e2e-core'] });
+
+  const refused = createEndpointPersonaServices(
+    { TYPEROLL_E2E_SEED_URL: 'https://operator.e2e.example.test/api/e2e-personas', TYPEROLL_E2E_SEED_TOKEN: token },
+    async () => new Response('Not found', { status: 404 }),
   );
-  assert.throws(() => resolveFirebasePersonaTarget({ FIREBASE_SERVICE_ACCOUNT: '{' }), /valid JSON/);
-  assert.throws(() => resolveFirebasePersonaTarget({}), /Application Default Credentials/);
+  await assert.rejects(refused.seed({ personas: [], documents: [] }), (error) => /missing route or wrong token/.test(error.message) && !error.message.includes(token));
 });
 
 test('local seeding is idempotent and produces the role and sharing baseline', () => {
@@ -136,7 +168,7 @@ test('local seeding is idempotent and produces the role and sharing baseline', (
   }
 });
 
-test('remote seeding upserts stable users, claims, documents, and verifies password login', async () => {
+test('remote seeding upserts stable accounts, membership indexes and documents, and verifies password login', async () => {
   const manifest = readPersonaManifest();
   const env = remoteEnvironment(manifest);
   const memory = memoryServices();
@@ -148,10 +180,11 @@ test('remote seeding upserts stable users, claims, documents, and verifies passw
   const second = await seedRemotePersonas({ services: memory.services, env, manifest });
   assert.equal(first.personaCount, 5);
   assert.deepEqual(second, first);
-  assert.equal(memory.state.users.get('typeroll-e2e-pending').customClaims.org_id, undefined);
-  assert.equal(memory.state.users.get('typeroll-e2e-owner').customClaims.is_test_account, true);
+  assert.equal(memory.state.users.get('typeroll-e2e-owner').name, 'E2E owner');
   assert.equal(memory.state.documents.get('organizations/e2e-core').roles_enforced, true);
   assert.equal(memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site/shares/e2e-viewer').permission, 'read');
+  assert.deepEqual(memory.state.documents.get('user_organizations/typeroll-e2e-editor/organizations/e2e-core'), { org_id: 'e2e-core' });
+  assert.equal(memory.state.documents.has('user_organizations/typeroll-e2e-pending'), false);
   assert.equal(memory.state.documents.get(`api_key_lookup/${'a'.repeat(12)}`).is_test_credential, true);
   assert.deepEqual(
     memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site').hosting_config,
@@ -161,6 +194,10 @@ test('remote seeding upserts stable users, claims, documents, and verifies passw
     },
   );
 
-  memory.state.users.get('typeroll-e2e-editor').customClaims.org_id = 'wrong-org';
-  await assert.rejects(verifyRemotePersonas({ services: memory.services, env, manifest }), /editor: org claim differs/);
+  memory.state.users.get('typeroll-e2e-editor').password = 'rotated elsewhere';
+  memory.state.documents.delete('user_organizations/typeroll-e2e-viewer/organizations/e2e-viewer');
+  await assert.rejects(
+    verifyRemotePersonas({ services: memory.services, env, manifest }),
+    /editor: password login failed[\s\S]*user_organizations\/typeroll-e2e-viewer\/organizations\/e2e-viewer: missing/,
+  );
 });
