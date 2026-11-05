@@ -50,7 +50,7 @@ beforeEach(async () => {
   _setAccountMailSenderForTests(async message => { mail.push(message); });
 });
 afterEach(() => {
-  for (const key of ['AUTH_SECRET', 'PORTAL_PUBLIC_URL', 'NODE_ENV', 'TYPEROLL_E2E_AUTH_SECRET'] as const) {
+  for (const key of ['AUTH_SECRET', 'PORTAL_PUBLIC_URL', 'NODE_ENV', 'TYPEROLL_E2E_AUTH_SECRET', 'TYPEROLL_LOCAL_E2E', 'STORE_JURISDICTION'] as const) {
     if (env[key] === undefined) delete process.env[key]; else process.env[key] = env[key];
   }
   _resetPortalAuthForTests();
@@ -127,9 +127,26 @@ describe('development and E2E identities', () => {
     expect(await getSession(requestCookies(new Map([['typeroll_session', 'dev']])))).toBeNull();
   });
 
+  it('uses the development user in the production Worker build only in local E2E mode', async () => {
+    delete process.env.AUTH_SECRET;
+    process.env.NODE_ENV = 'production';
+    process.env.TYPEROLL_LOCAL_E2E = 'allow';
+    process.env.STORE_JURISDICTION = 'none';
+    process.env.PORTAL_PUBLIC_URL = 'http://127.0.0.1:4322';
+    expect(isDevAuthEnabled()).toBe(true);
+    expect(await getSession(requestCookies(new Map()))).toMatchObject({ userId: 'dev-user', authSource: 'dev' });
+    process.env.STORE_JURISDICTION = 'eu';
+    expect(isDevAuthEnabled()).toBe(false);
+    process.env.STORE_JURISDICTION = 'none';
+    process.env.AUTH_SECRET = 'test-auth-secret-0123456789abcdef-0123456789';
+    expect(isDevAuthEnabled()).toBe(false);
+  });
+
   it('accepts a signed E2E persona only without accounts', async () => {
     delete process.env.AUTH_SECRET;
-    process.env.NODE_ENV = 'test';
+    process.env.TYPEROLL_LOCAL_E2E = 'allow';
+    process.env.STORE_JURISDICTION = 'none';
+    process.env.PORTAL_PUBLIC_URL = 'http://127.0.0.1:4322';
     process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
     const value = createE2ESessionCookie('owner');
     expect(await getSessionIdentity(requestCookies(new Map([['typeroll_session', value]])))).toMatchObject({ userId: 'typeroll-e2e-owner', authSource: 'e2e' });

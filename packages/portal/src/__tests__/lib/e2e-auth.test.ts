@@ -9,22 +9,22 @@ import {
   readE2ESessionCookie,
 } from '../../lib/e2e-auth';
 
-const previous = {
-  nodeEnv: process.env.NODE_ENV,
-  firebase: process.env.FIREBASE_SERVICE_ACCOUNT,
-  firebaseProjectId: process.env.FIREBASE_PROJECT_ID,
-  secret: process.env.TYPEROLL_E2E_AUTH_SECRET,
-};
+const KEYS = ['NODE_ENV', 'AUTH_SECRET', 'TYPEROLL_E2E_AUTH_SECRET', 'TYPEROLL_LOCAL_E2E', 'STORE_JURISDICTION', 'PORTAL_PUBLIC_URL'] as const;
+const previous = Object.fromEntries(KEYS.map(key => [key, process.env[key]]));
+
+/** The variables tests/e2e/start-worker.mjs gives the local Worker. */
+function localE2E(): void {
+  delete process.env.AUTH_SECRET;
+  process.env.TYPEROLL_LOCAL_E2E = 'allow';
+  process.env.STORE_JURISDICTION = 'none';
+  process.env.PORTAL_PUBLIC_URL = 'http://127.0.0.1:4322';
+  process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
+}
 
 afterEach(() => {
-  for (const [key, value] of [
-    ['NODE_ENV', previous.nodeEnv],
-    ['FIREBASE_SERVICE_ACCOUNT', previous.firebase],
-    ['FIREBASE_PROJECT_ID', previous.firebaseProjectId],
-    ['TYPEROLL_E2E_AUTH_SECRET', previous.secret],
-  ] as const) {
-    if (value === undefined) delete process.env[key];
-    else process.env[key] = value;
+  for (const key of KEYS) {
+    if (previous[key] === undefined) delete process.env[key];
+    else process.env[key] = previous[key];
   }
 });
 
@@ -43,11 +43,8 @@ describe('local E2E authentication', () => {
     }
   });
 
-  it('accepts only a signed known persona in an isolated non-Firebase process', () => {
-    process.env.NODE_ENV = 'test';
-    process.env.FIREBASE_SERVICE_ACCOUNT = '';
-    process.env.FIREBASE_PROJECT_ID = '';
-    process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
+  it('accepts only a signed known persona in local E2E mode', () => {
+    localE2E();
     const cookie = createE2ESessionCookie('editor');
     expect(isE2EAuthEnabled()).toBe(true);
     expect(matchesE2EAuthSecret('local-e2e-auth-secret-at-least-32-characters')).toBe(true);
@@ -58,10 +55,7 @@ describe('local E2E authentication', () => {
   });
 
   it('signs an unconfirmed-email variant that cannot be upgraded by editing the cookie', () => {
-    process.env.NODE_ENV = 'test';
-    process.env.FIREBASE_SERVICE_ACCOUNT = '';
-    process.env.FIREBASE_PROJECT_ID = '';
-    process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
+    localE2E();
     const unverified = createE2ESessionCookie('owner', { emailVerified: false });
     expect(readE2ESessionCookie(unverified)).toEqual({ ...E2E_SESSION_PERSONAS.owner, emailVerified: false });
     const [prefix, persona, , sig] = unverified.split('.');
@@ -71,17 +65,32 @@ describe('local E2E authentication', () => {
     expect(readE2ESessionCookie(`${prefix}.${persona}.other.${sig}`)).toBeNull();
   });
 
-  it('fails closed in production and whenever accounts are configured', () => {
-    process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
-    process.env.NODE_ENV = 'production';
-    delete process.env.AUTH_SECRET;
+  it('is enabled by local E2E mode regardless of NODE_ENV, which the Worker build fixes to production', () => {
+    localE2E();
+    for (const mode of ['production', 'test', undefined]) {
+      if (mode === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = mode;
+      expect(isE2EAuthEnabled()).toBe(true);
+    }
+  });
+
+  it.each([
+    ['without the explicit switch', () => { delete process.env.TYPEROLL_LOCAL_E2E; }],
+    ['with another switch value', () => { process.env.TYPEROLL_LOCAL_E2E = 'true'; }],
+    ['when accounts are configured', () => { process.env.AUTH_SECRET = 'real-auth-secret-0123456789abcdef-0123456789'; }],
+    ['with any AUTH_SECRET, even an unusable one', () => { process.env.AUTH_SECRET = 'short'; }],
+    ['in the EU store jurisdiction of a deployed Worker', () => { process.env.STORE_JURISDICTION = 'eu'; }],
+    ['without a store jurisdiction setting', () => { delete process.env.STORE_JURISDICTION; }],
+    ['on a public portal origin', () => { process.env.PORTAL_PUBLIC_URL = 'https://app.typeroll.com'; }],
+    ['on a look-alike loopback host', () => { process.env.PORTAL_PUBLIC_URL = 'http://127.0.0.1.example.test'; }],
+    ['without a portal origin', () => { delete process.env.PORTAL_PUBLIC_URL; }],
+    ['with a short secret', () => { process.env.TYPEROLL_E2E_AUTH_SECRET = 'too-short'; }],
+    ['under NODE_ENV=test alone', () => { delete process.env.TYPEROLL_LOCAL_E2E; process.env.NODE_ENV = 'test'; }],
+  ])('fails closed %s', (_name, change) => {
+    localE2E();
+    const cookie = createE2ESessionCookie('owner');
+    change();
     expect(isE2EAuthEnabled()).toBe(false);
-    delete process.env.NODE_ENV;
-    expect(isE2EAuthEnabled()).toBe(false);
-    process.env.NODE_ENV = 'test';
-    expect(isE2EAuthEnabled()).toBe(true);
-    process.env.AUTH_SECRET = 'real-auth-secret-0123456789abcdef-0123456789';
-    expect(isE2EAuthEnabled()).toBe(false);
-    delete process.env.AUTH_SECRET;
+    expect(matchesE2EAuthSecret('local-e2e-auth-secret-at-least-32-characters')).toBe(false);
+    expect(readE2ESessionCookie(cookie)).toBeNull();
   });
 });

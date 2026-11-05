@@ -43,8 +43,8 @@ const call = async (handler: unknown, context: Record<string, unknown>) =>
 beforeEach(async () => {
   vi.clearAllMocks();
   process.env.NODE_ENV = 'test';
-  process.env.FIREBASE_SERVICE_ACCOUNT = '';
-  process.env.FIREBASE_PROJECT_ID = '';
+  process.env.TYPEROLL_LOCAL_E2E = 'allow';
+  process.env.STORE_JURISDICTION = 'none';
   process.env.TYPEROLL_E2E_AUTH_SECRET = 'local-e2e-auth-secret-at-least-32-characters';
   process.env.PORTAL_PUBLIC_URL = PORTAL;
   process.env.MCP_OAUTH_SIGNING_KEY = 'unit-test-mcp-signing-secret-at-least-32-characters';
@@ -57,7 +57,7 @@ beforeEach(async () => {
   cookieValue = createE2ESessionCookie('owner', { emailVerified: false });
 });
 afterEach(() => {
-  for (const key of ['NODE_ENV', 'FIREBASE_SERVICE_ACCOUNT', 'FIREBASE_PROJECT_ID', 'TYPEROLL_E2E_AUTH_SECRET', 'PORTAL_PUBLIC_URL', 'MCP_OAUTH_SIGNING_KEY'] as const) {
+  for (const key of ['NODE_ENV', 'TYPEROLL_LOCAL_E2E', 'STORE_JURISDICTION', 'TYPEROLL_E2E_AUTH_SECRET', 'PORTAL_PUBLIC_URL', 'MCP_OAUTH_SIGNING_KEY'] as const) {
     if (env[key] === undefined) delete process.env[key]; else process.env[key] = env[key];
   }
 });
@@ -125,5 +125,6 @@ it('offers only resend (rate limited) and re-check to the unconfirmed identity',
   expect(crossSite.status).toBe(403);
   cookieValue = '';
   process.env.NODE_ENV = 'production';
+  delete process.env.TYPEROLL_LOCAL_E2E;
   expect((await call(checkEmail, { request: post('/api/auth/verification-status') })).status).toBe(401);
 });

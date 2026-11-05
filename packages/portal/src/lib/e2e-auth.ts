@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { AstroCookies } from 'astro';
 import { isIdentityConfigured } from './identity/portal-auth';
+import { isLocalE2EMode } from './local-e2e';
 
 export const E2E_SESSION_PERSONAS = {
   owner: { userId: 'typeroll-e2e-owner', email: 'owner@e2e.typeroll.local', orgId: 'e2e-core', displayName: 'E2E owner' },
@@ -23,8 +24,9 @@ function secret(): string | null {
   return value && value.length >= 32 ? value : null;
 }
 
+/** Only in local E2E mode (lib/local-e2e.ts), never on a portal with accounts. */
 export function isE2EAuthEnabled(): boolean {
-  return process.env.NODE_ENV === 'test' && !isIdentityConfigured() && secret() !== null;
+  return isLocalE2EMode() && !isIdentityConfigured() && secret() !== null;
 }
 
 export function matchesE2EAuthSecret(supplied: string | null): boolean {

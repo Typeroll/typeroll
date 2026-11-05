@@ -23,6 +23,7 @@ import { resolveOrganizationSession, clearOrganization } from './organization-se
 import { readE2ESessionCookie } from './e2e-auth';
 import { getPortalAuth, isIdentityConfigured } from './identity/portal-auth';
 import { PORTAL_COOKIE_PREFIX } from './identity/constants';
+import { isLocalE2EMode } from './local-e2e';
 
 export interface Session {
   userId: string;
@@ -65,8 +66,13 @@ export function isAccountSignInConfigured(): boolean {
   return isIdentityConfigured();
 }
 
+/**
+ * The development user: outside production builds, and in the production
+ * Worker build only in local E2E mode (lib/local-e2e.ts), whose suite still
+ * drives most specs as that user.
+ */
 export function isDevAuthEnabled(): boolean {
-  return process.env.NODE_ENV !== 'production' && !isIdentityConfigured();
+  return (process.env.NODE_ENV !== 'production' || isLocalE2EMode()) && !isIdentityConfigured();
 }
 
 /**

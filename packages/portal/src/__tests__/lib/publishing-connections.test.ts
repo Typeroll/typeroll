@@ -504,6 +504,8 @@ describe('publishing account routes', () => {
 
   it('rejects signed-in users without an organization', async () => {
     vi.stubEnv('TYPEROLL_E2E_AUTH_SECRET', 'synthetic-e2e-test-key-with-at-least-32chars');
+    vi.stubEnv('TYPEROLL_LOCAL_E2E', 'allow');
+    vi.stubEnv('STORE_JURISDICTION', 'none');
     const context = routeContext();
     context.cookies.get = vi.fn(() => ({ value: createE2ESessionCookie('pending') })) as any;
     expect((await call(GET, context)).status).toBe(403);
