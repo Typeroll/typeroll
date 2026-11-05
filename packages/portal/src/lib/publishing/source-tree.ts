@@ -2,13 +2,26 @@ import { ConnectionError } from './connections';
 import { pagesRedirectsFile } from '@typeroll/shared';
 import { publicationContentFiles, stableJson } from '../../../../../scripts/fixtures/static-publication/content.mjs';
 import { mapPublicationParts } from './parallel';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { digest } from './providers.mjs';
 import { getStore } from '../datastore';
 
 interface PublicationTemplate { format: string; version: string; files: Record<string, string> }
 const templates = new Map<string, PublicationTemplate>();
+
+/**
+ * Reads this release's frozen renderer (scripts/build-static-publication-template.mjs).
+ * The Worker registers a loader that reads its static asset through ASSETS;
+ * local tooling falls back to the file in the repository.
+ */
+let loadBundledTemplate: () => Promise<string> = async () => {
+  const fs = await import('node:fs/promises');
+  const path = await import('node:path');
+  return fs.readFile(process.env.TYPEROLL_PUBLICATION_TEMPLATE || path.resolve(process.cwd(), '../../publication-template.json'), 'utf8');
+};
+
+export function setPublicationTemplateLoader(loader: () => Promise<string>): void {
+  loadBundledTemplate = loader;
+}
 
 /** Keep each renderer immutable across process restarts and later Core upgrades. */
 async function templateFor(coreCommit: string): Promise<PublicationTemplate> {
@@ -19,8 +32,7 @@ async function templateFor(coreCommit: string): Promise<PublicationTemplate> {
   let metadata = await store.getDoc<{ count: number; digest: string }>(root);
   if (!metadata) {
     if (coreCommit !== process.env.TYPEROLL_SOURCE_SHA) throw new Error('The original publication renderer is unavailable. Restore its frozen template before preparing this publication.');
-    const location = process.env.TYPEROLL_PUBLICATION_TEMPLATE || path.resolve(process.cwd(), '../../publication-template.json');
-    const text = await fs.readFile(location, 'utf8');
+    const text = await loadBundledTemplate();
     const count = Math.ceil(text.length / 120000);
     if (count > 200) throw new Error('Publication renderer exceeds the template limit');
     await mapPublicationParts(Array.from({ length: count }, (_, i) => i), index => store.createDocIfMissing(`${root}/chunks/${index}`, { data: text.slice(index * 120000, (index + 1) * 120000) }));

@@ -5,6 +5,7 @@
 import { DurableObject, WorkerEntrypoint, env } from 'cloudflare:workers';
 import { handle } from '@astrojs/cloudflare/handler';
 import { setRuntimeStore } from './lib/datastore';
+import { setPublicationTemplateLoader } from './lib/publishing/source-tree';
 import { cloudflareMigrationTarget, cloudflareStore, storeObject, type StoreEnv } from './lib/runtime/cloudflare-store';
 import { runMigrationStep, type MigrationBucket } from './lib/migration/worker-run';
 import { getPortalAuth } from './lib/identity/portal-auth';
@@ -14,6 +15,13 @@ import { drainObjectOutbox, sweepScheduledObjects } from './lib/scheduling/sweep
 import { createOperatorApi, type OperatorApiMethods } from './lib/operator-api';
 
 setRuntimeStore(() => cloudflareStore(env as unknown as StoreEnv));
+// This release's frozen publication renderer, shipped as a static asset.
+setPublicationTemplateLoader(async () => {
+  const assets = (env as unknown as { ASSETS: { fetch(request: Request): Promise<Response> } }).ASSETS;
+  const response = await assets.fetch(new Request('https://assets.invalid/_typeroll/publication-template.json'));
+  if (!response.ok) throw new Error('This release has no bundled publication renderer');
+  return response.text();
+});
 
 interface PortalEnv extends StoreEnv {
   /** EU-jurisdiction bucket holding cutover exports and checkpoints. */

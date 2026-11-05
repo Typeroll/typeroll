@@ -11,7 +11,7 @@
 // `wrangler versions upload`, which never rebundles (no_bundle: true). Forms is
 // the same bundle deployed as a second script with SERVICE_ROLE=forms.
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -171,7 +171,14 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const [action] = positionals;
   if (action === 'build') {
     if (!values.out) throw Error('Usage: release-worker-bundle.mjs build --out DIR [--skip-build]');
-    if (!values['skip-build']) run('npm', ['run', 'build', '--workspace=@typeroll/portal']);
+    if (!values['skip-build']) {
+      // The frozen publication renderer travels with the Worker as a static asset.
+      run(process.execPath, [path.join(root, 'scripts/build-static-publication-template.mjs')]);
+      run('npm', ['run', 'build', '--workspace=@typeroll/portal']);
+    }
+    if (!existsSync(path.join(root, 'packages/portal/dist/client/_typeroll/publication-template.json'))) {
+      throw Error('The build output has no _typeroll/publication-template.json; run scripts/build-static-publication-template.mjs before building the portal');
+    }
     const facts = releaseFacts();
     const { tarball, descriptor, excluded } = buildBundle({ distDirectory: path.join(root, 'packages/portal/dist'), identity: buildIdentity(), facts });
     const out = path.resolve(values.out);
