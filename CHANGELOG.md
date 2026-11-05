@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.2 (candidate, MCP 0.45.117)
+
+- GitHub publishing works from the Workers runtime: requests to GitHub carry a
+  `User-Agent`, which GitHub requires and Workers' fetch does not add.
+- The remote target contract compares the expected digest with the served
+  `bundle_digest`.
+
 ## 0.3.1 (candidate, MCP 0.45.117)
 
 - Outbound calls from the portal and Forms Workers no longer fail before they
