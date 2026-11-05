@@ -52,6 +52,7 @@ import { recordCustomerCompute } from './compute-cost';
 import { readEngineConfiguration, type BuildProvider } from '../builds/state';
 import { selectedBuildProvider } from '../builds/selection';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
+import { redactFailureText } from './http';
 import { prepareEngineForBuild, engineUpdateRetryAllowed, type EngineUpdateRecord } from '../builds/auto-update';
 import type { BuildDiagnostic } from '../builds/diagnostics.mjs';
 import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
@@ -931,7 +932,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes, provider_reason: error.reason, provider_operation: error.operation, provider_error_types: error.errorTypes } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
-    console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure }));
+    // An unclassified error reaches the job only as publication_internal_error: log what it was (ECH7F4UqvST8aaG2uMrB).
+    const errorCode = (error as { code?: unknown } | null)?.code;
+    const internal = failure.code === 'publication_internal_error' && error instanceof Error ? { error_name: error.name, error_message: redactFailureText(error.message),
+      ...(typeof errorCode === 'string' || typeof errorCode === 'number' ? { error_code: errorCode } : {}),
+      ...(error.stack ? { stack: redactFailureText(error.stack.split('\n').slice(1, 8).join('\n')) } : {}) } : {};
+    console.error(JSON.stringify({ event: 'customer_publication_failed', org_id: args.orgId, site_id: args.siteId, job_id: args.jobId, ...failure, ...internal }));
     const message = error instanceof ProviderError && error.provider === 'Cloudflare' && failure.stage === 'creating Cloudflare Pages project'
       ? projectCreationMessage(error, failedJob?.git_publication)
       : error instanceof DerivationError ? `An app could not prepare publication data (${error.provider}). ${error.message} The live site has not changed.`

@@ -2,6 +2,13 @@
 
 ## 0.2.156 (candidate, MCP 0.45.115)
 
+- A link style's `visited` colour now reaches published sites. The publication
+  projection copied `hover` but dropped `visited`, so the `:visited` rule from
+  0.2.153 appeared in previews but never in published CSS. A test now fails when
+  a stored style field is missing from the publication.
+- A publication that stops with `publication_internal_error` now logs the
+  error's name, message and a short stack (signed URL queries and bearer tokens
+  removed), so the cause can be found from the job ID.
 - The organization build engine can keep itself current. With **Keep the build
   engine updated automatically** on the Builds card (MCP
   `set_organization_build_auto_update`), a publication that finds an outdated

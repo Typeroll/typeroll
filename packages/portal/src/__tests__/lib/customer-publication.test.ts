@@ -499,6 +499,18 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   expect(mocks.push).toHaveBeenCalledTimes(1); expect(mocks.enqueue).toHaveBeenCalledTimes(1); expect(mocks.upload).toHaveBeenCalledTimes(1);
   expect(mocks.push.mock.calls[0][1].files['publication.json']).not.toContain('New unsaved');
 });
+it('logs what an unclassified error was, without secrets, when a publication stops with publication_internal_error', async () => {
+  const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+  fonts.freeze.mockRejectedValue(new TypeError('Cannot read properties of undefined (reading \'family\') at https://fonts.example.invalid/css?key=do-not-log'));
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed' });
+  const entry = logged.mock.calls.map(call => { try { return JSON.parse(String(call[0])); } catch { return null; } }).find(value => value?.event === 'customer_publication_failed');
+  expect(entry).toMatchObject({ code: 'publication_internal_error', error_name: 'TypeError', error_message: expect.stringContaining("reading 'family'") });
+  expect(entry.stack).toEqual(expect.any(String));
+  expect(JSON.stringify(entry)).not.toContain('do-not-log');
+  logged.mockRestore();
+});
+
 describe('keeping the organization build engine current', () => {
   const enginePath = 'organizations/org/publishing_private/build_engine';
   const outdated = { status: 'ready', static_verification: true, media_preparation: true, publication_validation: 1, provider: 'cloudflare', revision: 'engine-1', account_id: 'a'.repeat(32), engine_source_sha256: 'older-source' };
