@@ -12,3 +12,9 @@ it('exports an OperatorApi entrypoint delegating every operator API method', () 
   expect(source).toMatch(/export class Scheduler extends WorkerEntrypoint/);
   expect(source).toMatch(/async scheduled\(/);
 });
+
+it('removes expired sign-in records from the Cron handler', () => {
+  const source = fs.readFileSync(path.resolve(__dirname, '../../worker.ts'), 'utf8');
+  const scheduled = source.slice(source.indexOf('async scheduled('));
+  expect(scheduled).toMatch(/removeExpiredAuthRecords\(getStore\(\)\)/);
+});

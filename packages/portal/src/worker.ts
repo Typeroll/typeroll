@@ -4,7 +4,8 @@
 
 import { DurableObject, WorkerEntrypoint, env } from 'cloudflare:workers';
 import { handle } from '@astrojs/cloudflare/handler';
-import { setRuntimeStore } from './lib/datastore';
+import { getStore, setRuntimeStore } from './lib/datastore';
+import { removeExpiredAuthRecords } from './lib/identity/retention';
 import { setPublicationTemplateLoader } from './lib/publishing/source-tree';
 import { setStoreTransferRuntime } from './lib/runtime/store-transfer';
 import { cloudflareMigrationTarget, cloudflareStore, storeObject, type StoreEnv } from './lib/runtime/cloudflare-store';
@@ -110,5 +111,9 @@ export default {
   /** Safety net every 5 minutes: wake objects whose alarm is overdue. */
   async scheduled(_controller, workerEnv, ctx) {
     ctx.waitUntil(sweepScheduledObjects(object => (storeObject(workerEnv as unknown as StoreEnv, object) as unknown as { wake(): Promise<unknown> }).wake()));
+    // Housekeeping of Typeroll's own sign-in records (never a check of a site).
+    ctx.waitUntil(removeExpiredAuthRecords(getStore()).catch(error => {
+      console.error('[auth-retention] failed:', error instanceof Error ? error.message : 'unknown error');
+    }));
   },
 } satisfies ExportedHandler<PortalEnv>;
