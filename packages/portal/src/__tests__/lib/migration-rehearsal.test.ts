@@ -313,3 +313,61 @@ describe('import and read-compare', () => {
     await expect(importIdentityExport(auth, '{}')).rejects.toThrow(/users/);
   });
 });
+
+describe('cutover import inside the Worker', () => {
+  // The same run the runbook describes, through the operator-driven steps and
+  // an in-memory stand-in for the EU migration bucket.
+  class MemoryBucket {
+    readonly objects = new Map<string, Uint8Array>();
+    putBytes(key: string, bytes: Uint8Array) { this.objects.set(key, bytes); }
+    async put(key: string, value: string) { this.objects.set(key, new TextEncoder().encode(value)); }
+    async head(key: string) { const o = this.objects.get(key); return o ? { size: o.length } : null; }
+    async get(key: string, options?: { range: { offset: number; length: number } }) {
+      const o = this.objects.get(key);
+      if (!o) return null;
+      const bytes = options ? o.subarray(options.range.offset, options.range.offset + options.range.length) : o;
+      return { arrayBuffer: async () => bytes.slice().buffer };
+    }
+  }
+
+  it('verifies, imports in steps, imports users and compares with zero differences', async () => {
+    const { runMigrationStep } = await import('../../lib/migration/worker-run');
+    const db = seed();
+    const lines: string[] = [];
+    const manifest = await exportStore(firestoreSource(db, { label: 'firestore:test' }), line => { lines.push(line); });
+    const bucket = new MemoryBucket();
+    bucket.putBytes('run1/store.ndjson', new TextEncoder().encode(lines.map(l => `${l}\n`).join('')));
+    await bucket.put('run1/store.manifest.json', JSON.stringify(manifest));
+    await bucket.put('run1/users.json', JSON.stringify({ users: [{ localId: 'u1', email: 'owner@example.test', emailVerified: true }] }));
+    const target = localShardedTarget(dir);
+    const auth = createPortalAuth({ secret: 'test-auth-secret-0123456789abcdef-0123456789', baseURL: 'https://portal.example.test', store: () => target.store });
+    const deps = { bucket, target, auth: () => auth, enabled: true };
+
+    await expect(runMigrationStep({ ...deps, enabled: false }, { run: 'run1', action: 'status' })).rejects.toThrow(/not enabled/);
+    await expect(runMigrationStep(deps, { run: 'run1', action: 'import' })).rejects.toThrow(/Verify the export/);
+    expect((await runMigrationStep(deps, { run: 'run1', action: 'verify' })).verify).toMatchObject({ ok: true, problems: [] });
+    let status;
+    do status = await runMigrationStep(deps, { run: 'run1', action: 'import', maxBytes: 512 });
+    while (!status.import!.done);
+    expect(importFailed(status.import!.report)).toBe(false);
+    expect((await runMigrationStep(deps, { run: 'run1', action: 'identity' })).identity).toMatchObject({ users: 1, created: 1 });
+    do status = await runMigrationStep(deps, { run: 'run1', action: 'compare', maxBytes: 512 });
+    while (!status.compare!.done);
+    expect(compareFailed(status.compare!.report)).toBe(false);
+    expect(await target.store.getDoc('auth_user/u1')).toMatchObject({ email: 'owner@example.test' });
+  });
+
+  it('refuses a damaged export and unsafe run names', async () => {
+    const { runMigrationStep } = await import('../../lib/migration/worker-run');
+    const db = seed();
+    const lines: string[] = [];
+    const manifest = await exportStore(firestoreSource(db, { label: 'firestore:test' }), line => { lines.push(line); });
+    const bucket = new MemoryBucket();
+    bucket.putBytes('run2/store.ndjson', new TextEncoder().encode(lines.slice(1).map(l => `${l}\n`).join('')));
+    await bucket.put('run2/store.manifest.json', JSON.stringify(manifest));
+    const deps = { bucket, target: localShardedTarget(dir), auth: () => null, enabled: true };
+    expect((await runMigrationStep(deps, { run: 'run2', action: 'verify' })).verify?.ok).toBe(false);
+    await expect(runMigrationStep(deps, { run: 'run2', action: 'import' })).rejects.toThrow(/Verify the export/);
+    await expect(runMigrationStep(deps, { run: '../x', action: 'status' })).rejects.toThrow(/Invalid run/);
+  });
+});

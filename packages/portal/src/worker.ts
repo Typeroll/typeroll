@@ -5,7 +5,9 @@
 import { DurableObject, WorkerEntrypoint, env } from 'cloudflare:workers';
 import { handle } from '@astrojs/cloudflare/handler';
 import { setRuntimeStore } from './lib/datastore';
-import { cloudflareStore, storeObject, type StoreEnv } from './lib/runtime/cloudflare-store';
+import { cloudflareMigrationTarget, cloudflareStore, storeObject, type StoreEnv } from './lib/runtime/cloudflare-store';
+import { runMigrationStep, type MigrationBucket } from './lib/migration/worker-run';
+import { getPortalAuth } from './lib/identity/portal-auth';
 import { scheduledDocumentStore, type ScheduledDelivery, type ScheduledDocumentStore } from './lib/store/object-scheduler';
 import { deliverScheduledWork } from './lib/scheduling/worker';
 import { drainObjectOutbox, sweepScheduledObjects } from './lib/scheduling/sweep';
@@ -14,6 +16,10 @@ import { createOperatorApi, type OperatorApiMethods } from './lib/operator-api';
 setRuntimeStore(() => cloudflareStore(env as unknown as StoreEnv));
 
 interface PortalEnv extends StoreEnv {
+  /** EU-jurisdiction bucket holding cutover exports and checkpoints. */
+  MIGRATION?: MigrationBucket;
+  /** `allow` only during the cutover window. */
+  TYPEROLL_MIGRATION?: string;
   /** Self service binding to the `Scheduler` entrypoint below. */
   SCHEDULER: { deliver(delivery: ScheduledDelivery): Promise<void>; drainOutbox(object: string): Promise<number> };
 }
@@ -60,7 +66,12 @@ export class Scheduler extends WorkerEntrypoint<PortalEnv> {
  * has no route on the internet.
  */
 export class OperatorApi extends WorkerEntrypoint<PortalEnv> implements OperatorApiMethods {
-  readonly #api = createOperatorApi();
+  readonly #api = createOperatorApi({
+    migration: this.env.MIGRATION ? request => runMigrationStep({
+      bucket: this.env.MIGRATION!, target: cloudflareMigrationTarget(this.env), auth: () => getPortalAuth(),
+      enabled: this.env.TYPEROLL_MIGRATION === 'allow',
+    }, request) : undefined,
+  });
   describe() { return this.#api.describe(); }
   getDocument(...args: Parameters<OperatorApiMethods['getDocument']>) { return this.#api.getDocument(...args); }
   getDocuments(...args: Parameters<OperatorApiMethods['getDocuments']>) { return this.#api.getDocuments(...args); }
@@ -72,6 +83,7 @@ export class OperatorApi extends WorkerEntrypoint<PortalEnv> implements Operator
   revokePersonCredentials(...args: Parameters<OperatorApiMethods['revokePersonCredentials']>) { return this.#api.revokePersonCredentials(...args); }
   seedE2EPersonas(...args: Parameters<OperatorApiMethods['seedE2EPersonas']>) { return this.#api.seedE2EPersonas(...args); }
   inspectE2EPersonas(...args: Parameters<OperatorApiMethods['inspectE2EPersonas']>) { return this.#api.inspectE2EPersonas(...args); }
+  runMigrationStep(...args: Parameters<OperatorApiMethods['runMigrationStep']>) { return this.#api.runMigrationStep(...args); }
 }
 
 export default {

@@ -17,10 +17,12 @@
 import { DATA_SCHEMA_VERSION } from '@typeroll/shared';
 import { getStore, type ReadWriteStore } from '../datastore';
 import { getPortalAuth, type PortalAuth } from '../identity/portal-auth';
-import { OPERATOR_API_VERSION, type OperatorApiMethods } from './contract';
+import { OPERATOR_API_VERSION, OperatorApiError, type OperatorApiMethods } from './contract';
 import { OperatorDocuments } from './documents';
 import { OperatorPeople } from './people';
 import { OperatorPersonas } from './personas';
+
+import type { MigrationStatus, MigrationStepRequest } from '../migration/worker-run';
 
 export * from './contract';
 export { commitScope, documentAccess } from './paths';
@@ -30,6 +32,8 @@ export interface OperatorApiDeps {
   auth?: () => PortalAuth | null;
   env?: Record<string, string | undefined>;
   now?: () => Date;
+  /** Cutover import steps; present only in the Worker when the migration bucket is bound. */
+  migration?: (request: MigrationStepRequest) => Promise<MigrationStatus>;
 }
 
 export function createOperatorApi(deps: OperatorApiDeps = {}): OperatorApiMethods {
@@ -51,5 +55,9 @@ export function createOperatorApi(deps: OperatorApiDeps = {}): OperatorApiMethod
     revokePersonCredentials: id => people.revokePersonCredentials(id),
     seedE2EPersonas: request => personas.seedE2EPersonas(request),
     inspectE2EPersonas: request => personas.inspectE2EPersonas(request),
+    runMigrationStep: async request => {
+      if (!deps.migration) throw new OperatorApiError('not_enabled', 'The migration bucket is not bound on this deployment');
+      return deps.migration(request);
+    },
   };
 }

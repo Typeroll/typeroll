@@ -18,6 +18,11 @@
       { "name": "STORE", "class_name": "DocumentStore" }
     ]
   },
+  // Cutover exports and checkpoints (runbook). Steps run only with
+  // TYPEROLL_MIGRATION=allow.
+  "r2_buckets": [
+    { "binding": "MIGRATION", "bucket_name": "typeroll-migration", "jurisdiction": "eu" }
+  ],
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["DocumentStore"] }
   ],

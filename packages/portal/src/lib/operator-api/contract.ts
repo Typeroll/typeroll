@@ -1,3 +1,4 @@
+import type { MigrationStatus, MigrationStepRequest } from '../migration/worker-run';
 // The narrow internal API that the private Typeroll Cloud operator uses on
 // Cloudflare instead of writing Core data directly.
 //
@@ -122,12 +123,14 @@ export interface OperatorApiMethods {
   revokePersonCredentials(id: string): Promise<PersonRecord | null>;
   seedE2EPersonas(request: PersonaSeedRequest): Promise<PersonaInspection>;
   inspectE2EPersonas(request: PersonaInspectRequest): Promise<PersonaInspection>;
+  /** One bounded step of the cutover data import (runbook steps 5–6). */
+  runMigrationStep(request: MigrationStepRequest): Promise<MigrationStatus>;
 }
 
 export const OPERATOR_API_METHOD_NAMES = [
   'describe', 'getDocument', 'getDocuments', 'listDocuments', 'commit',
   'listPeople', 'getPerson', 'updatePerson', 'revokePersonCredentials',
-  'seedE2EPersonas', 'inspectE2EPersonas',
+  'seedE2EPersonas', 'inspectE2EPersonas', 'runMigrationStep',
 ] as const satisfies ReadonlyArray<keyof OperatorApiMethods>;
 
 export const MAX_PAGE = 500;

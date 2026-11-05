@@ -36,3 +36,9 @@ export function lazyObject(env: StoreEnv, name: string): DocumentStoreRpc {
 export function cloudflareStore(env: StoreEnv): ShardedStore {
   return new ShardedStore({ transport: name => durableObjectTransport(lazyObject(env, name) as never) }, generateDocId);
 }
+
+/** The store and its object transports, as the cutover import addresses objects directly. */
+export function cloudflareMigrationTarget(env: StoreEnv) {
+  const transport = (name: string) => durableObjectTransport(lazyObject(env, name) as never);
+  return { store: new ShardedStore({ transport }, generateDocId), transport };
+}
