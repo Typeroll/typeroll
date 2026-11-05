@@ -1,5 +1,6 @@
 import { isSecretCryptoConfigured } from '../secret-crypto';
 import { ConnectionError } from './connections';
+import { isLoopbackUrl } from '../local-e2e';
 
 export const CALLBACK_PATH = '/api/orgs/publishing/github/callback';
 const SLUG = /^[a-z0-9-]+$/;
@@ -21,7 +22,7 @@ export function githubAppConfiguration() {
   let url: URL;
   try { url = new URL(config.origin); } catch { throw new ConnectionError('Invalid publisher callback configuration', 503, 'publisher_app_misconfigured'); }
   if (url.username || url.password || url.search || url.hash || url.pathname !== '/' ||
-      (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) {
+      (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackUrl(url)))) {
     throw new ConnectionError('Invalid publisher callback configuration', 503, 'publisher_app_misconfigured');
   }
   return { ...config, origin: url.origin, callback: `${url.origin}${CALLBACK_PATH}` };
