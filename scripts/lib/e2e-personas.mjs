@@ -200,13 +200,17 @@ function fixtureDocumentPath(fixtureRoot, documentPath) {
   return absolute;
 }
 
+/** The documents that give a local store the Core personas and their fixture site. */
+export function localPersonaDocuments({ manifest = readPersonaManifest(), now = () => new Date() } = {}) {
+  return new Map([
+    ...fixtureSiteDocuments(manifest),
+    ...buildCoreIdentityDocuments(manifest, localPersonaCredentials(manifest), now),
+  ]);
+}
+
 export function seedLocalPersonas({ fixtureRoot, manifest = readPersonaManifest(), now = () => new Date() }) {
   if (!fixtureRoot) throw new Error('A local E2E fixture root is required');
-  const credentials = localPersonaCredentials(manifest);
-  const documents = new Map([
-    ...fixtureSiteDocuments(manifest),
-    ...buildCoreIdentityDocuments(manifest, credentials, now),
-  ]);
+  const documents = localPersonaDocuments({ manifest, now });
   for (const [documentPath, data] of documents) {
     const output = fixtureDocumentPath(fixtureRoot, documentPath);
     fs.mkdirSync(path.dirname(output), { recursive: true });
