@@ -151,3 +151,20 @@ describe('SQL filter pushdown', () => {
     expect(await ids({ filters: [{ field: 'other', op: '==', value: true }] })).toEqual(['d']);
   });
 });
+
+describe('document limits on the SQL store', () => {
+  it('refuses oversize, too deep and circular documents with a named 422 before writing', async () => {
+    const store = new SqlStore(localTransport(new SqlDocumentEngine(nodeSqliteDriver())), () => `id${++counter}`);
+    const big = { text: 'x'.repeat(2_000_000) };
+    await expect(store.setDoc('pages/big', big)).rejects.toMatchObject({ status: 422, code: 'storage_document_too_large' });
+    let deep: Record<string, unknown> = {};
+    const root = deep;
+    for (let i = 0; i < 120; i++) { const next = {}; deep.child = next; deep = next; }
+    await expect(store.setDoc('pages/deep', root)).rejects.toMatchObject({ code: 'storage_document_too_deep' });
+    const circular: Record<string, unknown> = {}; circular.self = circular;
+    await expect(store.setDoc('pages/loop', circular)).rejects.toMatchObject({ code: 'storage_document_invalid' });
+    expect(await store.getDoc('pages/big')).toBeNull();
+    await store.setDoc('pages/ok', { blocks: [{ slots: [[{ text: 'fine' }]] }] });
+    expect(await store.getDoc('pages/ok')).not.toBeNull();
+  });
+});

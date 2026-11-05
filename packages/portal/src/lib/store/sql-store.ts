@@ -9,6 +9,7 @@
 import { runReadOnly, type ConditionalEffect, type ReadWriteStore } from '../datastore';
 import { notifyScheduledWrites, scheduledIndexWrites, type IndexWrite } from '../scheduling/index';
 import { deepEqual, deepMerge, clean, type CommitResult, type Filter, type Precondition, type StoredDoc, type Write } from './sql-engine';
+import { StorageDocumentError } from '../firestore-codec';
 
 /** The engine's operations as seen from the caller; in-process or a Durable Object stub. */
 export interface StoreTransport {
@@ -47,6 +48,7 @@ export class SqlStore implements ReadWriteStore {
       const docs = await this.transport.getMany(paths);
       const decision = decide(docs);
       if (!decision.writes) return decision.result;
+      for (const write of decision.writes) if (write.op !== 'delete') assertStorableDocument(write.path, write.data);
       const committed = await this.transport.commit(paths.map((path, i) => condition(path, docs[i])), decision.writes);
       if (committed.ok) {
         if (decision.index.length) await notifyScheduledWrites(decision.index);
@@ -184,4 +186,27 @@ export function localTransport(engine: import('./sql-engine').SqlDocumentEngine)
     sequence: async () => engine.sequence(),
     changedSince: async (seq, root) => engine.changedSince(seq, root),
   };
+}
+
+/** A Durable Object SQLite value is at most 2 MB; keep a margin for the row. */
+export const MAX_DOCUMENT_BYTES = 1_900_000;
+const MAX_DOCUMENT_DEPTH = 100;
+
+/**
+ * Refuse a document the store cannot keep before anything is written, with the
+ * same named 422 errors the editor and API already report.
+ */
+export function assertStorableDocument(path: string, data: Record<string, unknown>): void {
+  let text: string;
+  try { text = JSON.stringify(data); }
+  catch { throw new StorageDocumentError('storage_document_invalid', 'The document contains circular or invalid data. No content was saved.', path); }
+  if (new TextEncoder().encode(text).length > MAX_DOCUMENT_BYTES) {
+    throw new StorageDocumentError('storage_document_too_large', 'This document is too large to store. Split the content or remove large inline data before saving again.', path);
+  }
+  const stack: Array<[unknown, number]> = [[data, 1]];
+  while (stack.length) {
+    const [value, depth] = stack.pop()!;
+    if (depth > MAX_DOCUMENT_DEPTH) throw new StorageDocumentError('storage_document_too_deep', 'This document contains too many nested fields for storage. Reduce nesting before saving again.', path);
+    if (value && typeof value === 'object') for (const child of Object.values(value)) if (child && typeof child === 'object') stack.push([child, depth + 1]);
+  }
 }
