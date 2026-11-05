@@ -4,7 +4,7 @@
 // organization's copy. Differences name the first differing JSON pointer, never
 // the values, so a report can be shared without customer data or secrets.
 
-import { fixedObjectName, ownerPath, shardFor } from '../store/sharded-store';
+import { fixedObjectName, ownerPath, shardFor, stripMirrorRevision } from '../store/sharded-store';
 import { canonicalJson, collectionGroup, isPlainObject, parseRecordLine, type ExportRecord } from './format';
 import type { MigrationTarget } from './import';
 import { logicalValue, transformRecord } from './transform';
@@ -80,7 +80,8 @@ export function shardedReader(target: MigrationTarget): CompareReader {
       // A site document's copy lives in its organization, an organization's in the global object.
       const { org } = shardFor(path) as { org: string };
       const mirror = /^organizations\/[^/]+$/.test(path) ? 'global' : `org:${org}`;
-      return (await target.transport(mirror).get(path))?.data ?? null;
+      const copy = (await target.transport(mirror).get(path))?.data;
+      return copy ? stripMirrorRevision(copy) : null;
     },
   };
 }

@@ -56,6 +56,15 @@ const isOrgDoc = (path: string) => /^organizations\/[^/]+$/.test(path);
 const mirrorOf = (path: string): string | null =>
   isSiteDoc(path) ? `org:${(shardFor(path) as { org: string }).org}` : isOrgDoc(path) ? 'global' : null;
 const isMirrored = (path: string) => mirrorOf(path) !== null;
+/** Source revision stored on a copy; never returned to readers. */
+export const MIRROR_REVISION = '_mirror_revision';
+const isMirrorCollection = (collection: string) => collection === 'organizations' || /^organizations\/[^/]+\/sites$/.test(collection);
+export function stripMirrorRevision<T extends Record<string, any>>(doc: T): T {
+  if (!Object.hasOwn(doc, MIRROR_REVISION)) return doc;
+  const { [MIRROR_REVISION]: _revision, ...rest } = doc;
+  void _revision;
+  return rest as T;
+}
 export const ownerPath = (org: string, site: string) => `site_owners/${org}:${site}`;
 const OUTBOX = '_outbox';
 
@@ -99,18 +108,35 @@ export class ShardedStore implements ReadWriteStore {
     return this.store(name);
   }
 
-  private async applyOutbox(source: string, id: string, entry: OutboxEntry, current = false) {
+  private async applyOutbox(source: string, id: string, entry: OutboxEntry) {
     for (const write of entry.writes) {
       const target = this.store(write.shard);
-      // A late re-application copies a mirrored document as it is now, never an older snapshot.
-      const data = current && mirrorOf(write.path) === write.shard ? await this.store(source).getDoc(write.path) : write.data;
-      if (data) await target.setDoc(write.path, stripId(data));
+      if (mirrorOf(write.path) === write.shard) {
+        await this.copyMirror(source, write.shard, write.path);
+        continue;
+      }
+      if (write.data) await target.setDoc(write.path, stripId(write.data));
       else await target.deleteDoc(write.path);
     }
     // Remove the entry only if nobody replaced it meanwhile (an entry with a fixed id is rewritten in place).
     const expected = clean(stripId(entry as unknown as Record<string, any>));
     await this.store(source).mutate(`${OUTBOX}/${id}`, before => before && deepEqual(stripId(before), expected)
       ? { after: null, result: undefined } : { skip: true, result: undefined });
+  }
+
+  /**
+   * Copy a mirrored document as it is now in its own object. The copy carries
+   * the source revision, so a slower writer holding an older value can never
+   * overwrite a newer copy.
+   */
+  private async copyMirror(source: string, mirror: string, path: string) {
+    const current = await this.resolver.transport(source).get(path);
+    await this.store(mirror).mutate(path, before => {
+      const copied = typeof before?.[MIRROR_REVISION] === 'number' ? before[MIRROR_REVISION] as number : -1;
+      if (!current) return before ? { after: null, result: undefined } : { skip: true, result: undefined };
+      if (copied >= current.revision) return { skip: true, result: undefined };
+      return { after: { ...stripId(current.data), [MIRROR_REVISION]: current.revision }, result: undefined };
+    });
   }
 
   /**
@@ -122,7 +148,7 @@ export class ShardedStore implements ReadWriteStore {
     const pending = (await this.store(shard).listDocs<OutboxEntry>(OUTBOX))
       .filter(entry => !(entry.created_at > cutoff))
       .sort((a, b) => (a.created_at ?? 0) - (b.created_at ?? 0));
-    for (const entry of pending) await this.applyOutbox(shard, entry.id, entry, true);
+    for (const entry of pending) await this.applyOutbox(shard, entry.id, entry);
     return pending.length;
   }
 
@@ -177,10 +203,11 @@ export class ShardedStore implements ReadWriteStore {
   async listDocs<T = unknown>(collection: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<Array<T & { id: string }>> {
     if (COUNTER_COLLECTION.test(collection)) throw new Error(`${collection} is spread over counter objects and cannot be listed`);
     // Organizations are listed from their copies in the global object.
-    if (collection === 'organizations') return this.store('global').listDocs<T>(collection, opts);
+    if (collection === 'organizations') return (await this.store('global').listDocs<T>(collection, opts)).map(stripMirrorRevision);
     // A collection lives with the document that owns it; root collections are global.
     const owner = collection.includes('/') ? collection.slice(0, collection.lastIndexOf('/')) : null;
-    return (owner ? await this.storeFor(owner) : this.store('global')).listDocs<T>(collection, opts);
+    const docs = await (owner ? await this.storeFor(owner) : this.store('global')).listDocs<T>(collection, opts);
+    return isMirrorCollection(collection) ? docs.map(stripMirrorRevision) : docs;
   }
 
   async addDoc(collection: string, data: Record<string, any>): Promise<string> {

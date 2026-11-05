@@ -114,3 +114,25 @@ describe('rate-limit counters', () => {
     expect(shardFor('organizations/o/sites/s/rate_limits/x').kind).toBe('site');
   });
 });
+
+describe('mirrored copies', () => {
+  it('never lets an older copy overwrite a newer one, and hides the revision from readers', async () => {
+    const engines = new Map<string, SqlDocumentEngine>();
+    const transports = new Map<string, StoreTransport>();
+    const store = new ShardedStore({ transport: name => {
+      if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+      if (!transports.has(name)) transports.set(name, localTransport(engines.get(name)!));
+      return transports.get(name)!;
+    } }, () => 'id');
+    await store.setDoc('organizations/o/sites/s', { name: 'v1' });
+    // A slow writer read v1 and applies its copy after a faster writer's v2.
+    const siteObject = [...engines.keys()].find(name => name.startsWith('site:'))!;
+    const stale = engines.get(siteObject)!.get('organizations/o/sites/s')!;
+    await store.setDoc('organizations/o/sites/s', { name: 'v2' });
+    await store.objectStore('org:o').setDoc('organizations/o/sites/s', { ...stale.data, _mirror_revision: stale.revision });
+    await store.updateDoc('organizations/o/sites/s', { note: 'v3' });
+    const [copy] = await store.listDocs<{ name: string; note?: string }>('organizations/o/sites');
+    expect(copy).toEqual({ id: 's', name: 'v2', note: 'v3' });
+    expect(Object.keys((await store.listDocs('organizations'))[0] ?? {})).not.toContain('_mirror_revision');
+  });
+});
