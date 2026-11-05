@@ -130,8 +130,9 @@ export class SqlDocumentEngine {
   }
 
   /** Documents of one collection in id order; filters use Firestore semantics. */
-  list(collection: string, opts: { filters?: Filter[]; limit?: number; startAfterId?: string } = {}): StoredDoc[] {
+  list(collection: string, options?: { filters?: Filter[]; limit?: number; startAfterId?: string } | null): StoredDoc[] {
     assertCollectionPath(collection);
+    const opts = options ?? {};
     const rows = opts.startAfterId
       ? this.sql.exec<Row>('SELECT path, id, data, revision FROM documents WHERE parent = ? AND id > ? ORDER BY id', collection, opts.startAfterId)
       : this.sql.exec<Row>('SELECT path, id, data, revision FROM documents WHERE parent = ? ORDER BY id', collection);
