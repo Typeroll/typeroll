@@ -517,7 +517,7 @@ export async function executeMediaMigration(orgId: string, siteId?: string): Pro
   return activeDelay(await getStore().getDoc<Migration>(organizationPath(orgId))) ?? (preparing ? 10000 : null);
 }
 
-/** Cron is recovery only on Cloud Tasks; portable workers call this on each poll. */
+/** Recovery for migrations whose chain was lost: requeue each one on its chain. */
 export async function runPendingMediaMigrations() {
   const { runPendingMediaPreparation } = await import('../media/preparation');
   await runPendingMediaPreparation();
@@ -526,10 +526,7 @@ export async function runPendingMediaMigrations() {
   })) {
     if (migration.lease_until > Date.now() || (migration.retry_at ?? 0) > Date.now()) continue;
     const siteId = migration.scope === 'site' ? migration.site_id : undefined;
-    if ((process.env.DEPLOY_QUEUE ?? 'in_process') === 'cloud_tasks') {
-      const { enqueueMediaMigration } = await import('./media-migration-queue');
-      await enqueueMediaMigration(migration.org_id, 0, siteId);
-    } else if (siteId) await runMediaMigrationBatch(migration.org_id, siteId);
-    else await runOrganizationMediaStep(migration.org_id);
+    const { enqueueMediaMigration } = await import('./media-migration-queue');
+    await enqueueMediaMigration(migration.org_id, 0, siteId);
   }
 }

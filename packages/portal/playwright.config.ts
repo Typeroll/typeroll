@@ -54,7 +54,7 @@ const webServer = target.isRemote ? undefined : {
     FORMS_HMAC_SECRET: 'e2e-only-form-signing-secret-32-characters-minimum',
     MCP_OAUTH_SIGNING_KEY: 'e2e-only-mcp-signing-secret-at-least-32-characters',
     PREVIEW_HMAC_SECRET: 'e2e-only-preview-signing-secret-32-characters-minimum',
-    DEPLOY_QUEUE: 'in_process',
+    TYPEROLL_SCHEDULER: 'local',
     TYPEROLL_FIXTURES_DIR: E2E_FIXTURES_DIR,
     TYPEROLL_E2E_AUTH_SECRET: process.env.TYPEROLL_E2E_AUTH_SECRET,
   },

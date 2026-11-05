@@ -9,7 +9,7 @@ import {
 } from '@typeroll/shared';
 import { VERSION as MCP_VERSION } from '@typeroll/mcp-server/version';
 
-export type ServiceRole = 'portal' | 'forms' | 'worker';
+export type ServiceRole = 'portal' | 'forms';
 
 export interface ReleaseManifest {
   core_version: string;
@@ -30,7 +30,7 @@ function optionalValue(value: string | undefined): string | null {
 
 export function serviceRole(env: NodeJS.ProcessEnv = process.env): ServiceRole {
   const value = env.SERVICE_ROLE?.trim().toLowerCase();
-  if (value === 'forms' || value === 'worker') return value;
+  if (value === 'forms') return value;
   return 'portal';
 }
 

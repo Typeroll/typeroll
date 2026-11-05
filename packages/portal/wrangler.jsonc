@@ -22,9 +22,12 @@
     { "tag": "v1", "new_sqlite_classes": ["DocumentStore"] }
   ],
   "triggers": { "crons": ["*/5 * * * *"] },
+  // Store alarms deliver due work through this Worker's own entrypoint.
+  "services": [{ "binding": "SCHEDULER", "service": "typeroll-portal", "entrypoint": "Scheduler" }],
   "vars": {
     "TYPEROLL_RUNTIME": "workers",
     // Durable Object jurisdiction; `.dev.vars` may set "none" for local workerd.
-    "STORE_JURISDICTION": "eu"
+    "STORE_JURISDICTION": "eu",
+    "TYPEROLL_SCHEDULER": "durable_object"
   }
 }

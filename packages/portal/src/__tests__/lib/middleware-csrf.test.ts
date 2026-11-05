@@ -141,54 +141,19 @@ describe('middleware CSRF — exempt paths', () => {
     expect(res.status).toBe(403);
   });
 
-  it('/api/internal/deploy-worker passes with Google OIDC bearer (eyJ...)', async () => {
-    // Cloud Tasks posts with a Google-issued OIDC JWT. The token
-    // doesn't match the typeroll_live_ prefix so the API-key bypass
-    // doesn't apply; the path exemption is what lets it through.
-    // Without this exemption, deploy jobs stayed stuck in queued.
+  it('no /api/internal/ route is exempt: scheduled work never arrives over HTTP', async () => {
     const res = await callMiddleware({
       method: 'POST',
       pathname: '/api/internal/deploy-worker',
       authorization: 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.dummy.signature',
       contentType: 'application/json',
     });
-    expect(res.status).toBe(200);
-  });
-
-  it('/api/internal/publish-sweep passes with Google OIDC bearer', async () => {
-    // Cloud Scheduler posts here with the same shape as Cloud Tasks and no
-    // Origin. This was NOT exempt while deploy-worker was, so the sweep would
-    // have been 403'd before reaching its own OIDC check — scheduled
-    // publishing and the coalesced auto-deploy could never have run, even
-    // once a scheduler job existed. Verified against staging: the live route
-    // answered 403 with "CSRF check failed" before this landed.
-    const res = await callMiddleware({
-      method: 'POST',
-      pathname: '/api/internal/publish-sweep',
-      authorization: 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.dummy.signature',
-      contentType: 'application/json',
-    });
-    expect(res.status).toBe(200);
-  });
-
-  it('a future /api/internal/ route inherits the exemption', async () => {
-    // The prefix is exempt rather than a list of paths, because listing them
-    // is how this bug happened twice.
-    const res = await callMiddleware({
-      method: 'POST',
-      pathname: '/api/internal/some-future-sweep',
-      authorization: 'Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.dummy.signature',
-      contentType: 'application/json',
-    });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(403);
   });
 
   it('/api/internal-admin/ is NOT exempted by the internal prefix', async () => {
-    // The trailing slash in '/api/internal/' is what keeps these apart.
-    // '/api/internal' as a prefix would also match the cross-tenant operator
-    // console, which is cookie-authed and browser-driven and needs its CSRF
-    // check — exempting it would be a real regression, on the one surface
-    // that reads across every tenant.
+    // The cross-tenant operator console is cookie-authed and browser-driven
+    // and needs its CSRF check.
     const res = await callMiddleware({
       method: 'POST',
       pathname: '/api/internal-admin/builds',
