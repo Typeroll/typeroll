@@ -67,8 +67,9 @@ export async function checkE2ETarget(target, fetchImpl = fetch) {
   if (health.status !== 'ok') throw new Error('Portal liveness check did not report ok');
   if (ready.ready !== true) throw new Error('Portal readiness check did not report ready');
   if (formsReady.ready !== true) throw new Error('Forms readiness check did not report ready');
-  if (target.expectedDigest && version.image_digest !== target.expectedDigest) {
-    throw new Error(`Target reports image digest ${version.image_digest ?? 'missing'} instead of the expected digest`);
+  // The Worker bundle digest the target serves (/api/version), pinned by the release.
+  if (target.expectedDigest && version.bundle_digest !== target.expectedDigest) {
+    throw new Error(`Target reports bundle digest ${version.bundle_digest ?? 'missing'} instead of the expected digest`);
   }
   return { health, ready, version, formsReady };
 }

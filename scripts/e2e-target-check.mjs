@@ -11,7 +11,7 @@ try {
     portal_url: target.portalUrl,
     forms_url: target.formsUrl,
     core_version: result.version.core_version,
-    image_digest: result.version.image_digest,
+    bundle_digest: result.version.bundle_digest,
     status: 'ready',
   }, null, 2));
 } catch (error) {
