@@ -40,12 +40,14 @@ export interface ImportReport {
   /** Documents with an `id` field that differs from their id; the SQL store cannot keep it. */
   idMismatches: string[];
   orgCopies: { created: number; unchanged: number; updated: number };
+  /** Sites whose publishing mode is still `managed` (or unset): they cannot publish after the cutover until moved to customer publishing. */
+  managedSites: string[];
   errors: Array<{ line: number; path?: string; error: string }>;
 }
 
 export const emptyImportReport = (): ImportReport => ({
   records: 0, created: 0, unchanged: 0, overwritten: 0, conflicts: [], dropped: {}, compressed: [], idMismatches: [],
-  orgCopies: { created: 0, unchanged: 0, updated: 0 }, errors: [],
+  orgCopies: { created: 0, unchanged: 0, updated: 0 }, managedSites: [], errors: [],
 });
 
 export const importFailed = (report: ImportReport) => report.conflicts.length > 0 || report.errors.length > 0;
@@ -143,6 +145,7 @@ export async function importLines(target: MigrationTarget, lines: Array<{ line: 
         const decision = decisions.get(doc.path)!;
         if (decision === 'conflict') report.conflicts.push({ line: doc.line, path: doc.path });
         else report[decision]++;
+        if (isSiteDoc(doc.path) && (doc.data as { publishing_mode?: unknown }).publishing_mode !== 'customer_git' && !report.managedSites.includes(doc.path)) report.managedSites.push(doc.path);
         if (isSiteDoc(doc.path) || isOrgDoc(doc.path)) siteDocs.push({ path: doc.path, data: decision === 'conflict' ? null : doc.data });
       }
     }
