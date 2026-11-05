@@ -544,11 +544,19 @@ function defaultFixturesDir(): string {
 }
 
 let cached: ReadWriteStore | null = null;
+let runtimeStore: (() => ReadWriteStore) | null = null;
+
+/** The Worker entry registers the Durable Object store before serving requests. */
+export function setRuntimeStore(factory: (() => ReadWriteStore) | null): void {
+  runtimeStore = factory;
+  cached = null;
+}
 
 export function getStore(): ReadWriteStore {
   const snapshot = readContext.getStore();
   if (snapshot) return snapshot;
   if (cached) return cached;
+  if (runtimeStore) return (cached = runtimeStore());
   const sqlite = process.env.TYPEROLL_STORE?.match(/^sqlite:(.+)$/)?.[1];
   if (sqlite) {
     cached = createSqliteStore(sqlite);

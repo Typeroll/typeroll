@@ -82,3 +82,6 @@ temp/*
 # Per-user organization discovery is runtime state.
 packages/site-template/fixtures/user_organizations/
 publication-template.json
+
+# Local Worker secrets (wrangler dev)
+.dev.vars

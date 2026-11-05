@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { paths } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 const mocks = vi.hoisted(() => ({ session: vi.fn() }));
@@ -75,4 +75,41 @@ it('starts one immutable trial per creation key and ignores client dates', async
   expect(await getStore().getDoc(paths.org('trial-customer-2'))).toBeNull();
   expect(await getStore().getDoc(`${paths.org('trial-customer')}/hosting_groups/default`)).toMatchObject({ name: 'Default' });
   expect(await getStore().getDoc('user_organizations/existing-member/organizations/trial-customer')).not.toBeNull();
+});
+
+describe('organization creation on the sharded store', () => {
+  // The receipt (global object) and the organization (its own object) cannot
+  // share a conditional commit; creation claims globally first and resumes.
+  let counter = 0;
+  beforeEach(async () => {
+    const { ShardedStore } = await import('../../lib/store/sharded-store');
+    const { SqlDocumentEngine } = await import('../../lib/store/sql-engine');
+    const { localTransport } = await import('../../lib/store/sql-store');
+    const { nodeSqliteDriver } = await import('../../lib/store/node-sqlite');
+    const { setRuntimeStore } = await import('../../lib/datastore');
+    const engines = new Map<string, InstanceType<typeof SqlDocumentEngine>>();
+    const store = new ShardedStore({ transport: name => {
+      if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver()));
+      return localTransport(engines.get(name)!);
+    } }, () => `id${++counter}`);
+    setRuntimeStore(() => store);
+  });
+  afterEach(async () => { (await import('../../lib/datastore')).setRuntimeStore(null); });
+
+  it('creates once, reuses on retry and resumes an interrupted claim', async () => {
+    const first = await (await createOrg(request({ name: 'Sharded Client' })) as Response).json();
+    expect(first).toMatchObject({ ok: true, orgId: 'sharded-client' });
+    expect(await (await createOrg(request({ name: 'Sharded Client' })) as Response).json()).toMatchObject({ orgId: 'sharded-client', reused: true });
+
+    const store = getStore();
+    const original = store.compareAndReplaceDoc.bind(store);
+    const spy = vi.spyOn(store, 'compareAndReplaceDoc').mockImplementation(async (key, ...args) => {
+      if (key === paths.org('interrupted')) throw new Error('object unavailable');
+      return original(key, ...args);
+    });
+    await expect(createOrg(request({ name: 'Interrupted' }))).rejects.toThrow('object unavailable');
+    spy.mockRestore();
+    expect(await (await createOrg(request({ name: 'Interrupted' })) as Response).json()).toMatchObject({ ok: true, orgId: 'interrupted' });
+    expect(await getStore().getDoc(`${paths.members('interrupted')}/${session.userId}`)).toMatchObject({ role: 'owner' });
+  });
 });

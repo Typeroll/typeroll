@@ -1,0 +1,30 @@
+// Base Worker configuration for the portal. Local development (`astro dev`,
+// `astro build`) uses it as is; Cloud releases derive the staging and
+// production configurations from it (names, routes, secrets) without changing
+// bindings or migrations.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "typeroll-portal",
+  "main": "./src/worker.ts",
+  "compatibility_date": "2026-10-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // EU isolation: no Workers Logs or traces (Logpush to EU R2 instead), no
+  // Smart Placement.
+  "observability": { "enabled": false, "logs": { "enabled": false }, "traces": { "enabled": false } },
+  "durable_objects": {
+    "bindings": [
+      // One object per site, per organization and one global object. Stubs are
+      // always created through `jurisdiction("eu")`.
+      { "name": "STORE", "class_name": "DocumentStore" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["DocumentStore"] }
+  ],
+  "triggers": { "crons": ["*/5 * * * *"] },
+  "vars": {
+    "TYPEROLL_RUNTIME": "workers",
+    // Durable Object jurisdiction; `.dev.vars` may set "none" for local workerd.
+    "STORE_JURISDICTION": "eu"
+  }
+}

@@ -6,6 +6,8 @@
 //
 // Without ACCOUNT_EMAIL, local development prints the link instead of sending
 // it; any production-mode server refuses, so a link is never lost silently.
+// ACCOUNT_EMAIL=log does the same for a local Worker (`wrangler dev`, where
+// NODE_ENV is production), and only on an http://localhost portal.
 
 import '../email/providers';
 import { getProvider } from '../email/provider';
@@ -28,8 +30,9 @@ export function isAccountMailConfigured(env: Record<string, string | undefined> 
 export async function sendAccountMail(mail: AccountMail): Promise<void> {
   if (override) return override(mail);
   const raw = process.env.ACCOUNT_EMAIL?.trim();
-  if (!raw) {
-    if (process.env.NODE_ENV === 'production') throw new Error('Account email is not configured');
+  const localWorker = raw === 'log' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(process.env.PORTAL_PUBLIC_URL?.trim() ?? '');
+  if (!raw || localWorker) {
+    if (!localWorker && process.env.NODE_ENV === 'production') throw new Error('Account email is not configured');
     console.info(`[account-mail] ${mail.subject} → ${mail.to}\n${mail.text}`);
     return;
   }

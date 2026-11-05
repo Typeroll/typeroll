@@ -1,12 +1,16 @@
 import { defineConfig } from 'astro/config';
-import node from '@astrojs/node';
+import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
 
-// Portal is SSR by default. Marketing pages opt into static rendering with
+// Portal is SSR by default and runs as a Cloudflare Worker (src/worker.ts,
+// wrangler.jsonc). Marketing pages opt into static rendering with
 // `export const prerender = true` inside the page.
 export default defineConfig({
   output: 'server',
-  adapter: node({ mode: 'standalone' }),
+  adapter: cloudflare(),
+  // No Astro sessions: they would need a KV namespace, and customer data never
+  // goes to KV.
+  session: false,
   integrations: [react()],
   server: { port: 4321, host: true },
   // CSRF protection lives in src/middleware.ts now, not Astro's built-in

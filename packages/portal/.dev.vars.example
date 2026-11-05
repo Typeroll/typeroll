@@ -1,0 +1,5 @@
+# Local workerd (`wrangler dev`) only: it has no Durable Object jurisdictions.
+STORE_JURISDICTION=none
+AUTH_SECRET=local-dev-auth-secret-0123456789abcdef
+PORTAL_PUBLIC_URL=http://localhost:8799
+ACCOUNT_EMAIL=log

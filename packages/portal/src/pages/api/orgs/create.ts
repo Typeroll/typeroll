@@ -34,14 +34,21 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   const nonce = request.headers.get('Idempotency-Key') ?? name;
   if (!nonce || nonce.length > 128 || /[\x00-\x1f]/.test(nonce)) return json({ error: 'Invalid Idempotency-Key' }, 400);
   const receiptPath = `organization_creation_requests/${createHash('sha256').update(JSON.stringify([userId, nonce])).digest('hex')}`;
-  const prior = await store.getDoc<{ org_id: string; name: string }>(receiptPath);
-  if (prior) {
-    if (prior.name !== name || !await store.getDoc(`${paths.members(prior.org_id)}/${userId}`)) return json({ error: 'This creation key belongs to another request.' }, 409);
-    // Finish setup after a failed response without creating another trial.
-    await getHostingGroup(prior.org_id);
-    await rememberOrganization(userId, prior.org_id);
-    selectOrganization(cookies, userId, prior.org_id);
-    return json({ ok: true, orgId: prior.org_id, requiresReauth: false, reused: true });
+  // The receipt lives in the global object and the organization in its own,
+  // so they cannot share one conditional commit. Claim the request globally
+  // first; a claim without `org_id` is an interrupted creation that a retry
+  // with the same key resumes.
+  if (!await store.createDocIfMissing(receiptPath, { name, org_id: null, created_at: new Date().toISOString() })) {
+    const prior = await store.getDoc<{ org_id: string | null; name: string }>(receiptPath);
+    if (!prior || prior.name !== name) return json({ error: 'This creation key belongs to another request.' }, 409);
+    if (prior.org_id) {
+      if (!await store.getDoc(`${paths.members(prior.org_id)}/${userId}`)) return json({ error: 'This creation key belongs to another request.' }, 409);
+      // Finish setup after a failed response without creating another trial.
+      await getHostingGroup(prior.org_id);
+      await rememberOrganization(userId, prior.org_id);
+      selectOrganization(cookies, userId, prior.org_id);
+      return json({ ok: true, orgId: prior.org_id, requiresReauth: false, reused: true });
+    }
   }
 
   // Build a unique slug. List existing orgs to collect taken slugs.
@@ -84,8 +91,9 @@ export const POST: APIRoute = async ({ request, cookies }) => {
   } satisfies Omit<Organization, 'id'>, [{
     path: `${paths.members(orgId)}/${userId}`, expected: null, replace: true,
     data: { email, role: 'owner', firebase_uid: userId, ...(displayName ? { display_name: displayName } : {}), joined_at: now } satisfies Omit<Member, 'id'>,
-  }, { path: receiptPath, expected: null, replace: true, data: { org_id: orgId, name, created_at: now } }]);
+  }]);
   if (!created) return json({ error: 'Organization name was just taken. Please try again.' }, 409);
+  await store.updateDoc(receiptPath, { org_id: orgId });
 
   await getHostingGroup(orgId);
   await rememberOrganization(userId, orgId);
