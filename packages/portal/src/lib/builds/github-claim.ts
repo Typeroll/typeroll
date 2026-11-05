@@ -13,7 +13,7 @@ export async function authorizeGithubClaim(org: string, token: string, input: Re
   if (!engine?.github || !['ready', 'qualifying'].includes(engine.status) || engine.revision !== input.revision) throw new ConnectionError('The GitHub build engine changed.', 409);
   const origin = new URL(process.env.PORTAL_PUBLIC_URL ?? '').origin;
   const claims = await verifyGithubIdentity(token, engine, githubClaimAudience(origin, org));
-  if (!rateLimit(`github-build-claim:${org}:${claims.run_id}`, 10, 60000).allowed) throw new ConnectionError('Too many build claims.', 429);
+  if (!(await rateLimit(`github-build-claim:${org}:${claims.run_id}`, 10, 60000, { scope: `organizations/${org}` })).allowed) throw new ConnectionError('Too many build claims.', 429);
   await assertEngineConnections(org, engine);
   const store = getStore(), path = buildInputPath(org, key);
   const metadata = await store.getDoc<BuildInput>(path), task = await store.getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);

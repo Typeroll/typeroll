@@ -76,9 +76,12 @@ export async function sendApplicationEmail(scope: MailScope,
     const total = quota?.total ?? 0;
     const count = quota?.installations?.[installationKey] ?? 0;
     if (total >= 500 || count >= 100) throw new DeliveryError('Daily transactional mail limit reached', 429);
+    // The event route lives in the global object and cannot share the site's
+    // conditional commit. Its content is derived from the id, so writing it
+    // first is safe to repeat; a route without a receipt matches no event.
+    await store.createDocIfMissing(`mail_delivery_routes/${id}`, { ...scope, id });
     reserved = await store.compareAndReplaceDoc(path, null, receipt, [
       { path: quotaPath, expected: quota, replace: true, data: { total: total + 1, installations: { ...quota?.installations, [installationKey]: count + 1 } } },
-      { path: `mail_delivery_routes/${id}`, expected: null, data: { ...scope, id } },
       { path: suppressionPath(scope, recipient), expected: null, data: {}, guardOnly: true },
     ]);
     if (reserved) break;

@@ -9,7 +9,10 @@ import { MAX_ARTIFACT_BYTES, sha256 } from './contract.mjs';
 /** Private organization storage. Only exact object grants leave the coordinator. */
 export async function buildStorage<T>(org: string, work: (storage: {
   account: string; put: (key: string, bytes: Buffer) => Promise<void>;
-  read: (key: string, limit?: number) => Promise<Buffer>; grant: (key: string, write?: boolean, contentType?: 'application/json' | 'application/octet-stream') => Promise<string>;
+  read: (key: string, limit?: number) => Promise<Buffer>;
+  /** The object as chunks, size-checked while reading; consume it inside `work`. */
+  stream: (key: string, limit?: number) => AsyncIterable<Uint8Array>;
+  grant: (key: string, write?: boolean, contentType?: 'application/json' | 'application/octet-stream') => Promise<string>;
 }) => Promise<T>): Promise<T> {
   const connection = await getConnection(org, 'cloudflare');
   if (connection.status !== 'connected' || !connection.media_ready || !connection.cloudflare?.bucket || !connection.encrypted_credentials)
@@ -26,18 +29,29 @@ export async function buildStorage<T>(org: string, work: (storage: {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !key.startsWith(`builds/${org}/`) || key.split('/').some(p => !/^[a-zA-Z0-9_.-]+$/.test(p) || p === '.' || p === '..')) throw new Error('Invalid private build object scope');
     return key;
   };
-  const read = async (key: string, limit = MAX_ARTIFACT_BYTES) => {
+  async function* stream(key: string, limit = MAX_ARTIFACT_BYTES): AsyncGenerator<Uint8Array> {
     const result = await client.send(new GetObjectCommand({ Bucket: bucket, Key: keyFor(key) }));
     if (!result.Body || (result.ContentLength ?? 0) > limit) throw new ConnectionError('Build object exceeds its size limit.', 413);
-    const chunks: Buffer[] = []; let size = 0;
-    for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
-      size += chunk.length;
-      if (size > limit) { (result.Body as { destroy?: () => void }).destroy?.(); throw new ConnectionError('Build object exceeds its size limit.', 413); }
-      chunks.push(Buffer.from(chunk));
+    let size = 0, done = false;
+    try {
+      for await (const chunk of result.Body as AsyncIterable<Uint8Array>) {
+        size += chunk.length;
+        if (size > limit) throw new ConnectionError('Build object exceeds its size limit.', 413);
+        yield chunk;
+      }
+      done = true;
+    } finally {
+      // Release the connection when the reader stops early (Node stream or web stream body).
+      const body = result.Body as { destroy?: () => void; cancel?: () => Promise<void> };
+      if (!done) { body.destroy?.(); await body.cancel?.().catch(() => {}); }
     }
+  }
+  const read = async (key: string, limit = MAX_ARTIFACT_BYTES) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of stream(key, limit)) chunks.push(Buffer.from(chunk));
     return Buffer.concat(chunks);
   };
-  try { return await work({ account, read,
+  try { return await work({ account, read, stream,
     put: async (key, bytes) => {
       if (bytes.length > MAX_ARTIFACT_BYTES) throw new ConnectionError('Build object exceeds its size limit.', 413);
       try { await client.send(new PutObjectCommand({ Bucket: bucket, Key: keyFor(key), Body: bytes, ContentType: 'application/json', CacheControl: 'private, no-store', IfNoneMatch: '*' })); }

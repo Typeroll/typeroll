@@ -1,32 +1,14 @@
-// In-memory sliding-window rate limiter.
+// Fixed-window rate limiter in the document store.
 //
-// Keyed by an arbitrary string (typically "<endpoint>:<ip>"). Suitable for a
-// single-process portal — for horizontally-scaled deployments, this needs
-// to move to a shared store (Redis or Firestore w/ TTL).
-//
-// The limiter uses fixed windows (cheap; one Map entry per key). When a key's
-// window expires the count resets. Periodic GC sweeps expired entries so
-// memory doesn't grow unbounded under attack.
+// Workers run many isolates, so a counter in memory would limit nothing. Each
+// key is one document, consumed with compare-and-replace: concurrent requests
+// cannot both take the last slot. Only a hash of the key is stored. Pass
+// `scope` (an organization or site path) to keep the counter in that object
+// instead of the global one. Storage failure fails closed.
 
+import { createHash } from 'node:crypto';
+import { getStore } from './datastore';
 import { authClientAddress } from './auth-request';
-
-interface Bucket {
-  count: number;
-  resetAt: number;
-}
-
-const buckets = new Map<string, Bucket>();
-
-let lastGc = Date.now();
-const GC_INTERVAL_MS = 60_000;
-
-function gcIfDue(now: number): void {
-  if (now - lastGc < GC_INTERVAL_MS) return;
-  lastGc = now;
-  for (const [key, bucket] of buckets) {
-    if (bucket.resetAt < now) buckets.delete(key);
-  }
-}
 
 export interface RateLimitResult {
   allowed: boolean;
@@ -34,22 +16,39 @@ export interface RateLimitResult {
   resetAt: number;
 }
 
-export function rateLimit(key: string, limit: number, windowMs: number): RateLimitResult {
-  const now = Date.now();
-  gcIfDue(now);
+export interface RateLimitOptions {
+  /** Document path the counters live under, e.g. `organizations/<org>`. Default: the global object. */
+  scope?: string;
+}
 
-  const bucket = buckets.get(key);
-  if (!bucket || bucket.resetAt <= now) {
-    buckets.set(key, { count: 1, resetAt: now + windowMs });
-    return { allowed: true, remaining: limit - 1, resetAt: now + windowMs };
+const COLLECTION = 'rate_limits';
+const ATTEMPTS = 8;
+const FAILED_RETRY_MS = 5_000;
+
+export function rateLimitPath(key: string, options: RateLimitOptions = {}): string {
+  const scope = options.scope?.replace(/\/+$/, '');
+  return `${scope ? `${scope}/` : ''}${COLLECTION}/${createHash('sha256').update(key).digest('hex')}`;
+}
+
+export async function rateLimit(key: string, limit: number, windowMs: number, options: RateLimitOptions = {}): Promise<RateLimitResult> {
+  const path = rateLimitPath(key, options);
+  try {
+    const store = getStore();
+    for (let attempt = 0; attempt < ATTEMPTS; attempt++) {
+      const now = Date.now();
+      const current = await store.getDoc<{ count: number; reset_at: number }>(path);
+      const active = !!current && current.reset_at > now;
+      if (active && current!.count >= limit) return { allowed: false, remaining: 0, resetAt: current!.reset_at };
+      const next = { count: active ? current!.count + 1 : 1, reset_at: active ? current!.reset_at : now + windowMs };
+      if (await store.compareAndReplaceDoc(path, current, next)) {
+        return { allowed: true, remaining: Math.max(0, limit - next.count), resetAt: next.reset_at };
+      }
+    }
+    throw new Error('Rate limit storage is contended');
+  } catch (error) {
+    console.warn(JSON.stringify({ event: 'rate_limit_unavailable', error: error instanceof Error ? error.message : 'unknown' }));
+    return { allowed: false, remaining: 0, resetAt: Date.now() + FAILED_RETRY_MS };
   }
-
-  if (bucket.count >= limit) {
-    return { allowed: false, remaining: 0, resetAt: bucket.resetAt };
-  }
-
-  bucket.count += 1;
-  return { allowed: true, remaining: limit - bucket.count, resetAt: bucket.resetAt };
 }
 
 /**

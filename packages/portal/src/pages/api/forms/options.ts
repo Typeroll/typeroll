@@ -26,11 +26,11 @@ export const POST: APIRoute = async (ctx) => {
     socket = ctx.clientAddress;
   } catch {}
   if (
-    !rateLimit(
+    !(await rateLimit(
       `form-options:${clientIp(ctx.request.headers, socket)}`,
       60,
       60_000,
-    ).allowed
+    )).allowed
   )
     return json({ error: "Please wait before refreshing choices" }, 429);
   let body;

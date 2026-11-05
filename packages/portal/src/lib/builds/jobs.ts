@@ -7,7 +7,8 @@ import { buildFailureMessage } from './failure-message';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { dispatchCloudflareBuild } from './cloudflare';
 import { dispatchGithubBuild, githubBuildClient, readGithubDispatch } from './github';
-import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256, decodeArtifact, type BuildIdentity } from './contract.mjs';
+import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256, type BuildIdentity } from './contract.mjs';
+import { inspectArtifact } from './artifact-stream';
 import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, queuedBuildExpired, expireQueuedBuild, type BuildTask } from './queue';
 import { readEngineConfiguration, buildInputPath, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
@@ -102,7 +103,10 @@ export async function completedBuild(org: string, key: string) {
     if (!config || config.revision !== task.engine_revision || !['ready', 'qualifying'].includes(config.status)) throw new ConnectionError('The shared build engine changed. Retry the publication.', 409, 'build_engine_changed');
     await dispatchPendingBuild(org, key, config); return null;
   }
-  const files = await buildStorage(org, async storage => decodeArtifact(await storage.read(task.artifact_key!), task.identity, task.artifact_sha256!));
+  // A direct-upload artifact holds only its receipt and marker. Older engines
+  // without direct uploads return the whole site, which the coordinator uploads.
+  const { files } = await buildStorage(org, storage => inspectArtifact(storage.stream(task.artifact_key!), task.identity, task.artifact_sha256!,
+    names => names.includes(DIRECT_RECEIPT) ? name => name === DIRECT_RECEIPT : () => true));
   const direct = files[DIRECT_RECEIPT] ? validateDirectReceipt(JSON.parse(files[DIRECT_RECEIPT].toString('utf8'))) : null;
   return { task, files, direct };
 }

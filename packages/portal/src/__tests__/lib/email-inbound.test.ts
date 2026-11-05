@@ -86,6 +86,20 @@ describe('approved incoming email forwarding', () => {
   it.each(['Auto-Submitted: auto-replied', 'X-Typeroll-Forwarded: 1', 'List-Id: list.example.org'])('blocks automatic message %s', async header => {
     expect((await receive(event(`${header}\r\n${raw}`))).status).toBe('blocked'); expect(send.mock.calls.filter(call => call[1].subject.startsWith('Fwd:'))).toHaveLength(0);
   });
+  it.each([
+    ['two From headers', `From: other@example.org\r\n${raw}`],
+    ['two mailboxes in one From header', raw.replace('Sender <sender@example.org>', 'sender@example.org, other@example.org')],
+    ['a From group with two members', raw.replace('Sender <sender@example.org>', 'Team: sender@example.org, other@example.org;')],
+  ])('blocks an ambiguous sender: %s', async (_label, content) => {
+    expect(await receive(event(content))).toMatchObject({ status: 'blocked', reason: 'automatic_or_ambiguous_sender' });
+  });
+  it('forwards Auto-Submitted: no and text derived from an HTML-only message', async () => {
+    expect((await receive(event(`Auto-Submitted: No\r\n${raw}`))).status).toBe('forwarded');
+    const html = raw.replace('text/plain', 'text/html').replace('Private body.', '<p>Hello <b>there</b></p>');
+    expect((await receive(event(html, 'html-only'))).status).toBe('forwarded');
+    expect(send.mock.calls.at(-1)![1].text).toContain('Hello there');
+    expect(send.mock.calls.at(-1)![1].text).not.toContain('<p>');
+  });
   it('does not copy the inbound Reply-To or use a configured alias as sender', async () => {
     await receive(event(`Reply-To: attacker@example.net\r\n${raw}`));
     expect(send.mock.calls[0]![1].replyTo).toBe('sender@example.org');

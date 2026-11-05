@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { simpleParser } from 'mailparser';
+import PostalMime, { addressParser } from 'postal-mime';
+import { Parser } from 'htmlparser2';
 import { paths, type ExtensionInstallation, type SiteIntegrations } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { INBOUND_MAX_BYTES, inboundObject, loadInboundObject, deleteInboundObject } from './inbound-storage';
@@ -18,6 +19,20 @@ interface InboundReceipt {
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
 const address = (value: unknown): value is string => typeof value === 'string' && value.length <= 254 &&
   /^[a-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[a-z0-9!#$%&'*+/=?^_`{|}~-]+)*@[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?\.[a-z]{2,63}$/.test(value);
+const SKIPPED_ELEMENTS = new Set(['script', 'style', 'head', 'title', 'template']);
+const BLOCK_ELEMENTS = new Set(['p', 'div', 'li', 'tr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'table', 'ul', 'ol', 'br']);
+
+/** Plain text of an HTML-only message, in one linear pass: block ends become line breaks, scripts and styles are dropped. */
+export function htmlToPlainText(html: string): string {
+  let text = '', skipped = 0;
+  const parser = new Parser({
+    onopentag(name) { if (SKIPPED_ELEMENTS.has(name)) skipped++; else if (name === 'br') text += '\n'; },
+    onclosetag(name) { if (SKIPPED_ELEMENTS.has(name)) skipped = Math.max(0, skipped - 1); else if (BLOCK_ELEMENTS.has(name) && name !== 'br') text += '\n'; },
+    ontext(value) { if (!skipped) text += value; },
+  }, { decodeEntities: true });
+  parser.end(html);
+  return text.replace(/[ \t\f\v\u00a0]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+}
 const routeRevision = (route: InboundRoute) => hash(JSON.stringify(route));
 const settingPath = (route: InboundRoute) => `${paths.site(route.orgId, route.siteId)}/mail_inbound_settings/${route.id}`;
 const receiptPath = (route: InboundRoute, id: string) => `${paths.site(route.orgId, route.siteId)}/mail_inbound_receipts/${id}`;
@@ -170,18 +185,24 @@ export async function receiveSesEmail(topic: string, payload: unknown,
     if (message.receipt?.dmarcVerdict?.status !== 'PASS') return finish('held', 'sender_authentication_unconfirmed');
     const content = await (dependencies.load ?? loadInboundObject)(route, message);
     if (content.byteLength > INBOUND_MAX_BYTES) return finish('held', 'message_size_limit');
-    const parsed = await simpleParser(content, { skipImageLinks: true, skipTextToHtml: true, maxHtmlLengthToParse: INBOUND_MAX_BYTES });
-    const sender = parsed.from?.value.length === 1 ? parsed.from.value[0]?.address?.toLowerCase() : undefined;
-    if (parsed.headerLines.filter(h => h.key === 'from').length !== 1 || !address(sender) || routes.some(r => r.alias === sender || r.from === sender) ||
-        parsed.headerLines.some(h => ['x-typeroll-forwarded', 'list-id'].includes(h.key)) ||
-        (parsed.headers.has('auto-submitted') && parsed.headers.get('auto-submitted') !== 'no'))
+    const parsed = await PostalMime.parse(content, { attachmentEncoding: 'arraybuffer' });
+    const fromHeaders = parsed.headers.filter(h => h.key === 'from');
+    // Exactly one From header holding exactly one mailbox (groups unwrapped).
+    const mailboxes = fromHeaders.length === 1 ? addressParser(fromHeaders[0]!.value, { flatten: true }) : [];
+    const sender = mailboxes.length === 1 ? mailboxes[0]!.address?.toLowerCase() : undefined;
+    const autoSubmitted = parsed.headers.filter(h => h.key === 'auto-submitted');
+    if (!address(sender) || routes.some(r => r.alias === sender || r.from === sender) ||
+        parsed.headers.some(h => ['x-typeroll-forwarded', 'list-id'].includes(h.key)) ||
+        autoSubmitted.some(h => h.value.trim().toLowerCase() !== 'no'))
       return finish('blocked', 'automatic_or_ambiguous_sender');
     const subject = (parsed.subject ?? '(no subject)').replace(/[\r\n\x00-\x1f\x7f]/g, ' ').slice(0, 180);
-    if (!parsed.text?.trim() || parsed.text.length > 30_000) return finish('blocked', 'empty_or_oversized_text');
+    // postal-mime leaves `text` empty for an HTML-only message; the HTML is bounded by INBOUND_MAX_BYTES.
+    const bodyText = parsed.text ?? (parsed.html ? htmlToPlainText(parsed.html) : undefined);
+    if (!bodyText?.trim() || bodyText.length > 30_000) return finish('blocked', 'empty_or_oversized_text');
     const connector = (await store.getDoc<SiteIntegrations>(paths.integrations(route.orgId, route.siteId)))?.email;
     const from = connector?.from.match(/<([^<>]+)>\s*$/)?.[1] ?? connector?.from;
     if (connector?.type !== 'ses' || from?.toLowerCase() !== route.from) return finish('blocked', 'sender_configuration_changed');
-    const text = `Forwarded message received at ${route.alias}\nOriginal sender: ${sender}\n${parsed.attachments.length ? 'Attachments were omitted for safety.\n' : ''}\n${parsed.text}`;
+    const text = `Forwarded message received at ${route.alias}\nOriginal sender: ${sender}\n${parsed.attachments.length ? 'Attachments were omitted for safety.\n' : ''}\n${bodyText}`;
     const delivery = await sendApplicationEmail(route, { idempotency_key: id, to: route.target, subject: `Fwd: ${subject}`, text },
       { ...dependencies, forwarding: { replyTo: sender } });
     return finish(['accepted', 'delivered'].includes(delivery.status) ? 'forwarded' : delivery.status === 'failed' ? 'failed' : 'unknown', undefined, delivery.id);

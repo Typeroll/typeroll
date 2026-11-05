@@ -85,3 +85,4 @@ publication-template.json
 
 # Local Worker secrets (wrangler dev)
 .dev.vars
+.wrangler/

@@ -81,7 +81,7 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
   let socketAddress: string | undefined;
   try { socketAddress = clientAddress; } catch { socketAddress = undefined; }
   const ip = clientIp(request.headers, socketAddress);
-  const ipLimit = rateLimit(`analytics-events-ip:${ip}`, 120, 60_000);
+  const ipLimit = await rateLimit(`analytics-events-ip:${ip}`, 120, 60_000);
   if (!ipLimit.allowed) return response(429);
 
   // Content-Length is optional (chunked bodies), so bound the bytes read.
@@ -159,16 +159,18 @@ export const POST: APIRoute = async ({ request, clientAddress }) => {
     }
   }
 
-  const siteLimit = rateLimit(
+  const siteLimit = await rateLimit(
     `analytics-events-site:${token.orgId}:${token.siteId}`,
     2_000,
     60_000,
+    { scope: `organizations/${token.orgId}/sites/${token.siteId}` },
   );
   if (!siteLimit.allowed) return response(429);
-  const cleanupLimit = rateLimit(
+  const cleanupLimit = await rateLimit(
     `analytics-events-cleanup:${token.orgId}:${token.siteId}`,
     1,
     60 * 60_000,
+    { scope: `organizations/${token.orgId}/sites/${token.siteId}` },
   );
   if (cleanupLimit.allowed)
     await cleanupExpiredAnalyticsEvents(store, token.orgId, token.siteId);

@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import http from 'node:http';
+import dns from 'node:dns';
 import type { AddressInfo } from 'node:net';
 import {
   PRIVATE_NETWORK_FETCH_ENV,
-  createValidatingLookup,
   isAllowedOutboundAddress,
   migrationSourcePolicy,
   parseOutboundUrl,
@@ -17,6 +17,7 @@ const optIn = migrationSourcePolicy();
 afterEach(() => {
   delete process.env[PRIVATE_NETWORK_FETCH_ENV];
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe('parseOutboundUrl', () => {
@@ -58,7 +59,7 @@ describe('parseOutboundUrl', () => {
   });
 });
 
-describe('DNS validation used by the pinned connection', () => {
+describe('DNS validation before each request', () => {
   const lookupOf = (...addresses: string[]) => vi.fn(async () => addresses.map((address) => ({ address, family: address.includes(':') ? 6 : 4 })));
 
   it('rejects a host when any answer is not public, including mapped IPv6', async () => {
@@ -68,22 +69,13 @@ describe('DNS validation used by the pinned connection', () => {
     await expect(resolveOutboundAddresses('a.example', {}, lookupOf('8.8.8.8'))).resolves.toEqual([{ address: '8.8.8.8', family: 4 }]);
   });
 
-  it('hands the socket exactly the addresses it validated', async () => {
-    const lookup = lookupOf('203.0.113.7', '2606:4700::1');
-    const validating = createValidatingLookup({}, lookup);
-    const all = await new Promise<unknown>((resolve, reject) => validating('a.example', { all: true }, (error, address) => error ? reject(error) : resolve(address)));
-    expect(all).toEqual([{ address: '203.0.113.7', family: 4 }, { address: '2606:4700::1', family: 6 }]);
-    const v4 = await new Promise<unknown>((resolve, reject) => validating('a.example', { family: 4 }, (error, address) => error ? reject(error) : resolve(address)));
-    expect(v4).toBe('203.0.113.7');
-    expect(lookup).toHaveBeenCalledTimes(2);
-
-    const rebinding = createValidatingLookup({}, lookupOf('127.0.0.1'));
-    await expect(new Promise((resolve, reject) => rebinding('a.example', { all: true }, (error, address) => error ? reject(error) : resolve(address))))
-      .rejects.toThrow(/non-public/);
+  it('maps a missing host to dns_failed', async () => {
+    const missing = vi.fn(async () => { throw Object.assign(new Error('missing'), { code: 'ENOTFOUND' }); });
+    await expect(resolveOutboundAddresses('gone.example', {}, missing)).rejects.toMatchObject({ code: 'dns_failed' });
   });
 });
 
-describe('safeFetch over the pinned transport', () => {
+describe('safeFetch over the native fetch', () => {
   let server: http.Server;
   let origin: string;
   const hits: string[] = [];
@@ -157,6 +149,22 @@ describe('safeFetch over the pinned transport', () => {
     const get = await safeFetch(`${origin}/declared-large`, {}, { ...optIn, maxBytes: 1024 * 1024 });
     expect(get.status).toBe(200);
     await expect(get.text()).rejects.toThrow(/exceeds 1048576 bytes/);
+  });
+});
+
+describe('safeFetch name checks on the native fetch', () => {
+  it('resolves every hop before fetching and never requests a host with a private answer', async () => {
+    const lookup = vi.spyOn(dns.promises, 'lookup').mockImplementation((async (host: string) =>
+      [{ address: host === 'rebound.example' ? '169.254.169.254' : '203.0.113.9', family: 4 }]) as never);
+    await expect(safeFetch('https://rebound.example/')).rejects.toMatchObject({ code: 'blocked_destination' });
+    expect(lookup).toHaveBeenCalledWith('rebound.example', { all: true, verbatim: true });
+    lookup.mockRejectedValueOnce(Object.assign(new Error('missing'), { code: 'ENOTFOUND' }));
+    await expect(safeFetch('https://gone.example/')).rejects.toMatchObject({ code: 'dns_failed' });
+  });
+
+  it('bounds name resolution by the request deadline', async () => {
+    vi.spyOn(dns.promises, 'lookup').mockImplementation((() => new Promise(() => {})) as never);
+    await expect(safeFetch('https://slow-dns.example/', {}, { timeoutMs: 50 })).rejects.toThrow();
   });
 });
 
