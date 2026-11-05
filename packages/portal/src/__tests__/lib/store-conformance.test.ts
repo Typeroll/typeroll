@@ -6,10 +6,16 @@ import { getStore, _resetForTests, type ReadWriteStore } from '../../lib/datasto
 import { SqlDocumentEngine } from '../../lib/store/sql-engine';
 import { SqlStore, localTransport } from '../../lib/store/sql-store';
 import { nodeSqliteDriver } from '../../lib/store/node-sqlite';
+import { ShardedStore } from '../../lib/store/sharded-store';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 
 let counter = 0;
-const backends: Array<{ name: string; firestoreSemantics: boolean; make: () => Promise<ReadWriteStore> }> = [
+const sharded = () => {
+  const engines = new Map<string, SqlDocumentEngine>();
+  return new ShardedStore({ transport: name => { if (!engines.has(name)) engines.set(name, new SqlDocumentEngine(nodeSqliteDriver())); return localTransport(engines.get(name)!); } }, () => `id${++counter}`.padStart(8, '0'));
+};
+const backends: Array<{ name: string; firestoreSemantics: boolean; globalIndex?: boolean; make: () => Promise<ReadWriteStore> }> = [
+  { name: 'sharded', firestoreSemantics: true, globalIndex: false, make: async () => sharded() },
   { name: 'sqlite', firestoreSemantics: true, make: async () => new SqlStore(localTransport(new SqlDocumentEngine(nodeSqliteDriver())), () => `id${++counter}`.padStart(8, '0')) },
   { name: 'fixtures', firestoreSemantics: false, make: async () => { makeTmpFixtures(); await resetDatastore(); _resetForTests(); return getStore(); } },
 ];
@@ -86,7 +92,10 @@ for (const backend of backends) describe(`store contract: ${backend.name}`, () =
   it('writes the scheduled-work index with its source', async () => {
     const due = Date.now() + 60_000;
     await store.setDoc('organizations/o/sites/s/deploys/d', { status: 'running', continuation: { due_at: due, token: 't' }, version_id: 'main', environment: 'production' });
-    const index = await store.listDocs<{ source: string; due_at: number }>('scheduled_work');
+    // A sharded store keeps each object's index beside its sources; its alarms replace the global sweep.
+    const index = backend.globalIndex === false
+      ? await (store as ShardedStore & { store(name: string): ReadWriteStore })['store'](await (store as ShardedStore).shardName('organizations/o/sites/s/deploys/d')).listDocs<{ source: string; due_at: number }>('scheduled_work')
+      : await store.listDocs<{ source: string; due_at: number }>('scheduled_work');
     expect(index).toEqual([expect.objectContaining({ source: 'organizations/o/sites/s/deploys/d', due_at: due })]);
   });
 

@@ -56,6 +56,22 @@ export class SqlStore implements ReadWriteStore {
     throw new ConflictError(paths[0]!);
   }
 
+  /**
+   * Replace one document with what `decide` returns from its current value (null deletes it),
+   * committing `extra` documents in the same transaction. `skip` commits nothing.
+   */
+  async mutate<T>(path: string, decide: (before: (Record<string, any> & { id: string }) | null) => { after: Record<string, any> | null; result: T } | { skip: true; result: T },
+    extra: (after: Record<string, any> | null) => Array<{ path: string; data: Record<string, any> }> = () => []): Promise<T> {
+    return this.optimistic([path], ([before]) => {
+      const decision = decide(asValue(before) as (Record<string, any> & { id: string }) | null);
+      if ('skip' in decision) return { result: decision.result };
+      const after = decision.after === null ? null : (({ id: _id, ...rest }) => rest)(clean(decision.after) as Record<string, any>);
+      const { writes, index } = this.indexFor(path, before?.data ?? null, after);
+      const own: Write = after === null ? { path, op: 'delete' } : { path, op: 'set', data: after };
+      return { writes: [own, ...writes, ...extra(after).map(item => ({ path: item.path, op: 'set' as const, data: item.data }))], index, result: decision.result };
+    });
+  }
+
   async getDoc<T = unknown>(path: string): Promise<(T & { id: string }) | null> {
     return asValue(await this.transport.get(path)) as (T & { id: string }) | null;
   }
