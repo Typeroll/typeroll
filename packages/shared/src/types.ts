@@ -155,8 +155,11 @@ export type HostingAdapterName = 'cloudflare' | 'netlify' | 'vercel' | 'firebase
 export interface Site {
   id: string;
   name: string;
-  /** Customer Git publishing is explicit; existing managed sites retain their adapter until migrated. */
-  publishing_mode?: 'customer_git' | 'managed';
+  /**
+   * Customer Git publishing is explicit; existing managed sites retain their adapter until migrated.
+   * `hosted` (only with a bound hosting service) is set only by internal site creation.
+   */
+  publishing_mode?: 'customer_git' | 'managed' | 'hosted';
   /** Verified reuse of the original static Pages project; server-managed migration receipt. */
   publishing_migration?: { account_id: string; project: string; website_host: string; previous_deployment_id: string; hosting_group_id: string; migrated_at: string };
   /** Omitted legacy values resolve to the organization's Default Hosting Group. */

@@ -107,7 +107,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgr
     if (busy) return;
     const current = await refresh();
     if (!current?.ready) return;
-    const environment = current.mode === 'customer_git' ? 'production' : env;
+    const environment = current.mode !== 'managed' ? 'production' : env;
     const live = environment === 'production' && current.publication?.production ? current.publication : null;
     const message = live ? liveDomainConfirmMessage(live)
       : environment === 'production'
@@ -155,7 +155,7 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgr
 
   return (
     <>
-      {setup?.mode !== 'customer_git' && <select
+      {setup?.mode === 'managed' && <select
         value={env}
         onChange={(e) => setEnv(e.target.value as 'production' | 'staging')}
         disabled={busy}

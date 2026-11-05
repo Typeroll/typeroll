@@ -33,7 +33,9 @@ export const engineConfigurationPath = (org: string, provider: BuildProvider = '
 export const buildInputPath = (org: string, key: string) => `organizations/${org}/build_inputs/${key}`;
 export interface BuildInput {
   validation_source_sha256?: string;
-  validation_configuration_sha256?: string; provider?: BuildProvider; dispatch_nonce?: string; source_key: string; kind: 'qualification' | 'publication' | 'media_preparation' | 'static_verification'; dispatch_id?: string; dispatch_uncertain?: boolean; dispatch_started_at?: number; dispatch_attempt?: number; dispatch_lease_until?: number; storage_account_id: string }
+  validation_configuration_sha256?: string; provider?: BuildProvider; dispatch_nonce?: string; source_key: string; kind: 'qualification' | 'publication' | 'media_preparation' | 'static_verification';
+  /** False when the publication is not hosted on Pages (hosted sites): the engine returns the whole site. */
+  direct_upload?: boolean; dispatch_id?: string; dispatch_uncertain?: boolean; dispatch_started_at?: number; dispatch_attempt?: number; dispatch_lease_until?: number; storage_account_id: string }
 export async function readEngineConfiguration(org: string, provider: BuildProvider = 'cloudflare') { return getStore().getDoc<EngineConfiguration>(engineConfigurationPath(org, provider)); }
 export async function authorizeEngine(org: string, token: string, revision: string) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org)) throw new ConnectionError('Build engine authentication failed.', 401);

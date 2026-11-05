@@ -13,7 +13,7 @@ import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, queuedBuildE
 import { readEngineConfiguration, buildInputPath, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
 
-export async function enqueueBuild(config: EngineConfiguration, identity: Omit<BuildIdentity, 'source_sha256' | 'protocol' | 'node_version'>, files: Record<string, string>, kind: BuildInput['kind'] = 'publication', options: { requeueFailed?: boolean } = {}) {
+export async function enqueueBuild(config: EngineConfiguration, identity: Omit<BuildIdentity, 'source_sha256' | 'protocol' | 'node_version'>, files: Record<string, string>, kind: BuildInput['kind'] = 'publication', options: { requeueFailed?: boolean; directUpload?: boolean } = {}) {
   if (kind === 'publication' && !files['packages/site-template/src/lib/publication-validation.mjs'])
     throw new ConnectionError('This frozen renderer predates publication checks. Publish the site with the current Core release before preparing a domain change.', 409, 'publication_renderer_update_required');
   const source = encodeSource(files);
@@ -33,7 +33,8 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
   const supportsMediaBatches = files['scripts/media.mjs']?.includes('export async function prepareMediaBatch(');
   const mediaTotal = kind === 'static_verification' ? JSON.parse(files['verification.json']).checks.length : supportsMediaBatches ? (publication?.media_manifest?.entries?.length ?? 0) + (publication?.retained_media_manifests ?? []).reduce((sum: number, manifest: any) => sum + manifest.entries.length, 0) : 0;
   const queued = await new OrganizationBuildQueue().enqueue(frozen, config.revision, mediaTotal, kind === 'static_verification' || kind === 'media_preparation' ? kind : undefined);
-  await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { ...validation, source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare' } satisfies BuildInput);
+  await getStore().createDocIfMissing(buildInputPath(identity.org_id, queued.key), { ...validation, source_key: sourceKey, kind, storage_account_id: config.account_id, provider: config.provider ?? 'cloudflare',
+    ...(options.directUpload === false ? { direct_upload: false } : {}) } satisfies BuildInput);
   if (options.requeueFailed && ['failed', 'cancelled'].includes(queued.task.status)) {
     // The same frozen build, retried once on an updated engine: a fresh dispatch, not the failed one's.
     await getStore().updateDoc(buildInputPath(identity.org_id, queued.key), { dispatch_id: null, dispatch_uncertain: false, dispatch_attempt: 0, dispatch_lease_until: 0, dispatch_nonce: null, storage_account_id: config.account_id });

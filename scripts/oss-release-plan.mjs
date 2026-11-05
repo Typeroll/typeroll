@@ -151,6 +151,8 @@ export function buildReleaseManifest({ repositoryRoot = root, sourceSha, bundle,
     // The narrow internal API the private operator Worker calls through its
     // service binding to the portal's OperatorApi entrypoint.
     operator_api_version: readLiteral(repositoryRoot, 'packages/portal/src/lib/operator-api/contract.ts', 'OPERATOR_API_VERSION'),
+    // The RPC contract a hosting service bound as SITE_HOSTING implements for sites in the `hosted` mode.
+    site_hosting_version: readLiteral(repositoryRoot, 'packages/portal/src/lib/publishing/site-hosting.ts', 'SITE_HOSTING_VERSION'),
     mcp_version: readJson(repositoryRoot, 'packages/mcp-server/package.json').version,
     recorded_at: recordedAt,
   };

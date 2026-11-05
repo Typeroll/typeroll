@@ -71,7 +71,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
           } catch { /* Expired or unavailable receipts fall back to ordinary downloads. */ }
         }
         return privateJson({ ...claim, kind: metadata.kind, source_url: await storage.grant(metadata.source_key),
-          storage_account_id: storage.account, media_access_batched: batchedAccess, direct_upload: metadata.kind === 'publication',
+          storage_account_id: storage.account, media_access_batched: batchedAccess, direct_upload: metadata.kind === 'publication' && metadata.direct_upload !== false,
           ...(input.render_cache === true && metadata.kind === 'publication' ? { render_cache_supported: true, render_cache: renderCache } : {}),
           ...(assetCache ? { asset_cache: assetCache } : {}),
           ...(mediaAccess ? { media_access: mediaAccess } : {}) });
@@ -114,7 +114,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
       });
     }
     if (action === 'direct-upload') {
-      if (metadata.kind !== 'publication') throw new ConnectionError('This task has no static hosting target.', 409);
+      if (metadata.kind !== 'publication' || metadata.direct_upload === false) throw new ConnectionError('This task has no static hosting target.', 409);
       const job = await store.getDoc<DeployJob & { git_publication?: { build_task_key?: string; publication_id: string; commit?: string; branch: string; hosting_group_id?: string; hosting_group_revision?: string; account_id: string; project: string } }>(paths.deploy(org, task.identity.site_id, task.identity.job_id));
       const publication = job?.git_publication;
       const group = await siteHostingGroup(org, task.identity.site_id);

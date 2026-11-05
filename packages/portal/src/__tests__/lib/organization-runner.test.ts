@@ -301,6 +301,17 @@ it('issues asset-only upload access for the frozen hosting group and denies chan
   expect((await request('direct-upload', claim.token, attempt)).status).toBe(409);
 });
 
+it('asks for the whole site, and issues no Pages upload access, for a build that is not hosted on Pages', async () => {
+  const { key } = await prepare();
+  assetGrant.mockClear();
+  await getStore().updateDoc(buildInputPath(org, key), { direct_upload: false });
+  await getStore().updateDoc(paths.deploy(org, 'site', 'job'), { git_publication: { provider: 'hosted', build_task_key: key, publication_id: identity.publication_id, commit: identity.commit, branch: 'main' } });
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect(claim.direct_upload).toBe(false);
+  expect((await request('direct-upload', claim.token, { key, lease_id: claim.lease_id })).status).toBe(409);
+  expect(assetGrant).not.toHaveBeenCalled();
+});
+
 it('issues media grants in bounded slices and retains frozen source integrity', async () => {
   const entries = Array.from({ length: 1000 }, (_, id) => ({ id: String(id) }));
   const publication = { publication_id: identity.publication_id, media_manifest: { entries } };

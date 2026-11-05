@@ -188,7 +188,7 @@ export default function PublishMenu({
     if (busy) return;
     const setup = await refreshSetup();
     if (!setup?.ready) return;
-    const environment = setup.mode === 'customer_git' ? 'production' : env;
+    const environment = setup.mode !== 'managed' ? 'production' : env;
     const live = environment === 'production' && setup.publication?.production ? setup.publication : null;
     const message = live ? liveDomainConfirmMessage(live)
       : environment === 'production'
@@ -395,7 +395,7 @@ export default function PublishMenu({
                     ? `Last deployed ${rel(lastDeployedAt)}.`
                     : ''}
             </p>
-            {publishingSetup?.publication?.production && (publishingSetup.mode === 'customer_git' || env === 'production') && (
+            {publishingSetup?.publication?.production && (publishingSetup.mode !== 'managed' || env === 'production') && (
               <p className="pmenu__hint pmenu__hint--warn">
                 Deploying publishes to your live website: {publishingSetup.publication.live_domains.join(', ')}.
               </p>
@@ -460,7 +460,7 @@ export default function PublishMenu({
           <div className="pmenu__section pmenu__deploy-footer">
             <div className="pmenu__setup"><PublishingRequirements setup={publishingSetup} error={setupError} retry={() => { void refreshSetup(); }} /></div>
             <div className="pmenu__actions">
-              {publishingSetup?.mode !== 'customer_git' && <select
+              {publishingSetup?.mode === 'managed' && <select
                 aria-label="Deployment environment"
                 className="pmenu__select pmenu__select--env"
                 value={env}

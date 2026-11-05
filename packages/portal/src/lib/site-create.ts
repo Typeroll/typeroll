@@ -18,6 +18,8 @@ import { provisionSiteHosting } from './hosting/site-provisioning';
 import { ConnectionError } from './publishing/connections';
 import { newSitePublishingMode } from './publishing/readiness';
 import { getSiteDomains, saveSiteDomains } from './publishing/domain-config';
+import { ensureHostedPlatformHost } from './publishing/site-hosting';
+import { declareDomainAtCreation } from './site-domain';
 import { SiteIdTakenError } from './site-create-input';
 
 export interface CreateSiteInput {
@@ -33,6 +35,11 @@ export interface CreateSiteInput {
   id?: string;
   /** Optional BCP 47 site language, already validated. Default `en`. */
   language?: string;
+  /**
+   * Internal callers only (never read from a request body): create the site
+   * in the `hosted` mode. Refused unless a hosting service is bound.
+   */
+  publishingMode?: 'hosted';
 }
 
 export interface CreateSiteResult {
@@ -45,11 +52,11 @@ export interface CreateSiteResult {
  * A requested `id` is reserved exactly or not at all (SiteIdTakenError); an id
  * derived from the name gets a random suffix when it is taken.
  */
-export async function reserveSite(orgId: string, name: string, options: { id?: string; language?: string } = {}): Promise<{ siteId: string; site: Omit<Site, 'id'> }> {
+export async function reserveSite(orgId: string, name: string, options: { id?: string; language?: string; publishingMode?: 'hosted' } = {}): Promise<{ siteId: string; site: Omit<Site, 'id'> }> {
   const baseId = options.id || slugify(name) || generateDocId();
   const site: Omit<Site, 'id'> = {
     name,
-    publishing_mode: newSitePublishingMode(),
+    publishing_mode: newSitePublishingMode(options.publishingMode),
     hosting_group_id: 'default',
     media_id: randomMediaId(),
     hosting_adapter: 'cloudflare',
@@ -78,20 +85,30 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
   const domain = input.domain?.trim() || undefined;
 
   const store = getStore();
-  const { siteId, site: reservedSite } = await reserveSite(input.orgId, name, { id: input.id, language: input.language });
+  const { siteId, site: reservedSite } = await reserveSite(input.orgId, name, { id: input.id, language: input.language, publishingMode: input.publishingMode });
+  const hosted = reservedSite.publishing_mode === 'hosted';
 
   // Provision only after this request has atomically reserved a new site.
   let hostingConfig: Site['hosting_config'] | undefined;
-  try {
-    const result = await provisionSiteHosting(input.orgId, siteId);
-    if (result) {
-      hostingConfig = {
-        pages_project: result.pagesProject,
-        fallback_subdomain: result.fallbackSubdomain ?? undefined,
-      };
+  if (hosted) {
+    // The platform address; a failure is retried by the first publication.
+    try {
+      hostingConfig = { fallback_subdomain: await ensureHostedPlatformHost(input.orgId, siteId, siteId) };
+    } catch (e) {
+      console.error(`[create-site] platform address failed for ${siteId}:`, e);
     }
-  } catch (e) {
-    console.error(`[create-site] CF provisioning failed for ${siteId}:`, e);
+  } else {
+    try {
+      const result = await provisionSiteHosting(input.orgId, siteId);
+      if (result) {
+        hostingConfig = {
+          pages_project: result.pagesProject,
+          fallback_subdomain: result.fallbackSubdomain ?? undefined,
+        };
+      }
+    } catch (e) {
+      console.error(`[create-site] CF provisioning failed for ${siteId}:`, e);
+    }
   }
 
   // NOTE: `domain` is deliberately NOT written here — a bare domain with no
@@ -101,7 +118,7 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
     ...reservedSite,
     hosting_adapter: 'cloudflare',
     hosting_config: hostingConfig,
-    staging_url: hostingConfig?.fallback_subdomain
+    staging_url: hostingConfig?.fallback_subdomain && !hosted
       ? `https://${hostingConfig.fallback_subdomain}`
       : undefined,
     created_at: new Date().toISOString(),
@@ -141,7 +158,9 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
     html_content: defaultFooterHtml(name),
   });
 
-  if (domain) {
+  if (domain && hosted) {
+    await declareDomainAtCreation(input.orgId, siteId, domain);
+  } else if (domain) {
     // The site publishes through its organization: the typed domain is saved
     // as the future website host, prepared and verified by Publishing. An
     // invalid one is dropped; it never fails the site that was just created.

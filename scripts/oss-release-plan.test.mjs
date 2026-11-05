@@ -97,6 +97,7 @@ test('the generated release manifest matches the runtime version sources', () =>
   assert.equal(manifest.template_capabilities_version, '0.57.0');
   assert.equal(manifest.bundle_digest, DIGEST);
   assert.equal(manifest.operator_api_version, 1);
+  assert.equal(manifest.site_hosting_version, 1);
   assert.equal(manifest.image_digest, undefined);
   assert.equal(manifest.bundle.url, 'https://github.com/Typeroll/typeroll/releases/download/core-v0.2.157/typeroll-core-0.2.157-workers.tar.gz');
   assert.deepEqual(manifest.bundle.provenance, {

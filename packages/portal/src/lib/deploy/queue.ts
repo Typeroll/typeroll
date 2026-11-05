@@ -78,13 +78,21 @@ export type DeployRunOutcome = 'ran' | 'deferred' | 'continue' | 'waiting';
  * The execution path of every delivered deploy (scheduling/worker.ts).
  *
  * Every site publishes through its organization's build engine and hosting
- * (customer publishing). Typeroll no longer builds sites itself: a site still
- * in the former managed mode fails with a named error until it is migrated.
+ * (customer publishing), or, for a hosted site, through the build engine to
+ * the bound hosting service. Typeroll no longer builds sites itself: a
+ * site still in the former managed mode fails with a named error until it is
+ * migrated.
  */
 export async function executeDeployJob(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const store = getStore();
   const site = await store.getDoc<{ publishing_mode?: string }>(paths.site(args.orgId, args.siteId));
   const jobPath = paths.deploy(args.orgId, args.siteId, args.jobId);
+  // Hosted sites publish through their own runner, which refuses by name
+  // when no hosting service is bound.
+  if (site?.publishing_mode === 'hosted') {
+    const { executeHostedPublication } = await import('../publishing/hosting-runner');
+    return executeHostedPublication(args);
+  }
   // A verification retry of a publication that already ran on customer
   // publishing resumes there even if the site's mode was changed since.
   const retry = site?.publishing_mode !== 'customer_git' && (await store.getDoc<{ verification_retry?: unknown }>(jobPath))?.verification_retry;

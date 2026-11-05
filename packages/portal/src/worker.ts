@@ -14,8 +14,11 @@ import { scheduledDocumentStore, type ScheduledDelivery, type ScheduledDocumentS
 import { deliverScheduledWork } from './lib/scheduling/worker';
 import { drainObjectOutbox, sweepScheduledObjects } from './lib/scheduling/sweep';
 import { createOperatorApi, type OperatorApiMethods } from './lib/operator-api';
+import { setSiteHostingRuntime, type SiteHostingMethods } from './lib/publishing/site-hosting';
 
 setRuntimeStore(() => cloudflareStore(env as unknown as StoreEnv));
+// Sites in the `hosted` mode exist only on a deployment that binds a hosting service.
+setSiteHostingRuntime(() => (env as unknown as { SITE_HOSTING?: SiteHostingMethods }).SITE_HOSTING ?? null);
 setStoreTransferRuntime(() => {
   const target = cloudflareMigrationTarget(env as unknown as StoreEnv);
   const bucket = (env as unknown as { MIGRATION?: MigrationBucket }).MIGRATION;
@@ -38,6 +41,8 @@ interface PortalEnv extends StoreEnv {
   MIGRATION?: MigrationBucket;
   /** `allow` only during the cutover window. */
   TYPEROLL_MIGRATION?: string;
+  /** The hosting service for sites in the `hosted` mode (publishing/site-hosting.ts); absent on most deployments. */
+  SITE_HOSTING?: SiteHostingMethods;
   /** Self service binding to the `Scheduler` entrypoint below. */
   SCHEDULER: { deliver(delivery: ScheduledDelivery): Promise<void>; drainOutbox(object: string): Promise<number> };
 }

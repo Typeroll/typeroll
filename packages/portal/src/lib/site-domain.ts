@@ -58,6 +58,8 @@ import { paths, type Site } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { CloudflareApi, CloudflareConflictError, pagesProjectNameForSite, type CustomDomainStatus } from './hosting/cloudflare-api';
 import { classifyHostname, isValidHostname, normalizeHostname, pickCanonical } from './domain-pair';
+import { ConnectionError } from './publishing/connections';
+import { hostingSiteRef, siteHosting, HOSTED_MODE, type HostingDomainStatus } from './publishing/site-hosting';
 
 export class DomainServiceError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -205,6 +207,9 @@ export async function requestDomain(
     );
   }
 
+  const hosted = await hostedSite(orgId, siteId);
+  if (hosted) return hostedRequestDomain(orgId, hosted, rawHostname, options.prefer ?? 'apex', classification.kind);
+
   const cf = getCloudflareForSite(orgId, siteId);
   if (!cf) {
     throw new DomainServiceError(
@@ -318,6 +323,8 @@ export async function pollDomainStatus(
   orgId: string,
   siteId: string,
 ): Promise<DomainStateResponse> {
+  const hosted = await hostedSite(orgId, siteId);
+  if (hosted) return hostedPollDomainStatus(orgId, hosted);
   const cf = getCloudflareForSite(orgId, siteId);
   if (!cf) {
     throw new DomainServiceError(
@@ -427,6 +434,7 @@ export async function activateDomain(
   if (!site.domain) {
     throw new DomainServiceError('No custom domain is attached to this site.', 404);
   }
+  if (site.publishing_mode === HOSTED_MODE && site.domain_status !== 'live') return hostedActivateDomain(orgId, site);
   if (site.domain_status === 'live') {
     return toResponse(site)!;
   }
@@ -470,6 +478,7 @@ export async function removeDomain(
 ): Promise<{ ok: true }> {
   const site = await loadSite(orgId, siteId);
   if (!site.domain) return { ok: true };
+  if (site.publishing_mode === HOSTED_MODE) return hostedRemoveDomain(orgId, site);
 
   const cf = getCloudflareForSite(orgId, siteId);
   if (cf) {
@@ -536,6 +545,12 @@ export async function declareDomainAtCreation(
   rawHostname: string,
 ): Promise<void> {
   const site = await getStore().getDoc<Site>(paths.site(orgId, siteId));
+  if (site?.publishing_mode === HOSTED_MODE) {
+    // Best effort, like every domain at creation: the site exists either way.
+    try { await requestDomain(orgId, siteId, rawHostname); }
+    catch (e) { console.warn(`[create-site] hosted domain "${rawHostname}" was not added for ${siteId}: ${e instanceof Error ? e.message : String(e)}`); }
+    return;
+  }
   if (site?.publishing_mode === 'customer_git') {
     const { getSiteDomains, saveSiteDomains } = await import('./publishing/domain-config');
     const config = await getSiteDomains(orgId, siteId);
@@ -565,4 +580,166 @@ export async function declareDomainAtCreation(
     } as Record<string, unknown>);
     console.error(`[create-site] CF domain registration failed for ${siteId} (${pick.canonical}):`, e);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Hosted sites (`publishing_mode: hosted`).
+//
+// The verbs above keep their shapes; for a hosted site they manage the custom
+// hostnames through the bound hosting service (publishing/site-hosting)
+// instead of a Pages project. The service's domain state is the source of truth;
+// the site document mirrors it in the same `domain*` fields, so URLs and
+// existing callers read hosted sites like any other:
+//   pending   the hostname waits for DNS or its certificate
+//   verified  Cloudflare serves it with a valid certificate
+//   live      activated: launched with this hostname as the primary
+//   failed    Cloudflare blocked the hostname
+// Status is read from the service only when a caller asks (poll), never in
+// the background. Without a bound service every verb answers 404.
+// ---------------------------------------------------------------------------
+
+type HostedDomainSite = Site & { id: string };
+
+async function hostedSite(orgId: string, siteId: string): Promise<HostedDomainSite | null> {
+  const site = await getStore().getDoc<Site>(paths.site(orgId, siteId));
+  return site?.publishing_mode === HOSTED_MODE ? { ...site, id: siteId } : null;
+}
+
+async function hosted<T>(work: () => Promise<T>): Promise<T> {
+  try { return await work(); }
+  catch (error) {
+    if (error instanceof ConnectionError) throw new DomainServiceError(error.message, error.status);
+    throw error;
+  }
+}
+
+function hostedState(status: HostingDomainStatus, launchedPrimary: boolean): { status: 'pending' | 'verified' | 'live' | 'failed'; reason: string | null } {
+  if (status.action === 'blocked') return { status: 'failed', reason: status.errors.join(' ') || 'Cloudflare blocked this hostname. Contact support.' };
+  if (status.live) return { status: launchedPrimary ? 'live' : 'verified', reason: null };
+  return { status: 'pending', reason: status.errors.length ? status.errors.join(' ') : null };
+}
+
+/** Write the mirror of the hosted hostnames onto the site document. */
+async function writeHostedMirror(orgId: string, site: HostedDomainSite, input: {
+  canonical: string; alias: string | null; canonicalKind?: 'apex' | 'www';
+  canonicalStatus: HostingDomainStatus; aliasStatus: HostingDomainStatus | null;
+  /** The hosted launch state: whether the site is launched, and on which primary hostname. */
+  launch: { launched: boolean; primary_host: string | null; dns_target: string };
+}): Promise<HostedDomainSite> {
+  const launchedHere = input.launch.launched && input.launch.primary_host === input.canonical;
+  const canonical = hostedState(input.canonicalStatus, launchedHere);
+  const alias = input.aliasStatus ? hostedState(input.aliasStatus, launchedHere) : null;
+  const update: Partial<Site> = {
+    domain: input.canonical,
+    domain_status: canonical.status,
+    domain_added_at: site.domain_added_at ?? new Date().toISOString(),
+    domain_dns_target: input.launch.dns_target || site.domain_dns_target,
+    domain_failure_reason: canonical.reason ?? undefined,
+    ...(canonical.status === 'verified' && !site.domain_verified_at ? { domain_verified_at: new Date().toISOString() } : {}),
+    domain_alias: input.alias ?? undefined,
+    domain_alias_status: alias?.status,
+    domain_alias_failure_reason: alias?.reason ?? undefined,
+    domain_canonical: input.alias ? input.canonicalKind : undefined,
+    hosting_config: { ...(site.hosting_config ?? {}), launched: input.launch.launched },
+  };
+  await getStore().updateDoc(paths.site(orgId, site.id), update as Record<string, unknown>);
+  return { ...site, ...update } as HostedDomainSite;
+}
+
+async function hostedRequestDomain(orgId: string, site: HostedDomainSite, rawHostname: string, prefer: 'apex' | 'www', kind: string): Promise<DomainStateResponse> {
+  const pick = pickCanonical(rawHostname, prefer);
+  const existingPairMatches = site.domain === pick.canonical && (pick.alias ? site.domain_alias === pick.alias : !site.domain_alias);
+  if (site.domain && !existingPairMatches) {
+    throw new DomainServiceError(`This site already has a custom domain (${site.domain}${site.domain_alias ? ` + ${site.domain_alias}` : ''}). Remove it first before adding a different one.`, 409);
+  }
+  return hosted(async () => {
+    const domains = siteHosting();
+    const ref = await hostingSiteRef(orgId, site.id);
+    const canonicalStatus = await domains.addCustomDomain(ref, pick.canonical);
+    let aliasStatus: HostingDomainStatus | null = null;
+    if (pick.alias) {
+      try { aliasStatus = await domains.addCustomDomain(ref, pick.alias); }
+      catch (error) {
+        // Never leave half a pair: the missing variant would not answer.
+        if (!existingPairMatches) await domains.removeCustomDomain(ref, pick.canonical).catch(() => undefined);
+        throw error;
+      }
+    }
+    const state = await domains.domains(ref);
+    const fresh = await writeHostedMirror(orgId, site, { canonical: pick.canonical, alias: pick.alias,
+      canonicalKind: pick.alias ? (kind === 'www' && prefer === 'www' ? 'www' : prefer) : undefined,
+      canonicalStatus, aliasStatus, launch: state });
+    return toResponse(fresh)!;
+  });
+}
+
+async function hostedPollDomainStatus(orgId: string, site: HostedDomainSite): Promise<DomainStateResponse> {
+  if (!site.domain) throw new DomainServiceError('No custom domain is attached to this site.', 404);
+  return hosted(async () => {
+    const domains = siteHosting();
+    const ref = await hostingSiteRef(orgId, site.id);
+    const canonicalStatus = await domains.refreshCustomDomain(ref, site.domain!);
+    const aliasStatus = site.domain_alias ? await domains.refreshCustomDomain(ref, site.domain_alias) : null;
+    const state = await domains.domains(ref);
+    const fresh = await writeHostedMirror(orgId, site, { canonical: site.domain!, alias: site.domain_alias ?? null, canonicalKind: site.domain_canonical,
+      canonicalStatus, aliasStatus, launch: state });
+    return toResponse(fresh)!;
+  });
+}
+
+/** Launch the site on its custom domain: the primary is indexable, every other hostname redirects to it. */
+async function hostedActivateDomain(orgId: string, site: HostedDomainSite): Promise<DomainStateResponse> {
+  if (site.domain_status !== 'verified') {
+    throw new DomainServiceError(`Cannot activate a domain whose status is "${site.domain_status ?? 'unknown'}". Check the domain until it is verified first.`, 412);
+  }
+  if (site.domain_alias && site.domain_alias_status !== 'verified' && site.domain_alias_status !== 'live') {
+    throw new DomainServiceError(`Cannot activate while the sister hostname ${site.domain_alias} is "${site.domain_alias_status ?? 'unknown'}". Point DNS at ${site.domain_dns_target} for both, then check again.`, 412);
+  }
+  return hosted(async () => {
+    await siteHosting().setLaunch(await hostingSiteRef(orgId, site.id), { launched: true, primary_host: site.domain! });
+    const update = { domain_status: 'live' as const, ...(site.domain_alias ? { domain_alias_status: 'live' as const } : {}),
+      hosting_config: { ...(site.hosting_config ?? {}), launched: true } };
+    await getStore().updateDoc(paths.site(orgId, site.id), update);
+    return toResponse({ ...site, ...update })!;
+  });
+}
+
+/**
+ * Remove the custom hostnames (Cloudflare first). When the removed domain was
+ * the launched primary, the site is unlaunched rather than letting the
+ * platform address become the indexable copy.
+ */
+async function hostedRemoveDomain(orgId: string, site: HostedDomainSite): Promise<{ ok: true }> {
+  return hosted(async () => {
+    const domains = siteHosting();
+    const ref = await hostingSiteRef(orgId, site.id);
+    const before = await domains.domains(ref);
+    for (const hostname of [site.domain_alias, site.domain].filter((value): value is string => !!value)) await domains.removeCustomDomain(ref, hostname);
+    const wasPrimary = !!before.primary_host && [site.domain, site.domain_alias].includes(before.primary_host);
+    if (wasPrimary && before.launched) await domains.setLaunch(ref, { launched: false, primary_host: null });
+    await getStore().updateDoc(paths.site(orgId, site.id), {
+      domain: undefined, domain_status: undefined, domain_added_at: undefined, domain_verified_at: undefined, domain_dns_target: undefined,
+      domain_failure_reason: undefined, domain_alias: undefined, domain_alias_status: undefined, domain_alias_failure_reason: undefined, domain_canonical: undefined,
+      ...(wasPrimary && before.launched ? { hosting_config: { ...(site.hosting_config ?? {}), launched: false } } : {}),
+    });
+    return { ok: true as const };
+  });
+}
+
+/**
+ * Launch or unlaunch a hosted site without a custom domain: launched, its
+ * platform address is the indexable site. Internal; with a launched custom
+ * domain, use activateDomain/removeDomain instead.
+ */
+export async function setHostedSiteLaunch(orgId: string, siteId: string, launched: boolean): Promise<{ launched: boolean; primary_host: string | null }> {
+  const site = await hostedSite(orgId, siteId);
+  if (!site) throw new DomainServiceError('This site is not a hosted site.', 409);
+  return hosted(async () => {
+    const state = await siteHosting().setLaunch(await hostingSiteRef(orgId, siteId), { launched });
+    await getStore().updateDoc(paths.site(orgId, siteId), {
+      hosting_config: { ...(site.hosting_config ?? {}), launched },
+      ...(site.domain && state.primary_host === site.domain ? { domain_status: launched ? 'live' : 'verified', ...(site.domain_alias ? { domain_alias_status: launched ? 'live' : 'verified' } : {}) } : {}),
+    });
+    return { launched: state.launched, primary_host: state.primary_host };
+  });
 }

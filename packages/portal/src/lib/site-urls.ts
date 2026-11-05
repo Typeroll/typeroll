@@ -52,6 +52,11 @@ export function liveBaseFor(site: SiteUrlInput, version: SiteVersion | null): st
   if (!version?.last_deployed_at || !Number.isFinite(Date.parse(version.last_deployed_at))) return null;
   if (!version || version.kind === 'main' || version.id === MAIN_VERSION_ID) {
     if (site.publishing_mode === 'customer_git') return site.domain_status === 'live' && site.domain ? `https://${site.domain}` : null;
+    // A hosted site answers on its platform address until a custom domain is launched.
+    if (site.publishing_mode === 'hosted') {
+      if (site.domain_status === 'live' && site.domain) return `https://${site.domain}`;
+      return site.hosting_config?.fallback_subdomain ? `https://${site.hosting_config.fallback_subdomain}` : null;
+    }
     if (site.domain) return `https://${site.domain}`;
     const fallback = site.hosting_config?.fallback_subdomain;
     return fallback ? `https://${fallback}` : null;
