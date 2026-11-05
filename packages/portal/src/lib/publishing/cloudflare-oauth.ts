@@ -15,6 +15,7 @@ import { getHostingGroup } from './hosting-groups';
 import { cloudflareAccountAccess, joinCloudflareAccount, leaveCloudflareAccount, sharedAccountConfirmation } from './cloudflare-account-claims';
 import { mapPublicationParts } from './parallel';
 import { createProviderClient, ProviderError, type ProviderClient } from './providers.mjs';
+import { withoutRedirects } from '../net/no-redirect.mjs';
 
 export { CLOUDFLARE_BUILD_SCOPES, CLOUDFLARE_CALLBACK, CLOUDFLARE_MEDIA_SCOPES, CLOUDFLARE_OPTIONAL_DNS_SCOPES, CLOUDFLARE_SCOPES, cloudflareOAuthConfiguration, cloudflareSetup, CloudflareFlowError };
 export const CLOUDFLARE_COOKIE = 'typeroll_publishing_cloudflare';
@@ -83,8 +84,8 @@ const PUBLISHER_ERRORS: Record<string, string> = {
 async function exchange(parameters: Record<string, string>, fetchImpl: typeof fetch, options: { previous?: CloudflareOAuthTokens; groupId?: string; requested?: string } = {}): Promise<CloudflareOAuthTokens> {
   const config = cloudflareOAuthConfiguration();
   const refreshing = parameters.grant_type === 'refresh_token';
-  const send = (method: 'basic' | 'post') => fetchImpl(TOKEN_URL, {
-    method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
+  const send = (method: 'basic' | 'post') => withoutRedirects(fetchImpl)(TOKEN_URL, {
+    method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(30_000),
     headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json',
       ...(method === 'basic' ? { Authorization: `Basic ${Buffer.from(`${encodeURIComponent(config.clientId)}:${encodeURIComponent(config.clientSecret)}`).toString('base64')}` } : {}) },
     body: new URLSearchParams(method === 'post' ? { ...parameters, client_id: config.clientId, client_secret: config.clientSecret } : parameters).toString(),

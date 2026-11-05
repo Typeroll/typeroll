@@ -1,5 +1,6 @@
 import { verify, X509Certificate } from 'node:crypto';
 import { applyDeliveryEvent, DeliveryError } from './delivery';
+import { withoutRedirects } from '../net/no-redirect.mjs';
 
 /** Bound streamed bytes, including requests without Content-Length. */
 export async function readMailPayload(input: Request | Response, maxBytes: number): Promise<string> {
@@ -21,7 +22,7 @@ const certificates = new Map<string, { pem: string; expires: number }>();
 async function certificate(url: string): Promise<string> {
   const cached = certificates.get(url);
   if (cached && cached.expires > Date.now()) return cached.pem;
-  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(5000) });
+  const response = await withoutRedirects()(url, { redirect: 'manual', signal: AbortSignal.timeout(5000) });
   if (!response.ok) throw new DeliveryError('Could not verify provider certificate', 503);
   const pem = await readMailPayload(response, 32_000);
   if (certificates.size >= 10) certificates.clear();
@@ -60,7 +61,7 @@ export async function processSesEnvelope(body: Record<string, unknown>) {
   if (body.Type === 'SubscriptionConfirmation') {
     // Never follow the supplied SubscribeURL. Only confirm the configured topic
     // through the region endpoint whose signature has just been verified.
-    const response = await fetch(`https://${hostname}/`, { method: 'POST', redirect: 'error',
+    const response = await withoutRedirects()(`https://${hostname}/`, { method: 'POST', redirect: 'manual',
       signal: AbortSignal.timeout(5000), body: new URLSearchParams({ Action: 'ConfirmSubscription', Version: '2010-03-31',
         TopicArn: topic, Token: String(body.Token) }) });
     if (!response.ok) throw new DeliveryError('Mail event subscription confirmation failed', 503);

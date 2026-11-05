@@ -4,6 +4,8 @@
 // HTTP status and Cloudflare's numeric error codes: provider bodies are never
 // copied into messages or logs.
 
+import { withoutRedirects } from '../net/no-redirect.mjs';
+
 const API_BASE = 'https://api.cloudflare.com/client/v4';
 const PAGE_SIZE = 100;
 const MAX_PAGES = 20;
@@ -54,9 +56,9 @@ export function webAnalyticsApi(token: string, accountId: string, fetchImpl: typ
 
   async function send(path: string, init: { method?: string; body?: unknown } = {}): Promise<Response> {
     try {
-      return await fetchImpl(`${API_BASE}${path}`, {
+      return await withoutRedirects(fetchImpl)(`${API_BASE}${path}`, {
         method: init.method ?? 'GET',
-        redirect: 'error',
+        redirect: 'manual',
         signal: AbortSignal.timeout(30_000),
         headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
         ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),

@@ -3,6 +3,7 @@ import { getStore } from '../datastore';
 import { githubConfiguration } from './github-config';
 import { ConnectionError, connectionPath, getConnection, openCredentials, sealCredentials, type Connection } from './connections';
 import { assertInstallation, createProviderClient, ProviderError, githubAppClient, type ProviderClient } from './providers.mjs';
+import { withoutRedirects } from '../net/no-redirect.mjs';
 
 /** Kept only for personal repository creation; all publishing uses installation tokens. */
 export interface GithubUserGrant {
@@ -47,7 +48,7 @@ async function userAccess(org: string, expected: NonNullable<Connection['github'
     try {
       let response: Response, body: any;
       try {
-        response = await fetchImpl('https://github.com/login/oauth/access_token', { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
+        response = await withoutRedirects(fetchImpl)('https://github.com/login/oauth/access_token', { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(30_000),
           headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
           body: JSON.stringify({ client_id: config.clientId, client_secret: config.clientSecret, grant_type: 'refresh_token', refresh_token: grant.refresh_token }) });
         body = await response.json();

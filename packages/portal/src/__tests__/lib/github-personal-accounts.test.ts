@@ -31,7 +31,7 @@ function provider(overrides: Record<string, any> = {}) {
       '/user/repos': { id: 99, name: 'typeroll-site', owner: user, private: true },
       ...overrides,
     };
-    expect(init?.redirect).toBe('error');
+    expect(init?.redirect).toBe('manual');
     const key = target.pathname + target.search;
     if (!(key in results)) throw Error('Unexpected provider request');
     const result = results[key];

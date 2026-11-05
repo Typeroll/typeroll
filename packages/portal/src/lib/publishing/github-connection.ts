@@ -10,6 +10,7 @@ import {
   synthesizedDiagnosis, trustedGithubIdentity,
   type BlockerContext, type GithubBlocker, type GithubConnectionDiagnosis, type GithubDiagnosisInstallation, type GithubIdentity,
 } from './github-diagnosis';
+import { withoutRedirects } from '../net/no-redirect.mjs';
 
 export { CALLBACK_PATH, githubConfiguration, githubSetup, GithubFlowError };
 export const GITHUB_COOKIE = 'typeroll_publishing_github';
@@ -388,8 +389,8 @@ export async function finishGithubConnection(session: FullSession, input: { stat
 async function exchangeCode(config: ReturnType<typeof githubConfiguration>, code: string, verifier: string, fetchImpl: typeof fetch) {
   let response: Response, body: any;
   try {
-    response = await fetchImpl('https://github.com/login/oauth/access_token', {
-      method: 'POST', redirect: 'error', signal: AbortSignal.timeout(30_000),
+    response = await withoutRedirects(fetchImpl)('https://github.com/login/oauth/access_token', {
+      method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(30_000),
       headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ client_id: config.clientId, client_secret: config.clientSecret,
         code, redirect_uri: config.callback, code_verifier: verifier }),

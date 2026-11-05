@@ -41,7 +41,7 @@ type Reply = Response | Record<string, unknown> | ((init?: RequestInit) => Respo
 function cloudflare(options: { accounts?: Array<{ id: string; name: string }>; exchange?: Reply; pages?: Record<string, Reply>; listing?: Reply } = {}) {
   const accounts = options.accounts ?? [staging];
   return vi.fn<typeof fetch>(async (url, init) => {
-    expect(init?.redirect).toBe('error');
+    expect(init?.redirect).toBe('manual');
     const target = new URL(String(url));
     const reply = (value: Reply) => typeof value === 'function' ? value(init) : value instanceof Response ? value : Response.json(value);
     if (target.pathname === '/oauth2/token') return reply(options.exchange ?? token);

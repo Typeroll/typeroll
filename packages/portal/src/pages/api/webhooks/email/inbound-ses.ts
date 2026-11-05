@@ -3,6 +3,7 @@ import { json } from '../../../../lib/access';
 import { DeliveryError } from '../../../../lib/email/delivery';
 import { inboundRoutes, receiveSesEmail } from '../../../../lib/email/inbound';
 import { readMailPayload, verifySesEnvelope } from '../../../../lib/email/ses-events';
+import { withoutRedirects } from '../../../../lib/net/no-redirect.mjs';
 
 export const POST: APIRoute = async ({ request }) => {
   if (!process.env.EMAIL_SES_INBOUND_ROUTES) return json({ error: 'Not found' }, 404);
@@ -11,7 +12,7 @@ export const POST: APIRoute = async ({ request }) => {
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new DeliveryError('Invalid incoming email event', 400);
     const { hostname, topic } = await verifySesEnvelope(body, [...new Set(inboundRoutes().map(r => r.topic))]);
     if (body.Type === 'SubscriptionConfirmation') {
-      const response = await fetch(`https://${hostname}/`, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5000),
+      const response = await withoutRedirects()(`https://${hostname}/`, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(5000),
         body: new URLSearchParams({ Action: 'ConfirmSubscription', Version: '2010-03-31', TopicArn: topic, Token: String(body.Token) }) });
       if (!response.ok) throw new DeliveryError('Incoming email subscription confirmation failed', 503);
       return json({ received: true });

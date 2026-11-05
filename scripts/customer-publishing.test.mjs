@@ -48,10 +48,13 @@ test('provider errors never surface reflected secrets and redirects cannot carry
   const secret = 'synthetic-credential-must-not-escape';
   const github = createProviderClient('GitHub', secret, async (url, request) => {
     assert.equal(url, 'https://api.github.com/test');
-    assert.equal(request.redirect, 'error');
+    assert.equal(request.redirect, 'manual');
     assert.equal(request.headers.Authorization, `Bearer ${secret}`);
     return new Response(JSON.stringify({ message: secret }), { status: 403 });
   });
+  // A redirect is refused, never followed with the credential.
+  const redirected = createProviderClient('GitHub', secret, async () => new Response(null, { status: 307, headers: { Location: 'https://elsewhere.example/' } }));
+  await assert.rejects(redirected('/test'), (error) => !error.message.includes(secret) && !error.message.includes('elsewhere'));
   await assert.rejects(github('/test'), (error) => !error.message.includes(secret) && error.status === 403);
   await assert.rejects(github('//elsewhere'), /Invalid provider route/);
   const cloudflare = createProviderClient('Cloudflare', secret, async () => new Response(JSON.stringify({ success: false, errors: [{ message: secret }] })));
