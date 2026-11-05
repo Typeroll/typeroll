@@ -50,6 +50,9 @@ const webServer = target.isRemote ? undefined : {
   stdout: 'pipe' as const,
   stderr: 'pipe' as const,
   env: { TYPEROLL_E2E_WORKER_VARS: JSON.stringify(LOCAL_WORKER_VARS) },
+  // Playwright SIGKILLs the server by default; SIGTERM lets start-worker.mjs
+  // stop wrangler and remove the run's state directory and `.dev.vars`.
+  gracefulShutdown: { signal: 'SIGTERM' as const, timeout: 10_000 },
 };
 
 const RESERVED_NAMES_NOT_FOUND = '--host-resolver-rules=MAP *.test ~NOTFOUND, MAP *.invalid ~NOTFOUND, MAP *.example ~NOTFOUND, MAP example.com ~NOTFOUND, MAP *.example.com ~NOTFOUND';
