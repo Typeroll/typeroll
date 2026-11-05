@@ -53,21 +53,12 @@ it('cannot reinterpret a verification retry as a build after the publishing mode
   await expect(assertVerificationRetry('org', 'site', (await getStore().getDoc<any>(path)), true)).rejects.toMatchObject({ code: 'verification_retry_unavailable' });
 });
 
-const recovery = { publication_id: publication.publication_id, zone_id: 'zone', zone_name: 'example.com', hostname: 'www.example.com', route: '/media/old.svg', dns_account_id: 'account', dns_group_id: 'default', targeted_attempts: 1, state: 'approval_required' };
-it('binds explicit cache approval to the failed publication and its exact zone', async () => {
+const recovery = { publication_id: publication.publication_id, zone_id: 'zone', zone_name: 'example.com', hostname: 'www.example.com', route: '/media/old.svg', dns_account_id: 'account', dns_group_id: 'default', targeted_attempts: 3, state: 'failed', layer: 'upstream_cache' };
+it('never offers a zone-wide cache refresh, even for a failed cache recovery', async () => {
   const store = getStore();
-  await store.updateDoc(path, { failure: { code: 'publication_cache_refresh_required' }, cache_recovery: recovery });
-  await expect(retryPublicationVerification('org', 'site', 'job', 'main', 'other-zone')).rejects.toMatchObject({ code: 'publication_cache_scope_changed' });
+  await store.updateDoc(path, { failure: { code: 'publication_cache_refresh_failed' }, cache_recovery: recovery });
+  await expect(retryPublicationVerification('org', 'site', 'job', 'main', 'zone')).rejects.toMatchObject({ code: 'publication_cache_zone_refresh_retired' });
   expect((await store.getDoc<any>(path)).status).toBe('failed');
-  const result = await retryPublicationVerification('org', 'site', 'job', 'main', 'zone');
-  expect(result).toMatchObject({ verification_only: false, cache_refresh: 'zone', publication_id: publication.publication_id });
-  expect(await store.getDoc(path)).toMatchObject({ cache_recovery: { ...recovery, state: 'zone_approved' }, git_publication: publication });
-});
-it('does not grant broad cache access for a plain verification retry or a different failure', async () => {
-  const store = getStore();
-  await store.updateDoc(path, { cache_recovery: recovery });
-  await expect(retryPublicationVerification('org', 'site', 'job', 'main', 'zone')).rejects.toMatchObject({ code: 'publication_cache_scope_changed' });
-  await store.updateDoc(path, { failure: { code: 'publication_cache_refresh_required' } });
-  expect(await retryPublicationVerification('org', 'site', 'job', 'main')).toMatchObject({ verification_only: true });
-  expect(await store.getDoc(path)).toMatchObject({ cache_recovery: recovery });
+  expect(await retryPublicationVerification('org', 'site', 'job', 'main')).toMatchObject({ verification_only: true, publication_id: publication.publication_id });
+  expect(await store.getDoc(path)).toMatchObject({ status: 'running', cache_recovery: recovery, git_publication: publication });
 });

@@ -345,32 +345,26 @@ build whose normal public URL still returns old bytes. Inspect `static_probe`
 and `cache_recovery` in `get_deploy_status`; do not start a new build.
 
 A domain preparation checks the files at the current address before it offers
-the switch. When an old file is still cached there, Typeroll refreshes the cache
-for that file's path on that hostname only, as it does for a normal publication.
-If the stale file persists, the job fails with
-`publication_cache_refresh_required` and resumes through the same retry, with
-or without an approved zone refresh. Traffic and DNS stay unchanged.
+the switch, the same way as a normal publication. Traffic and DNS stay unchanged.
 
-Without extra arguments, retry remains read-only. An administrator of the owning
-Organization can explicitly approve a zone-wide Cloudflare cache refresh:
+**Core 0.2.157:** when a check finds an old file, Typeroll refreshes the cache for
+that one path on that site's own hostname, observes it about a minute, and makes
+at most three such refreshes per publication. It never refreshes another host
+or a whole Cloudflare zone, and retry no longer accepts `approve_cache_zone_id`
+(it is refused with `publication_cache_zone_refresh_retired`).
 
-```json
-{
-  "job_id": "deployment-id",
-  "version": "main",
-  "approve_cache_zone_id": "exact-zone-id-from-cache_recovery"
-}
-```
+Cloudflare Pages keeps its own cache, keyed by the public URL, above your zone.
+Zone purges of any scope cannot clear it, so a file removed from a publication
+can keep answering at some Cloudflare locations until its cache lifetime ends.
+Two cases follow:
 
-The API equivalent adds `approve_cache_zone_id` beside
-`retry_verification_job_id`. Site-only credentials cannot approve this operation.
-Personal OAuth access must select the owning Organization and have its owner or
-admin role. Explain the **zone name and scope to the owner before approval**:
-all cached content in that zone, including other sites and subdomains, is evicted.
-Files and DNS are unchanged; initial requests can be slower while the cache refills.
-
-Approval is bound to the recorded publication, zone and DNS connection. A changed
-connection or superseded publication is rejected. A successful purge request does
-not finish the job: Typeroll checks the normal public URLs against the same frozen
-artifact. An unsuccessful broad refresh stops with
-`publication_cache_refresh_failed`; it does not trigger a purge loop or a rebuild.
+- **A removed file whose name carries its content hash** (`/_assets/…-<hash>.ext`
+  or `/media/<hash>-name.ext`) passes when the served bytes have exactly that
+  hash and the same URL with a fresh cache key returns 404, which proves the
+  deployment no longer contains it. The job lists such files in
+  `retained_immutable` and `warnings`; no page shows changed content.
+- **Anything else** that stays stale ends with `publication_cache_refresh_failed`.
+  `cache_recovery.layer` says where: `upstream_cache` (the deployment is correct
+  and a cache above the zone holds the old response), `origin` (the deployment
+  itself still serves it) or `unknown`. `cache_recovery.cf_ray` identifies the
+  observed response. Retry verification of the same job later; do not rebuild.

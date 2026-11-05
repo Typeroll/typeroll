@@ -1,3 +1,4 @@
+import { createHash, randomUUID } from 'node:crypto';
 import { verifyResponseBody } from './static-verifier.mjs';
 import { assertPublicDestination, parsePublicHttpsUrl } from '../extensions/public-http';
 import { publicationResponse } from '../deploy/public-response';
@@ -20,6 +21,21 @@ export interface StaticObservation {
   final_path?: string; redirect_chain?: ProbeRedirect[];
   response_headers?: Record<string, string | number>; body_sample?: BodySample;
 }
+/**
+ * A removed file whose name carries its own content hash, still served by an
+ * edge cache. Cloudflare Pages keeps such responses in a cache keyed by the
+ * public URL that zone purges cannot reach, for the file's immutable lifetime.
+ * Accepted only when the bytes match the name and a cache-key variant of the
+ * same URL proves the deployment no longer contains the file.
+ */
+export interface RetainedImmutable { route: string; cf_ray: string | null; sha256: string; response_headers: Record<string, string | number> }
+/** Hex tokens (16–64) in a content-addressed file name under /_assets/ or /media/. */
+export function contentAddresses(route: string): string[] {
+  if (!/^\/(?:_assets|media)\/[^?#]+$/.test(route)) return [];
+  const name = route.slice(route.lastIndexOf('/') + 1);
+  return name.match(/(?<![a-f0-9])[a-f0-9]{16,64}(?![a-f0-9])/g) ?? [];
+}
+const RETAINED_MAX_BYTES = 16 * 1024 * 1024;
 /** Thrown by a coordinator byte counter when probes exceed their response budget. */
 export class ProbeByteBudgetError extends Error {
   constructor() { super('coordinator_probe_byte_limit'); this.name = 'ProbeByteBudgetError'; }
@@ -86,7 +102,7 @@ function transportFailure(error: unknown): { reason: StaticFailureReason; error_
  * nothing about the deployment, and their bytes are returned to the budget.
  */
 export async function verifyStaticResponse(origin: string, check: StaticCheck,
-  options: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination; observe?: (result: StaticObservation) => void; maxBytes?: number; observeBytes?: (bytes: number) => void; retryDelayMs?: number } = {}): Promise<boolean> {
+  options: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination; observe?: (result: StaticObservation) => void; maxBytes?: number; observeBytes?: (bytes: number) => void; retryDelayMs?: number; onRetained?: (retained: RetainedImmutable) => void } = {}): Promise<boolean> {
   let last: StaticObservation | null = null;
   for (let attempt = 1; attempt <= TRANSPORT_ATTEMPTS; attempt++) {
     let counted = 0;
@@ -103,7 +119,7 @@ export async function verifyStaticResponse(origin: string, check: StaticCheck,
 }
 
 async function probeStaticResponse(origin: string, check: StaticCheck,
-  options: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination; maxBytes?: number; observeBytes?: (bytes: number) => void; observe?: unknown }): Promise<true | StaticObservation> {
+  options: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination; maxBytes?: number; observeBytes?: (bytes: number) => void; observe?: unknown; onRetained?: (retained: RetainedImmutable) => void }): Promise<true | StaticObservation> {
   let actualStatus: number | null = null, ray: string | null = null;
   let route = '/', finalPath = '/', headers: Record<string, string | number> = {};
   let sample: ReturnType<typeof bodySampler> | undefined;
@@ -140,6 +156,16 @@ async function probeStaticResponse(origin: string, check: StaticCheck,
           url = next; continue;
         }
         if (check.status === 404 && response.status === 404) { await response.body?.cancel(); return true; }
+        const addresses = check.status === 404 && response.status === 200 && url.search === '' ? contentAddresses(finalPath) : [];
+        if (addresses.length) {
+          if (diagnose) sample = bodySampler(options.maxBytes);
+          const digest = await hashBody(response, Math.min(options.maxBytes ?? RETAINED_MAX_BYTES, RETAINED_MAX_BYTES), options.observeBytes, sample);
+          if (digest && addresses.some(address => digest.startsWith(address)) && await variantStatus(url, options) === 404) {
+            options.onRetained?.({ route, cf_ray: ray, sha256: digest, response_headers: headers });
+            return true;
+          }
+          return failed('status_mismatch');
+        }
         if (check.status === 404 || response.status !== 200) {
           if (diagnose) { sample = bodySampler(options.maxBytes); await sampleMismatch(response, sample, options.observeBytes); }
           else await response.body?.cancel();
@@ -153,4 +179,27 @@ async function probeStaticResponse(origin: string, check: StaticCheck,
     }
   } catch (error) { return failed(transportFailure(error).reason, { error_code: transportFailure(error).error_code }); }
   return failed('redirect_limit');
+}
+
+/** Full-body SHA-256 within a byte cap; null when the body is larger or unreadable. */
+async function hashBody(response: Response, cap: number, observeBytes?: (bytes: number) => void, sample?: ReturnType<typeof bodySampler>): Promise<string | null> {
+  if (!response.body) return null;
+  const hash = createHash('sha256'), reader = response.body.getReader();
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) { sample?.complete(); return hash.digest('hex'); }
+      bytes += value.byteLength; observeBytes?.(value.byteLength);
+      if (bytes > cap) return null;
+      hash.update(value); sample?.chunk(value);
+    }
+  } finally { await reader.cancel().catch(() => {}); }
+}
+
+/** Status of the same URL under a fresh cache key, which reaches the deployment itself. */
+export async function variantStatus(url: URL, options: { fetchImpl?: typeof fetch; validate?: typeof assertPublicDestination }): Promise<number | null> {
+  const variant = new URL(url); variant.searchParams.set('typeroll-cache-check', randomUUID());
+  const handle = await publicationResponse(variant, { method: 'GET', redirect: 'manual', signal: AbortSignal.timeout(10000), headers: { 'Cache-Control': 'no-cache' } }, options);
+  try { await handle.response.body?.cancel(); return handle.response.status; } finally { await handle.close(); }
 }

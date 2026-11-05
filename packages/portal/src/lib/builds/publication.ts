@@ -4,7 +4,7 @@ import { type ProviderClient } from '../publishing/providers.mjs';
 import { buildStorage } from './storage';
 import { sha256 } from './contract.mjs';
 import type { DirectReceipt } from './direct-upload.mjs';
-import { staticManifestChecks, staticChecks, verifyStaticResponse, ProbeByteBudgetError, type StaticCheck, type StaticObservation } from './verification';
+import { staticManifestChecks, staticChecks, verifyStaticResponse, ProbeByteBudgetError, type RetainedImmutable, type StaticCheck, type StaticObservation } from './verification';
 import { staticControlsHash, changedStaticChecks, selectStaticProbes, publicStaticChecks, needsArtifactRetentionEvidence, PROBE_FILE_BYTES, PROBE_BYTES, PROBE_FILES } from './static-verifier.mjs';
 import { enqueueBuild, completedBuild } from './jobs';
 import { readEngineConfiguration, type BuildProvider } from './state';
@@ -84,7 +84,7 @@ export async function saveStaticChecks(org: string, files: Record<string, Buffer
 /** Durable, bounded checks let the normal publication queue wait for public distribution. */
 export async function verifyStaticBatch(org: string, jobPath: string, checksKey: string, origin: string, bounded = false) {
   const store = getStore(), checkPath = `${jobPath}/build_verifications/${sha256(`${checksKey}\0${origin}\0public-v4`)}`;
-  const state = await store.getDoc<{ cursor: number; complete: boolean }>(checkPath);
+  const state = await store.getDoc<{ cursor: number; complete: boolean; retained?: RetainedImmutable[] }>(checkPath);
   if (state?.complete) return true;
   const savedChecks = await buildStorage(org, async storage => JSON.parse((await storage.read(checksKey, 32 * 1024 * 1024)).toString('utf8')) as StaticCheck[]);
   // Apply the policy at consumption too so in-flight publications with older
@@ -107,13 +107,14 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
   // transport failures return their bytes before the next attempt.
   const observeBytes = bounded ? (bytes: number) => { downloaded += bytes; if (downloaded > 2 * PROBE_BYTES) throw new ProbeByteBudgetError(); } : undefined;
   let cursor = state?.cursor ?? 0;
+  const retained: RetainedImmutable[] = cursor ? [...(state?.retained ?? [])] : [];
   const limit = Math.min(checks.length, cursor + 1024), deadline = Date.now() + 20000;
   // Image libraries produce thousands of static files. Drain healthy checks
   // within the same time budget instead of paying queue backoff every 64 files.
   do {
     const batch = checks.slice(cursor, Math.min(cursor + 8, limit));
     const observations: StaticObservation[] = [];
-    const results = await Promise.all(batch.map(check => verifyStaticResponse(origin, check, { maxBytes: bounded ? PROBE_FILE_BYTES : undefined, observeBytes, observe: result => { observations.push(result); } })));
+    const results = await Promise.all(batch.map(check => verifyStaticResponse(origin, check, { maxBytes: bounded ? PROBE_FILE_BYTES : undefined, observeBytes, observe: result => { observations.push(result); }, onRetained: item => { retained.push(item); } })));
     if (!results.every(Boolean)) {
       const failure = observations.sort((a, b) => a.route.localeCompare(b.route))[0];
       await store.setDoc(checkPath, { cursor: 0, complete: false, failure: failure ?? null });
@@ -125,10 +126,28 @@ export async function verifyStaticBatch(org: string, jobPath: string, checksKey:
     }
     cursor += batch.length;
     const complete = cursor >= checks.length;
-    await store.setDoc(checkPath, { cursor, complete });
-    if (complete) { if (bounded) console.info(JSON.stringify({ event: 'coordinator_static_probes', files: checks.length, downloaded_bytes: downloaded })); await store.updateDoc(jobPath, { verification_message: null, static_probe: null }); return true; }
+    await store.setDoc(checkPath, { cursor, complete, ...(retained.length ? { retained: retained.slice(0, 50) } : {}) });
+    if (complete) {
+      if (bounded) console.info(JSON.stringify({ event: 'coordinator_static_probes', files: checks.length, downloaded_bytes: downloaded }));
+      if (retained.length) await recordRetainedImmutable(jobPath, origin, retained);
+      await store.updateDoc(jobPath, { verification_message: null, static_probe: null }); return true;
+    }
   } while (cursor < limit && Date.now() < deadline);
   return false;
+}
+
+/** Removed content-addressed files an edge cache still serves: verified, reported, never purged zone-wide. */
+async function recordRetainedImmutable(jobPath: string, origin: string, retained: RetainedImmutable[]) {
+  const store = getStore(), job = await store.getDoc<{ warnings?: string[]; retained_immutable?: Array<RetainedImmutable & { origin: string }> }>(jobPath);
+  const known = new Set((job?.retained_immutable ?? []).map(item => `${item.origin}${item.route}`));
+  const added = retained.filter(item => !known.has(`${origin}${item.route}`)).map(item => ({ origin, ...item }));
+  if (!added.length) return;
+  console.info(JSON.stringify({ event: 'publication_retained_immutable', origin, routes: added.slice(0, 10).map(item => item.route), cf_rays: added.slice(0, 10).map(item => item.cf_ray) }));
+  const sample = added.slice(0, 3).map(item => item.route).join(', ');
+  await store.updateDoc(jobPath, {
+    retained_immutable: [...(job?.retained_immutable ?? []), ...added].slice(0, 50),
+    warnings: [...(job?.warnings ?? []), `${added.length} removed file${added.length === 1 ? '' : 's'} at ${origin} (${sample}${added.length > 3 ? ', …' : ''}) ${added.length === 1 ? 'is' : 'are'} still served from Cloudflare's edge cache. The deployment no longer contains ${added.length === 1 ? 'it' : 'them'} and the cached bytes match the content hash in the file name, so no page shows changed content. Cloudflare keeps such immutable files until they expire; Typeroll does not purge other sites to remove them.`],
+  });
 }
 
 /** One sentence naming the actual cause of a failed static probe. */

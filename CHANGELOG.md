@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.2.157 (candidate, MCP 0.45.116)
+
+- Publication cache recovery stays on the site's own addresses. A stale file
+  gets at most three refreshes of its one path per publication, then the job
+  reports which layer is stale (`cache_recovery.layer`: `upstream_cache`,
+  `origin` or `unknown`) with the Cloudflare ray. The zone-wide cache refresh is
+  retired: it could not clear Cloudflare Pages' own URL-keyed cache and it
+  cleared every other site in the zone.
+- A removed file whose name carries its content hash passes verification when
+  Cloudflare still serves exactly those bytes and a fresh cache key shows the
+  deployment no longer has it. It is reported in `retained_immutable` and
+  `warnings`. Previously such a file failed test-address publications for good,
+  because Pages only invalidates a custom hostname's cache on production
+  deployments.
+
 ## 0.2.156 (candidate, MCP 0.45.115)
 
 - A link style's `visited` colour now reaches published sites. The publication

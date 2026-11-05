@@ -11,6 +11,7 @@ import { captureImpact } from '../../lib/publishing/impact';
 import { previewPublicationImpact } from '../../lib/publishing/impact-preview';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 import { checkLiveMedia } from '../../lib/publishing/media-serving';
+import { cacheLayerProbe } from '../../lib/publishing/cache-recovery';
 import { CLOUDFLARE_ENGINE_SOURCE } from '../../lib/builds/setup';
 
 async function executeCustomerPublication(args: Parameters<typeof executePublicationPhase>[0]) {
@@ -56,6 +57,8 @@ const project = `typeroll-${prefix}`;
 const args = { orgId: 'org', siteId: 'site', versionId: 'main', jobId: 'job', environment: 'production' as const };
 const jobPath = paths.deploy('org', 'site', 'job');
 
+// A cache-key variant of a removed file reaches the deployment, which no longer has it.
+cacheLayerProbe.status = async () => 404;
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); vi.clearAllMocks();
   fonts.freeze.mockResolvedValue(null);
@@ -1425,24 +1428,23 @@ it.each([{ corrected: true, legacy: false }, { corrected: false, legacy: false }
   if (legacy) {
     await store.updateDoc(jobPath, { status: 'failed', failure: { code: 'publication_observation_timeout' } });
     await retryPublicationVerification('org', 'site', 'job', 'main');
-  } else {
-    expect(await executePublicationPhase(args)).toBe('waiting');
-    expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { prefixes: ['www.example.com/media/removed.svg'] } });
-    for (let i = 0; i < 5; i++) expect(await executePublicationPhase(args)).toBe('waiting');
   }
-  expect(await executePublicationPhase(args)).toBe('ran');
-  expect(await store.getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'publication_cache_refresh_required' }, cache_recovery: { state: 'approval_required' } });
-  expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.body?.purge_everything)).toHaveLength(0);
-  await retryPublicationVerification('org', 'site', 'job', 'main', 'zone');
+  // One path-scoped purge on the site's own host, then bounded observation.
   expect(await executePublicationPhase(args)).toBe('waiting');
-  expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { purge_everything: true } });
-  expect(await store.getDoc(jobPath)).toMatchObject({ status: 'running' }); // API success is not publication proof
+  expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { prefixes: ['www.example.com/media/removed.svg'] } });
+  for (let i = 0; i < 5; i++) expect(await executePublicationPhase(args)).toBe('waiting');
+  expect(await executePublicationPhase(args)).toBe('ran');
+  expect(await store.getDoc(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'publication_cache_refresh_failed' },
+    cache_recovery: { state: 'failed', layer: 'upstream_cache', variant_status: 404, targeted_attempts: 1 } });
+  await expect(retryPublicationVerification('org', 'site', 'job', 'main', 'zone')).rejects.toMatchObject({ code: 'publication_cache_zone_refresh_retired' });
+  // Resuming the same frozen publication later: no rebuild and no repeated purge of the same path.
+  await retryPublicationVerification('org', 'site', 'job', 'main');
   if (corrected) mocks.verify.mockResolvedValue(true);
-  else for (let i = 0; i < 5; i++) expect(await executePublicationPhase(args)).toBe('waiting');
   expect(await executePublicationPhase(args)).toBe('ran');
   expect(await store.getDoc(jobPath)).toMatchObject({ status: corrected ? 'succeeded' : 'failed', git_publication: publication,
     ...(!corrected ? { failure: { code: 'publication_cache_refresh_failed' } } : {}) });
-  expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.body?.purge_everything)).toHaveLength(1);
+  expect(mocks.cloudflare.mock.calls.filter(([path]) => path.endsWith('/purge_cache'))).toHaveLength(1);
+  expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.body?.purge_everything)).toHaveLength(0);
   expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.method && opts.method !== 'GET').every(([path]) => path.endsWith('/purge_cache'))).toBe(true);
   for (const mock of [mocks.push, mocks.source, mocks.enqueue, mocks.upload, mocks.direct]) expect(mock).not.toHaveBeenCalled();
 });
@@ -1472,7 +1474,7 @@ it('refreshes a stale cached file at the current address during domain preparati
   expect(mocks.push).toHaveBeenCalledTimes(1);
 });
 
-it('lets a domain preparation blocked by a stale cache resume after an approved zone refresh', async () => {
+it('lets a domain preparation blocked by a stale cache resume through a plain verification retry', async () => {
   await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
   await prepareFromCurrentPublication();
   await executeCustomerPublication(args);
@@ -1489,16 +1491,15 @@ it('lets a domain preparation blocked by a stale cache resume after an approved 
   let result: string;
   for (let i = 0; (result = await executeCustomerPublication(args)) === 'waiting' && i < 30; i++);
   const failed = await store.getDoc<any>(jobPath);
-  expect(failed).toMatchObject({ status: 'failed', failure: { code: 'publication_cache_refresh_required' }, cache_recovery: { state: 'approval_required', hostname: 'old.example.com' } });
+  expect(failed).toMatchObject({ status: 'failed', failure: { code: 'publication_cache_refresh_failed' }, cache_recovery: { state: 'failed', layer: 'upstream_cache', hostname: 'old.example.com' } });
   for (const key of ['finished-build', 'finished-verification']) await store.setDoc(`organizations/org/build_tasks/${key}`, { status: 'completed', identity: { org_id: 'org', site_id: 'site', version_id: 'main', job_id: 'job', publication_id: failed.git_publication.publication_id, commit: failed.git_publication.commit } });
   const { retryPublicationVerification } = await import('../../lib/publishing/verification-retry');
-  await retryPublicationVerification('org', 'site', 'job', 'main', 'zone');
-  expect(await executeCustomerPublication(args)).toBe('waiting');
-  expect(mocks.cloudflare).toHaveBeenCalledWith('/zones/zone/purge_cache', { method: 'POST', body: { purge_everything: true } });
+  await retryPublicationVerification('org', 'site', 'job', 'main');
   stale = false;
   expect(await executeCustomerPublication(args)).toBe('ran');
   expect(await store.getDoc<any>(jobPath)).toMatchObject({ status: 'running', phase: 'awaiting domain cutover approval' });
   expect(mocks.push).toHaveBeenCalledTimes(1);
+  expect(mocks.cloudflare.mock.calls.filter(([, opts]) => opts?.body?.purge_everything)).toHaveLength(0);
   expect(mocks.cloudflare.mock.calls.some(([, options]) => options?.method === 'PATCH' && options?.body?.type === 'CNAME')).toBe(false);
 });
 

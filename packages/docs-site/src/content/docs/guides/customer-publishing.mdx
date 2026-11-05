@@ -1067,23 +1067,26 @@ additional build, image processing or upload is started.
 If the same stale response remains, the deployment stops with a specific cache
 error and keeps the exact file path and Cloudflare request ID in `static_probe`.
 It does not wait out the full distribution timeout or declare old bytes correct.
-Cloudflare documents that stale Pages assets may require
-[a full cache purge](https://developers.cloudflare.com/pages/configuration/serving-pages/#caching-and-performance).
-Typeroll never performs that broad operation implicitly: a zone can include
-unrelated sites and subdomains.
+**Core 0.2.157:** Typeroll never purges a whole zone, and there is no zone-wide
+cache refresh to approve. A zone can include unrelated sites, and a zone purge
+does not reach the cache Cloudflare Pages keeps per public URL above it. Pages
+invalidates that cache for a custom hostname only on production deployments, so
+a version's test address can keep serving a removed file. The failed deployment
+records where the stale response comes from in `cache_recovery.layer`
+(`upstream_cache`, `origin` or `unknown`), measured with a fresh cache key, and
+the Cloudflare request ID in `cache_recovery.cf_ray`.
 
-An Organization administrator can choose **Refresh domain cache…** beside the
-failed deployment and confirm the named zone. This resumes the **same publication**
-and verifies its public URLs after the purge. It does not edit files, republish
-later CMS changes, or change DNS. Site administrators without Organization admin
-access must ask their Organization administrator. Agents have the same operation
+A removed file whose name carries its content hash (`/_assets/…-<hash>.ext`,
+`/media/<hash>-name.ext`) passes when Cloudflare still serves exactly those
+bytes and a fresh cache key shows the deployment no longer has it. It is listed
+in the deployment's warnings; no page shows changed content.
+
+Choose **Retry verification** to check the **same publication** again later. It
+does not edit files, republish later CMS changes or change DNS. If another CDN
+controls the cache, refresh it there first. Agents have the same operation
 through [`retry_deploy_verification`](../../tools/deploy/#recovering-stale-hosting-cache).
-
-If another CDN controls the cache, refresh it there and choose **Retry verification**.
-That button does not grant permission for a zone purge. If Cloudflare still returns
-old bytes after the approved broad refresh, review its cache rules or contact
-Cloudflare with the recorded request ID, then retry verification. Typeroll cannot
-guarantee immediate eviction from every provider or from a visitor's browser.
+Typeroll cannot guarantee immediate eviction from every provider or from a
+visitor's browser.
 
 This recovery applies to completed publications already serving the intended host.
 It cannot resume an incomplete build or bypass domain traffic approval, a changed

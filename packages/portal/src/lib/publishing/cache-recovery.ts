@@ -1,10 +1,24 @@
 import { getStore } from '../datastore';
-import type { StaticObservation } from '../builds/verification';
+import { variantStatus, type StaticObservation } from '../builds/verification';
 import { ConnectionError } from './connections';
 import { findPublishingZone } from './domain-provider';
 import { hostingDns } from './hosting-dns';
 import { publicationHostname } from './domain-config';
 import type { ProviderClient } from './providers.mjs';
+
+/** Path purges per publication; each is followed by bounded observation. Never zone-wide. */
+export const MAX_TARGETED_PURGES = 3;
+/** Queue-paced observations after one purge (about a minute with the existing backoff). */
+export const OBSERVATIONS_PER_PURGE = 5;
+
+/**
+ * Where the stale response comes from, measured with a cache-key variant of
+ * the same URL. `upstream_cache`: the deployment is correct but a cache keyed by
+ * the public URL above the zone (Cloudflare Pages' own) keeps the old response,
+ * so zone purges of any scope cannot remove it. `origin`: the deployment
+ * itself still answers the old response. `unknown`: the variant could not be read.
+ */
+export type CacheLayer = 'upstream_cache' | 'origin' | 'unknown';
 
 export interface CacheRecovery {
   publication_id: string;
@@ -14,9 +28,12 @@ export interface CacheRecovery {
   zone_name: string;
   dns_account_id: string;
   dns_group_id: string;
-  state: 'targeted_purge' | 'approval_required' | 'zone_approved' | 'zone_purged';
+  state: 'targeted_purge' | 'failed';
   targeted_attempts: number;
   observations_after_purge?: number;
+  layer?: CacheLayer;
+  variant_status?: number | null;
+  cf_ray?: string | null;
   updated_at: string;
 }
 type Publication = { publication_id: string; hosting_group_id?: string };
@@ -32,16 +49,36 @@ export function isCachedStaticMismatch(probe: RecoveryJob['static_probe'], origi
     (cache === 'MISS' && Number.isFinite(age) && age > 0);
 }
 
-const required = (state: CacheRecovery) => new ConnectionError(
-  `Cloudflare still serves old files at https://${state.hostname}${state.route} despite the publication cache refresh. The build is complete; do not rebuild. An organization administrator can approve refreshing the cache for the whole ${state.zone_name} zone, including its other subdomains, then resume verification of this same publication. Files and DNS will not change.`,
-  409, 'publication_cache_refresh_required');
+/** The cache-key variant request; replaceable in offline tests. */
+export const cacheLayerProbe = { status: (url: URL): Promise<number | null> => variantStatus(url, {}) };
 
-/** Called under the publication target lease, only after candidate and marker verification. */
+async function measureLayer(url: URL, expected: number, actual: number | null): Promise<{ layer: CacheLayer; variant_status: number | null }> {
+  const status = await cacheLayerProbe.status(url).catch(() => null);
+  if (status === null) return { layer: 'unknown', variant_status: null };
+  return { layer: status === expected && status !== actual ? 'upstream_cache' : status === actual ? 'origin' : 'unknown', variant_status: status };
+}
+
+function failure(state: CacheRecovery) {
+  const where = `https://${state.hostname}${state.route}`;
+  const ray = state.cf_ray ? ` Cloudflare ray: ${state.cf_ray}.` : '';
+  const message = state.layer === 'upstream_cache'
+    ? `Cloudflare still serves the removed file ${where} from a cache above the ${state.zone_name} zone, while the same URL with a fresh cache key returns HTTP ${state.variant_status}: the deployment is correct. Purges of this site's addresses cannot clear that cache, and a zone-wide purge would not either. The build is complete; do not rebuild. Retry verification of this same publication later.${ray}`
+    : state.layer === 'origin'
+      ? `The deployment itself still answers HTTP ${state.variant_status} at ${where}, also with a fresh cache key, so this is not a cache problem. Check the hosting project's active deployment, then retry verification of this same publication.${ray}`
+      : `Cloudflare still serves old content at ${where} after ${state.targeted_attempts} refresh${state.targeted_attempts === 1 ? '' : 'es'} of this site's address. No rebuild or zone-wide purge was started. Retry verification of this same publication later.${ray}`;
+  return new ConnectionError(message, 409, 'publication_cache_refresh_failed');
+}
+
+/**
+ * Called under the publication target lease, only after candidate and marker
+ * verification. Purges only this publication's own hostname and path prefix,
+ * a bounded number of times, then reports which cache layer is stale.
+ */
 export async function recoverPublicationCache(org: string, jobPath: string, publication: Publication, origin: string,
-  dns?: { provider: ProviderClient; accountId: string; groupId: string } | null, allowTargeted = true) {
+  dns?: { provider: ProviderClient; accountId: string; groupId: string } | null) {
   const store = getStore(), job = await store.getDoc<RecoveryJob>(jobPath);
   if (!isCachedStaticMismatch(job?.static_probe, origin)) return;
-  const hostname = publicationHostname(new URL(origin).hostname), route = job!.static_probe!.route;
+  const probe = job!.static_probe!, hostname = publicationHostname(new URL(origin).hostname), route = probe.route;
   const url = new URL(route, origin);
   if (!route.startsWith('/') || route.startsWith('//') || url.origin !== origin || url.pathname !== route || url.search || url.hash) return;
   if (dns === undefined) {
@@ -55,39 +92,24 @@ export async function recoverPublicationCache(org: string, jobPath: string, publ
   const samePath = sameZone && previous.hostname === hostname && previous.route === route;
   // Purge propagation has no callback. Observe with the existing bounded queue
   // backoff; never repeat the purge or restart a build while waiting.
-  if (sameZone && (previous.state === 'zone_purged' || (allowTargeted && samePath && previous.state === 'targeted_purge')) &&
-      (previous.observations_after_purge ?? 0) < 5) {
+  if (samePath && previous.state === 'targeted_purge' && (previous.observations_after_purge ?? 0) < OBSERVATIONS_PER_PURGE) {
     await store.updateDoc(jobPath, { cache_recovery: { ...previous, observations_after_purge: (previous.observations_after_purge ?? 0) + 1 }, phase: 'verifying refreshed cache' });
     return;
   }
-  if (sameZone && previous.state === 'zone_purged') throw new ConnectionError(
-    `Cloudflare still serves old content at ${route} after the approved zone cache refresh. No new build or repeated purge was started. Check Cloudflare cache rules or contact Cloudflare with static_probe.cf_ray, then retry verification.`, 409, 'publication_cache_refresh_failed');
-  const state: CacheRecovery = {
+  const attempts = sameZone ? previous.targeted_attempts : 0;
+  const base: CacheRecovery = {
     publication_id: publication.publication_id, hostname, route, zone_id: zone.id, zone_name: zone.name,
     dns_account_id: dns.accountId, dns_group_id: dns.groupId, state: 'targeted_purge',
-    targeted_attempts: (previous?.targeted_attempts ?? 0) + 1, observations_after_purge: 0, updated_at: new Date().toISOString(),
+    targeted_attempts: attempts, observations_after_purge: 0, cf_ray: probe.cf_ray ?? null, updated_at: new Date().toISOString(),
   };
-  if (!allowTargeted || samePath || (previous?.targeted_attempts ?? 0) >= 3) {
-    await store.updateDoc(jobPath, { cache_recovery: { ...state, state: 'approval_required', targeted_attempts: previous?.targeted_attempts ?? 0 } });
-    throw required(state);
+  if (samePath || attempts >= MAX_TARGETED_PURGES) {
+    const state: CacheRecovery = { ...base, state: 'failed', ...await measureLayer(url, probe.expected_status, probe.actual_status) };
+    console.info(JSON.stringify({ event: 'publication_cache_recovery_failed', hostname, route, layer: state.layer, variant_status: state.variant_status, cf_ray: state.cf_ray, age: probe.response_headers?.age ?? null, targeted_attempts: attempts }));
+    await store.updateDoc(jobPath, { cache_recovery: state });
+    throw failure(state);
   }
-  // Purge every cache-key variant of this path prefix, never the entire zone.
+  // Every cache-key variant of this one path on this site's own hostname; never another host or the zone.
   await dns.provider(`/zones/${zone.id}/purge_cache`, { method: 'POST', body: { prefixes: [hostname + route] } });
-  await store.updateDoc(jobPath, { cache_recovery: state, phase: 'refreshing cached publication files',
-    verification_message: `Refreshing Cloudflare's cache for ${route}. The same published files will be checked again; no rebuild is needed.` });
-}
-
-/** Zone-wide recovery is a separate, explicit org-admin approval bound to one job and zone. */
-export async function applyApprovedCacheRefresh(org: string, jobPath: string, publication: Publication) {
-  const store = getStore(), state = (await store.getDoc<RecoveryJob>(jobPath))?.cache_recovery;
-  if (!state || state.state !== 'zone_approved') return false;
-  if (state.publication_id !== publication.publication_id) throw new ConnectionError('The cache recovery publication changed.', 409, 'publication_cache_scope_changed');
-  const dns = await hostingDns(org, publication.hosting_group_id ?? 'default', state.hostname);
-  const zone = await findPublishingZone(dns.provider, dns.accountId, state.hostname);
-  if (zone.id !== state.zone_id || zone.name !== state.zone_name || dns.accountId !== state.dns_account_id || dns.groupId !== state.dns_group_id)
-    throw new ConnectionError('The connected DNS account or zone changed. Review cache recovery again before approving it.', 409, 'publication_cache_scope_changed');
-  await dns.provider(`/zones/${zone.id}/purge_cache`, { method: 'POST', body: { purge_everything: true } });
-  await store.updateDoc(jobPath, { cache_recovery: { ...state, state: 'zone_purged', observations_after_purge: 0, updated_at: new Date().toISOString() },
-    phase: 'verifying refreshed cache', verification_message: `Cloudflare accepted the cache refresh for ${state.zone_name}. Checking the same public URLs again.` });
-  return true;
+  await store.updateDoc(jobPath, { cache_recovery: { ...base, targeted_attempts: attempts + 1 }, phase: 'refreshing cached publication files',
+    verification_message: `Refreshing Cloudflare's cache for ${route} on ${hostname}. The same published files will be checked again; no rebuild is needed.` });
 }

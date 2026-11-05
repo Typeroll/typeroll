@@ -1065,12 +1065,12 @@ Enqueue a deploy (static-page build → hosting) of the currently active version
 
 Permission: `admin`
 
-Retry only public verification of an already-served customer publication that failed with publication_observation_timeout or publication_cache_refresh_required/external/failed. Reuses the exact job, Git commit and build artifact; never builds, uploads or changes DNS. Requires completed build/candidate receipts, unchanged hosting and no newer deployment for this version. Does not publish later CMS edits. A cache refresh is NEVER implicit: only after explicit owner approval, provide approve_cache_zone_id from job.cache_recovery to refresh that ENTIRE Cloudflare zone (including other websites/subdomains). Requires owning-organization administrator access, the exact publication and unchanged DNS account/zone; cached bytes must still pass normal URL verification. Otherwise omit it for read-only verification. Poll get_deploy_status for the same job_id. Admin permission required.
+Retry only public verification of an already-served customer publication that failed with publication_observation_timeout or publication_cache_refresh_required/external/failed. Reuses the exact job, Git commit and build artifact; never builds, uploads or changes DNS. Requires completed build/candidate receipts, unchanged hosting and no newer deployment for this version. Does not publish later CMS edits. Each failed check may get a bounded refresh of only that path on the site's own address; zone-wide refreshes are never made. A removed content-addressed file that Cloudflare still serves with exactly the bytes its name hashes, while a fresh cache key returns 404, is accepted and reported in warnings/retained_immutable. A publication_cache_refresh_failed names the stale layer in cache_recovery.layer (upstream_cache, origin or unknown).
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `job_id` | body | string | yes |  |
-| `approve_cache_zone_id` | body | string | no | Only with explicit owner approval for a zone-wide cache refresh. Copy the exact zone_id from this failed job.cache_recovery; it affects all subdomains in that zone. Requires owning-organization admin access. |
+| `approve_cache_zone_id` | body | string | no | Retired. Zone-wide cache refreshes are no longer offered and are refused with publication_cache_zone_refresh_retired; retry without it. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ## Site: Deploys
