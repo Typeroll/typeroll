@@ -76,7 +76,10 @@ test('onboarding stays blocked until the email is confirmed', async ({ page }) =
   await expect(page.getByLabel('Organization name', { exact: true })).toHaveCount(0);
   expect((await page.request.post('/api/orgs/create', { headers: { Origin: origin }, data: { name: 'Pending Unconfirmed' } })).status()).toBe(401);
 
-  // The same person after confirmation sees the normal onboarding form.
+  // The same person after confirmation sees the normal onboarding form. Leave
+  // the panel first: it polls and would navigate on its own once confirmed,
+  // racing the navigation below.
+  await page.goto('about:blank');
   await authenticatePersona(page, 'pending');
   await page.goto('/verify-email?next=%2Fonboarding');
   await expect(page).toHaveURL(`${origin}/onboarding`);
