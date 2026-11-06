@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.7 (candidate, MCP 0.45.119)
+
+- Frozen publication snapshots are pruned at the end of each publication of
+  the site: snapshots of publications that are no longer running, recent, among
+  the three latest per version or referenced are removed, and the deploy
+  record stays. See [customer-owned publishing](docs/customer-owned-publishing.md).
+- The portal has a home screen icon: adding it to an iPhone home screen shows
+  the Typeroll symbol instead of a letter.
+
 ## 0.3.6 (candidate, MCP 0.45.119)
 
 - A new site can be published as it is: its seeded Home page is published,
