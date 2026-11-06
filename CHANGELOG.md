@@ -22,6 +22,10 @@
   `check_managed_site_migration` and `migrate_managed_site_publishing`, the
   `/api/v1/sites/{siteId}/publishing/managed-migration` route and the site
   settings card.
+- The remote E2E journeys that publish (`e2e:agent`, `e2e:fallback-indexing`)
+  run on a site named by `TYPEROLL_E2E_JOURNEY_SITE` with a key in
+  `TYPEROLL_E2E_JOURNEY_API_KEY`, since the persona fixture site no longer
+  publishes. The indexing check finds the temporary address by origin.
 
 ## 0.3.3 (candidate, MCP 0.45.117)
 
