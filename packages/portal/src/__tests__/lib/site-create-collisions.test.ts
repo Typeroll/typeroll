@@ -33,7 +33,7 @@ it('reserves distinct sites for simultaneous same-name requests', async () => {
   const sites = await Promise.all(Array.from({ length: 6 }, () => createSite({ orgId: org, name: 'New Site' })));
   expect(new Set(sites.map((result) => result.siteId)).size).toBe(6);
   expect(sites.filter((result) => result.siteId === 'new-site')).toHaveLength(1);
-  for (const result of sites) expect(await getStore().getDoc(`${paths.pages(org, result.siteId)}/home`)).toMatchObject({ status: 'draft' });
+  for (const result of sites) expect(await getStore().getDoc(`${paths.pages(org, result.siteId)}/home`)).toMatchObject({ status: 'published' });
 });
 
 it('preserves site metadata, settings and content when creating a colliding site', async () => {

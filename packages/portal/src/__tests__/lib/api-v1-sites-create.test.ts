@@ -68,7 +68,7 @@ describe('POST /api/v1/sites', () => {
     expect(site?.name).toBe('Acme Studio');
     const home = await store.getDoc<Page>(`${paths.pages(ORG, 'acme-studio')}/home`);
     expect(home?.slug).toBe('home');
-    expect(home?.status).toBe('draft');
+    expect(home?.status).toBe('published');
     const header = await store.getDoc<PartialDoc>(paths.partial(ORG, 'acme-studio', 'header'));
     expect(header?.kind).toBe('header');
     expect(header?.status).toBe('published');
