@@ -18,7 +18,8 @@ export function measureLayout(): LayoutProblem[] {
     const box = element.getBoundingClientRect();
     return box.width > 1 && box.height > 1 && style.visibility !== 'hidden' && Number(style.opacity) > 0.05
       && element.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true })
-      && !element.closest('[hidden],[aria-hidden="true"],.sr-only,.visually-hidden,dialog:not([open]),details:not([open]) > :not(summary)');
+      // Decorative icons are aria-hidden but still take space on the page, so they count.
+      && !element.closest('[hidden],.sr-only,.visually-hidden,dialog:not([open]),details:not([open]) > :not(summary)');
   };
   const round = (value: number) => Math.round(value);
 
@@ -33,12 +34,25 @@ export function measureLayout(): LayoutProblem[] {
 
   // 2. Content boxes of different blocks never overlap.
   const LEAF = 'p,h1,h2,h3,h4,h5,h6,li,a,button,input,select,textarea,img,video,iframe,picture,figcaption,blockquote,label,td,th,svg';
-  const leaves = [...document.querySelectorAll(`main :is(${LEAF}), header :is(${LEAF}), footer :is(${LEAF})`)].filter(visible)
+  const ownText = (element: Element) => [...element.childNodes].some(node => node.nodeType === 3 && node.textContent!.trim());
+  const textHolders = [...document.querySelectorAll('main :is(span,div,strong,em,small,dt,dd,time,b), header :is(span,div,strong,em,small), footer :is(span,div,strong,em,small)')]
+    .filter(element => ownText(element) && !element.closest(LEAF));
+  const leaves = [...document.querySelectorAll(`main :is(${LEAF}), header :is(${LEAF}), footer :is(${LEAF})`), ...textHolders].filter(visible)
     .filter(element => !element.parentElement?.closest(LEAF.split(',').filter(tag => tag !== 'li' && tag !== 'td' && tag !== 'th').join(',')));
-  const boxes = leaves.map(element => ({ element, box: element.getBoundingClientRect(),
+  const clipToScrollers = (element: Element, box: DOMRect): DOMRect | null => {
+    let left = box.left, top = box.top, right = box.right, bottom = box.bottom;
+    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.overflowX === 'visible' && style.overflowY === 'visible') continue;
+      const clip = node.getBoundingClientRect();
+      left = Math.max(left, clip.left); top = Math.max(top, clip.top); right = Math.min(right, clip.right); bottom = Math.min(bottom, clip.bottom);
+    }
+    return right - left > 1 && bottom - top > 1 ? new DOMRect(left, top, right - left, bottom - top) : null;
+  };
+  const boxes = leaves.flatMap(element => { const clipped = clipToScrollers(element, element.getBoundingClientRect()); return clipped ? [{ element, clipped }] : []; }).map(({ element, clipped }) => ({ element, box: clipped,
     // A wrapped inline element is several line boxes, not the rectangle around them.
     lines: getComputedStyle(element).display.startsWith('inline') && !['img', 'svg', 'video', 'iframe', 'input', 'select', 'textarea', 'button'].includes(element.tagName.toLowerCase())
-      ? [...element.getClientRects()] : [element.getBoundingClientRect()] }));
+      ? [...element.getClientRects()].flatMap(line => clipToScrollers(element, line) ?? []) : [clipped] }));
   const overlap = (a: DOMRect, b: DOMRect) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
   const linesOverlap = (a: DOMRect[], b: DOMRect[]) => a.reduce((sum, x) => sum + b.reduce((inner, y) => inner + overlap(x, y), 0), 0);
   for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
@@ -52,6 +66,9 @@ export function measureLayout(): LayoutProblem[] {
   for (const element of document.querySelectorAll('[data-source-block-type]')) {
     const parent = element.parentElement?.closest('[data-source-block-type]');
     if (!parent || !visible(element) || !visible(parent) || /visible/.test(getComputedStyle(parent).overflowX) === false) continue;
+    let clipped = false;
+    for (let node = element.parentElement; node && node !== parent; node = node.parentElement) if (getComputedStyle(node).overflowX !== 'visible') clipped = true;
+    if (clipped) continue;
     const inner = element.getBoundingClientRect(), outer = parent.getBoundingClientRect();
     const escape = Math.max(inner.right - outer.right, outer.left - inner.left);
     if (escape > 2) add('escapes_container', element, `${round(escape)}px outside ${parent.getAttribute('data-source-block-type')}`);
@@ -142,11 +159,14 @@ export function measureLayout(): LayoutProblem[] {
       const padding = Math.max(parseFloat(style.paddingTop), parseFloat(style.paddingBottom));
       if (padding > 56) add('section_padding_mobile', section, `${round(padding)}px vertical padding`);
       const inside = boxes.filter(({ element }) => section.contains(element) && element.closest('[data-block="section"],[data-block="hero"]') === section)
-        .map(({ box }) => box).sort((a, b) => a.top - b.top);
-      let bottom = inside[0]?.bottom ?? 0;
-      for (const box of inside.slice(1)) {
-        if (box.top - bottom > 48) { add('excess_gap_mobile', section, `${round(box.top - bottom)}px gap between content inside a section`); break; }
-        bottom = Math.max(bottom, box.bottom);
+        .sort((a, b) => a.box.top - b.box.top);
+      const name = (element: Element) => `${element.tagName.toLowerCase()}${element.className && typeof element.className === 'string' ? '.' + element.className.split(' ')[0] : ''} in ${element.closest('[data-block]')?.getAttribute('data-block')}`;
+      let last = inside[0];
+      for (const item of inside.slice(1)) {
+        const card = (element: Element) => { for (let node = element.parentElement; node && node !== section; node = node.parentElement) { const style = getComputedStyle(node); if (!/rgba\(0, 0, 0, 0\)|transparent/.test(style.backgroundColor) || style.boxShadow !== 'none' || parseFloat(style.borderTopWidth) > 0) return node; } return null; };
+        if (last && card(last.element) !== card(item.element)) { if (item.box.bottom > last.box.bottom) last = item; continue; }
+        if (last && Math.round(item.box.top - last.box.bottom) > 48) { add('excess_gap_mobile', section, `${round(item.box.top - last.box.bottom)}px between ${name(last.element)} and ${name(item.element)}`); break; }
+        if (!last || item.box.bottom > last.box.bottom) last = item;
       }
     }
   }

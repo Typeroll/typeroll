@@ -1,0 +1,65 @@
+<div data-block="html"></div>
+
+/* css */
+@layer typeroll.blocks{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *)) { max-inline-size:100%; }
+/* Text blocks: the first and last element sit flush with the block, so spacing comes from the layout. */
+[data-block="prose"] > :first-child { margin-block-start:0; }
+[data-block="prose"] > :last-child { margin-block-end:0; }
+/* Containers and grids space their children with gap; children add no margin of their own. */
+:is([data-block="container"],[data-block="grid"],[data-block="columns"],[data-block="semantic-container"]:not([data-rhythm="article"])) > [data-block] { margin-block:0; }
+/* Two-column rows: each column keeps its maximum width without leaving its grid track. */
+[data-block="feature_row"] .block-frow-body { max-width:min(34rem, 100%); }
+/* A card title link stays a comfortable target even when it holds only an icon. */
+[data-block="post_card"] .block-postcard-title > a { min-block-size:24px; }
+/* Touch targets of at least 24 × 24 px (WCAG 2.2 AA) for links that stand alone. */
+[data-block="icon"] .block-icon-link { display:inline-flex; align-items:center; justify-content:center; min-inline-size:24px; min-block-size:24px; }
+[data-block="team_member"] .block-team-socials a { display:inline-flex; align-items:center; min-block-size:24px; }
+[data-block="breadcrumbs"] a { display:inline-block; padding-block:.25rem; }
+/* A call to action without a chosen background uses the theme's primary colour, so its text stays readable. */
+[data-block="cta"][style*="--bg:;"], [data-block="cta"]:not([style*="--bg:"]) { background-color:var(--color-primary,#111); }
+/* Phones get compact padding; desktops keep the previous space. */
+[data-block="cta"] { padding:clamp(2rem, 1rem + 4vw, 4rem) clamp(1.25rem, 1rem + 1vw, 1.5rem); }
+[data-block="feature_row"], [data-block="feature_row"][style*="--padding_y:lg"] { --block-py:clamp(2rem, 1rem + 4vw, 4rem); }
+[data-block="feature_row"][style*="--padding_y:md"] { --block-py:clamp(1.5rem, .75rem + 3vw, 3rem); }
+[data-block="feature_row"][style*="--padding_y:xl"] { --block-py:clamp(2.5rem, .5rem + 7vw, 6rem); }
+@media (max-width: 767px) { [data-block="feature_row"] .block-frow-inner { gap:var(--space-md,1rem); } }
+/* Carousels show one card and a glimpse of the next on narrow screens. */
+[data-block="repeater"][data-layout="carousel"] { container-type:inline-size; }
+@container (max-width: 560px) {
+  [data-block="repeater"][data-layout="carousel"] > .tr-carousel-track > * { flex-basis:85%; }
+}
+}

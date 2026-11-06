@@ -49,17 +49,21 @@ export const CONTENT_WELL_CSS = `
  * Render version 14: space before the footer and heading rhythm in block flow.
  * - A page that ends with content outside a section keeps the section padding
  *   before the footer; a last section or hero pads itself.
- * - A Heading block that follows other blocks sits much closer to what it
- *   introduces than to what precedes it, like a heading inside a Text block.
+ * - A Heading block between blocks of running text sits much closer to the
+ *   text it introduces than to the text before it, like a heading inside a
+ *   Text block.
  */
 const FLOW = ':is(.block-section-inner,.page-content--blocks)';
 const HEADING_BLOCK = ':is([data-block="heading"],[data-block="rich_heading"])';
+// Running text: the blocks a heading can introduce or follow inside an article-like flow.
+const TEXT_BLOCK = ':is([data-block="prose"],[data-block="text"],[data-block="list"],[data-block="table"],[data-block="image"],[data-block="video"])';
 export const CONTENT_WELL_V14_CSS = `
-:root { --heading-flow-before:calc(var(--block-gap) * 1.75); --heading-flow-after:min(var(--block-gap), .75rem); }
+:root { --heading-flow-before:calc(var(--block-gap) * 1.75); --heading-flow-after:min(var(--block-gap), .75rem); --breadcrumbs-after:clamp(1rem, .5rem + 2vw, 2.5rem); }
+
 .block-section-inner { --heading-flow-before:calc(var(--section-child-gap,var(--block-gap)) * 1.75); --heading-flow-after:min(var(--section-child-gap,var(--block-gap)), .75rem); }
 .page-content--blocks > :nth-last-child(1 of :not(style,script)):not([data-block="section"],[data-block="hero"]) { margin-block-end:var(--page-end-space,var(--section-padding)); }
-${FLOW} > ${HEADING_BLOCK}:not(:first-child) { margin-block-start:var(--heading-flow-before); }
-${FLOW} > ${HEADING_BLOCK} + :not(style,script) { margin-block-start:var(--heading-flow-after); }
+${FLOW} > ${TEXT_BLOCK} + ${HEADING_BLOCK} { margin-block-start:var(--heading-flow-before); }
+${FLOW} > ${HEADING_BLOCK} + ${TEXT_BLOCK} { margin-block-start:var(--heading-flow-after); }
 `.trim();
 
 /** Preserve historical geometry; new versions consume the configurable scales. */

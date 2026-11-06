@@ -614,6 +614,7 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
     `[data-block]:not(:where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"],[data-block="container"],[data-block="semantic-container"],[data-block="section"],[data-block="template_content_slot"])) :where(h1,h2,h3,h4,h5,h6):not(:where([data-block="heading"] *,[data-block="rich_heading"] *,[data-block="prose"] *)){margin-block:0}`,
     `:where(${OPENING_HEADING}):is(h1,h2,h3,h4,h5,h6):not(#\\#){margin-block-start:0}`,
   );
+
   const media = (bp: StyleBreakpoint) => `@media (min-width:${opts.breakpoints[bp]}px)`;
   const pushRoot = (key: string, decls: string[]) => { if (decls.length) rootByBp.set(key, [...(rootByBp.get(key) ?? []), ...decls]); };
   for (const style of styles) {
@@ -668,6 +669,9 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
     }
     rules.push(...styleRules(style, selectors, opts.breakpoints));
   }
+  // Version 14: the heading right after the breadcrumbs opens the page. After
+  // the role rules, which have the same specificity.
+  if (renderVersion >= 14) rules.push(':where([data-block="breadcrumbs"] + :is([data-block="heading"],[data-block="rich_heading"])) :is(h1,h2,h3,h4,h5,h6):not(#\\#){margin-block-start:0}');
   const root: string[] = [];
   pushRoot('base', ON_COLOR_TOKENS.map(token => `--color-${token.replace('_', '-')}:${onColorValue(token, opts.colors, renderVersion)}`));
   if (rootByBp.get('base')?.length) root.push(`:root{${rootByBp.get('base')!.join(';')}}`);

@@ -2,6 +2,7 @@ import { colorCss, tokenScale, scaleValue } from './design-tokens.js';
 import { linkTargetAttributes } from './link-attributes.js';
 export { linkTargetAttributes };
 import { platformLayer, usesCascadeLayers } from './cascade-layers.js';
+import { BLOCK_DEFAULTS_V14_CSS } from './block-defaults.js';
 import { queryDerivedSource, type DerivedQuery } from './derived-source.js';
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
@@ -2252,6 +2253,7 @@ export function collectBlockAssets(
     if (partCss) css.push(`/* block parts */\n${partCss}`);
   }
 
+  if (resolveRenderVersion(opts?.renderVersion) >= 14 && css.length) css.push(`/* block defaults */\n${BLOCK_DEFAULTS_V14_CSS}`);
   // From render version 14 platform block CSS is one layer; an author's
   // per-block CSS stays unlayered and overrides it like site CSS does.
   if (usesCascadeLayers(opts?.renderVersion) && css.length) css.splice(0, css.length, platformLayer('blocks', css.join('\n\n'), opts?.renderVersion));

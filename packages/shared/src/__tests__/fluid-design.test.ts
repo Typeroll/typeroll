@@ -1,3 +1,4 @@
+import { standardStylesBefore037 } from './fixtures/legacy-standard-styles.js';
 import { expect, it } from 'vitest';
 import { siteThemeCss, defaultSiteSettings, designScalesError, typographyError, newSiteStyles, validateSiteStyle, siteStylesCss, resolveBreakpointWidths } from '../index.js';
 it('emits fluid scales, keeps authored overrides, and isolates legacy defaults', () => {
@@ -26,7 +27,7 @@ it('uses valid token-based roles without fixed breakpoint sizes', () => {
 });
 it('limits role rhythm to editorial flow and excludes opening headings at render version 10', () => {
   const opts = {colors:defaultSiteSettings.colors,breakpoints:resolveBreakpointWidths()};
-  const modern = siteStylesCss(newSiteStyles(),{...opts,renderVersion:10});
+  const modern = siteStylesCss(standardStylesBefore037(newSiteStyles()),{...opts,renderVersion:10});
   expect(modern).toContain(':not(:where(:where([data-block="container"]');
   expect(modern).toContain('margin-block-start:calc(1em * var(--type-rhythm,1))');
   expect(siteStylesCss(newSiteStyles(),{...opts,renderVersion:9})).not.toContain('var(--type-rhythm');

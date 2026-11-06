@@ -66,6 +66,7 @@ export * from './external-routes.mjs';
 export * from './fonts.js';
 export * from './render-version.js';
 export * from './cascade-layers.js';
+export * from './block-defaults.js';
 export * from './custom-css.js';
 export * from './reusable-blocks.js';
 export * from './contrast.js';
