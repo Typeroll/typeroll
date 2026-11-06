@@ -6,6 +6,7 @@ import { getProvider } from './provider';
 import { resolveConnector } from './connector-config';
 import './providers'; // register built-in providers
 import type { EmailMessage, SendResult } from './types';
+import { RECIPIENT_WITHHELD, restrictRecipients } from './recipient-policy';
 
 export type { EmailMessage, SendResult } from './types';
 export { providerDescriptors } from './provider';
@@ -15,6 +16,12 @@ export async function sendViaConnector(
   msg: EmailMessage,
 ): Promise<SendResult> {
   if (!msg.html && !msg.text) return { ok: false, error: 'Email has no body' };
+  const allowed = restrictRecipients(msg);
+  if (!allowed.message) {
+    console.info(JSON.stringify({ event: 'mail_withheld', kind: 'site', withheld: allowed.withheld }));
+    return { ok: false, failure: 'rejected', error: RECIPIENT_WITHHELD };
+  }
+  msg = allowed.message;
   const provider = getProvider(connector.type);
   if (!provider) return { ok: false, error: `Unknown email provider "${connector.type}"` };
 
