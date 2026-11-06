@@ -77,7 +77,15 @@ export function layoutGallery(renderVersion = LATEST_RENDER_VERSION) {
     status: 'published', content_mode: 'blocks', template: `starter-${kind}`, excerpt: 'A short excerpt that introduces the page.',
     blocks: [prose('body', `<p>Body text of the ${kind} page.</p><p>${LONG}</p>`)],
   }));
+  // Running text with headings at every level, both inside one Text block and as Heading blocks between Text blocks.
+  const para = (n: number) => `<p>${SENTENCE}, from the first draft to the published page. Paragraph ${n} continues long enough to wrap on every screen.</p>`;
+  const textPage = { id: 'text', slug: 'text', path: '/text/', title: 'Running text', status: 'published', content_mode: 'blocks', blocks: [
+    section('prose', [prose('flow', `${para(1)}<h2>A second-level heading in the text</h2>${para(2)}<h3>A third-level heading</h3>${para(3)}<ul><li>${SENTENCE}</li><li>A second item</li></ul><h4>A fourth-level heading</h4>${para(4)}<h2>Another section of the text</h2>${para(5)}`)]),
+    section('blocks', [prose('b1', para(6)), { id: 'h2', type: 'core/heading', data: { text: 'A heading block between text blocks', level: 'h2' } }, prose('b2', para(7)),
+      { id: 'h3', type: 'core/heading', data: { text: 'A third-level heading block', level: 'h3' } }, prose('b3', para(8))]),
+  ] };
   const pages = [
+    textPage,
     { id: 'home', slug: 'home', path: '/', title: 'Layout gallery', status: 'published', content_mode: 'blocks', blocks: [prose('intro', '<p>Gallery</p>')] },
     ...types.map(blockPage), ...templatePages,
   ];

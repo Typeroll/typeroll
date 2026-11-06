@@ -150,6 +150,24 @@ export function measureLayout(): LayoutProblem[] {
     }
   }
 
+  // 6c. A heading inside running text belongs to the text after it: much more space above
+  // than below (at least 2.5 times), at every width. Measured on the page, so a Heading block
+  // between Text blocks counts the same as a heading inside one Text block.
+  const TEXT = 'p,li,blockquote';
+  const textBoxes = boxes.filter(({ element }) => element.matches(TEXT));
+  for (const heading of document.querySelectorAll('main :is(h2,h3,h4)')) {
+    if (!visible(heading) || heading.closest('[data-block="cta"],[data-block="hero"],[data-block="pricing_plan"],[data-block="icon_box"],[data-block="media_card"],[data-block="post_card"],[data-block="team_member"],[data-block="testimonial"],[data-block="step_card"],[data-block="feature_row"],[data-block="accordion"],[data-block="tabs"],header,footer,nav,summary')) continue;
+    const group = heading.closest('hgroup') ?? heading, box = group.getBoundingClientRect();
+    const section = group.closest('[data-block="section"],main');
+    const column = textBoxes.filter(({ element, box: other }) => section?.contains(element) && !group.contains(element)
+      && Math.min(other.right, box.right) - Math.max(other.left, box.left) > box.width / 3);
+    const before = column.filter(({ box: other }) => other.bottom <= box.top + 1).sort((x, y) => y.box.bottom - x.box.bottom)[0];
+    const after = column.filter(({ box: other }) => other.top >= box.bottom - 1).sort((x, y) => x.box.top - y.box.top)[0];
+    if (!before || !after) continue;
+    const above = box.top - before.box.bottom, below = after.box.top - box.bottom;
+    if (above < 2.5 * below) add('heading_spacing', heading, `${heading.tagName.toLowerCase()} has ${round(above)}px above and ${round(below)}px below`);
+  }
+
   // 7. Text is readable on the background it is actually drawn on (WCAG 2 ratio of at least 3;
   // the platform's APCA checks cover styles, this catches defaults that leave text unreadable).
   const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).map(Number);

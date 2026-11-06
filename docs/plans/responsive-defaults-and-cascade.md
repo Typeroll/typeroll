@@ -184,7 +184,13 @@ BaseLayout, so tests and publications share the cascade. The suite asserts:
 - at phone widths (up to 480 px): headings are not so large that they break
   into lines of a few words (H1 at least 14, H2 16 and H3 18 characters per
   line), sections have at most 56 px vertical padding, and content inside a
-  section is never more than 48 px apart.
+  section is never more than 48 px apart;
+- a heading in running text (H2–H4, inside a Text block or as a Heading block
+  between Text blocks) has at least 2.5 times as much space above as below,
+  so it reads as the start of what follows. Today a Heading block between
+  Text blocks gets about as much space below as above (24/24 px on a phone,
+  48/48 px on a desktop), and a heading inside a Text block exactly twice
+  as much.
 
 Phones get balanced, compact defaults: fluid type and spacing scale down
 further below 480 px than they do today, so a page reads as a page, not as a
