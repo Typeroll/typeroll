@@ -178,7 +178,17 @@ BaseLayout, so tests and publications share the cascade. The suite asserts:
 - touch targets of at least 24 × 24 px;
 - a positive space between the last content box and the footer, unless the
   page sets `page_end_space: none` or ends with a coloured section;
-- buttons in a group keep a gap and wrap rather than overflow.
+- buttons in a group keep a gap and wrap rather than overflow;
+- a block stays inside the block that contains it (a grid cell, a column, a card);
+- text is readable on the background it is drawn on;
+- at phone widths (up to 480 px): headings are not so large that they break
+  into lines of a few words (H1 at least 14, H2 16 and H3 18 characters per
+  line), sections have at most 56 px vertical padding, and content inside a
+  section is never more than 48 px apart.
+
+Phones get balanced, compact defaults: fluid type and spacing scale down
+further below 480 px than they do today, so a page reads as a page, not as a
+stack of oversized headings and empty bands.
 
 Each failure names the block type, template, width and the two boxes. The
 same checks run on the staging artifact qualification's published pages.

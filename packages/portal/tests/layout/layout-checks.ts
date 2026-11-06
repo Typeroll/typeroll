@@ -121,6 +121,35 @@ export function measureLayout(): LayoutProblem[] {
     if (last && !coloured && footerTop - last.box.bottom < 24) add('footer_space', last.element, `${round(footerTop - last.box.bottom)}px between the last content and the footer`);
   }
 
+  // 6b. Phones get balanced headings and compact spacing: no heading of a few words per line,
+  // no section padding or gap inside a section that leaves a screen half empty.
+  if (viewport <= 480) {
+    const MIN_CHARS: Record<string, number> = { H1: 14, H2: 16, H3: 18 };
+    for (const heading of document.querySelectorAll('main :is(h1,h2,h3)')) {
+      if (!visible(heading)) continue;
+      const style = getComputedStyle(heading);
+      const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
+      const lines = Math.max(1, Math.round(heading.getBoundingClientRect().height / lineHeight));
+      const chars = (heading.textContent ?? '').trim().length / lines;
+      if (lines > 1 && chars < MIN_CHARS[heading.tagName]!) {
+        add('heading_too_large', heading, `${heading.tagName.toLowerCase()} at ${round(parseFloat(style.fontSize))}px breaks into ${lines} lines of ${round(chars)} characters`);
+      }
+    }
+    for (const section of document.querySelectorAll('main [data-block="section"], main [data-block="hero"]')) {
+      if (!visible(section)) continue;
+      const style = getComputedStyle(section);
+      const padding = Math.max(parseFloat(style.paddingTop), parseFloat(style.paddingBottom));
+      if (padding > 56) add('section_padding_mobile', section, `${round(padding)}px vertical padding`);
+      const inside = boxes.filter(({ element }) => section.contains(element) && element.closest('[data-block="section"],[data-block="hero"]') === section)
+        .map(({ box }) => box).sort((a, b) => a.top - b.top);
+      let bottom = inside[0]?.bottom ?? 0;
+      for (const box of inside.slice(1)) {
+        if (box.top - bottom > 48) { add('excess_gap_mobile', section, `${round(box.top - bottom)}px gap between content inside a section`); break; }
+        bottom = Math.max(bottom, box.bottom);
+      }
+    }
+  }
+
   // 7. Text is readable on the background it is actually drawn on (WCAG 2 ratio of at least 3;
   // the platform's APCA checks cover styles, this catches defaults that leave text unreadable).
   const rgb = (value: string) => (value.match(/[\d.]+/g) ?? []).map(Number);
