@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.6 (candidate)
+## 0.3.6 (candidate, MCP 0.45.119)
 
 - A new site can be published as it is: its seeded Home page is published,
   and the starter header and footer link only to it. Before, the first
