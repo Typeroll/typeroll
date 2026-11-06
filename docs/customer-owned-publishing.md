@@ -41,6 +41,15 @@ Subsequent edits do not alter an in-flight publication snapshot. Complete Git
 trees remove obsolete generated files; ref updates preserve history and never
 force-push over a concurrent change.
 
+Frozen publication snapshots are pruned once at the end of each publication
+of the site, never on a schedule. A snapshot is kept while its publication is
+running, succeeded within 30 days, failed within 7 days, is one of the three
+latest successful publications of its version and environment, or is
+referenced by the site's publishing state or by another kept publication.
+Pruning removes only the snapshot content: the deploy record stays, marked
+with `git_publication.snapshot_pruned_at`. One run prunes at most 25
+publications, so an older backlog drains over the next publications.
+
 The generated repository includes a dependency lock, source integrity manifest
 and public publication manifest. `npm ci && npm run build` produces `dist/`.
 It is a static publication snapshot, not a complete CMS backup. Independent

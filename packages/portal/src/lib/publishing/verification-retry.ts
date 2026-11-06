@@ -11,7 +11,7 @@ const unavailable = () => new ConnectionError('This deployment cannot resume ver
 export async function assertVerificationRetry(org: string, site: string, job: GitJob, resumed = false) {
   const publication = job.git_publication;
   const failure = resumed ? job.verification_retry?.failure : job.failure;
-  if (job.status !== (resumed ? 'running' : 'failed') || job.dry_run || !['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(failure?.code ?? '') ||
+  if (job.status !== (resumed ? 'running' : 'failed') || job.dry_run || publication?.snapshot_pruned_at || !['publication_observation_timeout', 'publication_cache_refresh_required', 'publication_cache_refresh_external', 'publication_cache_refresh_failed'].includes(failure?.code ?? '') ||
       !publication?.publication_id || !/^[a-f0-9]{64}$/.test(publication.publication_id) ||
       !publication.commit || !/^[a-f0-9]{40}$/.test(publication.commit) || publication.release_branch ||
       !publication.build_task_key || !publication.verification_task_key || !publication.static_checks_key || !publication.probe_checks_key ||

@@ -67,7 +67,7 @@ interface GitPublication extends CustomerVerification {
   build_provider?: BuildProvider; build_engine_revision?: string; build_task_key?: string | null; static_checks_key?: string | null;
   hosting_group_id?: string; hosting_group_revision?: string;
   owner: string; repo: string; project: string; account_id: string; branch: string;
-  publication_id: string; snapshot_chunks: number; snapshot_digest: string; snapshot_format?: 1; content_cutoff: string;
+  publication_id: string; snapshot_chunks: number; snapshot_digest: string; snapshot_format?: 1; snapshot_pruned_at?: string; content_cutoff: string;
   destination?: { hosts: import('./domain-config').PublicationHosts; dns_mode: 'automatic' | 'external' };
   source_publication_id?: string;
   domain_revision: string; website_host: string; commit?: string | null; deployment_id?: string | null;
@@ -970,6 +970,11 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (terminal || parkedCandidate) {
       const { wakePendingSite } = await import('../scheduling/worker');
       await wakePendingSite(args.orgId, args.siteId);
+    }
+    // Retention runs once per finished publication, after the lease is free.
+    if (terminal) {
+      const { pruneSitePublicationSnapshots } = await import('./publication-retention');
+      await pruneSitePublicationSnapshots(args.orgId, args.siteId);
     }
   }
 }
