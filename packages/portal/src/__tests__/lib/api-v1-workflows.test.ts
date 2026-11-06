@@ -19,7 +19,6 @@ vi.mock('../../lib/workflows/engine', async (importOriginal) => {
     },
   };
 });
-vi.mock('../../lib/hosting/site-provisioning', () => ({ provisionSiteHosting: vi.fn(async () => null) }));
 
 const ORG = 'owner-org';
 const PARTNER = 'partner-org';

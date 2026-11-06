@@ -1,17 +1,13 @@
 /**
  * Cost accounting for site builds.
  *
- * WHAT WE'RE MEASURING. A managed deploy runs synchronously inside one request —
- * Cloud Tasks POSTs the deploy-worker, and the whole build (materialize →
- * astro → bundle → upload) happens before that request returns. Cloud Run
- * bills request-based instances for the time they're handling a request, at
- * the instance's allocated vCPU + memory. So the marginal platform cost of a
- * build is simply:
+ * WHAT WE'RE MEASURING. Customer Git publications sum bounded active publisher
+ * attempts. Each attempt is billed for the time it handles a request, at the
+ * instance's allocated vCPU + memory, so the marginal platform cost is:
  *
  *     duration × (vcpu × cpu_rate + memory_gib × memory_rate) + request_fee
  *
- * Customer Git publications sum bounded active worker attempts using the same
- * model. Waiting between queue attempts and builds on the customer's account
+ * Waiting between queue attempts and builds on the customer's account
  * are not publisher compute time. These remain gross estimates: concurrent
  * requests may share one billed instance, and database/storage fees are separate.
  *

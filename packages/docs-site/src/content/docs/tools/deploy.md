@@ -292,9 +292,8 @@ it. Publish again once the engine is idle. `retry_deploy_verification` does not
 apply to it, nor to other build failures; it only retries public verification
 of an already-served publication.
 
-Legacy managed and self-hosted publishing can execute builds in the portal's
-configured runtime. Reported server-cost estimates describe that runtime; they
-are not the customer's Cloudflare or GitHub invoice.
+Reported server-cost estimates cover only the publisher's own work in the
+portal's runtime; they are not the customer's Cloudflare or GitHub invoice.
 
 ## Deploy URLs
 

@@ -1049,7 +1049,7 @@ Read one incoming email receipt (status such as forwarded, held or blocked, its 
 
 Permission: `write`
 
-Enqueue a deploy (static-page build → hosting) of the currently active version. Returns a job_id immediately; poll get_deploy_status until the status leaves queued/running. NOT for previewing iterative design/content edits — that's what get_preview_link is for (it renders live from the DB with no build). Reserve trigger_deploy for publishing, a stakeholder link to the compiled site, or pre-merge validation. Publishing to the temporary address ends at cutover: once a site serves its live custom domain, the same publication serves both, so every deploy of main is a production release. Then get the owner's approval and pass confirm_live_domains: true; without it a real deploy is refused with live_domain_confirmation_required, naming the live URLs and targets. Review changes on a cut-over site with get_preview_link (include_working_copy) or dry_run:true, which need no confirmation. The result reports production, live_domains and targets (live domains first, then the temporary address). Deploys build SAVED content only — unsaved drafts (working copies) are excluded, so commit_working_copy (or save:true on your writes) before deploying, or your changes won't ship. Customer publishing freezes a consistent saved source, then resumes source/Git/build-dispatch checkpoints without recapturing later edits. GitHub or Cloudflare performs rendering and media work. With dry_run:true, publishing validates frozen source without a Git push or external build; it does not prove an Astro build succeeds. Check the reported phase. A site still in the former managed mode is refused with managed_publishing_migration_required until check_managed_site_migration and migrate_managed_site_publishing move it to the organization's publishing. All sites in an organization share one build engine: publish one site at a time, starting the next only when the previous job has finished and read_organization_build_engine shows no active_jobs. A domain switch waiting for DNS approval (awaiting_approval) does not block other sites.
+Enqueue a deploy (static-page build → hosting) of the currently active version. Returns a job_id immediately; poll get_deploy_status until the status leaves queued/running. NOT for previewing iterative design/content edits — that's what get_preview_link is for (it renders live from the DB with no build). Reserve trigger_deploy for publishing, a stakeholder link to the compiled site, or pre-merge validation. Publishing to the temporary address ends at cutover: once a site serves its live custom domain, the same publication serves both, so every deploy of main is a production release. Then get the owner's approval and pass confirm_live_domains: true; without it a real deploy is refused with live_domain_confirmation_required, naming the live URLs and targets. Review changes on a cut-over site with get_preview_link (include_working_copy) or dry_run:true, which need no confirmation. The result reports production, live_domains and targets (live domains first, then the temporary address). Deploys build SAVED content only — unsaved drafts (working copies) are excluded, so commit_working_copy (or save:true on your writes) before deploying, or your changes won't ship. Customer publishing freezes a consistent saved source, then resumes source/Git/build-dispatch checkpoints without recapturing later edits. GitHub or Cloudflare performs rendering and media work. With dry_run:true, publishing validates frozen source without a Git push or external build; it does not prove an Astro build succeeds. Check the reported phase. All sites in an organization share one build engine: publish one site at a time, starting the next only when the previous job has finished and read_organization_build_engine shows no active_jobs. A domain switch waiting for DNS approval (awaiting_approval) does not block other sites.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -1128,7 +1128,7 @@ Read this site's metadata (id, name, slug, domain, language, ai_scripts_enabled,
 
 Permission: `write`
 
-Edit Site-level fields: name (display), slug (drives the {slug}.typeroll-fallback subdomain — kebab-case, 3-48 chars, unique across the org), domain (the customer's real hostname; pass "" to clear), language, and ai_scripts_enabled (the portal's "Allow AI to write block scripts" toggle; requires admin permission, as in the portal). For colors / fonts / contact info / tagline / staging_url use update_site_settings instead.
+Edit Site-level fields: name (display), slug (a URL-stable identifier — kebab-case, 3-48 chars, unique across the org), domain (the customer's real hostname; pass "" to clear), language, and ai_scripts_enabled (the portal's "Allow AI to write block scripts" toggle; requires admin permission, as in the portal). For colors / fonts / contact info / tagline / staging_url use update_site_settings instead.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -1188,7 +1188,7 @@ Legacy compatibility tool; new workflows should not call it. A declared domain i
 
 Permission: `write`
 
-Detach the custom domain from this site. Removes it from Cloudflare Pages and clears the site doc. The fallback subdomain remains. Use this when the customer wants to start over with a different hostname or move the site to a different domain provider.
+Detach the custom domain from this site and clear it from the site doc. Use this when the customer wants to start over with a different hostname or move the site to a different domain provider.
 
 ## Site: Extensions
 
@@ -2008,11 +2008,11 @@ Repair legacy WordPress entity encoding and HTML markup in fields whose contract
 
 Permission: `write`
 
-Inventories over 500 URLs: one call checks at most 500 and stores no launch evidence (the response then has evidence_stored: false and next_step); run start_workflow with type url_parity to check every URL and record the evidence. Pre-cutover parity check: actually REQUEST every observed inventory path against the new site and report what it answers. Slash-equivalent paths share one inventory row but remain separate checks through `observed_paths`, so `summary.checked` can exceed the normalized inventory count. list_migration_urls tells you what the data says; this tells you what the server does — a redirect pointing at an unpublished page, a typo'd path, a missing slash variant, or a redirect loop all read as "handled" in coverage and as a 404 to Googlebot. Runs against the site's fallback subdomain by default. The response is compact by default: the full summary plus only `missing`, `broken_redirect`, and `error` rows; successful rows are counted but omitted. Pass `verdicts` for an exact result filter or `include_successes: true` for every row. Canonical trailing-slash normalization counts as `ok`, not `ok_redirect`. A query-string rule (published as an inline script, also from 404.html) is followed and counts as `ok_redirect` with `client_redirect: true`. Also stamps verified/last_checked on redirect rules it exercised. Deploy before running this — it tests the DEPLOYED site, not your drafts.
+Inventories over 500 URLs: one call checks at most 500 and stores no launch evidence (the response then has evidence_stored: false and next_step); run start_workflow with type url_parity to check every URL and record the evidence. Pre-cutover parity check: actually REQUEST every observed inventory path against the new site and report what it answers. Slash-equivalent paths share one inventory row but remain separate checks through `observed_paths`, so `summary.checked` can exceed the normalized inventory count. list_migration_urls tells you what the data says; this tells you what the server does — a redirect pointing at an unpublished page, a typo'd path, a missing slash variant, or a redirect loop all read as "handled" in coverage and as a 404 to Googlebot. Runs against the site's live domain by default; before cutover pass the temporary address the site publishes to as target_origin. The response is compact by default: the full summary plus only `missing`, `broken_redirect`, and `error` rows; successful rows are counted but omitted. Pass `verdicts` for an exact result filter or `include_successes: true` for every row. Canonical trailing-slash normalization counts as `ok`, not `ok_redirect`. A query-string rule (published as an inline script, also from 404.html) is followed and counts as `ok_redirect` with `client_redirect: true`. Also stamps verified/last_checked on redirect rules it exercised. Deploy before running this — it tests the DEPLOYED site, not your drafts.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target_origin` | body | string | no | Origin to test, e.g. "https://acme.sites.typeroll.com". Defaults to the site's fallback subdomain, then its live domain. |
+| `target_origin` | body | string | no | Origin to test, e.g. the temporary address the site publishes to before cutover. Defaults to the site's live domain. |
 | `source_origin` | body | string | no | Old site origin, e.g. "https://old.example.com". |
 | `check_source` | body | boolean | no | Also request each path on the OLD site (requires source_origin), so a URL that already 404s upstream is distinguishable from one the migration lost. Doubles the request count. |
 | `statuses` | body | "migrated" \| "redirected" \| "excluded" \| "unhandled" \| "matched_draft"[] | no | Only check entries with these coverage statuses. Default: all — "migrated" is exactly the claim this check exists to falsify. |
@@ -2999,26 +2999,6 @@ Guide a site domain move. Start with check: returns hosting, zone, nameserver, c
 | `confirm_disable_noindex` | body | boolean | no | For prepare: Turn off sitewide_noindex and sitewide_nofollow (and remove noindex from a robots meta tag in scripts_head) in the site settings and build the candidate indexable for the new website host in the same step, without a separate publication. Use this after the user confirms the site should be found by search engines; it satisfies the candidate_noindex blocker. |
 | `allow_noindex_launch` | body | boolean | no | For prepare and approve: set only when Search engines are told to skip this site (sitewide_noindex, sitewide_nofollow or a robots noindex meta in scripts_head) and you deliberately want to launch it hidden. Without it, a site with authored noindex is rejected with candidate_noindex. Typeroll already blocks indexing of the temporary address, so sitewide_noindex is not needed during migration; normally turn it off and publish instead. |
 
-### `check_managed_site_migration`
-
-`GET /api/v1/sites/{siteId}/publishing/managed-migration`
-
-Permission: `read`
-
-Verify migration of an existing static managed Pages site to connected Git publishing. Checks the original hosting account, project, domain and shared build engine. Returns a revision and previous live deployment; does not migrate or deploy.
-
-### `migrate_managed_site_publishing`
-
-`POST /api/v1/sites/{siteId}/publishing/managed-migration`
-
-Permission: `write`
-
-Explicitly migrate one managed Pages site to the connected GitHub organization and shared build engine using the revision from check_managed_site_migration. Requires site admin permission. Preserves the original hosting project, live domain and old media URLs, then queues verified media copying for eligible sites. Does not deploy; publish after media migration finishes.
-
-| Parameter | In | Type | Required | Description |
-| --- | --- | --- | --- | --- |
-| `revision` | body | string | yes |  |
-
 ### `read_site_hosting_group`
 
 `GET /api/v1/sites/{siteId}/publishing/hosting-group`
@@ -3241,7 +3221,7 @@ Read the selected site/version’s current agent instructions and editorial cons
 
 Permission: `read`
 
-Read every site setting: name, tagline, logo, favicon/app icons, colors, fonts, contact info, social links, URL trailing-slash policy, iframe host allowlist, default SEO suffix/description, default_og_image, twitter_handle, organization (JSON-LD), language, robots_txt, ai_crawler_policy, image_sizes_default, cookie_consent, plus the scriptable surfaces scripts_head, scripts_body_end, and custom_css, form_submission_retention_days (days completed form submissions are kept before deletion; null = kept until deleted; site-wide, not per version), `urls` (including `urls.staging`, the site's staging_url) and `render` (the site's platform render version, the latest version and what upgrading would change). Pass `version` to read a branch's settings (with copy-on-write chain-fallback to main for fields the branch hasn't overridden).
+Read every site setting: name, tagline, logo, favicon/app icons, colors, fonts, contact info, social links, URL trailing-slash policy, iframe host allowlist, default SEO suffix/description, default_og_image, twitter_handle, organization (JSON-LD), language, robots_txt, ai_crawler_policy, image_sizes_default, cookie_consent, plus the scriptable surfaces scripts_head, scripts_body_end, and custom_css, form_submission_retention_days (days completed form submissions are kept before deletion; null = kept until deleted; site-wide, not per version), `urls` and `render` (the site's platform render version, the latest version and what upgrading would change). Pass `version` to read a branch's settings (with copy-on-write chain-fallback to main for fields the branch hasn't overridden).
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -3285,7 +3265,7 @@ Patch site settings, including responsive breakpoints for block layouts and visi
 | `default_og_image` | body | string | no | Site-wide fallback og:image URL for pages without their own social image. Empty string clears. |
 | `twitter_handle` | body | string | no | Twitter/X handle for twitter:site, with or without the leading @ (stored without it). Empty string clears. |
 | `organization` | body | object \| null | no | Organization schema.org JSON-LD emitted on every page. Replaces the stored value as a whole; null (or all-empty) clears it. |
-| `staging_url` | body | string \| null | no | URL of a staging environment for this site, reported as urls.staging. Stored on the Site, not per version. Trailing slashes are dropped; empty string or null clears. |
+| `staging_url` | body | string \| null | no | URL of a staging environment for this site, for reference. Stored on the Site, not per version. Trailing slashes are dropped; empty string or null clears. |
 | `form_submission_retention_days` | body | integer \| null | no | Opt-in deletion of completed form submissions this many days (30–3650) after they were completed, on every form of the site, including existing submissions: those already older are deleted immediately and cannot be restored. null (the default) keeps submissions until someone deletes them. Site administrators only (never an Extension credential); stored on the Site, not per version. The response reports form_submission_retention { updated, deleted }. Partial submissions keep their form's partial_ttl_days. |
 | `render_version` | body | integer | no | Platform render version. Platform output changes ship as new versions so existing sites never change look on their own. Upgrade only after previewing (get_preview_link render_version) and with the user's approval; the tr-upgrade-rendering skill compares every page. Lowering it returns to an earlier version. |
 | `typography` | body | object | no | Fluid design controls (render version 10+). Base size is fonts.size_base. Replaces typography as a whole; omitted controls use defaults. |

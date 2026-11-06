@@ -14,7 +14,7 @@
 
 import { getStore } from '../datastore';
 import { paths } from '@typeroll/shared';
-import { assertPublishingReady, MANAGED_PUBLISHING_REMOVED } from '../publishing/readiness';
+import { assertPublishingReady } from '../publishing/readiness';
 import { putScheduledWork } from '../scheduling/index';
 
 export interface EnqueueArgs {
@@ -79,32 +79,19 @@ export type DeployRunOutcome = 'ran' | 'deferred' | 'continue' | 'waiting';
  *
  * Every site publishes through its organization's build engine and hosting
  * (customer publishing), or, for a hosted site, through the build engine to
- * the bound hosting service. Typeroll no longer builds sites itself: a
- * site still in the former managed mode fails with a named error until it is
- * migrated.
+ * the bound hosting service.
  */
 export async function executeDeployJob(args: EnqueueArgs): Promise<DeployRunOutcome> {
   const store = getStore();
   const site = await store.getDoc<{ publishing_mode?: string }>(paths.site(args.orgId, args.siteId));
-  const jobPath = paths.deploy(args.orgId, args.siteId, args.jobId);
   // Hosted sites publish through their own runner, which refuses by name
   // when no hosting service is bound.
   if (site?.publishing_mode === 'hosted') {
     const { executeHostedPublication } = await import('../publishing/hosting-runner');
     return executeHostedPublication(args);
   }
-  // A verification retry of a publication that already ran on customer
-  // publishing resumes there even if the site's mode was changed since.
-  const retry = site?.publishing_mode !== 'customer_git' && (await store.getDoc<{ verification_retry?: unknown }>(jobPath))?.verification_retry;
-  if (site?.publishing_mode === 'customer_git' || retry) {
-    const { executeCustomerPublication } = await import('../publishing/customer-runner');
-    return executeCustomerPublication(args);
-  }
-  await store.compareAndUpdateDoc(jobPath, job => ['queued', 'running'].includes(String((job as { status?: unknown }).status)), {
-    status: 'failed', phase: 'failed', finished_at: new Date().toISOString(),
-    error: MANAGED_PUBLISHING_REMOVED.message, failure: { code: MANAGED_PUBLISHING_REMOVED.code },
-  }).catch(() => { /* the job document is gone; nothing to report on */ });
-  return 'ran';
+  const { executeCustomerPublication } = await import('../publishing/customer-runner');
+  return executeCustomerPublication(args);
 }
 
 let cached: DeployQueue | null = null;

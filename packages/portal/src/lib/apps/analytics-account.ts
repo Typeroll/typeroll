@@ -7,11 +7,10 @@
 //     uses (Default reuses the Organization's connection). Never the
 //     installation's account, even when the Organization's connection is
 //     missing or lacks permission.
-//   - managed hosting (the older path) and self-hosted installs: the account
-//     configured for the installation (CLOUDFLARE_ACCOUNT_ID /
-//     CLOUDFLARE_API_TOKEN), which also hosts those sites.
+//   - a hosted site: the account configured for the installation
+//     (CLOUDFLARE_ACCOUNT_ID / CLOUDFLARE_API_TOKEN), which hosts it.
 
-import { paths, type AppProviderAccount, type Site } from '@typeroll/shared';
+import { paths, usesCustomerPublishing, type AppProviderAccount, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, openCredentials } from '../publishing/connections';
 import { CLOUDFLARE_ANALYTICS_PROVISION_SCOPE, CLOUDFLARE_ANALYTICS_READ_SCOPE, CLOUDFLARE_ANALYTICS_SCOPES, enabledCloudflareOptionalScopes } from '../publishing/cloudflare-config';
@@ -99,7 +98,7 @@ export function hasScope(account: AnalyticsAccount, purpose: 'provision' | 'repo
 
 /** Resolve the account that hosts this site. Throws AnalyticsSetupError when it cannot be used. */
 export async function resolveAnalyticsAccount(orgId: string, site: Site | null | undefined, fetchImpl: typeof fetch = fetch): Promise<AnalyticsAccount> {
-  if (site?.publishing_mode === 'customer_git') {
+  if (site && usesCustomerPublishing(site)) {
     const groupId = site.hosting_group_id ?? 'default';
     const group = await getHostingGroup(orgId, groupId);
     const connection = await getConnection(orgId, 'cloudflare', groupId);
@@ -152,7 +151,7 @@ export async function resolveAnalyticsAccount(orgId: string, site: Site | null |
 /** The hostname Cloudflare labels the Web Analytics site with. Measurement itself works on any host the beacon runs on. */
 export async function analyticsHostForSite(orgId: string, siteId: string, site: Site | null | undefined): Promise<string | null> {
   const strip = (value: string) => value.replace(/^https?:\/\//, '').replace(/[/:].*$/, '').toLowerCase();
-  if (site?.publishing_mode === 'customer_git') {
+  if (site && usesCustomerPublishing(site)) {
     const domains = await getSiteDomains(orgId, siteId);
     const host = domains.active?.website_host ?? domains.desired.website_host;
     if (host) return host;

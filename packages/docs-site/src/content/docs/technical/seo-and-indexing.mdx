@@ -53,8 +53,7 @@ does not provision a permanent public `typeroll.com` subdomain.
 Follow [Website and media domains](../../publishing/domains/) to prepare a
 verified build with the intended URLs **before switching traffic**. Current
 publishing separates preparation, verification and cutover. Merely entering a
-hostname is not proof that the new address is live. Older managed sites have a
-separate [legacy domain workflow](../../guides/custom-domain/).
+hostname is not proof that the new address is live.
 
 ## Indexing and following links are independent
 
@@ -89,17 +88,15 @@ Crawl permission in robots.txt and indexability in HTML are different settings.
 If you want a public Page crawled but excluded from results, use noindex; blocking
 fetches can prevent crawlers from reading that directive.
 
-Hosting headers are a third layer. Managed fallback protection can emit
-host-scoped `X-Robots-Tag: noindex, nofollow` rules in the Cloudflare Pages
-`_headers` artifact. A matching fallback header can be stricter than the Page's
-HTML. Self-hosted operators configuring a shared fallback namespace use
-`SITES_BASE_DOMAIN`; operators without it must verify their hosting policy.
-Do not assume that any arbitrary alias is protected just because the preferred
+Hosting headers are a third layer. A publication to a temporary or version
+address carries `X-Robots-Tag: noindex`, which can be stricter than the Page's
+HTML; that block ends when the site moves to its own website host. Do not
+assume that any arbitrary alias is protected just because the preferred
 hostname is configured.
 
 Call `check_site_indexing`, or
 `GET /api/v1/sites/{siteId}/indexing-diagnostics`, before launch and after domain
-or indexing changes. It reports the recorded fallback and production roots,
+or indexing changes. It reports the recorded production root,
 response headers, HTML robots and robots.txt separately. Also inspect provider
 firewall, bot and access settings when requests are blocked. An HTTP check does
 not prove how a verified search-engine crawler is treated.

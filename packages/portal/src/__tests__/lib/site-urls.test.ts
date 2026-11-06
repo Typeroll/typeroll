@@ -25,16 +25,18 @@ describe('liveBaseFor', () => {
     expect(liveBaseFor({ domain: undefined }, mainVersion)).toBeNull();
   });
 
-  it('prefers domain over fallback', () => {
-    expect(liveBaseFor({
-      domain: 'example.com',
-      hosting_config: { fallback_subdomain: 'foo.sites.example.org' },
-    }, mainVersion)).toBe('https://example.com');
+  it('uses the domain once it is live', () => {
+    expect(liveBaseFor({ domain: 'example.com', domain_status: 'live' }, mainVersion)).toBe('https://example.com');
   });
 
-  it('falls back to hosting_config.fallback_subdomain when no domain', () => {
+  it('has no live base for a declared domain that is not live yet, also without a publishing mode', () => {
+    expect(liveBaseFor({ domain: 'example.com', domain_status: 'pending' }, mainVersion)).toBeNull();
+    expect(liveBaseFor({ domain: 'example.com', hosting_config: { fallback_subdomain: 'foo.sites.example.org' } }, mainVersion)).toBeNull();
+  });
+
+  it('answers on the platform address of a hosted site until its domain is live', () => {
     expect(liveBaseFor({
-      domain: undefined,
+      publishing_mode: 'hosted', domain: 'example.com', domain_status: 'verified',
       hosting_config: { fallback_subdomain: 'foo.sites.example.org' },
     }, mainVersion)).toBe('https://foo.sites.example.org');
   });
@@ -65,7 +67,7 @@ describe('siteDisplayHost', () => {
 });
 
 describe('pageLiveUrl', () => {
-  const site: Site = { id: 's', name: 'x', domain: 'example.com', hosting_adapter: 'cloudflare' } as Site;
+  const site: Site = { id: 's', name: 'x', domain: 'example.com', domain_status: 'live', hosting_adapter: 'cloudflare' } as Site;
   it('returns null for unpublished pages', () => {
     expect(pageLiveUrl(site, mainVersion, { slug: 'about', status: 'draft' })).toBeNull();
   });

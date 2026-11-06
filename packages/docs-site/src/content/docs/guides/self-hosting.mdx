@@ -131,7 +131,8 @@ export CLOUDFLARE_DEPLOY_API_TOKEN=<deploy token>
 
 The deploy token is never sent to the Workers. The runtime's own
 `CLOUDFLARE_API_TOKEN` in `.env.self-host` is a separate, optional token for
-the installation's Cloudflare account (site hosting and Web Analytics).
+the installation's Cloudflare account. Publishing and Analytics use each
+Organization's own Cloudflare connections, not this token.
 
 ## Plan
 

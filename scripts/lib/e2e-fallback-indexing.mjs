@@ -1,22 +1,22 @@
 import { callHostedMcp } from './e2e-agent-journey.mjs';
 
+// The temporary address of a site without a website host: whatever kind the
+// report gives it, Typeroll must keep it out of search engines.
+const temporaryTarget = (report, origin) => report?.targets?.find((target) => target?.origin?.replace(/\/$/, '') === origin);
+
 export async function runFallbackIndexingJourney({
   fetchImpl = fetch,
   portalUrl,
   apiKey,
+  siteId,
   expectedFallbackOrigin,
   wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   indexingAttempts = 120,
 }) {
   const call = (name, args) => callHostedMcp({ fetchImpl, portalUrl, apiKey, name, args });
   const site = await call('get_site');
-  if (site?.id !== 'e2e-core-site') {
-    throw new Error(`fallback indexing journey is bound to e2e-core-site, received ${site?.id ?? 'unknown'}`);
-  }
-  const prepared = await call('update_site', { slug: 'e2e-core-site', domain: '' });
-  if (prepared?.dns_warning) throw new Error(prepared.dns_warning);
-  if (prepared?.urls?.fallback !== expectedFallbackOrigin) {
-    throw new Error(`unexpected fallback origin: ${prepared?.urls?.fallback ?? 'missing'}`);
+  if (!siteId || site?.id !== siteId) {
+    throw new Error(`fallback indexing journey is bound to ${siteId}, received ${site?.id ?? 'unknown'}`);
   }
   // This bounded staging fixture checks saved output, not unrelated editor drafts.
   // Keep working copies untouched; the caller explicitly confirms this test site.
@@ -37,7 +37,7 @@ export async function runFallbackIndexingJourney({
   let lastPublicResponses;
   for (let attempt = 0; attempt < indexingAttempts; attempt += 1) {
     lastReport = await call('check_site_indexing');
-    const fallback = lastReport?.targets?.find((target) => target?.kind === 'fallback');
+    const fallback = temporaryTarget(lastReport, expectedFallbackOrigin);
     if (typeof fallback?.origin === 'string') {
       const [head, get] = await Promise.all(['HEAD', 'GET'].map(async (method) => {
         try {
@@ -65,6 +65,7 @@ export async function runFallbackIndexingJourney({
       lastPublicResponses = { head, get };
     }
     if (
+      fallback?.expected === 'noindex' &&
       fallback?.reachable &&
       fallback?.header_noindex &&
       lastPublicResponses?.head.status >= 200 && lastPublicResponses.head.status < 300 &&
@@ -82,7 +83,7 @@ export async function runFallbackIndexingJourney({
     if (attempt < indexingAttempts - 1) await wait(5_000);
   }
 
-  const fallback = lastReport?.targets?.find((target) => target?.kind === 'fallback');
+  const fallback = temporaryTarget(lastReport, expectedFallbackOrigin);
   throw new Error(
     `fallback indexing protection did not become observable after deploy: ${JSON.stringify({
       origin: fallback?.origin ?? null,

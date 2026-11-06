@@ -124,8 +124,9 @@ describe('PATCH /v1/sites/{siteId}/settings — portal form parity', () => {
     const { vstore } = await import('../../lib/version-store');
     expect((await vstore.settings(ORG, SITE, MAIN_VERSION_ID) as Record<string, unknown> | null)?.staging_url).toBeUndefined();
 
+    // Customer publishing has no staging environment to report.
     const read = await call(settingsRoute(), 'GET', `/api/v1/sites/${SITE}/settings`, { siteId: SITE }, siteKey);
-    expect((await read.json() as { urls: { staging: string } }).urls.staging).toBe('https://staging.example.com');
+    expect((await read.json() as { urls: { staging: string | null } }).urls.staging).toBeNull();
 
     await call(settingsRoute(), 'PATCH', `/api/v1/sites/${SITE}/settings`, { siteId: SITE }, siteKey, { staging_url: '' });
     expect((await siteDoc())?.staging_url ?? null).toBeNull();
@@ -285,16 +286,9 @@ describe('GET /v1/sites/{siteId}/media/upload-status', () => {
 
   it('reports the same pre-flight as the portal media library', async () => {
     const { orgKey } = await setup({ sharePermission: 'read' });
-    const saved = process.env.R2_BUCKET;
-    delete process.env.R2_BUCKET;
-    try {
-      const res = await call(uploadStatusRoute(), 'GET', `/api/v1/sites/${SHARED}/media/upload-status`, { siteId: SHARED }, orgKey);
-      expect(res.status).toBe(200);
-      const body = await res.json() as { enabled: boolean; missing?: string[] };
-      expect(body.enabled).toBe(false);
-      expect(body.missing).toContain('R2_BUCKET');
-    } finally {
-      if (saved !== undefined) process.env.R2_BUCKET = saved;
-    }
+    // The site publishes through its organization, whose storage is not connected.
+    const res = await call(uploadStatusRoute(), 'GET', `/api/v1/sites/${SHARED}/media/upload-status`, { siteId: SHARED }, orgKey);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ enabled: false, settings_url: '/app/settings/publishing' });
   });
 });

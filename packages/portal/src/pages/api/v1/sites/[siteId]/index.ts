@@ -9,11 +9,6 @@ import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { getStore } from '../../../../../lib/datastore';
 import { siteLifecycleState } from '../../../../../lib/site-lifecycle';
 import { parseSiteLanguage, SITE_ID_RE } from '../../../../../lib/site-create-input';
-import {
-  FallbackHostnameUnavailableError,
-  needsFallbackProvisioning,
-  reprovisionFallbackSubdomain,
-} from '../../../../../lib/hosting/site-provisioning';
 import { paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 
@@ -47,13 +42,8 @@ export const GET: APIRoute = async ({ request, params }) => {
  * the agent to set name, slug, domain, language and ai_scripts_enabled
  * ("Allow AI to write block scripts", admin only — the same check as the
  * portal's Settings → Custom code toggle). slug and domain are admin only
- * too: slug re-points the platform fallback hostname and domain becomes the
- * canonical URL of every build. slug is uniqueness-checked across the org,
- * and its fallback hostname is claimed platform-wide, so no site can take a
- * fallback URL another site uses (409). Changing slug reprovisions the
- * fallback DNS and Cloudflare Pages attachment. The response reports
- * `dns_note` on success or `dns_warning` when the slug was saved but hosting
- * reprovisioning needs operator attention.
+ * too: domain becomes the canonical URL of every build. slug is
+ * uniqueness-checked across the org.
  */
 export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -108,71 +98,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
 
   if (Object.keys(update).length === 0) return apiError('No writable fields in body');
 
-  // If slug changed, re-provision the CF Pages custom-domain + DNS so
-  // the new `{slug}.{base}` URL actually serves the site. Best-effort:
-  // CF errors don't block the slug update — the agent can re-run if it
-  // wants, or fall back to the portal-attached subdomain.
-  const reprovisioning: { ok: boolean; fallback?: string; cname?: string; error?: string } = { ok: true };
-  if (update.slug && needsFallbackProvisioning(ctx.site, String(update.slug))) {
-    try {
-      const result = await reprovisionFallbackSubdomain({
-        orgId: ctx.orgId,
-        siteId: ctx.site.id,
-        newSlug: String(update.slug),
-      });
-      if (result) {
-        // Persist the new attached host on hosting_config so future
-        // get_site reads point at the correct URL (publicUrlsFor checks
-        // hosting_config.fallback_subdomain first). Also persist
-        // pages_project: it's what the deploy adapter reads to know which
-        // CF Pages project to push assets to. Sites bootstrapped outside
-        // /api/sites/create (Firestore seed, manual provisioning) often
-        // have it unset — without this the next trigger_deploy targets
-        // the env-fallback project (or the stub adapter) instead of the
-        // project the new subdomain was just attached to, and the URL
-        // 522s because there are no assets at the destination.
-        const existingConfig = (ctx.site as { hosting_config?: Record<string, unknown> }).hosting_config ?? {};
-        (update as Record<string, unknown>).hosting_config = {
-          ...existingConfig,
-          fallback_subdomain: result.fallbackSubdomain,
-          pages_project: (existingConfig.pages_project as string | undefined) ?? result.pagesProject,
-        };
-        reprovisioning.fallback = result.fallbackSubdomain;
-        reprovisioning.cname = result.cnameTarget;
-      }
-    } catch (e) {
-      // Another site holds this fallback hostname: refuse the slug instead
-      // of saving a slug whose URL serves someone else.
-      if (e instanceof FallbackHostnameUnavailableError) {
-        return apiError(`Slug "${String(update.slug)}" is not available: its fallback URL is already used by another site`, 409, ctx, { code: 'slug_unavailable' });
-      }
-      reprovisioning.ok = false;
-      reprovisioning.error = e instanceof Error ? e.message : String(e);
-    }
-  }
-
   const store = getStore();
   await store.setDoc(paths.site(ctx.orgId, ctx.site.id), { ...ctx.site, ...update });
   const fresh = await store.getDoc<Site>(paths.site(ctx.orgId, ctx.site.id));
   return apiResponse(ctx, {
     ...project((fresh ?? ctx.site) as Site & { id: string }, ctx.versionId),
-    // Surface what the reprovisioning step did so the agent can tell the
-    // customer "your URL is live after DNS propagates (~1-10 min)" or
-    // can retry on its own if CF was down.
-    //
-    // ssl_ready_after is a conservative ISO timestamp (~5 min ahead) for
-    // when the new fallback URL's TLS handshake is expected to succeed.
-    // Agents wanting to verify the URL with a real HTTP call should
-    // wait until at least that timestamp to avoid hitting cert errors
-    // mid-provisioning.
-    ...(reprovisioning.ok && reprovisioning.fallback
-      ? {
-          dns_note: `New fallback URL https://${reprovisioning.fallback} attached to CF Pages. SSL provisioning takes 1–10 minutes after DNS propagates. The previous fallback URL keeps working for now — manually deprovision it via the portal if you want to retire it.`,
-          ssl_status: 'provisioning' as const,
-          ssl_ready_after: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-        }
-      : reprovisioning.ok
-      ? {}
-      : { dns_warning: `Slug saved, but CF re-provisioning failed: ${reprovisioning.error}. The URL won't resolve until you retry or attach manually.` }),
   }, 200, body);
 };

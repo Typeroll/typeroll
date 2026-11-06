@@ -142,9 +142,9 @@ describe('routes that set media names', () => {
     expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(6);
   });
 
-  it.each([['cookie', 'contentType'], ['api', 'content_type']] as const)('appends the extension on the platform storage path too (%s)', async (surface, typeField) => {
+  it.each([['cookie', 'contentType'], ['api', 'content_type']] as const)('appends the extension on the platform storage path of a hosted site too (%s)', async (surface, typeField) => {
     const { token } = await createApiKey({ orgId: 'org', siteId: 'site', name: 'test', createdBy: 'test' });
-    await getStore().updateDoc(paths.site('org', 'site'), { publishing_mode: null });
+    await getStore().updateDoc(paths.site('org', 'site'), { publishing_mode: 'hosted' });
     await getStore().updateDoc(connectionPath('org', 'cloudflare'), { status: 'disconnected', media_ready: false, encrypted_credentials: null });
     const route = surface === 'api' ? import('../../pages/api/v1/sites/[siteId]/media/upload-url') : import('../../pages/api/sites/[siteId]/media/upload-url');
     const response = await call(route, 'POST', { filename: 'x.html', [typeField]: 'image/png', size: 3 }, { siteId: 'site' }, token);

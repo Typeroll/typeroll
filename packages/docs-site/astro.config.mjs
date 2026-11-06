@@ -165,7 +165,6 @@ export default defineConfig({
         {
           label: 'Guides',
           items: [
-            { label: 'Legacy managed domains', slug: 'guides/custom-domain' },
             { label: 'Self-Hosting', slug: 'guides/self-hosting' },
             { label: 'Upgrade to unified Pages', slug: 'guides/unified-pages-upgrade' },
           ],

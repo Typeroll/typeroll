@@ -15,7 +15,7 @@ async function seedReadyEvidence(): Promise<Site & { id: string }> {
     id: SITE,
     name: 'Migration target',
     hosting_adapter: 'cloudflare',
-    hosting_config: { fallback_subdomain: 'mysite.sites.example.test' },
+    domain: 'mysite.sites.example.test', domain_status: 'live',
     created_at: '2026-09-06T08:00:00.000Z',
   } satisfies Site;
   await store.setDoc(paths.site(ORG, SITE), site);

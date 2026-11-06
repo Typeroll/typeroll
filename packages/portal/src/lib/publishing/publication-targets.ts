@@ -9,7 +9,6 @@
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { DeployEnvironment, Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
-import { publicUrlsFor } from '../site-public-urls';
 import { generatedCloudflareNames } from './cloudflare-account-claims';
 import { getSiteDomains } from './domain-config';
 import { siteHostingGroup } from './hosting-groups';
@@ -38,8 +37,8 @@ function result(live: string[], temporary: (string | null)[], production: boolea
  * The public URLs a deploy of `versionId` reaches. A site counts as cut over
  * when its main publication serves a website host other than its generated
  * temporary address: the active host of the site's domain configuration (set
- * when a publication goes live), the website host of a migrated managed
- * project, or a live `site.domain`. Branch and staging publications never
+ * when a publication goes live), the website host of a project migrated
+ * earlier, or a live `site.domain`. Branch and staging publications never
  * reach the live domain.
  */
 export async function publicationTargets(orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID,
@@ -57,13 +56,6 @@ export async function publicationTargets(orgId: string, siteId: string, versionI
     if (!main || environment === 'staging' || !serving) return result([], [], false);
     const platform = state?.platform_host ? url(state.platform_host) : null;
     return result(state?.launched ? [url(serving)] : [], [platform], state?.launched === true);
-  }
-
-  if (site.publishing_mode !== 'customer_git') {
-    const urls = publicUrlsFor({ ...site, id: siteId });
-    if (environment === 'staging') return result([], [urls.staging], false);
-    if (!main) return result([], [], false);
-    return result(urls.production ? [urls.production] : [], [urls.fallback], Boolean(urls.production));
   }
 
   const label = generatedCloudflareNames(orgId, siteId).site_label!;

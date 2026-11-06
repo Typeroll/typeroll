@@ -13,7 +13,6 @@ import { executeDeployJob } from '../../lib/deploy/queue';
 import { newSitePublishingMode, publishingReadiness } from '../../lib/publishing/readiness';
 import { publicationTargets } from '../../lib/publishing/publication-targets';
 import { hostingSiteRef, retireHostedSite, setSiteHostingRuntime } from '../../lib/publishing/site-hosting';
-import { adoptCustomerPublishingForMedia } from '../../lib/publishing/media-policy';
 import { createSite, reserveSite } from '../../lib/site-create';
 import { activateDomain, getDomainState, pollDomainStatus, removeDomain, requestDomain, setHostedSiteLaunch, DomainServiceError } from '../../lib/site-domain';
 import { publicUrlsFor } from '../../lib/site-public-urls';
@@ -137,7 +136,7 @@ describe('without a hosting service', () => {
     await seedSite('customer_git');
     await expect(getDomainState(ORG, SITE)).rejects.toBeInstanceOf(DomainServiceError);
     await expect(removeDomain(ORG, SITE)).rejects.toMatchObject({ status: 409 });
-    await expect(requestDomain(ORG, SITE, 'example.com')).rejects.toMatchObject({ status: 503 });
+    await expect(requestDomain(ORG, SITE, 'example.com')).rejects.toMatchObject({ status: 409 });
     expect(hosting.calls).toEqual([]);
   });
 });
@@ -289,12 +288,6 @@ describe('with a bound hosting service', () => {
     const site = { ...(await getStore().getDoc<any>(paths.site(ORG, SITE))), id: SITE };
     expect(publicUrlsFor(site).production).toBe(`https://${SITE}.example-sites.test`);
     expect(await publicationTargets(ORG, SITE)).toMatchObject({ production: true, live_domains: [`https://${SITE}.example-sites.test`] });
-  });
-
-  it('keeps a hosted site hosted when organization media storage is ready', async () => {
-    await seedSite();
-    expect(await adoptCustomerPublishingForMedia(ORG, SITE)).toBe(false);
-    expect((await getStore().getDoc<any>(paths.site(ORG, SITE))).publishing_mode).toBe('hosted');
   });
 
   it('retires a hosted site through the service', async () => {

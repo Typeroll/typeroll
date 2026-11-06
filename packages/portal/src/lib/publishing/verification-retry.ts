@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { paths } from '@typeroll/shared';
+import { paths, usesCustomerPublishing, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { buildTasksPath, type BuildTask } from '../builds/queue';
 import { ConnectionError } from './connections';
@@ -20,8 +20,8 @@ export async function assertVerificationRetry(org: string, site: string, job: Gi
       publication.deployment_receipt?.id !== publication.deployment_id || publication.deployment_receipt?.uses_functions !== false ||
       publication.deployment_receipt?.latest_stage?.status !== 'success' || publication.deployment_receipt?.latest_stage?.name !== 'deploy') throw unavailable();
   const store = getStore();
-  const currentSite = await store.getDoc<{ publishing_mode?: string }>(paths.site(org, site));
-  if (currentSite?.publishing_mode !== 'customer_git') throw unavailable();
+  const currentSite = await store.getDoc<Site>(paths.site(org, site));
+  if (!currentSite || !usesCustomerPublishing(currentSite)) throw unavailable();
   const jobs = await store.listDocs<GitJob>(paths.deploys(org, site));
   if (jobs.some(other => other.id !== job.id && other.version_id === job.version_id &&
       (other.started_at >= job.started_at || ['queued', 'running'].includes(other.status)))) throw unavailable();

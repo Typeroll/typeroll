@@ -29,7 +29,7 @@ const PLATFORM_R2_ENV = [
 
 export async function mediaUploadStatus(
   ownerOrgId: string,
-  site: Pick<Site, 'publishing_mode' | 'hosting_config'>,
+  site: Pick<Site, 'publishing_mode'>,
 ): Promise<MediaUploadStatus> {
   if (await usesPrivateMedia(ownerOrgId, site)) {
     const { mediaUploadAvailability } = await import('../publishing/media-storage');

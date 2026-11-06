@@ -28,6 +28,7 @@ export * from './site-compositions.js';
 export * from './site-template-capabilities.js';
 export * from './integrations.js';
 export * from './site-lifecycle.js';
+export * from './publishing-mode.js';
 export * from './page-refs.js';
 export * from './taxonomy.js';
 export * from './consent-scripts.js';

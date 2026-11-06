@@ -26,7 +26,6 @@ import type { Form, Partial as PartialDoc, Site, SiteIntegrations } from '@typer
 import { getStore } from './datastore';
 import { vstore } from './version-store';
 import { mediaTransferAvailability } from './wp/media';
-import { usesPrivateMedia } from './publishing/media-policy';
 import { ConnectionError } from './publishing/connections';
 import { publicUrlsFor } from './site-public-urls';
 import { createSafeFetch, migrationSourcePolicy, parseOutboundUrl } from './net/safe-fetch';
@@ -79,7 +78,6 @@ export async function runMigrationPreflight(
 
   // ─── Blockers ──────────────────────────────────────────────────────────
 
-  const customerMedia = Boolean(site && await usesPrivateMedia(orgId, site));
   let media: Awaited<ReturnType<typeof mediaTransferAvailability>> | null = null;
   let mediaError: string | undefined;
   try { media = await mediaTransferAvailability(orgId, siteId); }
@@ -101,20 +99,8 @@ export async function runMigrationPreflight(
         fix: 'Open Publishing → Media storage and connect and verify the organization’s own storage before importing anything.',
       });
 
-  if (customerMedia) {
-    checks.push({ id: 'hosting', label: 'Publishing', status: 'ok', severity: 'blocker',
-      detail: 'After connecting your organization’s storage, content can be imported and previewed before connecting GitHub or website domains. Publishing verifies those requirements separately.' });
-  } else {
-    // Only a site still in the former managed mode gets here.
-    checks.push({
-      id: 'hosting',
-      label: 'Publishing',
-      status: 'fail',
-      severity: 'blocker',
-      detail: 'This site still uses Typeroll-managed publishing, which is no longer available: imported content could not be published.',
-      fix: 'Migrate the site to your organization’s publishing in Site settings → Publishing, or connect the organization’s own storage in Publishing.',
-    });
-  }
+  checks.push({ id: 'hosting', label: 'Publishing', status: 'ok', severity: 'blocker',
+    detail: 'After connecting your organization’s storage, content can be imported and previewed before connecting GitHub or website domains. Publishing verifies those requirements separately.' });
 
   // ─── Warnings ──────────────────────────────────────────────────────────
 
@@ -134,9 +120,9 @@ export async function runMigrationPreflight(
         status: 'fail',
         severity: 'warning',
         detail:
-          'The site has no fallback subdomain and no live domain, so verify_migration_urls has nothing to ' +
-          'request against. The gate that catches lost URLs before DNS moves cannot run.',
-        fix: 'Set SITES_BASE_DOMAIN (or provision a Pages project) so the site gets a fallback URL — or pass target_origin explicitly to the parity check.',
+          'The site has no live domain yet, so verify_migration_urls has no default origin to ' +
+          'request against. The gate that catches lost URLs before DNS moves cannot run on its own.',
+        fix: 'Publish the site to its temporary address, then pass that address as target_origin to the parity check.',
       });
 
   checks.push({

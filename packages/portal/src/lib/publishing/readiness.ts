@@ -5,13 +5,13 @@ import { readBuildEngine } from '../builds/cloudflare';
 import { readGithubEngine } from '../builds/github';
 import { readEngineConfiguration, assertEngineConnections } from '../builds/state';
 import { siteHostingGroup } from './hosting-groups';
-import { paths, type Site } from '@typeroll/shared';
+import { paths, sitePublishingMode, type Site, type SitePublishingMode } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection, connectionSummary, ConnectionError } from './connections';
 import { getOrganizationDomains, getSiteDomains, activePublicationDomains } from './domain-config';
 import { assertSiteHostingAvailable, HOSTED_MODE, SITE_HOSTING_UNAVAILABLE, siteHostingAvailable } from './site-hosting';
 
-export type PublishingMode = 'customer_git' | typeof HOSTED_MODE;
+export type PublishingMode = SitePublishingMode;
 
 /**
  * Every new site publishes through its organization's build engine and
@@ -24,16 +24,6 @@ export function newSitePublishingMode(requested?: typeof HOSTED_MODE): Publishin
   return HOSTED_MODE;
 }
 
-/**
- * Typeroll no longer builds sites on its own servers. A site still in the
- * former managed mode publishes again once it is migrated to customer
- * publishing (migrate_managed_site_publishing, or Site settings → Publishing).
- */
-export const MANAGED_PUBLISHING_REMOVED = {
-  code: 'managed_publishing_migration_required',
-  message: 'This site still uses Typeroll-managed publishing, which is no longer available. Migrate it to your organization’s publishing in Site settings → Publishing (or with migrate_managed_site_publishing), then publish again. The live site is unchanged.',
-} as const;
-
 export interface PublishingRequirement { code: string; message: string; settings_url: string }
 
 export async function publishingReadiness(orgId: string, siteId: string, versionId = 'main', options: { checkBuild?: boolean } = {}) {
@@ -42,7 +32,7 @@ export async function publishingReadiness(orgId: string, siteId: string, version
   if (!site) throw new ConnectionError('Site not found.', 404);
   const required: PublishingRequirement[] = [];
   if (options.checkBuild !== false && !(await readOrganizationAccess(orgId)).can_write) {
-    return { ready: false, mode: site.publishing_mode === 'customer_git' || site.publishing_mode === HOSTED_MODE ? site.publishing_mode : 'managed' as const,
+    return { ready: false, mode: sitePublishingMode(site),
       required: [{ code: 'organization_access_ended', message: 'Activate a subscription to continue publishing. Existing static sites remain online.', settings_url: '/app/settings/access' }] };
   }
   // Accepted jobs validate their frozen source; new admissions validate saved content.
@@ -53,10 +43,6 @@ export async function publishingReadiness(orgId: string, siteId: string, version
     }
   }
   if (site.publishing_mode === HOSTED_MODE) return hostedReadiness(orgId, siteId, versionId, options, required);
-  if (site.publishing_mode !== 'customer_git') {
-    required.push({ ...MANAGED_PUBLISHING_REMOVED, settings_url: `/app/sites/${encodeURIComponent(siteId)}/settings` });
-    return { ready: false, mode: 'managed' as const, required };
-  }
   const group = await siteHostingGroup(orgId, siteId);
   const [github, cloudflare, organization, savedDomains, media, storage] = await Promise.all([
     getConnection(orgId, 'github'), getConnection(orgId, 'cloudflare', group.id), getOrganizationDomains(orgId), getSiteDomains(orgId, siteId),

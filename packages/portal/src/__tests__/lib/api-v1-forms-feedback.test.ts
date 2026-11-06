@@ -73,10 +73,10 @@ describe('public URLs on site reads', () => {
     expect(body.urls.production).toBeNull();
   });
 
-  it('GET /v1/sites/{id} returns urls with production set when site.domain is DNS-verified', async () => {
-    // A bare domain without verified status no longer counts as production
-    // (that was the "fresh site shows Live" bug) — DNS must be confirmed.
-    const { token } = await setup({ domain: 'www.example.se', domain_status: 'verified' } as Partial<Site>);
+  it('GET /v1/sites/{id} returns urls with production set when site.domain is live', async () => {
+    // A bare domain without a live status does not count as production
+    // (that was the "fresh site shows Live" bug).
+    const { token } = await setup({ domain: 'www.example.se', domain_status: 'live' } as Partial<Site>);
     const res = await callRoute(
       import('../../pages/api/v1/sites/[siteId]/index'),
       'GET',

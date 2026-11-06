@@ -72,7 +72,8 @@ beforeEach(async () => {
   const store = getStore();
   await store.setDoc(paths.site(ORG, SITE), {
     name: 'Moveria NO', hosting_adapter: 'cloudflare',
-    hosting_config: { fallback_subdomain: 'moveria-no.sites.example.com' },
+    // The parity check defaults to the site's live domain.
+    domain: 'moveria-no.sites.example.com', domain_status: 'live',
     created_at: '2026-10-01T00:00:00.000Z',
   });
   await store.setDoc(paths.settings(ORG, SITE), { site_name: 'Moveria NO', trailing_slash: 'ignore' });

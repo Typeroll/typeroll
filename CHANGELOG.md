@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.4 (candidate, MCP 0.45.118)
+
+- **Typeroll-managed publishing is removed.** Core publishes every site through
+  its organization's own GitHub and Cloudflare accounts. A site without a
+  publishing mode, or with the former `managed` one, now uses customer
+  publishing and needs its normal publishing setup like a new site; it is no
+  longer refused with `managed_publishing_migration_required`. Sites migrated
+  earlier keep publishing to their original Pages project.
+- Site creation no longer provisions a Pages project or a fallback subdomain on
+  the installation's Cloudflare account, and changing a site's slug no longer
+  reprovisions one: `PATCH /api/v1/sites/{siteId}` no longer returns `dns_note`
+  or `dns_warning`, and `urls.fallback` and `urls.staging` are null. The legacy
+  custom-domain service on the installation's account is removed; the
+  `/api/v1/sites/{siteId}/domain` routes answer `409` and point to
+  `/api/v1/sites/{siteId}/publishing/domains`.
+- The data import gives such sites `publishing_mode: "customer_git"` (the
+  read-compare applies the same rule), and its report no longer has
+  `managedSites`.
+- The managed-site migration is removed: the MCP tools
+  `check_managed_site_migration` and `migrate_managed_site_publishing`, the
+  `/api/v1/sites/{siteId}/publishing/managed-migration` route and the site
+  settings card.
+- The remote E2E journeys that publish (`e2e:agent`, `e2e:fallback-indexing`)
+  run on a site named by `TYPEROLL_E2E_JOURNEY_SITE` with a key in
+  `TYPEROLL_E2E_JOURNEY_API_KEY`, since the persona fixture site no longer
+  publishes. The indexing check finds the temporary address by origin.
+
 ## 0.3.3 (candidate, MCP 0.45.117)
 
 - The hosted MCP server works on Workers. Its tools call the portal's REST API

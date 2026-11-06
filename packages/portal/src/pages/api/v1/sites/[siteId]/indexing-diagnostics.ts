@@ -1,5 +1,6 @@
 import { previousHostSummary } from '../../../../../lib/publishing/previous-hosts';
 import type { APIRoute } from 'astro';
+import { usesCustomerPublishing } from '@typeroll/shared';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { diagnoseSiteIndexing } from '../../../../../lib/indexing-diagnostics';
@@ -14,7 +15,7 @@ export const GET: APIRoute = async ({ request, params }) => {
 
   // Customer publishing intentionally blocks robots until a future website host
   // is declared. The generated Site.domain may still contain its temporary host.
-  const domains = ctx.site.publishing_mode === 'customer_git' ? await getSiteDomains(ctx.orgId, ctx.siteId) : null;
+  const domains = usesCustomerPublishing(ctx.site) ? await getSiteDomains(ctx.orgId, ctx.siteId) : null;
   const report = await diagnoseSiteIndexing(ctx.site, settings, {
     robotsBlocked: domains !== null && !domains.desired.website_host,
     previousHosts: domains ? previousHostSummary(domains) : [], publicationId: domains?.published?.publication_id,

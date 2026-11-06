@@ -173,10 +173,6 @@ test('remote seeding upserts stable accounts, membership indexes and documents, 
   const env = remoteEnvironment(manifest);
   const memory = memoryServices();
   const first = await seedRemotePersonas({ services: memory.services, env, manifest });
-  memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site').hosting_config = {
-    pages_project: 'tr-e2e-core-e2e-core-site',
-    fallback_subdomain: 'e2e-core-site.sites-staging.typeroll.com',
-  };
   const second = await seedRemotePersonas({ services: memory.services, env, manifest });
   assert.equal(first.personaCount, 5);
   assert.deepEqual(second, first);
@@ -186,13 +182,7 @@ test('remote seeding upserts stable accounts, membership indexes and documents, 
   assert.deepEqual(memory.state.documents.get('user_organizations/typeroll-e2e-editor/organizations/e2e-core'), { org_id: 'e2e-core' });
   assert.equal(memory.state.documents.has('user_organizations/typeroll-e2e-pending'), false);
   assert.equal(memory.state.documents.get(`api_key_lookup/${'a'.repeat(12)}`).is_test_credential, true);
-  assert.deepEqual(
-    memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site').hosting_config,
-    {
-      pages_project: 'tr-e2e-core-e2e-core-site',
-      fallback_subdomain: 'e2e-core-site.sites-staging.typeroll.com',
-    },
-  );
+  assert.equal(memory.state.documents.get('organizations/e2e-core/sites/e2e-core-site').hosting_config, undefined);
 
   memory.state.users.get('typeroll-e2e-editor').password = 'rotated elsewhere';
   memory.state.documents.delete('user_organizations/typeroll-e2e-viewer/organizations/e2e-viewer');

@@ -15,16 +15,20 @@ try {
   if (!target.isRemote || target.kind !== 'cloud') {
     throw new Error('The fallback indexing journey requires the permanent Cloud staging target');
   }
-  const siteId = 'e2e-core-site';
+  // The journeys publish, so the site needs working customer publishing: the
+  // caller names it twice (environment and flag) and passes a key for it.
+  const siteId = process.env.TYPEROLL_E2E_JOURNEY_SITE?.trim();
+  if (!siteId) throw new Error('TYPEROLL_E2E_JOURNEY_SITE is required');
   requireExactConfirmation(siteId, values['confirm-site'], 'E2E site');
-  const apiKey = process.env.TYPEROLL_E2E_API_KEY?.trim();
-  if (!apiKey) throw new Error('TYPEROLL_E2E_API_KEY is required');
+  const apiKey = process.env.TYPEROLL_E2E_JOURNEY_API_KEY?.trim();
+  if (!apiKey) throw new Error('TYPEROLL_E2E_JOURNEY_API_KEY is required');
   const expectedFallbackOrigin = process.env.TYPEROLL_E2E_FALLBACK_ORIGIN?.trim().replace(/\/$/, '');
   if (!expectedFallbackOrigin) throw new Error('TYPEROLL_E2E_FALLBACK_ORIGIN is required');
   await checkE2ETarget(target);
   const result = await runFallbackIndexingJourney({
     portalUrl: target.portalUrl,
     apiKey,
+    siteId,
     expectedFallbackOrigin,
   });
   console.log(

@@ -53,7 +53,7 @@ export function smallExclude(directory = contentDir) {
 export const CUSTOM_SETS = [
   { label: 'Skills', paths: ['skills/**'], description: 'every step-by-step recipe the MCP server gives agents through read_skill' },
   { label: 'MCP tool reference', paths: ['tools/**'], description: 'parameters and behaviour of every MCP tool and the matching REST routes' },
-  { label: 'Publishing and domains', paths: ['publishing/**', 'guides/customer-publishing', 'guides/*-troubleshooting', 'guides/custom-domain', 'guides/publication-validation'], description: 'Cloudflare and GitHub connections, builds, domains and troubleshooting' },
+  { label: 'Publishing and domains', paths: ['publishing/**', 'guides/customer-publishing', 'guides/*-troubleshooting', 'guides/publication-validation'], description: 'Cloudflare and GitHub connections, builds, domains and troubleshooting' },
   { label: 'Migration', paths: ['guides/migration-approach', 'guides/wordpress-migration', 'guides/migrate-*', 'guides/migration-seo-checklist', 'tools/migration-urls', 'skills/tr-migrat*', 'skills/tr-import-url'], description: 'moving a WordPress, Squarespace, Wix, Webflow or Astro site to Typeroll without losing URLs' },
   { label: 'Extensions', paths: ['extensions/**'], description: 'building and operating Extensions' },
 ];

@@ -432,7 +432,7 @@ export async function planSiteParity(args: SiteParityArgs): Promise<SiteParityPl
   );
   if (!targetOrigin) {
     throw new Error(
-      'No origin to check against. The site has neither a fallback subdomain nor a live domain — pass target_origin explicitly.',
+      'No origin to check against. The site has no live domain yet — pass target_origin explicitly, for example the temporary address it publishes to.',
     );
   }
 

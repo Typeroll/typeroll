@@ -20,7 +20,7 @@ import { webAnalyticsApi } from './web-analytics-api';
 export type InsightsStatus =
   | 'ok'
   | 'app_disabled'        // analytics app not enabled for this site
-  | 'not_configured'      // managed/self-hosted: no Cloudflare account configured for the installation
+  | 'not_configured'      // no Cloudflare account configured for the installation
   | 'no_site_tag'         // enabled but not yet provisioned/linked to a Web Analytics site
   | 'connection_required' // customer publishing: the Hosting Group has no usable Cloudflare connection
   | 'access_required'     // the hosting account's connection may not read Web Analytics reports

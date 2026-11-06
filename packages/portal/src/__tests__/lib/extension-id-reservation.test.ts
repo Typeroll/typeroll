@@ -174,6 +174,8 @@ describe('developer organization claim on installation tokens', () => {
     await getStore().setDoc(paths.site(OWNER_ORG, SITE), {
       name: 'Customer site', domain: 'customer.example', hosting_adapter: 'cloudflare', created_at: new Date().toISOString(),
     });
+    const { recordPublishingOrigin } = await import('../../lib/publishing/runtime-origins');
+    await recordPublishingOrigin(OWNER_ORG, SITE, 'https://customer.example');
     const publicToken = await issuePublicExtensionToken({
       request: new Request('https://admin.customer.example/api/extensions/public-token', { method: 'POST', headers: { Origin: 'https://customer.example' } }),
       orgId: OWNER_ORG, siteId: SITE, installationId: installation.id,

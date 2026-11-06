@@ -97,7 +97,7 @@ export const siteTools: ToolDef[] = [
   {
     name: 'update_site',
     description:
-      'Edit Site-level fields: name (display), slug (drives the {slug}.typeroll-fallback subdomain — kebab-case, 3-48 chars, unique across the org), domain (the customer\'s real hostname; pass "" to clear), language, and ai_scripts_enabled (the portal\'s "Allow AI to write block scripts" toggle; requires admin permission, as in the portal). For colors / fonts / contact info / tagline / staging_url use update_site_settings instead.',
+      'Edit Site-level fields: name (display), slug (a URL-stable identifier — kebab-case, 3-48 chars, unique across the org), domain (the customer\'s real hostname; pass "" to clear), language, and ai_scripts_enabled (the portal\'s "Allow AI to write block scripts" toggle; requires admin permission, as in the portal). For colors / fonts / contact info / tagline / staging_url use update_site_settings instead.',
     inputSchema: {
       name: z.string().min(1).optional(),
       slug: z.string().optional().describe('Kebab-case identifier, 3-48 chars [a-z0-9-]. Empty string clears.'),

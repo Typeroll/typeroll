@@ -9,7 +9,7 @@ import { recordPublishedMedia } from './published-media';
 import { ensureGithubMainBranch } from './providers.mjs';
 import { createGithubRepository } from './github-user';
 import { siteRepositoryName, generatedRepositoryDescription } from './site-repository';
-import { verifyManagedProject } from './managed-migration';
+import { verifyManagedProject } from './migrated-project';
 import { capturePublicationImpact } from './impact-preview';
 import { compareImpact } from './impact';
 import { readSnapshot, saveSnapshot } from './publication-snapshot';

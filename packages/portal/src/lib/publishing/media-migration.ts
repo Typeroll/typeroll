@@ -8,7 +8,6 @@ import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
 import { connectionSummary, getConnection, ConnectionError } from './connections';
 import { getOrganizationDomains } from './domain-config';
-import { adoptCustomerPublishingForMedia, retainsManagedMedia } from './media-policy';
 import { storageClient } from './media-storage';
 import { mediaTransfers, transferReservation, transferPath } from '../media/transfer';
 import { replacePublicationReferences } from './media-manifest';
@@ -39,7 +38,7 @@ async function completeEmptySite(orgId: string, siteId: string, current: Migrati
   if (!current || current.state === 'complete' || current.lease_until > Date.now()) return current;
   const store = getStore();
   const site = await store.getDoc<Site>(paths.site(orgId, siteId));
-  if (site && !retainsManagedMedia(site) && (await store.listDocs<Media>(paths.media(orgId, siteId), { limit: 1 })).length) return current;
+  if (site && (await store.listDocs<Media>(paths.media(orgId, siteId), { limit: 1 })).length) return current;
   // A late upload queues a new request after finalization. Never overwrite that
   // request or a worker that acquired the lease while this scan was running.
   await store.compareAndUpdateDoc<Migration>(sitePath(orgId, siteId),
@@ -67,7 +66,6 @@ async function queueSiteMigration(orgId: string, siteId: string) {
 export async function requestMediaMigration(orgId: string, siteId: string) {
   const connection = await getConnection(orgId, 'cloudflare');
   if (!connectionSummary(connection).media_ready) return;
-  await adoptCustomerPublishingForMedia(orgId, siteId);
   await queueSiteMigration(orgId, siteId);
 }
 
@@ -259,7 +257,7 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
       const site = await store.getDoc<Site>(paths.site(orgId, siteId));
       const sites = site ? [{ ...site, id: siteId }] : [];
       for (const site of sites) {
-        if (retainsManagedMedia(site) || cursor?.phase === 'next_site') continue;
+        if (cursor?.phase === 'next_site') continue;
         if (!cursor || cursor.site !== site.id) await checkpoint({ site: site.id, media: '', phase: 'copying' });
         if (cursor!.phase === 'copying') {
           for (;;) {
@@ -456,12 +454,6 @@ async function runOrganizationMediaStep(orgId: string, budgetMs = 45_000) {
           await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease, { state: 'queued', lease_id: null, lease_until: 0, retry_at: 0 });
           return;
         }
-        // One Site's settings conflict must not hold back the others; its own
-        // job still runs and skips media the Site keeps on managed hosting.
-        await adoptCustomerPublishingForMedia(orgId, siteId).catch(error => {
-          if (!(error instanceof ConnectionError)) throw error;
-          console.warn(`[media-migration] site ${siteId} kept its publishing settings: ${error.code ?? error.status}`);
-        });
         await queueSiteMigration(orgId, siteId);
         // A newer request restarted the hand-off: release it to run from its own cursor.
         if (!await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === acquired.request_id,

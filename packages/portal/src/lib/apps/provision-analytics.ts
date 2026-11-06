@@ -5,7 +5,7 @@
 // and returned to every caller (portal, HTTP API, MCP): a failure carries a
 // stable code, a message and the next step. Nothing fails silently.
 
-import type { AppProviderAccount, AppSetupStatus, AppState, Site } from '@typeroll/shared';
+import { usesCustomerPublishing, type AppProviderAccount, type AppSetupStatus, type AppState, type Site } from '@typeroll/shared';
 import { ConnectionError } from '../publishing/connections';
 import { claimCloudflareResource, cloudflareResourceOwner } from '../publishing/cloudflare-account-claims';
 import {
@@ -121,13 +121,14 @@ export async function reconcileWebAnalytics(args: {
   const token = Object.hasOwn(incoming, 'beacon_token') ? text(incoming.beacon_token) : previousToken;
   const requestedTag = Object.hasOwn(incoming, 'site_tag') ? text(incoming.site_tag) : previousTag;
   const tokenChanged = token !== previousToken;
+  const customer = !!site && usesCustomerPublishing(site);
 
   let account: AnalyticsAccount;
   try {
     account = await resolveAnalyticsAccount(orgId, site, fetchImpl);
   } catch (error) {
     if (!(error instanceof AnalyticsSetupError)) throw error;
-    if (token && site?.publishing_mode === 'customer_git' && tokenChanged) {
+    if (token && customer && tokenChanged) {
       // A pasted token for customer publishing must come from the hosting account, which cannot be checked now.
       return { ...actionRequired(error), reject: error };
     }
@@ -165,7 +166,7 @@ export async function reconcileWebAnalytics(args: {
       });
     } catch (error) {
       const failure = providerSetupError(error, account, 'resolve');
-      return tokenChanged && site?.publishing_mode === 'customer_git' ? { ...actionRequired(failure), reject: failure } : actionRequired(failure);
+      return tokenChanged && customer ? { ...actionRequired(failure), reject: failure } : actionRequired(failure);
     }
     if (!found) {
       const failure = new AnalyticsSetupError('analytics_token_not_in_account',
@@ -173,8 +174,7 @@ export async function reconcileWebAnalytics(args: {
         'Paste the token of a Web Analytics site in that account, or clear beacon_token and site_tag and enable Analytics again to create one there.',
         ref);
       // Customer publishing keeps analytics in the Organization's hosting account; a foreign token is not saved.
-      // Managed and self-hosted sites keep accepting a token for beacon-only measurement, as before.
-      return site?.publishing_mode === 'customer_git' && tokenChanged ? { ...actionRequired(failure), reject: failure } : actionRequired(failure);
+      return customer && tokenChanged ? { ...actionRequired(failure), reject: failure } : actionRequired(failure);
     }
     const tagSupplied = Object.hasOwn(incoming, 'site_tag') && requestedTag !== '' && requestedTag !== previousTag;
     if (tagSupplied && requestedTag !== found.site_tag) {
@@ -201,10 +201,10 @@ export async function reconcileWebAnalytics(args: {
   if (!host) {
     return actionRequired(new AnalyticsSetupError('analytics_host_required',
       'Typeroll needs the site’s address to create its Web Analytics site, and this site has none yet.',
-      site?.publishing_mode === 'customer_git'
+      customer
         ? 'Set a website host in the site’s Publishing domains, or a site address base for its Hosting Group, then enable Analytics again.'
         : 'Set the site’s domain, then enable Analytics again.',
-      ref, site?.publishing_mode === 'customer_git' ? ANALYTICS_SETTINGS_URL : undefined));
+      ref, customer ? ANALYTICS_SETTINGS_URL : undefined));
   }
   try {
     const created = await account.withToken((credential) => webAnalyticsApi(credential, account.account_id, fetchImpl).createSite(host));

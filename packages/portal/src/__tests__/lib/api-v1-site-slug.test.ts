@@ -1,6 +1,6 @@
-// Site slug + fallback URL derivation.
+// Site slug and public URL derivation.
 
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
@@ -45,7 +45,7 @@ async function callRoute(
 }
 function bearer(token: string): HeadersInit { return { authorization: `Bearer ${token}` }; }
 
-describe('publicUrlsFor includes fallback URL derived from slug + SITES_BASE_DOMAIN', () => {
+describe('publicUrlsFor has no platform fallback for customer publishing', () => {
   const originalBase = process.env.SITES_BASE_DOMAIN;
   beforeEach(async () => { await resetDatastore(); });
   afterEach(() => {
@@ -53,23 +53,9 @@ describe('publicUrlsFor includes fallback URL derived from slug + SITES_BASE_DOM
     else process.env.SITES_BASE_DOMAIN = originalBase;
   });
 
-  it('omits fallback when SITES_BASE_DOMAIN is unset', async () => {
-    delete process.env.SITES_BASE_DOMAIN;
-    const { token } = await setup();
-    const res = await callRoute(
-      import('../../pages/api/v1/sites/[siteId]/index'),
-      'GET',
-      `http://localhost/api/v1/sites/${SITE}`,
-      { siteId: SITE },
-      { headers: bearer(token) },
-    );
-    const body = await res.json() as { urls: { fallback: string | null } };
-    expect(body.urls.fallback).toBeNull();
-  });
-
-  it('uses site.slug + base domain to construct fallback', async () => {
+  it('reports no fallback, whatever the slug, base domain or a stored older fallback host', async () => {
     process.env.SITES_BASE_DOMAIN = 'sites.typeroll.app';
-    const { token } = await setup({ slug: 'norrflytt' });
+    const { token } = await setup({ slug: 'norrflytt', hosting_config: { fallback_subdomain: 'legacy-attached-host.sites.typeroll.app' } });
     const res = await callRoute(
       import('../../pages/api/v1/sites/[siteId]/index'),
       'GET',
@@ -77,39 +63,8 @@ describe('publicUrlsFor includes fallback URL derived from slug + SITES_BASE_DOM
       { siteId: SITE },
       { headers: bearer(token) },
     );
-    const body = await res.json() as { urls: { fallback: string } };
-    expect(body.urls.fallback).toBe('https://norrflytt.sites.typeroll.app');
-  });
-
-  it('falls back to site.id when slug not set', async () => {
-    process.env.SITES_BASE_DOMAIN = 'sites.typeroll.app';
-    const { token } = await setup();
-    const res = await callRoute(
-      import('../../pages/api/v1/sites/[siteId]/index'),
-      'GET',
-      `http://localhost/api/v1/sites/${SITE}`,
-      { siteId: SITE },
-      { headers: bearer(token) },
-    );
-    const body = await res.json() as { urls: { fallback: string } };
-    expect(body.urls.fallback).toBe('https://mysite.sites.typeroll.app');
-  });
-
-  it('prefers hosting_config.fallback_subdomain when already provisioned', async () => {
-    process.env.SITES_BASE_DOMAIN = 'sites.typeroll.app';
-    const { token } = await setup({
-      slug: 'norrflytt',
-      hosting_config: { fallback_subdomain: 'legacy-attached-host.sites.typeroll.app' },
-    });
-    const res = await callRoute(
-      import('../../pages/api/v1/sites/[siteId]/index'),
-      'GET',
-      `http://localhost/api/v1/sites/${SITE}`,
-      { siteId: SITE },
-      { headers: bearer(token) },
-    );
-    const body = await res.json() as { urls: { fallback: string } };
-    expect(body.urls.fallback).toBe('https://legacy-attached-host.sites.typeroll.app');
+    const body = await res.json() as { urls: { fallback: string | null; staging: string | null } };
+    expect(body.urls).toMatchObject({ fallback: null, staging: null });
   });
 });
 
@@ -162,10 +117,10 @@ describe('publicUrlsFor — production follows the declared domain (domain-first
     expect(urls.domain_status).toBe('pending');
   });
 
-  it('production URL becomes the domain as soon as DNS is "verified" (no separate activation step)', async () => {
+  it('production stays null for a "verified" domain until a publication made it live', async () => {
     const urls = await urlsFor({ domain: 'www.example.com', domain_status: 'verified' });
-    expect(urls.production).toBe('https://www.example.com');
-    expect(urls.pending_domain).toBeNull();
+    expect(urls.production).toBeNull();
+    expect(urls.pending_domain).toBe('www.example.com');
     expect(urls.domain_status).toBe('verified');
   });
 
@@ -180,19 +135,6 @@ describe('publicUrlsFor — production follows the declared domain (domain-first
     expect(urls.domain_status).toBe('failed');
   });
 
-  it('treats legacy site (domain set, no domain_status, DNS once verified) as live', async () => {
-    // Legacy compat requires PROOF of verification — domain_verified_at.
-    const urls = await urlsFor({
-      domain: 'www.legacy.com',
-      domain_verified_at: '2026-01-01T00:00:00.000Z',
-    } as Partial<Site>);
-    expect(urls.production).toBe('https://www.legacy.com');
-    expect(urls.pending_domain).toBeNull();
-    // Resolver reports the implicit lifecycle as 'live' so clients have
-    // a single non-null shape to render.
-    expect(urls.domain_status).toBe('live');
-  });
-
   it('treats a bare domain (no domain_status, never verified) as pending — never live', async () => {
     // Regression: the pre-fix site-creation form wrote `domain` raw onto
     // the site doc. The old `?? 'live'` fallback then surfaced an
@@ -200,7 +142,7 @@ describe('publicUrlsFor — production follows the declared domain (domain-first
     const urls = await urlsFor({ domain: 'gruppsupporter.se' });
     expect(urls.production).toBeNull();
     expect(urls.pending_domain).toBe('gruppsupporter.se');
-    expect(urls.domain_status).toBe('pending');
+    expect(urls.domain_status).toBeNull();
   });
 
   it('reports null for all domain fields when no domain is set', async () => {
@@ -340,40 +282,3 @@ describe('PATCH /v1/sites/{id} — slug and domain need admin', () => {
     expect(res.status).toBe(200);
   });
 });
-
-describe('PATCH /v1/sites/{id} — fallback hostname held by another organization', () => {
-  const env = { ...process.env };
-  afterEach(() => {
-    for (const key of ['CLOUDFLARE_ACCOUNT_ID', 'CLOUDFLARE_API_TOKEN', 'SITES_BASE_DOMAIN'] as const) {
-      if (env[key] === undefined) delete process.env[key];
-      else process.env[key] = env[key];
-    }
-    vi.unstubAllGlobals();
-  });
-
-  it('answers 409 and keeps the slug when the hostname is claimed by a site in another organization', async () => {
-    const { token } = await setup({ slug: 'mine' });
-    process.env.CLOUDFLARE_ACCOUNT_ID = 'acct';
-    process.env.CLOUDFLARE_API_TOKEN = 'tok';
-    process.env.SITES_BASE_DOMAIN = 'sites.typeroll.app';
-    const fetchMock = vi.fn(async () => new Response('{}', { status: 500 }));
-    vi.stubGlobal('fetch', fetchMock);
-    const { claimFallbackHostname } = await import('../../lib/hosting/fallback-hostnames');
-    await claimFallbackHostname('victim.sites.typeroll.app', { orgId: 'victim-org', siteId: 'shop' });
-
-    const res = await callRoute(
-      import('../../pages/api/v1/sites/[siteId]/index'),
-      'PATCH',
-      `http://localhost/api/v1/sites/${SITE}`,
-      { siteId: SITE },
-      { headers: bearer(token), body: { slug: 'victim' } },
-    );
-    expect(res.status).toBe(409);
-    expect(await res.json()).toMatchObject({ code: 'slug_unavailable' });
-    // Refused before any Cloudflare call: no domain attach, no DNS write.
-    expect(fetchMock).not.toHaveBeenCalled();
-    const { getStore } = await import('../../lib/datastore');
-    expect((await getStore().getDoc<Site>(paths.site(ORG, SITE)))?.slug).toBe('mine');
-  });
-});
-

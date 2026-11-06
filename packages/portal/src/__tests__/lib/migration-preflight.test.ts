@@ -78,12 +78,11 @@ describe('runMigrationPreflight', () => {
     expect(media?.fix).toContain('Publishing → Media storage');
   });
 
-  it('blocks a site still in managed publishing, which can no longer publish', async () => {
+  it('treats a site without a publishing mode as customer publishing, verified separately at publication', async () => {
     setEnv(R2_ENV);
     const report = await run();
-    expect(report.ready).toBe(false);
-    expect(check(report, 'hosting')?.status).toBe('fail');
-    expect(check(report, 'hosting')?.detail).toContain('no longer available');
+    expect(check(report, 'hosting')).toMatchObject({ status: 'ok', severity: 'blocker' });
+    expect(report.blockers.map(item => item.id)).toEqual(['media_storage']);
   });
 
   it('is ready once both blockers are satisfied', async () => {
@@ -103,12 +102,14 @@ describe('runMigrationPreflight', () => {
     expect(check(report, 'verification_origin')?.severity).toBe('warning');
   });
 
-  it('passes the verification-origin check once the site has a fallback URL', async () => {
+  it('passes the verification-origin check once the site has a live domain', async () => {
     setEnv({ ...R2_ENV, ...CF_ENV, SITES_BASE_DOMAIN: 'sites.example.com' });
     await seedSite({ slug: 'acme' });
+    expect(check(await run(), 'verification_origin')?.status).toBe('fail');
+    await seedSite({ domain: 'www.acme.example', domain_status: 'live' });
     const report = await run();
     expect(check(report, 'verification_origin')?.status).toBe('ok');
-    expect(check(report, 'verification_origin')?.detail).toContain('acme.sites.example.com');
+    expect(check(report, 'verification_origin')?.detail).toContain('www.acme.example');
   });
 
   it('only checks form email once the site actually has a form', async () => {

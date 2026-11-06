@@ -261,13 +261,9 @@ export async function seedRemotePersonas({ services, env, manifest = readPersona
     ...buildCoreIdentityDocuments(manifest, credentials, now),
     ...buildRemoteApiKeyDocuments(manifest, env, now),
   ]);
-  const sitePath = coreSitePath(manifest);
   await services.seed({
     personas: remotePersonaAccounts(manifest, credentials),
-    // An already provisioned hosting configuration survives reseeding.
-    documents: [...documents].map(([documentPath, data]) => (
-      documentPath === sitePath ? { path: documentPath, data, preserve: ['hosting_config'] } : { path: documentPath, data }
-    )),
+    documents: [...documents].map(([documentPath, data]) => ({ path: documentPath, data })),
   });
   return verifyRemotePersonas({ services, env, manifest });
 }

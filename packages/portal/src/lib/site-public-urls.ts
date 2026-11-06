@@ -22,11 +22,9 @@
 import type { Site } from '@typeroll/shared';
 
 export interface PublicSiteUrls {
-  /** Live URL of the deployed site. Only populated when domain_status
-   *  is `'verified'`/`'live'` (or, for legacy sites, when domain is set
-   *  without a status field but `domain_verified_at` proves DNS was
-   *  confirmed). Null otherwise — agents falling back to fallback
-   *  URL is the right behaviour pre-activation. */
+  /** Live URL of the deployed site. Only populated once its domain is
+   *  `'live'` (or a launched hosted site's platform address). Null
+   *  otherwise. */
   production: string | null;
   /** Hostname recorded on the site but not yet active as production.
    *  Returned so the UI can show "Awaiting DNS" / "Ready to activate"
@@ -37,14 +35,10 @@ export interface PublicSiteUrls {
    *  so API consumers don't have to read it from two places. Null when
    *  no domain has been added. */
   domain_status: 'pending' | 'verified' | 'live' | 'failed' | null;
-  /** Auto-provisioned `{slug}.{SITES_BASE_DOMAIN}` URL — useful as a stable
-   *  preview before the customer cuts DNS over to their real domain.
-   *  Null when SITES_BASE_DOMAIN isn't configured (self-hosted without
-   *  the SaaS-wildcard zone). Falls through to using site.id when
-   *  site.slug isn't set. */
+  /** The platform address of a hosted site. Null for customer publishing,
+   *  whose temporary address is reported by the publication. */
   fallback: string | null;
-  /** Optional staging URL if the customer wired one (rare in self-host;
-   *  hosted SaaS sets this when a staging environment exists). */
+  /** Always null; kept for API compatibility. */
   staging: string | null;
   /** Base under which signed preview tokens render. Combine with the
    *  token from get_preview_link to get a full URL. */
@@ -124,68 +118,20 @@ export const DOMAIN_STATE_LABEL: Record<DomainState, string> = {
 };
 
 export function publicUrlsFor(site: Site & { id: string }): PublicSiteUrls {
-  if (site.publishing_mode === 'customer_git') {
-    const portalOrigin = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
-    return { production: site.domain_status === 'live' && site.domain ? `https://${site.domain}` : null,
-      pending_domain: site.domain_status !== 'live' ? site.domain ?? null : null, domain_status: site.domain_status ?? null,
-      fallback: null, staging: null, preview_base: portalOrigin ? `${portalOrigin}/preview/${site.id}` : null };
-  }
+  const portalOrigin = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
+  const preview_base = portalOrigin ? `${portalOrigin}/preview/${site.id}` : null;
   if (site.publishing_mode === 'hosted') {
     // Served on its platform address (fallback) until a custom domain is launched.
-    const portalOrigin = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
     const live = site.domain_status === 'live' && !!site.domain;
     const fallback = site.hosting_config?.fallback_subdomain ? `https://${site.hosting_config.fallback_subdomain}` : null;
     // Launched without a custom domain, the platform address is the production site.
     return { production: live ? `https://${site.domain}` : site.hosting_config?.launched === true ? fallback : null,
       pending_domain: !live ? site.domain ?? null : null, domain_status: site.domain ? site.domain_status ?? 'pending' : null, fallback,
-      staging: null, preview_base: portalOrigin ? `${portalOrigin}/preview/${site.id}` : null };
+      staging: null, preview_base };
   }
-  const domain = (site as { domain?: string }).domain;
-  const status = (site as { domain_status?: 'pending' | 'verified' | 'live' | 'failed' }).domain_status;
-  const stagingUrl = (site as { staging_url?: string }).staging_url;
-  const portalOrigin = (process.env.PORTAL_PUBLIC_URL ?? '').replace(/\/$/, '');
-  const baseDomain = (process.env.SITES_BASE_DOMAIN ?? '').replace(/^https?:\/\//, '').replace(/\/$/, '');
-  // Prefer site.slug (writable), then the existing fallback_subdomain that
-  // site-provisioning may have set at create time, then site.id as a
-  // last-ditch label.
-  const fallbackSubdomain = site.hosting_config?.fallback_subdomain;
-  const slugLabel = (site as { slug?: string }).slug;
-  let fallback: string | null = null;
-  if (fallbackSubdomain) {
-    // Already a fully-qualified host attached at provisioning.
-    fallback = `https://${fallbackSubdomain}`;
-  } else if (baseDomain) {
-    fallback = `https://${slugLabel ?? site.id}.${baseDomain}`;
-  }
-
-  // Two distinct concepts, deliberately NOT conflated:
-  //
-  //   • CANONICAL (baked into the build's sitemap + <link rel=canonical>):
-  //     the declared domain, immediately — see isCanonicalReady. That's what
-  //     stops the internal *.sites fallback leaking into a public sitemap.
-  //
-  //   • production / live_url (what agents tell the customer to VISIT):
-  //     only non-null once DNS is confirmed (verified/live/legacy). Surfacing
-  //     the domain here before DNS resolves is the original autopilot.se bug —
-  //     the agent sent the user to a domain that still pointed at their old
-  //     site. So agents fall back to the preview/fallback URL until DNS lands.
-  // Legacy compat is deliberately narrow: a missing status only counts as
-  // verified when domain_verified_at proves DNS was once confirmed. A bare
-  // domain with no lifecycle fields (written by paths that bypassed
-  // requestDomain) was never registered on CF, so it must surface as
-  // pending — telling an agent/customer to visit it is the original bug.
-  const verifiedAt = (site as { domain_verified_at?: string }).domain_verified_at;
-  const dnsVerified = !!domain
-    && (status === 'verified' || status === 'live' || (status === undefined && !!verifiedAt));
-  return {
-    production:     dnsVerified && domain ? `https://${domain}` : null,
-    // The declared domain whose DNS isn't confirmed yet: the canonical is
-    // already baked to it, but it isn't reachable, so the UI prompts the
-    // customer to point DNS and agents keep using the fallback.
-    pending_domain: domain && !dnsVerified ? domain : null,
-    domain_status:  domain ? (status ?? (verifiedAt ? 'live' : 'pending')) : null,
-    fallback,
-    staging: stagingUrl ?? null,
-    preview_base: portalOrigin ? `${portalOrigin}/preview/${site.id}` : null,
-  };
+  // Customer publishing: the website host is managed in Publishing domains and
+  // counts as production once a publication made it live.
+  return { production: site.domain_status === 'live' && site.domain ? `https://${site.domain}` : null,
+    pending_domain: site.domain_status !== 'live' ? site.domain ?? null : null, domain_status: site.domain_status ?? null,
+    fallback: null, staging: null, preview_base };
 }

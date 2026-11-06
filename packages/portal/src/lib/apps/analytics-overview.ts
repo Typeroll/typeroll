@@ -7,7 +7,7 @@
 // Web Analytics site, beacon_token and site_tag, and a beacon in its next
 // publication.
 
-import { paths, type Site, type SiteApps } from '@typeroll/shared';
+import { paths, sitePublishingMode, usesCustomerPublishing, type Site, type SiteApps } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { maskAppState } from './config';
 import { AppManagementError, incompleteSetupError, saveAppState } from './manage';
@@ -48,11 +48,11 @@ export async function readAnalyticsOverview(orgId: string): Promise<AnalyticsOve
     const doc = await store.getDoc<SiteApps>(paths.apps(orgId, site.id));
     const state = doc?.apps?.analytics;
     const masked = maskAppState('analytics', state);
-    const customer = site.publishing_mode === 'customer_git';
+    const customer = usesCustomerPublishing(site);
     const groupId = customer ? site.hosting_group_id ?? 'default' : null;
     if (groupId && !groupNames.has(groupId)) groupNames.set(groupId, await getHostingGroup(orgId, groupId).then(group => group.name, () => groupId));
     return {
-      site_id: site.id, name: site.name ?? site.id, publishing_mode: site.publishing_mode ?? 'managed',
+      site_id: site.id, name: site.name ?? site.id, publishing_mode: sitePublishingMode(site),
       hosting_group_id: groupId, hosting_group_name: groupId ? groupNames.get(groupId) ?? groupId : null,
       enabled: masked.enabled, setup: state?.enabled ? masked.setup ?? null : null,
       beacon_configured: typeof state?.config?.beacon_token === 'string' && state.config.beacon_token.length > 0,
