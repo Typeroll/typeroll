@@ -36,10 +36,13 @@ export async function runAgentJourney({
   fetchImpl = fetch,
   portalUrl,
   apiKey,
+  siteId,
   runId = crypto.randomBytes(6).toString('hex'),
   wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
 }) {
   const call = (name, args) => callHostedMcp({ fetchImpl, portalUrl, apiKey, name, args });
+  const site = await call('get_site');
+  if (!siteId || site?.id !== siteId) throw new Error(`agent journey is bound to ${siteId}, received ${site?.id ?? 'unknown'}`);
   let branchId;
   try {
     const created = await call('create_branch', { name: `E2E agent ${runId}` });

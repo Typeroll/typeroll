@@ -71,11 +71,11 @@ fixture site and its two namespaced key documents, and never prints the token.
 Never commit a credential file. If `--env-file` is used, the CLI refuses any
 mode other than `0600`.
 
-The seeded site is deliberately domain-neutral and uses the stable
-`e2e-core-site` slug. Remote reseeding preserves an already provisioned
-`hosting_config`. The Cloud fallback-indexing journey idempotently submits that
-same slug before deployment; this repairs a missing Pages project, custom-domain
-attachment, or DNS record through the portal's own hosting credentials.
+The seeded site is deliberately domain-neutral, uses the stable
+`e2e-core-site` slug and has no publishing: the browser contracts never publish
+it. Journeys that publish (`e2e:agent`, `e2e:fallback-indexing`) run against a
+separate site with working customer publishing, named by
+`TYPEROLL_E2E_JOURNEY_SITE`.
 
 ```bash
 # Idempotent local seed and verification
@@ -133,10 +133,12 @@ the Cloud repository; a successful Core module listing is not evidence that
 those journeys work.
 
 After a candidate with recursive branch cleanup is deployed, run the bounded
-mutable agent contract once per target:
+mutable agent contract once per target. It needs a site with working customer
+publishing: name it in `TYPEROLL_E2E_JOURNEY_SITE`, pass a site API key for it in
+`TYPEROLL_E2E_JOURNEY_API_KEY`, and confirm the same site:
 
 ```bash
-npm run e2e:agent -- --confirm-site e2e-core-site
+npm run e2e:agent -- --confirm-site <site-id>
 ```
 
 It uses hosted MCP to create a run-namespaced branch, save and read back one
