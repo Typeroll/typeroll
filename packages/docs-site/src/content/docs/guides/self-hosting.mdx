@@ -112,6 +112,12 @@ node --input-type=module -e "import { generateKeyPairSync } from 'node:crypto'; 
 SMTP accepts ports 465, 587, 26, 2465, 2525 and 2587; Workers cannot open
 port 25.
 
+On a test installation, set the variable `MAIL_ALLOWED_RECIPIENT_DOMAINS` to a
+comma-separated list of domains, for example `example.org`. Account mail and
+site mail (form notifications, App mail and forwarding) then go only to
+addresses in those domains; other recipients are removed, and a message with no
+allowed recipient is not sent. Leave it unset in production.
+
 For media uploads, create an R2 API token with **Object Read & Write** for the
 media and private-drafts buckets and put its key pair in `R2_ACCESS_KEY_ID` and
 `R2_SECRET_ACCESS_KEY`. The private-drafts bucket keeps uploads that are not

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.5 (candidate, MCP 0.45.119)
+
+- A test installation can set `MAIL_ALLOWED_RECIPIENT_DOMAINS` (comma-separated
+  domains). Account and site mail then go only to recipients in those domains;
+  others are removed, and a message with no allowed recipient is not sent.
+  Withheld mail is logged without its recipients or links.
+- Reconnecting Cloudflare keeps its build permissions while the organization
+  builds on Cloudflare, also when the previous connection was an API token or
+  its authorization was revoked, so publishing does not stop at the engine.
+
 ## 0.3.4 (candidate, MCP 0.45.118)
 
 - **Typeroll-managed publishing is removed.** Core publishes every site through

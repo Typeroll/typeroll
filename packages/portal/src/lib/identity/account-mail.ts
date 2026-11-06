@@ -12,6 +12,7 @@
 import '../email/providers';
 import { getProvider } from '../email/provider';
 import type { EmailMessage } from '../email/types';
+import { restrictRecipients } from '../email/recipient-policy';
 
 export interface AccountMail { to: string; subject: string; text: string; html: string }
 export type AccountMailSender = (mail: AccountMail) => Promise<void>;
@@ -28,6 +29,12 @@ export function isAccountMailConfigured(env: Record<string, string | undefined> 
 }
 
 export async function sendAccountMail(mail: AccountMail): Promise<void> {
+  // A restricted installation (a test environment) never mails anyone else. Not an error:
+  // the account flow goes on, and the link is not logged.
+  if (!restrictRecipients({ to: mail.to }).message) {
+    console.info(JSON.stringify({ event: 'mail_withheld', kind: 'account', subject: mail.subject }));
+    return;
+  }
   if (override) return override(mail);
   const raw = process.env.ACCOUNT_EMAIL?.trim();
   const localWorker = raw === 'log' && /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(process.env.PORTAL_PUBLIC_URL?.trim() ?? '');
