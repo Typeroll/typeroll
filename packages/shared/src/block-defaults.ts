@@ -8,6 +8,8 @@
 export const BLOCK_DEFAULTS_V14_CSS = `
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }
@@ -26,12 +28,16 @@ ${selector} > [data-block] { margin-block:0; }`;
 
 /** Per block type, keyed by type id. */
 export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
+  'core/section': `/* A shape divider fills the space between sections; it never covers the content of the block next to it. */
+[data-block="section"]:is([data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"]) { margin-block-start:clamp(34px, 6vw, 80px); }
+[data-block="section"]:is([data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"]) { margin-block-end:clamp(34px, 6vw, 80px); }`,
   'core/prose': `/* Text blocks: the first and last element sit flush with the block, so spacing comes from the layout. */
 [data-block="prose"] > :first-child { margin-block-start:0; }
 [data-block="prose"] > :last-child { margin-block-end:0; }`,
   'core/container': `${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-container"]:not([data-rhythm="article"]))')}
-/* A constrained container in a section starts where the text beside it starts, instead of centring on its own. */
-.block-section-inner > [data-block="container"]:is([data-width="narrow"],[data-width="normal"],[data-width="wide"]) { margin-inline:0 auto; }`,
+/* A constrained container in a section, column, tab or grid cell starts where the text beside it starts and fills
+   the space up to its maximum width, instead of centring and shrinking to its content. */
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"]) > [data-block="container"]:is([data-width="narrow"],[data-width="normal"],[data-width="wide"]) { margin-inline:0; inline-size:100%; }`,
   'core/columns': CONTAINER_CHILDREN('[data-block="columns"]'),
   'core/grid': `${CONTAINER_CHILDREN('[data-block="grid"]')}
 /* The column count is the maximum, and a cell keeps at least 8rem, so a grid inside a narrow
@@ -40,7 +46,7 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
   'core/repeater': `/* Grids of repeated items: the column setting is the maximum, and each item keeps a minimum
    width, so a grid in a narrow column or on a phone has fewer columns instead of slivers. */
 [data-block="repeater"][data-layout="grid"] { --min-item:10rem; }
-[data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:5rem; }
+[data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
 [data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fill, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
 /* Carousels show one card and a glimpse of the next on narrow screens. */
@@ -67,10 +73,14 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
 [data-block="feature_row"] .block-btn { border-radius:1.6rem; }`,
   'core/post_card': `/* A card title link stays a comfortable target even when it holds only an icon. */
-[data-block="post_card"] .block-postcard-title > a { min-block-size:24px; }`,
+[data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }`,
+  'core/table_of_contents': `/* Links in the outline are touch targets of at least 24px. */
+[data-block="table_of_contents"] a { display:inline-block; padding-block:.15rem; }`,
   'core/icon': `/* A linked icon is a touch target of at least 24 × 24 px (WCAG 2.2 AA). */
 [data-block="icon"] .block-icon-link { display:inline-flex; align-items:center; justify-content:center; min-inline-size:24px; min-block-size:24px; }`,
-  'core/team_member': `/* Social links are touch targets of at least 24px. */
+  'core/team_member': `/* A photo in a one-column layout stays portrait-sized instead of filling a phone screen. */
+[data-block="team_member"] .block-team-photo, [data-block="team_member"] img { max-inline-size:min(100%, 16rem); margin-inline:auto; }
+/* Social links are touch targets of at least 24px. */
 [data-block="team_member"] .block-team-socials a { display:inline-flex; align-items:center; min-block-size:24px; }`,
   'template/page_breadcrumbs': `/* Breadcrumb links are touch targets of at least 24px. */
 [data-block="breadcrumbs"] a { display:inline-block; padding-block:.25rem; }`,
@@ -82,6 +92,14 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 [data-block="cta"] { padding:clamp(2rem, 1rem + 4vw, 4rem) clamp(1.25rem, 1rem + 1vw, 1.5rem); }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
 [data-block="cta"] .block-btn { border-radius:1.6rem; }`,
+  'core/logo_item': `/* A logo row is as tall as its logos. */
+[data-block="logo_item"] { min-height:3rem; }`,
+  'core/pricing_plan': `/* The period sits a space after the price. */
+[data-block="pricing_plan"] .block-pricing-period:not(:empty) { margin-inline-start:.35em; }`,
+  'core/table': `/* Table cells keep words whole (hyphenating a long one); a table wider than its column scrolls. */
+[data-block="table"] :is(th,td) { overflow-wrap:normal; hyphens:auto; }`,
+  'core/search': `/* In a column or a grid cell the search field starts where the content beside it starts. */
+:is(.block-columns-col, [data-block="container"], [data-block="grid"]) > [data-block="search"] { margin-inline:0; }`,
   'core/step_card': `/* The step marker is a circle for a number and grows with a label: wider first, then taller, wrapping between words. */
 [data-block="step_card"] .block-step-number { display:inline-block; box-sizing:border-box; inline-size:auto; block-size:auto; min-inline-size:2.5rem; padding:.3rem .65rem; line-height:1.9rem; border-radius:1.25rem; text-align:center; overflow-wrap:break-word; hyphens:auto; }`,
   'core/button': `[data-block="button"] { hyphens:auto; }`,

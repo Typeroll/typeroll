@@ -72,7 +72,7 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
   --font-mono:${fonts.mono ? fontFamilyCss(fonts.mono) : 'ui-monospace'};
   ${designScalesCss(scales)}${fluid ? `\n  --type-rhythm:${typography.rhythm};\n  --measure-prose:${typography.line_length}ch;\n  --section-padding:var(--space-xl);\n  --spacing-xs:var(--space-xs);--spacing-sm:var(--space-sm);--spacing-md:var(--space-md);--spacing-lg:var(--space-lg);--spacing-xl:var(--space-xl);` : ''}
   --font-size-base:${fonts.size_base ?? 16}px;
-}${responsiveDesignScalesCss(scales, resolveBreakpointWidths(settings.responsive_breakpoints))}${v14 && fluid ? '@media (max-width:639px){:root{--section-padding:calc(var(--space-xl) * .75)}}' : ''}${fluid ? ':where([data-block=prose]){max-inline-size:var(--measure-prose)}' : ''}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
+}${responsiveDesignScalesCss(scales, resolveBreakpointWidths(settings.responsive_breakpoints))}${fluid ? ':where([data-block=prose]){max-inline-size:var(--measure-prose)}' : ''}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
 }
 
 /** Webfont families a site loads from Google Fonts (system families excluded). */

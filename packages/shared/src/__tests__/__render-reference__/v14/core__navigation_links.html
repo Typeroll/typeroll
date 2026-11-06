@@ -1,7 +1,7 @@
 <ul data-block="navigation_links" data-font="inherit" data-density="comfortable" style="--direction:column;--link_color:;--font_weight:400;--line_height:1.4" data-presentation="core%2Fnavigation_links"></ul>
 
 /* css */
-@layer typeroll.blocks{
+@layer typeroll.platform{
 /* blocks-runtime */
 /* Universal visibility control set by Block.hidden_on */
 @media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
@@ -57,6 +57,8 @@
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }

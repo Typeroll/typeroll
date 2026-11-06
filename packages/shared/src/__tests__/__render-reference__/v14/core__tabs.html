@@ -4,7 +4,7 @@
 <div class="block-tabs-panels"><div class="block-tabs-panel" id="panel-ref-0"></div><div class="block-tabs-panel" id="panel-ref-1"></div><div class="block-tabs-panel" id="panel-ref-2"></div><div class="block-tabs-panel" id="panel-ref-3"></div><div class="block-tabs-panel" id="panel-ref-4"></div><div class="block-tabs-panel" id="panel-ref-5"></div></div></div></div>
 
 /* css */
-@layer typeroll.blocks{
+@layer typeroll.platform{
 /* blocks-runtime */
 /* Universal visibility control set by Block.hidden_on */
 @media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
@@ -63,6 +63,8 @@
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }

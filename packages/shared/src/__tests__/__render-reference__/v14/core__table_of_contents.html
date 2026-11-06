@@ -1,7 +1,7 @@
 <nav data-block="table_of_contents" data-link-color="theme" data-border="true" data-shadow="none" data-mobile-display="visible" data-list-style="numbered" data-levels="h2-h3" data-appearance="card" data-sticky="true" data-indent="true" data-highlight-active="true" data-empty="true" aria-label="On this page" data-presentation="core%2Ftable_of_contents" data-block-type="core/table_of_contents"><strong>On this page</strong><ol></ol></nav>
 
 /* css */
-@layer typeroll.blocks{
+@layer typeroll.platform{
 /* blocks-runtime */
 /* Universal visibility control set by Block.hidden_on */
 @media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
@@ -51,9 +51,15 @@
 [data-block="table_of_contents"][data-list-style="chevron"] li { position:relative; padding-inline-start:1em; }
 [data-block="table_of_contents"][data-list-style="chevron"] li::before { content:""; position:absolute; left:0; top:.5em; width:.35em; height:.35em; border-right:1.5px solid; border-top:1.5px solid; transform:rotate(45deg); }
 
+/* core/table_of_contents defaults */
+/* Links in the outline are touch targets of at least 24px. */
+[data-block="table_of_contents"] a { display:inline-block; padding-block:.15rem; }
+
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }

@@ -598,7 +598,7 @@ ${settings.apple_touch_icon ? `<link rel="apple-touch-icon" sizes="180x180" href
 ${settings.icon_192 ? `<link rel="icon" type="image/png" sizes="192x192" href="${escapeAttr(settings.icon_192)}" />` : ''}
 ${layered ? `<style data-site-base-css="1">${PLATFORM_LAYER_ORDER_CSS}\n${platformLayer('reset', siteResetCss, renderVersion)}\n${platformLayer('base', siteGlobalCss, renderVersion)}</style>` : ''}
 <style>${platformLayer('tokens', siteThemeCss(settings), renderVersion)}</style>
-<style>${platformLayer('base', contentWellCss(renderVersion), renderVersion)}</style>
+<style>${platformLayer('content', contentWellCss(renderVersion), renderVersion)}</style>
 ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>${
       // The async-CSS pattern flips rel from preload to stylesheet in an
       // inline onload handler. The editor canvas serves `script-src 'none'`,
@@ -637,7 +637,7 @@ ${layered ? '' : `<style data-site-base-css="1">${SITE_BASE_CSS}</style>`}
 }
 .tr-banner a.tr-banner__btn:hover{background:#fff;color:#1f1f23}
 </style>
-${activeHeaderBehavior(settings.header_behavior) ? `<style data-header-behavior="1">${platformLayer('base', HEADER_BEHAVIOR_CSS, renderVersion)}</style>` : ''}
+${activeHeaderBehavior(settings.header_behavior) ? `<style data-header-behavior="1">${platformLayer('content', HEADER_BEHAVIOR_CSS, renderVersion)}</style>` : ''}
 ${allowScripts ? settings.scripts_head ?? '' : ''}
 ${cookieConsentHtml && !consentPreset ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>

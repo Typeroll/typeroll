@@ -5,7 +5,7 @@
 </section>
 
 /* css */
-@layer typeroll.blocks{
+@layer typeroll.platform{
 /* blocks-runtime */
 /* Universal visibility control set by Block.hidden_on */
 @media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
@@ -96,9 +96,16 @@
 [data-block="section"][data-divbot="curve"] > .block-section-shape--bot { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M0,0 L1440,0 L1440,36 C960,92 480,92 0,36 Z' fill='%23000'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M0,0 L1440,0 L1440,36 C960,92 480,92 0,36 Z' fill='%23000'/%3E%3C/svg%3E"); }
 [data-block="section"][data-divbot="tilt"] > .block-section-shape--bot { -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M0,0 L1440,0 L1440,74 L0,18 Z' fill='%23000'/%3E%3C/svg%3E"); mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 100' preserveAspectRatio='none'%3E%3Cpath d='M0,0 L1440,0 L1440,74 L0,18 Z' fill='%23000'/%3E%3C/svg%3E"); }
 
+/* core/section defaults */
+/* A shape divider fills the space between sections; it never covers the content of the block next to it. */
+[data-block="section"]:is([data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"]) { margin-block-start:clamp(34px, 6vw, 80px); }
+[data-block="section"]:is([data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"]) { margin-block-end:clamp(34px, 6vw, 80px); }
+
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }

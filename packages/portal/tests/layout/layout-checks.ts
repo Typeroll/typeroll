@@ -33,9 +33,9 @@ export function measureLayout(): LayoutProblem[] {
   }
 
   // 2. Content boxes of different blocks never overlap.
-  const LEAF = 'p,h1,h2,h3,h4,h5,h6,li,a,button,input,select,textarea,img,video,iframe,picture,figcaption,blockquote,label,td,th,svg';
+  const LEAF = 'p,h1,h2,h3,h4,h5,h6,li,a,button,input,select,textarea,img,video,iframe,picture,figcaption,blockquote,label,td,th,svg,summary';
   const ownText = (element: Element) => [...element.childNodes].some(node => node.nodeType === 3 && node.textContent!.trim());
-  const textHolders = [...document.querySelectorAll('main :is(span,div,strong,em,small,dt,dd,time,b), header :is(span,div,strong,em,small), footer :is(span,div,strong,em,small)')]
+  const textHolders = [...document.querySelectorAll('main :is(span,div,strong,em,small,dt,dd,time,b,address,cite,mark,q,figcaption), header :is(span,div,strong,em,small), footer :is(span,div,strong,em,small)')]
     .filter(element => ownText(element) && !element.closest(LEAF));
   const leaves = [...document.querySelectorAll(`main :is(${LEAF}), header :is(${LEAF}), footer :is(${LEAF})`), ...textHolders].filter(visible)
     .filter(element => !element.parentElement?.closest(LEAF.split(',').filter(tag => tag !== 'li' && tag !== 'td' && tag !== 'th').join(',')));
@@ -189,6 +189,9 @@ export function measureLayout(): LayoutProblem[] {
   for (const heading of document.querySelectorAll('main :is(h2,h3,h4)')) {
     if (!visible(heading) || heading.closest('[data-block="cta"],[data-block="hero"],[data-block="pricing_plan"],[data-block="icon_box"],[data-block="media_card"],[data-block="post_card"],[data-block="team_member"],[data-block="testimonial"],[data-block="step_card"],[data-block="feature_row"],[data-block="accordion"],[data-block="tabs"],header,footer,nav,summary')) continue;
     const group = heading.closest('hgroup') ?? heading, box = group.getBoundingClientRect();
+    // A heading that opens its container (a column, a card) introduces it; it does not interrupt running text.
+    const headingBlock = heading.closest('[data-block="heading"],[data-block="rich_heading"],[data-block="prose"]');
+    if (headingBlock && !headingBlock.matches('[data-block="prose"]') && !headingBlock.previousElementSibling) continue;
     const section = group.closest('[data-block="section"],main');
     const column = textBoxes.filter(({ element, box: other }) => section?.contains(element) && !group.contains(element)
       && Math.min(other.right, box.right) - Math.max(other.left, box.left) > box.width / 3);

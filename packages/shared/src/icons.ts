@@ -179,7 +179,9 @@ function escapeIconText(v: string): string {
  */
 export function renderIconHtml(value: string): string {
   const inner = CORE_ICONS[value];
-  if (!inner) return escapeIconText(value);
+  // A value that looks like an icon name but is not one renders nothing; text
+  // (an emoji or a symbol) still renders as text.
+  if (!inner) return /^[a-z][a-z0-9-]*$/.test(value) ? '' : escapeIconText(value);
   return (
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="1em" height="1em" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +

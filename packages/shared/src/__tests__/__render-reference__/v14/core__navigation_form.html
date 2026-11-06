@@ -1,7 +1,7 @@
 <div id="navigation-ref" data-block="navigation_form" role="form" aria-label="Get started" data-handoff-key="page-defaults" data-mode="navigate" data-show-labels="true" data-font="inherit" data-button-nowrap="false" data-address-country="" style="--columns:1;" data-presentation="core%2Fnavigation_form" data-block-type="core/navigation_form"></div>
 
 /* css */
-@layer typeroll.blocks{
+@layer typeroll.platform{
 /* blocks-runtime */
 /* Universal visibility control set by Block.hidden_on */
 @media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
@@ -46,6 +46,8 @@
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }

@@ -158,8 +158,8 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
 
     {layered && <style set:html={`${PLATFORM_LAYER_ORDER_CSS}\n${platformLayer('reset', resetCss, renderVersion)}\n${platformLayer('base', globalCss, renderVersion)}`} />}
     <style set:html={themeStyle} />
-    {headerBehavior && <style set:html={platformLayer('base', HEADER_BEHAVIOR_CSS, renderVersion)} />}
-    <style set:html={platformLayer('base', contentWellCss(renderVersion), renderVersion)} />
+    {headerBehavior && <style set:html={platformLayer('content', HEADER_BEHAVIOR_CSS, renderVersion)} />}
+    <style set:html={platformLayer('content', contentWellCss(renderVersion), renderVersion)} />
 
     {googleFontUrl && (
       <>

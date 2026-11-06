@@ -3,7 +3,7 @@
 </div>
 
 /* css */
-@layer typeroll.blocks{
+@layer typeroll.platform{
 /* blocks-runtime */
 /* Universal visibility control set by Block.hidden_on */
 @media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
@@ -36,9 +36,15 @@
 [data-block="logo_item"][data-grayscale="true"] img { filter: grayscale(1); opacity: 0.6; }
 [data-block="logo_item"][data-grayscale="true"] img:hover { filter: none; opacity: 1; }
 
+/* core/logo_item defaults */
+/* A logo row is as tall as its logos. */
+[data-block="logo_item"] { min-height:3rem; }
+
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }

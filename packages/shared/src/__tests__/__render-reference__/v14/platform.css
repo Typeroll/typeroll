@@ -65,6 +65,7 @@
 [data-block="semantic-container"][data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]):first-child { margin-block-start:0; }
 [data-block="semantic-container"][data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]) + :not(style,script) { margin-block-start:0; }
 [data-block="semantic-container"][data-rhythm="article"] > :last-child { margin-block-end:0; }
+@media (max-width:639px) { :root { --section-padding:calc(var(--space-xl) * .75); } }
 :root { --heading-flow-before:calc(var(--block-gap) * 1.75); --heading-flow-after:min(var(--block-gap), .75rem); --breadcrumbs-after:clamp(1rem, .5rem + 2vw, 2.5rem); }
 
 .block-section-inner { --heading-flow-before:calc(var(--section-child-gap,var(--block-gap)) * 1.75); --heading-flow-after:min(var(--section-child-gap,var(--block-gap)), .75rem); }
@@ -189,7 +190,7 @@
   --section-padding:var(--space-xl);
   --spacing-xs:var(--space-xs);--spacing-sm:var(--space-sm);--spacing-md:var(--space-md);--spacing-lg:var(--space-lg);--spacing-xl:var(--space-xl);
   --font-size-base:16px;
-}@media (max-width:639px){:root{--section-padding:calc(var(--space-xl) * .75)}}:where([data-block=prose]){max-inline-size:var(--measure-prose)}
+}:where([data-block=prose]){max-inline-size:var(--measure-prose)}
 
 /* site-template reset.css */
 /* Minimal modern CSS reset */

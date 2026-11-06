@@ -58,6 +58,7 @@ const HEADING_BLOCK = ':is([data-block="heading"],[data-block="rich_heading"])';
 // Running text: the blocks a heading can introduce or follow inside an article-like flow.
 const TEXT_BLOCK = ':is([data-block="prose"],[data-block="text"],[data-block="list"],[data-block="table"],[data-block="image"],[data-block="video"])';
 export const CONTENT_WELL_V14_CSS = `
+@media (max-width:639px) { :root { --section-padding:calc(var(--space-xl) * .75); } }
 :root { --heading-flow-before:calc(var(--block-gap) * 1.75); --heading-flow-after:min(var(--block-gap), .75rem); --breadcrumbs-after:clamp(1rem, .5rem + 2vw, 2.5rem); }
 
 .block-section-inner { --heading-flow-before:calc(var(--section-child-gap,var(--block-gap)) * 1.75); --heading-flow-after:min(var(--section-child-gap,var(--block-gap)), .75rem); }
