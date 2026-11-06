@@ -22,7 +22,7 @@ import type {
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
-  contentWellCss, siteThemeCss, webFontFamilies, googleFontsCssUrl, WEBFONT_FALLBACK_CSS,
+  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webFontFamilies, googleFontsCssUrl, WEBFONT_FALLBACK_CSS,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -318,7 +318,7 @@ export async function renderPreview(
   bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
   if (bodyHtml.includes('data-tr-form')) {
     const { FORMS_RUNTIME_JS, FORM_SHELL_CSS } = await import('@typeroll/shared');
-    bodyHtml += `<style>${FORM_SHELL_CSS}</style><script>${FORMS_RUNTIME_JS}</script>`;
+    bodyHtml += `<style>${platformLayer('blocks', FORM_SHELL_CSS, resolveRenderVersion(settings.render_version))}</style><script>${FORMS_RUNTIME_JS}</script>`;
   }
   const headerHtml = rewriteIf(renderPartial(header));
   const footerHtml = rewriteIf(renderPartial(footer));
@@ -575,6 +575,8 @@ function buildHtml(args: {
     mono: settings.fonts?.mono,
   };
   const fontUrl = buildFontUrl(f.heading, f.body, f.mono);
+  const renderVersion = resolveRenderVersion(settings.render_version);
+  const layered = usesCascadeLayers(renderVersion);
   const robots = pageRobots(page, settings, robotsBlocked);
 
   // Head CSS mirrors the published page (site-template BaseLayout): theme
@@ -594,8 +596,9 @@ ${args.seoHead ?? ''}
 ${settings.favicon ? `<link rel="icon" href="${escapeAttr(settings.favicon)}" />` : ''}
 ${settings.apple_touch_icon ? `<link rel="apple-touch-icon" sizes="180x180" href="${escapeAttr(settings.apple_touch_icon)}" />` : ''}
 ${settings.icon_192 ? `<link rel="icon" type="image/png" sizes="192x192" href="${escapeAttr(settings.icon_192)}" />` : ''}
-<style>${siteThemeCss(settings)}</style>
-<style>${contentWellCss(resolveRenderVersion(settings.render_version))}</style>
+${layered ? `<style data-site-base-css="1">${PLATFORM_LAYER_ORDER_CSS}\n${platformLayer('reset', siteResetCss, renderVersion)}\n${platformLayer('base', siteGlobalCss, renderVersion)}</style>` : ''}
+<style>${platformLayer('tokens', siteThemeCss(settings), renderVersion)}</style>
+<style>${platformLayer('base', contentWellCss(renderVersion), renderVersion)}</style>
 ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>${
       // The async-CSS pattern flips rel from preload to stylesheet in an
       // inline onload handler. The editor canvas serves `script-src 'none'`,
@@ -610,10 +613,10 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
     }<style>${WEBFONT_FALLBACK_CSS}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
 ${direction === 'rtl' ? `<style data-direction>${directionCss(direction)}</style>` : ''}
-${siteStyles ? `<style data-site-styles="1">${siteStyles}</style>` : ''}
+${siteStyles ? `<style data-site-styles="1">${platformLayer('styles', siteStyles, renderVersion)}</style>` : ''}
 ${settings.custom_css ? `<style data-site-css="1">${styleElementText(settings.custom_css)}</style>` : ''}
 ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css)}</style>` : ''}
-<style data-site-base-css="1">${SITE_BASE_CSS}</style>
+${layered ? '' : `<style data-site-base-css="1">${SITE_BASE_CSS}</style>`}
 <style data-preview-ui="1">
 .tr-banner{
   position:sticky;top:0;z-index:1000;
@@ -634,7 +637,7 @@ ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css
 }
 .tr-banner a.tr-banner__btn:hover{background:#fff;color:#1f1f23}
 </style>
-${activeHeaderBehavior(settings.header_behavior) ? `<style data-header-behavior="1">${HEADER_BEHAVIOR_CSS}</style>` : ''}
+${activeHeaderBehavior(settings.header_behavior) ? `<style data-header-behavior="1">${platformLayer('base', HEADER_BEHAVIOR_CSS, renderVersion)}</style>` : ''}
 ${allowScripts ? settings.scripts_head ?? '' : ''}
 ${cookieConsentHtml && !consentPreset ? `<script data-cookie-consent-early="1">${buildConsentEarlyPaintRuntime()}</script>` : ''}
 </head>

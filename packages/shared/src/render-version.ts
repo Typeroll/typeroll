@@ -140,6 +140,15 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Navigation links can have a group label: a visible title above the links that also names the list for screen readers. Lists without a label render as before.',
     ],
   },
+  {
+    version: 14, core_version: '0.3.7', title: 'Layered platform styles and balanced phone layouts',
+    changes: [
+      'Platform CSS (reset, base, theme values, blocks, site styles and per-block values) is emitted in cascade layers. Site and page CSS are unlayered, so a plain class or element rule overrides a platform default without !important.',
+      'Phones get smaller headings by default (a type ratio of 1.15 below the site setting\'s explicit value), so a heading no longer breaks into lines of a few words.',
+      'Pages that end with content outside a section get space before the footer. A Heading block between other blocks in a section has more space above than below, like a heading inside a Text block.',
+      'Block defaults fit every width: long words wrap in every block, cards and grids stay inside their column, touch targets are at least 24px, a call to action without a background uses the theme colours, and card padding is compact on phones.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

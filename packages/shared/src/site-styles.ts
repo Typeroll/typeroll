@@ -609,7 +609,8 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
   );
   if (renderVersion >= 11) rules.push(
     ':is([data-block="container"],[data-block="semantic-container"])[data-rhythm="article"] > :is([data-block="heading"],[data-block="rich_heading"]){margin-block:0}',
-    `${EDITORIAL_HEADING}:not(#\\#){margin-block:var(--heading_before_px,calc(1em * var(--type-rhythm,1))) var(--heading_after_px,calc(.5em * var(--type-rhythm,1)))}`,
+    // From version 14 a heading in running text sits much closer to the text it introduces.
+    `${EDITORIAL_HEADING}:not(#\\#){margin-block:var(--heading_before_px,calc(${renderVersion >= 14 ? '1.6em' : '1em'} * var(--type-rhythm,1))) var(--heading_after_px,calc(${renderVersion >= 14 ? '.35em' : '.5em'} * var(--type-rhythm,1)))}`,
     `[data-block]:not(:where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"],[data-block="container"],[data-block="semantic-container"],[data-block="section"],[data-block="template_content_slot"])) :where(h1,h2,h3,h4,h5,h6):not(:where([data-block="heading"] *,[data-block="rich_heading"] *,[data-block="prose"] *)){margin-block:0}`,
     `:where(${OPENING_HEADING}):is(h1,h2,h3,h4,h5,h6):not(#\\#){margin-block-start:0}`,
   );
@@ -696,7 +697,7 @@ export function stylesForTarget(styles: readonly SiteStyle[] | undefined, target
  */
 export const STANDARD_STYLES: readonly SiteStyle[] = [
   { id: 'body', name: 'Body text', role: 'body', targets: [], base: { size: 'md', line_height: 'relaxed', color: 'text' } },
-  ...(['3xl','2xl','xl','lg','md','sm'] as const).map((size, i): SiteStyle => ({ id: `h${i+1}`, name: `Heading ${i+1}`, role: `h${i+1}` as StyleElementRole, targets: [], base: { size, weight: i < 2 ? 700 : 600, line_height: i < 2 ? 'tight' : 'snug', space_before: '1em', space_after: '0.5em' } })),
+  ...(['3xl','2xl','xl','lg','md','sm'] as const).map((size, i): SiteStyle => ({ id: `h${i+1}`, name: `Heading ${i+1}`, role: `h${i+1}` as StyleElementRole, targets: [], base: { size, weight: i < 2 ? 700 : 600, line_height: i < 2 ? 'tight' : 'snug', space_before: '1.6em', space_after: '0.35em' } })),
   { id: 'link', name: 'Link', role: 'link', targets: [], base: { color: 'primary', decoration: 'underline' } },
   { id: 'lead', name: 'Lead', role: 'lead', targets: ['text'], description: 'Introductory paragraph.', base: { size: 'lg', line_height: 'normal' } },
   { id: 'eyebrow', name: 'Eyebrow', role: 'eyebrow', targets: ['text', 'heading'], base: { size: 'sm', weight: 700, line_height: 'snug', letter_spacing: '0.12em', transform: 'uppercase', color: 'primary', space_after: 'sm' } },

@@ -1,6 +1,7 @@
 import { colorCss, tokenScale, scaleValue } from './design-tokens.js';
 import { linkTargetAttributes } from './link-attributes.js';
 export { linkTargetAttributes };
+import { platformLayer, usesCascadeLayers } from './cascade-layers.js';
 import { queryDerivedSource, type DerivedQuery } from './derived-source.js';
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
@@ -342,6 +343,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
         compiled.cssVars,
         compiled.mappedCss,
         resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints),
+        options.renderVersion,
       );
     }
     html = applyVisibility(html, effectiveBlock, options);
@@ -631,7 +633,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   // template; the style block only carries @media overrides for
   // breakpoints above mobile.
   if (compiled.hasOverrides) {
-    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints));
+    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints), options.renderVersion);
   }
 
   if (columnThreshold !== null) html += `<style data-bid="${bid}">${columnStackCss(columnThreshold, `[data-block="columns"][data-bid="${bid}"]`)}</style>`;
@@ -2024,6 +2026,7 @@ function renderResponsiveStyleBlock(
   cssVars: Partial<Record<Breakpoint, Record<string, string>>>,
   mappedCss: Partial<Record<Breakpoint, string>>,
   widths: BreakpointWidths = defaultBreakpointWidths,
+  renderVersion?: number,
 ): string {
   const parts: string[] = [];
   for (const bp of BREAKPOINTS_ABOVE_MOBILE) {
@@ -2055,7 +2058,7 @@ function renderResponsiveStyleBlock(
     if (inner.length) parts.push(`${mediaQuery(bp, widths)} { ${inner.join(' ')} }`);
   }
   if (parts.length === 0) return '';
-  return `<style data-bid="${bid}">${parts.join('\n')}</style>`;
+  return `<style data-bid="${bid}">${platformLayer('instance', parts.join('\n'), renderVersion)}</style>`;
 }
 
 /**
@@ -2249,6 +2252,9 @@ export function collectBlockAssets(
     if (partCss) css.push(`/* block parts */\n${partCss}`);
   }
 
+  // From render version 14 platform block CSS is one layer; an author's
+  // per-block CSS stays unlayered and overrides it like site CSS does.
+  if (usesCascadeLayers(opts?.renderVersion) && css.length) css.splice(0, css.length, platformLayer('blocks', css.join('\n\n'), opts?.renderVersion));
   for (const block of collectInstanceStyles(blocks)) {
     css.push(`/* instance ${sanitizeCssId(block.id)} */\n${styleElementText(block.style_overrides!.custom_css!)}`);
   }

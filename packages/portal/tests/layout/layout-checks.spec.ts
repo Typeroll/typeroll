@@ -37,6 +37,7 @@ test('overflow, overlap, escape, clipping, small targets, footer space and unrea
 test('oversized phone headings and loose phone spacing are found', async ({ page: browser }) => {
   const section = (body: string, style = '') => `<section data-block="section" style="${style}">${body}</section>`;
   expect(await page(browser, section('<h1 style="font-size:56px;margin:0">Build a website your team keeps current</h1>'))).toContain('heading_too_large');
+  expect(await page(browser, section('<h2 style="font-size:24px;margin:0">A second-level heading in the text</h2>'))).not.toContain('heading_too_large');
   expect(await page(browser, section('<h1 style="font-size:32px;margin:0">Build a website your team keeps current</h1>'))).not.toContain('heading_too_large');
   expect(await page(browser, section('<p>Text</p>', 'padding:96px 16px'))).toContain('section_padding_mobile');
   expect(await page(browser, section('<p style="margin:0">One</p><p style="margin:80px 0 0">Two</p>'))).toContain('excess_gap_mobile');

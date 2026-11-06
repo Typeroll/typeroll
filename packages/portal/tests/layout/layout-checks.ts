@@ -128,11 +128,12 @@ export function measureLayout(): LayoutProblem[] {
     for (const heading of document.querySelectorAll('main :is(h1,h2,h3)')) {
       if (!visible(heading)) continue;
       const style = getComputedStyle(heading);
-      const lineHeight = parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.2;
-      const lines = Math.max(1, Math.round(heading.getBoundingClientRect().height / lineHeight));
-      const chars = (heading.textContent ?? '').trim().length / lines;
-      if (lines > 1 && chars < MIN_CHARS[heading.tagName]!) {
-        add('heading_too_large', heading, `${heading.tagName.toLowerCase()} at ${round(parseFloat(style.fontSize))}px breaks into ${lines} lines of ${round(chars)} characters`);
+      // How many average characters fit on one line (an average glyph is about half the font size wide).
+      // Measured on the space the heading can use (its block), not on a heading that shrinks to its text.
+      const room = (heading.closest('[data-source-block-type]') ?? heading.parentElement ?? heading).getBoundingClientRect().width;
+      const fontSize = parseFloat(style.fontSize), capacity = room / (fontSize * 0.5);
+      if (capacity < MIN_CHARS[heading.tagName]!) {
+        add('heading_too_large', heading, `${heading.tagName.toLowerCase()} at ${round(fontSize)}px fits about ${round(capacity)} characters per line`);
       }
     }
     for (const section of document.querySelectorAll('main [data-block="section"], main [data-block="hero"]')) {

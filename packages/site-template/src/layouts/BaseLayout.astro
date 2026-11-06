@@ -1,10 +1,13 @@
 ---
 import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, WEBFONT_FALLBACK_CSS, contentWellCss, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
+import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, WEBFONT_FALLBACK_CSS, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
-import '../styles/reset.css';
-import '../styles/global.css';
+// Inlined rather than imported: from render version 14 they go into cascade
+// layers at the top of <head>; older versions keep them at the end of <head>,
+// where Astro used to hoist them.
+import resetCss from '../styles/reset.css?raw';
+import globalCss from '../styles/global.css?raw';
 
 interface Props {
   page: Page;
@@ -118,7 +121,9 @@ const f = {
   body: settings.fonts?.body ?? 'Inter',
   mono: settings.fonts?.mono,
 };
-const themeStyle = siteThemeCss(settings);
+const renderVersion = resolveRenderVersion(settings.render_version);
+const layered = usesCascadeLayers(renderVersion);
+const themeStyle = platformLayer('tokens', siteThemeCss(settings), renderVersion);
 const headerBehavior = activeHeaderBehavior(settings.header_behavior);
 
 const googleFontFamilies = webFontFamilies(f.heading, f.body, f.mono);
@@ -151,9 +156,10 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     <SEOHead contentType={contentType} page={page} settings={settings} extraJsonLd={extraJsonLd} breadcrumbs={breadcrumbs} mediaByUrl={mediaByUrl} />
     {preloadImage && <link rel="preload" as="image" href={preloadImage} fetchpriority="high" />}
 
+    {layered && <style set:html={`${PLATFORM_LAYER_ORDER_CSS}\n${platformLayer('reset', resetCss, renderVersion)}\n${platformLayer('base', globalCss, renderVersion)}`} />}
     <style set:html={themeStyle} />
-    {headerBehavior && <style set:html={HEADER_BEHAVIOR_CSS} />}
-    <style set:html={contentWellCss(resolveRenderVersion(settings.render_version))} />
+    {headerBehavior && <style set:html={platformLayer('base', HEADER_BEHAVIOR_CSS, renderVersion)} />}
+    <style set:html={platformLayer('base', contentWellCss(renderVersion), renderVersion)} />
 
     {googleFontUrl && (
       <>
@@ -180,7 +186,7 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
 
     {blockCss && <style set:html={blockCss} />}
     {direction === 'rtl' && <style data-direction set:html={directionCss(direction)} />}
-    {siteStyles && <style data-site-styles set:html={siteStyles} />}
+    {siteStyles && <style data-site-styles set:html={platformLayer('styles', siteStyles, renderVersion)} />}
     {settings.custom_css && <style set:html={styleElementText(settings.custom_css)} />}
     {/* Page-level CSS after site CSS so a page can override the site theme. */}
     {page.custom_css && <style set:html={styleElementText(page.custom_css)} />}
@@ -206,6 +212,7 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     {settings.cookie_consent?.enabled && (
       <script is:inline set:html={buildConsentEarlyPaintRuntime()} />
     )}
+    {!layered && <style set:html={`${resetCss}\n${globalCss}`} />}
   </head>
   <body {...(Astro.props.identity ?? {})}>
     <slot />

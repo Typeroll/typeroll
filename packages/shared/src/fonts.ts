@@ -42,11 +42,18 @@ export function fontSmoothingCss(smoothing: unknown, renderVersion: number): str
  * values fall back so older settings documents never emit "undefined" CSS.
  * Published pages and preview emit the same block.
  */
+/** Default phone type ratio from render version 14 (1.2 before). */
+export const PHONE_TYPE_RATIO = 1.15;
+
 export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'> & { render_version?: unknown; design_scales?: DesignScales; typography?: TypographySettings; responsive_breakpoints?: import('./breakpoints.js').ResponsiveBreakpoints | null }): string {
   const colors = settings.colors ?? ({} as Partial<import('./types.js').SiteSettings['colors']>);
   const fonts = settings.fonts ?? ({} as Partial<import('./types.js').SiteSettings['fonts']>);
   const fluid = resolveRenderVersion(settings.render_version) >= 10;
-  const scales = resolvedDesignScales(settings.design_scales, settings.typography, fluid, fonts.size_base ?? 16);
+  // Version 14: phones use a gentler type ratio unless the site chose one, so headings stay balanced.
+  const validTypography = settings.typography && !typographyError(settings.typography) ? settings.typography : undefined;
+  const phoneTypography = resolveRenderVersion(settings.render_version) >= 14 && validTypography?.ratio_mobile === undefined
+    ? { ...validTypography, ratio_mobile: PHONE_TYPE_RATIO } : settings.typography;
+  const scales = resolvedDesignScales(settings.design_scales, phoneTypography, fluid, fonts.size_base ?? 16);
   const typography = { ...TYPOGRAPHY_DEFAULTS, ...(!typographyError(settings.typography) ? settings.typography : {}) };
   return `:root{
   --color-primary:${colors.primary};
