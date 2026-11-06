@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.7 (candidate, MCP 0.45.119)
+## 0.3.7 (candidate, MCP 0.45.120)
 
 - Frozen publication snapshots are pruned at the end of each publication of
   the site: snapshots of publications that are no longer running, recent, among
