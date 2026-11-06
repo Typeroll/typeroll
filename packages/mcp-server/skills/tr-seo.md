@@ -129,8 +129,8 @@ optional; record a skipped item in `decisions.md`.
   ```
 
 - **Site description and icons.** `default_meta_description` for pages without
-  their own description, and `favicon`, `apple_touch_icon` and `icon_192`
-  (see `tr-brand`).
+  their own description, and `favicon` (other icon sizes are generated; see
+  `tr-brand`).
 - **AI crawlers.** `ai_crawler_policy` is `allow_all` (the default, which writes
   nothing), `no_training` or `block_all`:
 

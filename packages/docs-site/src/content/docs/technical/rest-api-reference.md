@@ -3244,7 +3244,7 @@ Patch site settings, including responsive breakpoints for block layouts and visi
 | `agent_instructions` | body | string | no | Site-specific agent guidance, read live for this version. No secrets or permission overrides. |
 | `logo` | body | string | no |  |
 | `favicon` | body | string | no |  |
-| `apple_touch_icon` | body | string | no | URL to a 180x180 PNG for iOS/Android home-screen bookmarks. Emitted as &lt;link rel="apple-touch-icon"&gt;. |
+| `apple_touch_icon` | body | string | no | Optional image for the iPhone/iPad home screen icon. Publication generates it from favicon when absent; set it only to use a different image. |
 | `icon_192` | body | string | no | URL to a 192x192 PNG app icon. Emitted with sizes="192x192". |
 | `trailing_slash` | body | "always" \| "never" \| "ignore" | no | Canonical URL style. `always` is the default; `never` emits extensionless URLs without a final slash; `ignore` preserves authored paths. |
 | `iframe_allowed_hosts` | body | string[] | no | Additional exact HTTPS iframe hostnames allowed on this site, e.g. ["player.example.com"]. No wildcards, schemes, ports or paths. |

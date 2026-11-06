@@ -20,8 +20,8 @@ test('publication writes a real multi-size ICO, hashed icon links and a 192 mani
  assert.equal(ico.readUInt16LE(2),1);assert.equal(ico.readUInt16LE(4),3);
  for(let i=0;i<3;i++){const start=6+i*16,size=[16,32,48][i];assert.equal(ico[start],size);const offset=ico.readUInt32LE(start+12),length=ico.readUInt32LE(start+8);const image=sharp(ico.subarray(offset,offset+length));const meta=await image.metadata();assert.equal(meta.width,size);assert.equal(meta.height,size);const {data,info}=await image.raw().toBuffer({resolveWithObject:true});const center=(Math.floor(size/2)*size+Math.floor(size/2))*info.channels;assert.deepEqual([...data.subarray(center,center+3)],[255,0,255]);}
  assert.deepEqual(await fs.readFile(path.join(dir,result.favicon_url)),ico);
- const html=await fs.readFile(path.join(dir,'index.html'),'utf8');assert.ok(html.includes(result.favicon_url));assert.ok(!html.includes('/old.png'));assert.ok(html.includes('/apple.png'));assert.ok(html.includes('rel="manifest"'));
- const manifest=JSON.parse(await fs.readFile(path.join(dir,'site.webmanifest'),'utf8'));assert.equal(manifest.icons[0].src,result.icon_192_url);assert.equal((await sharp(path.join(dir,result.icon_192_url)).metadata()).width,192);
+ const html=await fs.readFile(path.join(dir,'index.html'),'utf8');assert.ok(html.includes(result.favicon_url));assert.ok(!html.includes('/old.png'));assert.ok(!html.includes('/apple.png'));assert.ok(html.includes(result.apple_touch_icon_url));assert.ok(html.includes('rel="manifest"'));
+ const manifest=JSON.parse(await fs.readFile(path.join(dir,'site.webmanifest'),'utf8'));assert.equal(manifest.icons[0].src,result.icon_192_url);assert.deepEqual(manifest.icons[1],{src:result.icon_512_url,sizes:'512x512',type:'image/png'});assert.equal((await sharp(path.join(dir,result.icon_512_url)).metadata()).width,512);assert.equal((await sharp(path.join(dir,result.icon_192_url)).metadata()).width,192);
 }));
 test('an icon change updates bytes and the HTML URL; unchanged icons remain stable',async()=>fixture(async dir=>{
  let source=await png('#00ffff');const settings={favicon:'/same-url.png'};
@@ -71,4 +71,25 @@ test('replaces existing manifest links and stays idempotent on cached HTML',asyn
   assert.equal((html.match(/rel="manifest"/g)||[]).length,1);
   assert.ok(!html.includes('/old.webmanifest'));
  }
+}));
+
+test('the home screen icon is generated from the favicon: opaque, 180px, on the site background with a margin',async()=>fixture(async dir=>{
+ const motif=await sharp({create:{width:64,height:64,channels:4,background:{r:0,g:0,b:0,alpha:0}}}).composite([{input:await sharp({create:{width:32,height:32,channels:4,background:'#ff0000'}}).png().toBuffer(),gravity:'center'}]).png().toBuffer();
+ const result=await writeSiteIcons(dir,{favicon:'/media/mark.png',colors:{background:'#00ff00'}},async()=>motif);
+ for(const file of [result.apple_touch_icon_url,'/apple-touch-icon.png']){
+  const image=sharp(path.join(dir,file));const meta=await image.metadata();assert.equal(meta.width,180);assert.equal(meta.height,180);assert.equal(meta.hasAlpha,false);
+  const {data}=await image.raw().toBuffer({resolveWithObject:true});assert.deepEqual([...data.subarray(0,3)],[0,255,0]);const center=(90*180+90)*3;assert.deepEqual([...data.subarray(center,center+3)],[255,0,0]);
+ }
+ const html=await fs.readFile(path.join(dir,'index.html'),'utf8');assert.equal((html.match(/rel="apple-touch-icon"/g)||[]).length,1);assert.ok(html.includes(`sizes="180x180" href="${result.apple_touch_icon_url}"`));
+}));
+test('a configured apple_touch_icon wins and an opaque image fills the icon',async()=>fixture(async dir=>{
+ const reads=[];const result=await writeSiteIcons(dir,{favicon:'/fav.png',apple_touch_icon:'/touch.png'},async url=>{reads.push(url);return png(url==='/touch.png'?'#0000ff':'#ff00ff');});
+ assert.deepEqual(reads.sort(),['/fav.png','/touch.png']);
+ const {data}=await sharp(path.join(dir,result.apple_touch_icon_url)).raw().toBuffer({resolveWithObject:true});assert.deepEqual([...data.subarray(0,3)],[0,0,255]);
+}));
+test('a site without any icon gets no home screen icon and keeps its own links',async()=>fixture(async dir=>{
+ const result=await writeSiteIcons(dir,{},async()=>{throw Error('No network');});
+ assert.equal(result.apple_touch_icon_url,null);assert.equal(result.icon_512_url,null);
+ await assert.rejects(fs.access(path.join(dir,'apple-touch-icon.png')));
+ assert.ok((await fs.readFile(path.join(dir,'index.html'),'utf8')).includes('/apple.png'));
 }));

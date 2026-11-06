@@ -6,8 +6,10 @@
   the site: snapshots of publications that are no longer running, recent, among
   the three latest per version or referenced are removed, and the deploy
   record stays. See [customer-owned publishing](docs/customer-owned-publishing.md).
-- The portal has a home screen icon: adding it to an iPhone home screen shows
-  the Typeroll symbol instead of a letter.
+- Published sites get a home screen icon for iPhone and iPad and a 512 pixel
+  manifest icon, generated from the favicon unless `apple_touch_icon` is set.
+  Before, a site without a separately uploaded 180 pixel PNG showed a letter
+  on the home screen. The portal has the same icon.
 
 ## 0.3.6 (candidate, MCP 0.45.119)
 

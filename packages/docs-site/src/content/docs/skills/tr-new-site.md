@@ -170,10 +170,9 @@ case-sensitive display names ("Plus Jakarta Sans", not "plus jakarta"). Fonts
 are self-hosted on the site by default; a name Google does not serve falls
 back silently, so verify fonts on the published address (`tr-brand` Step 7).
 
-**Site icons are part of brand setup** — upload favicon (32–64px), a
-180×180 apple touch icon, and a 192×192 app icon; set `favicon`,
-`apple_touch_icon`, and `icon_192`. No icon assets? Derive a proposal (see
-`tr-brand`). Also set `settings.logo` to the uploaded brand mark — it feeds
+**Site icons are part of brand setup** — upload one square image (SVG, or
+a PNG of at least 512 pixels) and set `favicon`; publication generates every
+other size and format. No icon assets? Derive a proposal (see `tr-brand`). Also set `settings.logo` to the uploaded brand mark — it feeds
 OG/schema even if the header uses a different lockup.
 
 #### Launch basics (ask early)
