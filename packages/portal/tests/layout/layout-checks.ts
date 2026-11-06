@@ -117,6 +117,16 @@ export function measureLayout(): LayoutProblem[] {
     }
   }
 
+  // 4b. Text never spills out of a painted box (a badge, a pill, a button, a coloured card).
+  for (const element of document.querySelectorAll('main *, header *, footer *')) {
+    const style = getComputedStyle(element);
+    if (!/visible/.test(style.overflowX + style.overflowY) || !visible(element) || !ownText(element)) continue;
+    const painted = !/rgba\(0, 0, 0, 0\)|transparent/.test(style.backgroundColor) || parseFloat(style.borderTopWidth) > 0;
+    if (!painted) continue;
+    const spill = Math.max(element.scrollWidth - element.clientWidth, element.scrollHeight - element.clientHeight);
+    if (spill > 2) add('text_spills', element, `${element.tagName.toLowerCase()}.${String(element.className).split(' ')[0]} spills ${round(spill)}px of text outside its box`);
+  }
+
   // 5. Touch targets are at least 24 × 24 px (WCAG 2.2 AA), except links inside running text.
   for (const element of document.querySelectorAll('main :is(a,button,input,select,textarea,[role="button"]), header :is(a,button,input,select,[role="button"]), footer :is(a,button,input,select,[role="button"])')) {
     if (!visible(element) || (element as HTMLInputElement).type === 'hidden') continue;

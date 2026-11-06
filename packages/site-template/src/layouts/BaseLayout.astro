@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, WEBFONT_FALLBACK_CSS, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
+import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 // Inlined rather than imported: from render version 14 they go into cascade
@@ -140,7 +140,7 @@ const fontStylesheetUrl = selfHostedFonts ? SELF_HOSTED_FONTS_CSS_PATH : googleF
 // Inter's (the platform default). Sites that use a wildly different
 // font still get *some* shift, but the average case drops from CLS
 // ~0.2 (autopilot.se field report) to <0.05.
-const fontFallbackStyle = googleFontFamilies.length ? WEBFONT_FALLBACK_CSS : null;
+const fontFallbackStyle = googleFontFamilies.length ? webfontFallbackCss(renderVersion) : null;
 // The site's style library; empty for a site without styles.
 // Right-to-left pages get dir and the mirror stylesheet; left-to-right output is unchanged.
 const direction = languageDirection(page.language || settings.language || 'en');

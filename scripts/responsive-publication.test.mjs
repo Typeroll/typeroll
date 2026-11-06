@@ -9,7 +9,7 @@ test('frozen publication renders site widths and shared breadcrumb labels and in
     blocks:[{id:`${id}-body`,type:'core/prose',data:{html:`<p>${id} text</p>`,font_size_px:{mobile:14.4,laptop:18}}}], ...extra });
   const value = { format:'typeroll-static-publication',format_version:2,publication_id:'a'.repeat(64),core_commit:'a'.repeat(40),
     site_url:'https://example.invalid',version_id:'main',site:{name:'Example'},
-    settings:{site_name:'Example',trailing_slash:'always',responsive_breakpoints:{tablet:576,laptop:769,desktop:1024,wide:1280}},
+    settings:{site_name:'Example',trailing_slash:'always',responsive_breakpoints:{tablet:576,laptop:773,desktop:1024,wide:1280}},
     pages:[page('home',{path:'/'}),page('tips',{breadcrumb_label:'Tips'}),page('article',{parent:'tips',path:'/tips/article',template:'article'})],
     pageTemplates:[{id:'article',status:'published',blocks:[{id:'trail',type:'template/page_breadcrumbs',data:{}},{id:'title',type:'template/page_title',data:{}},{id:'body',type:'template_content_slot',data:{}}]}],
     media:[],partials:[],contentTypes:[],blockTypes:[],forms:[] };
@@ -18,7 +18,7 @@ test('frozen publication renders site widths and shared breadcrumb labels and in
   const html = () => fs.readFile(path.join(harness.destination,'dist/tips/article/index.html'),'utf8');
   await harness.run();
   const first = await html();
-  assert.match(first, /min-width:\s*769px/);
+  assert.match(first, /min-width:\s*773px/);
   assert.match(first, /--font_size_px:\s*14\.4px/);
   assert.match(first, /href="\/tips\/"[^>]*>Tips<\/a>/);
   assert.match(first, /Full article title/);
@@ -29,12 +29,12 @@ test('frozen publication renders site widths and shared breadcrumb labels and in
   value.settings.responsive_breakpoints.laptop = 800;
   assert.equal((await harness.run()).report.rendered,3);
   assert.match(await html(), /min-width:\s*800px/);
-  assert.doesNotMatch(await html(), /min-width:\s*769px/);
+  assert.doesNotMatch(await html(), /min-width:\s*773px/);
 });
 
 test('frozen component controls survive export and invalidate only affected content until renderer changes', async t => {
   const card = {id:'card',type:'core/post_card',data:{title:'Guide',href:'/',image:'https://media.example.invalid/photo.png',image_alt:'Packing',show_date:false,
-    responsive_breakpoints:{tablet:577,laptop:769,desktop:1041,wide:1440},
+    responsive_breakpoints:{tablet:577,laptop:773,desktop:1041,wide:1440},
     layout:{mobile:'column',desktop:'row'},image_sizing:{mobile:'fixed',desktop:'stretch'},image_height_px:200,
     appearance:'card',border_width_px:3,border_color:'#dddddd',action_label:'Read',title_font:'body'}};
   const value={format:'typeroll-static-publication',format_version:2,publication_id:'b'.repeat(64),core_commit:'b'.repeat(40),site_url:'https://example.invalid',version_id:'main',

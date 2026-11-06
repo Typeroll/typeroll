@@ -19,18 +19,27 @@ const TEMPLATES: PageTemplateStarterKind[] = ['blog', 'article', 'checklist', 't
 export const slugOf = (id: string) => id.replace(/[^a-z0-9]+/gi, '-').toLowerCase();
 
 const SENTENCE = 'Plan, write and publish a site your whole team can keep up to date';
-/** Replace short placeholder text with realistic, longer text, including one unbreakable word. */
-function lengthen(value: unknown, key = ''): unknown {
-  if (Array.isArray(value)) return value.map(item => lengthen(item, key));
-  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([name, item]) => [name, lengthen(item, name)]));
-  if (typeof value !== 'string' || !value || /^[#\/]/.test(value) || /url|href|link|target|src|icon|image|color|colour|id$|_id|slug|path|variant|style|size|align|width|layout|direction|tag|level|mode|type/i.test(key)) return value;
-  if (value.startsWith('<p>')) return `<p>${SENTENCE}, from the first draft to the published page.</p><p>${LONG}</p>`;
-  return /title|heading|name|label|question/i.test(key) ? `${value}: ${SENTENCE}` : `${SENTENCE}. ${LONG}.`;
+/** Replace short placeholder text in text fields (never options, links or media) with realistic, longer text, including one unbreakable word. */
+type Fields = readonly { name: string; type: string; fields?: Fields }[] | undefined;
+function lengthen(value: unknown, fields: Fields): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const out: Record<string, unknown> = { ...(value as Record<string, unknown>) };
+  for (const field of fields ?? []) {
+    const current = out[field.name];
+    if (field.type === 'array' && Array.isArray(current)) out[field.name] = current.map(item => lengthen(item, field.fields));
+    else if (field.type === 'object') out[field.name] = lengthen(current, field.fields);
+    else if (typeof current !== 'string' || !current) continue;
+    else if (field.type === 'richtext') out[field.name] = `<p>${SENTENCE}, from the first draft to the published page.</p><p>${LONG}</p>`;
+    else if (field.type === 'text' || field.type === 'textarea') out[field.name] = /title|heading|name|label|question/i.test(field.name) ? `${current}: ${SENTENCE}` : `${SENTENCE}. ${LONG}.`;
+  }
+  return out;
 }
 
 function sample(type: BlockType, id: string, long = false): Block {
   const data = sampleBlockData(type.schema);
-  const block: Block = { id, type: type.id, data: long ? lengthen(data) as Record<string, unknown> : data };
+  // Sample data fills numbers with their minimum (a gap of 0px); a new block leaves them unset and uses its defaults.
+  for (const field of type.schema ?? []) if (field.type === 'number' && field.default === undefined) delete data[field.name];
+  const block: Block = { id, type: type.id, data: long ? lengthen(data, type.schema as Fields) as Record<string, unknown> : data };
   if (type.container === true) {
     block.children = [
       { id: `${id}-text`, type: 'core/prose', data: { html: '<p>A paragraph inside the block, long enough to wrap on a phone screen.</p>' } },

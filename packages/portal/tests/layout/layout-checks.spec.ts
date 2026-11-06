@@ -43,6 +43,11 @@ test('oversized phone headings and loose phone spacing are found', async ({ page
   expect(await page(browser, section('<p style="margin:0">One</p><p style="margin:80px 0 0">Two</p>'))).toContain('excess_gap_mobile');
 });
 
+test('text spilling out of a badge is found', async ({ page: browser }) => {
+  expect(await page(browser, `<section><span style="display:inline-flex;width:40px;height:40px;background:#16161a;color:#fff;overflow-wrap:anywhere">Step number</span></section>`)).toContain('text_spills');
+  expect(await page(browser, `<section><span style="display:inline-flex;min-width:40px;height:40px;padding:0 8px;background:#16161a;color:#fff;white-space:nowrap;align-items:center">Step 1</span></section>`)).not.toContain('text_spills');
+});
+
 test('a heading in running text with as much space below as above is found', async ({ page: browser }) => {
   const text = (h2: string) => `<section data-block="section"><div data-block="prose"><p>Before</p><h2 style="${h2}">A heading</h2><p>After</p></div></section>`;
   expect(await page(browser, text('margin:24px 0'))).toContain('heading_spacing');

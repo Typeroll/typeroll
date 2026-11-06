@@ -974,7 +974,8 @@ function renderRepeaterItems(
     .join('');
 
   if (items.length === 0 && data.empty_state) {
-    return wrapRepeater(block, blockType, data, escapeHtml(data.empty_state), options, 0);
+    // A richtext field: from render version 14 its formatting renders (the final sanitizer pass still applies).
+    return wrapRepeater(block, blockType, data, resolveRenderVersion(options.renderVersion) >= 14 ? String(data.empty_state) : escapeHtml(data.empty_state), options, 0);
   }
 
   const groupBy = typeof data.group_by === 'string' ? data.group_by.trim() : '';

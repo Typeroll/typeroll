@@ -55,6 +55,9 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
     ? { ...validTypography, ratio_mobile: PHONE_TYPE_RATIO } : settings.typography;
   const scales = resolvedDesignScales(settings.design_scales, phoneTypography, fluid, fonts.size_base ?? 16);
   const typography = { ...TYPOGRAPHY_DEFAULTS, ...(!typographyError(settings.typography) ? settings.typography : {}) };
+  // Version 14: a webfont name always carries the fallback stack, so text styled with var(--font-*) never shows the browser's default serif.
+  const v14 = resolveRenderVersion(settings.render_version) >= 14;
+  const withFallback = (family: string) => v14 && !isSystemFont(family) ? `${fontFamilyCss(family)}, 'tr-fallback', ${SYSTEM_FONT_STACK}` : fontFamilyCss(family);
   return `:root{
   --color-primary:${colors.primary};
   --color-secondary:${colors.secondary};
@@ -64,12 +67,12 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
   --color-surface-hover:${colors.surface_hover && validColor(colors.surface_hover) ? colors.surface_hover : 'color-mix(in srgb,var(--color-surface) 92%,var(--color-text))'};
   --color-text:${colors.text};
   --color-text-light:${colors.text_light ?? '#64748b'};
-  --font-heading:${fontFamilyCss(fonts.heading ?? 'Inter')};
-  --font-body:${fontFamilyCss(fonts.body ?? 'Inter')};
+  --font-heading:${withFallback(fonts.heading ?? 'Inter')};
+  --font-body:${withFallback(fonts.body ?? 'Inter')};
   --font-mono:${fonts.mono ? fontFamilyCss(fonts.mono) : 'ui-monospace'};
   ${designScalesCss(scales)}${fluid ? `\n  --type-rhythm:${typography.rhythm};\n  --measure-prose:${typography.line_length}ch;\n  --section-padding:var(--space-xl);\n  --spacing-xs:var(--space-xs);--spacing-sm:var(--space-sm);--spacing-md:var(--space-md);--spacing-lg:var(--space-lg);--spacing-xl:var(--space-xl);` : ''}
   --font-size-base:${fonts.size_base ?? 16}px;
-}${responsiveDesignScalesCss(scales, resolveBreakpointWidths(settings.responsive_breakpoints))}${fluid ? ':where([data-block=prose]){max-inline-size:var(--measure-prose)}' : ''}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
+}${responsiveDesignScalesCss(scales, resolveBreakpointWidths(settings.responsive_breakpoints))}${v14 && fluid ? '@media (max-width:639px){:root{--section-padding:calc(var(--space-xl) * .75)}}' : ''}${fluid ? ':where([data-block=prose]){max-inline-size:var(--measure-prose)}' : ''}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
 }
 
 /** Webfont families a site loads from Google Fonts (system families excluded). */
@@ -114,4 +117,14 @@ export function rewriteGoogleFontCss(css: string, localPaths: Map<string, string
  * CLS guard used while a webfont loads: a size-adjusted Arial stands in with
  * Inter-like metrics. Published pages and preview emit the same rule.
  */
+/**
+ * From render version 14 the fallback also has a bold face, so headings stay
+ * bold while the webfont loads (before, headings skipped the fallback).
+ */
+export function webfontFallbackCss(renderVersion: number): string {
+  return renderVersion >= 14
+    ? `${WEBFONT_FALLBACK_CSS}@font-face{font-family:'tr-fallback';src:local('Arial Bold'),local('Arial-BoldMT');font-weight:600 900;size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}`
+    : WEBFONT_FALLBACK_CSS;
+}
+
 export const WEBFONT_FALLBACK_CSS = "@font-face{font-family:'tr-fallback';src:local('Arial');size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}body{font-family:var(--font-body),'tr-fallback',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}h1,h2,h3,h4,h5,h6{font-family:var(--font-heading),'tr-fallback',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}";

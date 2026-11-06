@@ -28,7 +28,9 @@ export function getPartialCompositionStarter(
     width: 'wide', padding_y: kind === 'header' ? 'compact' : 'auto',
   }, [block(`${kind}_layout`, 'core/container', {
     direction: kind === 'header' ? 'row' : { mobile: 'column', tablet: 'row' },
-    wrap: kind === 'header' ? 'nowrap' : 'wrap', align_main: 'space-between', align_cross: 'center', gap: 'md', width: 'full',
+    wrap: kind === 'header' ? 'nowrap' : 'wrap', align_main: 'space-between',
+    // A stacked footer lines up on the left; side by side it centres vertically.
+    align_cross: kind === 'header' ? 'center' : { mobile: 'start', tablet: 'center' }, gap: 'md', width: 'full',
   }, [block(`${kind}_logo`, 'template/site_logo', { height: kind === 'header' ? 'md' : 'sm', link_to_home: true }), navigation])])];
 }
 

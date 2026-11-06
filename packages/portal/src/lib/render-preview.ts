@@ -22,7 +22,7 @@ import type {
 } from '@typeroll/shared';
 import { vstore } from './version-store';
 import {
-  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webFontFamilies, googleFontsCssUrl, WEBFONT_FALLBACK_CSS,
+  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webFontFamilies, googleFontsCssUrl, WEBFONT_FALLBACK_CSS, webfontFallbackCss,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -610,7 +610,7 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
       allowScripts
         ? `<link rel="preload" as="style" href="${escapeAttr(fontUrl)}" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="${escapeAttr(fontUrl)}"></noscript>`
         : `<link rel="stylesheet" href="${escapeAttr(fontUrl)}">`
-    }<style>${WEBFONT_FALLBACK_CSS}</style>` : ''}
+    }<style>${webfontFallbackCss(renderVersion)}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
 ${direction === 'rtl' ? `<style data-direction>${directionCss(direction)}</style>` : ''}
 ${siteStyles ? `<style data-site-styles="1">${platformLayer('styles', siteStyles, renderVersion)}</style>` : ''}
