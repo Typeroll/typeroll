@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.5 (candidate, MCP 0.45.119)
+## 0.3.5 (candidate, MCP 0.45.118)
 
 - A test installation can set `MAIL_ALLOWED_RECIPIENT_DOMAINS` (comma-separated
   domains). Account and site mail then go only to recipients in those domains;
