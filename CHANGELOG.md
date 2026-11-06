@@ -1,9 +1,23 @@
 # Changelog
 
+## 0.3.3 (candidate, MCP 0.45.117)
+
+- The hosted MCP server works on Workers. Its tools call the portal's REST API
+  on the portal's own origin, which a Worker cannot fetch (Cloudflare answers
+  522); those requests now run in process through the existing `SCHEDULER`
+  self binding. No configuration changes.
+- Remote E2E personas select their fixture organization after signing in, so
+  a permanent target may give a persona other memberships.
+
 ## 0.3.2 (candidate, MCP 0.45.117)
 
 - GitHub publishing works from the Workers runtime: requests to GitHub carry a
   `User-Agent`, which GitHub requires and Workers' fetch does not add.
+- R2 media transfers work in the Workers build: it now applies the AWS SDK's
+  browser file mappings, so the S3 client no longer mixes Node-only helpers
+  into the browser build.
+- A local Worker accepts a loopback `http://` portal origin by its address
+  instead of by `NODE_ENV`.
 - The remote target contract compares the expected digest with the served
   `bundle_digest`.
 
