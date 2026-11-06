@@ -15,6 +15,7 @@ import { deliverScheduledWork } from './lib/scheduling/worker';
 import { drainObjectOutbox, sweepScheduledObjects } from './lib/scheduling/sweep';
 import { createOperatorApi, type OperatorApiMethods } from './lib/operator-api';
 import { setSiteHostingRuntime, type SiteHostingMethods } from './lib/publishing/site-hosting';
+import { setLoopbackDispatch } from './lib/runtime/loopback';
 
 setRuntimeStore(() => cloudflareStore(env as unknown as StoreEnv));
 // Sites in the `hosted` mode exist only on a deployment that binds a hosting service.
@@ -36,6 +37,10 @@ setPublicationTemplateLoader(async () => {
   return response.text();
 });
 
+// A Worker cannot fetch its own hostname (Cloudflare answers 522), so
+// requests to the portal's own origin go through the self binding below.
+setLoopbackDispatch(request => (env as unknown as PortalEnv).SCHEDULER.fetch(request));
+
 interface PortalEnv extends StoreEnv {
   /** EU-jurisdiction bucket holding cutover exports and checkpoints. */
   MIGRATION?: MigrationBucket;
@@ -44,7 +49,11 @@ interface PortalEnv extends StoreEnv {
   /** The hosting service for sites in the `hosted` mode (publishing/site-hosting.ts); absent on most deployments. */
   SITE_HOSTING?: SiteHostingMethods;
   /** Self service binding to the `Scheduler` entrypoint below. */
-  SCHEDULER: { deliver(delivery: ScheduledDelivery): Promise<void>; drainOutbox(object: string): Promise<number> };
+  SCHEDULER: {
+    deliver(delivery: ScheduledDelivery): Promise<void>;
+    drainOutbox(object: string): Promise<number>;
+    fetch(request: Request): Promise<Response>;
+  };
 }
 
 /**
@@ -78,10 +87,15 @@ export class DocumentStore extends DurableObject<PortalEnv> {
   wake() { return this.store.wake(); }
 }
 
-/** Delivery target for store alarms; reachable only through the SCHEDULER binding. */
+/**
+ * Delivery target for store alarms, and the in-process route for requests to
+ * the portal's own origin (lib/runtime/loopback.ts). Reachable only through
+ * the SCHEDULER self binding; it has no route on the internet.
+ */
 export class Scheduler extends WorkerEntrypoint<PortalEnv> {
   deliver(delivery: ScheduledDelivery) { return deliverScheduledWork(delivery); }
   drainOutbox(object: string) { return drainObjectOutbox(object); }
+  fetch(request: Request) { return handle(request, this.env as never, this.ctx as never); }
 }
 
 /**
