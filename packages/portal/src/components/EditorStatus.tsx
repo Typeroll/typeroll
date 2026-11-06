@@ -94,7 +94,6 @@ interface DeployButtonProps {
 
 export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgress }: DeployButtonProps) {
   const { setup, error: setupError, refresh } = usePublishingReadiness(siteId);
-  const [env, setEnv] = useState<'production' | 'staging'>('production');
   const [err, setErr] = useState<string | null>(null);
   const { job, setJob, watch } = useDeployProgress(siteId, setErr, onDeployed);
 
@@ -107,17 +106,14 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgr
     if (busy) return;
     const current = await refresh();
     if (!current?.ready) return;
-    const environment = current.mode !== 'managed' ? 'production' : env;
-    const live = environment === 'production' && current.publication?.production ? current.publication : null;
+    const live = current.publication?.production ? current.publication : null;
     const message = live ? liveDomainConfirmMessage(live)
-      : environment === 'production'
-      ? 'Deploy to your live production site? This rebuilds the static files and uploads them. Visitors will see the new version once it finishes.'
-      : 'Deploy to the staging URL? Visitors won\'t see this.';
+      : 'Deploy to your live production site? This rebuilds the static files and uploads them. Visitors will see the new version once it finishes.';
     if (!confirm(message)) return;
     setErr(null);
     setJob({ status: 'queued', phase: 'starting' });
     try {
-      const { res, data, cancelled } = await postDeploy(siteId, { environment, ...(live ? { confirm_live_domains: true } : {}) });
+      const { res, data, cancelled } = await postDeploy(siteId, { environment: 'production', ...(live ? { confirm_live_domains: true } : {}) });
       if (cancelled) { setJob(null); return; }
       if (!res.ok && data.code === 'publishing_setup_required') {
         await refresh();
@@ -155,16 +151,6 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgr
 
   return (
     <>
-      {setup?.mode === 'managed' && <select
-        value={env}
-        onChange={(e) => setEnv(e.target.value as 'production' | 'staging')}
-        disabled={busy}
-        title="Production updates the live domain; staging only updates the staging URL."
-        className="deploy-env"
-      >
-        <option value="production">Production</option>
-        <option value="staging">Staging</option>
-      </select>}
       <button
         type="button"
         className={pendingDeploy && !job ? 'btn btn--sm' : 'btn btn--secondary btn--sm'}
@@ -194,15 +180,6 @@ export function DeployButton({ siteId, pendingDeploy = true, onDeployed, onProgr
         .deploy-error details { margin-top: 0.5rem; }
         .deploy-error summary { cursor: pointer; color: var(--color-text-muted); }
         .deploy-error details p { margin-top: 0.5rem; }
-        .deploy-env {
-          padding: 0.25rem 0.4rem;
-          font-size: 0.85rem;
-          border: 1px solid var(--color-border);
-          border-radius: var(--radius-sm);
-          background: var(--color-surface);
-          color: var(--color-text);
-        }
-        .deploy-env:disabled { opacity: 0.55; }
       `}</style>
     </>
   );

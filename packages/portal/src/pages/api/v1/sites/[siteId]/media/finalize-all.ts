@@ -10,6 +10,7 @@
 // Caller may want to budget for the long tail on libraries >100 images.
 
 import type { APIRoute } from 'astro';
+import { usesCustomerPublishing } from '@typeroll/shared';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { finalizeAllMedia } from '../../../../../../lib/media-finalize';
 
@@ -18,7 +19,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
   if (ctx.permission !== 'admin') return apiError('Bulk media changes require admin permission.', 403);
-  if (ctx.site.publishing_mode === 'customer_git') return apiResponse(ctx, { ok: true, variants_pending: true, message: 'Finalize each direct upload using its finalize_url. Responsive variants are generated during the next publication.' });
+  if (usesCustomerPublishing(ctx.site)) return apiResponse(ctx, { ok: true, variants_pending: true, message: 'Finalize each direct upload using its finalize_url. Responsive variants are generated during the next publication.' });
 
   const accountId = process.env.R2_ACCOUNT_ID;
   const bucket = process.env.R2_BUCKET;

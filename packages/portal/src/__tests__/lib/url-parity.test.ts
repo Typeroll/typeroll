@@ -396,7 +396,7 @@ describe('runSiteParityCheck evidence', () => {
     const store = getStore();
     const site = {
       id: SITE, name: 'Parity', hosting_adapter: 'cloudflare',
-      hosting_config: { fallback_subdomain: 'mysite.sites.example.com' },
+      domain: 'mysite.sites.example.com', domain_status: 'live',
       created_at: '2026-09-06T00:00:00.000Z',
     } satisfies Site;
     await store.setDoc(paths.site(ORG, SITE), site);

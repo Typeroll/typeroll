@@ -8,7 +8,8 @@ import { getStore } from '../../lib/datastore';
 import { workPath, type ScheduledWork } from '../../lib/scheduling/index';
 import { executeScheduledWork } from '../../lib/scheduling/worker';
 
-const mocks = vi.hoisted(() => ({ execute: vi.fn(), ready: vi.fn() }));
+const mocks = vi.hoisted(() => ({ execute: vi.fn(), ready: vi.fn(), customer: vi.fn() }));
+vi.mock('../../lib/publishing/customer-runner', () => ({ executeCustomerPublication: mocks.customer }));
 vi.mock('../../lib/deploy/queue', async original => ({ ...await original<object>(), executeDeployJob: mocks.execute }));
 vi.mock('../../lib/publishing/readiness', async original => {
   const actual = await original<typeof import('../../lib/publishing/readiness')>();
@@ -27,6 +28,7 @@ beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore();
   mocks.execute.mockReset().mockResolvedValue('ran');
   mocks.ready.mockReset().mockResolvedValue({ ready: true });
+  mocks.customer.mockReset();
   await getStore().setDoc(paths.site(ORG, SITE), { name: 'Site' });
   await getStore().setDoc(jobPath, { version_id: MAIN_VERSION_ID, environment: 'production', status: 'queued', started_at: new Date().toISOString() });
 });
@@ -58,11 +60,13 @@ describe('enqueue', () => {
     expect(await entry()).toBeNull();
   });
 
-  it('refuses a site still in managed publishing with the migration it needs', async () => {
+  it.each([undefined, 'managed'])('requires the customer publishing setup of a site whose stored mode is %s', async mode => {
     mocks.ready.mockImplementation((await vi.importActual<typeof import('../../lib/publishing/readiness')>('../../lib/publishing/readiness')).assertPublishingReady);
-    await getStore().updateDoc(paths.site(ORG, SITE), { publishing_mode: 'managed' });
-    await expect(getDeployQueue().enqueue(args)).rejects.toMatchObject({ status: 409, code: 'publishing_setup_required',
-      required: expect.arrayContaining([expect.objectContaining({ code: 'managed_publishing_migration_required' })]) });
+    if (mode) await getStore().updateDoc(paths.site(ORG, SITE), { publishing_mode: mode });
+    const refusal = await getDeployQueue().enqueue(args).then(() => null, error => error);
+    expect(refusal).toMatchObject({ status: 409, code: 'publishing_setup_required' });
+    expect(refusal.required.length).toBeGreaterThan(0);
+    expect(refusal.required.map((item: { code: string }) => item.code)).not.toContain('managed_publishing_migration_required');
     expect(await entry()).toBeNull();
   });
 
@@ -106,7 +110,7 @@ describe('delivery', () => {
     expect(await getStore().getDoc(workPath(jobPath, 'publication'))).toMatchObject({ kind: 'publication' });
   });
 
-  it('never restarts a managed job that is already running, or a finished one', async () => {
+  it('never restarts a job that is already running, or a finished one', async () => {
     await getDeployQueue().enqueue(args);
     await getStore().updateDoc(jobPath, { status: 'running' });
     await executeScheduledWork(id, (await entry())!.generation);
@@ -120,16 +124,10 @@ describe('delivery', () => {
 describe('execution', () => {
   const actual = () => vi.importActual<typeof import('../../lib/deploy/queue')>('../../lib/deploy/queue');
 
-  it('fails a managed-mode job with a named error instead of building it in the portal', async () => {
-    await getStore().updateDoc(paths.site(ORG, SITE), { publishing_mode: 'managed' });
+  it.each([undefined, 'managed', 'customer_git'])('publishes a site whose stored mode is %s through customer publishing', async mode => {
+    if (mode) await getStore().updateDoc(paths.site(ORG, SITE), { publishing_mode: mode });
+    mocks.customer.mockResolvedValueOnce('ran');
     expect(await (await actual()).executeDeployJob(args)).toBe('ran');
-    expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'failed', phase: 'failed',
-      failure: { code: 'managed_publishing_migration_required' }, error: expect.stringContaining('Migrate it to your organization') });
-  });
-
-  it('leaves a finished managed-mode job as it is', async () => {
-    await getStore().updateDoc(jobPath, { status: 'succeeded', finished_at: '2026-01-01T00:00:00.000Z' });
-    expect(await (await actual()).executeDeployJob(args)).toBe('ran');
-    expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'succeeded', finished_at: '2026-01-01T00:00:00.000Z' });
+    expect(mocks.customer).toHaveBeenCalledExactlyOnceWith(args);
   });
 });

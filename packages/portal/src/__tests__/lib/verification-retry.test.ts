@@ -49,7 +49,7 @@ it('rejects a superseded publication both at admission and during execution', as
 
 it('cannot reinterpret a verification retry as a build after the publishing mode changes', async () => {
   await retryPublicationVerification('org', 'site', 'job', 'main');
-  await getStore().updateDoc(paths.site('org', 'site'), { publishing_mode: 'managed' });
+  await getStore().updateDoc(paths.site('org', 'site'), { publishing_mode: 'hosted' });
   await expect(assertVerificationRetry('org', 'site', (await getStore().getDoc<any>(path)), true)).rejects.toMatchObject({ code: 'verification_retry_unavailable' });
 });
 

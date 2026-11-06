@@ -267,7 +267,7 @@ describe('browse preview route — per-mode isolation', () => {
   it('only offers a live banner link after the saved page has been deployed', async () => {
     const { getStore } = await import('../../lib/datastore');
     const store = getStore();
-    await store.updateDoc(paths.site('default', 'mysite'), { domain: 'example.com' });
+    await store.updateDoc(paths.site('default', 'mysite'), { domain: 'example.com', domain_status: 'live' });
     await store.updateDoc(paths.page('default', 'mysite', 'home'), { date_updated: '2026-09-07T10:00:00Z' });
     expect(await (await call(`?${PREVIEW_FRAME}`)).text()).not.toContain('Open live');
     await store.setDoc(paths.version('default', 'mysite', 'main'), {

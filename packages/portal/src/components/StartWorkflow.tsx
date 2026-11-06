@@ -62,9 +62,9 @@ const fieldsByWorkflow: Partial<Record<WorkflowType, FieldDef[]>> = {
       name: 'target_origin',
       label: 'Origin to check (optional)',
       type: 'text',
-      placeholder: 'https://mysite.sites.typeroll.com',
+      placeholder: 'https://www.example.com',
       optional: true,
-      help: 'Defaults to this site\'s fallback subdomain — the right target before DNS is switched over. Override to check the live domain after cutover.',
+      help: 'Defaults to this site\'s live domain. Before DNS is switched over, enter the temporary address the site publishes to.',
     },
     {
       name: 'source_origin',

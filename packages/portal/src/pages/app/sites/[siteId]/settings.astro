@@ -3,13 +3,12 @@ import { SITE_SETTINGS_SECTIONS, isSiteSettingsSection } from '../../../../lib/s
 import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
-import { TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
+import { TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, usesCustomerPublishing, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
 import TypographyPreview from '../../../../components/TypographyPreview';
 import OnColorFields from '../../../../components/OnColorFields';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
-import ManagedPublishingMigration from '../../../../components/ManagedPublishingMigration';
 import PublishingDomains from '../../../../components/PublishingDomains';
 import { organizationMembership } from '../../../../lib/organization-session';
 
@@ -55,8 +54,7 @@ const domainBlocksArchiving =
   <section data-settings-section="publishing" hidden={section !== 'publishing'} class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
     <h2 style="font-size: 1.125rem;">Publishing</h2>
     <p>GitHub and media are shared by the organization. Hosting Groups connect the accounts that host its sites. The organization manages the shared build engine.</p>
-    {site.publishing_mode === 'customer_git' && <SiteHostingGroup siteId={siteId} client:load />}
-    {site.publishing_mode !== 'customer_git' && site.hosting_adapter === 'cloudflare' && site.hosting_config?.pages_project && canManagePublishing && <ManagedPublishingMigration siteId={siteId} client:load />}
+    {usesCustomerPublishing(site) && <SiteHostingGroup siteId={siteId} client:load />}
     {canManagePublishing ? <div><a class="btn" href="/app/settings/publishing">Open Publishing</a></div> :
       <p class="muted">An owner or admin of this site's organization manages its publishing accounts.</p>}
   </section>
@@ -68,7 +66,7 @@ const domainBlocksArchiving =
     must walk through pending → verified → live. See
     docs/domain-lifecycle-plan.md.
   -->
-  {site.publishing_mode === 'customer_git' ? <PublishingDomains siteId={siteId} client:load /> : <div class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
+  {usesCustomerPublishing(site) ? <PublishingDomains siteId={siteId} client:load /> : <div class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
     <h2 style="font-size: 1.125rem;">Custom domain</h2>
     <DomainManager
       client:load
@@ -118,7 +116,7 @@ const domainBlocksArchiving =
       <div class="field">
         <label for="setting-staging_url">Staging URL <span class="muted">(optional)</span></label>
         <input id="setting-staging_url" name="staging_url" value={site.staging_url ?? ''} placeholder="https://staging.example.com" />
-        <p class="muted text-sm">Where preview deploys go before promotion to the live domain. Defaults to the fallback subdomain.</p>
+        <p class="muted text-sm">Where preview deploys go before promotion to the live domain.</p>
       </div>
     </div>
 

@@ -74,28 +74,10 @@ export async function createSiteWithWorkflow(input: {
   const store = getStore();
   const { siteId, site: reservedSite } = await reserveSite(orgId, request.name, { id: request.id, language: request.language });
 
-  let hostingConfig: Site['hosting_config'] | undefined;
-  try {
-    const { provisionSiteHosting } = await import('../hosting/site-provisioning');
-    const result = await provisionSiteHosting(orgId, siteId);
-    if (result) {
-      hostingConfig = {
-        pages_project: result.pagesProject,
-        fallback_subdomain: result.fallbackSubdomain ?? undefined,
-      };
-    }
-  } catch (e) {
-    console.error(`[create-and-${request.kind === 'migration' ? 'migrate' : 'plan'}] CF provisioning failed for ${siteId}:`, e);
-  }
-
   const site: Omit<Site, 'id'> = {
     ...reservedSite,
     name: request.name,
     hosting_adapter: 'cloudflare',
-    hosting_config: hostingConfig,
-    staging_url: hostingConfig?.fallback_subdomain
-      ? `https://${hostingConfig.fallback_subdomain}`
-      : undefined,
     ...(request.kind === 'migration' ? { source_wp_url: request.wp_url } : {}),
     created_at: new Date().toISOString(),
   };

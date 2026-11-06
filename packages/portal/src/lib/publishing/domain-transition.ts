@@ -5,7 +5,7 @@ import { cloudflareClient } from './cloudflare-oauth';
 import { hostingDns } from './hosting-dns';
 import { preparePagesDomain, validationWindowAllowed } from './domain-provider';
 import { siteHostingGroup } from './hosting-groups';
-import { paths, type DeployJob, type Site } from '@typeroll/shared';
+import { paths, usesCustomerPublishing, type DeployJob, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getDeployQueue } from '../deploy/queue';
 import { getSiteDomains } from './domain-config';
@@ -45,7 +45,7 @@ export async function prepareDomainTransition(orgId: string, siteId: string, inp
     store.getDoc<Site>(paths.site(orgId, siteId)), getSiteDomains(orgId, siteId),
     store.getDoc<any>(`${paths.site(orgId, siteId)}/publishing_targets/main`), store.listDocs<DeployJob>(paths.deploys(orgId, siteId)),
   ]);
-  if (site?.publishing_mode !== 'customer_git') throw new ConnectionError('This site does not use customer publishing.', 409);
+  if (!site || !usesCustomerPublishing(site)) throw new ConnectionError('This site does not use customer publishing.', 409);
   if (domains.revision !== input.revision) throw new ConnectionError('Domain settings changed. Reload before preparing.', 409, 'domain_revision_conflict');
   if (domains.state === 'distributing') throw new ConnectionError('The traffic switch is already in progress.', 409, 'domain_cutover_in_progress');
   if (!target?.last_publication?.snapshot_job_id) throw new ConnectionError('Publish the site once before preparing a domain-only change. Normal publication uses the current or temporary address.', 409, 'first_publication_required');

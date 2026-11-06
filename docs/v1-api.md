@@ -464,8 +464,8 @@ Reverted content edits disappear from the net change list; changed publication
 timestamps remain separately reported as `metadata_only` because the renderer
 may use them in sitemap or page metadata.
 
-`comparison` is `verified_snapshot` or `baseline_unavailable`; historical,
-managed and domain-only publications without the source fingerprint snapshot
+`comparison` is `verified_snapshot` or `baseline_unavailable`; historical
+and domain-only publications without the source fingerprint snapshot
 cannot establish this baseline. A subsequent successful customer content
 publication records it. Failed and dry-run jobs never become the baseline.
 Explicitly requesting an unavailable version returns 404 instead of comparing

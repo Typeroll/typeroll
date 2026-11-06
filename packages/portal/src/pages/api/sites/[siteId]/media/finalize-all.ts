@@ -6,6 +6,7 @@
 // can do a lot of R2 work.
 
 import type { APIRoute } from 'astro';
+import { usesCustomerPublishing } from '@typeroll/shared';
 import { requireSiteAccess, requirePermission, json } from '../../../../../lib/access';
 import { finalizeAllMedia } from '../../../../../lib/media-finalize';
 
@@ -16,7 +17,7 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
   if (!adminCheck.ok) return adminCheck.response;
   const { site, owner_org_id } = guard.value;
 
-  if (site.publishing_mode === 'customer_git') return json({ ok: true, variants_pending: true, message: 'Responsive variants are generated during the next publication.' });
+  if (usesCustomerPublishing(site)) return json({ ok: true, variants_pending: true, message: 'Responsive variants are generated during the next publication.' });
 
   const accountId = process.env.R2_ACCOUNT_ID;
   const bucket = process.env.R2_BUCKET;

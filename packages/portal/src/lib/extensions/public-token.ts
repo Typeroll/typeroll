@@ -1,5 +1,6 @@
 import {
   paths,
+  usesCustomerPublishing,
   type ExtensionInstallation,
   type Site,
 } from '@typeroll/shared';
@@ -16,7 +17,8 @@ export class PublicExtensionTokenError extends Error {
   }
 }
 
-function siteOrigins(site: Site, siteId: string): Set<string> {
+/** The addresses of a hosted site. */
+function siteOrigins(site: Site): Set<string> {
   const origins = new Set<string>();
   const add = (raw?: string | null) => {
     if (!raw) return;
@@ -30,16 +32,14 @@ function siteOrigins(site: Site, siteId: string): Set<string> {
   add(site.domain);
   add(site.hosting_config?.fallback_subdomain);
   add(site.staging_url);
-  const baseDomain = (process.env.SITES_BASE_DOMAIN ?? '')
-    .replace(/^https?:\/\//, '')
-    .replace(/\/$/, '');
-  if (baseDomain) add(`${site.slug ?? siteId}.${baseDomain}`);
   return origins;
 }
 
 export async function extensionSiteOrigins(orgId: string, siteId: string): Promise<Set<string>> {
   const site = await getStore().getDoc<Site>(paths.site(orgId, siteId));
-  return site?.publishing_mode === 'customer_git' ? new Set(await publishingRuntimeOrigins(orgId, siteId)) : site ? siteOrigins(site, siteId) : new Set();
+  if (!site) return new Set();
+  // Customer publishing allows only byte-verified deployment origins; a hosted site its own addresses.
+  return usesCustomerPublishing(site) ? new Set(await publishingRuntimeOrigins(orgId, siteId)) : siteOrigins(site);
 }
 
 export async function publicExtensionCors(args: {

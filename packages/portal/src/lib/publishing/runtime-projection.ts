@@ -7,7 +7,7 @@ import { resolveAppFormEndpoint } from '../apps/form-endpoint';
 import { parsePublicHttpsUrl } from '../extensions/public-http';
 import { publicTurnstileSiteKey } from '../forms/turnstile';
 
-/** Reuse the same public runtime contracts as preview and managed builds. No action credentials cross this boundary. */
+/** Reuse the same public runtime contracts as preview. No action credentials cross this boundary. */
 export async function publicationRuntime(orgId: string, siteId: string, versionId = 'main') {
   const store = getStore();
   const [storedApps, storedForms, extensions, site] = await Promise.all([

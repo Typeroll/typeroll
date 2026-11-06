@@ -39,14 +39,14 @@ describe('public deployment readiness', () => {
     const current = await seed(), store = getStore();
     const version = () => store.getDoc<SiteVersion>(paths.version(org, site, 'main'));
     const page = { slug: 'home', status: 'published' as const, date_updated: oldTime };
-    expect(pageLiveUrl({ domain: 'public.example.com' }, await version(), page)).toBeNull();
+    expect(pageLiveUrl({ domain: 'public.example.com', domain_status: 'live' }, await version(), page)).toBeNull();
     const pending = await refreshDeploymentAvailability(org, site, current, { probe: async (_origin, route) => route === '/' });
     expect(pending.status).toBe('running');
     expect((await version())?.last_deployed_at).toBe(oldTime);
     const ready = await refreshDeploymentAvailability(org, site, current, { probe: async () => true, now: () => '2026-09-07T11:02:00Z' });
     expect(ready.status).toBe('succeeded');
     expect((await version())?.last_deployed_content_at).toBe(cutoff);
-    expect(pageLiveUrl({ domain: 'public.example.com' }, await version(), page)).toBe('https://public.example.com/');
+    expect(pageLiveUrl({ domain: 'public.example.com', domain_status: 'live' }, await version(), page)).toBe('https://public.example.com/');
   });
   it('resumes verification in bounded batches after the worker has finished', async () => {
     const current = await seed({ availability: { ...job.availability!, paths: Array.from({ length: 10 }, (_, i) => `/page-${i}/`) } });

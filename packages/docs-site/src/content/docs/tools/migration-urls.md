@@ -136,7 +136,7 @@ script and follows it, so the URL counts as `ok_redirect` with
 
 A timeout, network error, 429 or 5xx, including one on a later hop of a redirect, is retried up to twice more at a slower pace with a longer timeout; `attempts` appears only on a result that took more than one request and shows how many it took. When more than 60 URLs and more than a quarter of all URLs fail, the host is treated as down and the errors are reported without retries.
 
-By default it tests the site's fallback subdomain, which is the right target **while your real domain still points at the old host**. That's the point: you find and fix the gaps before anything is switched over, with the old site still serving.
+By default it tests the site's live domain. **While your real domain still points at the old host**, pass the temporary address the site publishes to as `target_origin`. That's the point: you find and fix the gaps before anything is switched over, with the old site still serving.
 
 It also stamps verification onto the redirect rules it exercised, so you can see which ones have actually been proven to work.
 

@@ -72,7 +72,7 @@ permission receives HTTP 403. Over REST this is
 | `default_og_image`         | string   | Fallback `og:image` URL for pages without their own                                                          |
 | `twitter_handle`           | string   | X/Twitter handle for `twitter:site`; a leading `@` is removed                                                |
 | `organization`             | object   | Organization JSON-LD; see [`organization`](#organization-object)                                             |
-| `staging_url`              | string   | Staging environment URL, reported as `urls.staging`                                                          |
+| `staging_url`              | string   | Staging environment URL, stored for reference                                                                |
 | `trailing_slash`           | string   | `always`, `never`, or `ignore`                                                                               |
 | `iframe_allowed_hosts`     | string[] | Exact hosts allowed in embedded content                                                                      |
 | `image_sizes_default`      | string   | Default responsive-image `sizes` hint                                                                        |
@@ -402,15 +402,15 @@ anything shipped", use `list_deploys`.
 
 ## `create_site`
 
-Bootstraps a whole new site and provisions the hosting project and fallback
-subdomain. Over REST this is `POST /api/v1/sites`. It accepts these fields and
+Bootstraps a whole new site that publishes through the Organization's
+[publishing setup](../../guides/customer-publishing/). Over REST this is `POST /api/v1/sites`. It accepts these fields and
 answers `400` naming any other field:
 
 | Field      | Required | Meaning                                                                                                                                                                                                                                           |
 | ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`     | yes      | Display name.                                                                                                                                                                                                                                     |
 | `id`       | no       | Site id: 3–48 lowercase letters, digits and `-`, such as `lakeside-cafe`. Used exactly; `409` with code `site_id_taken` when the Organization already has it. Without it, the id is the kebab-case name, with a random suffix when that is taken. |
-| `domain`   | no       | Real hostname, such as `lakesidecafe.se`. Starts the "point your DNS" flow; it is not live until DNS verifies.                                                                                                                                    |
+| `domain`   | no       | Real hostname, such as `lakesidecafe.se`. Saved as the future website host in Publishing domains; it is not live until a verified publication switches traffic.                                                                                   |
 | `language` | no       | Content language as a BCP 47 tag, such as `sv` or `nl-BE`, checked like `update_site`'s. Sets `<html lang>` from the first build. Default `en`.                                                                                                   |
 
 ```
@@ -433,19 +433,12 @@ on the portal's **New site** page. See
 
 Changes a site's name, slug, domain, language or `ai_scripts_enabled`. Over REST
 this is `PATCH /api/v1/sites/{siteId}`. Changing `slug` or `domain` requires
-admin permission on the site (`403` otherwise): the slug determines the fallback
-subdomain and the domain becomes the canonical URL of every build. Name and
-language need write permission.
+admin permission on the site (`403` otherwise): the domain becomes the canonical
+URL of every build. Name and language need write permission.
 
-The slug is uniqueness-checked within the Organization, and its fallback
-subdomain is reserved across the whole platform: a slug whose fallback
-subdomain another site already uses is refused with `409` and code
-`slug_unavailable`, and the site keeps its current slug. Typeroll never
-re-points a fallback subdomain whose DNS record or hosting attachment belongs
-to another site. Sites that publish to the Organization's own Git repository
-get no platform fallback subdomain. Resubmitting the current slug is idempotent
-and repairs missing fallback hosting coordinates, including the Pages project
-and DNS record, when the hosting provider is configured.
+The slug is a URL-stable identifier, uniqueness-checked within the
+Organization. Changing it changes no hosting or DNS: website and media hosts
+are managed in [Website and media domains](../../publishing/domains/).
 
 ### Allow AI to write block scripts
 

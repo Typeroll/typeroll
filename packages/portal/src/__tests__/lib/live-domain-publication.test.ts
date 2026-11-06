@@ -98,8 +98,8 @@ it.each([['API/MCP', deployApi, 202], ['UI', deployUi, 200]] as const)('%s publi
   expect(enqueue).toHaveBeenCalledTimes(1);
 });
 
-it('treats a managed site with a live domain as cut over', async () => {
-  await getStore().setDoc(paths.site('org', 'site'), { name: 'Managed', publishing_mode: 'managed', domain: 'moveria.es', domain_status: 'live' });
+it('treats a site with the former managed mode and a live domain as cut over, like any customer-published site', async () => {
+  await getStore().setDoc(paths.site('org', 'site'), { name: 'Older', publishing_mode: 'managed', domain: 'moveria.es', domain_status: 'live' });
   expect(await publicationTargets('org', 'site')).toMatchObject({ production: true, live_domains: ['https://moveria.es'] });
   expect(await publicationTargets('org', 'site', 'main', 'staging')).toMatchObject({ production: false, live_domains: [] });
   await getStore().updateDoc(paths.site('org', 'site'), { domain_status: 'pending' });

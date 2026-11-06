@@ -169,13 +169,11 @@ where it stopped; rerunning a step is harmless. Then import the users from
 `$RUN/users.json` (`importIdentityExport`) and read the identity report
 (`created`, `existing`, `accountsCreated`, `skipped`).
 
-The import must end with `conflicts: []` and `errors: []`. `managedSites`
-lists sites whose publishing mode is still `managed` (or unset): the Workers
-release cannot publish them. Run the rehearsal import (`--dry-run`) before the
-window; move every listed site to customer publishing first
-(`check_managed_site_migration`, then `migrate_managed_site_publishing`; a site
-without a custom domain needs its `publishing_mode` set to `customer_git`), so
-the list is empty in the window. On a fresh target
+The import must end with `conflicts: []` and `errors: []`. A site document
+without a publishing mode, or with the former `managed` one, is imported with
+`publishing_mode: "customer_git"`: it then publishes through its
+organization's accounts and needs the normal publishing setup like a new site.
+The read-compare applies the same rule. On a fresh target
 a conflict means data was written to the objects outside the import: stop and
 find out why before using `force`. `compressed` and `idMismatches` should be
 empty; both were known from the rehearsal.

@@ -17,6 +17,8 @@ const site = {
   domain_verified_at: '2026-01-01T00:00:00.000Z',
   created_at: '2026-01-01T00:00:00.000Z',
 } satisfies Site;
+// Only a site on the platform address has a fallback target with edge noindex protection.
+const platformSite = { ...site, publishing_mode: 'hosted' } satisfies Site;
 
 function mockFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
   const url = new URL(input instanceof Request ? input.url : input.toString());
@@ -33,7 +35,7 @@ function mockFetch(input: string | URL | Request, init?: RequestInit): Promise<R
 
 describe('indexing diagnostics', () => {
   it('separates fallback edge protection, document metadata and crawl policy', async () => {
-    const report = await diagnoseSiteIndexing(site, { site_name: 'Demo' } as never, {
+    const report = await diagnoseSiteIndexing(platformSite, { site_name: 'Demo' } as never, {
       fetchImpl: mockFetch as typeof fetch,
       validateDestination: async () => undefined,
       now: () => new Date('2026-09-06T08:00:00.000Z'),
@@ -55,7 +57,7 @@ describe('indexing diagnostics', () => {
 
   it('fails visibly when the documented fallback header is missing', async () => {
     const report = await diagnoseSiteIndexing(
-      { ...site, domain: undefined, domain_status: undefined },
+      { ...platformSite, domain: undefined, domain_status: undefined },
       { site_name: 'Demo', sitewide_noindex: true } as never,
       {
         fetchImpl: (async (input: string | URL | Request) => {
@@ -79,7 +81,7 @@ describe('indexing diagnostics', () => {
 
   it('reports a host that does not resolve yet instead of a bare ENOTFOUND', async () => {
     const notFound = Object.assign(new Error('getaddrinfo ENOTFOUND demo.sites.example.test'), { code: 'ENOTFOUND' });
-    const report = await diagnoseSiteIndexing({ ...site, domain: undefined, domain_status: undefined }, { site_name: 'Demo' } as never, {
+    const report = await diagnoseSiteIndexing({ ...platformSite, domain: undefined, domain_status: undefined }, { site_name: 'Demo' } as never, {
       fetchImpl: mockFetch as typeof fetch,
       validateDestination: async () => { throw notFound; },
     });
@@ -98,7 +100,7 @@ describe('indexing diagnostics', () => {
   it('validates every redirect destination before following it', async () => {
     const visited: string[] = [];
     const report = await diagnoseSiteIndexing(
-      { ...site, domain: undefined, domain_status: undefined },
+      { ...platformSite, domain: undefined, domain_status: undefined },
       { site_name: 'Demo' } as never,
       {
         fetchImpl: (async (input: string | URL | Request) => {
@@ -127,7 +129,7 @@ describe('indexing diagnostics', () => {
       vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: '8.8.8.8', family: 4 }] as never);
       const fetched: string[] = [];
       const report = await diagnoseSiteIndexing(
-        { ...site, domain: undefined, domain_status: undefined },
+        { ...platformSite, domain: undefined, domain_status: undefined },
         { site_name: 'Demo' } as never,
         {
           fetchImpl: (async (input: string | URL | Request) => {
@@ -234,5 +236,6 @@ it('reports a deactivated Cloudflare Pages custom domain on the live host as an 
   expect(report.ready).toBe(false);
   expect(report.targets.find(target => target.kind === 'production')).toMatchObject({ matches_expected: false,
     issues: [expect.stringContaining('Cloudflare Pages custom domain www.example.test is deactivated, not active. Retry validation in Publishing.')] });
-  expect(report.targets.find(target => target.kind === 'fallback')?.matches_expected).toBe(true);
+  // A customer-published site has no platform fallback to probe.
+  expect(report.targets.map(target => target.kind)).toEqual(['production']);
 });

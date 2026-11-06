@@ -198,24 +198,19 @@ it('preserves a new migration request made during the empty scan', async () => {
   expect(await store.getDoc<any>(path)).toMatchObject({ request_id: 'new-request', state: 'queued' });
 });
 
-it('keeps existing managed sites and their media unchanged until explicitly migrated', async () => {
+it('migrates the media of a site with the former managed mode like any customer-published site, without changing the site', async () => {
   await getStore().setDoc(paths.site('org', 'legacy'), {
     name: 'Legacy site', publishing_mode: 'managed', domain: 'www.example.com',
     hosting_config: { pages_project: 'existing-live-project' },
   });
-  await getStore().setDoc(`${paths.media('org', 'legacy')}/image`, { filename: 'old.png', r2_key: 'old', cdn_url: 'https://cdn.example.com/old.png' });
-  const send = vi.spyOn(S3Client.prototype, 'send').mockRejectedValue(new Error('Legacy media must remain untouched'));
+  const { usesPrivateMedia } = await import('../../lib/publishing/media-policy');
+  expect(await usesPrivateMedia('org', (await getStore().getDoc<any>(paths.site('org', 'legacy'))))).toBe(true);
   await requestOrganizationMediaMigration('org'); await executeMediaMigration('org');
-  await runMediaMigrationBatch('org', 'site'); await runMediaMigrationBatch('org', 'legacy');
-  expect(send).not.toHaveBeenCalled();
   expect(await getStore().getDoc(paths.site('org', 'legacy'))).toMatchObject({
     publishing_mode: 'managed', domain: 'www.example.com',
     hosting_config: { pages_project: 'existing-live-project' },
   });
   expect((await getSiteDomains('org', 'legacy')).desired.website_host).toBeNull();
-  const { usesPrivateMedia } = await import('../../lib/publishing/media-policy');
-  expect(await usesPrivateMedia('org', (await getStore().getDoc<any>(paths.site('org', 'legacy'))))).toBe(false);
-  expect((await mediaMigrationStatus('org'))?.state).toBe('complete');
 });
 
 const fixtureMedia = (id: string) => ({ filename: `${id}.png`, mime_type: 'image/png', cdn_url: `https://old.example.com/${id}.png`, r2_key: id, sha256: sha,

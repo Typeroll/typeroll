@@ -7,8 +7,8 @@ Organization storage migration retains its cursor and per-file outcomes, verifie
 copies before switching references, and drains independent siblings after failure.
 
 Storage migration is one job per site (`publishing_media_migrations`, keyed by
-organization and site). Site actions (upload, finalize, import retry, managed-site
-opt-in) queue only their own site. Only the first time organization storage
+organization and site). Site actions (upload, finalize, import retry) queue only
+their own site. Only the first time organization storage
 becomes ready does the organization job hand every site a job, in the worker,
 with a resumable site cursor and time budget. Site media does not depend on the
 organization's hosts: saving domains queues the organization job only when the

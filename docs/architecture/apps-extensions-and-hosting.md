@@ -122,12 +122,10 @@ and static metadata. It does not generate per-site Cloudflare Pages Functions
 for Extensions, Forms or Directory. Dynamic calls go to their owning API
 directly.
 
-Staging index protection is unrelated to Apps and Extensions. Hosted
-`*.sites.typeroll.com` traffic must receive `X-Robots-Tag: noindex, nofollow`
-from a single zone-level edge rule owned by the Typeroll hosting platform.
-Self-host operators who offer a fallback domain configure the equivalent rule
-on their own fallback zone. Customer production domains keep their normal
-static `robots.txt`.
+Temporary-address index protection is unrelated to Apps and Extensions: a
+publication to a site's temporary or version address carries
+`X-Robots-Tag: noindex` until the site moves to its own website host. Customer
+production domains keep their normal static `robots.txt`.
 
 ## Ownership matrix
 

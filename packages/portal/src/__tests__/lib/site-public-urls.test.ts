@@ -59,10 +59,13 @@ describe('publicUrlsFor — production (visit-this URL) gates on DNS; canonical 
     expect(urls.domain_status).toBe('pending');
   });
 
-  it('production becomes the domain once DNS is verified (no separate activation), pending_domain clears', () => {
-    const urls = publicUrlsFor(site({ domain: 'autopilot.se', domain_status: 'verified' }));
+  it('production becomes the domain once a publication made it live, pending_domain clears', () => {
+    expect(publicUrlsFor(site({ domain: 'autopilot.se', domain_status: 'verified' })).production).toBeNull();
+    const urls = publicUrlsFor(site({ domain: 'autopilot.se', domain_status: 'live' }));
     expect(urls.production).toBe('https://autopilot.se');
     expect(urls.pending_domain).toBeNull();
+    // A site without a publishing mode has no platform fallback.
+    expect(publicUrlsFor(site({ hosting_config: { fallback_subdomain: 'autopilot.sites.example.org' } })).fallback).toBeNull();
   });
 
   it('production stays null when DNS failed; canonical is still the declared domain', () => {

@@ -2,10 +2,9 @@
  * Centralised URL composition for live deploys + in-portal previews.
  *
  * The "live" base for a given site+version is:
- *   - main  → https://{site.domain} when the customer has set their real
- *             domain; otherwise the auto-provisioned fallback subdomain
- *             (e.g. {slug}.sites.typeroll.com) so they can preview the
- *             deployed site before DNS cutover. Null when neither exists.
+ *   - main  → https://{site.domain} once that domain is live; a hosted
+ *             site otherwise answers on its platform address. Null when
+ *             neither exists.
  *   - branch → version.deploy_url if the branch has been deployed
  *             somewhere, else null (no live URL exists yet).
  *
@@ -51,15 +50,12 @@ export function liveBaseFor(site: SiteUrlInput, version: SiteVersion | null): st
   if (version?.distributing_deploy_id) return null;
   if (!version?.last_deployed_at || !Number.isFinite(Date.parse(version.last_deployed_at))) return null;
   if (!version || version.kind === 'main' || version.id === MAIN_VERSION_ID) {
-    if (site.publishing_mode === 'customer_git') return site.domain_status === 'live' && site.domain ? `https://${site.domain}` : null;
+    if (site.domain_status === 'live' && site.domain) return `https://${site.domain}`;
     // A hosted site answers on its platform address until a custom domain is launched.
     if (site.publishing_mode === 'hosted') {
-      if (site.domain_status === 'live' && site.domain) return `https://${site.domain}`;
       return site.hosting_config?.fallback_subdomain ? `https://${site.hosting_config.fallback_subdomain}` : null;
     }
-    if (site.domain) return `https://${site.domain}`;
-    const fallback = site.hosting_config?.fallback_subdomain;
-    return fallback ? `https://${fallback}` : null;
+    return null;
   }
   return version.deploy_url ? trimRight(version.deploy_url) : null;
 }

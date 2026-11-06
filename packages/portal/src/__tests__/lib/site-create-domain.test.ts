@@ -1,7 +1,7 @@
 // Regression tests for the "fresh site shows ● Live — DNS verified" bug.
 //
 // The create-site form used to write the typed domain raw onto the Site
-// doc (no domain_status, no CF Pages registration); toResponse's legacy
+// doc (no domain_status, no registration); toResponse's legacy
 // `?? 'live'` fallback then presented the unregistered, DNS-less domain
 // as verified/live in DomainManager (observed with gruppsupporter.se).
 //
@@ -9,13 +9,12 @@
 //   1. POST /api/sites/create with a domain saves it as the future website
 //      host in Publishing (prepared and verified there) — never an implied
 //      live domain — and drops an invalid one.
-//   2. getDomainState's legacy fallback only reads a missing
+//   2. getDomainState's legacy fallback (hosted sites) only reads a missing
 //      domain_status as 'live' when domain_verified_at proves DNS was
 //      once confirmed.
 //
-// CloudflareApi is mocked like in site-domain.test.ts; the fixtures
-// backend handles persistence. The create route runs under the dev
-// session (orgId 'default') since Firebase isn't configured in tests.
+// The fixtures backend handles persistence. The create route runs under
+// the dev session (orgId 'default') since Firebase isn't configured in tests.
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -23,32 +22,6 @@ import { paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 
 const ORG = 'default'; // dev-session org
-
-let cfCalls: Array<{ method: string; args: unknown[] }>;
-
-vi.mock('../../lib/hosting/cloudflare-api', async () => {
-  const actual = await vi.importActual<typeof import('../../lib/hosting/cloudflare-api')>(
-    '../../lib/hosting/cloudflare-api',
-  );
-  class FakeCloudflareApi {
-    async createPagesProject(...args: unknown[]): Promise<void> {
-      cfCalls.push({ method: 'createPagesProject', args });
-    }
-    async attachCustomDomain(...args: unknown[]): Promise<void> {
-      cfCalls.push({ method: 'attachCustomDomain', args });
-    }
-    async removeCustomDomain(...args: unknown[]): Promise<void> {
-      cfCalls.push({ method: 'removeCustomDomain', args });
-    }
-    async getCustomDomainStatus(...args: unknown[]): Promise<unknown> {
-      cfCalls.push({ method: 'getCustomDomainStatus', args });
-      return null;
-    }
-    async getZoneId(): Promise<string> { return 'zone-1'; }
-    async upsertDnsRecord(): Promise<void> {}
-  }
-  return { ...actual, CloudflareApi: FakeCloudflareApi };
-});
 
 function fakeCookies(): { get: () => undefined } {
   // No session cookie + no FIREBASE_SERVICE_ACCOUNT → getSession returns
@@ -80,7 +53,6 @@ beforeEach(async () => {
   vi.resetModules();
   delete process.env.FIREBASE_SERVICE_ACCOUNT;
   delete process.env.SITES_BASE_DOMAIN;
-  cfCalls = [];
 });
 
 afterEach(() => {
@@ -97,8 +69,6 @@ describe('POST /api/sites/create with a domain', () => {
     const res = await postCreate({ name: 'Gruppsupporter', domain: 'gruppsupporter.se' });
     expect(res.status).toBe(302);
 
-    // Typeroll provisions nothing on its own Cloudflare account.
-    expect(cfCalls).toEqual([]);
     const site = await readSite('gruppsupporter');
     expect(site?.publishing_mode).toBe('customer_git');
     expect(site?.domain).toBeUndefined();
@@ -128,6 +98,7 @@ describe('getDomainState legacy fallback (missing domain_status)', () => {
     await getStore().setDoc(paths.site(ORG, 'legacy-bare'), {
       name: 'Legacy Bare',
       domain: 'gruppsupporter.se',
+      publishing_mode: 'hosted',
       hosting_adapter: 'cloudflare',
       created_at: new Date().toISOString(),
     } satisfies Partial<Site>);
@@ -145,6 +116,7 @@ describe('getDomainState legacy fallback (missing domain_status)', () => {
       name: 'Legacy Verified',
       domain: 'www.legacy.com',
       domain_verified_at: '2026-01-01T00:00:00.000Z',
+      publishing_mode: 'hosted',
       hosting_adapter: 'cloudflare',
       created_at: '2026-01-01T00:00:00.000Z',
     } satisfies Partial<Site>);
@@ -152,5 +124,20 @@ describe('getDomainState legacy fallback (missing domain_status)', () => {
     const { getDomainState } = await import('../../lib/site-domain');
     const state = await getDomainState(ORG, 'legacy-verified');
     expect(state?.status).toBe('live');
+  });
+});
+
+describe('custom-domain verbs for a site without a publishing mode', () => {
+  it('refuse it like any customer-published site and name the Publishing domains flow', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.site(ORG, 'older'), {
+      name: 'Older', domain: 'www.older.example', hosting_adapter: 'cloudflare', hosting_config: { pages_project: 'older' },
+      created_at: '2026-01-01T00:00:00.000Z',
+    } satisfies Partial<Site>);
+
+    const { getDomainState, requestDomain, removeDomain } = await import('../../lib/site-domain');
+    for (const call of [() => getDomainState(ORG, 'older'), () => requestDomain(ORG, 'older', 'www.older.example'), () => removeDomain(ORG, 'older')]) {
+      await expect(call()).rejects.toMatchObject({ status: 409, message: expect.stringContaining('/publishing/domains') });
+    }
   });
 });

@@ -10,7 +10,6 @@ import { getConnection, connectionSummary, openCredentials, ConnectionError } fr
 import type { CloudflareCredentials } from './cloudflare-connection';
 import { r2Endpoint } from '../r2-endpoint';
 
-import { adoptCustomerPublishingForMedia } from './media-policy';
 import { requiresSvgSanitization, withMediaExtension } from '../media/file-types';
 
 type Location = NonNullable<Media['storage']>;
@@ -73,10 +72,6 @@ export async function createMediaUpload(orgId: string, siteId: string, input: { 
       ContentType: input.contentType, ...(input.size ? { ContentLength: input.size } : {}) }), { expiresIn: uploadTtl });
     const base = process.env.PORTAL_PUBLIC_URL?.replace(/\/$/, '');
     if (!base) throw new ConnectionError('The administrator must configure the public portal address.', 503);
-    if (destination.provider === 'organization_r2' && await adoptCustomerPublishingForMedia(orgId, siteId)) {
-      const { requestMediaMigration } = await import('./media-migration');
-      await requestMediaMigration(orgId, siteId);
-    }
     const cdnUrl = `${base}/api/sites/${encodeURIComponent(siteId)}/media/${id}/content`;
     await getStore().createDocIfMissing(`${paths.media(orgId, siteId)}/${id}`, {
       filename, mime_type: input.contentType, size_bytes: input.size, alt_text: input.altText,

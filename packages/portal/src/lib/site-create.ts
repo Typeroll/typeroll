@@ -14,7 +14,6 @@ import type { Site } from '@typeroll/shared';
 import { getStore, generateDocId } from './datastore';
 import { randomMediaId } from './media-keys';
 import { defaultHeaderHtml, defaultFooterHtml } from './default-partials';
-import { provisionSiteHosting } from './hosting/site-provisioning';
 import { ConnectionError } from './publishing/connections';
 import { newSitePublishingMode } from './publishing/readiness';
 import { getSiteDomains, saveSiteDomains } from './publishing/domain-config';
@@ -76,7 +75,7 @@ export async function reserveSite(orgId: string, name: string, options: { id?: s
 /**
  * Bootstrap a new site under `orgId`. Returns the new site id + the stored
  * doc (with `id` injected). Throws only on unexpected datastore failures —
- * CF provisioning and domain declaration are best-effort and never block
+ * The hosted platform address and domain declaration are best-effort and never block
  * site creation (same posture as the original form route).
  */
 export async function createSite(input: CreateSiteInput): Promise<CreateSiteResult> {
@@ -97,18 +96,6 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
     } catch (e) {
       console.error(`[create-site] platform address failed for ${siteId}:`, e);
     }
-  } else {
-    try {
-      const result = await provisionSiteHosting(input.orgId, siteId);
-      if (result) {
-        hostingConfig = {
-          pages_project: result.pagesProject,
-          fallback_subdomain: result.fallbackSubdomain ?? undefined,
-        };
-      }
-    } catch (e) {
-      console.error(`[create-site] CF provisioning failed for ${siteId}:`, e);
-    }
   }
 
   // NOTE: `domain` is deliberately NOT written here — a bare domain with no
@@ -118,9 +105,6 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
     ...reservedSite,
     hosting_adapter: 'cloudflare',
     hosting_config: hostingConfig,
-    staging_url: hostingConfig?.fallback_subdomain && !hosted
-      ? `https://${hostingConfig.fallback_subdomain}`
-      : undefined,
     created_at: new Date().toISOString(),
   };
   await store.updateDoc(paths.site(input.orgId, siteId), site);

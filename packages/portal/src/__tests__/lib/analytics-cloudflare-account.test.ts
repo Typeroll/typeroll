@@ -1,7 +1,7 @@
 // Analytics (Cloudflare Web Analytics) lives in, and is read from, the
 // Cloudflare account that hosts the site: the Organization's Hosting Group
-// account for customer publishing, the installation's account for managed and
-// self-hosted sites. Every Cloudflare call here is mocked; the installation's
+// account for customer publishing (also for a site without a publishing
+// mode), the installation's account for a hosted site. Every Cloudflare call here is mocked; the installation's
 // account is configured in every test so that any fallback to it is caught.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -332,7 +332,7 @@ describe('Insights reads the account the beacon belongs to', () => {
     expect(outage).toMatchObject({ status: 'provider_error', reason: { code: 'analytics_provider_error' } });
   });
 
-  it('flags a beacon from another account, such as a site moved from managed hosting', async () => {
+  it('flags a beacon from another account, such as one saved while the installation account hosted the site', async () => {
     await customerSite();
     await oauthConnection(ANALYTICS_SCOPES);
     // Saved before this change: no recorded account, tag from the installation account.
@@ -359,10 +359,23 @@ describe('Insights reads the account the beacon belongs to', () => {
   });
 });
 
-describe('managed and self-hosted sites keep the installation account', () => {
-  it('provisions and reads with the installation account', async () => {
-    await (await store()).setDoc(paths.site(ORG, SITE), { name: 'Shop', domain: 'shop.example', hosting_config: { pages_project: 'p' } });
-    await oauthConnection(ANALYTICS_SCOPES); // an Organization connection must not be used for a managed site
+describe('the account that hosts the site', () => {
+  it.each([undefined, 'managed'])('uses the Hosting Group account for a site whose stored mode is %s', async mode => {
+    await customerSite();
+    await (await store()).updateDoc(paths.site(ORG, SITE), { publishing_mode: mode ?? null, hosting_config: { pages_project: 'p' } });
+    await oauthConnection(ANALYTICS_SCOPES);
+    const cf = cloudflare(call => call.method === 'POST' && call.url.endsWith(`/accounts/${ORG_ACCOUNT}/rum/site_info`)
+      ? ok(site(ORG_TAG, ORG_TOKEN, call.body.host)) : undefined);
+
+    const result = await save({}, cf.fetchImpl);
+    expect(result.setup).toMatchObject({ status: 'ready', account: { owner: 'organization', account_id: ORG_ACCOUNT, hosting_group_id: 'default' } });
+    expect(cf.calls[0]).toMatchObject({ auth: 'Bearer oauth-default', body: { host: 'www.shop.example' } });
+    expect(usedPlatform(cf.calls)).toBe(false);
+  });
+
+  it('provisions and reads a hosted site with the installation account', async () => {
+    await (await store()).setDoc(paths.site(ORG, SITE), { name: 'Shop', publishing_mode: 'hosted', domain: 'shop.example' });
+    await oauthConnection(ANALYTICS_SCOPES); // an Organization connection must not be used for a hosted site
     const cf = cloudflare(call => call.method === 'POST' && call.url.endsWith(`/accounts/${PLATFORM_ACCOUNT}/rum/site_info`) ? ok(site('5'.repeat(32), '6'.repeat(32), call.body.host))
       : call.url.endsWith('/graphql') ? traffic(3) : undefined);
 
@@ -375,10 +388,10 @@ describe('managed and self-hosted sites keep the installation account', () => {
     expect(cf.calls.every(call => call.auth === 'Bearer platform-token')).toBe(true);
   });
 
-  it('keeps accepting a pasted token without an installation account, and says Insights cannot read it', async () => {
+  it('keeps accepting a pasted token for a hosted site without an installation account, and says Insights cannot read it', async () => {
     vi.stubEnv('CLOUDFLARE_ACCOUNT_ID', '');
     vi.stubEnv('CLOUDFLARE_API_TOKEN', '');
-    await (await store()).setDoc(paths.site(ORG, SITE), { name: 'Shop', domain: 'shop.example' });
+    await (await store()).setDoc(paths.site(ORG, SITE), { name: 'Shop', publishing_mode: 'hosted', domain: 'shop.example' });
     const cf = cloudflare(() => undefined);
 
     const pasted = await save({ beacon_token: 'tok-xyz' }, cf.fetchImpl);

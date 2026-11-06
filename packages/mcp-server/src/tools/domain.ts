@@ -40,18 +40,6 @@ export const domainTools: ToolDef[] = [
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/domain-guide', args))),
   },
   {
-    name: 'check_managed_site_migration',
-    description: 'Verify migration of an existing static managed Pages site to connected Git publishing. Checks the original hosting account, project, domain and shared build engine. Returns a revision and previous live deployment; does not migrate or deploy.',
-    inputSchema: {},
-    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'publishing/managed-migration'))),
-  },
-  {
-    name: 'migrate_managed_site_publishing',
-    description: 'Explicitly migrate one managed Pages site to the connected GitHub organization and shared build engine using the revision from check_managed_site_migration. Requires site admin permission. Preserves the original hosting project, live domain and old media URLs, then queues verified media copying for eligible sites. Does not deploy; publish after media migration finishes.',
-    inputSchema: { revision: z.string() },
-    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'publishing/managed-migration', args))),
-  },
-  {
     name: 'read_organization_publishing_connections', noSite: true,
     description: 'Read the Organization\'s GitHub and Cloudflare publishing connections: status, revision (needed to change or disconnect), account identity, media_ready, media migration, github_setup (app_configured, encryption_available) and connect_urls. Requires an organization API key; never returns credentials. GitHub sign-in/App installation and Cloudflare OAuth need a person in a browser: give the user the matching connect_urls link (an organization owner or admin completes it), then read again. When GitHub is not connected, call diagnose_organization_github_connection to learn why and who must act; for Cloudflare, call diagnose_organization_cloudflare_connection. cloudflare_permissions lists, per Hosting Group, the optional capabilities of its Cloudflare connection (analytics_provisioning, analytics_reports, redirect_rules) with status available, approval_required, not_offered, unknown (API token) or connection_required, the exact missing_scopes, and permission_update: one "Approve update" at connect_url that an owner or admin approves once for every connection of the Organization using that Cloudflare account. Read it before update_app (Analytics) or set_publishing_domains (redirect_hosts).',
     inputSchema: {},
@@ -344,8 +332,7 @@ export const domainTools: ToolDef[] = [
   {
     name: 'remove_domain',
     description:
-      "Detach the custom domain from this site. Removes it from Cloudflare " +
-      "Pages and clears the site doc. The fallback subdomain remains. " +
+      "Detach the custom domain from this site and clear it from the site doc. " +
       "Use this when the customer wants to start over with a different " +
       "hostname or move the site to a different domain provider.",
     inputSchema: {},

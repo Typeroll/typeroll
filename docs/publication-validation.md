@@ -107,8 +107,7 @@ automatically sets FundraiserChart's constraints or republishes FundraiserChart.
 ## Limits
 
 The new gate covers customer-runner/frozen static publishing on both supported
-build providers. Standalone Astro commands and legacy managed publishing do not
-automatically run it. It is not a full Schema.org ontology or rich-results
+build providers. Standalone Astro commands do not automatically run it. It is not a full Schema.org ontology or rich-results
 validator, a semantic fact checker, external URL crawler or verified-bot test.
 Only deterministic phrase constraints supplement editorial heuristics; human
 review is still required for misleading promises. Dynamic client anchors and

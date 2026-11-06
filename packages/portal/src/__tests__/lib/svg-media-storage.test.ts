@@ -289,7 +289,8 @@ describe('platform storage routes', () => {
       params, cookies: { get: () => undefined }, locals: {} } as any) as Promise<Response>;
   }
   async function setup() {
-    await getStore().setDoc(paths.site('org', 'site'), { name: 'Synthetic', media_id: 'abcdefghij', created_at: new Date().toISOString() });
+    // Platform storage serves a hosted site whose organization has no media storage.
+    await getStore().setDoc(paths.site('org', 'site'), { name: 'Synthetic', media_id: 'abcdefghij', publishing_mode: 'hosted', created_at: new Date().toISOString() });
     await getStore().setDoc(paths.version('org', 'site', MAIN_VERSION_ID), { name: 'Main', kind: 'main', created_at: new Date().toISOString() });
     const { createApiKey } = await import('../../lib/api-keys');
     return (await createApiKey({ orgId: 'org', siteId: 'site', name: 'test', createdBy: 'admin@example.com' })).token;

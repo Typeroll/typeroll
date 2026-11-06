@@ -16,7 +16,6 @@ vi.mock('../../lib/workflows/engine', async (importOriginal) => {
     override async start(_orgId: string, workflowId: string) { started.push(workflowId); return {} as never; }
   } };
 });
-vi.mock('../../lib/hosting/site-provisioning', () => ({ provisionSiteHosting: vi.fn(async () => null) }));
 
 const ORG = 'default';
 const EXISTING = 'existing';

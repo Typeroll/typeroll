@@ -171,11 +171,10 @@ customer hosts or switch traffic to bypass this failure.
 ## Analytics in the hosting account
 
 The Analytics app's Cloudflare Web Analytics site belongs to the account that
-hosts the site, and Insights reads that same account. For customer publishing
-this is the site's Hosting Group connection (Default reuses the Organization
-connection); managed and self-hosted sites use the installation's configured
-account. A customer publishing site never falls back to the installation's
-account. The account a verified beacon belongs to is recorded in the app's
+hosts the site, and Insights reads that same account. This is the site's
+Hosting Group connection (Default reuses the Organization connection), on Cloud
+and self-hosted installations alike. A site never falls back to the
+installation's account. The account a verified beacon belongs to is recorded in the app's
 `setup`; a site that later changes accounts reports `analytics_account_mismatch`
 instead of an empty report. Web Analytics sites are recorded as
 Organization-owned resources so Organizations sharing an account cannot link

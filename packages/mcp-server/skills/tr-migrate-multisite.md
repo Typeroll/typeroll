@@ -233,9 +233,9 @@ Rules the search engines actually enforce:
 - **One `x-default`** per cluster, pointing at the language selector or the
   fallback market. Optional, but useful when the family doesn't cover a
   visitor's language.
-- **Absolute URLs on the final domain** — not the `*.typeroll` fallback
-  subdomain. The cluster is what you want live after cutover, and a fallback
-  URL in there is a leak you'll be cleaning up for months.
+- **Absolute URLs on the final domain** — not the temporary address. The
+  cluster is what you want live after cutover, and a temporary URL in there
+  is a leak you'll be cleaning up for months.
 - Invalid entries are **rejected at write time** with the reason. If a write
   fails, fix the tag/href — don't strip the field to make it pass.
 
@@ -264,12 +264,12 @@ could fail each other with `build_result_missing`.
 When a site's job has succeeded, check what it serves:
 
 ```
-verify_migration_urls site_id=<de-site> source_origin="https://example.de" check_source=true
+verify_migration_urls site_id=<de-site> target_origin=<temporary address> source_origin="https://example.de" check_source=true
 ```
 
-This requests every inventory URL against the site's fallback subdomain —
-the real domain still points at the old host, which is exactly why the check
-is possible at all. Verdicts:
+This requests every inventory URL against the temporary address the site
+publishes to — the real domain still points at the old host, which is exactly
+why the check is possible at all. Verdicts:
 
 | Verdict | Meaning | Action |
 |---|---|---|
@@ -309,7 +309,7 @@ new canonical build and is not an inventory-only operation):
    `get_migration_launch_report` to return `launch_ready: true`
 
 Publishing to the temporary address ends at each site's cutover. From then on
-one publication serves both the live domain and the old fallback address, so
+one publication serves both the live domain and the old temporary address, so
 every `trigger_deploy` of that site is a production release: review with
 `get_preview_link` (`include_working_copy: true`) or `dry_run: true`, get the
 owner's approval, and pass `confirm_live_domains: true`. Without it the deploy

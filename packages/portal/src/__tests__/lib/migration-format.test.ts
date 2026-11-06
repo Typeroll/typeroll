@@ -82,6 +82,16 @@ describe('Firestore values', () => {
     expect(transformRecord({ path: 'c/d', data: { id: 'other' } })).toMatchObject({ kind: 'write', data: { id: 'other' }, idMismatch: true });
   });
 
+  it('imports a site without a publishing mode, or with the former managed one, as customer publishing', () => {
+    const site = 'organizations/o/sites/s';
+    expect(transformRecord({ path: site, data: { name: 'S' } })).toMatchObject({ kind: 'write', data: { name: 'S', publishing_mode: 'customer_git' } });
+    expect(transformRecord({ path: site, data: { publishing_mode: 'managed' } })).toMatchObject({ data: { publishing_mode: 'customer_git' } });
+    expect(transformRecord({ path: site, data: { publishing_mode: 'hosted' } })).toMatchObject({ data: { publishing_mode: 'hosted' } });
+    expect(transformRecord({ path: site, data: { publishing_mode: 'customer_git' } })).toMatchObject({ data: { publishing_mode: 'customer_git' } });
+    // Only site documents carry a publishing mode.
+    expect((transformRecord({ path: `${site}/pages/p`, data: { title: 'P' } }) as { data: object }).data).toEqual({ title: 'P' });
+  });
+
   it('reports an undecodable block tree', () => {
     expect(transformRecord({ path: 'o/x/pages/p', data: { blocks: { _tr_blocks_gz_: 'not-gzip' } } })).toEqual({ kind: 'error', path: 'o/x/pages/p', error: 'storage_blocks_invalid' });
   });

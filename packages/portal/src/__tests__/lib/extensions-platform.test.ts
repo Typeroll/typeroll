@@ -1082,6 +1082,8 @@ describe('Extension assets and direct provider API', () => {
     await getStore().setDoc(paths.site(OWNER_ORG, SITE), {
       name: 'Customer site', domain: 'customer.example', hosting_adapter: 'cloudflare', created_at: new Date().toISOString(),
     });
+    const { recordPublishingOrigin } = await import('../../lib/publishing/runtime-origins');
+    await recordPublishingOrigin(OWNER_ORG, SITE, 'https://customer.example');
     const result = await issuePublicExtensionToken({
       request: new Request('https://admin.customer.example/api/extensions/public-token', {
         method: 'POST', headers: { Origin: 'https://customer.example' },
@@ -1112,22 +1114,20 @@ describe('Extension assets and direct provider API', () => {
     })).rejects.toMatchObject({ status: 403 });
   });
 
-  it('accepts the deterministic fallback origin when an older site has no stored fallback hostname', async () => {
+  it('allows only verified publication origins for a site without a publishing mode, not its older addresses', async () => {
     const { installation } = await registeredInstallation();
     const { getStore } = await import('../../lib/datastore');
     process.env.SITES_BASE_DOMAIN = 'sites.typeroll.com';
     await getStore().setDoc(paths.site(OWNER_ORG, SITE), {
-      name: 'Fallback site', slug: 'fallback-demo', hosting_adapter: 'cloudflare', created_at: new Date().toISOString(),
+      name: 'Older site', slug: 'fallback-demo', domain: 'older.example', hosting_adapter: 'cloudflare',
+      hosting_config: { fallback_subdomain: 'older.sites.typeroll.com' }, created_at: new Date().toISOString(),
     });
-    const result = await issuePublicExtensionToken({
-      request: new Request('https://admin.customer.example/api/extensions/public-token', {
-        method: 'POST', headers: { Origin: 'https://fallback-demo.sites.typeroll.com' },
-      }),
-      orgId: OWNER_ORG,
-      siteId: SITE,
-      installationId: installation.id,
-    });
-    expect(result.cors['Access-Control-Allow-Origin']).toBe('https://fallback-demo.sites.typeroll.com');
+    for (const origin of ['https://fallback-demo.sites.typeroll.com', 'https://older.sites.typeroll.com', 'https://older.example']) {
+      await expect(issuePublicExtensionToken({
+        request: new Request('https://admin.customer.example/api/extensions/public-token', { method: 'POST', headers: { Origin: origin } }),
+        orgId: OWNER_ORG, siteId: SITE, installationId: installation.id,
+      })).rejects.toMatchObject({ status: 403 });
+    }
   });
 
   it('pairs a self-host issuer only after the provider echoes nonce and JWKS fingerprint', async () => {

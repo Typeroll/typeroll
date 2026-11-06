@@ -499,7 +499,8 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
 
 - **Site URLs.** `get_site` returns a `urls` object with:
     - `production` — the customer's real domain (or null)
-    - `fallback` — the auto `{slug}.typeroll.app`-style preview URL
+    - `fallback` — null for sites publishing through their organization;
+      a deploy reports the temporary address it publishes to
     - `preview_base` — the portal preview origin (for token URLs)
   Use these in answers to "what's the URL?" — never invent.
 
@@ -922,8 +923,9 @@ source URLs share one inventory row, but `observed_paths` preserves the exact
 spellings that were discovered.
 
 `verify_migration_urls` requests each URL against the deployed site (its
-fallback subdomain by default, because the real domain still points at the
-old host pre-cutover) and reports `ok` / `ok_redirect` / `missing` /
+live domain by default; before cutover the real domain still points at the
+old host, so pass the temporary address the site publishes to as
+`target_origin`) and reports `ok` / `ok_redirect` / `missing` /
 `broken_redirect` / `error`. This is the one that catches a redirect
 pointing at an unpublished page, a typo'd `path`, and redirect loops — all
 of which read as "handled" in the coverage report and as a 404 to Googlebot.
@@ -1008,34 +1010,8 @@ update_page page_id=om-oss patch={ alternates: [
 The renderer injects this page's own self-reference, so list only the OTHER
 variants. Clusters must be **reciprocal** — write all sides, `batch_update_pages`
 is the sane way. Use absolute URLs on the FINAL domains (never the
-`*.typeroll` fallback). Invalid tags/hrefs are rejected at write time with
+temporary address). Invalid tags/hrefs are rejected at write time with
 the reason rather than silently dropped at render.
-
-### "Change the site's fallback URL (slug)"
-
-```
-update_site slug="acme"
-  → response includes:
-     urls.fallback: "https://acme.sites.typeroll.com"
-     dns_note: "New fallback URL … attached to CF Pages. SSL provisioning
-                takes 1–10 minutes after DNS propagates. …"
-```
-
-The slug change triggers DNS + CF Pages reprovisioning behind the scenes.
-**Always check the response for `dns_note` vs `dns_warning`:**
-
-- `dns_note` present → the new fallback URL was wired up; warn the user it
-  may take 1–10 min for SSL to provision before the URL serves.
-- `dns_warning` present → the slug was saved but DNS / CF attach failed.
-  The `urls.fallback` field is still returned (it's just `{slug}.{base}`
-  string formatting) but the URL will NOT resolve until the issue is
-  fixed. Surface the warning verbatim to the user — don't tell them the
-  URL is ready.
-- Neither present → self-hosted portal without CF/SITES_BASE_DOMAIN
-  configured; URL behaviour is up to the operator.
-
-The old fallback URL keeps working (bookmarks + SEO survive). Customer
-can manually deprovision the old one via the portal.
 
 ### "Run a portal workflow" (audits, planning, migration, deploy)
 

@@ -15,6 +15,9 @@
 // 4. An `id` field equal to the document id is removed: every store returns the
 //    document id as `id`. A different `id` field is kept and reported, because
 //    the SQL store cannot keep it (the compare then reports the document).
+// 5. A site document without a publishing mode, or with the former `managed`
+//    one, gets `publishing_mode: 'customer_git'`: every imported site publishes
+//    through its organization's accounts unless it is hosted.
 
 import { decodeNestedArrays } from '../firestore-codec';
 import { FS_TAGS, isPlainObject, type ExportRecord } from './format';
@@ -67,6 +70,7 @@ export function toStoreValue(value: unknown): unknown {
 }
 
 const size = (value: unknown) => Buffer.byteLength(JSON.stringify(value));
+const SITE_DOC = /^organizations\/[^/]+\/sites\/[^/]+$/;
 
 export function transformRecord(record: ExportRecord, opts: { maxDocumentBytes?: number } = {}): Transformed {
   const { path } = record, limit = opts.maxDocumentBytes ?? MAX_DOCUMENT_BYTES;
@@ -83,6 +87,9 @@ export function transformRecord(record: ExportRecord, opts: { maxDocumentBytes?:
   if (Object.hasOwn(data, 'id')) {
     if (data.id === id) { const { id: _id, ...rest } = data; void _id; data = rest; }
     else idMismatch = true;
+  }
+  if (SITE_DOC.test(path) && (data.publishing_mode === undefined || data.publishing_mode === null || data.publishing_mode === 'managed')) {
+    data = { ...data, publishing_mode: 'customer_git' };
   }
   return { kind: 'write', path, data, compressed, idMismatch };
 }

@@ -156,11 +156,13 @@ export interface Site {
   id: string;
   name: string;
   /**
-   * Customer Git publishing is explicit; existing managed sites retain their adapter until migrated.
-   * `hosted` (only with a bound hosting service) is set only by internal site creation.
+   * How the site publishes. Missing means customer publishing (`customer_git`):
+   * the organization's own GitHub and hosting accounts. `hosted` (only with a
+   * bound hosting service) is set only by internal site creation. Read it with
+   * `sitePublishingMode`.
    */
-  publishing_mode?: 'customer_git' | 'managed' | 'hosted';
-  /** Verified reuse of the original static Pages project; server-managed migration receipt. */
+  publishing_mode?: 'customer_git' | 'hosted';
+  /** Verified reuse of the original static Pages project of a site migrated earlier; server-managed receipt. */
   publishing_migration?: { account_id: string; project: string; website_host: string; previous_deployment_id: string; hosting_group_id: string; migrated_at: string };
   /** Omitted legacy values resolve to the organization's Default Hosting Group. */
   hosting_group_id?: string;
@@ -278,12 +280,11 @@ export interface Site {
   source_wp_url?: string | null;
   source_builder?: 'elementor' | 'breakdance' | 'gutenberg' | 'classic' | 'none';
   hosting_adapter: HostingAdapterName;
-  /** Adapter-specific config. For cloudflare: `{ pages_project, fallback_subdomain }`.
-   *  Created on site provisioning. */
+  /** Adapter-specific config. */
   hosting_config?: {
+    /** The original Pages project of a site migrated earlier (see `publishing_migration`). */
     pages_project?: string;
-    /** Auto-provisioned `<slug>.sites.typeroll.com`-style host so the
-     *  customer can preview before pointing their real DNS at us. */
+    /** The platform address of a site served by the hosting service. */
     fallback_subdomain?: string;
   } & Record<string, unknown>;
   /**
@@ -1701,7 +1702,7 @@ export interface AppState {
 /**
  * Which provider account an app's external resource lives in. `organization`: the Cloudflare account of the
  * site's Hosting Group (customer publishing). `installation`: the account configured for this Typeroll
- * installation (managed hosting on Typeroll Cloud, or a self-hosted install's own account).
+ * installation.
  */
 export interface AppProviderAccount {
   owner: 'organization' | 'installation';
@@ -1803,7 +1804,6 @@ export type DeployEnvironment = 'staging' | 'production';
 /**
  * What one site build cost the platform to run.
  *
- * Managed builds occupy a Cloud Run instance for their whole duration.
  * Customer Git builds record only active publisher attempts; remote build
  * time and queue backoff are excluded. The marginal estimate uses active
  * wall-clock time × the resources allocated to that instance.

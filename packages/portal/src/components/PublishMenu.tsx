@@ -146,7 +146,6 @@ export default function PublishMenu({
   const [changesLoading, setChangesLoading] = useState(false);
   const [changesError, setChangesError] = useState<string | null>(null);
 
-  const [env, setEnv] = useState<'production' | 'staging'>('production');
   const [deployErr, setDeployErr] = useState<string | null>(null);
   const { setup: publishingSetup, error: setupError, refresh: refreshSetup } = usePublishingReadiness(siteId, open);
   const { job, setJob, watch } = useDeployProgress(siteId, setDeployErr, undefined, !hasUnsaved && !saving);
@@ -188,17 +187,14 @@ export default function PublishMenu({
     if (busy) return;
     const setup = await refreshSetup();
     if (!setup?.ready) return;
-    const environment = setup.mode !== 'managed' ? 'production' : env;
-    const live = environment === 'production' && setup.publication?.production ? setup.publication : null;
+    const live = setup.publication?.production ? setup.publication : null;
     const message = live ? liveDomainConfirmMessage(live)
-      : environment === 'production'
-      ? 'Deploy the saved site to production? Visitors see the new version when it finishes.'
-      : 'Rebuild and deploy to the staging URL? Visitors won\'t see this.';
+      : 'Deploy the saved site to production? Visitors see the new version when it finishes.';
     if (!confirm(message)) return;
     setDeployErr(null);
     setJob({ status: 'queued', phase: 'starting' });
     try {
-      const body = { environment, ...(live ? { confirm_live_domains: true } : {}) };
+      const body = { environment: 'production' as const, ...(live ? { confirm_live_domains: true } : {}) };
       let { res, data, cancelled } = await postDeploy(siteId, body);
       if (cancelled) { setJob(null); return; }
       if (!res.ok && data.code === 'unsaved_content') {
@@ -395,7 +391,7 @@ export default function PublishMenu({
                     ? `Last deployed ${rel(lastDeployedAt)}.`
                     : ''}
             </p>
-            {publishingSetup?.publication?.production && (publishingSetup.mode !== 'managed' || env === 'production') && (
+            {publishingSetup?.publication?.production && (
               <p className="pmenu__hint pmenu__hint--warn">
                 Deploying publishes to your live website: {publishingSetup.publication.live_domains.join(', ')}.
               </p>
@@ -460,17 +456,6 @@ export default function PublishMenu({
           <div className="pmenu__section pmenu__deploy-footer">
             <div className="pmenu__setup"><PublishingRequirements setup={publishingSetup} error={setupError} retry={() => { void refreshSetup(); }} /></div>
             <div className="pmenu__actions">
-              {publishingSetup?.mode === 'managed' && <select
-                aria-label="Deployment environment"
-                className="pmenu__select pmenu__select--env"
-                value={env}
-                disabled={busy}
-                onChange={(e) => setEnv(e.target.value as 'production' | 'staging')}
-                title="Production updates the live domain; staging only updates the staging URL."
-              >
-                <option value="production">Production</option>
-                <option value="staging">Staging</option>
-              </select>}
               <button
                 type="button"
                 className="pmenu__btn pmenu__btn--primary"
@@ -563,7 +548,6 @@ export default function PublishMenu({
           background-image: url(data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%2212%22%20height=%228%22%20viewBox=%220%200%2012%208%22%3E%3Cpath%20d=%22M1%201l5%205%205-5%22%20fill=%22none%22%20stroke=%22%23d4d4d8%22%20stroke-width=%221.5%22/%3E%3C/svg%3E);
           background-repeat: no-repeat; background-position: right 0.65rem center;
         }
-        .pmenu__select--env { width: auto; flex: 1; }
         .pmenu__hint { margin: 0.4rem 0 0; font-size: 0.875rem; color: #a1a1aa; line-height: 1.45; }
         .pmenu__validation { overflow-wrap: anywhere; }
         .pmenu__hint--warn { color: #f6c177; }

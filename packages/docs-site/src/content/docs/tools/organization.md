@@ -337,17 +337,6 @@ that read and needs an organization key.
   `active_jobs`. The attempt can no longer publish. Completed builds cannot be
   cancelled.
 
-### Move an older managed site to Git publishing
-
-`check_managed_site_migration` verifies that a static site still on managed
-Pages hosting can move to connected Git publishing: the original hosting
-account, project, domain and the shared build engine. It returns a `revision`
-and the previous live deployment, and changes nothing.
-`migrate_managed_site_publishing` then moves the site using that `revision`.
-It needs site admin permission, keeps the original hosting project, live domain
-and old media URLs, and queues verified media copying. It does not deploy:
-publish once the media migration has finished.
-
 ## Analytics across Sites
 
 | Action                          | MCP tool                      | API route below `/api/v1`      | Permission       |
