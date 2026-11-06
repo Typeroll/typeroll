@@ -3,7 +3,7 @@ import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { OrganizationBuildQueue, buildTasksPath, buildTaskKey } from '../../lib/builds/queue';
 import { getStore } from '../../lib/datastore';
 import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, decodeSource, encodeArtifact, decodeArtifact, sha256, type BuildIdentity } from '../../lib/builds/contract.mjs';
-import { inspectCloudflareBuildAccess, checkBuildEngine, readBuildEngine, dispatchCloudflareBuild } from '../../lib/builds/cloudflare';
+import { inspectCloudflareBuildAccess, checkBuildEngine, readBuildEngine, dispatchCloudflareBuild, enginePath } from '../../lib/builds/cloudflare';
 import { ProviderError } from '../../lib/publishing/providers.mjs';
 import { connectionPath, sealCredentials } from '../../lib/publishing/connections';
 import { startCloudflareConnection, CLOUDFLARE_BUILD_SCOPES } from '../../lib/publishing/cloudflare-oauth';
@@ -121,6 +121,17 @@ it('preserves previously granted build scopes when renewing the organization con
   await getStore().setDoc(connectionPath('org', 'cloudflare'), { revision: 'current', encrypted_credentials: sealCredentials('org', 'cloudflare', { oauth: { scope: 'page.read workers-ci.read workers-ci.write workers-scripts.read workers-scripts.write' } }) });
   const result = await startCloudflareConnection({ orgId: 'org', userId: 'user', email: 'test@example.invalid' });
   expect(new URL(result.url).searchParams.get('scope')).toContain('workers-ci.write');
+});
+it('keeps build scopes on a reconnect while the organization builds on Cloudflare, whatever the old credential was', async () => {
+  vi.stubEnv('PORTAL_PUBLIC_URL', 'http://localhost'); vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_ID', 'synthetic'); vi.stubEnv('TYPEROLL_PUBLISH_CLOUDFLARE_CLIENT_SECRET', 'synthetic');
+  const session = { orgId: 'org', userId: 'user', email: 'test@example.invalid' };
+  await getStore().setDoc(connectionPath('org', 'cloudflare'), { status: 'connected', revision: 'current', encrypted_credentials: sealCredentials('org', 'cloudflare', { api_token: 'synthetic-token' }) });
+  await getStore().setDoc(enginePath('org'), { provider: 'cloudflare', enabled: true });
+  const scopes = new URL((await startCloudflareConnection(session)).url).searchParams.get('scope')?.split(' ');
+  for (const scope of CLOUDFLARE_BUILD_SCOPES) expect(scopes).toContain(scope);
+  // A Hosting Group connection never carries build access.
+  await getStore().setDoc(enginePath('other'), { provider: 'cloudflare', enabled: false });
+  expect(new URL((await startCloudflareConnection({ ...session, orgId: 'other' })).url).searchParams.get('scope')).not.toContain('workers-ci');
 });
 
 it('finds only the organization build project and confirms token setup without enabling publishing', async () => {

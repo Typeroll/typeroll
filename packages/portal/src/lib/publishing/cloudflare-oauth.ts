@@ -125,7 +125,11 @@ export async function startCloudflareConnection(session: FullSession, groupId = 
   const connection = await getConnection(session.orgId, 'cloudflare', groupId);
   await getStore().deleteDoc(choicePath(session.orgId));
   const previousScopes = connection.encrypted_credentials ? openCredentials<CloudflareStoredCredentials>(session.orgId, 'cloudflare', connection.encrypted_credentials, groupId).oauth?.scope.split(/\s+/) ?? [] : [];
-  const buildScopes = groupId === 'default' ? CLOUDFLARE_BUILD_SCOPES.filter(scope => buildAccess || previousScopes.includes(scope)) : [];
+  // A reconnect keeps build access while the organization builds on Cloudflare, even when the
+  // connection it replaces held no OAuth grant (an API token, or one that was revoked).
+  // The engine document is read by path: lib/builds imports this module (enginePath).
+  const buildsOnCloudflare = groupId === 'default' && (await getStore().getDoc<{ enabled?: boolean }>(`organizations/${session.orgId}/publishing/build_engine`))?.enabled === true;
+  const buildScopes = groupId === 'default' ? CLOUDFLARE_BUILD_SCOPES.filter(scope => buildAccess || buildsOnCloudflare || previousScopes.includes(scope)) : [];
   // Analytics and redirect rules work in each hosting account, so every Hosting Group asks for the optional scopes this
   // deployment enables. Without that configuration Analytics is still asked for on request. A reconnect keeps what was granted.
   const enabled = enabledCloudflareOptionalScopes();
