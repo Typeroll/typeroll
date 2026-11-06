@@ -2,7 +2,7 @@ import { colorCss, tokenScale, scaleValue } from './design-tokens.js';
 import { linkTargetAttributes } from './link-attributes.js';
 export { linkTargetAttributes };
 import { platformLayer, usesCascadeLayers } from './cascade-layers.js';
-import { BLOCK_DEFAULTS_V14_CSS } from './block-defaults.js';
+import { BLOCK_DEFAULTS_V14_CSS, BLOCK_TYPE_DEFAULTS_V14 } from './block-defaults.js';
 import { queryDerivedSource, type DerivedQuery } from './derived-source.js';
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
@@ -2246,6 +2246,7 @@ export function collectBlockAssets(
     // Site block types written with block scope never style outside their blocks.
     const btStyles = rawStyles && bt.css_scope === 'block' ? scopeBlockCss(rawStyles, bt.name).css : rawStyles;
     if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
+    if (resolveRenderVersion(opts?.renderVersion) >= 14 && BLOCK_TYPE_DEFAULTS_V14[id]) css.push(`/* ${id} defaults */\n${BLOCK_TYPE_DEFAULTS_V14[id]}`);
     if (output.script) js.push(`/* ${id} */\n${output.script}`);
   }
 
