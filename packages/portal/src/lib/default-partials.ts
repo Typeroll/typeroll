@@ -14,7 +14,9 @@
  *    swap without touching the rest.
  *
  * These are the seed values only — the user (or the AI chat) is expected to
- * iterate on them once the site is set up.
+ * iterate on them once the site is set up. They link only to the home page, the
+ * one page a new site has: a link to a page that does not exist fails
+ * publication validation.
  */
 
 function esc(s: string): string {
@@ -32,8 +34,6 @@ export function defaultHeaderHtml(siteName: string): string {
     <a href="/" style="font-family:var(--font-heading),sans-serif;font-weight:700;font-size:1.2rem;color:var(--color-text);text-decoration:none;letter-spacing:-0.01em">${name}</a>
     <nav style="display:flex;align-items:center;gap:var(--spacing-md);flex-wrap:wrap">
       <a href="/" style="color:var(--color-text);text-decoration:none;font-weight:500;padding:0.35rem 0">Home</a>
-      <a href="/about" style="color:var(--color-text);text-decoration:none;font-weight:500;padding:0.35rem 0">About</a>
-      <a href="/contact" style="background:var(--color-primary);color:var(--color-background);text-decoration:none;font-weight:600;padding:0.45rem 0.9rem;border-radius:var(--radius-md);line-height:1">Contact</a>
     </nav>
   </div>
 </div>`;
@@ -50,14 +50,6 @@ export function defaultFooterHtml(siteName: string, tagline?: string): string {
     <div>
       <div style="font-family:var(--font-heading),sans-serif;font-weight:700;font-size:1.05rem;color:var(--color-text);margin-bottom:var(--spacing-xs)">${name}</div>
       ${taglineHtml}
-    </div>
-    <div>
-      <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--color-text-light);font-weight:600;margin-bottom:var(--spacing-sm)">Site</div>
-      <ul style="list-style:none;padding:0;margin:0;display:grid;gap:0.4rem">
-        <li><a href="/about" style="color:var(--color-text);text-decoration:none">About</a></li>
-        <li><a href="/team" style="color:var(--color-text);text-decoration:none">Team</a></li>
-        <li><a href="/contact" style="color:var(--color-text);text-decoration:none">Contact</a></li>
-      </ul>
     </div>
     <div>
       <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--color-text-light);font-weight:600;margin-bottom:var(--spacing-sm)">Get in touch</div>

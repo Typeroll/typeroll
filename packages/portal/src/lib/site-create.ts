@@ -116,12 +116,13 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
     ...(input.language ? { language: input.language } : {}),
   });
 
-  // Default home page in HTML mode.
+  // Default home page in HTML mode. Published, so the first publication of a
+  // new site has a home page for its header, footer and 404 page to link to.
   await store.setDoc(`${paths.pages(input.orgId, siteId)}/home`, {
     title: 'Home',
     slug: 'home',
     content_mode: 'html',
-    status: 'draft',
+    status: 'published',
     html_content: `<h1>Welcome to ${escapeHtml(name)}</h1><p>Your new site is ready to edit.</p>`,
     date_updated: new Date().toISOString(),
   });

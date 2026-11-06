@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.6 (candidate, MCP 0.45.119)
+
+- A new site can be published as it is: its seeded Home page is published,
+  and the starter header and footer link only to it. Before, the first
+  publication of a site created through the API or MCP failed validation,
+  because the Home page was a draft and the starter links pointed to
+  `/about`, `/contact` and `/team`, which a new site does not have.
+
 ## 0.3.5 (candidate, MCP 0.45.118)
 
 - A test installation can set `MAIL_ALLOWED_RECIPIENT_DOMAINS` (comma-separated

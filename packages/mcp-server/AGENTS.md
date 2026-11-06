@@ -605,8 +605,8 @@ text. (This is a real failure mode: a copy draft that had drifted from the live
 page once sent a whole redesign off the approved wording.)
 
 **Don't have a site yet?** With an org-scoped key you can `create_site
-name="Acme"` — it bootstraps settings + a draft Home page + a published
-header/footer and returns the new site id. Use that id as `site_id`
+name="Acme"` — it bootstraps settings + a published Home page + a published
+header/footer that link only to it, and returns the new site id. Use that id as `site_id`
 (hosted) / `TYPEROLL_SITE_ID` (stdio) for follow-ups, then run
 `list_skills` → `read_skill tr-new-site` to design it. A site-scoped key
 can't create sites (it's bound to one) and gets a 403.
