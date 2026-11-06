@@ -14,6 +14,7 @@ import { resolvePersonalSite } from '../../../lib/personal-site-access';
 import { issueSiteContext, verifySiteContext } from '../../../lib/mcp-site-context';
 import { resolveRequestedVersion } from '../../../lib/access';
 import { listAllowedSites } from '../../../lib/api-auth';
+import { portalFetch } from '../../../lib/runtime/loopback';
 
 export const prerender = false;
 
@@ -68,7 +69,7 @@ async function handle(request: Request): Promise<Response> {
   if (!limited.allowed) return new Response('Too many MCP requests. Try again shortly.', { status: 429, headers: { 'Retry-After': '60' } });
 
   const portalBase = process.env.PORTAL_PUBLIC_URL?.replace(/\/+$/, '') ?? new URL(request.url).origin;
-  const client = new TyperollClient({ baseUrl: portalBase, apiKey });
+  const client = new TyperollClient({ baseUrl: portalBase, apiKey, fetchImpl: portalFetch(portalBase) });
 
   const mode = new URL(request.url).searchParams.get('tools') ?? (verified.personalUserId ? 'compact' : 'full');
   if (!['full', 'compact'].includes(mode)) return new Response('Use tools=compact or tools=full', { status: 400 });

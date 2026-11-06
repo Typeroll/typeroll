@@ -83,7 +83,10 @@ test('remote password login and logout use the real browser flow', async ({ page
   await page.locator('input[type="email"]').fill(credentials.email);
   await page.locator('input[type="password"]').fill(credentials.password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(/\/app(?:\/|$)/);
+  // The first page after sign-in renders the persona's first organization by
+  // name, which on a permanent target may be a larger one than the fixture,
+  // served from another region than the runner.
+  await expect(page).toHaveURL(/\/app(?:\/|$)/, { timeout: 20_000 });
   const signOut = page.getByRole('button', { name: /sign out/i });
   const navigationToggle = page.getByRole('button', { name: 'Open navigation' });
   if ((page.viewportSize()?.width ?? 1024) < 1024) {

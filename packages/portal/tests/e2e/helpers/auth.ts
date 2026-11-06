@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { Page } from '@playwright/test';
 
 export type CorePersona = 'owner' | 'editor' | 'viewer' | 'outsider' | 'pending';
@@ -14,6 +15,14 @@ function required(key: string): string {
   const value = process.env[key];
   if (!value) throw new Error(`${key} is required for remote E2E authentication`);
   return value;
+}
+
+/** The fixture organization of each persona, from the shared persona manifest. */
+function personaOrganization(persona: CorePersona): string | null {
+  const manifest = JSON.parse(readFileSync(new URL('../../../../../config/e2e-personas.json', import.meta.url), 'utf8')) as {
+    personas: Array<{ id: string; org_id: string | null }>;
+  };
+  return manifest.personas.find(({ id }) => id === persona)?.org_id ?? null;
 }
 
 export function personaCredentials(persona: CorePersona) {
@@ -53,4 +62,12 @@ export async function authenticatePersona(page: Page, persona: CorePersona, { em
     data: { email, password },
   });
   if (!response.ok()) throw new Error(`Remote E2E password sign-in failed with ${response.status()}`);
+
+  // A permanent target may give a persona memberships beyond its fixture
+  // organization (an operator's own checks use them). Without a selection the
+  // session opens the first organization by name, so select the fixture one.
+  const orgId = personaOrganization(persona);
+  if (!orgId) return;
+  const selected = await page.request.post('/api/orgs/switch', { headers: { Origin: portalOrigin }, data: { orgId } });
+  if (!selected.ok()) throw new Error(`Remote E2E organization selection failed with ${selected.status()}`);
 }
