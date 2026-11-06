@@ -1,6 +1,6 @@
 {
   "account_id": "0123456789abcdef0123456789abcdef",
-  "core_version": "0.3.1",
+  "core_version": "0.3.2",
   "name_prefix": "typeroll",
   "portal_host": "cms.example.org",
   "forms_host": "forms.example.org",

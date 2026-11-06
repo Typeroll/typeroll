@@ -2,7 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { githubUserGrant, type GithubUserGrant } from './github-user';
 import type { FullSession } from '../access';
 import { getStore } from '../datastore';
-import { createProviderClient, githubAppClient, assertInstallation, ProviderError, type ProviderClient } from './providers.mjs';
+import { createProviderClient, githubAppClient, assertInstallation, ProviderError, type ProviderClient, PROVIDER_USER_AGENT } from './providers.mjs';
 import { claimAccount, ConnectionError, getConnection, openCredentials, saveConnection, sealCredentials, type Connection } from './connections';
 import { CALLBACK_PATH, githubConfiguration, githubSetup } from './github-config';
 import {
@@ -391,7 +391,7 @@ async function exchangeCode(config: ReturnType<typeof githubConfiguration>, code
   try {
     response = await withoutRedirects(fetchImpl)('https://github.com/login/oauth/access_token', {
       method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(30_000),
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'User-Agent': PROVIDER_USER_AGENT },
       body: JSON.stringify({ client_id: config.clientId, client_secret: config.clientSecret,
         code, redirect_uri: config.callback, code_verifier: verifier }),
     });

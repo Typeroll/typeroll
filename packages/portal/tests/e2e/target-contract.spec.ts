@@ -26,8 +26,8 @@ test('target reports live, ready, and immutable release identity', { tag: '@serv
   expect((await ready.json()).ready).toBe(true);
   expect(formsReady.ok()).toBe(true);
   expect((await formsReady.json()).ready).toBe(true);
-  const release = await version.json() as { image_digest?: string };
-  if (targetKind !== 'local') expect(release.image_digest).toBe(process.env.TYPEROLL_E2E_EXPECTED_DIGEST);
+  const release = await version.json() as { bundle_digest?: string };
+  if (targetKind !== 'local') expect(release.bundle_digest).toBe(process.env.TYPEROLL_E2E_EXPECTED_DIGEST);
 });
 
 const accessCases: Array<{

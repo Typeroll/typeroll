@@ -9,6 +9,7 @@ import {
 } from './cloudflare-account-claims';
 import { createProviderClient } from './providers.mjs';
 import { cloudflareClient, verifyPagesAccess, type CloudflareStoredCredentials } from './cloudflare-oauth';
+import { isLoopbackUrl } from '../local-e2e';
 
 export interface CloudflareCredentials { api_token?: string; access_key_id: string; secret_access_key: string }
 interface CloudflareInput extends CloudflareCredentials { account_id: string; bucket: string; revision: string }
@@ -102,7 +103,7 @@ export async function prepareCloudflareMedia(session: FullSession, revision: str
   let origin: string;
   try {
     const url = new URL(process.env.PORTAL_PUBLIC_URL ?? '');
-    if (url.username || url.password || (url.protocol !== 'https:' && !(process.env.NODE_ENV !== 'production' && url.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(url.hostname)))) throw new Error();
+    if (url.username || url.password || (url.protocol !== 'https:' && !(url.protocol === 'http:' && isLoopbackUrl(url)))) throw new Error();
     origin = url.origin;
   } catch { throw new ConnectionError('The publisher must configure its public address before preparing media.', 503); }
   const current = await getConnection(session.orgId, 'cloudflare');

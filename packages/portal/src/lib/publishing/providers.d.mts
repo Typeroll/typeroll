@@ -22,3 +22,5 @@ export function ensureGithubMainBranch(client: ProviderClient, options: { owner:
 export class ProviderTransportError extends Error { constructor(provider: string); provider: string; code: 'provider_transport_unavailable'; }
 
 export function githubFailureHint(error: ProviderError): string;
+
+export const PROVIDER_USER_AGENT: string;
