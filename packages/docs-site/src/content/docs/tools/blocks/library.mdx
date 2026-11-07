@@ -126,6 +126,17 @@ New blocks (any render version):
   motion the block is its still image (`poster`, or the first frame) followed
   by the captions.
 
+- `core/svg_animation`: an SVG drawing (`svg`, pasted markup; scripts and
+  event attributes are removed) that animates. `effect`: `draw` (all lines
+  together), `draw_sequence` (one line after another), `reveal` (the
+  drawing's top-level parts appear in turn) or `custom` (only the progress,
+  for your own CSS). `trigger`: when it scrolls into view (once or every
+  time), when the page opens, when its top reaches `position` % of the
+  screen, scrubbed by scrolling (finished at `position`), or a loop with a
+  pause button and `loop_pause` between rounds. `label` names the drawing
+  for screen readers; without one it is decorative. Without script and for
+  reduced motion the finished drawing shows.
+
 #### Your own CSS and scripts
 
 Every effect has hooks for site CSS, a block's own CSS
@@ -143,6 +154,7 @@ Every effect has hooks for site CSS, a block's own CSS
 | `--film-progress` (0–1), `[data-visible]` on captions, `[data-film-ready]` | `core/scroll_film` | drive anything from the film's position, for example `opacity: calc(1 - var(--film-progress))` |
 | `typeroll:film-progress` event (`{ progress, frame }`) | `core/scroll_film` | scripts in step with the film |
 | `[data-active]`, `--steps-top`, `typeroll:step-change` event (`{ index }`) | `core/scroll_steps` | style or react to the current step |
+| `--svg-progress` (0–1), `[data-svg-state]` (`idle`, `running`, `done`), `typeroll:svg-progress` event | `core/svg_animation` | drive your own SVG or CSS effect, for example with `effect: "custom"`; `--svg-width` sets its size |
 
 Site CSS may also use the browser's own scroll-driven animations
 (`animation-timeline: view()` or `scroll()`); wrap them in

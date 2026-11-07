@@ -98,3 +98,22 @@ describe('scroll film', () => {
     expect(assets.js).not.toContain("register('core/scroll_steps'");
   });
 });
+
+describe('SVG animation', () => {
+  const svg = '<svg viewBox="0 0 100 60" fill="none" stroke="currentColor"><path d="M10 50 L50 10 L90 50 Z"/></svg>';
+  it('renders the drawing as authored, named for screen readers, with its trigger for the script', () => {
+    const html = render([{ id: 'v', type: 'core/svg_animation', data: { svg, label: 'Ett tak', trigger: 'scroll', effect: 'draw_sequence', position: 40 } }]);
+    expect(html).toContain('data-trigger="scroll" data-effect="draw_sequence"');
+    expect(html).toContain('data-position="40"');
+    expect(html).toContain('<div class="block-svg-stage" role="img" aria-label="Ett tak"><svg viewBox="0 0 100 60"');
+    expect(html).toContain('data-label-pause="Pausa animationen"');
+  });
+  it('hides a drawing without a description from screen readers and escapes the description', () => {
+    expect(render([{ id: 'v', type: 'core/svg_animation', data: { svg } }])).toContain('<div class="block-svg-stage" aria-hidden="true">');
+    expect(render([{ id: 'v', type: 'core/svg_animation', data: { svg, label: 'A "quoted" <b>' } }])).toContain('aria-label="A &quot;quoted&quot; &lt;b&gt;"');
+  });
+  it('stays the finished drawing on a site with reduced motion', () => {
+    expect(render([{ id: 'v', type: 'core/svg_animation', data: { svg } }], 14, { motion: 'reduced' })).toContain('data-static="true"');
+    expect(registry.get('core/svg_animation')!.script).toContain("el.getAttribute('data-static') === 'true'");
+  });
+});

@@ -1,5 +1,6 @@
 // Story blocks: key figures, a timeline, an audio player, a before/after
-// image comparison, an announcement bar, scroll steps and a scroll film.
+// image comparison, an announcement bar, scroll steps, a scroll film and an
+// animated SVG.
 //
 // Every block is complete without script. Its runtime only enhances: count
 // figures up, make a comparison draggable, let a visitor dismiss a notice,
@@ -12,7 +13,9 @@
 //   --steps-top, and the `typeroll:step-change` event ({ index });
 // - scroll_film: --film-progress (0–1) on the block, [data-visible] on the
 //   captions on screen, [data-film-ready], and the `typeroll:film-progress`
-//   event ({ progress, frame }).
+//   event ({ progress, frame });
+// - svg_animation: --svg-progress (0–1), [data-svg-state] (idle, running,
+//   done) and the `typeroll:svg-progress` event ({ progress }).
 
 import type { BlockType } from './types.js';
 import { mediaAddress, videoFileAddress } from './block-media.js';
@@ -570,7 +573,146 @@ window.TyperollBlocks.register('core/scroll_film', function (el) {
   created_at: ISO_EPOCH,
 };
 
-export const STORY_BLOCK_TYPES: BlockType[] = [stats, timeline, audio, beforeAfter, announcementBar, scrollSteps, scrollFilm];
+const svgAnimation: BlockType = {
+  id: 'core/svg_animation',
+  name: 'svg_animation',
+  label: 'SVG animation',
+  icon: 'pen-tool',
+  category: 'media',
+  container: false,
+  parts: [
+    { name: 'caption', label: 'Caption', selector: '.block-svg-caption', target: 'text' },
+    { name: 'stage', label: 'Drawing', selector: '.block-svg-stage', target: 'container', decorative: true },
+  ],
+  schema: [
+    { name: 'svg', type: 'textarea', label: 'SVG markup', required: true,
+      help: 'Paste an <svg> drawing. Lines (stroke) can be drawn; shapes and groups can appear in turn. Scripts and event attributes are removed.' },
+    { name: 'label', type: 'text', label: 'What the drawing shows', help: 'Read by screen readers. Leave empty for a decorative drawing.' },
+    { name: 'caption', type: 'text', label: 'Caption' },
+    { name: 'trigger', type: 'select', label: 'Starts', options: ['enter', 'enter_every', 'load', 'position', 'scroll', 'loop'],
+      option_labels: ['When it scrolls into view', 'Every time it scrolls into view', 'When the page opens', 'When it reaches a position on the screen', 'Follows the scrolling', 'Loops'], default: 'enter' },
+    { name: 'effect', type: 'select', label: 'Effect', options: ['draw', 'draw_sequence', 'reveal', 'custom'],
+      option_labels: ['Draw all lines together', 'Draw the lines one after another', 'Show the parts one after another', 'Custom (site CSS reads --svg-progress)'], default: 'draw' },
+    { name: 'position', type: 'number', label: 'Screen position (% from the top)', default: 60, min: 0, max: 100,
+      help: 'For "reaches a position": where the top of the drawing starts it. For "follows the scrolling": where the drawing is finished.' },
+    { name: 'duration', type: 'number', label: 'Duration (seconds)', default: 2, min: 0.2, max: 20 },
+    { name: 'loop_pause', type: 'number', label: 'Pause between loops (seconds)', default: 1, min: 0, max: 30 },
+    { name: 'size', type: 'select', label: 'Size', options: ['small', 'medium', 'large', 'full'], default: 'medium' },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['center', 'start'], default: 'center' },
+  ],
+  template: `<figure data-block="svg_animation" data-trigger="{{trigger}}" data-effect="{{effect}}" data-size="{{size}}" data-align="{{align}}" data-position="{{position}}" data-duration="{{duration}}" data-loop-pause="{{loop_pause}}" data-static="{{svg_static}}" data-label-pause="{{pause_label}}" data-label-play="{{play_label}}"><div class="block-svg-stage" {{{svg_a11y}}}>{{{svg}}}</div>{{#caption}}<figcaption class="block-svg-caption">{{caption}}</figcaption>{{/caption}}</figure>`,
+  styles: `
+[data-block="svg_animation"] { --svg-width:28rem; margin:0; }
+[data-block="svg_animation"][data-size="small"] { --svg-width:16rem; }
+[data-block="svg_animation"][data-size="large"] { --svg-width:44rem; }
+[data-block="svg_animation"][data-size="full"] { --svg-width:100%; }
+[data-block="svg_animation"] .block-svg-stage { position:relative; max-inline-size:min(100%, var(--svg-width)); margin-inline:auto; }
+[data-block="svg_animation"][data-align="start"] .block-svg-stage { margin-inline:0; }
+[data-block="svg_animation"] .block-svg-stage > svg { display:block; inline-size:100%; block-size:auto; overflow:visible; }
+[data-block="svg_animation"] .block-svg-caption { margin-block-start:var(--svg-caption-space, .75rem); text-align:center; font-size:var(--svg-caption-size, .9375rem); color:var(--color-text-light, #64748b); }
+[data-block="svg_animation"][data-align="start"] .block-svg-caption { text-align:start; }
+[data-block="svg_animation"] .block-svg-toggle { position:absolute; inset-block-end:0; inset-inline-end:0; display:inline-grid; place-items:center; inline-size:2.25rem; block-size:2.25rem; padding:0; border:0; border-radius:var(--svg-toggle-radius, 999px); background:var(--svg-toggle-bg, var(--color-surface, #f4f4f5)); color:var(--color-text, #111); cursor:pointer; }
+[data-block="svg_animation"] .block-svg-toggle:focus-visible { outline:2px solid currentColor; outline-offset:2px; }
+`.trim(),
+  script: `${RUNTIME_GUARD}
+window.TyperollBlocks.register('core/svg_animation', function (el) {
+  var svg = el.querySelector('.block-svg-stage > svg');
+  if (!svg || el.getAttribute('data-static') === 'true') return;
+  if (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var trigger = el.getAttribute('data-trigger') || 'enter', effect = el.getAttribute('data-effect') || 'draw';
+  var duration = Math.max(200, (parseFloat(el.getAttribute('data-duration')) || 2) * 1000);
+  var line = Math.min(100, Math.max(0, parseFloat(el.getAttribute('data-position')))) ; if (!isFinite(line)) line = 60;
+  var hold = Math.max(0, (parseFloat(el.getAttribute('data-loop-pause')) || 0) * 1000);
+  var SHAPES = 'path,line,polyline,polygon,circle,ellipse,rect';
+  var strokes = [].filter.call(svg.querySelectorAll(SHAPES), function (shape) {
+    var stroke = getComputedStyle(shape).stroke;
+    return stroke && stroke !== 'none' && typeof shape.getTotalLength === 'function';
+  }).map(function (shape) { var length = 0; try { length = shape.getTotalLength(); } catch (e) {} return { shape: shape, length: length }; })
+    .filter(function (item) { return item.length > 0; });
+  var parts = [].filter.call(svg.children, function (child) { return !/^(defs|title|desc|style|metadata)$/i.test(child.tagName); });
+  if (effect !== 'custom' && !(effect === 'reveal' ? parts.length : strokes.length)) return;
+  var progress = -1;
+  function clamp(value) { return Math.min(1, Math.max(0, value)); }
+  function render(p) {
+    p = clamp(p);
+    if (p === progress) return;
+    progress = p;
+    el.style.setProperty('--svg-progress', p.toFixed(4));
+    if (effect === 'draw' || effect === 'draw_sequence') {
+      strokes.forEach(function (item, i) {
+        var local = effect === 'draw' ? p : clamp(p * strokes.length - i);
+        item.shape.style.strokeDasharray = item.length + ' ' + item.length;
+        item.shape.style.strokeDashoffset = String(item.length * (1 - local));
+      });
+    } else if (effect === 'reveal') {
+      parts.forEach(function (part, i) {
+        var local = clamp(p * parts.length - i);
+        part.style.opacity = String(local);
+        part.style.transform = 'translateY(' + ((1 - local) * 8) + 'px)';
+      });
+    }
+    el.setAttribute('data-svg-state', p >= 1 ? 'done' : p > 0 ? 'running' : 'idle');
+    el.dispatchEvent(new CustomEvent('typeroll:svg-progress', { bubbles: true, detail: { progress: p } }));
+  }
+  var frame = 0, paused = false;
+  function ease(t) { return t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; }
+  function play(onDone) {
+    cancelAnimationFrame(frame);
+    var start = performance.now();
+    (function tick(now) {
+      if (paused) { start = now - progress * duration; frame = requestAnimationFrame(tick); return; }
+      var t = clamp((now - start) / duration);
+      render(ease(t));
+      if (t < 1) frame = requestAnimationFrame(tick); else if (onDone) onDone();
+    })(start);
+  }
+  render(0);
+  if (trigger === 'scroll') {
+    var scheduled = false;
+    var update = function () {
+      scheduled = false;
+      var rect = el.getBoundingClientRect(), height = window.innerHeight;
+      var from = height, to = height * line / 100;
+      render(from === to ? 1 : (from - rect.top) / (from - to));
+    };
+    var schedule = function () { if (!scheduled) { scheduled = true; requestAnimationFrame(update); } };
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    update();
+    return;
+  }
+  if (trigger === 'load') { play(); return; }
+  if (!('IntersectionObserver' in window)) { render(1); return; }
+  if (trigger === 'loop') {
+    var visible = false, timer = 0;
+    var cycle = function () { if (!visible || paused) return; render(0); play(function () { timer = setTimeout(cycle, hold); }); };
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'block-svg-toggle';
+    var label = function () { toggle.setAttribute('aria-label', paused ? el.getAttribute('data-label-play') : el.getAttribute('data-label-pause')); toggle.textContent = paused ? '\\u25B6' : '\\u275A\\u275A'; };
+    toggle.addEventListener('click', function () { paused = !paused; label(); if (!paused && progress >= 1) { clearTimeout(timer); cycle(); } });
+    label();
+    el.querySelector('.block-svg-stage').appendChild(toggle);
+    new IntersectionObserver(function (entries) {
+      visible = entries[0].isIntersecting;
+      clearTimeout(timer);
+      if (visible) cycle(); else cancelAnimationFrame(frame);
+    }).observe(el);
+    return;
+  }
+  var margin = trigger === 'position' ? '0px 0px -' + (100 - line) + '% 0px' : '0px 0px -10% 0px';
+  var observer = new IntersectionObserver(function (entries) {
+    var entry = entries[0];
+    if (entry.isIntersecting) { play(); if (trigger !== 'enter_every') observer.disconnect(); }
+    else if (trigger === 'enter_every' && entry.boundingClientRect.top > 0) { cancelAnimationFrame(frame); render(0); }
+  }, { rootMargin: margin });
+  observer.observe(el);
+});`,
+  origin: 'core',
+  created_at: ISO_EPOCH,
+};
+
+export const STORY_BLOCK_TYPES: BlockType[] = [stats, timeline, audio, beforeAfter, announcementBar, scrollSteps, scrollFilm, svgAnimation];
 
 const STORY_BLOCK_IDS = new Set(STORY_BLOCK_TYPES.map(type => type.id));
 const FRAME_PATTERN = /\{(n+)\}/;
@@ -614,6 +756,13 @@ export function prepareStoryBlock(blockType: BlockType, data: Record<string, unk
     }
   }
   if (type === 'core/stats' && options.reduced) data.count_up = false;
+  if (type === 'core/svg_animation') {
+    data.svg_static = options.reduced ? 'true' : 'false';
+    data.pause_label = uiLabel(options.language, 'pause_animation');
+    data.play_label = uiLabel(options.language, 'play_animation');
+    const label = String(data.label ?? '').trim();
+    data.svg_a11y = label ? `role="img" aria-label="${label.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!)}"` : 'aria-hidden="true"';
+  }
   if (type === 'core/announcement_bar') {
     data.announcement_label = uiLabel(options.language, 'announcement');
     data.close_label = uiLabel(options.language, 'close');

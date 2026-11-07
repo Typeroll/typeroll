@@ -102,6 +102,10 @@ function about() {
       ]),
     ]),
     section([
+      heading('Vi ritar för ljuset', { align: 'center' }),
+      b('core/svg_animation', { svg: '<svg viewBox="0 0 320 200" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 180 H300"/><path d="M60 180 V100 L130 50 L200 100 V180"/><path d="M110 180 V135 H150 V180"/><path d="M75 110 H100 V130 H75 Z"/><path d="M160 110 H185 V130 H160 Z"/><path d="M200 120 H270 V180"/><path d="M215 135 H255 V160 H215 Z"/><circle cx="262" cy="52" r="18"/><path d="M262 22 V14 M262 90 V82 M232 52 H224 M300 52 H292 M241 31 L235 25 M289 79 L283 73 M241 73 L235 79 M289 25 L283 31"/></svg>', label: 'En linjeteckning av ett hus med en sol som lyser in genom fönstren', caption: 'Varje hus börjar som en skiss av hur solen rör sig över tomten.', trigger: 'scroll', effect: 'draw_sequence', position: 45, size: 'large' }),
+    ]),
+    section([
       heading('Vår historia'),
       b('core/timeline', { layout: 'alternate', items: [
         { date: '2009', title: 'Ett första fritidshus', text: '<p>Elin och Anders ritar ett sommarhus i Bjuröklubb.</p>' },

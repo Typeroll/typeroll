@@ -222,6 +222,7 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   'core/before_after': { before_image: '/media/before.jpg', after_image: '/media/after.jpg' },
   'core/announcement_bar': { text: '<p>Open on Saturdays</p>', link_url: '/hours/' },
   'core/scroll_steps': { items: [{ title: 'One', text: '<p>First.</p>', image: '/media/1.jpg' }, { title: 'Two', text: '<p>Second.</p>', image: '/media/2.jpg' }] },
+  'core/svg_animation': { svg: '<svg viewBox="0 0 100 60" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 50 L50 10 L90 50 Z"/></svg>', caption: 'A roof' },
   'core/scroll_film': { frames_pattern: '/media/film/{nnn}.webp', frame_count: 3, captions: [{ text: '<p>Caption</p>', start: 0, end: 50 }] },
   'core/media_card': { image: '/media/card.jpg', heading: 'Heading', text: '<p>Text</p>', button_label: 'Start', button_url: '/start/' },
   'core/feature_row': {
