@@ -126,4 +126,10 @@ describe('text over media', () => {
     expect(plain).not.toMatch(/data-(overlay|panel|text-place|min-h)/);
     expect(render([{ id: 's', type: 'core/section', data: { text_panel: 'solid', text_position: 'center' }, children: [text] }], 13)).not.toMatch(/data-(panel|text-place)/);
   });
+  it('darkens a container\'s background video in a chosen color and direction, without a text plate', () => {
+    const html = render([{ id: 'c', type: 'core/container', data: { background_image: '/c.jpg', background_video: '/c.mp4', overlay_style: 'gradient', overlay_side: 'top', overlay_color: '#102030', text_panel: 'dark_glass' }, children: [text] }]);
+    expect(html).toContain('data-overlay="gradient" data-overlay-side="top"');
+    expect(html).toContain('--bg-overlay-color:#102030');
+    expect(html).not.toContain('data-panel');
+  });
 });

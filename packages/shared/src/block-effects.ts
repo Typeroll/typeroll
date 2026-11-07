@@ -101,6 +101,8 @@ export function textOverMediaFields(withPlacement: boolean): FieldDefinition[] {
 
 /** Block types with text over media, and whether the text can be placed. */
 const TEXT_OVER_MEDIA_TYPES: Readonly<Record<string, boolean>> = { 'core/section': true, 'core/hero': false, 'core/cta': false };
+/** Block types that take only the darkening over their media: a container holds any blocks, so it gets no text plate. */
+const OVERLAY_ONLY_TYPES: ReadonlySet<string> = new Set(['core/container']);
 
 /** Block types that take the entrance animation field. */
 export const MOTION_BLOCK_TYPES: ReadonlySet<string> = new Set([
@@ -128,6 +130,9 @@ export function withPresentationEffectFields(block: BlockType): BlockType {
   }
   if (block.id in TEXT_OVER_MEDIA_TYPES) {
     for (const field of textOverMediaFields(TEXT_OVER_MEDIA_TYPES[block.id]!)) if (!has(field.name)) extra.push(field);
+  }
+  if (OVERLAY_ONLY_TYPES.has(block.id)) {
+    for (const field of textOverMediaFields(false).filter(field => field.name.startsWith('overlay_'))) if (!has(field.name)) extra.push(field);
   }
   if (MOTION_BLOCK_TYPES.has(block.id) && !has('motion')) extra.push(motionField);
   return extra.length ? { ...block, schema: [...block.schema, ...extra] } : block;
@@ -193,7 +198,8 @@ export function backgroundMedia(blockType: BlockType, data: Record<string, unkno
  */
 export function textOverMedia(blockType: BlockType, data: Record<string, unknown>, context: EffectContext, authored: Record<string, unknown> = {}): { attrs: Record<string, string>; style: string } {
   const none = { attrs: {}, style: '' };
-  if (context.renderVersion < 14 || !(blockType.id in TEXT_OVER_MEDIA_TYPES)) return none;
+  const overlayOnly = OVERLAY_ONLY_TYPES.has(blockType.id);
+  if (context.renderVersion < 14 || !(blockType.id in TEXT_OVER_MEDIA_TYPES || overlayOnly)) return none;
   const attrs: Record<string, string> = {};
   const style: string[] = [];
   const overlay = String(data.overlay_style ?? 'solid');
@@ -204,7 +210,7 @@ export function textOverMedia(blockType: BlockType, data: Record<string, unknown
   const color = String(data.overlay_color ?? '').trim();
   if (color && /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/deg]+\)|[a-z]+)$/i.test(color)) style.push(`--bg-overlay-color:${color}`);
   const panel = String(data.text_panel ?? 'none');
-  if ((TEXT_PANELS as readonly string[]).includes(panel) && panel !== 'none') {
+  if (!overlayOnly && (TEXT_PANELS as readonly string[]).includes(panel) && panel !== 'none') {
     attrs['data-panel'] = panel;
     const shape = String(data.text_panel_shape ?? 'rounded');
     attrs['data-panel-shape'] = (TEXT_PANEL_SHAPES as readonly string[]).includes(shape) ? shape : 'rounded';
@@ -256,6 +262,7 @@ export function usedEffects(blocks: readonly Block[]): { motion: boolean; backgr
         if (videoFileAddress(data.background_video)) { used.backgroundVideo = true; used.backgroundMedia = true; }
         if (BACKGROUND_MEDIA_TYPES[block.type] && mediaAddress(data.background_image)) used.backgroundMedia = true;
       }
+      if (OVERLAY_ONLY_TYPES.has(block.type) && (['gradient', 'spot'].includes(String(data.overlay_style)) || data.overlay_color)) used.textOverMedia = true;
       if (block.type in TEXT_OVER_MEDIA_TYPES && (['gradient', 'spot'].includes(String(data.overlay_style)) || (data.text_panel && data.text_panel !== 'none') || data.overlay_color || (TEXT_OVER_MEDIA_TYPES[block.type] && ((data.text_position && data.text_position !== 'top-center') || (data.min_height && data.min_height !== 'auto'))))) used.textOverMedia = true;
       if (block.type === 'core/gallery' && data.lightbox !== false) used.lightbox = true;
       if (block.type === 'core/logo_cloud' && data.layout === 'marquee') used.marquee = true;
