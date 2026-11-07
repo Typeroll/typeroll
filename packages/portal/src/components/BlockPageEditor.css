@@ -94,6 +94,10 @@
 .block-library__item { display: grid; gap: 2px; text-align: left; padding: .5rem .65rem; border-radius: 6px; border: 1px solid #3a3a42; background: #1f1f23; color: #fafafa; cursor: pointer; font-size: .85rem; }
 .block-library__item span { font-size: .75rem; color: #a1a1aa; }
 .block-library__item:hover, .block-library__item:focus-visible { border-color: #818cf8; }
+.block-library__item img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; background: #27272a; margin-bottom: 2px; }
+.block-library__kind { margin-left: .4rem; font-style: normal; font-size: .68rem; font-weight: 600; color: #a1a1aa; text-transform: uppercase; letter-spacing: .04em; }
+.block-library__category { font-size: .72rem; font-weight: 600; color: #a1a1aa; margin-top: 4px; }
+.block-library__reusable + .block-library__reusable { margin-top: 6px; }
 .block-reuse p { font-size: .8rem; color: #d4d4d8; }
 .block-reuse__form { display: grid; gap: 6px; margin-top: .75rem; }
 

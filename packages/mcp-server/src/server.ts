@@ -39,6 +39,7 @@ import { pageBlockTools } from './tools/page-blocks.js';
 import { workingCopyTools } from './tools/working-copy.js';
 import { settingsTools } from './tools/settings.js';
 import { fontTools } from './tools/fonts.js';
+import { packageTools } from './tools/packages.js';
 import { siteTools } from './tools/sites.js';
 import { domainTools } from './tools/domain.js';
 import { appTools } from './tools/apps.js';
@@ -75,6 +76,7 @@ export const ALL_TOOLS: ToolDef[] = [
   ...redirectTools,
   ...styleTools,
   ...reusableBlockTools,
+  ...packageTools,
   ...migrationTools,
   ...formTools,
   ...emailTools,
@@ -170,7 +172,7 @@ export function effectFor(name: string): ToolEffect {
     || name === 'set_incoming_email_forwarding'
   ) return 'admin';
   // Compute an answer and write nothing, like the preview_* tools.
-  if (name === 'validate_block_type' || name.startsWith('find_')) return 'read';
+  if (name === 'validate_block_type' || name === 'inspect_package' || name.startsWith('find_')) return 'read';
   if (name === 'diff_version') return 'read';
   if (
     name.startsWith('list_') ||

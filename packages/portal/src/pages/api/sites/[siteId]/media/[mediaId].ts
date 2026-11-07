@@ -34,6 +34,11 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   const body = (await request.json()) as Partial<Media>;
   const update: Record<string, unknown> = {};
   for (const k of EDITABLE) if (k in body) update[k] = body[k];
+  // Demo content from a package: the flag can only be cleared (the editor keeps or replaced the file).
+  if ('demo' in body) {
+    if (body.demo !== false) return json({ error: 'demo can only be set to false (keep the file as the site\'s own)', code: 'media_demo_invalid' }, 400);
+    update.demo = false;
+  }
 
   const docPath = `${paths.media(owner_org_id, site.id)}/${mediaId}`;
   const existing = await getStore().getDoc<Media>(docPath);

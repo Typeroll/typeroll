@@ -12,6 +12,7 @@ import {
 import type { ReadWriteStore } from './datastore';
 import { checkInternalLinks, type InternalLinkReport } from './internal-link-check';
 import { menuRefs } from './menu-usage';
+import { demoMediaReferenced } from './packages/demo-media';
 import { missingRequiredSiteFields } from './site-fields-write';
 import { vstore } from './version-store';
 import { compareZoneAiPolicy, type ZoneAiPolicyRead } from './publishing/zone-ai-policy';
@@ -19,7 +20,7 @@ import { compareZoneAiPolicy, type ZoneAiPolicyRead } from './publishing/zone-ai
 export const READINESS_ITEM_IDS = [
   'share_image', 'home_description', 'organization', 'same_as', 'favicon', 'analytics_consent', 'search_console',
   'privacy_page', 'contact_page', 'not_found_page',
-  'indexable_pages', 'orphan_pages', 'menus', 'site_fields', 'live_snippets', 'time_zone', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
+  'indexable_pages', 'orphan_pages', 'menus', 'site_fields', 'live_snippets', 'demo_media', 'time_zone', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
   'duplicate_fonts', 'custom_css_overrides',
   'ai_crawler_zone_conflict', 'structured_data',
 ] as const;
@@ -284,6 +285,13 @@ export function buildSiteReadiness(input: ReadinessInput): SiteReadinessReport {
     ? item('live_snippets', 'warning', `The site has ${[snippets.length ? `${snippets.length} snippet${snippets.length === 1 ? '' : 's'}` : '', liveFields.length ? `${liveFields.length} live site field${liveFields.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')}, but nowhere to serve live files, so ${liveCount === 1 ? 'it changes' : 'they change'} only when the site is published. ${input.liveFiles.reason ?? ''}`.trim(),
       'Set a media host for the site or the organization in Publishing, or publish after each change.', [...snippets.map(snippet => `Snippet: ${snippet.name} (${snippet.id})`), ...liveFields.map(name => `Live site field: ${name}`)])
     : item('live_snippets', 'ok', liveCount ? 'Snippets and live site fields reach the live site without a publication.' : 'The site has no live snippets.', 'None needed.'));
+
+  // demo_media: sample files from a template package that live content shows.
+  const demoShown = demoMediaReferenced(media, [live, partials, publishedTemplates, settings.default_og_image ?? '', settings.logo ?? '', settings.favicon ?? '']);
+  items.push(demoShown.length
+    ? item('demo_media', 'warning', `${demoShown.length} demo image${demoShown.length === 1 ? '' : 's'} from a template package ${demoShown.length === 1 ? 'is' : 'are'} used on live pages and will be published.`,
+      'Replace each listed file with your own in the Media library, or keep it there to mark it as the site\'s own.', demoShown.map(entry => `${entry.filename || entry.id} (${entry.id})`))
+    : item('demo_media', 'ok', media.some(entry => entry.demo) ? 'Demo images from template packages are not used on live pages.' : 'The site uses no demo images.', 'None needed.'));
 
   // time_zone: opening hours and dated snippets need the business's time zone (older sites may lack it).
   const timed = [

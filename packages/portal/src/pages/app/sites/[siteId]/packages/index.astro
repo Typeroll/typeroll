@@ -1,0 +1,104 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import PackageImport from '../../../../../components/PackageImport.tsx';
+import PackageExport from '../../../../../components/PackageExport.tsx';
+import { loadSiteContext } from '../../../../../lib/access';
+import { vstore } from '../../../../../lib/version-store';
+import { defaultSiteSettings, isArchivedSite } from '@typeroll/shared';
+
+// Typeroll packages (.typeroll): import one into the site, or export the
+// site's templates and parts, or the whole site. Importing and exporting
+// templates need write access; the whole look and the whole site need a
+// site admin. Both components load what they need from the packages API.
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId } = ctx;
+const settings = (await vstore.settings(orgId, site.id, versionId)) ?? defaultSiteSettings;
+const archived = isArchivedSite(site);
+const canEdit = ctx.permission !== 'read' && !archived;
+const isAdmin = ctx.permission === 'admin' && !archived;
+---
+<AppLayout title={`Packages — ${site.name}`} siteId={site.id}>
+  <div class="app-header">
+    <div>
+      <h1>Packages</h1>
+      <p class="muted" style="max-width: 760px;">
+        A package is a <code>.typeroll</code> file with block templates, sections, page templates, global blocks, styles and fonts,
+        or a whole site. It belongs to no Organization: anyone can import one into their own site, and you can pass on what you build here.
+      </p>
+    </div>
+  </div>
+  <div class="pk-page">
+    <PackageImport client:load siteId={site.id} canEdit={canEdit} isAdmin={isAdmin} />
+    <PackageExport client:load siteId={site.id} canEdit={canEdit} isAdmin={isAdmin} language={settings.language} />
+  </div>
+
+  <style is:global>
+    .pk-page { display: grid; gap: 1.5rem; max-width: 960px; min-width: 0; }
+    .pk-card h2 { font-size: 1.125rem; margin: 0; }
+    .pk-card h3 { font-size: 1rem; margin: 0; }
+    .pk-card h4 { font-size: .85rem; margin: 0 0 .35rem; color: var(--color-text-muted); font-weight: 600; }
+    .pk-intro { max-width: 760px; margin: 0; }
+    .pk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .pk-block { display: block; }
+    .pk-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+    .pk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .75rem; }
+    .pk-drop { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: 1.25rem; border: 2px dashed var(--color-border); border-radius: var(--radius-md); background: var(--color-bg); }
+    .pk-drop--over { border-color: var(--color-primary); background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface)); }
+    .pk-drop:focus-within { border-color: var(--color-primary); }
+    .pk-progress { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+    .pk-progress progress { width: min(16rem, 100%); }
+    .pk-stale { opacity: .6; pointer-events: none; }
+    .pk-error { color: var(--color-danger); font-size: .875rem; margin: 0; }
+    .pk-error ul { margin: .35rem 0 0; padding-left: 1.2rem; }
+    div.pk-error { padding: .6rem .85rem; border: 1px solid color-mix(in srgb, var(--color-danger) 45%, var(--color-border)); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-danger) 6%, var(--color-surface)); }
+    .pk-notice { margin: 0; padding: .6rem .85rem; border-radius: var(--radius-md); border: 1px solid var(--color-success); background: color-mix(in srgb, var(--color-success) 8%, var(--color-surface)); }
+    .pk-note { color: var(--color-text-muted); }
+    .pk-summary__head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .5rem 1rem; justify-content: space-between; }
+    .pk-version { font-weight: 400; font-size: .9rem; }
+    .pk-badge { display: inline-block; margin-left: .35rem; padding: 0 .45rem; border-radius: 999px; border: 1px solid var(--color-border); font-size: .72rem; font-weight: 600; line-height: 1.6; color: var(--color-text-muted); vertical-align: middle; }
+    .pk-badge--demo { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); margin-left: 0; }
+    .pk-signature { padding: .6rem .85rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: .9rem; overflow-wrap: anywhere; }
+    .pk-signature--ok { border-color: var(--color-success); background: color-mix(in srgb, var(--color-success) 8%, var(--color-surface)); }
+    .pk-signature--warn { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); }
+    .pk-signature--danger { border-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); color: var(--color-danger); }
+    .pk-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .25rem 1rem; margin: 0; font-size: .9rem; }
+    .pk-facts dt { color: var(--color-text-muted); }
+    .pk-facts dd { margin: 0; overflow-wrap: anywhere; }
+    .pk-warnings { padding: .6rem .85rem; border-radius: var(--radius-md); border: 1px solid color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); font-size: .9rem; }
+    .pk-warnings ul { margin: .25rem 0 0; padding-left: 1.2rem; }
+    .pk-fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: .75rem 1rem; display: grid; gap: .5rem; min-width: 0; margin: 0; }
+    .pk-fieldset legend { font-weight: 600; padding: 0 .35rem; }
+    .pk-radio, .pk-check { display: flex !important; align-items: flex-start; gap: .5rem; cursor: pointer; font-weight: 400; }
+    .pk-radio input, .pk-check input { width: auto; margin-top: 4px; flex-shrink: 0; }
+    .pk-radio--disabled { cursor: not-allowed; opacity: .75; }
+    .pk-licence { padding: .6rem .75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg); }
+    .pk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .25rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr)); }
+    .pk-list code, .pk-plan code { font-size: .78em; }
+    .pk-group + .pk-group { margin-top: .5rem; }
+    .pk-media { list-style: none; margin: 0; padding: 0; display: grid; gap: .35rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr)); max-height: 20rem; overflow-y: auto; }
+    .pk-media .pk-check { align-items: center; }
+    .pk-media .pk-check input { margin-top: 0; }
+    .pk-media img { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; background: var(--color-bg); flex-shrink: 0; }
+    .pk-media__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .85rem; }
+    .pk-plan__group { min-width: 0; }
+    .pk-plan__rows { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: var(--radius-md); }
+    .pk-plan__row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .75rem; padding: .4rem .65rem; font-size: .9rem; }
+    .pk-plan__row + .pk-plan__row { border-top: 1px solid var(--color-border); }
+    .pk-plan__name { min-width: 0; overflow-wrap: anywhere; }
+    .pk-plan__detail { grid-column: 1 / -1; }
+    .pk-action { font-size: .78rem; font-weight: 600; white-space: nowrap; padding: 0 .45rem; border-radius: 999px; line-height: 1.6; align-self: start; border: 1px solid var(--color-border); }
+    .pk-plan__row--create .pk-action { color: var(--color-success); border-color: var(--color-success); }
+    .pk-plan__row--rename .pk-action, .pk-plan__row--replace .pk-action { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); }
+    .pk-plan__row--reuse .pk-action, .pk-plan__row--skip .pk-action { color: var(--color-text-muted); }
+    .pk-toggle { justify-self: start; }
+    .pk-blockers { margin: 0; padding-left: 1.2rem; color: var(--color-danger); font-size: .875rem; }
+    .pk-report__list { margin: 0; padding-left: 1.2rem; display: grid; gap: .35rem; }
+    .pk-report__items { margin: .2rem 0 0; padding-left: 1.1rem; font-size: .9rem; }
+    @media (max-width: 640px) {
+      .pk-facts { grid-template-columns: minmax(0, 1fr); }
+      .pk-facts dd { margin-bottom: .35rem; }
+      .pk-plan__row { grid-template-columns: minmax(0, 1fr); }
+    }
+  </style>
+</AppLayout>

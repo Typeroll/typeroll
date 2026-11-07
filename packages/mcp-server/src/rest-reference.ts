@@ -35,6 +35,9 @@ const EXAMPLE_ARGS: Record<string, Record<string, unknown>> = {
   revoke_preview_link: { preview_url: `${'https://portal.invalid'}/preview/{siteId}/?t={token}` },
   search_fonts: { query: 'grotesk', category: 'sans', variable: true },
   set_site_fonts: { heading: 'Fraunces', body: 'Inter', display: null, load: { body: { weights: [300] } } },
+  export_package: { selection: { kind: 'collection', block_templates: ['hero'], styles: 'used' }, meta: { id: 'acme-sections', name: 'Acme sections', version: '1.0.0' } },
+  inspect_package: { source_url: 'https://example.com/acme-sections-1.0.0.typeroll', options: { design: 'content' } },
+  import_package: { source_url: 'https://example.com/acme-sections-1.0.0.typeroll', options: { design: 'content' } },
   upload_font: { filename: 'BrandSans-Regular.woff2', data_base64: '{data_base64}', licence_confirmed: true, licence_note: 'Web licence, order 1234' },
 };
 const SITE = '{siteId}';

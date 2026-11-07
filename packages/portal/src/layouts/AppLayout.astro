@@ -219,6 +219,10 @@ const initials = (session.displayName ?? session.email ?? 'U')
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="FileSymlink" /></span>
                 <span>Page templates</span>
               </a>
+              <a href={`/app/sites/${siteId}/packages`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/packages`) && "app-sidebar__link--active"]}>
+                <span class="app-sidebar__link-icon" aria-hidden><Icon name="Package" /></span>
+                <span>Packages</span>
+              </a>
               <a href={`/app/sites/${siteId}/media`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/media`) && "app-sidebar__link--active"]}>
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="Image" /></span>
                 <span>Media</span>

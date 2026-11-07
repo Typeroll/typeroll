@@ -98,6 +98,11 @@ next publication.
 Uploading and deleting need site administrator permission, like the font
 settings. Extension credentials can read the library but not change it.
 
+Font files travel in a [package](../packages/#fonts-and-licences) only when the
+exporter confirms their licence allows passing them on, and they are added to
+another site's library only with the importer's own licence confirmation.
+Adobe Fonts, Bunny Fonts and Fontshare kits never travel.
+
 ## Adobe Fonts, Bunny Fonts and Fontshare
 
 `fonts.services` lists up to four services. Each loads a stylesheet from the

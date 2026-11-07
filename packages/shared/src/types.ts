@@ -933,6 +933,12 @@ export interface Media {
   alt_text?: string;
   title?: string;
   caption?: string;
+  /**
+   * Demo content from a template package: listed for replacement before a
+   * publication uses it. Cleared when the file is replaced or the editor
+   * keeps it.
+   */
+  demo?: boolean;
   width?: number;
   height?: number;
   size_bytes?: number;

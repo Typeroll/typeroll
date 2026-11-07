@@ -16,6 +16,7 @@ import PageDraftRecovery from './PageDraftRecovery';
 // across containers is a Phase 2.5 polish.
 
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { groupBlockTemplates, importedFromLabel, templateKindLabel } from './block-template-model';
 import type { Block, BlockTemplate, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType, SiteSettings, SiteStyle } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, GLOBAL_BLOCK_TYPE_ID, resolveResponsive, isResponsiveValue, resolveBreakpointWidths, breakpointPreviewWidth, type ResponsiveBreakpoints } from '@typeroll/shared';
 import {
@@ -1136,17 +1137,21 @@ export function BlockLibrary({
         style={searchInput}
       />
       {reusable && (() => {
-        const templates = reusable.templates.filter(template => matches(`${template.name} ${template.description ?? ''}`));
+        const templates = reusable.templates.filter(template => matches(`${template.name} ${template.description ?? ''} ${template.category ?? ''}`));
         const globals = reusable.globalBlocks.filter(block => block.content_mode === 'blocks' && matches(block.name));
         return <>
           {templates.length > 0 && <div style={{ marginTop: '1rem' }}>
             <h4 style={catHeading}>Templates</h4>
             <p className="block-library__hint">Inserts a copy you can change on this page.</p>
-            <div className="block-library__reusable">
-              {templates.map(template => <button key={template.id} type="button" className="block-library__item" onClick={() => reusable.onInsertTemplate(template.id)} title={template.description}>
-                <strong>{template.name}</strong>{template.description && <span>{template.description}</span>}
+            {groupBlockTemplates(templates).map(group => <div key={group.category ?? ''} className="block-library__reusable">
+              {group.category && <span className="block-library__category">{group.category}</span>}
+              {group.templates.map(template => <button key={template.id} type="button" className="block-library__item" onClick={() => reusable.onInsertTemplate(template.id)} title={template.description}>
+                {template.preview && <img src={template.preview} alt="" loading="lazy" />}
+                <strong>{template.name}{templateKindLabel(template) && <em className="block-library__kind">{templateKindLabel(template)}</em>}</strong>
+                {template.description && <span>{template.description}</span>}
+                {importedFromLabel(template) && <span>{importedFromLabel(template)}</span>}
               </button>)}
-            </div>
+            </div>)}
           </div>}
           {globals.length > 0 && <div style={{ marginTop: '1rem' }}>
             <h4 style={catHeading}>Global blocks</h4>

@@ -102,20 +102,42 @@ export interface BlockTemplate {
   name: string;
   /** When to use it; shown to editors and agents. */
   description?: string;
+  /** `section`: a full-width page section; `block`: any other group of blocks. */
+  kind?: 'block' | 'section';
+  /** Free grouping shown in the template list, e.g. "Heroes" or "Pricing". */
+  category?: string;
+  /** Address of a preview image (a media library file). */
+  preview?: string;
+  /** The package it was imported from. */
+  imported_from?: { package_id: string; package_name: string; version: string; author?: string; imported_at: string };
   blocks: Block[];
   created_at: string;
   updated_at: string;
 }
 
+export type BlockTemplateFields = { name?: string; description?: string; kind?: 'block' | 'section'; category?: string; preview?: string; blocks?: Block[] };
+
 export const BLOCK_TEMPLATE_ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,63}$/;
 
 /** Validate a block template body. Returns the cleaned fields or the first problem. */
-export function validateBlockTemplateInput(input: unknown, partial = false): { value?: { name?: string; description?: string; blocks?: Block[] }; error?: string } {
+export function validateBlockTemplateInput(input: unknown, partial = false): { value?: BlockTemplateFields; error?: string } {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return { error: 'Body must be an object' };
   const body = input as Record<string, unknown>;
-  const unknown = Object.keys(body).filter(key => !['id', 'name', 'description', 'blocks'].includes(key));
-  if (unknown.length) return { error: `Unknown fields: ${unknown.join(', ')}. Accepted: id, name, description, blocks.` };
-  const value: { name?: string; description?: string; blocks?: Block[] } = {};
+  const unknown = Object.keys(body).filter(key => !['id', 'name', 'description', 'kind', 'category', 'preview', 'blocks'].includes(key));
+  if (unknown.length) return { error: `Unknown fields: ${unknown.join(', ')}. Accepted: id, name, description, kind, category, preview, blocks.` };
+  const value: BlockTemplateFields = {};
+  if (body.kind !== undefined) {
+    if (body.kind !== 'block' && body.kind !== 'section') return { error: 'kind must be block or section' };
+    value.kind = body.kind;
+  }
+  if (body.category !== undefined) {
+    if (typeof body.category !== 'string' || body.category.length > 60) return { error: 'category must be text up to 60 characters' };
+    value.category = body.category.trim();
+  }
+  if (body.preview !== undefined) {
+    if (typeof body.preview !== 'string' || body.preview.length > 2000 || /^\s*(?:javascript|data):/i.test(body.preview)) return { error: 'preview must be the address of an image in the media library' };
+    value.preview = body.preview.trim();
+  }
   if (body.name !== undefined || !partial) {
     if (typeof body.name !== 'string' || !body.name.trim() || body.name.length > 120) return { error: 'name must be text up to 120 characters' };
     value.name = body.name.trim();
