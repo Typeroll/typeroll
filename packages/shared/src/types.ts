@@ -411,6 +411,20 @@ export interface SiteSettings {
     size_base: number;
     mono?: string;
     /**
+     * Large headings and heroes (render version 15). Unset uses the heading
+     * family. Styles and blocks choose the role, never a family.
+     */
+    display?: string;
+    /** Eyebrows and quotes (render version 15). Unset uses the body family. */
+    accent?: string;
+    /**
+     * Weights and italics to load for a role beyond those the site uses
+     * (render version 15), for example for custom CSS. See `planSiteFonts`.
+     */
+    load?: { [R in import('./font-plan.js').SiteFontRole]?: { weights?: number[]; italic?: number[] } };
+    /** Adobe Fonts kits and Bunny Fonts or Fontshare stylesheets, loaded from their CDN. */
+    services?: import('./font-plan.js').FontService[];
+    /**
      * Text rendering on `<body>`. `auto` is the browser default; `antialiased`
      * draws thinner text on macOS, which can suit light text on a dark
      * background. Unset means `auto` from render version 6 and the earlier
@@ -424,6 +438,12 @@ export interface SiteSettings {
      */
     delivery?: 'self_hosted' | 'google';
   };
+  /**
+   * The fonts a publication loads, computed when it is frozen
+   * (`planSiteFonts`). Only in a frozen publication's settings; never stored
+   * in a site's settings.
+   */
+  font_plan?: import('./font-plan.js').FontPlan;
   contact?: {
     email?: string;
     phone?: string;
@@ -2110,6 +2130,11 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/block_types`,
   blockType: (orgId: string, siteId: string, blockTypeId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/block_types/${blockTypeId}`,
+  /** The site's Fonts library (uploaded font files, `SiteFontFile`). Site-wide, not versioned, like media. */
+  fonts: (orgId: string, siteId: string) =>
+    `organizations/${orgId}/sites/${siteId}/fonts`,
+  font: (orgId: string, siteId: string, fontId: string) =>
+    `organizations/${orgId}/sites/${siteId}/fonts/${fontId}`,
   /** Block templates (copy-in section starters). Site-wide, not versioned: an authoring library, not published content. */
   blockTemplates: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/block_templates`,

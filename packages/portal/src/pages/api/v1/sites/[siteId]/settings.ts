@@ -28,7 +28,8 @@ import { customCssWarnings, customCssWriteError } from '../../../../../lib/custo
 import { getStore } from '../../../../../lib/datastore';
 import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentionError } from '../../../../../lib/form-submissions';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, type SiteSettings } from '@typeroll/shared';
+import { fontSettingsWarnings, listSiteFonts } from '../../../../../lib/fonts/font-library';
+import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, siteFontsErrors, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
@@ -61,12 +62,18 @@ const INSTALLATION_REFUSED = new Set([
   'form_submission_retention_days',
 ]);
 const INSTALLATION_REFUSED_CONSENT = new Set(['scripts_necessary', 'scripts_optional']);
+/** Font services load a stylesheet from another company's CDN on every page. */
+const INSTALLATION_REFUSED_FONTS = new Set(['services']);
 
 function installationRefusedFields(body: Record<string, unknown>): string[] {
   const refused = Object.keys(body).filter((key) => INSTALLATION_REFUSED.has(key));
   const consent = body.cookie_consent;
   if (consent && typeof consent === 'object' && !Array.isArray(consent)) {
     for (const key of Object.keys(consent)) if (INSTALLATION_REFUSED_CONSENT.has(key)) refused.push(`cookie_consent.${key}`);
+  }
+  const fonts = body.fonts;
+  if (fonts && typeof fonts === 'object' && !Array.isArray(fonts)) {
+    for (const key of Object.keys(fonts)) if (INSTALLATION_REFUSED_FONTS.has(key)) refused.push(`fonts.${key}`);
   }
   return refused;
 }
@@ -106,6 +113,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       return apiError(`These settings require a site administrator and cannot be changed with an Extension credential: ${refused.join(', ')}`, 403, ctx);
     }
   }
+  // The font plan is derived when a publication is frozen; a site never stores one.
+  if (body.font_plan !== undefined) return apiError('font_plan is computed when a publication is frozen and cannot be set. Choose families with fonts.heading, fonts.body, fonts.mono, fonts.display and fonts.accent, and extra weights with fonts.load.', 400, ctx);
   if (body.agent_instructions !== undefined && (typeof body.agent_instructions !== 'string' || body.agent_instructions.length > 12000)) return apiError('agent_instructions must be text up to 12000 characters', 400);
   for (const key of CLEARABLE_STRINGS) {
     if (body[key] === undefined) continue;
@@ -165,6 +174,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (fonts.delivery !== undefined && fonts.delivery !== null && fonts.delivery !== 'self_hosted' && fonts.delivery !== 'google') {
       return apiError('fonts.delivery must be "self_hosted" (font files copied to the site, the default) or "google" (Google Fonts CDN), or null for the default', 400);
     }
+    // Roles, fonts.load and fonts.services. The patch replaces each key it
+    // names (null clears mono, display, accent, load and services), so the
+    // merged fonts are valid exactly when the keys sent are.
+    const fontErrors = siteFontsErrors(fonts);
+    if (fontErrors.length) return apiError(fontErrors.join('; '), 400, ctx, { details: { errors: fontErrors } });
   }
   if (body.colors !== undefined) {
     if (!body.colors || typeof body.colors !== 'object' || Array.isArray(body.colors)) return apiError('colors must be an object', 400);
@@ -281,6 +295,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       button_text_ok: item.apca_pass,
     }));
   }
+  if (update.fonts) warnings.push(...fontSettingsWarnings(update.fonts as SiteSettings['fonts'], await listSiteFonts(ctx.orgId, ctx.siteId)));
   warnings.push(...customCssWarnings(update.custom_css).map(problem => `Custom CSS line ${problem.line}: ${problem.message}`));
   if (warnings.length) resp.warnings = warnings;
   return apiResponse(ctx, resp, 200, body);

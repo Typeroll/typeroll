@@ -2,6 +2,7 @@ import { contentWidthsCss } from './site-display-settings.js';
 import { designScalesCss, responsiveDesignScalesCss, resolvedDesignScales, TYPOGRAPHY_DEFAULTS, typographyError, validColor, type DesignScales, type TypographySettings } from './design-tokens.js';
 import { resolveBreakpointWidths } from './breakpoints.js';
 import { resolveRenderVersion } from './render-version.js';
+import { FONT_PLAN_RENDER_VERSION, FONT_ROLE_CSS, fontFallbackFacesCss, plannedFallbackFace, type FontPlan } from './font-plan.js';
 /** The reserved system family never triggers a network font request. */
 export const SYSTEM_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 export function isSystemFont(value: string): boolean {
@@ -46,7 +47,7 @@ export function fontSmoothingCss(smoothing: unknown, renderVersion: number): str
 /** Default phone type ratio from render version 14 (1.2 before). */
 export const PHONE_TYPE_RATIO = 1.15;
 
-export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'> & { render_version?: unknown; design_scales?: DesignScales; typography?: TypographySettings; responsive_breakpoints?: import('./breakpoints.js').ResponsiveBreakpoints | null; content_widths?: unknown }): string {
+export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, 'colors' | 'fonts'> & { render_version?: unknown; design_scales?: DesignScales; typography?: TypographySettings; responsive_breakpoints?: import('./breakpoints.js').ResponsiveBreakpoints | null; content_widths?: unknown; font_plan?: FontPlan | null }): string {
   const colors = settings.colors ?? ({} as Partial<import('./types.js').SiteSettings['colors']>);
   const fonts = settings.fonts ?? ({} as Partial<import('./types.js').SiteSettings['fonts']>);
   const fluid = resolveRenderVersion(settings.render_version) >= 10;
@@ -58,7 +59,14 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
   const typography = { ...TYPOGRAPHY_DEFAULTS, ...(!typographyError(settings.typography) ? settings.typography : {}) };
   // Version 14: a webfont name always carries the fallback stack, so text styled with var(--font-*) never shows the browser's default serif.
   const v14 = resolveRenderVersion(settings.render_version) >= 14;
-  const withFallback = (family: string) => v14 && !isSystemFont(family) ? `${fontFamilyCss(family)}, 'tr-fallback', ${SYSTEM_FONT_STACK}` : fontFamilyCss(family);
+  // Version 15: a family copied with the publication also has its own metric-matched fallback face.
+  const v15 = resolveRenderVersion(settings.render_version) >= FONT_PLAN_RENDER_VERSION;
+  const ownFallback = (family: string) => {
+    const face = v15 ? plannedFallbackFace(settings.font_plan, family) : null;
+    return face ? `${fontFamilyCss(face)}, ` : '';
+  };
+  const withFallback = (family: string) => v14 && !isSystemFont(family) ? `${fontFamilyCss(family)}, ${ownFallback(family)}'tr-fallback', ${SYSTEM_FONT_STACK}` : fontFamilyCss(family);
+  const roleFonts = v15 ? `\n  --font-display:${fonts.display ? withFallback(fonts.display) : 'var(--font-heading)'};\n  --font-accent:${fonts.accent ? withFallback(fonts.accent) : 'var(--font-body)'};` : '';
   return `:root{
   --color-primary:${colors.primary};
   --color-secondary:${colors.secondary};
@@ -70,10 +78,10 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
   --color-text-light:${colors.text_light ?? '#64748b'};
   --font-heading:${withFallback(fonts.heading ?? 'Inter')};
   --font-body:${withFallback(fonts.body ?? 'Inter')};
-  --font-mono:${fonts.mono ? fontFamilyCss(fonts.mono) : 'ui-monospace'};
+  --font-mono:${fonts.mono ? fontFamilyCss(fonts.mono) : 'ui-monospace'};${roleFonts}
   ${designScalesCss(scales)}${fluid ? `\n  --type-rhythm:${typography.rhythm};\n  --measure-prose:${typography.line_length}ch;\n  --section-padding:var(--space-xl);\n  --spacing-xs:var(--space-xs);--spacing-sm:var(--space-sm);--spacing-md:var(--space-md);--spacing-lg:var(--space-lg);--spacing-xl:var(--space-xl);` : ''}
   --font-size-base:${fonts.size_base ?? 16}px;${v14 ? `\n  ${contentWidthsCss(settings.content_widths)}` : ''}
-}${responsiveDesignScalesCss(scales, resolveBreakpointWidths(settings.responsive_breakpoints))}${fluid ? ':where([data-block=prose]){max-inline-size:var(--measure-prose)}' : ''}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}`;
+}${responsiveDesignScalesCss(scales, resolveBreakpointWidths(settings.responsive_breakpoints))}${fluid ? ':where([data-block=prose]){max-inline-size:var(--measure-prose)}' : ''}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}${v15 ? FONT_ROLE_CSS : ''}`;
 }
 
 /** Webfont families a site loads from Google Fonts (system families excluded). */
@@ -122,7 +130,8 @@ export function rewriteGoogleFontCss(css: string, localPaths: Map<string, string
  * From render version 14 the fallback also has a bold face, so headings stay
  * bold while the webfont loads (before, headings skipped the fallback).
  */
-export function webfontFallbackCss(renderVersion: number): string {
+export function webfontFallbackCss(renderVersion: number, plan?: FontPlan | null): string {
+  if (renderVersion >= FONT_PLAN_RENDER_VERSION && plan) return `${webfontFallbackCss(14)}${fontFallbackFacesCss(plan)}`;
   return renderVersion >= 14
     ? `${WEBFONT_FALLBACK_CSS}@font-face{font-family:'tr-fallback';src:local('Arial Bold'),local('Arial-BoldMT');font-weight:600 900;size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}`
     : WEBFONT_FALLBACK_CSS;

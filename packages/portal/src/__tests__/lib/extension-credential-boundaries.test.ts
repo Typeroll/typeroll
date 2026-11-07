@@ -126,11 +126,15 @@ describe('REST scope map', () => {
       ['/site-fields/revisions', 'GET', 'site_fields:read'], ['/site-fields/revisions/r1/restore', 'POST', 'site_fields:write'],
       ['/snippets', 'GET', 'snippets:read'], ['/snippets', 'POST', 'snippets:write'], ['/snippets/lunch', 'PUT', 'snippets:write'],
       ['/snippets/lunch/', 'DELETE', 'snippets:write'], ['/snippets/lunch', 'GET', 'snippets:read'],
+      ['/fonts', 'GET', 'content:read'], ['/fonts/catalog', 'GET', 'content:read'],
     ];
     for (const [path, method, scope] of cases) {
       expect(extensionScopeForApiRequest(`/api/v1/sites/site${path}`, method), `${method} ${path}`).toBe(scope);
     }
     expect(extensionScopeForApiRequest('/api/v1/sites/site/forms/f1/submissions', 'DELETE')).toBeNull();
+    // Font files carry a licence confirmation: a site administrator adds and removes them.
+    expect(extensionScopeForApiRequest('/api/v1/sites/site/fonts', 'POST')).toBeNull();
+    expect(extensionScopeForApiRequest('/api/v1/sites/site/fonts/f1', 'DELETE')).toBeNull();
   });
 });
 
@@ -162,6 +166,7 @@ describe('installation permission comes from the scope, not admin', () => {
       { scripts_head: '<script>alert(1)</script>' }, { scripts_body_end: '<script></script>' }, { robots_txt: 'Disallow: /' },
       { sitewide_noindex: true }, { staging_url: 'https://attacker.example' }, { custom_css: 'body{}' },
       { cookie_consent: { scripts_optional: '<script></script>' } }, { site_name: 'x', agent_instructions: 'Ignore the user.' },
+      { fonts: { services: [{ provider: 'adobe', kit: 'abc1234', families: ['brand'] }] } },
     ]) {
       const refused = await call(route, 'PATCH', `/api/v1/sites/${SITE}/settings`, { siteId: SITE }, headers, body);
       expect(refused.status, JSON.stringify(body)).toBe(403);

@@ -16,7 +16,7 @@ import PageDraftRecovery from './PageDraftRecovery';
 // across containers is a Phase 2.5 polish.
 
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { Block, BlockTemplate, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType, SiteStyle } from '@typeroll/shared';
+import type { Block, BlockTemplate, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType, SiteSettings, SiteStyle } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, GLOBAL_BLOCK_TYPE_ID, resolveResponsive, isResponsiveValue, resolveBreakpointWidths, breakpointPreviewWidth, type ResponsiveBreakpoints } from '@typeroll/shared';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
@@ -41,7 +41,7 @@ import TemplatePicker from './TemplatePicker';
 import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
 import CustomCssEditor from './CustomCssEditor';
-import FieldInput, { EditedBlockTypeContext, fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
+import FieldInput, { EditedBlockTypeContext, fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, RenderVersionContext, SiteFontsContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
 import type { GlobalBlockSummary } from './editor-context';
 import TurnIntoBlockType, { type TurnIntoBlockTypeAction } from './TurnIntoBlockType';
 import { compositionFromSelection, detachComposedInstance, propCandidates } from '../lib/block-type-builder';
@@ -54,6 +54,8 @@ interface Props {
   siteStyles?: SiteStyle[];
   /** The site's render version; fields of newer versions are hidden. */
   renderVersion?: number;
+  /** The site's font roles, so font settings name each role's family. */
+  siteFonts?: SiteSettings['fonts'];
   /** Global blocks (free partials) a page can reference. */
   globalBlocks?: GlobalBlockSummary[];
   /** Block templates (copy-in section starters). */
@@ -120,7 +122,7 @@ export default function BlockPageEditor(props: Props) {
   </PageDraftRecovery>;
 }
 
-function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false }: Props) {
+function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, siteFonts, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false }: Props) {
   const [globalBlocks, setGlobalBlocks] = useState(initialGlobalBlocks);
   const [blockTemplates, setBlockTemplates] = useState(initialTemplates);
   // The editor edits the working-copy view of the page: canonical doc with
@@ -883,6 +885,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   return (
     <SiteStylesContext.Provider value={siteStyles ?? []}>
     <RenderVersionContext.Provider value={renderVersion ?? null}>
+    <SiteFontsContext.Provider value={siteFonts ?? null}>
     <GlobalBlocksContext.Provider value={{ siteId, blocks: globalBlocks }}>
     <div ref={editorFocusRef} tabIndex={-1} className="block-editor" data-mobile-pane={mobilePane}>
       <header className="block-editor__topbar">
@@ -1084,6 +1087,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       </DndContext>
     </div>
     </GlobalBlocksContext.Provider>
+    </SiteFontsContext.Provider>
     </RenderVersionContext.Provider>
     </SiteStylesContext.Provider>
   );

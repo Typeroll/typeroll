@@ -555,6 +555,57 @@ test('a publication with frozen theme fonts renders them without network or the 
   assert.doesNotMatch(html, /fonts\.(?:googleapis|gstatic)\.com/);
 });
 
+test('a version 14 publication renders byte-identically with its frozen font plan', async t => {
+  const bytes = Buffer.from('frozen font bytes'), name = `${'f'.repeat(32)}.woff2`;
+  const legacy = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
+  const build = async plan => {
+    const value = publication();
+    value.pages.push({ ...page('home'), path: '/' });
+    value.settings.render_version = 14;
+    if (plan) value.settings.font_plan = plan;
+    value.theme_fonts = { css_url: legacy, css: `@font-face{font-family:'Inter';src:url(/_typeroll/fonts/${name}) format('woff2')}\n`, files: [{ name, sha256: digest(bytes), data: bytes.toString('base64') }] };
+    const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+    await harness.run(true);
+    return fs.readFile(path.join(harness.destination, 'dist/one/index.html'), 'utf8');
+  };
+  const without = await build(null);
+  const withPlan = await build({ render_version: 14, families: [{ family: 'Inter', roles: ['heading', 'body'], source: 'google', weights: [400, 500, 600, 700], italic: [], category: 'sans' }], google_css_url: legacy, service_stylesheets: [] });
+  assert.equal(withPlan, without);
+});
+
+test('a version 15 publication links its uploaded fonts, Google CDN, services and the preload from the plan', async t => {
+  const value = publication();
+  value.pages.push({ ...page('home'), path: '/' });
+  const bytes = Buffer.from('uploaded font bytes'), name = `${'e'.repeat(32)}.woff2`;
+  value.settings.render_version = 15;
+  value.settings.fonts = { heading: 'Sofia Sans', body: 'Brand', accent: 'proxima-nova', delivery: 'google', size_base: 16,
+    services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'] }, { provider: 'fontshare', url: 'https://api.fontshare.com/v2/css?f[]=satoshi@400', families: ['Satoshi'] }] };
+  const fallback = { local: ['Arial', 'ArialMT'], size_adjust: 101.5, ascent: 90, descent: 22, line_gap: 0 };
+  value.settings.font_plan = { render_version: 15, families: [
+    { family: 'Sofia Sans', roles: ['heading', 'display'], source: 'google', weights: [700], italic: [], category: 'sans' },
+    { family: 'Brand', roles: ['body'], source: 'upload', weights: [400], italic: [], files: ['font-1'], fallback },
+    { family: 'proxima-nova', roles: ['accent'], source: 'service', weights: [400], italic: [] },
+  ], google_css_url: 'https://fonts.googleapis.com/css2?family=Sofia%20Sans:wght@700&display=swap',
+  service_stylesheets: ['https://use.typekit.net/abc1234.css', 'https://api.fontshare.com/v2/css?f[]=satoshi@400'], preload: `/_typeroll/fonts/${name}` };
+  value.theme_fonts = { css_url: `#library=${digest(bytes)}`, css: `@font-face{font-family:'Brand';font-style:normal;font-weight:400;font-display:swap;src:url(/_typeroll/fonts/${name}) format('woff2')}\n`,
+    files: [{ name, sha256: digest(bytes), data: bytes.toString('base64') }] };
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await harness.run(true);
+  assert.equal((await harness.output())[`_typeroll/fonts/${name}`], digest(bytes));
+  const html = await fs.readFile(path.join(harness.destination, 'dist/one/index.html'), 'utf8');
+  assert.match(html, /<link rel="preload" as="style" href="\/_typeroll\/fonts\/fonts\.css"/);
+  assert.match(html, new RegExp(`<link rel="preload" as="font" type="font/woff2" crossorigin href="/_typeroll/fonts/${name}"`));
+  assert.match(html, /<link rel="preload" as="style" href="https:\/\/fonts\.googleapis\.com\/css2\?family=Sofia%20Sans:wght@700&amp;display=swap"/);
+  assert.match(html, /<link rel="preconnect" href="https:\/\/fonts\.gstatic\.com" crossorigin/);
+  assert.match(html, /<link rel="stylesheet" href="https:\/\/use\.typekit\.net\/abc1234\.css"/);
+  assert.match(html, /<link rel="stylesheet" href="https:\/\/api\.fontshare\.com\/v2\/css\?f\[\]=satoshi@400"/);
+  assert.match(html, /<link rel="preconnect" href="https:\/\/cdn\.fontshare\.com" crossorigin/);
+  // The uploaded family's metric-matched fallback face, in its stack.
+  assert.match(html, /font-family:'Brand fallback';src:local\('Arial'\),local\('ArialMT'\);size-adjust:101\.5%/);
+  assert.match(html, /--font-body:'Brand', 'Brand fallback', 'tr-fallback'/);
+  assert.match(html, /--font-accent:'proxima-nova'/);
+});
+
 test('build year invalidates page reuse and domain rebase caches together', () => {
   const value = publication();
   const before = createRenderPlan(value, manifest, process.version, 2026);

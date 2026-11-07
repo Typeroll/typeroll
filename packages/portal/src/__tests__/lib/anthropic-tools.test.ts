@@ -1004,3 +1004,23 @@ describe('snippet tools', () => {
     expect(PLAYBOOK_STARTER).toContain('core/snippet');
   });
 });
+
+describe('font tools', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('searches the catalog and sets roles, clearing with null and refusing invalid weights', async () => {
+    const { ctx, runTool } = await setup();
+    const found = (await runTool('search_fonts', { query: 'Fraunces' }, ctx)).result as { fonts: Array<{ family: string; source: string }> };
+    expect(found.fonts[0]).toMatchObject({ family: 'Fraunces', source: 'google' });
+    const set = await runTool('set_site_fonts', { heading: 'Fraunces', display: 'Unknown Face', load: { body: { weights: [300] } } }, ctx);
+    expect(set.result).toMatchObject({ ok: true, fonts: { heading: 'Fraunces', display: 'Unknown Face' }, warnings: [expect.stringContaining('fonts.display')] });
+    expect(set.action).toMatchObject({ type: 'update_site_settings' });
+    await runTool('set_site_fonts', { display: null }, ctx);
+    const { vstore } = await import('../../lib/version-store');
+    const fonts = (await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.fonts as Record<string, unknown>;
+    expect(fonts).toMatchObject({ heading: 'Fraunces', load: { body: { weights: [300] } } });
+    expect(fonts).not.toHaveProperty('display');
+    expect((await runTool('set_site_fonts', { load: { body: { weights: [350] } } }, ctx)).result).toMatchObject({ error: expect.any(String), errors: [expect.stringContaining('fonts.load.body')] });
+    expect(((await runTool('set_site_fonts', { heading: 'Inter' }, { ...ctx, permission: 'write' as const })).result as { error: string }).error).toContain('admin');
+  });
+});

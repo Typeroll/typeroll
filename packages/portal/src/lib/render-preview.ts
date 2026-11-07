@@ -23,7 +23,7 @@ import type {
 import { vstore } from './version-store';
 import { publicationLiveContent } from './publishing/publication-snippets';
 import {
-  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webFontFamilies, googleFontsCssUrl, WEBFONT_FALLBACK_CSS, webfontFallbackCss,
+  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webfontFallbackCss, withGlobalBlockContent,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -79,6 +79,7 @@ import {
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
 import { sanitizeBody } from './sanitize';
+import { previewFonts, type PreviewFonts } from './fonts/preview-fonts';
 // The published page's base stylesheets, inlined by Astro at the end of <head>.
 import siteResetCss from '../../../site-template/src/styles/reset.css?raw';
 import siteGlobalCss from '../../../site-template/src/styles/global.css?raw';
@@ -371,11 +372,20 @@ export async function renderPreview(
   const cookieConsentHtml = opts.allowScripts === true
     ? rewriteIf(renderPreviewCookieConsent(settings, page.language || settings.language, opts.consentChoice))
     : '';
+  // The fonts this page loads once published: its blocks, template, header,
+  // footer and the global blocks they place, and the text of an HTML page.
+  const fontBlocks: Block[] = [...withGlobalBlockContent(assetBlocks, globalBlockSource)];
+  for (const html of [page.content_mode === 'html' ? page.html_content : '', header?.content_mode === 'html' ? header.html_content : '', footer?.content_mode === 'html' ? footer.html_content : '']) {
+    if (html) fontBlocks.push({ id: 'text', type: 'core/prose', data: { html } } as Block);
+  }
+  if (page.fields) fontBlocks.push({ id: 'fields', type: 'core/prose', data: page.fields as Record<string, unknown> } as Block);
+  const fonts = await previewFonts(orgId, siteId, settings, fontBlocks, blockRegistry);
 
   return resolvePreviewMedia(buildHtml({
     page,
     versionId,
     settings,
+    fonts,
     headerHtml,
     footerHtml,
     bodyHtml,
@@ -486,8 +496,9 @@ export async function renderBlockTypePreview(
     id: 'block-preview', title: `${type.label} preview`, slug: 'block-preview', status: 'draft',
     content_mode: 'blocks', blocks: [block], noindex: true,
   } as unknown as Page;
+  const fonts = await previewFonts(orgId, siteId, settings, withGlobalBlockContent([block], globalBlockSource), registry);
   const document = buildHtml({
-    page, versionId, settings, headerHtml: '', footerHtml: '', bodyHtml: html, blocksBody: true,
+    page, versionId, settings, fonts, headerHtml: '', footerHtml: '', bodyHtml: html, blocksBody: true,
     blockCss: css, blockJs: '', allowScripts: false, robotsBlocked: true, banner: null,
   });
   return {
@@ -562,6 +573,8 @@ function buildHtml(args: {
   page: Page;
   versionId: string;
   settings: SiteSettings;
+  /** The site's fonts as this page loads them once published (previewFonts). */
+  fonts: PreviewFonts;
   headerHtml: string;
   footerHtml: string;
   bodyHtml: string;
@@ -589,12 +602,7 @@ function buildHtml(args: {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, consentPreset, robotsBlocked, banner } = args;
   const direction = languageDirection(page.language || settings.language || 'en');
   const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
-  const f = {
-    heading: settings.fonts?.heading ?? 'Inter',
-    body: settings.fonts?.body ?? 'Inter',
-    mono: settings.fonts?.mono,
-  };
-  const fontUrl = buildFontUrl(f.heading, f.body, f.mono);
+  const { fonts } = args;
   const renderVersion = resolveRenderVersion(settings.render_version);
   const layered = usesCascadeLayers(renderVersion);
   const robots = pageRobots(page, settings, robotsBlocked);
@@ -619,7 +627,7 @@ ${settings.icon_192 ? `<link rel="icon" type="image/png" sizes="192x192" href="$
 ${layered ? `<style data-site-base-css="1">${PLATFORM_LAYER_ORDER_CSS}\n${platformLayer('reset', siteResetCss, renderVersion)}\n${platformLayer('base', siteGlobalCss, renderVersion)}</style>` : ''}
 <style>${platformLayer('tokens', siteThemeCss(settings), renderVersion)}</style>
 <style>${platformLayer('content', contentWellCss(renderVersion), renderVersion)}</style>
-${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>${
+${fonts.googleCdn ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' : ''}${
       // The async-CSS pattern flips rel from preload to stylesheet in an
       // inline onload handler. The editor canvas serves `script-src 'none'`,
       // which blocks that handler — and <noscript> doesn't rescue it, since
@@ -627,10 +635,10 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
       // and the site's fonts silently never load. Non-blocking CSS is a
       // public-site optimisation with nothing to buy in an internal editor
       // frame, so there it links the stylesheet directly.
-      allowScripts
-        ? `<link rel="preload" as="style" href="${escapeAttr(fontUrl)}" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="${escapeAttr(fontUrl)}"></noscript>`
-        : `<link rel="stylesheet" href="${escapeAttr(fontUrl)}">`
-    }<style>${webfontFallbackCss(renderVersion)}</style>` : ''}
+      fonts.stylesheets.map(url => allowScripts
+        ? `<link rel="preload" as="style" href="${escapeAttr(url)}" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="${escapeAttr(url)}"></noscript>`
+        : `<link rel="stylesheet" href="${escapeAttr(url)}">`).join('')
+    }${fonts.services.map(url => `<link rel="stylesheet" href="${escapeAttr(url)}">`).join('')}${fonts.plan.families.length ? `<style>${webfontFallbackCss(renderVersion, fonts.plan)}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
 ${direction === 'rtl' ? `<style data-direction>${directionCss(direction)}</style>` : ''}
 ${siteStyles ? `<style data-site-styles="1">${platformLayer('styles', siteStyles, renderVersion)}</style>` : ''}
@@ -699,10 +707,6 @@ function renderBanner(b: BannerArgs): string {
     <span class="tr-banner__meta">Drafts and unpublished edits visible${live}</span>
     ${editor}
   </div>`;
-}
-
-function buildFontUrl(heading: string, body: string, mono?: string): string | null {
-  return googleFontsCssUrl(webFontFamilies(heading, body, mono));
 }
 
 /**

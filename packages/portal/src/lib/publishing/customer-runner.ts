@@ -36,7 +36,7 @@ import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed, find
 import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
 import { publicationMenuWarnings, publicationSiteFieldWarnings, publicationSnippetWarnings } from './content-preflight';
-import { freezeThemeFonts } from './theme-font-freeze';
+import { freezeSiteFonts } from './theme-font-freeze';
 import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest, collapseMediaHostChains } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { mediaPreparationStatus } from '../media/preparation';
@@ -433,9 +433,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       frozen.redirects = [...collapseMediaHostChains(frozen.redirects ?? [], frozen.media_host_redirects, host), ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)];
       frozen.previous_website_hosts = args.versionId === 'main'
         ? previousWebsiteHosts(savedDomains, host, prior?.site_url ? new URL(prior.site_url).hostname : undefined) : [];
-      // Theme fonts are copied now, so no build engine needs network access or Google to render them.
-      const themeFonts = await freezeThemeFonts(frozen.settings?.fonts, prior?.theme_fonts);
-      if (themeFonts) frozen.theme_fonts = themeFonts; else delete frozen.theme_fonts;
+      // Fonts are planned and copied now, so no build engine needs network access, Google or the Fonts library to render them.
+      // A domain-only republication keeps the fonts its content was frozen with.
+      if (!(job.publication_intent === 'domain_prepare' && frozen.settings?.font_plan)) {
+        const siteFonts = await freezeSiteFonts(frozen, prior?.theme_fonts, { orgId: args.orgId, siteId: args.siteId });
+        frozen.settings = { ...frozen.settings, font_plan: siteFonts.plan };
+        if (siteFonts.theme_fonts) frozen.theme_fonts = siteFonts.theme_fonts; else delete frozen.theme_fonts;
+      }
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
       const stable = { ...frozen, published_at: undefined, publication_id: undefined,
         // An explicit domain republication gets a fresh approval/journal identity,

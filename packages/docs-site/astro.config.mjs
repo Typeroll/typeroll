@@ -156,6 +156,7 @@ export default defineConfig({
             { label: 'Menus', slug: 'tools/menus' },
             { label: 'Site fields', slug: 'tools/site-fields' },
             { label: 'Live snippets', slug: 'tools/snippets' },
+            { label: 'Fonts', slug: 'tools/fonts' },
             { label: 'Settings', slug: 'tools/settings' },
             { label: 'Site block types', slug: 'tools/custom-block-types' },
             { label: 'Forms', slug: 'tools/forms' },

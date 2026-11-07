@@ -190,6 +190,8 @@
   --font-heading:'Inter', 'tr-fallback', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-body:'Inter', 'tr-fallback', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   --font-mono:ui-monospace;
+  --font-display:var(--font-heading);
+  --font-accent:var(--font-body);
   --type-size-xs:clamp(0.64rem, 0.80159rem - 0.20199vw, 0.75614rem);--type-size-sm:clamp(0.8rem, 0.89679rem - 0.12098vw, 0.86957rem);--type-size-md:1rem;--type-size-lg:clamp(1.15rem, 1.11087rem + 0.17391vw, 1.25rem);--type-size-xl:clamp(1.3225rem, 1.22859rem + 0.41739vw, 1.5625rem);--type-size-2xl:clamp(1.52087rem, 1.35173rem + 0.75174vw, 1.95313rem);--type-size-3xl:clamp(2.01136rem, 1.60424rem + 1.80939vw, 3.05176rem);--space-none:0rem;--space-xs:0.25rem;--space-sm:0.5rem;--space-md:clamp(1rem, 0.80435rem + 0.86957vw, 1.5rem);--space-lg:clamp(1.5rem, 1.20652rem + 1.30435vw, 2.25rem);--space-xl:clamp(3rem, 2.41304rem + 2.6087vw, 4.5rem);--leading-tight:1.1;--leading-snug:1.3;--leading-normal:1.5;--leading-relaxed:1.65;--leading-loose:1.8;
   --type-rhythm:1;
   --measure-prose:65ch;
@@ -197,7 +199,7 @@
   --spacing-xs:var(--space-xs);--spacing-sm:var(--space-sm);--spacing-md:var(--space-md);--spacing-lg:var(--space-lg);--spacing-xl:var(--space-xl);
   --font-size-base:16px;
   --content-narrow:42rem;--content-normal:65rem;--content-wide:80rem;
-}:where([data-block=prose]){max-inline-size:var(--measure-prose)}
+}:where([data-block=prose]){max-inline-size:var(--measure-prose)}[data-font="display"]{font-family:var(--font-display)}[data-font="accent"]{font-family:var(--font-accent)}
 
 /* site-template reset.css */
 /* Minimal modern CSS reset */

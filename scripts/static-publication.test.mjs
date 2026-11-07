@@ -150,6 +150,26 @@ test('publishes Google font delivery only when chosen, so self-hosting is the de
     assert.equal(projectStaticPublication(value, identity).settings.fonts.delivery, undefined);
   }
 });
+test('publishes font roles, extra weights and font services, and rejects invalid ones', () => {
+  const value = input();
+  Object.assign(value.settings.fonts, { display: 'Fraunces', accent: 'Space Grotesk',
+    load: { heading: { weights: [800], italic: [700] } },
+    services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'], token: 'private-value' }, { provider: 'bunny', url: 'https://fonts.bunny.net/css?family=inter:400', families: ['Inter'] }] });
+  const fonts = projectStaticPublication(value, identity).settings.fonts;
+  assert.deepEqual(fonts, { heading: 'system-ui', body: 'system-ui', display: 'Fraunces', accent: 'Space Grotesk', size_base: 16,
+    load: { heading: { weights: [800], italic: [700] } },
+    services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'] }, { provider: 'bunny', url: 'https://fonts.bunny.net/css?family=inter:400', families: ['Inter'] }] });
+  for (const invalid of [
+    { load: { title: { weights: [400] } } }, { load: { body: { weights: [450] } } }, { load: { body: { sizes: [400] } } },
+    { services: [{ provider: 'bunny', url: 'https://evil.example/css', families: ['Inter'] }] },
+    { services: [{ provider: 'fontshare', url: 'http://api.fontshare.com/v2/css?f[]=satoshi', families: ['Satoshi'] }] },
+    { services: [{ provider: 'adobe', kit: 'ABC', families: ['x'] }] },
+    { services: [{ provider: 'adobe', kit: 'abc1234', families: ['</style>'] }] },
+  ]) {
+    const next = input(); Object.assign(next.settings.fonts, invalid);
+    assert.throws(() => projectStaticPublication(next, identity), /fonts\.(load|services)/, JSON.stringify(invalid));
+  }
+});
 test('publishes the font smoothing setting and drops unknown values', () => {
   const value = input();
   value.settings.fonts.smoothing = 'antialiased';
@@ -196,6 +216,7 @@ test('publishes explicit text colours on theme colours and drops invalid ones', 
 const NOT_PUBLISHED = {
   agent_instructions: 'guidance for agents, read live through the API; never rendered',
   extension_public_config: 'resolved into each Extension installation\'s public config (extensions/version-config.ts), which the publication carries in its runtime snapshot',
+  font_plan: 'computed from the frozen content when the publication is frozen (publishing/theme-font-freeze.ts), never projected from stored settings',
 };
 const FULL_SETTINGS = {
   site_name: 'Site', tagline: 'Tagline', logo: '/logo.png', favicon: '/favicon.ico', apple_touch_icon: '/apple.png', icon_192: '/icon-192.png',
@@ -204,7 +225,8 @@ const FULL_SETTINGS = {
   colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', surface_hover:'#dddddd', text: '#000000', text_light: '#555555', on_primary: '#ffffff', on_secondary: '#fff', on_accent: '#111827' },
   typography: {ratio_mobile:1.2,ratio_desktop:1.25,rhythm:1.1,line_length:70},
   design_scales: { type_size:{xl:'1.5rem'}, space:{md:'1rem'}, leading:{normal:'1.5'} },
-  fonts: { heading: 'Inter', body: 'Inter', mono:'Roboto Mono', size_base: 17, smoothing: 'antialiased', delivery: 'google' },
+  fonts: { heading: 'Inter', body: 'Inter', mono:'Roboto Mono', display: 'Fraunces', accent: 'proxima-nova', size_base: 17, smoothing: 'antialiased', delivery: 'google',
+    load: { body: { weights: [300], italic: [400] } }, services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'] }] },
   contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
   social: { facebook: 'https://example.invalid/f', instagram: 'https://example.invalid/i', linkedin: 'https://example.invalid/l', x: 'https://example.invalid/x', youtube: 'https://example.invalid/y' },
   scripts_head: '<meta name="a">', scripts_body_end: '<meta name="b">', custom_css: 'body{}', render_version: 6,

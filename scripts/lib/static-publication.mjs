@@ -82,6 +82,41 @@ function projectBooleans(value, fields) {
   return output;
 }
 
+// Mirrors siteFontsErrors (packages/shared/src/font-plan.ts): the publication
+// carries only the font keys and values the renderer understands.
+const FONT_ROLES = ['heading', 'body', 'mono', 'display', 'accent'];
+const FONT_FAMILY = /^[\p{L}\p{N}][\p{L}\p{N} _.&+-]{0,79}$/u;
+const isFontWeight = value => Number.isInteger(value) && value >= 100 && value <= 900 && value % 100 === 0;
+function projectFontLoad(value) {
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid public settings: fonts.load');
+  const output = {};
+  for (const [role, spec] of Object.entries(value)) {
+    if (!FONT_ROLES.includes(role) || !spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error('Invalid public settings: fonts.load');
+    output[role] = {};
+    for (const [key, list] of Object.entries(spec)) {
+      if (!['weights', 'italic'].includes(key) || !Array.isArray(list) || list.length > 9 || !list.every(isFontWeight)) throw new Error('Invalid public settings: fonts.load');
+      output[role][key] = [...list];
+    }
+  }
+  return output;
+}
+function projectFontServices(value) {
+  if (!Array.isArray(value) || value.length > 4) throw new Error('Invalid public settings: fonts.services');
+  return value.map(service => {
+    const families = service?.families;
+    if (!Array.isArray(families) || families.length > 40 || !families.every(name => typeof name === 'string' && FONT_FAMILY.test(name))) throw new Error('Invalid public settings: fonts.services');
+    if (service.provider === 'adobe') {
+      if (typeof service.kit !== 'string' || !/^[a-z0-9]{5,12}$/.test(service.kit)) throw new Error('Invalid public settings: fonts.services');
+      return { provider: 'adobe', kit: service.kit, families: [...families] };
+    }
+    const hosts = { bunny: ['fonts.bunny.net', /^\/css2?$/], fontshare: ['api.fontshare.com', /^\/v2\/css$/] };
+    let url = null;
+    try { url = hosts[service?.provider] && new URL(service.url); } catch { url = null; }
+    if (!url || url.protocol !== 'https:' || url.username || url.password || url.hostname !== hosts[service.provider][0] || !hosts[service.provider][1].test(url.pathname)) throw new Error('Invalid public settings: fonts.services');
+    return { provider: service.provider, url: service.url, families: [...families] };
+  });
+}
+
 function projectStringArray(value, label) {
   if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) throw new Error(`Invalid public string array: ${label}`);
   return [...value];
@@ -294,10 +329,12 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     const value = input.settings?.colors?.[token];
     if (typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim())) settings.colors[token] = value.trim();
   }
-  settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body', 'mono']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
+  settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body', 'mono', 'display', 'accent']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
   // A rendered setting left out of this projection is stored, previewed and never published.
   if (['auto', 'antialiased'].includes(input.settings?.fonts?.smoothing)) settings.fonts.smoothing = input.settings.fonts.smoothing;
   if (input.settings?.fonts?.delivery === 'google') settings.fonts.delivery = 'google';
+  if (input.settings?.fonts?.load != null) settings.fonts.load = projectFontLoad(input.settings.fonts.load);
+  if (input.settings?.fonts?.services != null) settings.fonts.services = projectFontServices(input.settings.fonts.services);
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
   if (input.settings?.content_widths) settings.content_widths = projectNumbers(input.settings.content_widths, ['narrow', 'normal', 'wide']);

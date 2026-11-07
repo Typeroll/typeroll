@@ -16,7 +16,7 @@ import { DESIGN_NOTES_STARTER } from './design-notes';
 import { PLAYBOOK_STARTER } from './playbook';
 import { pageLiveUrl, pagePreviewUrl } from './site-urls';
 import { checkRedirectWrite } from './redirect-write';
-import { paths, slugify } from '@typeroll/shared';
+import { paths, siteFontsErrors, slugify } from '@typeroll/shared';
 import type { Block, BlockType } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES } from '@typeroll/shared';
 import {
@@ -695,6 +695,39 @@ const tools: Anthropic.Tool[] = [
     },
   },
 
+  // Fonts — a family per role; styles and blocks choose the role
+  {
+    name: 'search_fonts',
+    description: 'Search the font catalog (250 open-licence Google Fonts families with weights, italics and variable axis) and the site\'s own uploaded and font-service families. Use it before set_site_fonts to check a family exists and has the weights needed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Part of a family name, e.g. "grotesk".' },
+        category: { type: 'string', enum: ['sans', 'serif', 'display', 'handwriting', 'mono'] },
+        variable: { type: 'boolean', description: 'Only variable families.' },
+        italic: { type: 'boolean', description: 'Only families with italics.' },
+        latin_ext: { type: 'boolean', description: 'Only families with extended Latin (Polish, Czech, Turkish…); Nordic and German letters are in every family.' },
+        limit: { type: 'number', description: 'At most this many catalog results (default 20).' },
+      },
+    },
+  },
+  {
+    name: 'set_site_fonts',
+    description:
+      'Choose the site\'s font family per role: heading, body, mono, and from render version 15 display (large headings and heroes; unset uses heading) and accent (eyebrows and quotes; unset uses body). Styles and blocks choose a role, never a family, so this restyles everything using the role. Only the roles you pass change; null clears mono, display or accent. From render version 15 the weights in use load automatically; `load` adds extra weights per role, e.g. { "heading": { "weights": [800] } }. Needs admin permission. Uploaded fonts, Adobe Fonts kits and other font services are managed in Settings → Design.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        heading: { type: 'string' },
+        body: { type: 'string' },
+        mono: { type: ['string', 'null'] },
+        display: { type: ['string', 'null'] },
+        accent: { type: ['string', 'null'] },
+        load: { type: 'object', description: 'Role → { weights?: number[], italic?: number[] } (100–900 in steps of 100).' },
+      },
+    },
+  },
+
   // Design reference — the starter design system the site MAY follow
   {
     name: 'read_design_notes',
@@ -1069,7 +1102,7 @@ Hard rules either way:
 
 ## Site settings
 
-Settings include name, tagline, logo, favicon, apple_touch_icon (180×180 PNG for home-screen bookmarks), colors (primary/secondary/accent/background/surface/text/text_light), fonts (heading/body — Google Font family names), contact info, social links, head/body scripts, custom CSS, the SEO title suffix, and the default meta description (default_meta_description — the site-wide fallback <meta name="description"> when a page has no seo_description; the tagline is the last resort). Use update_site_settings to change any of these; it needs admin permission on the site, so for anyone else suggest asking a site admin. When the brand assets include icon files, set favicon AND apple_touch_icon as part of initial setup — don't leave them empty.
+Settings include name, tagline, logo, favicon, apple_touch_icon (180×180 PNG for home-screen bookmarks), colors (primary/secondary/accent/background/surface/text/text_light), fonts (a family per role: heading, body, mono, display, accent — find families with search_fonts and change them with set_site_fonts; styles and blocks choose the role, never a family), contact info, social links, head/body scripts, custom CSS, the SEO title suffix, and the default meta description (default_meta_description — the site-wide fallback <meta name="description"> when a page has no seo_description; the tagline is the last resort). Use update_site_settings to change any of these; it needs admin permission on the site, so for anyone else suggest asking a site admin. When the brand assets include icon files, set favicon AND apple_touch_icon as part of initial setup — don't leave them empty.
 
 When the user asks to change brand colors, fonts, or contact info — that's site settings, not a page edit.
 
@@ -2134,6 +2167,39 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       return {
         result: { ok: true },
         action: { type: 'update_site_settings', description: 'Updated site settings.' },
+      };
+    }
+
+    // ─── Fonts ─────────────────────────────────────────────────────────────
+    case 'search_fonts': {
+      const { fontCatalogResponse } = await import('./fonts/font-library');
+      const limit = Number(input.limit);
+      return { result: await fontCatalogResponse(ctx.orgId, ctx.siteId, {
+        query: typeof input.query === 'string' ? input.query : undefined,
+        ...(typeof input.category === 'string' ? { category: input.category as 'sans' } : {}),
+        variable: input.variable === true, italic: input.italic === true, latin_ext: input.latin_ext === true,
+        limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20,
+      }) };
+    }
+
+    case 'set_site_fonts': {
+      if (ctx.permission !== 'admin') {
+        return { result: { error: 'Changing the site\'s fonts needs admin permission on the site. Ask a site admin to change them in Settings → Design.' } };
+      }
+      const patch: Record<string, unknown> = {};
+      for (const key of ['heading', 'body', 'mono', 'display', 'accent', 'load'] as const) if (input[key] !== undefined) patch[key] = input[key];
+      if (!Object.keys(patch).length) return { result: { error: 'Pass at least one role (heading, body, mono, display, accent) or load.' } };
+      const errors = siteFontsErrors(patch);
+      if (errors.length) return { result: { error: 'The fonts were not changed.', errors } };
+      const existing = ((await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {}) as SiteSettings;
+      const fonts: Record<string, unknown> = { ...existing.fonts, ...patch };
+      for (const [key, value] of Object.entries(fonts)) if (value === null) delete fonts[key];
+      await vstore.writeSettings(ctx.orgId, ctx.siteId, ctx.versionId, { fonts } as Partial<SiteSettings>);
+      const { fontSettingsWarnings, listSiteFonts } = await import('./fonts/font-library');
+      const warnings = fontSettingsWarnings(fonts as SiteSettings['fonts'], await listSiteFonts(ctx.orgId, ctx.siteId));
+      return {
+        result: { ok: true, fonts, ...(warnings.length ? { warnings } : {}) },
+        action: { type: 'update_site_settings', description: 'Changed the site\'s fonts.' },
       };
     }
 

@@ -54,6 +54,6 @@ const globalBlockSummaries = (await vstore.partials(orgId, siteId, versionId)).f
     </div>
   </div>}
   {useBlockEditor
-    ? <TemplateEditor globalBlocks={globalBlockSummaries} client:load kind="global_block" partialKind={defaultDoc.kind} siteId={siteId} responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} template={{ id: defaultDoc.id, name: defaultDoc.id, label: defaultDoc.name, status: defaultDoc.status, blocks: (workingCopy?.fields?.blocks as PartialDoc['blocks']) ?? defaultDoc.blocks ?? [] } as unknown as PageTemplate} pendingDraft={!!workingCopy} />
+    ? <TemplateEditor globalBlocks={globalBlockSummaries} client:load kind="global_block" partialKind={defaultDoc.kind} siteId={siteId} responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} siteFonts={editorSettings?.fonts} template={{ id: defaultDoc.id, name: defaultDoc.id, label: defaultDoc.name, status: defaultDoc.status, blocks: (workingCopy?.fields?.blocks as PartialDoc['blocks']) ?? defaultDoc.blocks ?? [] } as unknown as PageTemplate} pendingDraft={!!workingCopy} />
     : <PartialEditor client:load siteId={siteId} partial={defaultDoc} workingCopy={workingCopy} lastDeployedAt={lastDeployedAt} />}
 </AppLayout>

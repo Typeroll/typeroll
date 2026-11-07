@@ -52,7 +52,7 @@ import { assertPublishingReady } from './readiness';
 import { publicationRuntime } from './runtime-projection';
 import { recordPublishingOrigin } from './runtime-origins';
 import { publicationSourceTree } from './source-tree';
-import { freezeThemeFonts } from './theme-font-freeze';
+import { freezeSiteFonts } from './theme-font-freeze';
 import { artifactFiles, ensureHostedPlatformHost, hostedDomains, hostedServingHost, hostedWebsiteHost, hostingSiteRef, HOSTED_MODE, isHostedSite,
   isTemporaryHostingFailure, siteHosting, siteHostingAvailable, SITE_HOSTING_UNAVAILABLE, type ArtifactFiles } from './site-hosting';
 
@@ -212,8 +212,9 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       frozen.redirects = [...collapseMediaHostChains(frozen.redirects ?? [], frozen.media_host_redirects, host), ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)];
       // Earlier addresses are redirected by the hosting service, not by the site.
       frozen.previous_website_hosts = [];
-      const themeFonts = await freezeThemeFonts(frozen.settings?.fonts, prior?.theme_fonts);
-      if (themeFonts) frozen.theme_fonts = themeFonts; else delete frozen.theme_fonts;
+      const siteFonts = await freezeSiteFonts(frozen, prior?.theme_fonts, { orgId: args.orgId, siteId: args.siteId });
+      frozen.settings = { ...frozen.settings, font_plan: siteFonts.plan };
+      if (siteFonts.theme_fonts) frozen.theme_fonts = siteFonts.theme_fonts; else delete frozen.theme_fonts;
       frozen.publication_id = digest(JSON.stringify({ ...frozen, published_at: undefined, publication_id: undefined }));
       if (args.dryRun) {
         await publicationSourceTree(frozen);

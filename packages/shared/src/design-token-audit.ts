@@ -98,7 +98,7 @@ export function auditDesignTokens(input: SiteSettings, sources: DesignTokenSourc
           const finding = add('hardcoded_color', `${source.kind}:${source.id}`, loc, scalar); finding.block_id = block.id;
           if (direct && !bp && /^#/.test(scalar) && finding.exact_matches.length === 1 && block.id && source.kind !== 'block_type') finding.replacement = { target: { kind: source.kind, id: source.id }, block_id: block.id, field: field.name, before: scalar, after: finding.exact_matches[0] };
         } else if (tokenScale(field) && (typeof scalar === 'number' || typeof scalar === 'string' && /^\d/.test(scalar))) add('hardcoded_size', `${source.kind}:${source.id}`, loc, scalar, tokenScale(field));
-        else if (/(?:^|_)(?:font|font_family)$/.test(field.name) && typeof scalar === 'string' && !['heading','body','mono','inherit'].includes(scalar)) add('hardcoded_font', `${source.kind}:${source.id}`, loc, scalar);
+        else if (/(?:^|_)(?:font|font_family)$/.test(field.name) && typeof scalar === 'string' && !['heading','body','mono','display','accent','inherit'].includes(scalar)) add('hardcoded_font', `${source.kind}:${source.id}`, loc, scalar);
       }
       if (typeof value === 'string' && field.name === 'html') htmlCss(value, `${source.kind}:${source.id}`, at);
       else if (typeof value === 'string' && ['css','inline_style'].includes(field.name)) css(value, `${source.kind}:${source.id}`, at);
@@ -125,7 +125,7 @@ export function auditDesignTokens(input: SiteSettings, sources: DesignTokenSourc
           if (typeof value !== 'string') continue;
           const path = `${prefix}.${key}`;
           if (['color','background'].includes(key) && /^(?:#|rgba?\(|hsla?\()/.test(value)) add('hardcoded_color','settings',path,value);
-          else if (key === 'font' && !['heading','body','mono','inherit'].includes(value)) add('hardcoded_font','settings',path,value);
+          else if (key === 'font' && !['heading','body','mono','display','accent','inherit'].includes(value)) add('hardcoded_font','settings',path,value);
           else if (['size','line_height','padding','space_before','space_after','gap'].includes(key) && /(?<![\w-])\d+(?:\.\d+)?(?:px|rem|em)\b|^\d+(?:\.\d+)?$/.test(value)) add('hardcoded_size','settings',path,value,key === 'size' ? 'type_size' : key === 'line_height' ? 'leading' : 'space');
         }
       };

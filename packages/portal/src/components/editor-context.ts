@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { BlockType, FieldDefinition, SiteStyle } from '@typeroll/shared';
+import type { BlockType, FieldDefinition, SiteSettings, SiteStyle } from '@typeroll/shared';
 
 /** The site's style library, for `type: 'style'` fields. Null when no editor provides it. */
 export const SiteStylesContext = createContext<SiteStyle[] | null>(null);
@@ -23,3 +23,10 @@ export const GlobalBlocksContext = createContext<{ siteId: string; blocks: Globa
  * field form; the field then shows nothing.
  */
 export const EditedBlockTypeContext = createContext<Pick<BlockType, 'id' | 'parts'> | null>(null);
+
+/**
+ * The site's font roles, so a block's font setting names each role's family
+ * ("Heading — Playfair Display"). Null when no editor provides it; the
+ * choices then show the role alone.
+ */
+export const SiteFontsContext = createContext<Partial<SiteSettings['fonts']> | null>(null);

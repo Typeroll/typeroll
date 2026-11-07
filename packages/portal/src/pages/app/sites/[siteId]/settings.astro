@@ -6,6 +6,7 @@ import { loadSiteContext } from '../../../../lib/access';
 import { CONTENT_WIDTH_DEFAULTS, CONTENT_WIDTH_LIMITS, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, usesCustomerPublishing, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS, siteTimeZone } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
 import TypographyPreview from '../../../../components/TypographyPreview';
+import SiteFontSettings from '../../../../components/SiteFontSettings';
 import OnColorFields from '../../../../components/OnColorFields';
 import DomainManager from '../../../../components/DomainManager.tsx';
 import { SiteHostingGroup } from '../../../../components/HostingGroups';
@@ -188,12 +189,14 @@ const domainBlocksArchiving =
         <input id="setting-image_sizes_default" name="image_sizes_default" value={settings.image_sizes_default ?? ''} placeholder="(max-width: 640px) 360px, 560px" />
         <p class="muted text-sm">Site-wide <code>sizes</code> for responsive images, telling the browser how wide images actually render so it picks the smallest sufficient variant. A page can override this, and a per-image <code>sizes</code> attribute wins over both. Leave blank for the generic <code>(max-width: 768px) 100vw, 800px</code> default.</p>
       </div>
+      <h3 style="font-size: 1rem; margin: 1.5rem 0 0;">Fonts</h3>
+      <SiteFontSettings client:load siteId={siteId} fonts={settings.fonts} language={settings.language} renderVersion={resolveRenderVersion(settings.render_version)} disabled={ctx.permission !== 'admin' || archived} />
       <p>Base size below controls all rem-based sizes. Render version 10 adds fluid defaults; explicit role and step overrides keep their values.</p>
       {Object.entries(TYPOGRAPHY_DEFAULTS).map(([key, fallback]) => <div class="field">
         <label for={`typography-${key}`}>{typographyLabels[key]}</label>
         <input id={`typography-${key}`} name={`typography.${key}`} type="number" min={key === 'line_length' ? 40 : key === 'rhythm' ? 0.5 : 1.1} max={key === 'line_length' ? 90 : key === 'rhythm' ? 2 : 1.5} step={key === 'line_length' ? 1 : 0.01} required value={settings.typography?.[key as keyof typeof TYPOGRAPHY_DEFAULTS] ?? fallback} />
       </div>)}
-      <TypographyPreview settings={settings} client:load />
+      <TypographyPreview settings={settings} siteId={siteId} client:load />
       <details>
         <summary>Named typography and spacing scales</summary>
         <p>Blocks can use these step names instead of fixed pixels. Empty fields use platform defaults (fluid on render version 10). Enter a length, clamp(1.5rem, 1rem + 2vw, 3rem), or a JSON map such as <code>{'{"mobile":"1rem","desktop":"2rem"}'}</code>. Changes apply to every block using that step.</p>
@@ -210,21 +213,10 @@ const domainBlocksArchiving =
         {BREAKPOINTS_ABOVE_MOBILE.map(name => <div class="field"><label for={`responsive-${name}`}>{name} starts at (px)</label><input id={`responsive-${name}`} name={`responsive_breakpoints.${name}`} type="number" min="320" max="2560" step="1" required value={resolveBreakpointWidths(settings.responsive_breakpoints)[name]} /></div>)}
         <p>Defaults: 640, 1024, 1280 and 1536. Reload an open editor after changing these widths.</p>
       </details>
-      <datalist id="font-families"><option value="system">System font (no download)</option><option value="Inter" /></datalist>
-      <p>Use system for the visitor’s device font, or enter a Google Fonts family name.</p>
-      <div class="field">
-        <label for="setting-fonts-heading">Heading font</label>
-        <input id="setting-fonts-heading" list="font-families" name="fonts.heading" value={settings.fonts.heading} />
-      </div>
-      <div class="field">
-        <label for="setting-fonts-body">Body font</label>
-        <input id="setting-fonts-body" list="font-families" name="fonts.body" value={settings.fonts.body} />
-      </div>
       <div class="field">
         <label for="setting-fonts-size_base">Base font size (px)</label>
         <input id="setting-fonts-size_base" name="fonts.size_base" type="number" min="12" max="24" value={settings.fonts.size_base} />
       </div>
-      <div class="field"><label>Monospace font</label><input list="font-families" name="fonts.mono" value={settings.fonts.mono ?? ''} placeholder="System monospace" /></div>
       <div class="field">
         <label for="fonts-smoothing">Font smoothing</label>
         <select id="fonts-smoothing" name="fonts.smoothing">
@@ -240,7 +232,7 @@ const domainBlocksArchiving =
           <option value="self_hosted" selected={settings.fonts.delivery !== 'google'}>From this website (recommended)</option>
           <option value="google" selected={settings.fonts.delivery === 'google'}>Google Fonts CDN</option>
         </select>
-        <p class="muted text-sm">From this website, publishing copies the font files to your site, so visitors' browsers never contact Google. The Google Fonts CDN sends each visitor's IP address to Google before any consent choice.</p>
+        <p class="muted text-sm">From this website, publishing copies the font files to your site, so visitors' browsers never contact Google. The Google Fonts CDN sends each visitor's IP address to Google before any consent choice. Uploaded fonts are always served from this website, and font services always load from their own CDN.</p>
       </div>
     </div>
 

@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
+import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 // Inlined rather than imported: from render version 14 they go into cascade
@@ -127,11 +127,29 @@ const themeStyle = platformLayer('tokens', siteThemeCss(settings), renderVersion
 const headerBehavior = activeHeaderBehavior(settings.header_behavior);
 
 const googleFontFamilies = webFontFamilies(f.heading, f.body, f.mono);
+// The plan frozen with the publication (theme-font-freeze) decides what loads:
+// files copied to this origin (Google's when self-hosted, and the site's
+// uploaded fonts), the Google CDN when the site chose it, and font service
+// stylesheets from their CDN. Without a plan (local harnesses) the role
+// families load as they always have.
+const fontPlan = settings.font_plan ?? null;
+const plannedFamilies = fontPlan ? fontPlan.families.length > 0 : googleFontFamilies.length > 0;
 // Self-hosted by default: the build copies the files to this origin, so no
 // visitor request reaches Google before consent (fontDelivery).
-const selfHostedFonts = googleFontFamilies.length > 0 && fontDelivery(settings.fonts) === 'self_hosted';
-const googleFontUrl = selfHostedFonts ? null : googleFontsCssUrl(googleFontFamilies);
+const selfHostedFonts = fontPlan
+  ? (fontDelivery(settings.fonts) === 'self_hosted' && !!fontPlan.google_css_url) || fontPlan.families.some(family => family.source === 'upload' && !!family.files?.length)
+  : googleFontFamilies.length > 0 && fontDelivery(settings.fonts) === 'self_hosted';
+const googleFontUrl = fontPlan
+  ? (fontDelivery(settings.fonts) === 'google' ? fontPlan.google_css_url : null)
+  : selfHostedFonts ? null : googleFontsCssUrl(googleFontFamilies);
 const fontStylesheetUrl = selfHostedFonts ? SELF_HOSTED_FONTS_CSS_PATH : googleFontUrl;
+// Uploaded fonts are always served from this origin, also when Google's load from its CDN.
+const extraGoogleFontUrl = selfHostedFonts && googleFontUrl ? googleFontUrl : null;
+const serviceStylesheets = fontPlan?.service_stylesheets ?? [];
+// The origins a service's stylesheet and font files come from, warmed like Google's.
+const serviceOrigins = [...new Set(serviceStylesheets.map(url => new URL(url).origin))]
+  .map(origin => ({ origin, fonts: origin === 'https://api.fontshare.com' ? 'https://cdn.fontshare.com' : origin }));
+const fontPreload = renderVersion >= FONT_PLAN_RENDER_VERSION && fontPlan?.preload?.startsWith(SELF_HOSTED_FONTS_DIRECTORY) ? fontPlan.preload : null;
 
 // CLS guard: while the Google webfont is loading, the browser uses the
 // generic fallback (Arial / sans-serif). When the webfont arrives and
@@ -140,7 +158,7 @@ const fontStylesheetUrl = selfHostedFonts ? SELF_HOSTED_FONTS_CSS_PATH : googleF
 // Inter's (the platform default). Sites that use a wildly different
 // font still get *some* shift, but the average case drops from CLS
 // ~0.2 (autopilot.se field report) to <0.05.
-const fontFallbackStyle = googleFontFamilies.length ? webfontFallbackCss(renderVersion) : null;
+const fontFallbackStyle = plannedFamilies ? webfontFallbackCss(renderVersion, fontPlan) : null;
 // The site's style library; empty for a site without styles.
 // Right-to-left pages get dir and the mirror stylesheet; left-to-right output is unchanged.
 const direction = languageDirection(page.language || settings.language || 'en');
@@ -182,6 +200,21 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
         <noscript><link rel="stylesheet" href={fontStylesheetUrl} /></noscript>
       </>
     )}
+    {fontPreload && <link rel="preload" as="font" type="font/woff2" crossorigin href={fontPreload} />}
+    {extraGoogleFontUrl && (
+      <>
+        <link rel="preload" as="style" href={extraGoogleFontUrl} onload="this.onload=null;this.rel='stylesheet'" />
+        <noscript><link rel="stylesheet" href={extraGoogleFontUrl} /></noscript>
+      </>
+    )}
+    {serviceOrigins.map(({ origin, fonts }) => (
+      <>
+        {/* Font services the site chose (Adobe Fonts, Bunny Fonts, Fontshare) load from their CDN. */}
+        <link rel="preconnect" href={origin} />
+        <link rel="preconnect" href={fonts} crossorigin />
+      </>
+    ))}
+    {serviceStylesheets.map(url => <link rel="stylesheet" href={url} />)}
     {fontFallbackStyle && <style set:html={fontFallbackStyle} />}
 
     {blockCss && <style set:html={blockCss} />}

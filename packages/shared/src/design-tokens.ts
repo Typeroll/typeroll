@@ -6,7 +6,7 @@ import type { FieldDefinition } from './types.js';
 export const PALETTE_TOKENS = ['primary', 'secondary', 'accent', 'background', 'surface', 'surface_hover', 'text', 'text_light'] as const;
 export const ON_COLOR_TOKENS = ['on_primary', 'on_secondary', 'on_accent'] as const;
 export const COLOR_TOKENS = [...PALETTE_TOKENS, ...ON_COLOR_TOKENS] as const;
-export const FONT_ROLES = ['heading', 'body', 'mono', 'inherit'] as const;
+export const FONT_ROLES = ['heading', 'body', 'mono', 'display', 'accent', 'inherit'] as const;
 export const TOKEN_SCALES = {
   type_size: { xs: '0.75rem', sm: '0.875rem', md: '1rem', lg: '1.25rem', xl: '1.5rem', '2xl': '2rem', '3xl': '3rem' },
   space: { none: '0px', xs: '0.25rem', sm: '0.5rem', md: '1rem', lg: '1.5rem', xl: '3rem' },

@@ -22,8 +22,10 @@ use `color-mix(in srgb, var(--color-surface) 92%, var(--color-primary))`.
 For an additional role not in the native palette, define a named site style
 or a site CSS variable derived from existing palette variables, and document it.
 
-Choose `heading`, `body` or `mono` for fonts. Font families belong only in the
-site's `fonts` settings. Use type-size steps `xs`, `sm`, `md`, `lg`, `xl`, `2xl`,
+Choose a font role for fonts: `heading`, `body`, `mono`, and from render
+version 15 `display` (large headings and heroes) and `accent` (eyebrows and
+quotes). Font families belong only in the site's `fonts` settings, set with
+`set_site_fonts`; styles and blocks choose a role, never a family. Use type-size steps `xs`, `sm`, `md`, `lg`, `xl`, `2xl`,
 `3xl`; spacing `none`, `xs`, `sm`, `md`, `lg`, `xl`; line height `tight`, `snug`,
 `normal`, `relaxed`, `loose`. Presentation fields accept responsive maps of these
 names, for example `font_size_px: {mobile: "md", desktop: "lg"}`. Read the field
@@ -128,7 +130,19 @@ instead (light grey on white = bad; dark grey on white = fine).
 
 ## Step 3 — Choose typefaces
 
-Pick from high-quality Google Fonts pairings:
+Check every family with `search_fonts` before you choose it: it lists the
+catalog families with their weights, italics and variable axis, and the
+site's own uploaded and service families (`library`, `services`). Filter with
+`category`, `variable`, `italic` and `latin_ext` (Polish, Czech, Turkish…;
+Nordic and German letters are in every family).
+
+If the brand already has fonts, use them: an uploaded font file
+(`upload_font`, only after the user confirms the licence allows use on the
+website) or a font service in `set_site_fonts` `services` (an Adobe Fonts kit,
+which always loads from Adobe because its licence forbids self-hosting, or a
+Bunny Fonts or Fontshare stylesheet). Mention a service's CDN to the owner:
+the visitor's browser contacts it. Otherwise pick from high-quality Google
+Fonts pairings:
 
 | Heading | Body | Mood |
 |---|---|---|
@@ -141,12 +155,18 @@ Pick from high-quality Google Fonts pairings:
 | Libre Baskerville | Libre Franklin | Traditional, trustworthy |
 
 Same font for heading and body is fine if it has enough weight variation
-(Inter at 700 + 400 works well).
+(Inter at 700 + 400 works well). A third voice for heroes or quotes goes in
+the `display` or `accent` role (render version 15), not in custom CSS.
 
 Use the exact Google Fonts family name ("Plus Jakarta Sans", not "plus
 jakarta"). Fonts are self-hosted by default (`fonts.delivery: "self_hosted"`,
 Core 0.2.130+): when a publication is frozen, Typeroll copies the Google Fonts
-CSS and woff2 files (weights 400–700) into the build. The site serves
+CSS and woff2 files into the build. From render version 15 it copies only the
+weights and italics the site uses (styles, block weights, bold and italic
+text) and one file for a variable family; before that, 400–700. Do not list
+weights for normal use: add `load` (for example
+`{ "heading": { "weights": [800] } }`) only for weights nothing in the site
+uses, such as a weight in custom CSS. The site serves
 `/_typeroll/fonts/fonts.css` and the files under `/_typeroll/fonts/`; visitors
 never contact `fonts.googleapis.com` or `fonts.gstatic.com`, before or after
 consent. A family Google does not serve is skipped without an error and the
@@ -160,14 +180,18 @@ sites; 15 for dense dashboards.
 
 ## Step 4 — Apply to the site
 
-One call sets everything:
+Set the fonts, then the colours and base size:
 
 ```
+set_site_fonts { "heading": "...", "body": "...", "display": "..." }
 update_site_settings {
   "colors": { ...all 7 tokens },
-  "fonts":  { "heading": "...", "body": "...", "size_base": 16 }
+  "fonts":  { "size_base": 16 }
 }
 ```
+
+`set_site_fonts` answers with `warnings` for a family that is not in the
+catalog, the Fonts library or a font service: fix the name before going on.
 
 The brand lives in three places that editors can see and change: the
 `colors` and `fonts` settings, the design scales, and named Styles (Step 5b).
@@ -178,7 +202,8 @@ Never load a font again through `custom_css` (`@import`, `@font-face`) or
 Read back to confirm: `read_site_settings`.
 
 **Inside a redesign branch, scope the brand to the branch** — pass
-`version="<branch>"` on `update_site_settings` (and `read_site_settings`).
+`version="<branch>"` on `set_site_fonts`, `update_site_settings` (and
+`read_site_settings`). Uploaded font files belong to the site, not the branch.
 Colors / fonts / logo / custom_css then live on the branch (copy-on-write,
 chain-fallback to main for anything you don't override) and don't touch the
 live site until you `merge_branch`. This is the correct way to rebrand on a
@@ -365,10 +390,12 @@ Open in browser. Check:
 The preview loads fonts from Google inside a sandbox, so it proves nothing
 about font delivery. After an authorized publish, check the published
 temporary/test address:
-- `/_typeroll/fonts/fonts.css` has `@font-face` rules for every chosen family.
-  A comment instead of rules means Google did not serve that name: fix it.
+- `/_typeroll/fonts/fonts.css` has `@font-face` rules for every chosen Google
+  or uploaded family. A comment instead of rules means Google did not serve
+  that name: fix it. A service family loads from its CDN stylesheet instead.
 - Every font file `url(...)` in it returns 200.
-- No request goes to `fonts.googleapis.com` or `fonts.gstatic.com`.
+- No request goes to `fonts.googleapis.com` or `fonts.gstatic.com` (requests
+  to a configured font service's CDN are expected).
 - After `await document.fonts.ready`, `[...document.fonts]` has a `loaded`
   face for each family, and headings/body compute to that family.
 

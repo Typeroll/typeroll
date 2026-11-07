@@ -142,6 +142,16 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   just like a site admin does in the portal). `update_site_settings`
   accepts everything the portal Settings form does and, like the portal,
   needs admin permission on the site.
+- **Fonts.** A site chooses a family per role: `heading`, `body`, `mono`,
+  and from render version 15 `display` and `accent`. Styles and blocks choose
+  a role, never a family. `search_fonts` searches the catalog of 250
+  open-licence Google families and the site's own families; `set_site_fonts`
+  sets the roles (with `version` on a branch), `load` for extra weights and
+  `services` for an Adobe Fonts kit or a Bunny Fonts or Fontshare stylesheet.
+  From render version 15 a publication loads only the weights in use.
+  `upload_font` adds a WOFF2, WOFF, TTF or OTF file to the site's Fonts
+  library; it needs `licence_confirmed: true`, which only the user can
+  confirm. Never load fonts through `custom_css` or `scripts_head`.
 - **Site-level switches and lifecycle.** `update_site` also sets
   `ai_scripts_enabled` (the portal's "Allow AI to write block scripts",
   admin). That toggle only governs the in-portal chat assistant; it never

@@ -3,9 +3,10 @@ import { isSiteSettingsSection, scopedSettings } from '../../../../lib/site-sett
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { contentWidthsError, siteTimeZone, timeZoneError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
+import { siteFontsErrors, contentWidthsError, siteTimeZone, timeZoneError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
+import { fontSettingsWarnings, listSiteFonts } from '../../../../lib/fonts/font-library';
 
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -176,6 +177,26 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     const mono = String(form.get('fonts.mono') ?? '').trim();
     if (mono) fonts.mono = mono; else delete fonts.mono;
   }
+  // Display and accent roles (render version 15): empty uses the heading and body family.
+  for (const role of ['display', 'accent'] as const) {
+    if (!includesSection('design') || !form.has(`fonts.${role}`)) continue;
+    const family = String(form.get(`fonts.${role}`) ?? '').trim();
+    if (family) fonts[role] = family; else delete fonts[role];
+  }
+  // fonts.services (FontService[]) and fonts.load ({ role: { weights, italic } }) arrive as JSON; empty clears.
+  for (const key of ['services', 'load'] as const) {
+    if (!includesSection('design') || !form.has(`fonts.${key}`)) continue;
+    const raw = String(form.get(`fonts.${key}`) ?? '').trim();
+    if (!raw) { delete fonts[key]; continue; }
+    try { (fonts as Record<string, unknown>)[key] = JSON.parse(raw); } catch { return new Response(`fonts.${key} must be JSON.`, { status: 400 }); }
+    if (key === 'services' && Array.isArray(fonts.services) && !fonts.services.length) delete fonts.services;
+  }
+  // Validate what this save changes; a family saved before the font library keeps working.
+  const changedFonts = Object.fromEntries((['heading', 'body', 'mono', 'display', 'accent', 'load', 'services'] as const)
+    .filter(key => JSON.stringify((fonts as Record<string, unknown>)[key]) !== JSON.stringify((existing.fonts as Record<string, unknown> | undefined)?.[key]))
+    .map(key => [key, (fonts as Record<string, unknown>)[key]]));
+  const fontErrors = siteFontsErrors(changedFonts);
+  if (fontErrors.length) return new Response(fontErrors.join(' '), { status: 400 });
   if (includesSection('design') && form.has('design_scales.type_size.xs')) {
     let scales;
     try { scales = Object.fromEntries(Object.entries(TOKEN_SCALES).map(([scale, steps]) => [scale, Object.fromEntries(Object.keys(steps).flatMap(step => {
@@ -218,6 +239,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     await store.updateDoc(paths.site(owner_org_id, site.id), siteUpdate);
   }
 
-  if (request.headers.get('accept') === 'application/json') return Response.json({ saved: true, section });
+  if (request.headers.get('accept') === 'application/json') {
+    const warnings = includesSection('design') ? fontSettingsWarnings(fonts, await listSiteFonts(owner_org_id, site.id)) : [];
+    return Response.json({ saved: true, section, ...(warnings.length ? { warnings } : {}) });
+  }
   return redirect(`/app/sites/${site.id}/settings${section ? `?section=${section}&saved=1` : ''}`);
 };

@@ -38,6 +38,7 @@ import { blockTypeTools } from './tools/block-types.js';
 import { pageBlockTools } from './tools/page-blocks.js';
 import { workingCopyTools } from './tools/working-copy.js';
 import { settingsTools } from './tools/settings.js';
+import { fontTools } from './tools/fonts.js';
 import { siteTools } from './tools/sites.js';
 import { domainTools } from './tools/domain.js';
 import { appTools } from './tools/apps.js';
@@ -78,6 +79,7 @@ export const ALL_TOOLS: ToolDef[] = [
   ...formTools,
   ...emailTools,
   ...settingsTools,
+  ...fontTools,
   ...appTools,
   ...extensionTools,
   ...developerExtensionTools,
@@ -119,6 +121,9 @@ export function effectFor(name: string): ToolEffect {
     // Same role as the portal: Settings, lifecycle and media purge are
     // admin actions (the v1 routes enforce it as well).
     || name === 'update_site_settings'
+    // Fonts are settings; an upload also records a licence confirmation.
+    || name === 'set_site_fonts'
+    || name === 'upload_font'
     // Site field definitions are site administration; values are write.
     || name === 'define_site_fields'
     || name === 'archive_site'

@@ -174,6 +174,9 @@ const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
   { path: /^\/site-fields(?:\/.*)?$/, scope: (w) => (w ? 'site_fields:write' : 'site_fields:read') },
   // Live snippets change the live site at once, without a publication.
   { path: /^\/snippets(?:\/.*)?$/, scope: (w) => (w ? 'snippets:write' : 'snippets:read') },
+  // The Fonts library reads like settings. Adding or removing a font file
+  // records a licence confirmation, which stays with a site administrator.
+  { path: /^\/fonts(?:\/.*)?$/, scope: (w) => (w ? null : 'content:read') },
   {
     path: /^\/(?:pages|content-types|partials|menus|block-types|block-templates|blocks|settings|styles)(?:\/.*)?$/,
     scope: (w) => (w ? 'content:write' : 'content:read'),

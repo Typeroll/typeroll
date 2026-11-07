@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import dns from 'node:dns/promises';
 import { makeTmpFixtures } from '../helpers/tmp-fixtures';
-import { vendorThemeFonts } from '../../lib/extensions/theme-fonts';
+import { fetchGoogleFontsCss, vendorThemeFonts } from '../../lib/extensions/theme-fonts';
 import { installAssetCache, prepareAssets } from '../../lib/builds/assets.mjs';
 import { rewriteGoogleFontCss, googleFontFileUrls, fontDelivery } from '@typeroll/shared';
 
@@ -100,4 +100,28 @@ it('leaves families Google does not serve, such as Arial, to the browser', async
   const local = makeTmpFixtures().dir;
   expect(await vendorThemeFonts(local, { heading: 'Arial', body: 'Arial' }, fetch as any)).toEqual({ delivery: 'self_hosted', files: 0, bytes: 0 });
   expect(await fs.readFile(path.join(local, '_typeroll/fonts/fonts.css'), 'utf8')).toContain('not served by Google Fonts');
+});
+
+it('splits a planned stylesheet per family when Google does not serve one, keeping each family\'s weights', async () => {
+  vi.spyOn(dns, 'lookup').mockResolvedValue([{ address: '203.0.113.1', family: 4 }] as any);
+  const fetch = vi.fn(async (url: any) => String(url).includes('Arial') ? new Response('', { status: 400 }) : new Response(css));
+  const planned = 'https://fonts.googleapis.com/css2?family=Arial:wght@400;700&family=Sofia%20Sans:ital,wght@0,400..700;1,400&display=swap';
+  expect(await fetchGoogleFontsCss(planned, fetch as any)).toBe(css);
+  expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([planned,
+    'https://fonts.googleapis.com/css2?family=Arial:wght@400;700&display=swap',
+    'https://fonts.googleapis.com/css2?family=Sofia%20Sans:ital,wght@0,400..700;1,400&display=swap']);
+});
+
+it('an older engine skips vendoring when the publication carries frozen fonts', async () => {
+  const root = makeTmpFixtures().dir;
+  await fs.mkdir(path.join(root, '.typeroll-runner'));
+  const target = path.join(root, 'scripts/source/extensions'); await fs.mkdir(target, { recursive: true });
+  for (const name of ['assets.ts', 'public-http.ts', 'theme-fonts.ts']) await fs.copyFile(path.resolve('src/lib/extensions', name), path.join(target, name));
+  await fs.cp(path.resolve('../shared/src'), path.join(root, 'packages/shared/src'), { recursive: true, filter: file => !file.includes('__tests__') });
+  const theme_fonts = { css_url: '#library=' + 'a'.repeat(64), css: '', files: [] };
+  await fs.writeFile(path.join(root, 'publication.json'), JSON.stringify({ settings: { fonts: { heading: 'Sofia Sans', body: 'Brand' }, font_plan: { render_version: 15, families: [], google_css_url: null, service_stylesheets: [] } }, theme_fonts }));
+  const offline = vi.fn(async () => { throw Error('network unavailable'); }); vi.stubGlobal('fetch', offline);
+  await prepareAssets(root);
+  expect(offline).not.toHaveBeenCalled();
+  expect(JSON.parse(await fs.readFile(path.join(root, '.typeroll-runner/extension-cache.json'), 'utf8'))).toEqual([]);
 });

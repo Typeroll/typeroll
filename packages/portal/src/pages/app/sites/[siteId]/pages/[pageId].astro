@@ -66,7 +66,7 @@ const slugNotice = requestedSlug && page.slug !== requestedSlug ? {
 ---
 <AppLayout title={`${page.title} — ${site.name}`} siteId={siteId} bare>
   {page.content_mode === 'blocks' ? (
-    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} globalBlocks={globalBlocks} blockTemplates={blockTemplates} canManageBlockTypes={permission !== 'read'} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
+    <BlockPageEditor responsiveBreakpoints={editorSettings?.responsive_breakpoints} siteStyles={editorSettings?.styles ?? []} renderVersion={resolveRenderVersion(editorSettings?.render_version)} siteFonts={editorSettings?.fonts} globalBlocks={globalBlocks} blockTemplates={blockTemplates} canManageBlockTypes={permission !== 'read'} client:load siteId={siteId} page={page} contentType={contentType ?? undefined} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   ) : (
     <HtmlPageEditor client:load siteId={siteId} aiChatEnabled={aiChatEnabled} page={page} workingCopy={workingCopy} previewUrl={previewUrl} liveUrl={liveUrl} lastDeployedAt={lastDeployedAt} />
   )}

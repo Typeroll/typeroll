@@ -30,6 +30,6 @@ const canEditCss = ctx.permission === 'admin';
     everywhere automatically; other styles are chosen per block under <em>Style</em>. Change a style once and every page using it
     follows. Text must stay readable: contrast is measured with APCA and the WCAG 2 ratio, and a style that fails both cannot be saved.
   </p>
-  <StyleLibrary client:load siteId={site.id} initialStyles={styles} colors={colors} breakpoints={resolveBreakpointWidths(settings.responsive_breakpoints)} renderVersion={renderVersion} baseCss={baseCss} canEdit={canEdit} blockParts={blockParts} />
+  <StyleLibrary client:load siteId={site.id} initialStyles={styles} colors={colors} breakpoints={resolveBreakpointWidths(settings.responsive_breakpoints)} renderVersion={renderVersion} baseCss={baseCss} canEdit={canEdit} blockParts={blockParts} fonts={settings.fonts} language={settings.language} />
   <SiteCssEditor client:load siteId={site.id} initialCss={settings.custom_css ?? ''} styles={styles} canEdit={canEditCss} />
 </AppLayout>

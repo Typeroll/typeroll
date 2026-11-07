@@ -1344,6 +1344,45 @@ Issue a single-use, short-lived launch grant for one of the Extension's admin pa
 | `installation_id` | path | string | yes |  |
 | `page_id` | body | string | yes | Admin page id from the installation manifest. |
 
+## Site: Fonts
+
+### `search_fonts`
+
+`GET /api/v1/sites/{siteId}/fonts/catalog`
+
+Permission: `read`
+
+Search the font catalog (250 open-licence Google Fonts families with their weights, italics, variable weight axis and extended Latin support) and the site's own families: uploaded files (`library`) and font services (`services`), matching the same query. Exact names rank first, then names starting with the query. Use it before set_site_fonts to check a family exists and has the weights the design needs. Swedish, Norwegian, Danish, Finnish and German are covered by every catalog family; latin_ext adds Polish, Czech, Turkish and more. Where a family loads from, in order: the site's Fonts library (uploaded files, upload_font), a font service in fonts.services (Adobe Fonts kit, Bunny Fonts or Fontshare stylesheet, loaded from their CDN), "system" (the device's own fonts, no download), and otherwise Google Fonts. Google families are self-hosted by default (fonts.delivery "self_hosted": the files are copied into the published site, no request to Google), or loaded from the Google Fonts CDN with delivery "google".
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `query` | query | string | no | Part of a family name, e.g. "grotesk" or "Playfair". |
+| `category` | query | "sans" \| "serif" \| "display" \| "handwriting" \| "mono" \| "sans" \| "serif" \| "display" \| "handwriting" \| "mono"[] | no |  |
+| `variable` | query | boolean | no | Only variable families (one file covers every weight). |
+| `italic` | query | boolean | no | Only families with italics. |
+| `latin_ext` | query | boolean | no | Only families with the extended Latin subset. |
+| `limit` | query | integer | no | Catalog results to return (default 50). |
+
+### `upload_font`
+
+`POST /api/v1/sites/{siteId}/fonts`
+
+Permission: `admin`
+
+Add a font file to the site's Fonts library (not the media library), so a role can use its family with set_site_fonts. WOFF2, WOFF, TTF or OTF up to 10 MB, one font per file (no .ttc collections); anything but WOFF2 is converted to WOFF2 and the original kept. Family, weight and style default from the file; pass them to correct the file's names. A variable font covers a weight range ("100-900"). Upload one file per style (regular, italic) and, for static fonts, per weight. licence_confirmed must be true and means the user confirmed the font's licence allows use on this website (a webfont or web licence; most desktop licences do not include it). Ask the user before uploading; never assume it. It is stored with who confirmed it and when. Send the file as data_base64 with filename, or as source_url (https; downloaded by Typeroll). Requires admin permission. The library belongs to the site, not to a branch. Adobe Fonts cannot be uploaded (its licence does not allow self-hosting): add the kit with set_site_fonts services instead.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `filename` | body | string | no | The file name, e.g. "BrandSans-Regular.woff2". Required with data_base64. |
+| `data_base64` | body | string | no | The file bytes, base64-encoded (a data: URL prefix is allowed). |
+| `source_url` | body | string | no | An https:// URL to download the file from, instead of data_base64. |
+| `family` | body | string | no | The family name the roles use. Defaults to the name in the file. |
+| `weight` | body | integer \| string | no | 400, or a range such as "100-900" for a variable font. Defaults to the file's weight. |
+| `style` | body | "normal" \| "italic" | no | Defaults to the file's style. |
+| `category` | body | "sans" \| "serif" | no | Chooses the metric-matched fallback shown while the font loads (Arial or Times New Roman). Defaults to sans. |
+| `licence_confirmed` | body | boolean | yes | true: the user confirmed the licence allows using this font on this website. |
+| `licence_note` | body | string | no | Where the licence comes from, e.g. "Web licence, order 1234". |
+
 ## Site: Form capabilities
 
 ### `get_form_capabilities`
@@ -3367,6 +3406,26 @@ Patch site settings, including responsive breakpoints for block layouts and visi
 | `social` | body | object | no |  |
 | `cookie_consent` | body | object | no | Native consent banner configuration. Partial updates preserve omitted fields. Script fields execute in visitor browsers and are accepted under the API key authority. |
 | `language_sections` | body | object[] \| null | no | One site, several languages: each section is a language whose pages (Page.language) live under home_path. Pages in a section get its home link in breadcrumbs, a 404 page at &lt;home_path&gt;404.html, and its tagline, fallback description and banner wording. Pages in the site language keep the top-level settings. Replaces the whole list; null or [] clears it. Use template/show_if on page.language in the header and footer for per-language menus. |
+
+### `set_site_fonts`
+
+`PATCH /api/v1/sites/{siteId}/settings`
+
+Permission: `admin`
+
+Choose the site's fonts. A site chooses one family per role: heading (H1–H6), body (running text), mono (code; no webfont unless set), display (large headings and heroes; unset uses the heading family) and accent (eyebrows and quotes; unset uses the body family). Display and accent take effect from render version 15. Styles and blocks choose a role, never a family, so changing a role restyles every style and block that uses it, and templates follow the site they are inserted into. From render version 15 a publication loads only the weights and italics the site uses (from its styles, block weight settings and bold or italic text), so there is nothing to list for normal use; `load` adds extra weights per role, for example for custom CSS: { body: { weights: [300], italic: [400] } }. Before version 15 every family loads 400–700. Where a family loads from, in order: the site's Fonts library (uploaded files, upload_font), a font service in fonts.services (Adobe Fonts kit, Bunny Fonts or Fontshare stylesheet, loaded from their CDN), "system" (the device's own fonts, no download), and otherwise Google Fonts. Google families are self-hosted by default (fonts.delivery "self_hosted": the files are copied into the published site, no request to Google), or loaded from the Google Fonts CDN with delivery "google". Only the keys you pass change; null clears mono, display, accent, load, delivery or services. Requires admin permission, like update_site_settings. Pass `version` to change a branch instead of main. The response warns about a family that is not in the catalog, the Fonts library or a font service. Check the result with get_preview_link before publishing.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `version` | body | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+| `heading` | body | string | no | A family name, as search_fonts lists it, or "system". |
+| `body` | body | string | no | A family name, as search_fonts lists it, or "system". |
+| `mono` | body | string \| null | no | Code and preformatted text. Without it code uses the system monospace stack; null clears. |
+| `display` | body | string \| null | no | Large headings and heroes (render version 15). null uses the heading family. |
+| `accent` | body | string \| null | no | Eyebrows and quotes (render version 15). null uses the body family. |
+| `load` | body | object \| null | no | Extra weights (and italic weights) to load per role beyond those in use, e.g. { "heading": { "weights": [800] } }. null clears. |
+| `delivery` | body | "self_hosted" \| "google" \| null | no | Google Fonts delivery: self_hosted (default, files copied into the site) or google (Google Fonts CDN). Uploaded and service fonts are unaffected. |
+| `services` | body | object \| object[] \| null | no | Font services whose stylesheet loads from their CDN; replaces the list. Adobe Fonts' licence does not allow self-hosting, so a kit always loads from Adobe (the visitor's browser contacts Adobe; mention it in the privacy policy). null clears. |
 
 ## Site: Shares
 

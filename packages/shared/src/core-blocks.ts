@@ -236,7 +236,7 @@ const prose: BlockType = {
     pixels('paragraph_spacing_px', 'Paragraph spacing (px)', 0, 160),
     { name: 'text_align', type: 'select', label: 'Text alignment', options: ['inherit', 'start', 'center', 'end', 'justify'], default: 'inherit', responsive: true },
     { name: 'font_weight', type: 'select', label: 'Text weight', options: ['inherit', '400', '500', '600', '700'], default: 'inherit', responsive: true },
-    { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading', 'mono'], default: 'inherit' },
+    { name: 'font', type: 'select', label: 'Font family', options: ['inherit', 'body', 'heading', 'display', 'accent', 'mono'], default: 'inherit' },
     { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
     // Like core/heading's colour. Written on the block itself so no platform
     // CSS changes: without a value the markup is unchanged on every render version.

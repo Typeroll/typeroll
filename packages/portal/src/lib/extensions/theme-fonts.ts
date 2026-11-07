@@ -11,32 +11,45 @@ import { fetchPublicAsset } from './public-http';
 // imports to Node built-ins, @typeroll/shared and ./public-http.
 
 const MAX_CSS_BYTES = 256 * 1024;
-const MAX_FONT_BYTES = 2 * 1024 * 1024;
-const MAX_FONT_FILES = 120;
-const MAX_TOTAL_BYTES = 24 * 1024 * 1024;
+export const MAX_FONT_BYTES = 2 * 1024 * 1024;
+export const MAX_FONT_FILES = 120;
+export const MAX_TOTAL_BYTES = 24 * 1024 * 1024;
 // Google Fonts serves woff2 with unicode-range subsets only to browsers it recognises.
-const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+export const BROWSER_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 type Fonts = { heading?: string; body?: string; mono?: string; delivery?: unknown } | undefined;
 export interface ThemeFontResult { delivery: 'self_hosted' | 'google' | 'none'; files: number; bytes: number; error?: string }
 
-const fetchCss = async (families: string[], fetchImpl: typeof fetch) =>
-  new TextDecoder().decode(await fetchPublicAsset(googleFontsCssUrl(families)!, MAX_CSS_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT }));
+const fetchCss = async (cssUrl: string, fetchImpl: typeof fetch) =>
+  new TextDecoder().decode(await fetchPublicAsset(cssUrl, MAX_CSS_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT }));
 const notServed = (error: unknown) => error instanceof Error && /HTTP 400$/.test(error.message);
+
+/** One request per `family=` parameter of a Google Fonts css2 URL, keeping its other parameters. */
+function familyRequests(cssUrl: string): Array<{ family: string; url: string }> {
+  const [base, query = ''] = cssUrl.split('?');
+  const parts = query.split('&').filter(Boolean);
+  const shared = parts.filter(part => !part.startsWith('family='));
+  return parts.filter(part => part.startsWith('family=')).map(part => {
+    let family = part.slice('family='.length).split(':')[0];
+    try { family = decodeURIComponent(family); } catch { /* keep the raw name */ }
+    return { family, url: `${base}?${[part, ...shared].join('&')}` };
+  });
+}
 
 /**
  * Google answers 400 for the whole request when one family is not a Google
  * font (for example Arial, which browsers have locally). Those families are
  * left to the browser; network and server errors still fail the copy.
  */
-async function googleFontsCss(families: string[], fetchImpl: typeof fetch): Promise<string> {
-  try { return await fetchCss(families, fetchImpl); }
+export async function fetchGoogleFontsCss(cssUrl: string, fetchImpl: typeof fetch): Promise<string> {
+  const families = familyRequests(cssUrl);
+  try { return await fetchCss(cssUrl, fetchImpl); }
   catch (error) {
-    if (!notServed(error) || families.length === 1) { if (notServed(error)) return ''; throw error; }
+    if (!notServed(error) || families.length <= 1) { if (notServed(error)) return ''; throw error; }
   }
   const parts: string[] = [];
   for (const family of families) {
-    try { parts.push(await fetchCss([family], fetchImpl)); }
+    try { parts.push(await fetchCss(family.url, fetchImpl)); }
     catch (error) { if (!notServed(error)) throw error; }
   }
   return parts.join('\n');
@@ -48,11 +61,11 @@ interface CopiedThemeFonts { css: string; files: Array<{ name: string; bytes: Ui
  * Fetch the theme's Google webfonts in memory and rewrite the stylesheet to
  * the site's own origin. Throws when they cannot be copied completely.
  */
-async function copyThemeFonts(families: string[], fetchImpl: typeof fetch): Promise<CopiedThemeFonts> {
-  const css = await googleFontsCss(families, fetchImpl);
+async function copyThemeFonts(cssUrl: string, fetchImpl: typeof fetch): Promise<CopiedThemeFonts> {
+  const css = await fetchGoogleFontsCss(cssUrl, fetchImpl);
   const urls = googleFontFileUrls(css);
   // Every family is a local font such as Arial; there is nothing to copy.
-  if (!urls.length) return { css: `/* ${families.join(', ').replace(/\*\//g, '')}: not served by Google Fonts; the browser uses local fonts. */\n`, files: [], bytes: 0 };
+  if (!urls.length) return { css: `/* ${familyRequests(cssUrl).map(request => request.family).join(', ').replace(/\*\//g, '')}: not served by Google Fonts; the browser uses local fonts. */\n`, files: [], bytes: 0 };
   if (urls.length > MAX_FONT_FILES) throw new Error(`The theme fonts need more than ${MAX_FONT_FILES} files`);
   const local = new Map<string, string>();
   const files: CopiedThemeFonts['files'] = [];
@@ -93,7 +106,7 @@ export async function vendorThemeFonts(buildDir: string, fonts: Fonts, fetchImpl
     return { delivery: 'self_hosted', files: names.filter(name => name !== path.basename(cssPath)).length, bytes };
   }
   try {
-    const copied = await copyThemeFonts(families, fetchImpl);
+    const copied = await copyThemeFonts(cssUrl, fetchImpl);
     for (const file of copied.files) await fs.promises.writeFile(path.join(directory, file.name), file.bytes);
     await fs.promises.writeFile(cssPath, copied.css);
     if (cached) {
@@ -119,24 +132,21 @@ async function restoreCachedFonts(cached: string, directory: string): Promise<bo
   } catch { return false; }
 }
 
-/** Font files Typeroll fetched when it froze the publication, carried in publication.json. */
+/**
+ * Font files Typeroll copied when it froze the publication, carried in
+ * publication.json: Google files and the site's uploaded fonts. Engines of
+ * every age write it with writeFrozenThemeFonts, so its shape is fixed.
+ */
 export interface FrozenThemeFonts { css_url: string; css: string; files: Array<{ name: string; sha256: string; data: string }> }
 const FROZEN_NAME = /^[a-f0-9]{32}\.(?:woff2?|ttf|otf)$/;
 
-/** The stylesheet URL a theme needs, or null for system fonts and Google delivery. */
-export function themeFontsCssUrl(fonts: Fonts): string | null {
-  const families = webFontFamilies(fonts?.heading ?? 'Inter', fonts?.body ?? 'Inter', fonts?.mono);
-  return families.length && fontDelivery(fonts) === 'self_hosted' ? googleFontsCssUrl(families) : null;
-}
-
 /**
- * Copy the theme fonts into a frozen record, in memory: the portal freezes a
- * publication without a filesystem. Throws when they cannot be copied completely.
+ * Copy the Google webfonts of a stylesheet into a frozen record, in memory:
+ * the portal freezes a publication without a filesystem. Throws when they
+ * cannot be copied completely.
  */
-export async function captureThemeFonts(fonts: Fonts, fetchImpl: typeof fetch = fetch): Promise<FrozenThemeFonts | null> {
-  const cssUrl = themeFontsCssUrl(fonts);
-  if (!cssUrl) return null;
-  const copied = await copyThemeFonts(webFontFamilies(fonts?.heading ?? 'Inter', fonts?.body ?? 'Inter', fonts?.mono), fetchImpl);
+export async function captureGoogleFonts(cssUrl: string, fetchImpl: typeof fetch = fetch): Promise<FrozenThemeFonts> {
+  const copied = await copyThemeFonts(cssUrl, fetchImpl);
   // File names are content hashes: two URLs with the same bytes are one file.
   const unique = new Map(copied.files.map(file => [file.name, file.bytes]));
   const files = [...unique].sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0).map(([name, bytes]) => ({
