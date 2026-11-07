@@ -105,8 +105,42 @@ export function layoutGallery(renderVersion = LATEST_RENDER_VERSION) {
     section('blocks', [prose('b1', para(6)), { id: 'h2', type: 'core/heading', data: { text: 'A heading block between text blocks', level: 'h2' } }, prose('b2', para(7)),
       { id: 'h3', type: 'core/heading', data: { text: 'A third-level heading block', level: 'h3' } }, prose('b3', para(8))]),
   ] };
+  // Motion, background media, text over images and the story blocks, set up as a site would use them.
+  const img = (n: 1 | 2 | 3 | 4 | 5 | 6) => demoImage(`project-${n}`);
+  const heading = (id: string, text: string, level = 'h2'): Block => ({ id, type: 'core/heading', data: { text, level } });
+  const effectsPage = { id: 'effects', slug: 'effects', path: '/effects/', title: 'Motion and media', status: 'published', content_mode: 'blocks', blocks: [
+    { id: 'notice', type: 'core/announcement_bar', data: { text: '<p>Open on Saturdays in November</p>', link_url: '/', dismissible: true } },
+    { id: 'hero-spot', type: 'core/hero', data: { heading: 'Homes drawn for the light they get', subheading: '<p>Architecture and interiors from first sketch to keys.</p>', layout: 'full-image', image: demoImage('hero'), height: 'half-screen', overlay_style: 'spot', overlay_opacity: 70, text_vertical: 'end', primary_label: 'See projects', primary_url: '/', motion: 'rise' } },
+    section('glass', [heading('glass-h', 'Glass over the image'), prose('glass-p', '<p>The plate blurs the part of the picture behind the text, so it reads on any photo.</p>')],
+      { background_image: img(1), background_overlay: 10, text_panel: 'dark_glass', text_panel_shape: 'rounded', min_height: 'md', text_position: { mobile: 'bottom-center', laptop: 'center-start' } }),
+    section('gradient', [heading('gradient-h', 'Darkening from one side'), prose('gradient-p', '<p>The image stays clear where there is no text.</p>')],
+      { background_image: img(3), overlay_style: 'gradient', overlay_side: 'start', background_overlay: 85, min_height: 'sm', text_position: { mobile: 'center-start' } }),
+    section('light', [heading('light-h', 'A light plate with an organic shape'), prose('light-p', '<p>Dark text on a see-through light plate.</p>')],
+      { background_image: img(2), background_overlay: 0, text_panel: 'light_translucent', text_panel_shape: 'blob', min_height: 'md', text_position: { mobile: 'center', laptop: 'center-end' } }),
+    section('band', [heading('band-h', 'A band across the picture')], { background_image: img(5), background_overlay: 0, text_panel: 'band', min_height: 'sm', text_position: { mobile: 'bottom-center' } }),
+    section('figures', [heading('figures-h', 'Key figures'), { id: 'stats', type: 'core/stats', data: { motion: 'fade', items: [
+      { value: '120', label: 'Homes designed' }, { value: '18', label: 'Years in practice' }, { value: '98 %', label: 'Clients who return', description: 'Survey 2026' }, { value: '1 200', label: 'Square metres a year' },
+    ] } }]),
+    section('steps', [heading('steps-h', 'How a project runs'), { id: 'scroll-steps', type: 'core/scroll_steps', data: { items: [
+      { title: 'Listen', text: '<p>We walk the site with you and write down how you live.</p>', image: img(1), image_alt: 'The site' },
+      { title: 'Sketch', text: '<p>Three directions, drawn by hand, priced roughly.</p>', image: img(2), image_alt: 'Sketches' },
+      { title: 'Build', text: '<p>We follow the build every week until the keys are yours.</p>', image: img(3), image_alt: 'The finished house' },
+    ] } }]),
+    { id: 'film', type: 'core/scroll_film', data: { frames: [1, 2, 3, 4, 5, 6].map(n => ({ src: img(n as 1) })), description: 'Six of our projects', length: 'short',
+      captions: [{ text: '<p><strong>Six homes</strong>, one way of working.</p>', start: 0, end: 45 }, { text: '<p>Each drawn for its plot and its light.</p>', start: 50, end: 100, align: 'end' }] } },
+    section('timeline', [heading('timeline-h', 'Our history'), { id: 'timeline', type: 'core/timeline', data: { layout: 'alternate', motion: 'rise', items: [
+      { date: '2008', title: 'The first house', text: '<p>A summer house on Värmdö.</p>' }, { date: '2015', title: 'Interiors', text: '<p>We start drawing interiors too.</p>', image: img(4), image_alt: 'An interior' },
+      { date: '2026', title: 'Twelve of us', text: '<p>Architects, interior designers and a project manager.</p>' },
+    ] } }]),
+    section('compare', [heading('compare-h', 'Before and after'), { id: 'ba', type: 'core/before_after', data: { before_image: img(4), before_alt: 'Before', after_image: img(6), after_alt: 'After', aspect_ratio: '16:9' } }]),
+    section('logos', [heading('logos-h', 'Partners'), { id: 'marquee', type: 'core/logo_cloud', data: { layout: 'marquee', items: [1, 2, 3, 4, 5, 6].map(n => ({ src: demoImage(`logo-${n as 1}`), alt: `Partner ${n}` })) } }]),
+    section('gallery', [heading('gallery-h', 'Gallery'), { id: 'photos', type: 'core/gallery', data: { motion: 'scale', items: [1, 2, 3, 4, 5, 6].map(n => ({ src: img(n as 1), alt: `Project ${n}`, caption: `Project ${n}` })) } }]),
+    section('audio-s', [{ id: 'audio', type: 'core/audio', data: { src: '/demo-media/episode.mp3', title: 'Episode 4: Building with timber', description: '<p>Twenty minutes on why we draw in wood.</p>', cover: img(2), transcript_url: '/' } }]),
+    { id: 'cta-glass', type: 'core/cta', data: { heading: 'Book a first walk on your site', subheading: '<p>An hour, free, with one of our architects.</p>', primary_label: 'Book a walk', primary_url: '/', background_image: img(6), image_position: 'background', text_panel: 'dark_glass', text_panel_shape: 'slant', align: 'left', width: 'wide', motion: 'rise' } },
+  ] };
   const pages = [
     textPage,
+    effectsPage,
     { id: 'home', slug: 'home', path: '/', title: 'Layout gallery', status: 'published', content_mode: 'blocks', blocks: [prose('intro', '<p>Gallery</p>')] },
     ...types.map(blockPage), ...templatePages,
   ];

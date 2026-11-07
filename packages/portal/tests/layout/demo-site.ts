@@ -37,11 +37,22 @@ function home() {
     }),
     section([
       b('core/text', { text: 'Uppdragsgivare vi har arbetat med', align: 'center' }),
-      b('core/logo_cloud', { items: [1, 2, 3, 4, 5, 6].map(n => ({ src: demoImage(`logo-${n}` as never), alt: ['Nordbygg', 'Ljusvik', 'Stråla', 'Kvarnen', 'Bergsand', 'Ekhagen'][n - 1] })) }),
+      b('core/logo_cloud', { layout: 'marquee', items: [1, 2, 3, 4, 5, 6].map(n => ({ src: demoImage(`logo-${n}` as never), alt: ['Nordbygg', 'Ljusvik', 'Stråla', 'Kvarnen', 'Bergsand', 'Ekhagen'][n - 1] })) }),
     ]),
     section([
+      b('core/stats', { motion: 'fade', items: [
+        { value: '140', label: 'Ritade hus' }, { value: '17', label: 'År i Umeå' },
+        { value: '96 %', label: 'Kunder som rekommenderar oss', description: 'Enkät 2026' }, { value: '2 400', label: 'Kvadratmeter om året' },
+      ] }),
+    ]),
+    section([
+      heading('Ljuset i norr är kort på vintern', { eyebrow: 'Därför ritar vi som vi gör' }),
+      prose('<p>Fönster, takhöjd och färger väljer vi efter hur dagsljuset faller i december, inte i juni.</p>'),
+      buttons(button('Om vårt arbetssätt', '/om-oss/')),
+    ], { background_image: demoImage('project-3'), background_overlay: 15, text_panel: 'dark_glass', min_height: 'md', text_position: { mobile: 'bottom-center', laptop: 'center-start' } }),
+    section([
       heading('Från första skiss till inflyttning', { eyebrow: 'Så arbetar vi', subtitle: 'Ett team följer projektet hela vägen, så att idéerna överlever bygget.' }),
-      b('core/feature_grid', { items: [
+      b('core/feature_grid', { motion: 'rise', items: [
         { icon: 'sun', heading: 'Ljusstudier', text: '<p>Vi simulerar dagsljuset rum för rum innan vi bestämmer var fönstren ska sitta.</p>', link: '/tjanster/' },
         { icon: 'home', heading: 'Bostäder', text: '<p>Villor, fritidshus och flerbostadshus med plats för vardagen.</p>', link: '/projekt/' },
         { icon: 'leaf', heading: 'Hållbart', text: '<p>Trästommar, lokala material och energi som räcker hela året.</p>', link: '/om-oss/' },
@@ -91,6 +102,15 @@ function about() {
       ]),
     ]),
     section([
+      heading('Vår historia'),
+      b('core/timeline', { layout: 'alternate', items: [
+        { date: '2009', title: 'Ett första fritidshus', text: '<p>Elin och Anders ritar ett sommarhus i Bjuröklubb.</p>' },
+        { date: '2014', title: 'Kontoret i smedjan', text: '<p>Vi flyttar in i en ombyggd smedja vid älven.</p>', image: demoImage('project-6'), image_alt: 'Smedjan vid älven' },
+        { date: '2021', title: 'Ekhagenskolan', text: '<p>Vår första skola, byggd i massivträ.</p>' },
+        { date: '2026', title: 'Fem på kontoret', text: '<p>Hanna och Omar är med sedan några år.</p>' },
+      ] }),
+    ]),
+    section([
       heading('Människorna på kontoret'),
       b('core/team_grid', { items: [
         { name: 'Elin Ström', role: 'Arkitekt SAR/MSA', bio: '<p>Grundare. Ritar helst skolor och bibliotek.</p>', photo: demoImage('person-1') },
@@ -132,6 +152,15 @@ function services() {
       ] }),
       buttons(button('Kontakta oss', '/kontakt/'), button('Se priser', '/priser/', 'secondary')),
     ], { width: 'normal' }),
+    section([
+      heading('Så går ett nybygge till'),
+      b('core/scroll_steps', { items: [
+        { title: 'Vi går runt på tomten', text: '<p>Vi tittar på sol, vind, utsikt och grannar, och skriver ner hur ni vill bo.</p>', image: demoImage('project-1'), image_alt: 'Tomten vid sjön' },
+        { title: 'Tre skisser', text: '<p>Tre idéer som skiljer sig på riktigt, med en grov kostnad för varje.</p>', image: demoImage('project-5'), image_alt: 'Skisser och modell' },
+        { title: 'Bygglov och handlingar', text: '<p>Vi tar fram ritningar och sköter kontakten med kommunen.</p>' },
+        { title: 'Bygget', text: '<p>Vi följer bygget varje vecka tills ni får nycklarna.</p>', image: demoImage('project-3'), image_alt: 'Det färdiga huset' },
+      ] }),
+    ]),
   ]);
 }
 
@@ -167,6 +196,14 @@ function projects() {
     section([
       b('core/tabs', { headline: 'Utvalda uppdrag', labels: [{ label: 'Bostäder' }, { label: 'Offentligt' }, { label: 'Kontor' }] }),
     ]),
+    section([
+      heading('Före och efter: Loft på Öst'),
+      b('core/before_after', { before_image: demoImage('interior-2'), before_alt: 'Vinden före ombyggnaden', after_image: demoImage('interior-3'), after_alt: 'Lägenheten efter ombyggnaden', aspect_ratio: '16:9' }),
+    ]),
+    b('core/scroll_film', { frames: [1, 2, 3, 4, 5, 6].map(n => ({ src: demoImage(`project-${n}` as never) })), description: 'Sex av våra projekt', length: 'short', captions: [
+      { text: '<p><strong>Sex hus</strong>, ett sätt att arbeta.</p>', start: 0, end: 45 },
+      { text: '<p>Vart och ett ritat för sin tomt och sitt ljus.</p>', start: 50, end: 100, align: 'end' },
+    ] }),
     b('core/divider', { width: 'normal' }),
     section([
       heading('Fler projekt'),
@@ -197,6 +234,9 @@ function journal() {
       heading('Journal', { level: 'h1', subtitle: 'Tankar om ljus, material och hur man bor bra i norr.' }),
       b('core/page_list', { cols: 3 }),
     ]),
+    section([
+      b('core/audio', { src: '/demo-media/podd-4.mp3', title: 'Podd: Därför ritar vi i trä', description: '<p>Tjugo minuter med Anders Öberg om massivträ, akustik och klimat.</p>', cover: demoImage('project-5'), transcript_url: '/journal/ljus-i-sma-rum/' }),
+    ], { width: 'normal' }),
     section([
       heading('Mest lästa'),
       b('core/grid', { cols: 2 }, [
@@ -268,7 +308,10 @@ export function demoSite(renderVersion = LATEST_RENDER_VERSION) {
       pages, media: [], contentTypes: [], blockTypes: [], forms: [], redirects: [],
       pageTemplates: [{ id: 'starter-article', name: 'Artikel', status: 'published', blocks: swedishLabels(getPageTemplateStarter('article')!) }],
       partials: [
-        ...(['header', 'footer'] as const).map(kind => ({ id: kind, kind, status: 'published', content_mode: 'blocks', blocks: getPartialCompositionStarter(kind, { links: LINKS }) })),
+        ...(['header', 'footer'] as const).map(kind => ({ id: kind, kind, status: 'published', content_mode: 'blocks', blocks: [
+          ...(kind === 'header' ? [b('core/announcement_bar', { text: '<p>Vi har öppet hus i smedjan lördag 14 november.</p>', link_label: 'Anmäl dig', link_url: '/kontakt/' })] : []),
+          ...getPartialCompositionStarter(kind, { links: LINKS }),
+        ] })),
         { id: 'kontaktremsa', kind: 'free', name: 'Kontaktremsa', status: 'published', content_mode: 'blocks', blocks: [
           b('core/cta', { heading: 'Hellre ett samtal?', subheading: '<p>Ring oss på 090-12 34 56.</p>', primary_label: 'Ring nu', primary_url: '/kontakt/', align: 'left' }),
         ] },

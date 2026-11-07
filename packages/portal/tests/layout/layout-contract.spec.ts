@@ -37,7 +37,7 @@ test('every block type and page template meets the layout contract at every widt
       let file = path.join(dist, decodeURIComponent(url.pathname));
       if (!file.startsWith(dist)) { response.writeHead(403).end(); return; }
       if (url.pathname.endsWith('/')) file = path.join(file, 'index.html');
-      try { response.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' }).end(await fs.readFile(file)); }
+      try { const body = await fs.readFile(file); response.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' }).end(body); }
       catch { response.writeHead(404).end(); }
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -50,6 +50,8 @@ test('every block type and page template meets the layout contract at every widt
           await page.goto(origin + pathname, { waitUntil: 'load' });
           // Measure with the real web fonts, not the fallback shown while they load.
           await page.evaluate(() => document.fonts.ready.then(() => undefined));
+          // A reader who scrolls the whole page has seen every entrance animation end; measure that page.
+          await page.evaluate(() => document.querySelectorAll('[data-motion-item]').forEach(element => element.setAttribute('data-motion-in', 'done')));
           for (const problem of await page.evaluate(measureLayout)) {
             const key = `${pathname} @${width} ${problem.check} ${problem.block}`;
             if (!found.has(key)) found.set(key, { ...problem, page: pathname, width });

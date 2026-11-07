@@ -74,7 +74,7 @@ const TEXT = {
 } as const;
 
 /** http(s) or a root-relative path; anything else is not a media address. */
-function mediaAddress(value: unknown): string {
+export function mediaAddress(value: unknown): string {
   const url = String(value ?? '').trim();
   if (/^\/(?!\/)/.test(url)) return url;
   try {
@@ -87,6 +87,12 @@ function mediaAddress(value: unknown): string {
 
 const YOUTUBE = /^(?:https?:)?\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/|youtube-nocookie\.com\/embed\/)([A-Za-z0-9_-]{11})/;
 const VIMEO = /^(?:https?:)?\/\/(?:www\.|player\.)?vimeo\.com\/(?:video\/)?(\d{4,12})(?:\/([0-9a-f]{6,20}))?/;
+
+/** A video file address (not a YouTube or Vimeo page), or an empty string. */
+export function videoFileAddress(value: unknown): string {
+  const address = mediaAddress(value);
+  return address && !YOUTUBE.test(address) && !VIMEO.test(address) ? address : '';
+}
 
 /** Seconds from a YouTube `t`/`start` value such as 90, 90s or 1m30s. */
 function startSeconds(url: URL): number {
@@ -160,8 +166,8 @@ export function videoPlayerHtml(data: Data): string {
   return `<iframe src="${escapeAttr(src)}" title="${escapeAttr(title)}"${lazy ? ' loading="lazy"' : ''} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
 }
 
-const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
-const PLAY_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>';
+export const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+export const PLAY_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>';
 
 /**
  * A hero's background video: a video file, muted and looping behind the text,

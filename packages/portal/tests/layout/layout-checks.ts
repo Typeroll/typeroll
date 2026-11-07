@@ -22,6 +22,13 @@ export function measureLayout(): LayoutProblem[] {
       && !element.closest('[hidden],.sr-only,.visually-hidden,dialog:not([open]),details:not([open]) > :not(summary)');
   };
   const round = (value: number) => Math.round(value);
+  // Media behind a block (a background image or video, a film frame, a darkening layer) is
+  // its background, like a CSS background image: not content, and not a decoration over it.
+  const BACKGROUND = '.tr-bg-media, .block-hero-overlay, [data-film-ready] :is(.block-film-poster, .block-film-canvas)';
+  const background = (element: Element) => !!element.closest(BACKGROUND);
+  // The two images of a before/after comparison lie on top of each other by design, with the
+  // labels and the divider on them; the divider shows part of each.
+  const stacked = (element: Element) => !!element.closest('[data-block="before_after"][data-enhanced] .block-ba-stage');
 
   // 1. Nothing is wider than the screen.
   if (document.documentElement.scrollWidth > viewport + 1) {
@@ -33,11 +40,11 @@ export function measureLayout(): LayoutProblem[] {
   }
 
   // 2. Content boxes of different blocks never overlap.
-  const LEAF = 'p,h1,h2,h3,h4,h5,h6,li,a,button,input,select,textarea,img,video,iframe,picture,figcaption,blockquote,label,td,th,svg,summary';
+  const LEAF = 'p,h1,h2,h3,h4,h5,h6,li,a,button,input,select,textarea,img,video,audio,iframe,picture,figcaption,blockquote,label,td,th,svg,summary';
   const ownText = (element: Element) => [...element.childNodes].some(node => node.nodeType === 3 && node.textContent!.trim());
   const textHolders = [...document.querySelectorAll('main :is(span,div,strong,em,small,dt,dd,time,b,address,cite,mark,q,figcaption), header :is(span,div,strong,em,small), footer :is(span,div,strong,em,small)')]
     .filter(element => ownText(element) && !element.closest(LEAF));
-  const leaves = [...document.querySelectorAll(`main :is(${LEAF}), header :is(${LEAF}), footer :is(${LEAF})`), ...textHolders].filter(visible)
+  const leaves = [...document.querySelectorAll(`main :is(${LEAF}), header :is(${LEAF}), footer :is(${LEAF})`), ...textHolders].filter(visible).filter(element => !background(element))
     .filter(element => !element.parentElement?.closest(LEAF.split(',').filter(tag => tag !== 'li' && tag !== 'td' && tag !== 'th').join(',')));
   const clipToScrollers = (element: Element, box: DOMRect): DOMRect | null => {
     let left = box.left, top = box.top, right = box.right, bottom = box.bottom;
@@ -58,6 +65,7 @@ export function measureLayout(): LayoutProblem[] {
   for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
     const a = boxes[i]!, b = boxes[j]!;
     if (a.element.contains(b.element) || b.element.contains(a.element)) continue;
+    if (stacked(a.element) && stacked(b.element) && a.element.closest('.block-ba-stage') === b.element.closest('.block-ba-stage')) continue;
     const area = linesOverlap(a.lines, b.lines);
     if (area > 16) add('content_overlap', a.element, `${a.element.tagName.toLowerCase()} overlaps ${b.element.tagName.toLowerCase()} by ${round(area)}px²`);
   }
@@ -78,6 +86,7 @@ export function measureLayout(): LayoutProblem[] {
   const painted = (style: CSSStyleDeclaration) => style.backgroundImage !== 'none' || !/rgba\(0, 0, 0, 0\)|transparent/.test(style.backgroundColor);
   const decorations: { owner: Element; box: { left: number; top: number; right: number; bottom: number }; label: string }[] = [];
   for (const element of document.querySelectorAll('main *, footer *, header *')) {
+    if (background(element) || stacked(element)) continue;
     const rect = element.getBoundingClientRect();
     for (const pseudo of ['::before', '::after'] as const) {
       const style = getComputedStyle(element, pseudo);
@@ -103,6 +112,8 @@ export function measureLayout(): LayoutProblem[] {
   };
   for (const decoration of decorations) for (const { element, box } of boxes) {
     if (decoration.owner.contains(element) && decoration.label !== '::before' && decoration.label !== '::after') continue;
+    // A list item or table cell holds its own markers and lines; its content is checked on its own.
+    if (element.matches('li,td,th') && element.contains(decoration.owner)) continue;
     const area = overlap(decoration.box as DOMRect, contentBox(element, box));
     if (area > 16) add('decoration_covers_content', element, `${decoration.label} of ${decoration.owner.tagName.toLowerCase()} covers ${element.tagName.toLowerCase()} by ${round(area)}px²`);
   }
@@ -187,7 +198,7 @@ export function measureLayout(): LayoutProblem[] {
   const TEXT = 'p,li,blockquote';
   const textBoxes = boxes.filter(({ element }) => element.matches(TEXT));
   for (const heading of document.querySelectorAll('main :is(h2,h3,h4)')) {
-    if (!visible(heading) || heading.closest('[data-block="cta"],[data-block="hero"],[data-block="pricing_plan"],[data-block="icon_box"],[data-block="media_card"],[data-block="post_card"],[data-block="team_member"],[data-block="testimonial"],[data-block="step_card"],[data-block="feature_row"],[data-block="accordion"],[data-block="tabs"],header,footer,nav,summary')) continue;
+    if (!visible(heading) || heading.closest('[data-block="timeline"],[data-block="scroll_steps"],[data-block="scroll_film"],[data-block="cta"],[data-block="hero"],[data-block="pricing_plan"],[data-block="icon_box"],[data-block="media_card"],[data-block="post_card"],[data-block="team_member"],[data-block="testimonial"],[data-block="step_card"],[data-block="feature_row"],[data-block="accordion"],[data-block="tabs"],header,footer,nav,summary')) continue;
     const group = heading.closest('hgroup') ?? heading, box = group.getBoundingClientRect();
     // A heading that opens its container (a column, a card) introduces it; it does not interrupt running text.
     const headingBlock = heading.closest('[data-block="heading"],[data-block="rich_heading"],[data-block="prose"]');
@@ -212,7 +223,7 @@ export function measureLayout(): LayoutProblem[] {
     let backdrop: string | null = null;
     for (let node: Element | null = element; node; node = node.parentElement) {
       const style = getComputedStyle(node);
-      if (style.backgroundImage !== 'none') { backdrop = null; break; }
+      if (style.backgroundImage !== 'none' || node.matches('[data-bg-media], [data-film-ready] > .block-film-stage')) { backdrop = null; break; }
       const colour = rgb(style.backgroundColor);
       if (colour.length >= 3 && (colour[3] ?? 1) > 0.5) { backdrop = style.backgroundColor; break; }
       if (node === document.documentElement) backdrop = 'rgb(255, 255, 255)';
@@ -232,7 +243,8 @@ export function measureLayout(): LayoutProblem[] {
     const groups = new Map<string, { left: number; element: Element }[]>();
     for (const band of document.querySelector('.page-content--blocks')?.children ?? []) {
       const type = band.getAttribute('data-block') ?? '', width = band.getAttribute('data-width') ?? 'normal';
-      if (!BANDS.includes(type) || width === 'full' || !visible(band)) continue;
+      // Text placed over a background image sits where its author put it.
+      if (!BANDS.includes(type) || width === 'full' || !visible(band) || band.hasAttribute('data-text-place')) continue;
       const inner = (INNER[type] && [...band.children].find(child => child.matches(INNER[type]!))) || band;
       const style = getComputedStyle(inner);
       const left = inner.getBoundingClientRect().left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);

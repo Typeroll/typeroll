@@ -123,6 +123,8 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     // medium is the default and is stored as an absent value.
     date_format: ['long', 'numeric', 'iso'].includes(String(form.get('date_format'))) ? String(form.get('date_format')) : undefined,
     content_widths,
+    // full is the default and is stored as an absent value.
+    motion: form.get('motion') === 'reduced' ? 'reduced' : undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',
     seo_review,
     external_routes,

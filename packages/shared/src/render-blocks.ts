@@ -8,6 +8,8 @@ import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
 import { coerceFieldValue } from './block-field-types.js';
 import { carouselControlsHtml, carouselRegionLabel, heroVideoHtml, ratingHtml, videoPlayerHtml } from './block-media.js';
+import { prepareStoryBlock } from './story-blocks.js';
+import { backgroundMedia, effectAssets, insertAfterFirstTag, lightboxAttributes, motionAttributes, textOverMedia, type EffectContext } from './block-effects.js';
 // Block-tree → HTML renderer.
 //
 // Pure function used by both the SSG renderer (packages/site-template) and
@@ -57,7 +59,7 @@ import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
-import { uiText, localizeDefaultLabel, formatDisplayDate } from './ui-text.js';
+import { uiText, uiLabel, localizeDefaultLabel, formatDisplayDate } from './ui-text.js';
 import { languageSectionFor, type LanguageSection } from './language-sections.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
@@ -325,6 +327,11 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     localizeDefaultLabels(blockType, compiled.flatData, options);
     const responsiveBlock: Block = { ...effectiveBlock, data: compiled.flatData };
     let html = renderRepeater(responsiveBlock, blockType, options);
+    const effects = effectContext(options);
+    const effectAttrs = motionAttributes(blockType, compiled.flatData, effects);
+    // A gallery opens its images larger unless it says not to (render version 14).
+    if (effects.renderVersion >= 14 && block.type === 'core/gallery' && compiled.flatData.lightbox !== false) Object.assign(effectAttrs, lightboxAttributes(effects.language));
+    if (Object.keys(effectAttrs).length) html = injectAttrsIntoFirstTag(html, effectAttrs);
     // An explicit mobile baseline opts into the authored column map. Preserve
     // the one-column mobile default for scalar counts and maps without mobile.
     if (isResponsiveValue(effectiveBlock.data.cols) && effectiveBlock.data.cols.mobile != null && effectiveBlock.data.mobile_cols == null) {
@@ -455,7 +462,11 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots, { authored: effectiveBlock.data, language: options.context?.page?.language ?? options.context?.site?.language });
   // Read only by the render version 7 templates (block-media.ts).
   if (effectiveBlock.type === 'core/video') compiled.flatData.video_html = videoPlayerHtml(compiled.flatData);
-  if (effectiveBlock.type === 'core/hero') compiled.flatData.hero_video_html = heroVideoHtml(compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
+  if (effectiveBlock.type === 'core/hero') {
+    // A site with reduced motion shows the hero image instead of its video (render version 14).
+    const still = resolveRenderVersion(options.renderVersion) >= 14 && options.context?.site?.motion === 'reduced';
+    compiled.flatData.hero_video_html = still ? '' : heroVideoHtml(compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
+  }
   if (effectiveBlock.type === 'core/testimonial') compiled.flatData.rating_html = ratingHtml(compiled.flatData.rating, options.context?.page?.language ?? options.context?.site?.language);
   if (effectiveBlock.type === 'core/navigation_form') prepareNavigationForm(compiled.flatData, effectiveBlock.id, effectiveBlock.data, effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints);
   if (effectiveBlock.type === 'core/navigation_menu') compiled.flatData.menu_mobile_override = String(!!effectiveBlock.slots?.[1]?.length);
@@ -580,6 +591,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
       compiled.flatData, pageUrlResolverFromSource(options.pageSource));
     Object.assign(compiled.flatData, derived);
   }
+  const storyAttrs = prepareStoryBlock(blockType, compiled.flatData, { language: options.context?.page?.language ?? options.context?.site?.language, reduced: resolveRenderVersion(options.renderVersion) >= 14 && options.context?.site?.motion === 'reduced' });
   let html = substituteFields(template, compiled.flatData, options.context);
   const numericStyles = (blockType.schema ?? []).flatMap(field => {
     const value = numericPresentationValue(field, compiled.flatData[field.name]);
@@ -591,12 +603,18 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   // Insert prepared field rows after all template passes. Authored values and
   // row markup must never become a second Page-context template evaluation.
   if (fieldListHtml !== undefined) html = html.replace('<!--typeroll-field-list-->', () => fieldListHtml!);
+  // Render version 14: media behind the block and its entrance animation (block-effects.ts).
+  const effects = effectContext(options);
+  const background = backgroundMedia(blockType, compiled.flatData, effects);
+  html = insertAfterFirstTag(html, background.html);
 
   // Inject responsive / visibility attributes onto the outermost element.
   // Both rely on the block's id being CSS-safe (alphanumeric + _ + -);
   // sanitizeCssId() escapes anything else.
   const bid = sanitizeCssId(effectiveBlock.id);
-  const rootAttrs: Record<string, string> = {};
+  const overText = textOverMedia(blockType, compiled.flatData, effects, effectiveBlock.data ?? {});
+  if (overText.style) html = mergeAttrsIntoFirstTag(html, { style: overText.style }) ?? html;
+  const rootAttrs: Record<string, string> = { ...background.attrs, ...overText.attrs, ...motionAttributes(blockType, compiled.flatData, effects), ...storyAttrs };
   if (blockType.id === 'core/grid' && isResponsiveValue(effectiveBlock.data.cols)) rootAttrs['data-responsive-cols'] = 'true';
   if (blockType.schema.some(field => field.css_unit)) rootAttrs['data-presentation'] = encodeURIComponent(blockType.id);
   // data-bid is normally only needed when responsive overrides target it —
@@ -1100,10 +1118,18 @@ function wrapRepeater(
   const marked = (html: string) => Object.keys(partAttrs).length ? injectAttrsIntoFirstTag(html, partAttrs) : html;
   // Render version 7: a carousel's items scroll in a track, followed by the
   // controls its settings ask for (block-media.ts).
+  const effects = effectContext(options);
+  // Render version 14: a logo row that moves slowly sideways (block-effects.ts).
+  if (layout === 'marquee' && effects.renderVersion >= 14) {
+    const still = effects.siteMotion === 'reduced' ? ' data-static' : '';
+    return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="marquee"${still} data-label-pause="${escapeHtml(uiLabel(effects.language, 'pause_animation'))}" data-label-play="${escapeHtml(uiLabel(effects.language, 'play_animation'))}" style="${style}"><div class="tr-marquee-track">${inner}</div></div>`);
+  }
   if (layout === 'carousel' && resolveRenderVersion(options?.renderVersion) >= 7) {
     const language = options?.context?.page?.language ?? options?.context?.site?.language;
-    const controls = carouselControlsHtml(data, count, language);
-    const hooks = controls ? ` data-block-type="core/repeater" data-carousel-autoplay="${data.autoplay === true}" role="region" aria-roledescription="carousel" aria-label="${escapeHtml(carouselRegionLabel(language))}"` : '';
+    // A site with reduced motion never autoplays (render version 14).
+    const autoplay = data.autoplay === true && !(effects.renderVersion >= 14 && effects.siteMotion === 'reduced');
+    const controls = carouselControlsHtml({ ...data, autoplay }, count, language);
+    const hooks = controls ? ` data-block-type="core/repeater" data-carousel-autoplay="${autoplay}" role="region" aria-roledescription="carousel" aria-label="${escapeHtml(carouselRegionLabel(language))}"` : '';
     return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="carousel"${hooks} style="${style}"><div class="tr-carousel-track">${inner}</div>${controls}</div>`);
   }
   return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="${style}">${inner}</div>`);
@@ -1671,6 +1697,14 @@ function renderChoicesHtml(
  * Put the class of a selected site style (`data.style_id`) on the block's
  * semantic element: the element carrying `style_element_class`, else the root.
  */
+function effectContext(options: RenderBlocksOptions | undefined): EffectContext {
+  return {
+    renderVersion: resolveRenderVersion(options?.renderVersion),
+    siteMotion: options?.context?.site?.motion,
+    language: options?.context?.page?.language ?? options?.context?.site?.language,
+  };
+}
+
 function applySiteStyle(html: string, block: Block, blockType: BlockType): string {
   if (!blockType.schema?.some(field => field.type === 'style' && field.name === 'style_id')) return html;
   const id = block.data?.style_id;
@@ -2282,6 +2316,9 @@ export function collectBlockAssets(
     if (partCss) css.push(`/* block parts */\n${partCss}`);
   }
 
+  const effects = effectAssets(blocks, resolveRenderVersion(opts?.renderVersion));
+  css.push(...effects.css);
+  js.push(...effects.js);
   if (resolveRenderVersion(opts?.renderVersion) >= 14 && css.length) css.push(`/* block defaults */\n${BLOCK_DEFAULTS_V14_CSS}`);
   // From render version 14 platform block CSS is one layer; an author's
   // per-block CSS stays unlayered and overrides it like site CSS does.

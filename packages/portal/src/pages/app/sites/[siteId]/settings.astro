@@ -151,7 +151,7 @@ const domainBlocksArchiving =
     </div>
 
     <div class="card stack" data-settings-section="design" hidden={section !== 'design'}>
-      <h2 style="font-size: 1.125rem;">Dates and content widths</h2>
+      <h2 style="font-size: 1.125rem;">Dates, content widths and motion</h2>
       <div class="field">
         <label for="setting-date_format">Date format</label>
         <select id="setting-date_format" name="date_format">
@@ -171,6 +171,14 @@ const domainBlocksArchiving =
         ))}
       </div>
       <p class="muted text-sm">Sections, containers, heroes, feature rows and calls to action share these widths, so blocks of the same width line up. Leave a field empty for the default. Render version 14.</p>
+      <div class="field">
+        <label for="setting-motion">Motion</label>
+        <select id="setting-motion" name="motion">
+          <option value="full" selected={settings.motion !== 'reduced'}>As each block says — default</option>
+          <option value="reduced" selected={settings.motion === 'reduced'}>Reduced for every visitor</option>
+        </select>
+        <p class="muted text-sm">Reduced turns off entrance animations, carousel autoplay, background videos, moving logo rows and scroll films for everyone; they show their still image or content instead. Visitors who ask their device for reduced motion always get this. Render version 14.</p>
+      </div>
     </div>
 
     <div class="card stack" data-settings-section="design" hidden={section !== 'design'}>

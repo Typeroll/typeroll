@@ -216,6 +216,13 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   },
   'core/logo_item': { src: '/media/logo.svg', alt: 'Acme', link: 'https://acme.example/' },
   'core/step_card': { number: '1', icon: 'check', title: 'Sign up', text: '<p>Create an account.</p>' },
+  'core/stats': { items: [{ value: '120', label: 'Customers', description: 'Across Sweden' }, { value: '98 %', label: 'Satisfied' }] },
+  'core/timeline': { items: [{ date: '2019', title: 'Founded', text: '<p>We start.</p>', image: '/media/t.jpg', image_alt: 'Office' }, { date: '2024', title: 'Grown', text: '<p>Ten people.</p>' }] },
+  'core/audio': { src: '/media/episode.mp3', title: 'Episode 1', description: '<p>About us.</p>', cover: '/media/cover.jpg', transcript_url: '/transcript/' },
+  'core/before_after': { before_image: '/media/before.jpg', after_image: '/media/after.jpg' },
+  'core/announcement_bar': { text: '<p>Open on Saturdays</p>', link_url: '/hours/' },
+  'core/scroll_steps': { items: [{ title: 'One', text: '<p>First.</p>', image: '/media/1.jpg' }, { title: 'Two', text: '<p>Second.</p>', image: '/media/2.jpg' }] },
+  'core/scroll_film': { frames_pattern: '/media/film/{nnn}.webp', frame_count: 3, captions: [{ text: '<p>Caption</p>', start: 0, end: 50 }] },
   'core/media_card': { image: '/media/card.jpg', heading: 'Heading', text: '<p>Text</p>', button_label: 'Start', button_url: '/start/' },
   'core/feature_row': {
     eyebrow: 'Eyebrow', heading: 'Heading', text: '<p>Text</p>', image: '/media/feature.jpg',

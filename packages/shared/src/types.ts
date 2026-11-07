@@ -522,6 +522,8 @@ export interface SiteSettings {
   header_behavior?: 'static' | 'sticky' | 'reveal_on_scroll_up';
   /** How page and card dates read (render version 14): medium (default), long, numeric, iso or a YYYY/MMM/D pattern. */
   date_format?: string;
+  /** Motion for every visitor (render version 14): full (default) or reduced, which turns off entrance animations, autoplay, background video and moving rows. */
+  motion?: 'full' | 'reduced';
   /** The shared narrow, normal and wide content widths in px (render version 14). */
   content_widths?: import('./site-display-settings.js').ContentWidths;
   /**

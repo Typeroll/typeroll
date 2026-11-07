@@ -32,7 +32,7 @@ import { dateFormatError, contentWidthsError, typographyError, designScalesError
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
-  'default_meta_description', 'language', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'content_widths', 'image_sizes_default',
+  'default_meta_description', 'language', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'content_widths', 'motion', 'image_sizes_default',
   'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'external_routes', 'render_version',
   // Social sharing + Organization JSON-LD, as in the portal Settings form.
   'default_og_image', 'twitter_handle', 'organization',
@@ -140,6 +140,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return apiError(`header_behavior must be one of: ${HEADER_BEHAVIORS.join(', ')} (or null for the default, static)`, 400);
   }
   if (body.date_format !== undefined && body.date_format !== null) { const error = dateFormatError(body.date_format); if (error) return apiError(error, 400); }
+  if (body.motion !== undefined && body.motion !== null && body.motion !== 'full' && body.motion !== 'reduced') return apiError('motion must be "full" or "reduced"', 400);
   if (body.content_widths !== undefined && body.content_widths !== null) { const error = contentWidthsError(body.content_widths); if (error) return apiError(error, 400); }
   if (body.sitewide_noindex !== undefined && typeof body.sitewide_noindex !== 'boolean') {
     return apiError('sitewide_noindex must be boolean', 400);
@@ -226,7 +227,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && (k === 'fonts' || k === 'colors')) delete (update[k] as Record<string, unknown>)[field];
     } else if (TOP_LEVEL.has(k)) {
       // null clears an optional field; the store drops undefined values.
-      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization', 'language_sections', 'ai_crawler_policy', 'header_behavior', 'date_format', 'content_widths').includes(k) ? undefined : v;
+      update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization', 'language_sections', 'ai_crawler_policy', 'header_behavior', 'date_format', 'content_widths', 'motion').includes(k) || (k === 'motion' && v === 'full') ? undefined : v;
     } else if (SITE_LEVEL.has(k)) {
       continue;
     } else {

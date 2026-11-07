@@ -40,7 +40,7 @@ test('the demo site uses every block type, has no custom CSS and meets the layou
       const url = new URL(request.url ?? '/', 'http://demo');
       let file = path.join(dist, decodeURIComponent(url.pathname));
       if (url.pathname.endsWith('/')) file = path.join(file, 'index.html');
-      try { response.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' }).end(await fs.readFile(file)); }
+      try { const body = await fs.readFile(file); response.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' }).end(body); }
       catch { response.writeHead(404).end(); }
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -53,6 +53,8 @@ test('the demo site uses every block type, has no custom CSS and meets the layou
           await page.goto(origin + pathname, { waitUntil: 'load' });
           // Measure with the real web fonts, not the fallback shown while they load.
           await page.evaluate(() => document.fonts.ready.then(() => undefined));
+          // A reader who scrolls the whole page has seen every entrance animation end; measure that page.
+          await page.evaluate(() => document.querySelectorAll('[data-motion-item]').forEach(element => element.setAttribute('data-motion-in', 'done')));
           const broken = await page.evaluate(() => [...document.images].filter(image => image.complete && image.naturalWidth === 0 && image.checkVisibility()).map(image => image.getAttribute('src')));
           for (const src of broken) problems.push(`${pathname} @${width} broken_image ${src}`);
           for (const problem of await page.evaluate(measureLayout)) problems.push(`${pathname} @${width} ${problem.check} ${problem.block}: ${problem.detail}`);

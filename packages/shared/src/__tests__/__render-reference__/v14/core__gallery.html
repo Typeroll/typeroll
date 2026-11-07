@@ -1,4 +1,4 @@
-<div data-block="repeater" data-presentation="core%2Frepeater" data-bid="ref" data-layout="grid" style="--cols:3;--mobile-cols:1;--gap:auto;--align:stretch;"></div>
+<div data-block="repeater" data-presentation="core%2Frepeater" data-bid="ref" data-layout="grid" style="--cols:3;--mobile-cols:1;--gap:auto;--align:stretch;" data-lightbox data-label-enlarge="Show larger" data-label-close="Close" data-label-previous="Previous" data-label-next="Next"></div>
 
 /* css */
 @layer typeroll.platform{
@@ -143,6 +143,26 @@
 @container (max-width: 560px) {
   [data-block="repeater"][data-layout="carousel"] > .tr-carousel-track > * { flex-basis:85%; }
 }
+
+/* lightbox */
+[data-lightbox] img[data-lightbox-index] { cursor:zoom-in; }
+[data-lightbox] img[data-lightbox-index]:focus-visible { outline:3px solid var(--color-primary, #111); outline-offset:3px; }
+.tr-lightbox { box-sizing:border-box; inline-size:100vw; block-size:100dvh; max-inline-size:none; max-block-size:none; margin:0; padding:0; border:0; background:rgb(10 10 12 / .94); color:#fff; overscroll-behavior:contain; }
+.tr-lightbox::backdrop { background:rgb(0 0 0 / .6); }
+.tr-lightbox-figure { box-sizing:border-box; display:grid; grid-template-rows:minmax(0,1fr) auto; place-items:center; gap:.75rem; block-size:100%; margin:0; padding:3.75rem clamp(.75rem, 6vw, 4.5rem) 1.25rem; }
+.tr-lightbox-figure img { display:block; max-inline-size:100%; max-block-size:100%; inline-size:auto; block-size:auto; object-fit:contain; touch-action:pan-y pinch-zoom; }
+.tr-lightbox-figure figcaption { max-inline-size:48rem; text-align:center; font-size:.9375rem; line-height:1.5; opacity:.9; }
+.tr-lightbox-figure figcaption:empty { display:none; }
+.tr-lightbox-count { position:absolute; inset-block-start:1rem; inset-inline-start:1rem; margin:0; font-size:.875rem; opacity:.8; }
+.tr-lightbox-button { position:absolute; display:inline-grid; place-items:center; inline-size:2.75rem; block-size:2.75rem; padding:0; border:0; border-radius:999px; background:rgb(255 255 255 / .14); color:#fff; cursor:pointer; }
+.tr-lightbox-button:hover { background:rgb(255 255 255 / .24); }
+.tr-lightbox-button:focus-visible { outline:2px solid #fff; outline-offset:2px; }
+.tr-lightbox-button[hidden] { display:none; }
+.tr-lightbox-close { inset-block-start:.625rem; inset-inline-end:.625rem; }
+.tr-lightbox-prev, .tr-lightbox-next { inset-block-start:50%; translate:0 -50%; }
+.tr-lightbox-prev { inset-inline-start:.625rem; }
+.tr-lightbox-next { inset-inline-end:.625rem; }
+@media (max-width: 640px) { .tr-lightbox-prev, .tr-lightbox-next { inset-block-start:auto; inset-block-end:.75rem; translate:none; } }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */

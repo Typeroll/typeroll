@@ -56,6 +56,98 @@ options render; earlier versions ignore them.
   of 5" ("Betyg: 4 av 5" on Swedish sites) for screen readers. Set
   `--testimonial-rating-color` to change the star colour.
 
+### Motion, background media and story blocks (render version 14)
+
+From [render version 14](../../settings/#render-versions):
+
+- **Entrance animation.** `motion` on sections, containers, grids, columns,
+  lists (gallery, logo cloud, feature grid, testimonials, team, pricing) and
+  hero, CTA, feature row, media card, image, heading, video, key figures,
+  timeline, audio and before/after: `none` (default), `fade`, `rise`, `scale`
+  or `custom`. It plays once as the block scrolls in. A container, grid or list
+  brings in its blocks one after another; a hero or CTA moves its text, not its
+  background. What is on screen when the page opens stays still. Without
+  script, in print and for visitors who prefer reduced motion everything is
+  simply there.
+- **Background media.** A section takes `background_image` (with
+  `background_focal_x` and `background_focal_y`) and sections, containers and
+  CTAs take `background_video`, a muted looping MP4 or WebM file (YouTube and
+  Vimeo are not backgrounds). The video starts when the block is in view,
+  pauses out of view, has a pause button, and shows the image on phones unless
+  `background_video_phones` is `play`. `background_overlay` (0–100, default
+  40) darkens the media so white text reads; set a text color, or 0, for text
+  in your own color.
+- **Text over images.** On hero, section and CTA:
+  - `overlay_style`: `solid` (even), `gradient` (from `overlay_side`: bottom,
+    top, left or right) or `spot` (a soft darkening behind the text), in
+    `overlay_color` (default black);
+  - `text_panel`: a plate behind the text: `solid` (page colors),
+    `dark_translucent`, `light_translucent`, `dark_glass` or `light_glass`
+    (blurs the image behind the text) or `band` (full width);
+  - `text_panel_shape`: `rounded`, `square`, `pill`, `blob` (organic),
+    `slant` or `custom`;
+  - on a section, `text_position` (nine places, per screen size) and
+    `min_height` (`sm`, `md`, `lg`, `screen`). The text keeps to the content
+    column of the sections around it. A hero places its text with
+    `text_vertical` and `text_align` as before.
+- **Gallery lightbox.** `core/gallery` opens images that have no link larger,
+  with previous and next, the arrow keys, swiping and Escape; `lightbox: false`
+  turns it off.
+- **Moving logo row.** `core/logo_cloud` with `layout: "marquee"` scrolls
+  slowly sideways, pauses on hover, focus and its pause button, and is a still
+  row without script or with reduced motion.
+- **Site setting** `motion: "reduced"` turns all of this motion off for every
+  visitor, and the hero video and carousel autoplay too.
+
+New blocks (any render version):
+
+- `core/stats` (key figures): a figure, label and optional description per
+  item, up to `cols` per row, `plain`, `cards` or `divided`. Numbers count up
+  once as they scroll in (`count_up`); the final figure is in the page.
+- `core/timeline`: date, title, text and an optional image per event, as one
+  line or alternating sides on wide screens.
+- `core/audio`: an audio file with title, description, cover and a
+  transcript link.
+- `core/before_after`: two images with a draggable, keyboard-operable divider;
+  side by side without script.
+- `core/announcement_bar`: a short message with a link, in primary, surface or
+  dark colors. Visitors can close it; it stays closed in that browser until the
+  message changes. Put it at the top of the header template.
+- `core/scroll_steps`: steps that scroll past a picture that stays in place
+  and changes with the step. On phones, without script and in narrow columns,
+  each step shows its picture above its text.
+- `core/scroll_film`: a film that plays frame by frame as the page scrolls,
+  with captions that show between two points of the film (`start`, `end` in
+  percent). Give the frames as an address pattern (`frames_pattern` such as
+  `/media/film/frame-{nnnn}.webp` with `frame_count`, optionally a phone
+  pattern) or a list (`frames`), or a `video` file. Frames are smoothest:
+  export 60–200 WebP or AVIF frames about 1600–2000 px wide. A video plays
+  smoothly when every frame is a keyframe. Without script and for reduced
+  motion the block is its still image (`poster`, or the first frame) followed
+  by the captions.
+
+#### Your own CSS and scripts
+
+Every effect has hooks for site CSS, a block's own CSS
+(`style_overrides.custom_css`) and the scripts of your own block types:
+
+| Hook | Where | What |
+| --- | --- | --- |
+| `--motion-duration`, `--motion-easing`, `--motion-distance`, `--motion-scale`, `--motion-stagger` | `:root` or any block | timing and travel of entrance animations |
+| `[data-motion-in]` and `motion: "custom"` | each element that enters | your own animation: `html[data-tr-motion] [data-motion-item="custom"]:not([data-motion-in]) { … }` (the `html[data-tr-motion]` part keeps content visible without script) |
+| `typeroll:motion-in` event | bubbles from the element | start your own effect when it enters |
+| `--bg-overlay`, `--bg-overlay-color` | `.tr-bg-media` | darkening strength (0–1) and color |
+| `--panel-bg`, `--panel-fg`, `--panel-blur`, `--panel-padding`, `--panel-radius`, `--panel-clip`, `--panel-width` | the block | the plate behind the text; `--panel-clip` takes any `clip-path` such as `polygon(…)` |
+| `--text-y`, `--text-margins`, `--spot-x`, `--spot-y` | a placed section | where the text and the darkening spot sit |
+| `--marquee-duration`, `--marquee-gap`, `--marquee-item` | the logo row | speed, spacing and logo width |
+| `--film-progress` (0–1), `[data-visible]` on captions, `[data-film-ready]` | `core/scroll_film` | drive anything from the film's position, for example `opacity: calc(1 - var(--film-progress))` |
+| `typeroll:film-progress` event (`{ progress, frame }`) | `core/scroll_film` | scripts in step with the film |
+| `[data-active]`, `--steps-top`, `typeroll:step-change` event (`{ index }`) | `core/scroll_steps` | style or react to the current step |
+
+Site CSS may also use the browser's own scroll-driven animations
+(`animation-timeline: view()` or `scroll()`); wrap them in
+`@media (prefers-reduced-motion: no-preference)`.
+
 ### Article content and automatic contents
 
 Use `core/table`, `core/list`, `core/image`, `core/video` and formatted headings

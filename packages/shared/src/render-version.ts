@@ -153,6 +153,11 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A feature row inside a tab, column, grid cell or container drops its default outer padding and fills the block around it, and it stacks by its own width, so it also stacks in a narrow column on a wide screen.',
       'Two site settings: date_format (medium, long, numeric, iso or a pattern) and content_widths (the narrow, normal and wide widths in px).',
       'Page dates and card dates read in the page language ("12 okt. 2026" on a Swedish page). A Page date block\'s format setting now applies; card dates keep the machine-readable date in datetime.',
+      'An entrance animation (motion: fade, rise, scale or custom) on sections, containers, grids, columns, lists and the larger content blocks. It plays once as the block scrolls in; containers bring in their blocks one after another. Content is visible without script, in print and for visitors who prefer reduced motion.',
+      'Sections get a background image, and sections, containers and calls to action a background video file: it starts in view, pauses out of view, has a pause button, shows the image on phones unless asked to play, and never plays for reduced motion. A darkening layer (background_overlay) keeps white text readable.',
+      'Text over images: darkening evenly, from one side or behind the text in a chosen color; a plate behind the text (solid, see-through, glass that blurs the image, or a full-width band) in a rounded, square, pill, organic, slanted or custom shape; and in sections a text position per screen size with a minimum height.',
+      'A gallery opens its images larger on click, with previous and next, the arrow keys and swiping (lightbox, on by default). A logo cloud can be a slowly moving row (layout: marquee) with a pause button.',
+      'The site setting motion: reduced turns off entrance animations, carousel autoplay, background and hero videos, moving rows, counting figures and scroll films for every visitor.',
     ],
   },
 ];
