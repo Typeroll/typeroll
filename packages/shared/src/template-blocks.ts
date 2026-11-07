@@ -163,7 +163,7 @@ const pageBreadcrumbs: BlockType = {
     pixels('padding_after_px', 'Space below (px)', 0, 160),
     { name: 'divider', type: 'boolean', label: 'Bottom divider', default: false },
     { name: 'separator', type: 'select', label: 'Separator', options: ['chevron', 'slash', 'arrow'], default: 'chevron' },
-    { name: 'home_label', type: 'text', label: 'Home label', default: 'Home' },
+    { name: 'home_label', type: 'text', label: 'Home label', default: 'Home', ui_text: 'home' },
     { name: 'aria_label', type: 'text', label: 'Accessible navigation label', default: 'Breadcrumb' },
   ],
   template: `<nav data-block="breadcrumbs" data-divider="{{divider}}" data-sep="{{separator}}" aria-label="{{aria_label}}">{{{breadcrumbs_html}}}</nav>`,
@@ -285,8 +285,8 @@ const pageNavigation: BlockType = {
   schema: [
     // Styles the block root: the space between the two links.
     { name: 'style_id', type: 'style', label: 'Navigation style', style_target: 'container', editor_group: 'content' },
-    { name: 'previous_label', type: 'text', label: 'Previous label', default: 'Previous' },
-    { name: 'next_label', type: 'text', label: 'Next label', default: 'Next' },
+    { name: 'previous_label', type: 'text', label: 'Previous label', default: 'Previous', ui_text: 'previous' },
+    { name: 'next_label', type: 'text', label: 'Next label', default: 'Next', ui_text: 'next' },
     { name: 'aria_label', type: 'text', label: 'Accessible navigation label', default: 'Item navigation' },
     { name: 'previous_url_field', type: 'text', label: 'Previous URL field (optional)' },
     { name: 'previous_title_field', type: 'text', label: 'Previous title field (optional)' },

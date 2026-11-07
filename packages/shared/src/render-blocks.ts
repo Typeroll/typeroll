@@ -57,7 +57,7 @@ import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
-import { uiText } from './ui-text.js';
+import { uiText, localizeDefaultLabel } from './ui-text.js';
 import { languageSectionFor, type LanguageSection } from './language-sections.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
@@ -322,6 +322,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   if (blockType.container === 'repeater') {
     const compiled = compileResponsiveData(effectiveBlock, blockType);
     resolveFieldBindings(blockType, compiled.flatData, options.context);
+    localizeDefaultLabels(blockType, compiled.flatData, options);
     const responsiveBlock: Block = { ...effectiveBlock, data: compiled.flatData };
     let html = renderRepeater(responsiveBlock, blockType, options);
     // An explicit mobile baseline opts into the authored column map. Preserve
@@ -374,6 +375,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   const compiled = compileResponsiveData(effectiveBlock, blockType);
 
   resolveFieldBindings(blockType, compiled.flatData, options.context);
+  localizeDefaultLabels(blockType, compiled.flatData, options);
 
   if (effectiveBlock.type === 'template/page_featured_image') {
     compiled.flatData.selected_page_image = options.context?.page?.[String(compiled.flatData.field ?? 'og_image')] ?? '';
@@ -1666,6 +1668,15 @@ function addClassToSemanticElement(html: string, blockType: BlockType, cls: stri
   if (!blockType.style_element_class) return null;
   const target = new RegExp(`(\\sclass="(?:[^"]*\\s)?${blockType.style_element_class.replace(/[^\w-]/g, '')}(?:\\s[^"]*)?)"`);
   return target.test(html) ? html.replace(target, (_m, attr: string) => `${attr} ${escapeHtml(cls)}"`) : null;
+}
+
+/** From render version 14 a label left at its English default speaks the page language. */
+function localizeDefaultLabels(blockType: BlockType, data: Record<string, unknown>, options: RenderBlocksOptions): void {
+  if (resolveRenderVersion(options.renderVersion) < 14) return;
+  const language = options.context?.page?.language ?? options.context?.site?.language;
+  for (const field of blockType.schema ?? []) {
+    if (field.ui_text) data[field.name] = localizeDefaultLabel(data[field.name], field.ui_text, language);
+  }
 }
 
 function applyStyleOverrides(html: string, block: Block, blockType: BlockType, renderVersion: number | undefined): string {

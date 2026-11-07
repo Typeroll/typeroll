@@ -539,7 +539,7 @@ const button: BlockType = {
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'button', editor_group: 'content' },
-    { name: 'label', type: 'text', label: 'Button text', required: true, default: 'Learn more' },
+    { name: 'label', type: 'text', label: 'Button text', required: true, default: 'Learn more', ui_text: 'learn_more' },
     { name: 'href', type: 'url', label: 'Link to', required: true },
     { name: 'variant', type: 'select', label: 'Style', options: ['primary', 'secondary', 'ghost'], default: 'primary' },
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg'], default: 'md' },

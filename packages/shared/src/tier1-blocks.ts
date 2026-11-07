@@ -420,7 +420,7 @@ const iconBox: BlockType = {
     { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4', 'h5'], default: 'h3' },
     { name: 'text', type: 'richtext', label: 'Body text' },
     { name: 'link', type: 'url', label: 'Link to' },
-    { name: 'link_label', type: 'text', label: 'Link label', default: 'Learn more' },
+    { name: 'link_label', type: 'text', label: 'Link label', default: 'Learn more', ui_text: 'learn_more' },
     { name: 'layout', type: 'select', label: 'Layout', options: ['icon-top', 'icon-left', 'icon-right'], default: 'icon-top', responsive: true,
       // Token → flex-direction. The mobile baseline is handled by the
       // [style*="--layout:…"] rules below; these drive the per-breakpoint
@@ -856,7 +856,7 @@ const pricingPlan: BlockType = {
         { name: 'text', type: 'text', label: 'Text' },
         { name: 'included', type: 'boolean', label: 'Included', default: true },
       ] },
-    { name: 'cta_label', type: 'text', label: 'Button label', default: 'Get started' },
+    { name: 'cta_label', type: 'text', label: 'Button label', default: 'Get started', ui_text: 'get_started' },
     { name: 'cta_href', type: 'url', label: 'Button link' },
     { name: 'highlight', type: 'boolean', label: 'Highlight this plan' },
     { name: 'badge', type: 'text', label: 'Badge (e.g. "Most popular")' },
@@ -949,7 +949,7 @@ const postCard: BlockType = {
     { name: 'download_url_field', type: 'text', label: 'Download URL field' },
     { name: 'title_link', type: 'boolean', label: 'Link the title', default: true },
     { name: 'download_behavior', type: 'select', label: 'Download link behavior', options: ['navigate', 'download'], default: 'navigate' },
-    { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF' },
+    { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF', ui_text: 'download_pdf' },
     { name: 'show_image', type: 'boolean', label: 'Show image', default: true },
     { name: 'missing_image', type: 'select', label: 'When the image is missing', options: ['omit', 'placeholder'], default: 'omit' },
     { name: 'placeholder_icon', type: 'icon', label: 'Placeholder icon (optional)' },
@@ -1201,7 +1201,7 @@ const navigation: BlockType = {
   ],
   schema: [
     { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
-    { name: 'menu_label', type: 'text', label: 'Mobile menu label', default: 'Menu' },
+    { name: 'menu_label', type: 'text', label: 'Mobile menu label', default: 'Menu', ui_text: 'menu' },
     { name: 'links', type: 'array', label: 'Links', fields: [
       { name: 'label', type: 'text', label: 'Label', required: true },
       { name: 'href', type: 'url', label: 'Link', required: true },
@@ -1622,7 +1622,7 @@ const search: BlockType = {
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
-    { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…' },
+    { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…', ui_text: 'search' },
   ],
   template: `<div data-block="search" data-placeholder="{{placeholder}}">
   <div class="block-search-mount"></div>
@@ -1686,7 +1686,7 @@ const tableOfContents: BlockType = {
     { name: 'link_color', type: 'select', label: 'Link color', options: ['theme', 'neutral'], default: 'theme' },
     { name: 'border', type: 'boolean', label: 'Border', default: true },
     { name: 'shadow', type: 'select', label: 'Shadow', options: ['none', 'subtle'], default: 'none' },
-    { name: 'title', type: 'text', label: 'Title', default: 'On this page' },
+    { name: 'title', type: 'text', label: 'Title', default: 'On this page', ui_text: 'on_this_page' },
     { name: 'levels', type: 'select', label: 'Heading levels', options: ['h2', 'h2-h3', 'h2-h4'], default: 'h2-h3' },
     { name: 'appearance', type: 'select', label: 'Appearance', options: ['card', 'plain'], default: 'card' },
     { name: 'mobile_display', type: 'select', label: 'Mobile display', options: ['visible', 'hidden'], default: 'visible' },

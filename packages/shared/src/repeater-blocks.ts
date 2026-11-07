@@ -442,7 +442,7 @@ const collectionList: BlockType = {
       { name: 'href_field', type: 'text', label: 'Link field', default: 'url' },
       { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4'], default: 'h2' },
       { name: 'download_url_field', type: 'text', label: 'Download URL field' },
-      { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF' },
+      { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF', ui_text: 'download_pdf' },
     ] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'list', 'carousel', 'masonry'], default: 'grid' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },

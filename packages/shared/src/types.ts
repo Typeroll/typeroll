@@ -1072,6 +1072,11 @@ export interface FieldDefinition {
    * on an older version, where it would have no visible effect.
    */
   min_render_version?: number;
+  /**
+   * A built-in label (`uiLabel` key). From render version 14 a value left at
+   * the English default renders in the page language.
+   */
+  ui_text?: import('./ui-text.js').UiLabelKey;
   name: string;
   type: FieldType;
   label: string;

@@ -403,6 +403,7 @@ export const navigationForm: BlockType = {
       type: "text",
       label: "Accessible name",
       default: "Get started",
+      ui_text: "get_started",
     },
     {
       name: "show_labels",
@@ -415,6 +416,7 @@ export const navigationForm: BlockType = {
       type: "text",
       label: "Continue button",
       default: "Continue",
+      ui_text: "continue",
     },
     {
       name: "button_icon",

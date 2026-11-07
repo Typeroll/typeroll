@@ -6,8 +6,8 @@ export const navigationMenu: BlockType = {
   id: 'core/navigation_menu', name: 'navigation_menu', label: 'Block menu', icon: 'menu', category: 'content', container: 'slots', slot_count: 2, slot_labels: ['Desktop / shared', 'Mobile override (optional)'],
   schema: [
     { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
-    { name: 'menu_label', type: 'text', label: 'Open label', default: 'Open menu' },
-    { name: 'close_label', type: 'text', label: 'Close label', default: 'Close menu' },
+    { name: 'menu_label', type: 'text', label: 'Open label', default: 'Open menu', ui_text: 'open_menu' },
+    { name: 'close_label', type: 'text', label: 'Close label', default: 'Close menu', ui_text: 'close_menu' },
     { name: 'collapse_below', type: 'select', label: 'Collapse below (px)', options: ['never', '576', '768', '769', '1024'], default: '1024' },
     pixels('toggle_size_px', 'Menu icon size (px)', 16, 64),
     pixels('close_size_px', 'Close icon size (px)', 16, 64),
