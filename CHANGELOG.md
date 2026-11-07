@@ -23,6 +23,9 @@
   CSS and scripts hook in.
 - The media library accepts MP4 and WebM up to 25 MB, filters by type, shows
   thumbnails and previews videos; the picker in the block editor does the same.
+- Restoring standard styles on a site below render version 14 writes the
+  heading spacing that version had (1em before, 0.5em after), so the site's
+  output does not change.
 
 ## 0.3.7 (candidate, MCP 0.45.120)
 

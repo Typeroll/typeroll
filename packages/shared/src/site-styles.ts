@@ -716,3 +716,21 @@ export const STANDARD_STYLES: readonly SiteStyle[] = [
 export function newSiteStyles(): SiteStyle[] {
   return STANDARD_STYLES.map(style => structuredClone(style));
 }
+
+/** From this render version the standard heading roles space 1.6em before and 0.35em after. */
+const HEADING_SPACING_RENDER_VERSION = 14;
+
+/**
+ * The standard styles for a site at `renderVersion`: what restoring or adding
+ * standard styles writes to an existing site. Below render version 14 the
+ * heading roles keep the spacing those sites were created with (1em before,
+ * 0.5em after), so restoring them leaves the site's output unchanged. A new
+ * site starts at the latest version with `newSiteStyles()`.
+ */
+export function standardStylesFor(renderVersion: number | undefined): SiteStyle[] {
+  const styles = newSiteStyles();
+  if ((renderVersion ?? 1) >= HEADING_SPACING_RENDER_VERSION) return styles;
+  return styles.map(style => /^h[1-6]$/.test(style.role ?? '')
+    ? { ...style, base: { ...style.base, space_before: '1em', space_after: '0.5em' } }
+    : style);
+}
