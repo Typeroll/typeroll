@@ -12,6 +12,7 @@ import {
   resolveBreakpointWidths,
   type Block,
 } from "@typeroll/shared";
+import { standardStylesBefore037 } from "../../../shared/src/__tests__/fixtures/legacy-standard-styles";
 const globalCss = readFileSync(
   new URL("../../../site-template/src/styles/global.css", import.meta.url),
   "utf8",
@@ -118,7 +119,9 @@ for (const width of [375, 768, 1280])
         ...structuredClone(defaultSiteSettings),
         render_version: version,
         styles: [
-          ...(savedStyles ? newSiteStyles() : []),
+          // The standard styles a render version 11 site was created with;
+          // new sites start at the latest version.
+          ...(savedStyles ? standardStylesBefore037(newSiteStyles()) : []),
           {
             id: "tight-heading",
             name: "Tight heading",
