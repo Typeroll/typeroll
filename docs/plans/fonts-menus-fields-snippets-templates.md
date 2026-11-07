@@ -263,13 +263,15 @@ that.
    and the organization collection, then site copies. The Agency app last, on
    top of them.
 
-## Open questions for the owner
+## Decisions (2026-11-07)
 
-- **Adobe Fonts:** is loading from Adobe's CDN acceptable, given that self-hosting
-  is not allowed?
-- **Snippets:** should they live in the customer's media bucket (proposed), or
-  only in hosted mode on Typeroll's storage?
-- **Roles:** should a *designer* role on organization level be added, or should
-  the collection follow administrator rights?
-- **Agency app:** should Typeroll's own collections be paid, or is only client
-  handover the paid part?
+- **Adobe Fonts:** supported through Adobe's CDN (a web project ID). It is the
+  only way Adobe's licence allows, with the privacy note in the settings.
+- **Snippets:** stored in the customer's media bucket (`live/`), with a CORS rule
+  for the site's own addresses.
+- **Roles:** a new organization-level **builder** role (`builder`). It works on
+  structure, design, templates and the collection across the organization's
+  sites, without member, billing or publishing-connection rights.
+- **Agency app:** a selection of Typeroll's ready-made collections is part of
+  the paid Agency app, together with client handover.
+- **Order:** as proposed. Menus first.
