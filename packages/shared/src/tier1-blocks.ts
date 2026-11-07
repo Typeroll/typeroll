@@ -1915,6 +1915,8 @@ hero.render_versions = [{
 @media (prefers-reduced-motion: reduce) { [data-block="hero"] > .block-hero-video, [data-block="hero"] > .block-hero-video-toggle { display: none; } }`,
   script: HERO_VIDEO_RUNTIME,
 }];
+// From version 14 a card date reads in the page language and keeps the machine-readable date.
+postCard.render_versions = [...(postCard.render_versions ?? []), { from: 14, template: postCard.template!.replace('<time class="block-postcard-date">{{date}}</time>', '<time class="block-postcard-date" datetime="{{date_iso}}">{{date}}</time>') }];
 // From version 14 the hero and call to action name their content width, so they line up with sections.
 hero.render_versions.push({ from: 14, template: hero.render_versions[0]!.template!.replace('<section data-block="hero" ', '<section data-block="hero" data-width="{{width}}" ') });
 cta.render_versions = [{ from: 14, template: cta.template!.replace('<section data-block="cta" ', '<section data-block="cta" data-width="{{width}}" ') }];

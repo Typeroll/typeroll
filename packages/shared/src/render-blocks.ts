@@ -57,7 +57,7 @@ import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
-import { uiText, localizeDefaultLabel } from './ui-text.js';
+import { uiText, localizeDefaultLabel, formatDisplayDate } from './ui-text.js';
 import { languageSectionFor, type LanguageSection } from './language-sections.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
@@ -386,6 +386,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     compiled.flatData.selected_page_date = options.context?.page?.[fieldName]
       ?? '';
     if (!String(compiled.flatData.selected_page_date).trim()) return '';
+    compiled.flatData.selected_page_date_text = formatDisplayDate(compiled.flatData.selected_page_date, options.context?.page?.language ?? options.context?.site?.language, compiled.flatData.format);
   }
   if (effectiveBlock.type === 'template/page_excerpt' && !String(options.context?.page?.excerpt ?? '').trim()) return '';
   if (effectiveBlock.type === 'template/page_author' && !String((options.context?.page?.author as { name?: string } | undefined)?.name ?? '').trim()) return '';
@@ -460,6 +461,11 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   }
   if (effectiveBlock.type === 'core/post_card') {
     preparePostCardData(compiled.flatData, options.context?.item);
+    // The machine-readable date is always the card's own date, never block data.
+    compiled.flatData.date_iso = compiled.flatData.date ?? '';
+    if (resolveRenderVersion(options.renderVersion) >= 14 && compiled.flatData.date) {
+      compiled.flatData.date = formatDisplayDate(compiled.flatData.date, options.context?.page?.language ?? options.context?.site?.language);
+    }
   }
   let fieldListHtml: string | undefined;
   if (effectiveBlock.type === 'core/field_list') {

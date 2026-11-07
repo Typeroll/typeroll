@@ -102,6 +102,8 @@ const pageDate: BlockType = {
     { name: 'format', type: 'text', label: 'Format', default: 'MMM D, YYYY' },
   ],
   template: `<time data-block="page-date" datetime="{{selected_page_date}}">{{selected_page_date}}</time>`,
+  // From version 14 the date reads in the page language and the chosen format.
+  render_versions: [{ from: 14, template: `<time data-block="page-date" datetime="{{selected_page_date}}">{{selected_page_date_text}}</time>` }],
   styles: `
 [data-block="page-date"] { font-size: 0.875rem; opacity: 0.7; }
 `.trim(),

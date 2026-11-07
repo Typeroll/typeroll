@@ -182,3 +182,28 @@ export function uiLabel(language: unknown, key: UiLabelKey): string {
 export function localizeDefaultLabel(value: unknown, key: UiLabelKey, language: unknown): unknown {
   return value === undefined || value === uiLabel('en', key) ? uiLabel(language, key) : value;
 }
+
+
+const DEFAULT_DATE_FORMAT = 'MMM D, YYYY';
+
+/**
+ * A page or card date for display in the page language. The default format
+ * is the language's medium date ("12 okt. 2026", "Oct 12, 2026"); an authored
+ * format uses the tokens YYYY, MMMM, MMM, MM, M, DD and D with month names in
+ * the page language. A value that is not a date is returned unchanged.
+ */
+export function formatDisplayDate(value: unknown, language: unknown, format: unknown = DEFAULT_DATE_FORMAT): string {
+  const text = String(value ?? '').trim();
+  const date = /^\d{4}-\d{2}-\d{2}/.test(text) ? new Date(text.length === 10 ? `${text}T00:00:00Z` : text) : null;
+  if (!date || Number.isNaN(date.getTime())) return text;
+  let locale = 'en';
+  try { locale = Intl.getCanonicalLocales(String(language ?? '') || 'en')[0] ?? 'en'; } catch { /* an invalid tag reads as English */ }
+  const part = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(locale, { timeZone: 'UTC', ...options }).format(date);
+  const pattern = String(format ?? '').trim();
+  if (!pattern || pattern === DEFAULT_DATE_FORMAT) return part({ year: 'numeric', month: 'short', day: 'numeric' });
+  const day = date.getUTCDate(), month = date.getUTCMonth() + 1;
+  return pattern.replace(/YYYY|MMMM|MMM|MM|M|DD|D/g, token => ({
+    YYYY: String(date.getUTCFullYear()), MMMM: part({ month: 'long' }), MMM: part({ month: 'short' }),
+    MM: String(month).padStart(2, '0'), M: String(month), DD: String(day).padStart(2, '0'), D: String(day),
+  })[token]!);
+}

@@ -23,3 +23,20 @@ describe('default labels in the page language', () => {
     }
   });
 });
+
+describe('dates in the page language', () => {
+  it('formats the default as the language medium date and honours an authored format', async () => {
+    const { formatDisplayDate } = await import('../index.js');
+    expect(formatDisplayDate('2026-10-12', 'sv')).toBe('12 okt. 2026');
+    expect(formatDisplayDate('2026-10-12', 'en')).toBe('Oct 12, 2026');
+    expect(formatDisplayDate('2026-10-12', 'sv', 'D MMMM YYYY')).toBe('12 oktober 2026');
+    expect(formatDisplayDate('2026-10-12T23:30:00Z', 'de', 'DD.MM.YYYY')).toBe('12.10.2026');
+    expect(formatDisplayDate('soon', 'sv')).toBe('soon');
+  });
+  it('renders a page date in the page language from version 14', () => {
+    const block: Block = { id: 'd', type: 'template/page_date', data: {} };
+    const context = { site: { language: 'sv' }, page: { language: 'sv', date_published: '2026-10-12' } } as never;
+    expect(renderBlocks([block], { registry, renderVersion: 14, context })).toContain('datetime="2026-10-12">12 okt. 2026</time>');
+    expect(renderBlocks([block], { registry, renderVersion: 13, context })).toContain('>2026-10-12</time>');
+  });
+});
