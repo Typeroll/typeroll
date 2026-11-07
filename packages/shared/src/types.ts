@@ -1079,6 +1079,11 @@ export interface FieldDefinition {
    */
   min_render_version?: number;
   /**
+   * A url or file field that holds media: the editor offers the media library,
+   * showing only that kind (`any` shows every kind with a filter).
+   */
+  media?: 'image' | 'video' | 'audio' | 'any';
+  /**
    * A built-in label (`uiLabel` key). From render version 14 a value left at
    * the English default renders in the page language.
    */

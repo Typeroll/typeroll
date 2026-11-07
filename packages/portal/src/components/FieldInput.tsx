@@ -93,8 +93,9 @@ export default function FieldInput({
     case 'icon':
       return <div style={fieldGroup}>{label}<IconPicker id={fieldId} label={field.label} value={typeof value === 'string' ? value : ''} onChange={onChange} /></div>;
     case 'image':
+    case 'file':
       if (!siteId) break;
-      return <div style={fieldGroup}>{label}<MediaPicker id={fieldId} siteId={siteId} theme="dark" value={typeof value === 'string' ? value : ''} onChange={onChange} /></div>;
+      return <div style={fieldGroup}>{label}<MediaPicker id={fieldId} siteId={siteId} theme="dark" kind={field.type === 'file' ? field.media ?? 'any' : 'image'} value={typeof value === 'string' ? value : ''} onChange={onChange} /></div>;
     case 'page_ref':
     case 'page_ref_list':
     case 'content_type_ref':
@@ -223,6 +224,8 @@ export default function FieldInput({
         />
       );
     case 'url':
+      // A media address (a video file, a sound) picks from the media library; any other address is typed.
+      if (field.media && siteId) return <div style={fieldGroup}>{label}{help}<MediaPicker id={fieldId} siteId={siteId} theme="dark" kind={field.media} value={v} onChange={onChange} /></div>;
       return (
         <UrlFieldInput
           siteId={siteId}

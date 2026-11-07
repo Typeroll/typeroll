@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { mediaKind, MediaThumb, mediaThumbStyles } from './MediaThumb';
 import { X, Copy, Trash2, ExternalLink } from 'lucide-react';
 import type { Media } from '@typeroll/shared';
 
@@ -90,7 +91,8 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
     navigator.clipboard?.writeText(value);
   }
 
-  const isImage = item.mime_type?.startsWith('image/');
+  const kind = mediaKind(item);
+  const isImage = kind === 'image';
   const dimensions =
     draft.width && draft.height ? `${draft.width} × ${draft.height} px` : '—';
 
@@ -125,10 +127,28 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
                 }
               }}
             />
+          ) : kind === 'video' ? (
+            <video
+              src={item.cdn_url}
+              controls
+              playsInline
+              preload="metadata"
+              aria-label={draft.title || draft.filename}
+              onLoadedMetadata={(e) => {
+                const video = e.currentTarget;
+                if (!draft.width && video.videoWidth) {
+                  patch('width', video.videoWidth);
+                  patch('height', video.videoHeight);
+                }
+              }}
+            />
+          ) : kind === 'audio' ? (
+            <div className="mdetail__nonimage"><MediaThumb item={item} size={96} /><audio src={item.cdn_url} controls preload="metadata" style={{ marginTop: 12, width: '100%' }} /></div>
           ) : (
             <div className="mdetail__nonimage">
-              <div style={{ fontSize: 48 }}>📄</div>
+              <div style={{ width: 96 }}><MediaThumb item={item} size={96} /></div>
               <div style={{ marginTop: 8, fontWeight: 500 }}>{item.mime_type ?? 'file'}</div>
+              <a href={item.cdn_url} target="_blank" rel="noopener" style={{ marginTop: 8 }}>Open {kind === 'pdf' ? 'the PDF' : 'the file'}</a>
             </div>
           )}
         </div>
@@ -153,7 +173,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
               rows={2}
               value={draft.alt_text ?? ''}
               onChange={(e) => patch('alt_text', e.target.value)}
-              placeholder="Describe what's in the image, for screen readers and search engines."
+              placeholder={kind === 'video' ? 'Describe what happens in the video, for screen readers and search engines.' : kind === 'image' ? "Describe what's in the image, for screen readers and search engines." : 'Describe the file, for screen readers and search engines.'}
               className="mdetail__input"
             />
           </section>
@@ -216,7 +236,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
           </button>
         </footer>
 
-        <style>{`
+        <style>{`${mediaThumbStyles}
           .mdetail__backdrop {
             position: fixed; inset: 0; z-index: 90;
             background: rgba(8,8,10,0.4);
@@ -257,6 +277,7 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
             min-height: 240px;
             max-height: 40vh;
           }
+          .mdetail__preview video { display:block; max-width:100%; max-height:60vh; margin:0 auto; background:#000; }
           .mdetail__preview img {
             max-width: 100%; max-height: calc(40vh - 2rem);
             object-fit: contain;

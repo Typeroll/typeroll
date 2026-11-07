@@ -173,7 +173,7 @@ const audio: BlockType = {
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
-    { name: 'src', type: 'url', label: 'Audio file (MP3, M4A, OGG)', required: true },
+    { name: 'src', type: 'url', label: 'Audio file (MP3, M4A, OGG)', required: true, media: 'audio' },
     { name: 'title', type: 'text', label: 'Title' },
     { name: 'description', type: 'richtext', label: 'Description' },
     { name: 'cover', type: 'image', label: 'Cover image' },
@@ -414,7 +414,7 @@ const scrollFilm: BlockType = {
       help: 'Smaller or upright frames for phones, with the same number of frames.' },
     { name: 'frames', type: 'array', label: 'Frames (instead of a pattern)', fields: [{ name: 'src', type: 'image', label: 'Frame' }] },
     { name: 'frames_phone', type: 'array', label: 'Phone frames (instead of a phone pattern)', help: 'Upright or smaller frames for phones, usually as many as the frames above.', fields: [{ name: 'src', type: 'image', label: 'Frame' }] },
-    { name: 'video', type: 'url', label: 'Video file (instead of frames)',
+    { name: 'video', type: 'url', label: 'Video file (instead of frames)', media: 'video',
       help: 'Plays as the page scrolls. It is smoothest when the video has a keyframe on every frame; frames are smoother still.' },
     { name: 'poster', type: 'image', label: 'Still image', help: 'Shown before the film loads, without script and for reduced motion. Defaults to the first frame.' },
     { name: 'description', type: 'text', label: 'What the film shows', help: 'Read by screen readers.' },
