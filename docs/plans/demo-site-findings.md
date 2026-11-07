@@ -38,6 +38,12 @@ customer would surfaced the platform issues below.
 - **Small touch targets** in card titles and the table of contents.
 - **Search fields centred inside columns** instead of aligning with the
   content beside them.
+- **Footer link rows were loose on phones.** Footer links kept 44px touch
+  targets and a 24px row gap, so wrapped rows sat about 68px apart. The
+  footer starter now stacks its links one per line on phones and puts them
+  in a row from tablet up, with compact 24px targets (WCAG 2.2 AA) and an
+  8px gap. Decided by the owner on 2026-11-07. (Starter data: existing
+  footers keep their links.)
 
 ## Open: needs a decision or its own change
 
@@ -64,9 +70,6 @@ customer would surfaced the platform issues below.
 6. **Nested components keep section padding.** A feature row inside a tab
    keeps its section-level vertical padding. Components inside another block
    should drop their outer padding by default.
-7. **Footer link rows are loose on phones.** Footer links keep 44px touch
-   targets on phones (render version 11). Wrapped rows then sit far apart.
-   WCAG 2.2 AA needs 24px. Decide whether footers may use 24px on phones.
 8. **Template interface words cannot be set per site.** The article
    starter's breadcrumb home label and outline title are English; a site
    has to edit its template copy.
