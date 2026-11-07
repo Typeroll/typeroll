@@ -46,6 +46,7 @@ import { appTools } from './tools/apps.js';
 import { extensionTools, developerExtensionTools } from './tools/extensions.js';
 import { skillTools } from './tools/skills.js';
 import { accessTools } from './tools/access.js';
+import { collectionTools } from './tools/collection.js';
 import { workflowTools } from './tools/workflows.js';
 import { fail, ok, type ToolDef, type ToolDeps } from './tools/helpers.js';
 import { VERSION } from './version.js';
@@ -77,6 +78,7 @@ export const ALL_TOOLS: ToolDef[] = [
   ...styleTools,
   ...reusableBlockTools,
   ...packageTools,
+  ...collectionTools,
   ...migrationTools,
   ...formTools,
   ...emailTools,
@@ -156,6 +158,8 @@ export function effectFor(name: string): ToolEffect {
     || name === 'revoke_organization_api_key'
     || name === 'create_organization_invite'
     || name === 'revoke_organization_invite'
+    || name === 'update_organization_member_role'
+    || name === 'remove_organization_member'
     || name === 'set_organization_ai_key'
     || name === 'remove_organization_ai_key'
     || name === 'set_organization_ai_site_access'
@@ -188,6 +192,18 @@ export function effectFor(name: string): ToolEffect {
   return 'write';
 }
 
+/**
+ * Admin tools a builder may also run: design work (colours, fonts, the Fonts
+ * library, site field definitions). A builder's personal connection reports
+ * `design` on its selected site; the REST routes check the same rule again.
+ */
+export const DESIGN_TOOLS: ReadonlySet<string> = new Set(['update_site_settings', 'set_site_fonts', 'upload_font', 'define_site_fields']);
+
+/** Whether a site permission (and design capability) may run a tool of this effect. */
+export function toolAllowed(name: string, effect: ToolEffect, permission: ToolEffect, design = false): boolean {
+  return PERM_RANK[permission] >= PERM_RANK[effect] || (design && permission !== 'read' && DESIGN_TOOLS.has(name));
+}
+
 export interface AllowedSite {
   siteId: string;
   permission: 'read' | 'write' | 'admin';
@@ -208,7 +224,7 @@ export interface BuildServerOptions {
   /** Stateless personal connections require an explicit organization/site/version selection. */
   selection?: {
     select(organizationId: string, siteId: string, version: string): Promise<Record<string, unknown>>;
-    resolve(context: string): Promise<{ client: TyperollClient; siteId: string; permission: ToolEffect }>;
+    resolve(context: string): Promise<{ client: TyperollClient; siteId: string; permission: ToolEffect; design?: boolean }>;
   };
 }
 
@@ -372,7 +388,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
           try {
             if (needsSite) {
               const selected = await options.selection.resolve(String(rawArgs.site_context || ''));
-              if (PERM_RANK[selected.permission] < PERM_RANK[effect]) return fail(new Error(`This tool requires ${effect} permission; your access is ${selected.permission}.`));
+              if (!toolAllowed(tool.name, effect, selected.permission, selected.design)) return fail(new Error(`This tool requires ${effect} permission; your access is ${selected.permission}.`));
               delete rawArgs.site_context;
               return await tool.handler(rawArgs, { client: selected.client, siteId: selected.siteId });
             }

@@ -17,6 +17,8 @@ const settings = (await vstore.settings(orgId, site.id, versionId)) ?? defaultSi
 const archived = isArchivedSite(site);
 const canEdit = ctx.permission !== 'read' && !archived;
 const isAdmin = ctx.permission === 'admin' && !archived;
+// The whole look, fonts and settings pages on import are design work (an administrator or builder).
+const canDesign = ctx.design && !archived;
 ---
 <AppLayout title={`Packages — ${site.name}`} siteId={site.id}>
   <div class="app-header">
@@ -29,7 +31,7 @@ const isAdmin = ctx.permission === 'admin' && !archived;
     </div>
   </div>
   <div class="pk-page">
-    <PackageImport client:load siteId={site.id} canEdit={canEdit} isAdmin={isAdmin} />
+    <PackageImport client:load siteId={site.id} canEdit={canEdit} isAdmin={canDesign} />
     <PackageExport client:load siteId={site.id} canEdit={canEdit} isAdmin={isAdmin} language={settings.language} />
   </div>
 

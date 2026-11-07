@@ -16,7 +16,7 @@ import { paths, MAIN_VERSION_ID, ARCHIVED_SITE_MESSAGE, isArchivedSite } from '@
 import type { MemberRole, Site, SiteShare, SharePermission, SiteVersion } from '@typeroll/shared';
 import { getSession, isPendingSession, type Session } from './auth';
 import { getStore } from './datastore';
-import { resolveOwnerOrgAccess } from './member-role';
+import { resolveOwnerOrgAccess, siteDesignAccess } from './member-role';
 
 export type GuardResult<T> = { ok: true; value: T } | { ok: false; response: Response };
 
@@ -138,6 +138,13 @@ export type SiteContext = {
    */
   role?: MemberRole;
   /**
+   * Design work on this site (colours, fonts, styles, Site CSS, site field
+   * definitions, the Fonts library, full-design package imports): admin
+   * permission, or the builder role in the owning organization
+   * (member-role.ts → siteDesignAccess). Gate with requireDesign.
+   */
+  design: boolean;
+  /**
    * Org that owns the site. Equal to session.orgId for owned sites, otherwise
    * the share's owner_org_id. ALL datastore paths inside a site MUST be built
    * with this id — using session.orgId silently misroutes reads/writes when
@@ -241,6 +248,31 @@ export function requirePermission(
   if (required !== 'read' && isArchivedSite(ctx.site)) {
     return { ok: false, response: json({ error: ARCHIVED_SITE_MESSAGE }, 409) };
   }
+  return { ok: true, value: ctx };
+}
+
+/**
+ * Gate design work (SiteContext.design): an administrator, or a builder of
+ * the owning organization. Builders get design without the administrator's
+ * publishing, domains, keys, sharing, members and lifecycle; an editor and a
+ * write share are refused. Like requirePermission, an archived site refuses.
+ */
+export function requireDesign(ctx: SiteContext): GuardResult<SiteContext> {
+  if (!ctx.design) {
+    return { ok: false, response: json({ error: 'This needs design permission on the site (an administrator or builder)', code: 'design_permission_required' }, 403) };
+  }
+  return requirePermission(ctx, 'write');
+}
+
+/**
+ * The organization collection is the owning organization's: its owners,
+ * administrators and builders (and every member while the organization does
+ * not enforce roles). A share never qualifies, however privileged, so a
+ * client given one site does not see the agency's collection; the refusal is
+ * a 404, the same answer as for a collection that is not there.
+ */
+export function requireCollectionAccess(ctx: SiteContext): GuardResult<SiteContext> {
+  if (!ctx.is_owner || !ctx.design) return { ok: false, response: json({ error: 'Not found', code: 'not_found' }, 404) };
   return { ok: true, value: ctx };
 }
 
@@ -373,6 +405,7 @@ async function resolveSiteContext(
   const versionId = await resolveVersionId(owner_org_id, siteId, requestedVersionId);
   return {
     session, site, versionId, permission, role, owner_org_id,
+    design: siteDesignAccess(permission, role),
     is_owner: owner_org_id === session.orgId,
   };
 }

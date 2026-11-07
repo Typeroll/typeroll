@@ -1,0 +1,46 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import OrganizationCollection from '../../../../../components/OrganizationCollection.tsx';
+import { loadSiteContext } from '../../../../../lib/access';
+import { getStore } from '../../../../../lib/datastore';
+import { isArchivedSite, paths, type Site } from '@typeroll/shared';
+
+// The organization collection, seen from one of its sites: insert entries
+// into this site or one of its pages, save entries from it, import a
+// .typeroll file. The collection API answers 404 to people who may not use
+// it (editors, and clients of a site shared from another organization); the
+// component explains that state.
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, owner_org_id: orgId } = ctx;
+const canEdit = ctx.permission !== 'read' && !isArchivedSite(site);
+const siteNames: Record<string, string> = ctx.is_owner && ctx.design
+  ? Object.fromEntries((await getStore().listDocs<Site & { id: string }>(paths.sites(orgId))).map(item => [item.id, item.name]))
+  : {};
+---
+<AppLayout title={`Collection — ${site.name}`} siteId={site.id}>
+  <div class="app-header">
+    <div>
+      <h1>Collection</h1>
+      <p class="muted" style="max-width: 760px;">
+        Templates, sections, page templates, global blocks, block types and packages kept once for the whole Organization.
+        Insert them into any of its sites, and save them from any of them. Typeroll’s built-in starters are here too, read-only.
+      </p>
+    </div>
+  </div>
+  <OrganizationCollection client:load siteId={site.id} canEdit={canEdit} available={ctx.is_owner && ctx.design} siteNames={siteNames} />
+
+  <style is:global>
+    .pk-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .pk-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+    .pk-error { color: var(--color-danger); font-size: .875rem; margin: 0; }
+    .pk-error ul { margin: .35rem 0 0; padding-left: 1.2rem; }
+    div.pk-error { padding: .6rem .85rem; border: 1px solid color-mix(in srgb, var(--color-danger) 45%, var(--color-border)); border-radius: var(--radius-md); background: color-mix(in srgb, var(--color-danger) 6%, var(--color-surface)); }
+    .pk-notice { margin: 0; padding: .6rem .85rem; border-radius: var(--radius-md); border: 1px solid var(--color-success); background: color-mix(in srgb, var(--color-success) 8%, var(--color-surface)); }
+    .pk-badge { display: inline-block; padding: 0 .45rem; border-radius: 999px; border: 1px solid var(--color-border); font-size: .72rem; font-weight: 600; line-height: 1.6; color: var(--color-text-muted); vertical-align: middle; }
+    .pk-warnings { padding: .6rem .85rem; border-radius: var(--radius-md); border: 1px solid color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); font-size: .9rem; }
+    .pk-warnings ul { margin: .25rem 0 0; padding-left: 1.2rem; }
+    .pk-report__list { margin: 0; padding-left: 1.2rem; display: grid; gap: .35rem; }
+    .pk-report__items { margin: .2rem 0 0; padding-left: 1.1rem; font-size: .9rem; }
+  </style>
+</AppLayout>

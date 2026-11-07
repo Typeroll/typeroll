@@ -93,7 +93,7 @@ const canEdit = ctx.permission !== 'read';
       <h2>Block templates</h2>
       <span class="gb-section__hint">Copied into a page when inserted; later edits stay on that page.</span>
     </div>
-    <BlockTemplateList client:load siteId={siteId} initial={blockTemplates} canEdit={canEdit} />
+    <BlockTemplateList client:load siteId={siteId} initial={blockTemplates} canEdit={canEdit} canUseCollection={ctx.is_owner && ctx.design && canEdit} />
   </section>
 
   <style is:global>

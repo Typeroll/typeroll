@@ -111,7 +111,7 @@ export const DESIGN_MODES: ReadonlyArray<{ value: PackageDesignMode; label: stri
   { value: 'full', label: 'Whole look', help: 'Also the element styles (body text, headings, links), colours, typography and font roles. This changes how the whole site looks.', adminOnly: true },
 ];
 
-export const WHOLE_LOOK_ADMIN_NOTE = 'Only a site admin can import the whole look, because it changes the site’s colours, typography and fonts.';
+export const WHOLE_LOOK_ADMIN_NOTE = 'Only an administrator or builder can import the whole look, because it changes the site’s colours, typography and fonts.';
 
 /** The options sent to inspect and import. Fonts travel only with the whole look. */
 export function importOptions(state: { design: PackageDesignMode; includeFonts: boolean; only?: string[]; fontLicenceConfirmed?: boolean }): PackageImportOptions {
@@ -278,7 +278,7 @@ export function onlyFromSelection(entries: readonly ChoosableEntry[], chosen: Re
 export function importBlockers(input: { result: InspectResult; isAdmin: boolean; fontLicenceConfirmed: boolean; only?: string[] }): string[] {
   const reasons: string[] = [];
   if (signatureNotice(input.result.signature).blocks) reasons.push('The signature is invalid, so the package can’t be imported.');
-  if (input.result.needs.admin && !input.isAdmin) reasons.push('This import changes the site’s look; only a site admin can import it.');
+  if (input.result.needs.admin && !input.isAdmin) reasons.push('This import changes the site’s look; only an administrator or builder can import it.');
   if (input.result.needs.font_licence && !input.fontLicenceConfirmed) reasons.push('Confirm the font licence first.');
   if (input.only && input.only.length === 0) reasons.push('Choose at least one entry.');
   return reasons;

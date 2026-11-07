@@ -160,13 +160,14 @@ Revoke an organization-scoped API key. Requires an organization API key. It stop
 
 Permission: `admin`
 
-Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins as an editor. The link works until expires_at (ttl_days 1–30, default 7) for max_uses people (1–50, default 1: single use); with email set, only a person signed in with that address can redeem it. Returns the invite id; list_organization_invites shows its state and revoke_organization_invite (or DELETE /api/v1/organization/invites/{id}) stops the link immediately. Send the link only to the person the user named.
+Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins with role (admin, builder or editor; default editor; never owner). The link works until expires_at (ttl_days 1–30, default 7) for max_uses people (1–50, default 1: single use); with email set, only a person signed in with that address can redeem it. Returns the invite id; list_organization_invites shows its state and revoke_organization_invite (or DELETE /api/v1/organization/invites/{id}) stops the link immediately. Send the link only to the person the user named.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `ttl_days` | body | integer | no |  |
 | `max_uses` | body | integer | no | How many people may redeem the link. Default 1 (single use). |
 | `email` | body | string | no | Bind the invite to this email address: only a person signed in with it can redeem the link. |
+| `role` | body | "admin" \| "builder" \| "editor" | no | The role the person joins with. Default editor. |
 
 ### `list_organization_invites`
 
@@ -187,6 +188,39 @@ Revoke an Organization invite by id (from create_organization_invite or list_org
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `invite_id` | path | string | yes | Invite id from create_organization_invite or list_organization_invites. |
+
+### `list_organization_members`
+
+`GET /api/v1/organization/members`
+
+Permission: `read`
+
+List the Organization's members: id, email, display_name, role and joined_at, owners first. Roles: owner (everything, including the organization itself), admin (members, publishing, domains, keys and design on every site), builder (structure, design, templates and the organization collection on every site; no members, billing or publishing connections) and editor (pages and content). Requires an organization API key, or a personal connection of an owner or administrator.
+
+### `update_organization_member_role`
+
+`PATCH /api/v1/organization/members/{member_id}`
+
+Permission: `admin`
+
+Change a member's role (owner, admin, builder or editor). Roles: owner (everything, including the organization itself), admin (members, publishing, domains, keys and design on every site), builder (structure, design, templates and the organization collection on every site; no members, billing or publishing connections) and editor (pages and content). Only an owner (a personal connection of one) makes someone an owner or changes an owner's role; the last owner cannot be demoted (409 last_owner). An organization API key acts as an administrator. Confirm with the user first.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `member_id` | path | string | yes | Member id from list_organization_members. |
+| `role` | body | "owner" \| "admin" \| "builder" \| "editor" | yes |  |
+
+### `remove_organization_member`
+
+`DELETE /api/v1/organization/members/{member_id}`
+
+Permission: `admin`
+
+Remove a member from the Organization: their access to its sites ends at once. Only an owner removes an owner, and the last owner cannot be removed (409 last_owner). Confirm with the user first.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `member_id` | path | string | yes | Member id from list_organization_members. |
 
 ### `read_organization_ai_settings`
 
@@ -889,6 +923,109 @@ Replace a literal substring or regex across Page bodies, custom Page fields, and
 Permission: `read`
 
 Discover what the site-template renderer supports for this site. Returns a manifest of feature flags (blocks-mode, x-include, content-type routes, custom block scripts, dry-run deploys, etc.) plus template_capabilities_version + the core block type ids. Call this when you're about to do something structural (set route_template on a content type, switch a page to blocks-mode, install a custom block type) and want to feature-detect rather than guess. The manifest is platform-wide today; per-site custom templates land later.
+
+## Site: Collection
+
+### `list_collection`
+
+`GET /api/v1/sites/{siteId}/collection`
+
+Permission: `read`
+
+List the organization collection: { entries: [{ id, kind (section | block_template | page_template | global_block | block_type | package), name, description, category, preview_url, languages, source ({ type: site | package | builtin | app, publisher, verified, extension_id }), read_only, updated_at, summary: { block_count, top_level_types, styles, block_types, media } }] }. The collection belongs to the site's organization and is visible to its owners, administrators and builders; a client given one site through a share never sees it (404), nor does a site-scoped key. Typeroll's built-in starters are listed as read-only entries. Insert an entry with insert_from_collection.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `read_collection_entry`
+
+`GET /api/v1/sites/{siteId}/collection/{entry_id}`
+
+Permission: `read`
+
+Read one collection entry with its whole package (blocks, styles, block types, global blocks, media list).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `entry_id` | path | string | yes | Entry id from list_collection. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `save_to_collection`
+
+`POST /api/v1/sites/{siteId}/collection/save`
+
+Permission: `write`
+
+Save one of this site's block templates (kind "section" or "block_template"; the template's own kind decides which), page templates, free global blocks or block types to the organization collection, with the styles, block types, global blocks and media it uses. Returns 201 { entry, warnings }. The collection belongs to the site's organization and is visible to its owners, administrators and builders; a client given one site through a share never sees it (404), nor does a site-scoped key. Typeroll's built-in starters are listed as read-only entries.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | body | "section" \| "block_template" \| "page_template" \| "global_block" \| "block_type" | yes |  |
+| `id` | body | string | yes | The site's template, global block or block type id. |
+| `name` | body | string | no |  |
+| `description` | body | string | no |  |
+| `category` | body | string | no |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `add_package_to_collection`
+
+`POST /api/v1/sites/{siteId}/collection/import`
+
+Permission: `write`
+
+Add a Typeroll package (.typeroll) to the organization collection without changing the site. A collection package becomes one entry per block template, page template, free global block and block type, each with what it depends on; a site package is kept whole as one entry of kind "package". Its menus, design, settings pages and font files are not entries. The source package, publisher and verified signature are recorded. Returns 201 { entries, warnings }.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `data_base64` | body | string | no | The .typeroll file, base64-encoded (at most 32 MB). Send this or source_url. |
+| `source_url` | body | string | no | An https:// address to download the package from (up to 200 MB). |
+
+### `insert_from_collection`
+
+`POST /api/v1/sites/{siteId}/collection/{entry_id}/insert`
+
+Permission: `write`
+
+Insert a collection entry into this site. target "library" adds the block template, page template, global block or block type (a built-in header or footer replaces the site's own; a whole package imports its content). target "page" places a section's, block template's or free global block's blocks in the page's draft: after after_block_id (in that block's parent or slot when it is nested), or at position (top level, or in parent_id / slot_index); at the end by default. Returns { report, page?: { id, added_ids, blocks } }; save the page to publish the change. Inserting is a package import: every style the entry uses is created on the site, never mapped to a "nearest" style; a differing style with the same id is created under a new id (hero-2, "Hero (imported)") and the inserted content is rewritten to it. Block types and global blocks follow the same rule; media is copied into the site's Media library.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `entry_id` | path | string | yes | Entry id from list_collection. |
+| `target` | body | "library" \| "page" | no |  |
+| `page_id` | body | string | no | Required for target "page". |
+| `after_block_id` | body | string | no |  |
+| `position` | body | integer | no |  |
+| `parent_id` | body | string \| null | no |  |
+| `slot_index` | body | integer | no |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `update_collection_entry`
+
+`PATCH /api/v1/sites/{siteId}/collection/{entry_id}`
+
+Permission: `write`
+
+Change a collection entry's name, description or category (an empty description or category removes it). Built-in entries are read-only.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `entry_id` | path | string | yes | Entry id from list_collection. |
+| `name` | body | string | no |  |
+| `description` | body | string | no |  |
+| `category` | body | string | no |  |
+
+### `delete_collection_entry`
+
+`DELETE /api/v1/sites/{siteId}/collection/{entry_id}`
+
+Permission: `write`
+
+Remove an entry from the organization collection, and the stored files no other entry uses. Sites it was inserted into keep their copies. Built-in entries cannot be removed. Confirm with the user first.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `entry_id` | path | string | yes | Entry id from list_collection. |
 
 ## Site: Composition starters
 

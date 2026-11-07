@@ -95,8 +95,8 @@ origin. Deleting a file is allowed while a role uses its family; the response
 names the roles, which fall back to Google Fonts or the fallback stack at the
 next publication.
 
-Uploading and deleting need site administrator permission, like the font
-settings. Extension credentials can read the library but not change it.
+Uploading and deleting are design work: a site administrator or a
+[builder](../../guides/teams-and-roles/#roles), like the font settings. Extension credentials can read the library but not change it.
 
 Font files travel in a [package](../packages/#fonts-and-licences) only when the
 exporter confirms their licence allows passing them on, and they are added to
@@ -169,8 +169,8 @@ The result has three lists: `fonts` (catalog families with `weights`,
 Changes `fonts` in the site settings: `heading`, `body`, `mono`, `display`,
 `accent`, `load`, `delivery` and `services`. Only the keys you pass change;
 `null` clears `mono`, `display`, `accent`, `load`, `delivery` or `services`.
-Pass `version` to change a branch instead of main. It needs admin permission,
-like `update_site_settings`, which accepts the same `fonts` object.
+Pass `version` to change a branch instead of main. It needs design permission
+(an administrator or builder), like `update_site_settings`, which accepts the same `fonts` object.
 
 ```json
 {

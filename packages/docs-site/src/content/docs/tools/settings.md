@@ -53,7 +53,13 @@ Updates site settings. Pass only the fields you want to change. It accepts every
 field the portal's **Settings** form does and, like that form, requires admin
 permission on the site: a site API key, an organization key for a site your
 organization owns, or a share with admin permission. A key with write or read
-permission receives HTTP 403. Over REST this is
+permission receives HTTP 403. A [builder](../../guides/teams-and-roles/#roles)
+(through a personal connection) changes the design settings only: `colors`,
+`fonts`, `typography`, `design_scales`, `responsive_breakpoints`,
+`content_widths`, `header_behavior`, `motion`, `date_format`,
+`image_sizes_default`, the identity (`site_name`, `tagline`, `logo`,
+`favicon`, `apple_touch_icon`, `icon_192`), `custom_css` and
+`render_version`; any other field is refused with 403. Over REST this is
 `PATCH /api/v1/sites/{siteId}/settings`.
 
 ### Top-level fields

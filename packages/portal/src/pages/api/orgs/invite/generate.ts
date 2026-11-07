@@ -1,16 +1,17 @@
 // POST /api/orgs/invite/generate
 //
 // Creates an invite link that another person can redeem at /onboarding to
-// join the caller's organization as an editor. Organization owners and admins
-// only, whether or not the organization enforces member roles. The invite is
+// join the caller's organization with a role: editor by default, or builder
+// or admin. Never owner. Organization owners and admins only, whether or not the organization enforces member roles. The invite is
 // stored server-side (list and revoke at /api/orgs/invite). The public-API
 // equivalent is POST /api/v1/organization/invites.
 //
-// Body: { ttlDays?: number, max_uses?: number, email?: string }
+// Body: { ttlDays?: number, max_uses?: number, email?: string, role?: 'admin' | 'builder' | 'editor' }
 //   ttlDays  default 7, max 30
 //   max_uses default 1 (single use), max 50
 //   email    only a person signed in with this address can redeem it
-// Returns: { inviteUrl, inviteId, expiresAt, maxUses, email }
+//   role     the role the person joins with, default editor
+// Returns: { inviteUrl, inviteId, expiresAt, maxUses, email, role }
 
 import type { APIRoute } from 'astro';
 import { json, requireOrganizationOwnerOrAdmin } from '../../../../lib/access';
@@ -41,6 +42,7 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     ttlDays: options.ttlDays,
     maxUses: options.maxUses,
     email: options.email,
+    role: options.role,
     createdBy: { id: session.userId, email: session.email },
   });
   const response = json(invite);

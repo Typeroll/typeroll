@@ -25,7 +25,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!guard.ok) return guard.response;
   const writeCheck = requirePermission(guard.value, 'write');
   if (!writeCheck.ok) return writeCheck.response;
-  const { session, site, versionId, owner_org_id, permission } = guard.value;
+  const { session, site, versionId, owner_org_id, permission, design } = guard.value;
   const siteId = site.id;
   // The Site OWNER's key and allowlist decide, also for a shared-in Site.
   // Refuse before anything is persisted. MCP and the API are never gated.
@@ -106,6 +106,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
       history: recent,
       activePage,
       permission,
+      design,
     });
 
     await store.addDoc(paths.chat(owner_org_id, siteId, versionId), {

@@ -36,6 +36,8 @@ interface Props {
   /** The version being edited; a non-main version is sent as `?version=`. */
   versionId?: string;
   permission: Permission;
+  /** Defining settings pages is design work: an administrator or builder (SiteContext.design). Default: admin permission. */
+  canDefine?: boolean;
   /** Server-loaded fields; without them the editor loads them itself. */
   initial?: SiteFields | null;
   /** The site's time zone (`siteTimeZone(settings)`), which opening hours' "today" follows. */
@@ -55,8 +57,8 @@ function readFields(body: SaveResponse): SiteFields | null {
   return Array.isArray(source.groups) ? { groups: source.groups, values: source.values ?? {}, ...(source.updated_at ? { updated_at: source.updated_at } : {}) } : null;
 }
 
-export default function SiteFieldsEditor({ siteId, versionId, permission, initial, timeZone, now }: Props) {
-  const isAdmin = permission === 'admin';
+export default function SiteFieldsEditor({ siteId, versionId, permission, canDefine, initial, timeZone, now }: Props) {
+  const isAdmin = canDefine ?? permission === 'admin';
   const query = versionId && versionId !== MAIN_VERSION_ID ? `?version=${encodeURIComponent(versionId)}` : '';
   const endpoint = `/api/sites/${encodeURIComponent(siteId)}/site-fields${query}`;
   const domId = useId().replace(/[^a-zA-Z0-9_-]/g, '');

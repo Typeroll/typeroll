@@ -7,7 +7,7 @@ import { siteTimeZone } from '@typeroll/shared';
 
 // Settings pages shared by the whole site. Everyone with access sees them;
 // editors fill in the values of the pages open to editors, administrators
-// also define the pages and their fields.
+// and builders also define the pages and their fields.
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
 const { site, versionId, owner_org_id: orgId, permission } = ctx;
@@ -20,5 +20,5 @@ const [initial, settings] = await Promise.all([
 const timeZone = siteTimeZone(settings ?? undefined);
 ---
 <AppLayout title={`Site fields — ${site.name}`} siteId={siteId}>
-  <SiteFieldsEditor client:load siteId={siteId} versionId={versionId} permission={permission} initial={initial} timeZone={timeZone} />
+  <SiteFieldsEditor client:load siteId={siteId} versionId={versionId} permission={permission} canDefine={ctx.design} initial={initial} timeZone={timeZone} />
 </AppLayout>

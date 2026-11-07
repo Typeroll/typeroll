@@ -21,7 +21,7 @@
 // enforcement is a question of what `requireSiteAccess` reports, not of
 // annotating 47 route files.
 
-import { paths } from '@typeroll/shared';
+import { paths, roleCanDesign } from '@typeroll/shared';
 import type { Member, MemberRole, Organization, SharePermission } from '@typeroll/shared';
 import { getStore } from './datastore';
 
@@ -33,6 +33,8 @@ import { getStore } from './datastore';
 export const ROLE_PERMISSION: Record<MemberRole, SharePermission> = {
   owner: 'admin',
   admin: 'admin',
+  // A builder edits like an editor and also does design work (roleCanDesign).
+  builder: 'write',
   editor: 'write',
 };
 
@@ -69,4 +71,20 @@ export async function resolveOwnerOrgAccess(
   const role = member?.role;
   if (!role || !(role in ROLE_PERMISSION)) return { permission: 'read' };
   return { permission: ROLE_PERMISSION[role], role };
+}
+
+/**
+ * Whether a caller may do design work on a site: colours, fonts, typography,
+ * styles, the Site CSS, the render version, site field definitions, the Fonts
+ * library, package imports with the whole look and the organization
+ * collection (shared collections.ts → roleCanDesign).
+ *
+ * Admin permission always may: an owner or administrator, every member of an
+ * organization that does not enforce roles, and an admin share. Below admin,
+ * only the builder role adds design: a write or read share never does, and
+ * neither does a read-only token, whatever the role behind it.
+ */
+export function siteDesignAccess(permission: SharePermission, role?: MemberRole): boolean {
+  if (permission === 'admin') return true;
+  return permission === 'write' && role !== undefined && roleCanDesign(role);
 }

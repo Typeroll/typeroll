@@ -3,8 +3,8 @@
 //      { design: "content" | "styles" | "full", fonts?, only?, font_licence_confirmed? })
 //      → { report }
 //
-// Needs write permission; admin when options.design is "full", or when the
-// import adds fonts or settings pages. Fonts need font_licence_confirmed.
+// Needs write permission; design (an administrator or builder) when
+// options.design is "full", or when the import adds fonts or settings pages. Fonts need font_licence_confirmed.
 // A write that fails part-way answers code "package_import_partial" with
 // details.report listing what was written.
 
@@ -22,7 +22,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   try {
     const upload = await packageUpload(request);
     const report = await importSitePackage({
-      orgId: owner_org_id, siteId: site.id, versionId, permission: guard.value.permission, actor: session.email || session.userId,
+      orgId: owner_org_id, siteId: site.id, versionId, permission: guard.value.permission, design: guard.value.design, actor: session.email || session.userId,
     }, upload.bytes, parseImportOptions(upload.options));
     return json({ report });
   } catch (error) {

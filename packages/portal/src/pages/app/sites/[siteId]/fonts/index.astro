@@ -12,7 +12,7 @@ const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
 const { site, versionId, owner_org_id: orgId } = ctx;
 const settings = (await vstore.settings(orgId, site.id, versionId)) ?? defaultSiteSettings;
-const canEdit = ctx.permission === 'admin' && !isArchivedSite(site);
+const canEdit = ctx.design && !isArchivedSite(site);
 ---
 <AppLayout title={`Fonts — ${site.name}`} siteId={site.id}>
   <FontLibrary client:load siteId={site.id} canEdit={canEdit} language={settings.language} />

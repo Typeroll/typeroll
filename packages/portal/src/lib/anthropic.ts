@@ -1,5 +1,6 @@
 import { createPage } from './page-create';
 import { listContentTypes } from './content-type-service';
+import { DESIGN_SETTINGS_KEYS } from './site-settings-sections';
 // Anthropic client + the AI chat tool loop that powers /api/sites/[siteId]/chat.
 //
 // The chat lets the user manage the whole site by describing changes in plain
@@ -1188,6 +1189,8 @@ export async function runChatTurn(args: {
   activePage?: ActivePageContext | null;
   /** The person's permission on the site; block type authoring needs admin. */
   permission: SharePermission;
+  /** Design work without admin: the person is a builder (SiteContext.design). */
+  design?: boolean;
 }): Promise<ChatResult> {
   // The Site owner's own key, only when this Site is allowed. The chat route
   // refuses earlier with ai_not_enabled; this covers a key removed mid-turn.
@@ -1248,6 +1251,7 @@ export async function runChatTurn(args: {
           version: args.version,
           portalOrigin: args.portalOrigin,
           permission: args.permission,
+          design: args.design,
         });
         if (out.action) actions.push(out.action);
         toolCalls.push({
@@ -1298,6 +1302,8 @@ export interface ToolContext {
   portalOrigin: string;
   /** The person's permission on the site; block type authoring needs admin. */
   permission: SharePermission;
+  /** Design work without admin (a builder): block types, design settings and fonts. */
+  design?: boolean;
 }
 
 function absolutePreviewUrl(ctx: ToolContext, page: Parameters<typeof pagePreviewUrl>[1]): string {
@@ -1818,8 +1824,8 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
     case 'delete_block_type': {
       // Same write path, validator and version chain as the portal and the
       // API; admin permission, as for a person in the portal.
-      if (ctx.permission !== 'admin') {
-        return { result: { error: 'Creating, changing and deleting block types needs admin permission on the site. Ask a site admin, or build the section from existing blocks.' } };
+      if (ctx.permission !== 'admin' && !ctx.design) {
+        return { result: { error: 'Creating, changing and deleting block types needs design permission on the site (an administrator or builder). Ask one, or build the section from existing blocks.' } };
       }
       const writes = await import('./block-type-write');
       const { SCRIPT_GATE_WARNING, aiScriptsEnabled } = await import('./block-script-gate');
@@ -2140,8 +2146,13 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       // Site settings (name, logo, brand colors, fonts, contact) are admin
       // only in the portal and the public API; the chat acts for the person
       // and must not let an editor route around that.
-      if (ctx.permission !== 'admin') {
+      if (ctx.permission !== 'admin' && !ctx.design) {
         return { result: { error: 'Changing site settings needs admin permission on the site. Ask a site admin to change them in Settings.' } };
+      }
+      // A builder changes the look (name, logo, icons, colours, fonts), not SEO or contact details.
+      if (ctx.permission !== 'admin') {
+        const notDesign = Object.keys(input).filter(key => input[key] !== undefined && !DESIGN_SETTINGS_KEYS.has(key));
+        if (notDesign.length) return { result: { error: `These settings need admin permission on the site: ${notDesign.join(', ')}. A builder changes the design settings only.` } };
       }
       // Explicit whitelist. Scripts and custom CSS are deliberately NOT
       // updatable from the chat — they're scriptable surfaces and require
@@ -2183,8 +2194,8 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
     }
 
     case 'set_site_fonts': {
-      if (ctx.permission !== 'admin') {
-        return { result: { error: 'Changing the site\'s fonts needs admin permission on the site. Ask a site admin to change them in Settings → Design.' } };
+      if (ctx.permission !== 'admin' && !ctx.design) {
+        return { result: { error: 'Changing the site\'s fonts needs design permission on the site (an administrator or builder). Ask one to change them in Settings → Design.' } };
       }
       const patch: Record<string, unknown> = {};
       for (const key of ['heading', 'body', 'mono', 'display', 'accent', 'load'] as const) if (input[key] !== undefined) patch[key] = input[key];

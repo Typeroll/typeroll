@@ -134,6 +134,9 @@ export class TyperollClient {
   rootPut<T>(path: string, body?: unknown): Promise<T> {
     return this.request<T>('PUT', this.rootUrl(path), body);
   }
+  rootPatch<T>(path: string, body?: unknown): Promise<T> {
+    return this.request<T>('PATCH', this.rootUrl(path), body);
+  }
 
   // ── Extension developer API ────────────────────────────────────────────
   /** `/api/developer/{path}` — the Extension developer API used by the

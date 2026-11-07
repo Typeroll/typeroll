@@ -100,6 +100,10 @@ deploy. The developer CLI and MCP tool queue that deploy by default.
   site field value; acts as site administrator on the site fields routes only)
 - `snippets:read`, `snippets:write` (live snippets: content that changes on the
   live site without a publication, such as the week's lunch menu)
+- `collection:read`, `collection:write` (the
+  [organization collection](../../tools/collection/) of the site's
+  organization: list its entries, and add ready-made ones; an app changes and
+  removes only the entries it added itself)
 
 The effective permission is the intersection of the manifest request, the
 site administrator's grant, and the current Typeroll user's permission. The

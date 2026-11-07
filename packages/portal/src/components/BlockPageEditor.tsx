@@ -48,6 +48,8 @@ import TurnIntoBlockType, { type TurnIntoBlockTypeAction } from './TurnIntoBlock
 import { compositionFromSelection, detachComposedInstance, propCandidates } from '../lib/block-type-builder';
 import { newBlockId, replaceBlockIn } from '../lib/block-tree-ops';
 import { loadInternalPages } from './internal-pages';
+import { CollectionLibrarySection, useEditorCollection } from './CollectionLibrarySection';
+import { templateSaveKind, type CollectionEntryView, type CollectionInsertResult } from './collection-model';
 
 interface Props {
   responsiveBreakpoints?: ResponsiveBreakpoints | null;
@@ -126,6 +128,8 @@ export default function BlockPageEditor(props: Props) {
 function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, siteFonts, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false }: Props) {
   const [globalBlocks, setGlobalBlocks] = useState(initialGlobalBlocks);
   const [blockTemplates, setBlockTemplates] = useState(initialTemplates);
+  // The organization collection; null when this person may not use it.
+  const collection = useEditorCollection(siteId);
   // The editor edits the working-copy view of the page: canonical doc with
   // any unsaved (autosaved) fields overlaid. All edits autosave to the
   // working copy; the deliberate Save in the Publish menu promotes them.
@@ -391,6 +395,36 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     } catch (e) { setError((e as Error).message); setStatus('error'); }
   }
 
+  // A collection entry goes after the selected block, else at the end; the
+  // server writes it into the working copy, so reload the draft from there.
+  async function insertFromCollection(entry: CollectionEntryView): Promise<CollectionInsertResult> {
+    await blockWrite.current.catch(() => {});
+    await fieldFlush.current?.();
+    return enqueueWrite(async () => {
+      const result = await collection.insertIntoPage(entry.id, page.id, selectedIdRef.current);
+      const res = await fetch(`${resourceUrl}/blocks`, { headers: { accept: 'application/json' } });
+      const body = res.ok ? await res.json().catch(() => ({})) as { blocks?: Block[] } : {};
+      if (body.blocks) {
+        setDraft((d) => ({ ...d, blocks: body.blocks }));
+        setHasWc(true);
+        historyRef.current?.record(body.blocks, `collection:${entry.id}:${Date.now()}`);
+        bumpHist();
+      }
+      reloadPreview();
+      return result;
+    });
+  }
+
+  async function saveSiteTemplate(block: Block, name: string, description: string): Promise<BlockTemplate> {
+    await fieldFlush.current?.();
+    await blockWrite.current.catch(() => {});
+    const res = await fetch(`/api/sites/${siteId}/block-templates`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, ...(description ? { description } : {}), from: { page_id: page.id, block_id: block.id } }) });
+    const body = await res.json().catch(() => ({})) as { block_template?: BlockTemplate; error?: string };
+    if (!res.ok || !body.block_template) throw new Error(body.error ?? `Could not save the template (${res.status})`);
+    setBlockTemplates(list => [...list, body.block_template!].sort((a, b) => a.name.localeCompare(b.name)));
+    return body.block_template;
+  }
+
   function addGlobalBlock(globalBlockId: string): void {
     const target = insertTarget();
     const name = globalBlocks.find(block => block.id === globalBlockId)?.name;
@@ -408,13 +442,16 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       if (result.added_ids?.[0]) selectBlock(result.added_ids[0]);
     },
     async saveTemplate(name, description) {
-      await fieldFlush.current?.();
-      await blockWrite.current.catch(() => {});
-      const res = await fetch(`/api/sites/${siteId}/block-templates`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, ...(description ? { description } : {}), from: { page_id: page.id, block_id: block.id } }) });
-      const body = await res.json().catch(() => ({})) as { block_template?: BlockTemplate; error?: string };
-      if (!res.ok || !body.block_template) throw new Error(body.error ?? `Could not save the template (${res.status})`);
-      setBlockTemplates(list => [...list, body.block_template!].sort((a, b) => a.name.localeCompare(b.name)));
+      await saveSiteTemplate(block, name, description);
     },
+    // The collection saves existing site items, so the block becomes a site
+    // template first (the same flow as Save as template) and that is saved.
+    ...(collection.entries && block.type !== GLOBAL_BLOCK_TYPE_ID ? {
+      async saveToCollection(name: string, description: string, category: string) {
+        const template = await saveSiteTemplate(block, name, description);
+        await collection.save(templateSaveKind(template), template.id, { name, description, category });
+      },
+    } : {}),
     ...(canManageBlockTypes && !registry.get(block.type)?.composition?.length && block.type !== GLOBAL_BLOCK_TYPE_ID ? {
       turnIntoBlockType: {
         candidates: propCandidates(block, registry),
@@ -1002,7 +1039,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
               <BlockLibrary
                 registry={registry}
                 customTypes={customTypes}
-                reusable={{ globalBlocks, templates: blockTemplates, onAddGlobal: addGlobalBlock, onInsertTemplate: (id) => void insertTemplate(id) }}
+                reusable={{ globalBlocks, templates: blockTemplates, onAddGlobal: addGlobalBlock, onInsertTemplate: (id) => void insertTemplate(id), collection: { siteId, entries: collection.entries, onInsert: insertFromCollection } }}
                 onAdd={(typeId) => {
                   if (selected?.block.children !== undefined || selected?.block.slots !== undefined) {
                     handleAddBlock(typeId, selected.block.id, 0);
@@ -1111,6 +1148,8 @@ export function BlockLibrary({
     templates: BlockTemplate[];
     onAddGlobal: (id: string) => void;
     onInsertTemplate: (id: string) => void;
+    /** The organization collection's sections, templates and global blocks. */
+    collection?: { siteId: string; entries: CollectionEntryView[] | null; onInsert: (entry: CollectionEntryView) => Promise<CollectionInsertResult> };
   };
 }) {
   const [filter, setFilter] = useState('');
@@ -1153,6 +1192,7 @@ export function BlockLibrary({
               </button>)}
             </div>)}
           </div>}
+          {reusable.collection && <CollectionLibrarySection siteId={reusable.collection.siteId} entries={reusable.collection.entries} filter={filter} onInsert={reusable.collection.onInsert} headingStyle={catHeading} />}
           {globals.length > 0 && <div style={{ marginTop: '1rem' }}>
             <h4 style={catHeading}>Global blocks</h4>
             <p className="block-library__hint">Shared: the same content on every page that uses it.</p>
@@ -1837,6 +1877,8 @@ export interface ReuseActions {
   makeGlobal(name: string): Promise<void>;
   detach(): Promise<void>;
   saveTemplate(name: string, description: string): Promise<void>;
+  /** Save as a site template and put that in the organization collection. Only when the collection is available. */
+  saveToCollection?(name: string, description: string, category: string): Promise<void>;
   /** Admins: make a block type from this block and its children (TurnIntoBlockType). */
   turnIntoBlockType?: TurnIntoBlockTypeAction;
   /** A placed composed block: replace it with the blocks it is made of. */
@@ -1848,9 +1890,11 @@ export interface ReuseActions {
  * content) or as a template (a starting point copied into pages).
  */
 function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions }) {
-  const [mode, setMode] = useState<'global' | 'template' | 'block_type' | null>(null);
+  const [mode, setMode] = useState<'global' | 'template' | 'collection' | 'block_type' | null>(null);
   const [name, setName] = useState(block.name ?? '');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const categoryId = useId();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const nameId = useId();
@@ -1874,6 +1918,7 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn--secondary" aria-pressed={mode === 'global'} onClick={() => setMode(mode === 'global' ? null : 'global')}>Make global block…</button>
           <button type="button" className="btn btn--secondary" aria-pressed={mode === 'template'} onClick={() => setMode(mode === 'template' ? null : 'template')}>Save as template…</button>
+          {actions.saveToCollection && <button type="button" className="btn btn--secondary" aria-pressed={mode === 'collection'} onClick={() => setMode(mode === 'collection' ? null : 'collection')}>Save to collection…</button>}
           {actions.turnIntoBlockType && <button type="button" className="btn btn--secondary" aria-pressed={mode === 'block_type'} onClick={() => setMode(mode === 'block_type' ? null : 'block_type')}>Turn into block type…</button>}
         </div>
         {actions.detachComposed && <>
@@ -1884,19 +1929,25 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
         </>}
         {mode === 'block_type' && actions.turnIntoBlockType && <TurnIntoBlockType block={block} action={actions.turnIntoBlockType}
           onDone={(label) => { setMode(null); setMessage(`Created the block type “${label}”. This block is now one, and it is in the block library.`); }} />}
-        {(mode === 'global' || mode === 'template') && <form className="block-reuse__form" onSubmit={e => {
+        {(mode === 'global' || mode === 'template' || mode === 'collection') && <form className="block-reuse__form" onSubmit={e => {
           e.preventDefault();
           if (!name.trim()) return;
           if (mode === 'global') run(() => actions.makeGlobal(name.trim()), 'Now a global block. Other pages can add it from the block library.');
+          else if (mode === 'collection' && actions.saveToCollection) run(() => actions.saveToCollection!(name.trim(), description.trim(), category.trim()), 'Saved to the organization’s collection, and as a template on this site. Insert it into any of the organization’s sites.');
           else run(() => actions.saveTemplate(name.trim(), description.trim()), 'Saved as a template. Insert it from the block library.');
         }}>
+          {mode === 'collection' && <p>Saves this block as a template on this site and a copy, with the styles it uses, in the organization’s collection.</p>}
           <label htmlFor={nameId} style={fieldLabel}>{mode === 'global' ? 'Global block name' : 'Template name'}</label>
           <input id={nameId} style={textInput} value={name} required onChange={e => setName(e.target.value)} />
-          {mode === 'template' && <>
+          {mode !== 'global' && <>
             <label htmlFor={descriptionId} style={fieldLabel}>When to use it</label>
             <input id={descriptionId} style={textInput} value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Pricing row with three plans" />
           </>}
-          <button type="submit" className="btn" disabled={busy || !name.trim()}>{mode === 'global' ? 'Make global block' : 'Save template'}</button>
+          {mode === 'collection' && <>
+            <label htmlFor={categoryId} style={fieldLabel}>Category (optional)</label>
+            <input id={categoryId} style={textInput} value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g. Heroes or Pricing" />
+          </>}
+          <button type="submit" className="btn" disabled={busy || !name.trim()}>{mode === 'global' ? 'Make global block' : mode === 'collection' ? 'Save to collection' : 'Save template'}</button>
         </form>}
       </>}
       {message && <p role="status">{message}</p>}

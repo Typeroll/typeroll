@@ -4,7 +4,7 @@ const access = vi.hoisted(() => ({ permission: 'write' as 'read' | 'write' | 'ad
 vi.mock('../../lib/access', async (importOriginal) => ({ ...(await importOriginal<typeof import('../../lib/access')>()),
   requireSiteAccess: vi.fn(async (_cookies: unknown, siteId: string) => ({ ok: true as const, value: {
     session: { userId: 'u', email: 'editor@example.com' }, site: { id: siteId, status: 'live' }, versionId: 'main',
-    owner_org_id: access.owners[siteId], permission: access.permission } })) }));
+    owner_org_id: access.owners[siteId], permission: access.permission, design: access.permission === 'admin' } })) }));
 
 // Typeroll packages end to end, offline: a block template exported from one
 // site carries its media (as typeroll-media tokens), styles, block type and
@@ -206,7 +206,7 @@ describe('package import', () => {
     const inspected = await inspectSitePackage(DST_ORG, DST, MAIN_VERSION_ID, zip, { design: 'content' });
     expect(inspected.plan.styles).toEqual(expect.arrayContaining([{ action: 'rename', from: 'hero', to: 'hero-2', name: 'Hero (imported)' }]));
     expect(inspected.plan.maps.styles).toEqual({ hero: 'hero-2' });
-    expect(inspected.needs).toEqual({ admin: false, font_licence: false });
+    expect(inspected.needs).toEqual({ admin: false, design: false, font_licence: false });
     expect(inspected.package).toMatchObject({ id: 'acme-bakery', counts: { block_templates: 1, media: 1 } });
     expect(inspected.signature).toEqual({ status: 'unsigned' });
     await importSitePackage({ ...ctxOf(DST_ORG, DST), permission: 'write', actor: 'buyer@example.com' }, zip, { design: 'content' });
@@ -221,7 +221,7 @@ describe('package import', () => {
     await addSiteFont(SRC_ORG, SRC, { bytes: testTrueTypeFont(), licence_confirmed: true, by: 'author@example.com' });
     const { zip } = await exportHero({ design: true, fonts: { families: ['Test Sans'], redistributable_confirmed: true } });
     const inspected = await inspectSitePackage(DST_ORG, DST, MAIN_VERSION_ID, zip, { design: 'full' });
-    expect(inspected.needs).toEqual({ admin: true, font_licence: true });
+    expect(inspected.needs).toEqual({ admin: true, design: true, font_licence: true });
     const buyer = { ...ctxOf(DST_ORG, DST), actor: 'buyer@example.com' };
     await expect(importSitePackage({ ...buyer, permission: 'write' }, zip, { design: 'full' })).rejects.toMatchObject({ status: 403, code: 'package_permission' });
     await expect(importSitePackage({ ...buyer, permission: 'admin' }, zip, { design: 'full' })).rejects.toMatchObject({ status: 400, code: 'font_licence_required' });

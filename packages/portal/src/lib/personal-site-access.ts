@@ -49,10 +49,13 @@ export async function resolvePersonalSite(userId: string, ownerOrgId: string, si
   if (!site) return null;
   let best: Awaited<ReturnType<typeof personalSites>>[number] | null = null;
   const membership = await organizationMembership(userId, ownerOrgId);
+  let role: import('@typeroll/shared').MemberRole | undefined;
   if (membership) {
-    const { permission } = await resolveOwnerOrgAccess(ownerOrgId, userId);
+    const access = await resolveOwnerOrgAccess(ownerOrgId, userId);
+    const { permission } = access;
+    role = access.role;
     best = { site, siteId, ownerOrgId, accessOrgId: ownerOrgId, permission };
-    if (permission === 'admin') return best;
+    if (permission === 'admin') return { ...best, role };
   }
   const shares = await store.listDocs<import('@typeroll/shared').SiteShare>(paths.shares(ownerOrgId, siteId));
   const rank = { read: 0, write: 1, admin: 2 };
@@ -62,6 +65,8 @@ export async function resolvePersonalSite(userId: string, ownerOrgId: string, si
     const member = await organizationMembership(userId, share.shared_with_org_id);
     if (!member || !await store.getDoc(paths.sharesWithOrgEntry(member.id, share.id))) continue;
     best = { site, siteId, ownerOrgId, accessOrgId: member.id, permission: share.permission };
+    // The role belongs to the owning organization; a share grants without it.
+    role = undefined;
   }
-  return best;
+  return best ? { ...best, role } : null;
 }

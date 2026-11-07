@@ -13,6 +13,10 @@ design (colours, typography, scales, content widths and font roles), menus,
 site field definitions, media and, when the author may pass them on, font
 files. A site package carries a whole site.
 
+Within one Organization, the [organization collection](../collection/) keeps
+templates, sections and block types ready for every site; it stores each entry
+as a single-entry package and can take in a `.typeroll` file.
+
 A package belongs to no organization. It holds no organization or site ids,
 and its media and font files travel inside it, so anyone can import it into
 their own site: a template pack bought from a studio, sections shared by a
@@ -135,8 +139,9 @@ stays as the author made it and can then be changed site-wide:
 | `styles`  | Also the package's other class styles                                                                                                 |
 | `full`    | Also the element styles (body, h1–h6, link), replacing the site's, and the colours, typography, scales, content widths and font roles |
 
-`full` changes the whole site's look, so it needs admin permission, like
-Settings. `fonts: false` imports the full design without the font roles and
+`full` changes the whole site's look, so it needs design permission (a site
+administrator or a [builder](../../guides/teams-and-roles/#roles)), like the
+design settings. `fonts: false` imports the full design without the font roles and
 files.
 
 ## Conflicts and renames
@@ -225,8 +230,9 @@ address, up to 200 MB) and `options`. The answer is
 `{ package, signature, plan, warnings, errors, needs }`: the plan lists each
 style, block type, template, global block, menu, page and media file with its
 action (`create`, `reuse`, `rename`, `replace`, `skip`), and the id maps.
-`errors` lists what would stop the import; `needs` says whether it needs admin
-and a font licence confirmation.
+`errors` lists what would stop the import; `needs` says whether it needs design
+permission (`design`, also reported as `admin` for older callers) and a font
+licence confirmation.
 
 ## `import_package`
 

@@ -9,7 +9,12 @@ import type { HreflangAlternate } from './hreflang.js';
 // ─── Auth & Tenancy ──────────────────────────────────────────────────────
 
 export type Plan = 'free' | 'starter' | 'pro' | 'agency' | 'enterprise';
-export type MemberRole = 'owner' | 'admin' | 'editor';
+/**
+ * Organization roles. `builder` works on structure, design, templates and the
+ * collection across the organization's sites, without member, billing or
+ * publishing-connection rights (collections.ts).
+ */
+export type MemberRole = 'owner' | 'admin' | 'builder' | 'editor';
 
 /** Optional service-host access window; no billing or payment-provider data. */
 export interface OrganizationServiceAccess {
@@ -2089,6 +2094,9 @@ export interface SiteShare {
 export const paths = {
   org: (orgId: string) => `organizations/${orgId}`,
   members: (orgId: string) => `organizations/${orgId}/members`,
+  /** The organization collection (`CollectionEntry`). */
+  collection: (orgId: string) => `organizations/${orgId}/collection`,
+  collectionEntry: (orgId: string, entryId: string) => `organizations/${orgId}/collection/${entryId}`,
   sites: (orgId: string) => `organizations/${orgId}/sites`,
   // The Organization's own AI key and Site access (OrganizationAiSettings).
   // One unversioned doc; the key is encrypted and never returned.

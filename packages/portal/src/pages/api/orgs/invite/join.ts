@@ -44,7 +44,8 @@ export const POST: APIRoute = async ({ request, cookies }) => {
     return json({ error: 'The organization this invite belongs to no longer exists.' }, 404);
   }
 
-  // An existing member keeps their role and spends no use.
+  // An existing member keeps their role and spends no use. A new member gets
+  // the invite's role (redeemInvite sets it from the stored invite).
   const memberPath = `${paths.members(orgId)}/${session.userId}`;
   const member: Omit<Member, 'id'> = {
     email: session.email,

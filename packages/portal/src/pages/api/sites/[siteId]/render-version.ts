@@ -1,19 +1,19 @@
 // POST /api/sites/{siteId}/render-version  body: { render_version }
 //
 // Upgrades (or rolls back) the platform render version for the active site
-// version. Admin only. The change takes effect in preview immediately and on
+// version. Design work: administrators and builders. The change takes effect in preview immediately and on
 // the live site at the next deploy.
 
 import type { APIRoute } from 'astro';
-import { requireSiteAccess, requirePermission, json } from '../../../../lib/access';
+import { requireSiteAccess, json, requireDesign } from '../../../../lib/access';
 import { vstore } from '../../../../lib/version-store';
 import { isRenderVersion, LATEST_RENDER_VERSION, renderVersionStatus } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const designCheck = requireDesign(guard.value);
+  if (!designCheck.ok) return designCheck.response;
   const { site, versionId, owner_org_id } = guard.value;
   const body = (await request.json().catch(() => null)) as { render_version?: unknown } | null;
   if (!body || !isRenderVersion(body.render_version)) {

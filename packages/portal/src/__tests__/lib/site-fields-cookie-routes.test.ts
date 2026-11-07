@@ -27,6 +27,8 @@ beforeEach(async () => {
           session: { orgId: VIEWER, userId: 'u1', email: 'editor@example.com' },
           site: { id: SITE, name: 'My Site', hosting_adapter: 'cloudflare', status: 'live', created_at: '' },
           versionId: MAIN_VERSION_ID, owner_org_id: OWNER, permission,
+          // As the real guard computes it for a site without builder roles.
+          design: permission === 'admin',
         },
       })),
     };

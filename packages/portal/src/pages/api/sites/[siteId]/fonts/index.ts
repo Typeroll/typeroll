@@ -4,11 +4,11 @@
 //      file, family?, weight? ("400" or "100-900"), style?, category?,
 //      licence_confirmed ("true"), licence_note?) → 201 { font }
 //
-// The portal's session routes. Uploading is a site administrator's change,
-// like the Settings form; reading needs read access.
+// The portal's session routes. Uploading is design work (an administrator
+// or builder), like the design settings; reading needs read access.
 
 import type { APIRoute } from 'astro';
-import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
+import { requireSiteAccess, json, requireDesign } from '../../../../../lib/access';
 import { addSiteFont, fontFailureBody, siteFontsResponse } from '../../../../../lib/fonts/font-library';
 import { formText, uploadedFile, uploadForm } from '../../../../../lib/fonts/font-requests';
 
@@ -28,8 +28,8 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const designCheck = requireDesign(guard.value);
+  if (!designCheck.ok) return designCheck.response;
   const { session, site, owner_org_id } = guard.value;
   try {
     const form = await uploadForm(request);

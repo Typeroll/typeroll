@@ -19,7 +19,7 @@ const blockParts = blockPartChoices(registry);
 // The preview renders with the site's own tokens and base CSS, in the same order as a page.
 const baseCss = [siteThemeCss({ ...settings, colors: { ...settings.colors, ...colors } }), CONTENT_WELL_CSS, siteResetCss, siteGlobalCss].join('\n');
 const canEdit = ctx.permission !== 'read';
-const canEditCss = ctx.permission === 'admin';
+const canEditCss = ctx.design;
 ---
 <AppLayout title={`Styles — ${site.name}`} siteId={site.id}>
   <div class="app-header">

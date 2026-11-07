@@ -5,15 +5,15 @@
 // declares; the upload itself goes to POST /api/sites/{siteId}/fonts.
 
 import type { APIRoute } from 'astro';
-import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
+import { requireSiteAccess, json, requireDesign } from '../../../../../lib/access';
 import { fontFailureBody, inspectFontBytes } from '../../../../../lib/fonts/font-library';
 import { uploadedFile, uploadForm } from '../../../../../lib/fonts/font-requests';
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const designCheck = requireDesign(guard.value);
+  if (!designCheck.ok) return designCheck.response;
   try {
     const { bytes } = await uploadedFile(await uploadForm(request));
     return json({ info: inspectFontBytes(bytes) });

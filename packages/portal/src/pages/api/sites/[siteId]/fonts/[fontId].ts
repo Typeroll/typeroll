@@ -3,10 +3,10 @@
 // DELETE /api/sites/{siteId}/fonts/{fontId}   — remove it and its stored bytes
 //        → { deleted: true, warning? } (warning names the roles that fall back)
 //
-// The portal's session routes; both are site administration.
+// The portal's session routes; both are design work (an administrator or builder).
 
 import type { APIRoute } from 'astro';
-import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
+import { requireSiteAccess, json, requireDesign } from '../../../../../lib/access';
 import { pathParam } from '../../../../../lib/path-param';
 import { deleteSiteFont, fontFailureBody, updateSiteFont } from '../../../../../lib/fonts/font-library';
 
@@ -19,8 +19,8 @@ function fontFailure(error: unknown): Response {
 export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const designCheck = requireDesign(guard.value);
+  if (!designCheck.ok) return designCheck.response;
   const { site, owner_org_id } = guard.value;
   const id = pathParam(params.fontId);
   if (!id) return json({ error: 'Missing fontId' }, 400);
@@ -34,8 +34,8 @@ export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
 export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
+  const designCheck = requireDesign(guard.value);
+  if (!designCheck.ok) return designCheck.response;
   const { site, owner_org_id } = guard.value;
   const id = pathParam(params.fontId);
   if (!id) return json({ error: 'Missing fontId' }, 400);

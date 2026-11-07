@@ -2,11 +2,11 @@
 //      JSON: { data_base64 | source_url, options } → { report }
 //
 // options: { design: "content" | "styles" | "full", fonts?, only?, font_licence_confirmed? }.
-// Needs write permission; admin when options.design is "full", or when the
-// import adds fonts or settings pages. Fonts need font_licence_confirmed.
+// Needs write permission; design (an administrator or builder) when
+// options.design is "full", or when the import adds fonts or settings pages. Fonts need font_licence_confirmed.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { apiCanDesign, apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { importSitePackage, parseImportOptions } from '../../../../../../lib/packages/package-import';
 import { packageFromJson } from '../../../../../../lib/packages/package-requests';
 import { apiUpdatedBy } from '../../../../../../lib/snippet-write';
@@ -21,7 +21,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   try {
     const { bytes, options } = await packageFromJson(request);
     const parsed = parseImportOptions(options);
-    const report = await importSitePackage({ orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, permission: ctx.permission, actor: apiUpdatedBy(ctx.keyPrefix) }, bytes, parsed);
+    const report = await importSitePackage({ orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, permission: ctx.permission, design: apiCanDesign(ctx), actor: apiUpdatedBy(ctx.keyPrefix) }, bytes, parsed);
     return apiResponse(ctx, { report }, 200, { options: parsed });
   } catch (error) { return packageApiFailure(error, ctx); }
 };

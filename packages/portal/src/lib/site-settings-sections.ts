@@ -26,3 +26,14 @@ export const SITE_SETTINGS_SECTION_FIELDS: Record<SiteSettingsSection, readonly 
 export function scopedSettings(next: SiteSettings, section: SiteSettingsSection): Partial<SiteSettings> {
   return Object.fromEntries(SITE_SETTINGS_SECTION_FIELDS[section].map(key => [key, next[key]]));
 }
+
+/** Sections a builder may save: the look and the identity of the site, no policy, publishing or code. */
+export const DESIGN_SETTINGS_SECTIONS: readonly SiteSettingsSection[] = ['general', 'design'];
+export function isDesignSettingsSection(section: SiteSettingsSection): boolean {
+  return DESIGN_SETTINGS_SECTIONS.includes(section);
+}
+/** Settings keys a builder may change over the API: those of the design sections, the Site CSS and the render version. */
+export const DESIGN_SETTINGS_KEYS: ReadonlySet<string> = new Set([
+  ...DESIGN_SETTINGS_SECTIONS.flatMap(section => SITE_SETTINGS_SECTION_FIELDS[section] as readonly string[]),
+  'custom_css', 'render_version',
+]);

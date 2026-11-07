@@ -1,5 +1,5 @@
 ---
-import { SITE_SETTINGS_SECTIONS, isSiteSettingsSection } from '../../../../lib/site-settings-sections';
+import { SITE_SETTINGS_SECTIONS, isDesignSettingsSection, isSiteSettingsSection } from '../../../../lib/site-settings-sections';
 import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
@@ -29,8 +29,10 @@ const typographyLabels: Record<string,string> = {ratio_mobile:'Phone scale ratio
 const settings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
 const archived = isArchivedSite(site);
 const render = renderVersionStatus(settings.render_version);
-// Same gate as POST /api/sites/{siteId}/render-version.
-const canChangeRendering = ctx.permission === 'admin' && !archived;
+// Same gate as POST /api/sites/{siteId}/render-version: design work.
+const canChangeRendering = ctx.design && !archived;
+// Same gate as POST /api/sites/{siteId}/settings: a builder saves the design and general sections.
+const canEditSection = isDesignSettingsSection(section) ? ctx.design : ctx.permission === 'admin';
 // Archiving refuses a site that is still answering on a customer domain, so
 // the page says that up front instead of offering a button that 409s.
 const domainBlocksArchiving =
@@ -50,7 +52,7 @@ const domainBlocksArchiving =
     </div>
   </div>
   <p class="muted" id="settings-description">{sectionInfo.description}</p>
-  {archived ? <p class="muted">This site is archived. Restore it under Advanced to edit its settings.</p> : ctx.permission !== 'admin' && <p class="muted">A site admin can change these settings.</p>}
+  {archived ? <p class="muted">This site is archived. Restore it under Advanced to edit its settings.</p> : !canEditSection && <p class="muted">A site admin can change these settings.</p>}
 
   <section data-settings-section="publishing" hidden={section !== 'publishing'} class="card stack" style="max-width: 720px; margin-bottom: 1rem;">
     <h2 style="font-size: 1.125rem;">Publishing</h2>
@@ -80,7 +82,7 @@ const domainBlocksArchiving =
 
   <form id="site-settings-form" method="POST" action={`/api/sites/${siteId}/settings`} class="stack" style="max-width: 720px;">
     <input type="hidden" name="settings_section" value={section} />
-    <fieldset disabled={ctx.permission !== 'admin' || archived} class="settings-fields">
+    <fieldset disabled={!canEditSection || archived} class="settings-fields">
     <div class="card stack" data-settings-section="general" hidden={section !== 'general'}>
       <h2 style="font-size: 1.125rem;">Identity</h2>
       <div class="field">
@@ -190,7 +192,7 @@ const domainBlocksArchiving =
         <p class="muted text-sm">Site-wide <code>sizes</code> for responsive images, telling the browser how wide images actually render so it picks the smallest sufficient variant. A page can override this, and a per-image <code>sizes</code> attribute wins over both. Leave blank for the generic <code>(max-width: 768px) 100vw, 800px</code> default.</p>
       </div>
       <h3 style="font-size: 1rem; margin: 1.5rem 0 0;">Fonts</h3>
-      <SiteFontSettings client:load siteId={siteId} fonts={settings.fonts} language={settings.language} renderVersion={resolveRenderVersion(settings.render_version)} disabled={ctx.permission !== 'admin' || archived} />
+      <SiteFontSettings client:load siteId={siteId} fonts={settings.fonts} language={settings.language} renderVersion={resolveRenderVersion(settings.render_version)} disabled={!ctx.design || archived} />
       <p>Base size below controls all rem-based sizes. Render version 10 adds fluid defaults; explicit role and step overrides keep their values.</p>
       {Object.entries(TYPOGRAPHY_DEFAULTS).map(([key, fallback]) => <div class="field">
         <label for={`typography-${key}`}>{typographyLabels[key]}</label>

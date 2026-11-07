@@ -26,6 +26,12 @@ const canManagePublishing = membership?.role === 'owner' || membership?.role ===
   </div>
 
   <section class="card stack" style="max-width: 720px; margin-top: 1rem;">
+    <h2>Members</h2>
+    <p>{canManagePublishing ? 'Invite people to the organization, change their roles or remove them.' : 'See your role in the organization.'}</p>
+    <div><a class="btn" href="/app/settings/members">Open Members</a></div>
+  </section>
+
+  <section class="card stack" style="max-width: 720px; margin-top: 1rem;">
     <h2>Publishing</h2>
     <p>Connect accounts for <strong>{membership?.name ?? 'your organization'}</strong>. Reuse the connections for all its sites: GitHub for generated source, Cloudflare for static hosting and R2 image storage.</p>
     {canManagePublishing ? <div><a class="btn" href="/app/settings/publishing">Open Publishing</a></div> :

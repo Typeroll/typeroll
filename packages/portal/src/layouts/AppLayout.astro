@@ -18,7 +18,7 @@ import SiteSwitcher from '../components/SiteSwitcher.tsx';
 import VersionPicker from '../components/VersionPicker.tsx';
 import Icon from '../components/Icon.astro';
 import { canUseAiChat, AI_SETTINGS_PATH } from '../lib/ai/organization-ai';
-import { resolveOwnerOrgAccess } from '../lib/member-role';
+import { resolveOwnerOrgAccess, siteDesignAccess } from '../lib/member-role';
 
 interface Props {
   title?: string;
@@ -74,12 +74,18 @@ if (siteId) {
 
 // The AI assistant appears only when the site's OWNER organization has its
 // own key and allows this site, and never to read-only viewers.
+// The organization collection appears, like its API (requireCollectionAccess),
+// only on the organization's own sites and to people with design access:
+// owners, administrators and builders. A site shared in never shows it.
 let aiChatEnabled = false;
+let canUseCollection = false;
 if (siteId) {
-  const chatPermission = activeOwnerOrgId === fullSession.orgId
-    ? (await resolveOwnerOrgAccess(fullSession.orgId, fullSession.userId)).permission
-    : activePermission;
+  const ownerAccess = activeOwnerOrgId === fullSession.orgId
+    ? await resolveOwnerOrgAccess(fullSession.orgId, fullSession.userId)
+    : null;
+  const chatPermission = ownerAccess ? ownerAccess.permission : activePermission;
   aiChatEnabled = await canUseAiChat({ orgId: activeOwnerOrgId, siteId }, chatPermission);
+  canUseCollection = ownerAccess !== null && siteDesignAccess(ownerAccess.permission, ownerAccess.role);
 }
 
 // Insights nav appears only when the analytics app is enabled (opt-in) —
@@ -223,6 +229,12 @@ const initials = (session.displayName ?? session.email ?? 'U')
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="Package" /></span>
                 <span>Packages</span>
               </a>
+              {canUseCollection && (
+                <a href={`/app/sites/${siteId}/collection`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/collection`) && "app-sidebar__link--active"]}>
+                  <span class="app-sidebar__link-icon" aria-hidden><Icon name="Library" /></span>
+                  <span>Collection</span>
+                </a>
+              )}
               <a href={`/app/sites/${siteId}/media`} class:list={["app-sidebar__link", isActive(`/app/sites/${siteId}/media`) && "app-sidebar__link--active"]}>
                 <span class="app-sidebar__link-icon" aria-hidden><Icon name="Image" /></span>
                 <span>Media</span>
@@ -289,6 +301,10 @@ const initials = (session.displayName ?? session.email ?? 'U')
             <a href="/app/settings" class:list={["app-sidebar__link", isActive('/app/settings', true) && "app-sidebar__link--active"]}>
               <span class="app-sidebar__link-icon" aria-hidden><Icon name="User" /></span>
               <span>Account</span>
+            </a>
+            <a href="/app/settings/members" class:list={["app-sidebar__link", isActive('/app/settings/members', true) && "app-sidebar__link--active"]}>
+              <span class="app-sidebar__link-icon" aria-hidden><Icon name="Users" /></span>
+              <span>Members</span>
             </a>
             {serviceAccess.state !== 'unrestricted' && <a href="/app/settings/access" class="app-sidebar__link">Organization access</a>}
             {canManagePublishing && <a href="/app/settings/publishing" class:list={["app-sidebar__link", isActive('/app/settings/publishing', true) && "app-sidebar__link--active"]}>

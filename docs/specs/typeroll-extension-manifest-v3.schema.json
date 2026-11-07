@@ -97,6 +97,8 @@
               "forms:actions",
               "site_fields:read",
               "site_fields:write",
+              "collection:read",
+              "collection:write",
               "snippets:read",
               "snippets:write"
             ]

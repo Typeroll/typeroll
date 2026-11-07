@@ -1,14 +1,40 @@
 import { useState } from 'react';
 import type { BlockTemplate } from '@typeroll/shared';
 import { groupBlockTemplates, importedFromLabel, templateKindLabel } from './block-template-model';
+import { collectionApi, collectionPageHref, templateSaveKind } from './collection-model';
+import { packageApiError } from './package-import-model';
 
-/** The site's block templates: rename, describe or delete. Templates are saved from a block in the page editor. */
-export default function BlockTemplateList({ siteId, initial, canEdit }: { siteId: string; initial: BlockTemplate[]; canEdit: boolean }) {
+interface Props {
+  siteId: string;
+  initial: BlockTemplate[];
+  canEdit: boolean;
+  /** Owners, administrators and builders of the owning organization can save a template to its collection. */
+  canUseCollection?: boolean;
+}
+
+/** The site's block templates: rename, describe, delete or save to the organization collection. Templates are saved from a block in the page editor. */
+export default function BlockTemplateList({ siteId, initial, canEdit, canUseCollection = false }: Props) {
   const [templates, setTemplates] = useState(initial);
   const [editing, setEditing] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [message, setMessage] = useState<string | null>(null);
+  const [savedTo, setSavedTo] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+
+  async function saveToCollection(template: BlockTemplate) {
+    setBusy(template.id);
+    setMessage(null);
+    setSavedTo(null);
+    try {
+      const res = await fetch(`${collectionApi(siteId)}/save`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: templateSaveKind(template), id: template.id }) });
+      const body = await res.json().catch(() => null) as { entry?: { name?: string } } | null;
+      if (!res.ok || !body?.entry) { setMessage(packageApiError(body, res.status, 'Saving to the collection').message); return; }
+      setSavedTo(body.entry.name ?? template.name);
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : 'Saving to the collection failed.');
+    } finally { setBusy(null); }
+  }
 
   async function save(id: string) {
     const res = await fetch(`/api/sites/${siteId}/block-templates/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, description }) });
@@ -52,6 +78,7 @@ export default function BlockTemplateList({ siteId, initial, canEdit }: { siteId
       {canEdit && <div className="row" style={{ marginTop: '.5rem' }}>
         <button type="button" className="btn btn--secondary" onClick={() => { setEditing(template.id); setName(template.name); setDescription(template.description ?? ''); }}>Rename</button>
         <button type="button" className="btn btn--secondary" onClick={() => void remove(template)}>Delete</button>
+        {canUseCollection && <button type="button" className="btn btn--secondary" disabled={busy !== null} onClick={() => void saveToCollection(template)}>{busy === template.id ? 'Saving…' : 'Save to collection'}</button>}
       </div>}
     </div>
   );
@@ -59,6 +86,7 @@ export default function BlockTemplateList({ siteId, initial, canEdit }: { siteId
   return (
     <div className="stack">
       {message && <p role="status" style={{ margin: 0 }}>{message}</p>}
+      {savedTo && <p role="status" style={{ margin: 0 }}>Saved “{savedTo}” to the organization’s <a href={collectionPageHref(siteId)}>collection</a>, with the styles it uses. Insert it into any of the organization’s sites.</p>}
       {groups.map(group => (
         <div key={group.category ?? ''}>
           {categorized && <h3 className="gb-category">{group.category ?? 'Other'}</h3>}

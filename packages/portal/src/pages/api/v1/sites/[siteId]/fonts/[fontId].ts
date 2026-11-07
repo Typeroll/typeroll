@@ -6,7 +6,7 @@
 // next publication. Admin, like uploading.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { apiCanDesign, apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { pathParam } from '../../../../../../lib/path-param';
 import { deleteSiteFont, fontFailureBody, readSiteFont } from '../../../../../../lib/fonts/font-library';
 
@@ -24,7 +24,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  if (ctx.permission !== 'admin') return apiError('Insufficient permission (admin required)', 403, ctx);
+  if (!apiCanDesign(ctx)) return apiError('Insufficient permission (design required: an administrator or builder)', 403, ctx);
   const id = pathParam(params.fontId);
   if (!id) return apiError('Missing fontId', 400, ctx);
   try {

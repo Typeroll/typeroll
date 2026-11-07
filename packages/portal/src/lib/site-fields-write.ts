@@ -11,8 +11,8 @@
 // returned as `live` and a failed live write never undoes the save.
 //
 // Permissions follow the portal's roles:
-//   - definitions (and restoring a revision, which restores them) need site
-//     admin;
+//   - definitions (and restoring a revision, which restores them) are design
+//     work: site admin, or a builder (`design`);
 //   - values in a group with `access: 'admin'` need site admin;
 //   - other values need write (anyone who may edit content).
 
@@ -29,6 +29,8 @@ export interface SiteFieldsCtx { orgId: string; siteId: string; versionId: strin
 export interface SiteFieldsSaveOptions {
   /** The caller's permission on the site. */
   permission: SharePermission;
+  /** Design work (SiteContext.design): a builder defines settings pages without admin. */
+  design?: boolean;
   updatedBy: string;
   /** The `updated_at` the caller read; '' when nothing was saved yet. */
   expectedUpdatedAt?: string;
@@ -100,7 +102,7 @@ export function readSiteFields(ctx: SiteFieldsCtx): Promise<SiteFields> {
 export async function defineSiteFields(
   ctx: SiteFieldsCtx, input: unknown, options: SiteFieldsSaveOptions,
 ): Promise<{ siteFields: SavedSiteFields; dropped: string[] }> {
-  if (options.permission !== 'admin') throw new SiteFieldsSaveError('Defining site fields needs admin permission on the site', 403);
+  if (options.permission !== 'admin' && !options.design) throw new SiteFieldsSaveError('Defining site fields needs design permission on the site (an administrator or builder)', 403);
   const { groups, errors } = validateSiteFieldGroups(input);
   if (errors.length) throw new SiteFieldsSaveError(`The site fields are not valid: ${describe(errors)}`, 400, errors);
   const existing = await readSiteFields(ctx);
@@ -158,7 +160,7 @@ export async function updateSiteFieldValues(
 export async function restoreSiteFieldsRevision(
   ctx: SiteFieldsCtx, doc: Partial<SiteFields>, revId: string, options: Omit<SiteFieldsSaveOptions, 'note' | 'expectedUpdatedAt'>,
 ): Promise<SavedSiteFields> {
-  if (options.permission !== 'admin') throw new SiteFieldsSaveError('Restoring site fields needs admin permission on the site', 403);
+  if (options.permission !== 'admin' && !options.design) throw new SiteFieldsSaveError('Restoring site fields needs design permission on the site (an administrator or builder)', 403);
   const { groups, errors } = validateSiteFieldGroups(doc.groups ?? []);
   if (errors.length) throw new SiteFieldsSaveError(`The revision is not valid: ${describe(errors)}`, 400, errors);
   const { values } = validateSiteFieldValues(groups, doc.values ?? {});

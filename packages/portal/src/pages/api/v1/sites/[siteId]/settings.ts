@@ -3,7 +3,7 @@
 //
 // PATCH whitelists the editable fields and accepts everything the portal's
 // Settings form does (/api/sites/{siteId}/settings), with the same admin
-// permission. `scripts_head`, `scripts_body_end`, `custom_css` and the
+// permission; a builder may change the design keys only. `scripts_head`, `scripts_body_end`, `custom_css` and the
 // cookie-consent scripts are writable here: an authenticated API caller
 // (Bearer token) takes responsibility for what they ship, exactly as a site
 // admin does in the portal. The chat AI in lib/anthropic.ts does not expose
@@ -20,7 +20,8 @@
 // the indexing and origins of every published page: see INSTALLATION_REFUSED.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
+import { apiCanDesign, apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
+import { DESIGN_SETTINGS_KEYS } from '../../../../../lib/site-settings-sections';
 import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { libraryProblems, libraryWarnings, readStyles } from '../../../../../lib/site-styles-store';
@@ -104,9 +105,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Same role as the portal Settings form, render-version and custom-CSS routes.
   // An installation credential reaches this route only with `content:write`
   // and is limited to the presentational fields below.
-  if (ctx.permission !== 'admin' && !ctx.extensionIdentity) return apiError('Insufficient permission (admin required)', 403, ctx);
+  // A builder (design without admin) changes the design keys only: colours,
+  // fonts, typography, scales, widths, logo and icons, the Site CSS and the
+  // render version (lib/site-settings-sections → DESIGN_SETTINGS_KEYS).
+  if (ctx.permission !== 'admin' && !ctx.extensionIdentity && !apiCanDesign(ctx)) return apiError('Insufficient permission (admin required)', 403, ctx);
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON body');
+  if (ctx.permission !== 'admin' && !ctx.extensionIdentity) {
+    const notDesign = Object.keys(body).filter((key) => !DESIGN_SETTINGS_KEYS.has(key));
+    if (notDesign.length) return apiError(`These settings need admin permission on the site; a builder changes the design settings only: ${notDesign.join(', ')}`, 403, ctx);
+  }
   if (ctx.extensionIdentity) {
     const refused = installationRefusedFields(body);
     if (refused.length > 0) {

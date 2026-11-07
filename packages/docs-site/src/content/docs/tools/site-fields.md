@@ -77,7 +77,8 @@ groups with 200 fields in all.
 | `editor` (default) | Anyone who may edit content on the site (write or admin) |
 | `admin`            | Site administrators only                                 |
 
-The definitions themselves are always changed by site administrators.
+The definitions themselves are design work: site administrators and
+[builders](../../guides/teams-and-roles/#roles) change them.
 
 **Fields** use the same model as content type fields: `name`, `type`, `label`
 and optionally `required`, `help`, `placeholder` and `default`. Names are
@@ -198,8 +199,8 @@ sends it back as `expected_updated_at`.
 
 ## `define_site_fields`
 
-Replaces all groups and their field definitions. Needs admin permission on the
-site. Send every group, including the ones you keep: a group or field left out
+Replaces all groups and their field definitions. Needs design permission on the
+site: an administrator or a builder. Send every group, including the ones you keep: a group or field left out
 is removed, and so is its value. Renaming a field is a removal plus an
 addition. A value that no longer fits a changed field is dropped too; the
 answer lists every dropped value in `dropped_values`.

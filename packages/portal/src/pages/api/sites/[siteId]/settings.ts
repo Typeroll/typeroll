@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
-import { isSiteSettingsSection, scopedSettings } from '../../../../lib/site-settings-sections';
+import { isDesignSettingsSection, isSiteSettingsSection, scopedSettings } from '../../../../lib/site-settings-sections';
 import { vstore } from '../../../../lib/version-store';
-import { requireSiteAccess, requirePermission } from '../../../../lib/access';
+import { requireSiteAccess, requirePermission, requireDesign } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
 import { siteFontsErrors, contentWidthsError, siteTimeZone, timeZoneError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
@@ -11,13 +11,17 @@ import { fontSettingsWarnings, listSiteFonts } from '../../../../lib/fonts/font-
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
 
   const form = await request.formData();
   const section = form.get('settings_section');
   if (section !== null && !isSiteSettingsSection(section)) return new Response('Unknown settings section.', { status: 400 });
+  // The design and general sections (colours, fonts, typography, scales,
+  // widths, logo and icons) are design work: administrators and builders.
+  // Every other section, and a save of the whole form, stays with
+  // administrators: SEO policy, publishing, integrations, scripts and access.
+  const check = section !== null && isDesignSettingsSection(section) ? requireDesign(guard.value) : requirePermission(guard.value, 'admin');
+  if (!check.ok) return check.response;
   const includesSection = (id: string) => section === null || section === id;
   const store = getStore();
   const existing =

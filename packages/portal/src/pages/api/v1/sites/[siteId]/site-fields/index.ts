@@ -1,5 +1,5 @@
 // GET   /api/v1/sites/{siteId}/site-fields   — definitions and values
-// PUT   /api/v1/sites/{siteId}/site-fields   — replace the definitions (site admin)
+// PUT   /api/v1/sites/{siteId}/site-fields   — replace the definitions (design: site admin or builder)
 //   body: { groups, expected_updated_at? }
 // PATCH /api/v1/sites/{siteId}/site-fields   — change values (merge; null removes)
 //   body: { values, expected_updated_at? }
@@ -13,7 +13,7 @@
 // publication. Invalid input answers 400 with `errors: [{ path, message }]`.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey, withApiIdentity, type ApiContext } from '../../../../../../lib/api-auth';
+import { apiCanDesign, apiError, apiResponse, requireApiKey, withApiIdentity, type ApiContext } from '../../../../../../lib/api-auth';
 import { json } from '../../../../../../lib/access';
 import {
   defineSiteFields, readSiteFields, siteFieldsFailureBody, siteFieldsResponse, updateSiteFieldValues,
@@ -44,13 +44,13 @@ export const PUT: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  if (ctx.permission !== 'admin') return apiError('Defining site fields needs admin permission on the site', 403, ctx);
+  if (!apiCanDesign(ctx)) return apiError('Defining site fields needs design permission on the site (an administrator or builder)', 403, ctx);
   const parsed = await readBody(request, ctx);
   if (parsed instanceof Response) return parsed;
   if (!('groups' in parsed.body)) return apiError('Send the settings pages as groups', 400, ctx);
   try {
     const { siteFields, dropped } = await defineSiteFields(ctx, parsed.body.groups,
-      { permission: ctx.permission, updatedBy: `api-key:${ctx.keyPrefix}`, expectedUpdatedAt: parsed.expected });
+      { permission: ctx.permission, design: apiCanDesign(ctx), updatedBy: `api-key:${ctx.keyPrefix}`, expectedUpdatedAt: parsed.expected });
     return apiResponse(ctx, { ...siteFieldsResponse(siteFields, ctx.permission), dropped_values: dropped }, 200, parsed.body);
   } catch (error) { return failure(error, ctx); }
 };

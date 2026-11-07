@@ -9,7 +9,7 @@
 // path (validation, permissions per group, revision check, revisions).
 
 import type { APIRoute } from 'astro';
-import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
+import { requireSiteAccess, json, requirePermission, requireDesign } from '../../../../../lib/access';
 import {
   defineSiteFields, readSiteFields, siteFieldsFailureBody, siteFieldsResponse, updateSiteFieldValues,
 } from '../../../../../lib/site-fields-write';
@@ -38,15 +38,15 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
 export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
-  const { session, site, versionId, owner_org_id, permission } = guard.value;
+  const designCheck = requireDesign(guard.value);
+  if (!designCheck.ok) return designCheck.response;
+  const { session, site, versionId, owner_org_id, permission, design } = guard.value;
   const parsed = await readBody(request);
   if (parsed instanceof Response) return parsed;
   if (!('groups' in parsed.body)) return json({ error: 'Send the settings pages as groups' }, 400);
   try {
     const { siteFields, dropped } = await defineSiteFields({ orgId: owner_org_id, siteId: site.id, versionId }, parsed.body.groups,
-      { permission, updatedBy: session.email ?? 'unknown', expectedUpdatedAt: parsed.expected });
+      { permission, design, updatedBy: session.email ?? 'unknown', expectedUpdatedAt: parsed.expected });
     return json({ ...siteFieldsResponse(siteFields, permission), dropped_values: dropped });
   } catch (error) { return failure(error); }
 };

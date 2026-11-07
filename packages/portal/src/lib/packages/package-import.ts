@@ -113,6 +113,8 @@ export function trustedPackageKeys(env: NodeJS.ProcessEnv = process.env): Truste
 export interface ImportTargetCtx { orgId: string; siteId: string; versionId: string }
 export interface ImportCtx extends ImportTargetCtx {
   permission: SharePermission;
+  /** Design work without admin (a builder: SiteContext.design): full design, fonts and settings pages. */
+  design?: boolean;
   /** Who imports: an email address or `api-key:<prefix>`. Recorded with font licences and revisions. */
   actor: string;
 }
@@ -130,7 +132,8 @@ export interface PreparedImport {
   warnings: string[];
   /** Problems that block the import; empty when it can run. */
   errors: string[];
-  needs: { admin: boolean; font_licence: boolean };
+  /** `admin`: design permission (an administrator or builder); the name is kept for API compatibility. */
+  needs: { admin: boolean; design: boolean; font_licence: boolean };
   media: PlannedMedia[];
   pages: PlannedPage[];
   /** The validated block type documents to write, by planned id. */
@@ -445,10 +448,8 @@ export async function preparePackageImport(ctx: ImportTargetCtx, read: PackageFi
   }
 
   if (pkg.media.length > PACKAGE_LIMITS.media) errors.push(`The package has more than ${PACKAGE_LIMITS.media} media files`);
-  const needs = {
-    admin: options.design === 'full' || plan.fonts.length > 0 || createdGroups.length > 0,
-    font_licence: plan.fonts.length > 0,
-  };
+  const design = options.design === 'full' || plan.fonts.length > 0 || createdGroups.length > 0;
+  const needs = { admin: design, design, font_licence: plan.fonts.length > 0 };
   return {
     pkg, files, options, plan, signature, warnings: [...new Set(warnings)], errors: [...new Set(errors)], needs, media, pages: plannedPages,
     blockTypes, styles, designPatch: patch && Object.keys(patch).length ? patch : null, pageTemplateMap,
@@ -547,12 +548,12 @@ function finish(report: PackageImportReport): PackageImportReport {
 }
 
 /** Refuses an import the caller may not run, or one the plan says cannot run. */
-export function assertImportAllowed(prepared: PreparedImport, ctx: Pick<ImportCtx, 'permission'>): void {
+export function assertImportAllowed(prepared: PreparedImport, ctx: Pick<ImportCtx, 'permission' | 'design'>): void {
   if (ctx.permission === 'read') throw new PackageError('Importing a package requires write permission on the site', 403, 'package_permission');
-  if (prepared.needs.admin && ctx.permission !== 'admin') {
+  if (prepared.needs.design && ctx.permission !== 'admin' && !ctx.design) {
     throw new PackageError(prepared.options.design === 'full'
-      ? 'Importing the full design (colours, typography, element styles and fonts) requires admin permission, like Settings. Import with design "styles" or "content" instead.'
-      : 'This import adds fonts or settings pages, which requires admin permission on the site.', 403, 'package_permission');
+      ? 'Importing the full design (colours, typography, element styles and fonts) requires design permission (an administrator or builder), like the design settings. Import with design "styles" or "content" instead.'
+      : 'This import adds fonts or settings pages, which requires design permission on the site (an administrator or builder).', 403, 'package_permission');
   }
   if (prepared.errors.length) throw new PackageError(`The package cannot be imported into this site: ${prepared.errors[0]}${prepared.errors.length > 1 ? ` (and ${prepared.errors.length - 1} more)` : ''}`, 422, 'package_conflict', { errors: prepared.errors.slice(0, 50) });
   if (prepared.needs.font_licence && prepared.options.font_licence_confirmed !== true) {
@@ -564,7 +565,17 @@ export function assertImportAllowed(prepared: PreparedImport, ctx: Pick<ImportCt
  * Run a prepared import against a site version. Used for an existing site
  * (importSitePackage) and, later, for a new site created from a package.
  */
-export async function importSitePackageIntoVersion(ctx: ImportCtx, prepared: PreparedImport, deps: { media?: PackageMediaIO } = {}): Promise<PackageImportReport> {
+export async function importSitePackageIntoVersion(ctx: ImportCtx, prepared: PreparedImport, deps: {
+  media?: PackageMediaIO;
+  /**
+   * Called after a complete import with the function that rewrites a block
+   * tree of the package the way the import rewrote its content (renamed
+   * styles, block types and global blocks; media tokens to the site's
+   * files), for blocks the caller places itself, such as a collection entry
+   * inserted into a page.
+   */
+  onImported?: (convert: (blocks: Block[]) => Block[]) => void;
+} = {}): Promise<PackageImportReport> {
   assertImportAllowed(prepared, ctx);
   const io = deps.media ?? defaultPackageMediaIO;
   const { pkg, plan, files } = prepared;
@@ -698,7 +709,7 @@ export async function importSitePackageIntoVersion(ctx: ImportCtx, prepared: Pre
     // 9. Settings pages (site fields), and a site package's values.
     step = 'site_fields';
     if (prepared.siteFieldGroups.length) {
-      const options = { permission: ctx.permission, updatedBy: ctx.actor, note: `Import of ${pkg.name} ${pkg.version}` };
+      const options = { permission: ctx.permission, design: ctx.design, updatedBy: ctx.actor, note: `Import of ${pkg.name} ${pkg.version}` };
       await defineSiteFields({ orgId, siteId, versionId }, [...prepared.existingGroups, ...prepared.siteFieldGroups], options);
       report.created.site_field_groups.push(...prepared.siteFieldGroups.map(group => group.id));
       if (pkg.kind === 'site' && pkg.contents.site_field_values) {
@@ -744,6 +755,7 @@ export async function importSitePackageIntoVersion(ctx: ImportCtx, prepared: Pre
       typeof status === 'number' && status >= 400 && status < 600 ? status : 500, 'package_import_partial', { step, report });
   }
   await markSiteDirty(orgId, siteId, versionId);
+  deps.onImported?.(tree);
   return finish(report);
 }
 

@@ -158,6 +158,7 @@ export default defineConfig({
             { label: 'Live snippets', slug: 'tools/snippets' },
             { label: 'Fonts', slug: 'tools/fonts' },
             { label: 'Packages', slug: 'tools/packages' },
+            { label: 'Organization collection', slug: 'tools/collection' },
             { label: 'Settings', slug: 'tools/settings' },
             { label: 'Site block types', slug: 'tools/custom-block-types' },
             { label: 'Forms', slug: 'tools/forms' },

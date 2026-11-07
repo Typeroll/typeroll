@@ -16,7 +16,7 @@ interface Props {
   siteId: string;
   /** Write access: importing changes the site. */
   canEdit: boolean;
-  /** A site admin may import the whole look. */
+  /** An administrator or builder (design rights) may import the whole look. */
   isAdmin: boolean;
   /** Tests start from an inspected package. */
   initial?: { file: File; result: InspectResult };

@@ -9,10 +9,11 @@
 // and its original kept. `licence_confirmed` records that the caller checked
 // the licence allows use on this website. `source_url` is fetched here over
 // HTTPS from a public address. Font files belong to the site, not a version.
-// Writes need admin, like the settings that choose the families.
+// Writes are design work (an administrator or builder), like the settings
+// that choose the families.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey, type ApiContext } from '../../../../../../lib/api-auth';
+import { apiCanDesign, apiError, apiResponse, requireApiKey, type ApiContext } from '../../../../../../lib/api-auth';
 import { apiUpdatedBy } from '../../../../../../lib/snippet-write';
 import { addSiteFont, fontFailureBody, siteFontsResponse } from '../../../../../../lib/fonts/font-library';
 import { checkUploadLength, decodeBase64Font } from '../../../../../../lib/fonts/font-requests';
@@ -37,7 +38,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  if (ctx.permission !== 'admin') return apiError('Insufficient permission (admin required)', 403, ctx);
+  if (!apiCanDesign(ctx)) return apiError('Insufficient permission (design required: an administrator or builder)', 403, ctx);
   try {
     checkUploadLength(request, 1.4);
     const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
