@@ -10,6 +10,16 @@ for the current native header tree: `template/site_logo`, `core/navigation_menu`
 and `core/navigation_links`. Use the menu's dialog/drawer rather than an inline
 mobile expansion that moves the logo. Existing `core/navigation` remains supported.
 
+The links come from the site's **menus** (`list_menus`), not from the header.
+A `core/navigation_links` block with `source: "menu"` and
+`menu: "location:primary"` shows the menu in the `primary` location; the
+footer shows `location:footer`. Page items link by `page_id`, so renames and
+moves follow, and items with `children` get submenus. A new site has a
+`primary` menu (Home, `auto_add_pages` on) and a `footer` menu. Menu-sourced
+blocks need render version 15: read `read_site_settings` → `render.version`
+and raise it with `tr-upgrade-rendering` if it is lower. Below 15, or for a
+one-off link list, use inline `links` instead.
+
 ## Preconditions
 
 1. Read `get_site_capabilities`, `read_site_settings`, `list_partials`, and
@@ -19,6 +29,21 @@ mobile expansion that moves the logo. Existing `core/navigation` remains support
    `supports_versioned_block_type_inheritance`.
 3. Read the existing header/footer before replacing anything. Work in a branch
    for redesigns and preview at desktop, 390 px, keyboard-only, and 200% zoom.
+
+## Menus first
+
+1. `list_menus`. Make sure one menu fills `primary` and one fills `footer`;
+   create missing ones with `update_menu` (`locations: ["primary"]`).
+2. Build the link tree with `update_menu` (read it first and pass
+   `expected_updated_at`) or `add_menu_item`: `type: "page"` with the
+   `page_id` from `list_pages` for every Page, `type: "children"` with a
+   label for an automatic submenu of a Page's children, `type: "url"` only for
+   external addresses or anchors, and `type: "heading"` for a column title in
+   a wide submenu. At most 3 levels; keep the top level to a handful of items.
+3. Keep `auto_add_pages` on while the site is being built if every new
+   top-level Page belongs in the header; turn it off once the menu is curated.
+4. Use labels in the site's language. A Page item's label is the Page title
+   unless the item sets `label`.
 
 ## Header tree
 
@@ -65,21 +90,9 @@ read it back. Localize both accessible labels and every link label.
                 {
                   "type": "core/navigation_links",
                   "data": {
-                    "direction": "row",
-                    "links": [
-                      {
-                        "label": "Home",
-                        "href": "/"
-                      },
-                      {
-                        "label": "About",
-                        "href": "/about/"
-                      },
-                      {
-                        "label": "Contact",
-                        "href": "/contact/"
-                      }
-                    ]
+                    "source": "menu",
+                    "menu": "location:primary",
+                    "direction": "row"
                   }
                 }
               ],
@@ -87,21 +100,9 @@ read it back. Localize both accessible labels and every link label.
                 {
                   "type": "core/navigation_links",
                   "data": {
-                    "direction": "column",
-                    "links": [
-                      {
-                        "label": "Home",
-                        "href": "/"
-                      },
-                      {
-                        "label": "About",
-                        "href": "/about/"
-                      },
-                      {
-                        "label": "Contact",
-                        "href": "/contact/"
-                      }
-                    ]
+                    "source": "menu",
+                    "menu": "location:primary",
+                    "direction": "column"
                   }
                 }
               ]
@@ -115,6 +116,12 @@ read it back. Localize both accessible labels and every link label.
 ```
 
 The first slot is desktop; the second is the optional mobile composition.
+Both show the same `primary` menu; a separate `location:mobile` menu is only
+for a site whose mobile navigation really differs. `submenus` defaults to
+`auto`: a dropdown in the desktop row, an accordion in the mobile column. Set
+`dropdown`, `accordion`, `expanded` or `none` to override it. Verify that
+submenu buttons open with Enter/Space, close with Escape and return focus, and
+that dropdown panels do not overflow the viewport at 1024 px.
 The default is drawer below 1024 px and inline from 1024 px. For responsive
 link fields use matching `responsive_breakpoints` (tablet 768, laptop 1024,
 desktop 1280, wide 1536); do not independently hide all links at the menu boundary.
@@ -142,8 +149,10 @@ so a partner banner built from tabs can mark its links the same way.
 
 ## Footer tree and consent
 
-Use an accessible footer navigation landmark and `core/navigation_links`, not
-a second header drawer. If the footer has running about text, give it a separate,
+Use an accessible footer navigation landmark and `core/navigation_links` with
+`source: "menu"`, `menu: "location:footer"` and `submenus: "expanded"` (or one
+block per footer column, each showing its own menu by id), not a second header
+drawer. If the footer has running about text, give it a separate,
 wider column beside a nested link grid. An equal four-column grid is rarely a
 good fit for one dense paragraph and three short link lists. Start with
 `core/columns` ratio `1-2`, put flow containers inside the slots, and tune the
@@ -196,6 +205,8 @@ report, not a reason to let the block silently disappear.
 - Header and footer landmarks exist exactly once around their content.
 - Logo is fully visible, keeps its aspect ratio, has useful alt text, and links home.
 - Current-page state and localized navigation labels are correct.
+- Navigation links come from menus (`source: "menu"`); every Page item uses
+  `page_id`, and the publication reports no menu warnings.
 - Mobile disclosure is keyboard accessible and does not trap focus.
 - No tenant CSS is required for spacing, focus, wrapping, or the narrow layout.
 - Preview and a hosted static build match before promotion.

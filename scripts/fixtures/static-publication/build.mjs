@@ -80,7 +80,7 @@ for (const form of publication.forms ?? []) await writeDoc(`${base}/forms/${form
 for (const type of publication.contentTypes) {
   await writeDoc(`${base}/versions/${versionId}/content_types/${type.id}`, type);
 }
-for (const [kind, records] of Object.entries({ pages: publication.pages, partials: publication.partials, media: publication.media, block_types: publication.blockTypes ?? [], page_templates: publication.pageTemplates ?? [] })) {
+for (const [kind, records] of Object.entries({ pages: publication.pages, partials: publication.partials, menus: publication.menus ?? [], media: publication.media, block_types: publication.blockTypes ?? [], page_templates: publication.pageTemplates ?? [] })) {
   for (const doc of records) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(doc.id)) throw new Error('Invalid publication document ID');
     await writeDoc(`${base}/${kind === 'media' ? '' : `versions/${versionId}/`}${kind}/${doc.id}`, doc);

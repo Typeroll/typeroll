@@ -27,6 +27,48 @@ label the block renders the plain list, as before. Below render version 13 the
 field has no effect; raise the version with `tr-upgrade-rendering` instead of
 inserting Text blocks as group titles.
 
+From render version 15, `core/navigation_links` can show one of the site's
+[menus](../../menus/) instead of its own links. Set `source: "menu"` and `menu`
+to a menu id or a location: `location:primary`, `location:footer`,
+`location:mobile` or a location the site added. A location follows whichever
+menu fills it. Page items take the page's current title and address, so renames
+and moves follow, and unpublished or deleted pages drop out. `submenus` chooses
+how menu items with children open: `auto` (the default; a dropdown in a row of
+links, an accordion in a column and in the mobile menu), `dropdown`,
+`accordion`, `expanded` (always shown) or `none` (top level only). Submenu
+buttons carry `aria-expanded` and close on Escape; the current page and its
+parent items are marked. `source` defaults to `links`, so existing blocks keep
+their own `links`. Below render version 15 the fields have no effect.
+
+```json
+{
+  "type": "core/navigation_menu",
+  "data": { "aria_label": "Main navigation" },
+  "slots": [
+    [
+      {
+        "type": "core/navigation_links",
+        "data": {
+          "source": "menu",
+          "menu": "location:primary",
+          "direction": "row"
+        }
+      }
+    ],
+    [
+      {
+        "type": "core/navigation_links",
+        "data": {
+          "source": "menu",
+          "menu": "location:primary",
+          "direction": "column"
+        }
+      }
+    ]
+  ]
+}
+```
+
 `collapse_below` accepts `576`, `768`, `769`, `1024` or `never` (strings); default `1024`
 means modal below 1024px and inline at 1024px and above. The modal preserves the
 header position, locks background interaction, contains keyboard focus, closes on

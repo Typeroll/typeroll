@@ -1,5 +1,5 @@
-import { trackedPageSource, trackedBacklinks } from './publication-dependencies.mjs';
-import { createPageSource, DEFAULT_CONTENT_TYPE, resolveContentPage, publicContentPage, type PageSourceConfig } from '@typeroll/shared';
+import { trackedPageSource, trackedBacklinks, trackedMenuPages } from './publication-dependencies.mjs';
+import { createPageSource, DEFAULT_CONTENT_TYPE, menuPagesFromSource, resolveContentPage, publicContentPage, type MenuPage, type MenuSource, type PageSourceConfig } from '@typeroll/shared';
 // Build-time content fetching. All functions resolve the org+site IDs from
 // env vars so call sites don't need to thread them through.
 
@@ -10,6 +10,7 @@ import type {
   ContentType,
   FacetRoute,
   Media,
+  Menu,
   Page,
   PageTemplate,
   Partial as PartialDoc,
@@ -91,6 +92,8 @@ export function _resetBuildCachesForTests(): void {
   getDerived = buildMemo(loadDerived);
   getExtensionsPublic = buildMemo(loadExtensionsPublic);
   getPartials = buildMemo(loadPartials);
+  getMenus = buildMemo(loadMenus);
+  buildMenuPages = buildMemo(loadMenuPages);
   getContentTypes = buildMemo(loadContentTypes);
   getPages = buildMemo(loadPages);
   getBlockTypes = buildMemo(loadBlockTypes);
@@ -199,6 +202,31 @@ async function loadPartials(): Promise<{
   return { header, footer, freeBlocks };
 }
 export let getPartials = buildMemo(loadPartials);
+
+/** The version's menus, for Navigation links blocks that show one (render version 15). */
+async function loadMenus(): Promise<Menu[]> {
+  const { orgId, siteId, versionId } = ids();
+  return getStore().listDocs<Menu>(paths.menus(orgId, siteId, versionId));
+}
+export let getMenus = buildMemo(loadMenus);
+
+/**
+ * What menus need from the published pages. Built from an untracked page
+ * source and recorded as one `menu_pages` receipt, so a route depends on the
+ * fields menus show, not on every page record.
+ */
+async function loadMenuPages(): Promise<() => MenuPage[]> {
+  const types = await getContentTypes();
+  const pages = await getPages();
+  const trailingSlash = (await getSiteSettings()).trailing_slash ?? 'always';
+  return trackedMenuPages(() => menuPagesFromSource(createPageSource(types, pages, trailingSlash)));
+}
+export let buildMenuPages = buildMemo(loadMenuPages);
+
+/** The menus every render receives; blocks without a menu never read the pages. */
+export async function buildMenuSource(): Promise<MenuSource> {
+  return { menus: await getMenus(), pages: await buildMenuPages() };
+}
 
 async function loadPages(): Promise<Page[]> {
   const { orgId, siteId, versionId } = ids();
@@ -394,14 +422,19 @@ const ROUTE_VARYING_TOKEN = /\{\{\{?\s*(page|item|content_type|facet|pagination)
  *     /ort/uppsala/ while containing no {{facet.*}} anywhere. The template/*
  *     family binds context by definition.
  */
-async function isRouteVarying(partial: PartialDoc): Promise<boolean> {
+async function isRouteVarying(partial: PartialDoc, freeBlocks: PartialDoc[] = []): Promise<boolean> {
   const source = partial.content_mode === 'blocks' && partial.blocks?.length
     ? JSON.stringify(partial.blocks)
     : partial.html_content ?? '';
   if (ROUTE_VARYING_TOKEN.test(source)) return true;
   if (!(partial.content_mode === 'blocks' && partial.blocks?.length)) return false;
 
-  const { collectUsedBlockTypeIds } = await import('@typeroll/shared');
+  const { collectUsedBlockTypeIds, globalBlockSourceFromPartials, isMenuNavigation, withGlobalBlockContent } = await import('@typeroll/shared');
+  // A menu marks the current page and its parents, so its links differ per
+  // route, also inside a global block the partial places.
+  const showsMenu = (blocks: Block[]): boolean => blocks.some(block => isMenuNavigation(block)
+    || showsMenu(block.children ?? []) || (block.slots ?? []).some(showsMenu));
+  if (showsMenu(withGlobalBlockContent(partial.blocks, globalBlockSourceFromPartials(freeBlocks)))) return true;
   const registry = await getBlockRegistry();
   for (const id of collectUsedBlockTypeIds(partial.blocks)) {
     if (id.startsWith('template/')) return true;
@@ -478,6 +511,7 @@ export async function renderPartialHtml(
         registry: await getBlockRegistry(),
         context,
         pageSource: await buildPageSource(),
+        menuSource: await buildMenuSource(),
         onMissingType: (typeId) => {
           throw new Error(`Cannot build partial with missing block type: ${typeId}`);
         },
@@ -492,7 +526,7 @@ export async function renderPartialHtml(
   // A render-cache receipt must capture this route's actual reads, including
   // custom templates and aliases in shared partials. Reusing HTML here would
   // silently omit the later route's dependencies from its receipt.
-  if (process.env.TYPEROLL_RENDER_CACHE_WORK || !BUILD_CACHE_ENABLED || await isRouteVarying(partial)) return render();
+  if (process.env.TYPEROLL_RENDER_CACHE_WORK || !BUILD_CACHE_ENABLED || await isRouteVarying(partial, directives?.freeBlocks)) return render();
 
   const key = partial.content_mode === 'blocks' && partial.blocks?.length
     ? `blocks:${partial.id}:${JSON.stringify(partial.blocks)}`

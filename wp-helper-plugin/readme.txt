@@ -4,7 +4,7 @@ Tags: migration, export, rest-api, acf
 Requires at least: 6.0
 Tested up to: 6.7
 Requires PHP: 7.4
-Stable tag: 0.4.0
+Stable tag: 0.4.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -62,6 +62,9 @@ The key is a 48-character random string generated via `wp_generate_password()`. 
 Not yet. Only public post types with front-end URLs are exposed; WordPress scaffolding and non-public plugin storage are always excluded.
 
 == Changelog ==
+
+= 0.4.1 =
+* `/menus` lists the theme locations each menu fills and what each item links to (`object`, `object_id`, `type`) and its description, so the migrator can import menus with their places and page links.
 
 = 0.4.0 =
 * Security: only published items of public post types are exported; non-public types (orders, coupons, form submissions) return 404.

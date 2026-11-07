@@ -33,7 +33,7 @@ public links.
 | `GET /wp-json/typeroll/v1/items/{type}?page=&per_page=` | Items of a post type. Includes rendered content, featured image, ACF values, post meta, taxonomies, builder data. Returns `X-WP-Total` and `X-WP-TotalPages` headers. |
 | `GET /wp-json/typeroll/v1/items/{type}/{id}` | One item with the same shape. |
 | `GET /wp-json/typeroll/v1/acf/groups/{post_id}` | ACF field-group schema applicable to a post — for inferring the matching Typeroll Content type schema. |
-| `GET /wp-json/typeroll/v1/menus` | Navigation menus and their items, hierarchical. |
+| `GET /wp-json/typeroll/v1/menus` | Navigation menus with their theme locations and items (title, URL, parent, linked object). |
 
 | `GET /wp-json/typeroll/v1/urls` | Public post, term and other source URLs for migration discovery. |
 | `GET /wp-json/typeroll/v1/redirects` | Redirect rules detected from supported redirect plugins. |
@@ -67,7 +67,7 @@ The plugin is just PHP — no build step. To package it as a WP-installable zip:
 
 ```bash
 cd wp-helper-plugin
-zip -r ../typeroll-helper-0.4.0.zip . -x "*.git*" -x "*.DS_Store"
+zip -r ../typeroll-helper-0.4.1.zip . -x "*.git*" -x "*.DS_Store"
 ```
 
 ## Repo layout

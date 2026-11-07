@@ -587,6 +587,10 @@ not optional discovery.
    and third-party (origin: 'third_party'). Each entry includes the
    full schema so you know what `data.X` fields each block accepts.
 8. `list_page_templates` — PageTemplate docs that wrap pages.
+9. `list_menus` — the navigation menus and the locations they fill
+   (`primary`, `footer`, `mobile`). Add or move header and footer links in
+   the menu, not in the header, when its navigation block has
+   `source: "menu"`.
 
 For a build, migration, redesign, or capability report, #1–#8 are the
 preflight. For a small content-only edit, #1 + #2 + a sampling from #3 is
@@ -1313,6 +1317,7 @@ preview.
 | **Pages — blocks** | `get_page_blocks`, `add_block`, `update_block`, `move_block`, `remove_block`, `duplicate_block`, `set_block_responsive`, `set_page_mode` (never converts HTML into blocks) |
 | **Pages — meta** | `get_page_preview` |
 | **Global blocks (partials)** | `list_partials` (summary by default), `read_partial`, `create_free_block` (`blocks` or `html_content`), `update_partial`, `replace_partial`, `set_partial_mode`, `delete_partial`, `find_pages_using_block`, `make_block_global`, `detach_global_block`. Block pages reference a global block with `core/global_block` (`global_block_id`); HTML pages use `<x-include>`. |
+| **Menus** | `list_menus`, `read_menu`, `update_menu` (whole tree, `expected_updated_at`), `add_menu_item`, `delete_menu`, `find_menu_usage`. Items: `page` (`page_id`, follows renames), `url`, `children` (a page's child pages as a submenu), `heading`; at most 3 levels. Locations `primary`, `footer`, `mobile`; `auto_add_pages` appends new top-level pages. A `core/navigation_links` block with `source: "menu"`, `menu: "location:primary"` shows one (render version 15). Saved directly, live at the next publication. |
 | **Block templates** | `list_block_templates`, `read_block_template`, `save_block_template` (from `blocks` or `from: { page_id, block_id }`), `update_block_template`, `delete_block_template`, `insert_block_template` (copies with new ids). Per site, not per branch. |
 | **Styles** | `list_styles`, `create_style`, `update_style`, `delete_style`, `apply_standard_styles`. Blocks pick a style with `style_id` (heading parts: `eyebrow_style_id`, `subtitle_style_id`). Other named block parts (`read_block_type` → `parts`, e.g. `core/rich_heading.link`, `core/hero.primary_button`) take a style site-wide through the style's `parts`, or on one block through `data.part_styles`; the block's choice replaces the site-wide one, and a style class on the element wins over both. Contrast below WCAG AA is refused. |
 | **Block types** | `list_block_types`, `read_block_type`, `find_pages_using_block_type`, `list_block_type_starters`, `validate_block_type`, `preview_block_type`, `create_block_type`, `update_block_type` (`renames`, `confirm_data_loss`), `delete_block_type`, `export_block_types`, `import_block_types` (`on_conflict`: skip, rename, replace). Authoring and import need write permission. |

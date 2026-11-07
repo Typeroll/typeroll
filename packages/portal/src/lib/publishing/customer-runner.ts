@@ -35,6 +35,7 @@ import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
 import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed, findZone } from './domain-provider';
 import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
+import { publicationMenuWarnings } from './content-preflight';
 import { freezeThemeFonts } from './theme-font-freeze';
 import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest, collapseMediaHostChains } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
@@ -406,7 +407,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
       const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true });
       // Non-blocking findings (for example media left out of this publication) stay on the job for users and agents.
-      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen)];
+      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationMenuWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
       const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);

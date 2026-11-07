@@ -100,6 +100,8 @@ export async function contentSnapshot(store: Store, orgId: string, siteId: strin
 
   if (resolved.settings) put(paths.settings(orgId, siteId, versionId), resolved.settings as unknown as Record<string, unknown>);
   for (const partial of resolved.partials) put(`${paths.partials(orgId, siteId, versionId)}/${partial.id}`, partial as unknown as Record<string, unknown>);
+  // Menus (render version 15): the site-template reads them next to the partials.
+  for (const menu of resolved.menus) put(paths.menu(orgId, siteId, menu.id, versionId), menu as unknown as Record<string, unknown>);
 
   // Pages — only published and unlisted ones are public content.
   const typeIndex = new Map(resolved.contentTypes.map(type => [type.id, type]));

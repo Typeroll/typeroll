@@ -228,6 +228,17 @@ composition. The server-rendered landmark, current-page state, no-JS links,
 mobile disclosure, focus treatment, and responsive behavior are Core
 contracts rather than tenant CSS/JavaScript.
 
+**Navigation links live in menus.** A new site already has a `primary` menu
+(Home, `auto_add_pages` on, so new top-level published Pages join it) and a
+`footer` menu; check with `list_menus`. Point the header's
+`core/navigation_links` at `source: "menu"`, `menu: "location:primary"` and the
+footer's at `location:footer` (render version 15; raise it first with
+`tr-upgrade-rendering` if `read_site_settings` → `render.version` is lower).
+After creating the Pages, curate the menus with `add_menu_item` or
+`update_menu`: Page items by `page_id`, a `children` item for an automatic
+submenu, `url` items only for external addresses. Do not type Page URLs into
+inline `links`; they do not follow renames.
+
 Stage the complete tree with `update_partial partial_id="header"
 patch={blocks:[...]} save=true`, then call `set_partial_mode partial_id="header"
 to="blocks"`. Repeat for the footer and read both partials back. The inactive

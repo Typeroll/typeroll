@@ -1,0 +1,120 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { vstore } from '../../../../../lib/version-store';
+import { loadSiteContext } from '../../../../../lib/access';
+import { MENU_LOCATIONS } from '@typeroll/shared';
+import { countItems } from '../../../../../components/menu-tree';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const canEdit = ctx.permission !== 'read';
+
+const menus = (await vstore.menus(orgId, siteId, versionId))
+  .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+const taken = new Set(menus.flatMap((menu) => menu.locations ?? []));
+const freeLocations = MENU_LOCATIONS.filter((location) => !taken.has(location));
+const locationLabels: Record<string, string> = { primary: 'Primary', footer: 'Footer', mobile: 'Mobile' };
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+---
+<AppLayout title={`Menus — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <h1>Menus</h1>
+      <p class="muted" style="max-width: 760px;">
+        A menu is a list of links you keep in one place and show wherever you need it: in the header, the footer or a mobile
+        menu. Links to pages follow the page when its title or address changes.
+      </p>
+    </div>
+    {canEdit && <form method="POST" action={`/api/sites/${siteId}/menus/create`} class="row app-header__create-form menus-create">
+      <input name="name" required maxlength="120" aria-label="Menu name" placeholder="Menu name" />
+      <select name="location" aria-label="Location (optional)">
+        <option value="">No location yet</option>
+        {freeLocations.map((location) => <option value={location}>{locationLabels[location]} location</option>)}
+      </select>
+      <button type="submit" class="btn">+ New menu</button>
+    </form>}
+  </div>
+
+  {menus.length === 0 ? (
+    <div class="card menus-empty">
+      <h2>No menus yet</h2>
+      <p class="muted">
+        Create a menu, add pages, links and headings to it, and arrange them up to three levels deep. Give the menu a
+        <strong>location</strong> such as <code class="inline-code">primary</code> or <code class="inline-code">footer</code>: a location
+        names a place on the site, and each location shows one menu.
+      </p>
+      <p class="muted">
+        To show a menu, add a <strong>Navigation links</strong> block (for example in the header global block), set
+        <strong>Links from</strong> to <strong>A site menu</strong> and <strong>Menu</strong> to the menu's id or a location such as
+        <code class="inline-code">location:primary</code>.
+        When you later give that location to another menu, every block that shows the location follows.
+      </p>
+    </div>
+  ) : (
+    <div class="card menus-table-card" style="padding: 0;">
+      <table class="menus-table">
+        <thead>
+          <tr>
+            <th scope="col">Name</th>
+            <th scope="col">Locations</th>
+            <th scope="col">Items</th>
+            <th scope="col">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {menus.map((menu) => (
+            <tr class="menus-row">
+              <td class="menus-row__name">
+                <a href={`/app/sites/${siteId}/menus/${menu.id}`}>{menu.name}</a>
+                <div class="muted text-sm"><code class="inline-code">{menu.id}</code></div>
+              </td>
+              <td data-label="Locations">
+                {menu.locations?.length
+                  ? menu.locations.map((location) => <span class="menus-location">{location}</span>)
+                  : <span class="muted">None</span>}
+              </td>
+              <td class="muted" data-label="Items">
+                {plural(countItems(menu.items), 'item', 'items')}{menu.auto_add_pages ? ' · adds new pages' : ''}
+              </td>
+              <td class="muted text-sm" data-label="Updated">
+                {menu.updated_at ? new Date(menu.updated_at).toLocaleDateString() : '—'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  <style>
+    .menus-create input, .menus-create select {
+      min-height: 44px; padding: .5rem .75rem; font: inherit; font-size: 1rem;
+      color: var(--color-text); background: var(--color-surface);
+      border: 1px solid var(--color-border); border-radius: var(--radius-md);
+      min-width: 0; max-width: 100%;
+    }
+    .menus-empty { max-width: 760px; }
+    .menus-empty h2 { font-size: 1.1rem; margin-bottom: .5rem; }
+    .menus-empty p + p { margin-top: .75rem; }
+    .menus-table { width: 100%; border-collapse: collapse; }
+    .menus-table th { text-align: left; padding: .75rem 1rem; background: var(--color-bg); font-size: .875rem; }
+    .menus-row { border-top: 1px solid var(--color-border); }
+    .menus-row > td { padding: .75rem 1rem; vertical-align: top; }
+    .menus-row__name a { font-weight: 500; }
+    .menus-location {
+      display: inline-block; margin: 0 .35rem .25rem 0; padding: 1px 8px; border-radius: 999px;
+      font-size: .8rem; background: var(--color-bg); border: 1px solid var(--color-border);
+    }
+    .inline-code { font-family: var(--font-mono); font-size: .82em; background: var(--color-bg); padding: 1px 5px; border-radius: 4px; }
+    @media (max-width: 640px) {
+      .menus-table thead { display: none; }
+      .menus-row, .menus-row > td { display: block; }
+      .menus-row > td { padding: .25rem 1rem; }
+      .menus-row > td:first-child { padding-top: .75rem; }
+      .menus-row > td:last-child { padding-bottom: .75rem; }
+      .menus-row > td[data-label]::before { content: attr(data-label) ": "; color: var(--color-text-muted); font-size: .8rem; }
+    }
+  </style>
+</AppLayout>

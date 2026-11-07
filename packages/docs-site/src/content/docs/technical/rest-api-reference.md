@@ -1836,6 +1836,93 @@ Delete a media item's metadata. (R2 object cleanup is a separate ops task.)
 | --- | --- | --- | --- | --- |
 | `media_id` | path | string | yes |  |
 
+## Site: Menus
+
+### `list_menus`
+
+`GET /api/v1/sites/{siteId}/menus`
+
+Permission: `read`
+
+List the site's menus (WordPress-style menus with locations): each with its id, name, locations, auto_add_pages, items and updated_at. Check this before building a header or footer: a new site starts with a `primary` menu (location primary, Home, auto_add_pages on) and a `footer` menu. A menu has an id, a name, optional `locations` and a tree of `items` at most 3 levels deep (top level, submenu, and a third level that makes a wide submenu in columns). Item types: `page` (page_id; links by page id, so the label and address follow renames and moves, and an unpublished or deleted page drops out with a warning; `label` overrides the title), `url` (href and label; an external address, a path or an #anchor), `children` (page_id; lists that page's published child pages automatically: with a label they form a submenu under it, without one they sit in place) and `heading` (label only, no link; a column title in a wide submenu). Any item may set `description` (a short line in submenus), `icon` and `link_rel`. Items with `children` get a submenu. Locations: `primary` (header), `footer` and `mobile`, or another short lowercase name; one menu per location per site. `auto_add_pages: true` appends new top-level published pages (other than the home page) to the end automatically. To show a menu, use a `core/navigation_links` block with data { source: "menu", menu: "location:primary" } (or a menu id) and optionally `submenus`: auto (dropdown in a row, accordion in a column and the mobile drawer), dropdown, accordion, expanded or none. It needs render version 15 (read_site_settings → render.version; raise it with tr-upgrade-rendering).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `read_menu`
+
+`GET /api/v1/sites/{siteId}/menus/{menu_id}`
+
+Permission: `read`
+
+Read one menu with its whole item tree and updated_at. Pass that updated_at as expected_updated_at to update_menu so a save made in between is not overwritten.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | yes |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `update_menu`
+
+`PUT /api/v1/sites/{siteId}/menus/{menu_id}`
+
+Permission: `write`
+
+Create a menu or replace a whole menu (name, locations, auto_add_pages and the full item tree). To change an existing menu: read_menu, edit the tree, and send it back with expected_updated_at set to the updated_at you read; a save by someone else in between returns 409. Without menu_id, or with a menu_id that does not exist yet, the menu is created. Every save is validated as a whole and keeps the previous menu as a revision; an invalid menu returns `errors` with the path of each problem (for example items[0].href). Link pages with type "page" and their page_id (from list_pages), not with url items, so renames follow; use a "children" item for an automatic submenu of a page's child pages. Menus are saved directly (no working copy) and reach the live site with the next publication. To add one item, add_menu_item is simpler. A menu has an id, a name, optional `locations` and a tree of `items` at most 3 levels deep (top level, submenu, and a third level that makes a wide submenu in columns). Item types: `page` (page_id; links by page id, so the label and address follow renames and moves, and an unpublished or deleted page drops out with a warning; `label` overrides the title), `url` (href and label; an external address, a path or an #anchor), `children` (page_id; lists that page's published child pages automatically: with a label they form a submenu under it, without one they sit in place) and `heading` (label only, no link; a column title in a wide submenu). Any item may set `description` (a short line in submenus), `icon` and `link_rel`. Items with `children` get a submenu. Locations: `primary` (header), `footer` and `mobile`, or another short lowercase name; one menu per location per site. `auto_add_pages: true` appends new top-level published pages (other than the home page) to the end automatically. To show a menu, use a `core/navigation_links` block with data { source: "menu", menu: "location:primary" } (or a menu id) and optionally `submenus`: auto (dropdown in a row, accordion in a column and the mobile drawer), dropdown, accordion, expanded or none. It needs render version 15 (read_site_settings → render.version; raise it with tr-upgrade-rendering).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | no | The menu to replace or create. Omit to create a menu whose id is derived from the name. |
+| `name` | body | string | yes | Shown in the portal, e.g. "Main menu". |
+| `locations` | body | string[] | no | primary, footer, mobile or another short lowercase name. Omit to keep none; [] clears them. |
+| `auto_add_pages` | body | boolean | no | Append new top-level published pages automatically. |
+| `items` | body | object[] | yes | The whole item tree, at most 3 levels deep and 200 items. |
+| `expected_updated_at` | body | string | no | The updated_at from read_menu or list_menus. Required to replace an existing menu. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `add_menu_item`
+
+`GET /api/v1/sites/{siteId}/menus/{menu_id}`
+
+Permission: `write`
+
+Append one item to a menu, at the top level or under a parent item (parent_item_id), and save it. Reads the menu and saves it with its updated_at, so a concurrent save is refused with 409 rather than lost. Example: { menu_id: "primary", item: { type: "page", page_id: "about" } } or a submenu entry { menu_id: "primary", parent_item_id: "services", item: { type: "url", href: "https://shop.example.com", label: "Shop" } }. Use type "page" with a page_id (it follows renames), "children" for the page's child pages as an automatic submenu, "url" for other addresses and "heading" for a column title. Menus are at most 3 levels deep. Returns the saved menu and the new item's id. To restructure or remove items, use read_menu and update_menu.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | yes |  |
+| `item` | query | object | yes |  |
+| `parent_item_id` | query | string | no | Put the item in this item's submenu (as its last child). Omit for the top level. |
+| `position` | query | integer | no | Index to insert at among its siblings. Default: at the end. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `delete_menu`
+
+`DELETE /api/v1/sites/{siteId}/menus/{menu_id}`
+
+Permission: `write`
+
+Delete a menu. A navigation block that shows it (by id or by its location) then renders an empty list until another menu fills the location. Check where it is shown first with find_menu_usage. Takes effect at the next publication.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | yes |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `find_menu_usage`
+
+`GET /api/v1/sites/{siteId}/menus/{menu_id}/usage`
+
+Permission: `read`
+
+Where a menu is shown: the global blocks (header, footer, others), pages and page templates whose core/navigation_links block has source "menu" and names this menu by id or by one of its locations (location:primary), saved or in a draft. Read it before deleting a menu or moving its location.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | yes |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
 ## Site: Migration preflight
 
 ### `get_migration_readiness`

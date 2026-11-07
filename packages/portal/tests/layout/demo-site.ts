@@ -24,6 +24,34 @@ const LINKS = [
   { label: 'Journal', href: '/journal/' }, { label: 'Om oss', href: '/om-oss/' }, { label: 'Kontakt', href: '/kontakt/' },
 ];
 
+/**
+ * The site's menus (render version 15): the primary menu has a plain submenu
+ * and a wide one in columns with headings, so the layout checks cover the
+ * dropdowns, and the mobile menu shows them as accordions.
+ */
+const MENUS = [
+  { id: 'huvudmeny', name: 'Huvudmeny', locations: ['primary'], items: [
+    { id: 'tjanster', type: 'page', page_id: 'tjanster', children: [
+      { id: 'priser', type: 'page', page_id: 'priser', description: 'Fast pris för förstudier' },
+      { id: 'boka', type: 'page', page_id: 'kontakt', label: 'Boka ett första möte', description: 'Kostnadsfritt, en timme' },
+    ] },
+    { id: 'projekt', type: 'page', page_id: 'projekt', children: [
+      { id: 'bostader', type: 'heading', label: 'Bostäder', children: [
+        { id: 'villa', type: 'url', href: '/projekt/#villa-norrbyn', label: 'Villa Norrbyn', description: 'Ett hus för långa vintrar' },
+        { id: 'radhus', type: 'url', href: '/projekt/#radhusen', label: 'Radhusen i Ersboda' },
+      ] },
+      { id: 'offentligt', type: 'heading', label: 'Offentligt', children: [
+        { id: 'skola', type: 'url', href: '/projekt/#skolan', label: 'Skolan vid älven' },
+        { id: 'bibliotek', type: 'url', href: '/projekt/#biblioteket', label: 'Biblioteket' },
+      ] },
+    ] },
+    { id: 'journal', type: 'page', page_id: 'journal' },
+    { id: 'om-oss', type: 'page', page_id: 'om-oss' },
+    { id: 'kontakt', type: 'page', page_id: 'kontakt' },
+  ] },
+  { id: 'sidfot', name: 'Sidfot', locations: ['footer'], items: ['tjanster', 'projekt', 'priser', 'journal', 'om-oss', 'kontakt'].map(id => ({ id, type: 'page', page_id: id })) },
+];
+
 const page = (id: string, path: string, title: string, blocks: Block[], extra: Record<string, unknown> = {}) =>
   ({ id, slug: id, path, title, status: 'published', content_mode: 'blocks', blocks, ...extra });
 
@@ -310,11 +338,12 @@ export function demoSite(renderVersion = LATEST_RENDER_VERSION) {
       format: 'typeroll-static-publication', format_version: 2, publication_id: 'd'.repeat(64), core_commit: 'd'.repeat(40),
       site_url: 'https://ljusrum.example.invalid', version_id: 'main', site: { name: 'Ljusrum Arkitekter' }, settings,
       pages, media: [], contentTypes: [], blockTypes: [], forms: [], redirects: [],
+      ...(renderVersion >= 15 ? { menus: MENUS } : {}),
       pageTemplates: [{ id: 'starter-article', name: 'Artikel', status: 'published', blocks: swedishLabels(getPageTemplateStarter('article')!) }],
       partials: [
         ...(['header', 'footer'] as const).map(kind => ({ id: kind, kind, status: 'published', content_mode: 'blocks', blocks: [
           ...(kind === 'header' ? [b('core/announcement_bar', { text: '<p>Vi har öppet hus i smedjan lördag 14 november.</p>', link_label: 'Anmäl dig', link_url: '/kontakt/' })] : []),
-          ...getPartialCompositionStarter(kind, { links: LINKS }),
+          ...getPartialCompositionStarter(kind, { links: LINKS, renderVersion }),
         ] })),
         { id: 'kontaktremsa', kind: 'free', name: 'Kontaktremsa', status: 'published', content_mode: 'blocks', blocks: [
           b('core/cta', { heading: 'Hellre ett samtal?', subheading: '<p>Ring oss på 090-12 34 56.</p>', primary_label: 'Ring nu', primary_url: '/kontakt/', align: 'left' }),

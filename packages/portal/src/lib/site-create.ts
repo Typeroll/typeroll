@@ -5,15 +5,14 @@
 //   - the bearer-auth REST POST at /api/v1/sites (agents / MCP `create_site`)
 //
 // Keep this the single source of truth for what a fresh site contains
-// (settings + home page + header/footer partials + hosting provisioning).
+// (settings + home page + header/footer partials + menus + hosting provisioning).
 // A new seed step belongs here, not duplicated in a route.
 
 import { randomBytes } from 'node:crypto';
-import { defaultSiteSettings, newSiteStyles, paths, slugify } from '@typeroll/shared';
-import type { Site } from '@typeroll/shared';
+import { defaultSiteSettings, getPartialCompositionStarter, LATEST_RENDER_VERSION, newSiteStyles, paths, slugify } from '@typeroll/shared';
+import type { Menu, Site } from '@typeroll/shared';
 import { getStore, generateDocId } from './datastore';
 import { randomMediaId } from './media-keys';
-import { defaultHeaderHtml, defaultFooterHtml } from './default-partials';
 import { ConnectionError } from './publishing/connections';
 import { newSitePublishingMode } from './publishing/readiness';
 import { getSiteDomains, saveSiteDomains } from './publishing/domain-config';
@@ -127,21 +126,28 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
     date_updated: new Date().toISOString(),
   });
 
-  // Seed a published header + footer so the site renders from day one.
-  await store.setDoc(paths.partial(input.orgId, siteId, 'header'), {
-    name: 'Main header',
-    kind: 'header',
-    content_mode: 'html',
-    status: 'published',
-    html_content: defaultHeaderHtml(name),
-  });
-  await store.setDoc(paths.partial(input.orgId, siteId, 'footer'), {
-    name: 'Main footer',
-    kind: 'footer',
-    content_mode: 'html',
-    status: 'published',
-    html_content: defaultFooterHtml(name),
-  });
+  // Seed a published header + footer so the site renders from day one. New
+  // sites start at the latest render version, where the starter navigation
+  // shows the primary and footer menus seeded below: a page added to the
+  // site joins the header by itself.
+  for (const kind of ['header', 'footer'] as const) {
+    await store.setDoc(paths.partial(input.orgId, siteId, kind), {
+      name: kind === 'header' ? 'Main header' : 'Main footer',
+      kind,
+      content_mode: 'blocks',
+      status: 'published',
+      blocks: getPartialCompositionStarter(kind, { links: [{ label: 'Home', href: '/' }], renderVersion: LATEST_RENDER_VERSION }),
+    });
+  }
+
+  // Seed the primary and footer menus. A navigation block with source
+  // "menu" and menu "location:primary" or "location:footer" shows them; the
+  // primary menu adds new top-level pages by itself.
+  const now = new Date().toISOString();
+  for (const menu of starterMenus()) {
+    const { id, ...body } = menu;
+    await store.setDoc(paths.menu(input.orgId, siteId, id), { ...body, created_at: now, updated_at: now });
+  }
 
   if (domain && hosted) {
     await declareDomainAtCreation(input.orgId, siteId, domain);
@@ -159,6 +165,15 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
   }
 
   return { siteId, site: { ...(site as Site), id: siteId } };
+}
+
+/** The menus every new site starts with; both link the home page by id. */
+export function starterMenus(): Menu[] {
+  const home = { id: 'home', type: 'page' as const, page_id: 'home' };
+  return [
+    { id: 'primary', name: 'Main menu', locations: ['primary'], auto_add_pages: true, items: [home] },
+    { id: 'footer', name: 'Footer menu', locations: ['footer'], items: [home] },
+  ];
 }
 
 export function escapeHtml(s: string): string {

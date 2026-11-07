@@ -109,6 +109,11 @@ export interface WPMenuItem {
   url: string;
   parent: number;
   menu_order: number;
+  /** Post type or taxonomy linked to, and its id (WordPress 5.9+). */
+  object?: string;
+  object_id?: number;
+  type?: string;
+  description?: string;
 }
 
 export interface WPSiteInfo {
@@ -219,7 +224,8 @@ export class WPClient {
     return out;
   }
 
-  async listMenus(): Promise<Array<{ id: number; name: string; slug: string }>> {
+  /** Menus with their theme locations; needs a logged-in REST user, so usually empty without the helper. */
+  async listMenus(): Promise<Array<{ id: number; name: string; slug: string; locations?: string[] }>> {
     try {
       return await this.fetchJSON('/wp-json/wp/v2/menus');
     } catch {

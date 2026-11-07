@@ -409,6 +409,72 @@ test('real Core blocks build portable assets and last-page removal produces an e
 });
 
 
+test('menus are projected with known fields only, sorted, and unsafe addresses are refused', () => {
+  const value = input();
+  value.menus = [
+    { id: 'footer', name: 'Footer', locations: ['footer'], items: [], created_at: '2026-01-01T00:00:00Z', editor: 'private-value' },
+    { id: 'main', name: 'Main', locations: ['primary'], auto_add_pages: true, updated_at: '2026-01-02T00:00:00Z', items: [
+      { id: 'home', type: 'page', page_id: 'home', label: 'Start', note: 'private-value', children: [
+        { id: 'blog', type: 'url', href: 'https://blog.example.invalid/', label: 'Blog', description: 'News', link_rel: 'nofollow', children: [] },
+      ] },
+    ] },
+  ];
+  const publication = projectStaticPublication(value, identity);
+  assert.deepEqual(publication.menus, [
+    { id: 'footer', name: 'Footer', locations: ['footer'], items: [] },
+    { id: 'main', name: 'Main', locations: ['primary'], auto_add_pages: true, items: [
+      { id: 'home', type: 'page', page_id: 'home', label: 'Start', children: [
+        { id: 'blog', type: 'url', href: 'https://blog.example.invalid/', label: 'Blog', description: 'News', link_rel: 'nofollow' },
+      ] },
+    ] },
+  ]);
+  assert.deepEqual(projectStaticPublication(input(), identity).menus, []);
+  for (const menus of [
+    [{ id: 'main', name: 'Main', items: [{ id: 'x', type: 'url', href: 'javascript:alert(1)', label: 'X' }] }],
+    [{ id: 'main', name: 'Main', items: [{ id: 'x', type: 'script', label: 'X' }] }],
+    [{ id: 'Main!', name: 'Main', items: [] }],
+    [{ id: 'main', name: 'Main', items: [{ id: 'a', type: 'heading', label: 'A', children: [{ id: 'b', type: 'heading', label: 'B', children: [{ id: 'c', type: 'heading', label: 'C', children: [{ id: 'd', type: 'url', href: '/', label: 'D' }] }] }] }] }],
+    [{ id: 'main', name: 'Main', items: [] }, { id: 'main', name: 'Again', items: [] }],
+  ]) assert.throws(() => projectStaticPublication({ ...input(), menus }, identity), /menu|Duplicate/);
+});
+
+test('a frozen render version 15 project shows the primary menu with its submenu on every page', async (t) => {
+  const { build } = await import('esbuild');
+  const source = await build({ entryPoints: [fileURLToPath(new URL('../packages/shared/src/core-blocks.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { CORE_BLOCK_TYPES } = await import(`data:text/javascript;base64,${Buffer.from(source.outputFiles[0].text).toString('base64')}`);
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-static-menus-'));
+  t.after(() => fs.rm(tmp, { recursive: true, force: true }));
+  const value = input();
+  value.settings.render_version = 15;
+  const page = (id, slug, title, extra = {}) => ({ id, slug, title, status: 'published', content_mode: 'blocks', blocks: [{ id: `${id}-text`, type: 'core/prose', data: { html: `<p>${title}</p>` } }], ...extra });
+  value.pages = [page('home', '', 'Home'), page('services', 'services', 'Services'), page('design', 'design', 'Design & build', { parent: 'services', path: '/services/design' })];
+  value.partials = [{ id: 'header', name: 'Header', kind: 'header', status: 'published', content_mode: 'blocks', blocks: [
+    { id: 'nav', type: 'core/navigation_links', data: { source: 'menu', menu: 'location:primary', direction: 'row' } },
+  ] }];
+  value.menus = [{ id: 'main', name: 'Main', locations: ['primary'], items: [
+    { id: 'home', type: 'page', page_id: 'home' },
+    { id: 'services', type: 'page', page_id: 'services', children: [{ id: 'design', type: 'page', page_id: 'design', description: 'Houses <and> schools' }] },
+  ] }];
+  const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES });
+  const destination = path.join(tmp, 'site');
+  await createStaticPublicationProject(publication, destination);
+  await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
+  await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
+  await sealPublicationProject(destination);
+  const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: destination, env: {}, encoding: 'utf8', timeout: 120_000 });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const home = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');
+  assert.match(home, /<a href="\/" aria-current="page">Home<\/a>/);
+  assert.match(home, /<li class="block-nav-parent" data-submenu="dropdown"><a href="\/services\/">Services<\/a><button type="button" class="block-nav-toggle" aria-expanded="false" aria-controls="nav-nav-services">/);
+  assert.match(home, /Houses &lt;and&gt; schools/);
+  assert.match(home, /register\('core\/navigation_links'/);
+  // The header is rendered per route: the current page and its parent differ.
+  const design = await fs.readFile(path.join(destination, 'dist/services/design/index.html'), 'utf8');
+  assert.match(design, /<li class="block-nav-parent block-nav-parent--current" data-submenu="dropdown">/);
+  assert.match(design, /<a href="\/services\/design\/" aria-current="page">/);
+  assert.doesNotMatch(design, /<a href="\/" aria-current="page">/);
+});
+
 test('a resolved branch cannot accidentally publish its frozen source as main', () => {
   const value = { ...input(), versionId: 'design' };
   const publication = projectStaticPublication(value, { ...identity, noindex: false });

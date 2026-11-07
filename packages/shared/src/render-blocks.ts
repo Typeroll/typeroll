@@ -56,6 +56,8 @@ import { surfaceColor, surfaceGradientCss } from './surface-presentation.js';
 import { columnStackCss } from './column-layout.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
+import { isMenuNavigation, renderMenuNavigation, usesMenuSubmenus, type MenuSource } from './menu-render.js';
+import { NAVIGATION_SUBMENU_SCRIPT } from './navigation-menu.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
@@ -212,6 +214,12 @@ export interface RenderBlocksOptions {
    * alter existing pages are gated on this. Defaults to the baseline.
    */
   renderVersion?: number;
+  /**
+   * The site's menus, for `core/navigation_links` blocks with `source: "menu"`
+   * (render version 15, menu-render.ts). Without it such a block renders an
+   * empty list.
+   */
+  menuSource?: MenuSource;
   /** Resolves `core/global_block` references (reusable-blocks.ts). Without it they render nothing. */
   globalBlockSource?: GlobalBlockSource;
   /** Internal: global blocks being rendered, outermost first, to stop cycles. */
@@ -452,12 +460,24 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
       compiled.flatData.group_label = String(compiled.flatData.group_label ?? '').trim();
       compiled.flatData.navigation_label_id = `nav-label-${effectiveBlock.id}`;
     }
-    compiled.flatData.navigation_links_html = renderNavigationLinks(
-      effectiveBlock.data?.links,
-      options.context?.page,
-      effectiveBlock.type === 'core/navigation_links',
-      String(options.context?.site?.url ?? ''),
-    );
+    if (isMenuNavigation(effectiveBlock) && resolveRenderVersion(options.renderVersion) >= 15) {
+      // A site menu instead of the block's own links (render version 15).
+      const page = options.context?.page;
+      const menu = renderMenuNavigation(effectiveBlock, options.menuSource, {
+        currentPath: String(page?.path ?? page?.url ?? (page?.slug ? `/${String(page.slug)}` : '/')),
+        language: page?.language ?? options.context?.site?.language,
+        pageSource: options.pageSource as Parameters<typeof renderMenuNavigation>[2]['pageSource'],
+      });
+      compiled.flatData.navigation_links_html = menu.html;
+      if (menu.submenus) compiled.flatData.navigation_submenus = 'true';
+    } else {
+      compiled.flatData.navigation_links_html = renderNavigationLinks(
+        effectiveBlock.data?.links,
+        options.context?.page,
+        effectiveBlock.type === 'core/navigation_links',
+        String(options.context?.site?.url ?? ''),
+      );
+    }
   }
   if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots, { authored: effectiveBlock.data, language: options.context?.page?.language ?? options.context?.site?.language });
   // Read only by the render version 7 templates (block-media.ts).
@@ -644,6 +664,9 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     // Uses the resolved type id: that's the id the script registers under
     // (aliases run the target's script).
     rootAttrs['data-block-type'] = blockType.id;
+  } else if (compiled.flatData.navigation_submenus === 'true') {
+    // The submenu runtime finds its blocks the same way (render version 15).
+    rootAttrs['data-block-type'] = 'core/navigation_links';
   }
   if (blockType.extension) {
     // Extension values are identifiers and public block props only. Dynamic
@@ -2319,6 +2342,10 @@ export function collectBlockAssets(
   const effects = effectAssets(blocks, resolveRenderVersion(opts?.renderVersion));
   css.push(...effects.css);
   js.push(...effects.js);
+  // Submenus of a site menu need their small runtime; other link lists stay without script.
+  if (resolveRenderVersion(opts?.renderVersion) >= 15 && used.includes('core/navigation_links') && usesMenuSubmenus(blocks)) {
+    js.push(`/* core/navigation_links submenus */\n${NAVIGATION_SUBMENU_SCRIPT}`);
+  }
   if (resolveRenderVersion(opts?.renderVersion) >= 14 && css.length) css.push(`/* block defaults */\n${BLOCK_DEFAULTS_V14_CSS}`);
   // From render version 14 platform block CSS is one layer; an author's
   // per-block CSS stays unlayered and overrides it like site CSS does.

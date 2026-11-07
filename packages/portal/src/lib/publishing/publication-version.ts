@@ -25,16 +25,17 @@ async function resolveVersion(orgId: string, siteId: string, versionId: string) 
     if (!version || version.kind !== 'branch') throw new Error('Publication version no longer exists');
     current = version.base_version_id ?? MAIN_VERSION_ID;
   }
-  const [settings, pages, partials, blockTypes, pageTemplates, redirects, contentTypes] = await Promise.all([
+  const [settings, pages, partials, menus, blockTypes, pageTemplates, redirects, contentTypes] = await Promise.all([
     vstore.settings(orgId, siteId, versionId),
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
+    vstore.menus(orgId, siteId, versionId),
     vstore.blockTypes(orgId, siteId, versionId),
     vstore.pageTemplates(orgId, siteId, versionId),
     vstore.redirects(orgId, siteId, versionId),
     vstore.contentTypes(orgId, siteId, versionId),
   ]);
-  const resolved = { versionId, settings, pages, partials, blockTypes, pageTemplates, redirects, contentTypes };
+  const resolved = { versionId, settings, pages, partials, menus, blockTypes, pageTemplates, redirects, contentTypes };
   assertContentExportable(resolved);
   return resolved;
 }

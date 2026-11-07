@@ -8,7 +8,7 @@
  *   GET /items/{type}?page&per_page   items of a type, with everything inlined
  *   GET /items/{type}/{id}            one item
  *   GET /acf/groups/{post_id}         ACF field-group schema for a post id
- *   GET /menus                        navigation menus and items
+ *   GET /menus                        navigation menus, their theme locations and items
  *   GET /urls                         every public-facing permalink
  *   GET /redirects                    existing redirects from common WP plugins
  *   GET /postmeta/{id}/{key}          one public postmeta field of a published post
@@ -278,14 +278,23 @@ class Typeroll_Helper_Rest_API {
 	public static function route_menus( $request ) {
 		if ( ! function_exists( 'wp_get_nav_menus' ) ) return rest_ensure_response( array() );
 		$menus = wp_get_nav_menus();
+		// Theme locations (location slug => menu term id), so the importer can
+		// place each menu in the header, footer or mobile menu.
+		$assigned = function_exists( 'get_nav_menu_locations' ) ? get_nav_menu_locations() : array();
+		$assigned = is_array( $assigned ) ? $assigned : array();
 		$out = array();
 		foreach ( $menus as $menu ) {
 			$items = wp_get_nav_menu_items( $menu->term_id );
+			$locations = array();
+			foreach ( $assigned as $location => $menu_id ) {
+				if ( (int) $menu_id === (int) $menu->term_id ) $locations[] = (string) $location;
+			}
 			$out[] = array(
-				'id'    => (int) $menu->term_id,
-				'name'  => $menu->name,
-				'slug'  => $menu->slug,
-				'items' => is_array( $items ) ? array_map(
+				'id'        => (int) $menu->term_id,
+				'name'      => $menu->name,
+				'slug'      => $menu->slug,
+				'locations' => $locations,
+				'items'     => is_array( $items ) ? array_map(
 					function( $i ) {
 						return array(
 							'id'        => (int) $i->ID,
@@ -295,6 +304,13 @@ class Typeroll_Helper_Rest_API {
 							'order'     => (int) $i->menu_order,
 							'target'    => $i->target,
 							'classes'   => is_array( $i->classes ) ? array_values( array_filter( $i->classes ) ) : array(),
+							// What the item links to: object is the post type or taxonomy
+							// (page, post, category) and object_id its id; type is
+							// post_type, taxonomy or custom.
+							'object'    => (string) $i->object,
+							'object_id' => (int) $i->object_id,
+							'type'      => (string) $i->type,
+							'description' => (string) $i->description,
 						);
 					},
 					$items

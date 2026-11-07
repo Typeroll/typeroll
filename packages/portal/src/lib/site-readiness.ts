@@ -4,19 +4,20 @@
 // link. Nothing here blocks a publication or changes content.
 
 import {
-  DEFAULT_CONTENT_TYPE, checkJsonLd, lintSiteCss, paths, resolveContentPage,
-  type Block, type BlockType, type ContentType, type CssLintFinding, type Media, type Page,
+  DEFAULT_CONTENT_TYPE, checkJsonLd, findMenu, lintSiteCss, locationConflicts, paths, resolveContentPage,
+  type Block, type BlockType, type ContentType, type CssLintFinding, type Media, type Menu, type MenuItem, type Page,
   type AppId, type PageTemplate, type Partial as PartialDoc, type Site, type SiteApps, type SiteSettings,
 } from '@typeroll/shared';
 import type { ReadWriteStore } from './datastore';
 import { checkInternalLinks, type InternalLinkReport } from './internal-link-check';
+import { menuRefs } from './menu-usage';
 import { vstore } from './version-store';
 import { compareZoneAiPolicy, type ZoneAiPolicyRead } from './publishing/zone-ai-policy';
 
 export const READINESS_ITEM_IDS = [
   'share_image', 'home_description', 'organization', 'same_as', 'favicon', 'analytics_consent', 'search_console',
   'privacy_page', 'contact_page', 'not_found_page',
-  'indexable_pages', 'orphan_pages', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
+  'indexable_pages', 'orphan_pages', 'menus', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
   'duplicate_fonts', 'custom_css_overrides',
   'ai_crawler_zone_conflict', 'structured_data',
 ] as const;
@@ -56,6 +57,8 @@ export interface ReadinessInput {
   templates: PageTemplate[];
   contentTypes: ContentType[];
   blockTypes: BlockType[];
+  /** The site's menus; absent is the same as none. */
+  menus?: Menu[];
   media: Media[];
   apps: SiteApps | null;
   links: Pick<InternalLinkReport, 'links'>;
@@ -235,8 +238,31 @@ export function buildSiteReadiness(input: ReadinessInput): SiteReadinessReport {
   else if (indexable.length <= 1) items.push(item('indexable_pages', 'suggestion', `Only ${indexable.length} indexable page${indexable.length === 1 ? '' : 's'}. One page can rank for only a few searches.`, 'Give each product, service or question its own page.'));
   else items.push(item('indexable_pages', 'ok', `${indexable.length} pages can be indexed.`, 'None needed.'));
 
+  // menus: a menu counts as a link source where live content shows it.
+  const menus = input.menus ?? [];
+  const publishedTemplates = input.templates.filter(t => t.status === 'published');
+  const placedMenus = new Set<string>();
+  for (const tree of [...live.map(page => page.blocks), ...partials.map(partial => partial.blocks), ...publishedTemplates.map(t => t.blocks)])
+    for (const ref of menuRefs(tree)) { const menu = findMenu(menus, ref); if (menu) placedMenus.add(menu.id); }
+  const conflicts = locationConflicts(menus);
+  const pagesById = new Map(input.pages.map(page => [page.id, page]));
+  const flat = (items: MenuItem[] | undefined): MenuItem[] => (items ?? []).flatMap(entry => [entry, ...flat(entry.children)]);
+  const menuProblems = [
+    ...conflicts.map(location => `Location "${location}" is filled by ${menus.filter(menu => menu.locations?.includes(location)).map(menu => `"${menu.name}"`).join(' and ')}`),
+    ...menus.flatMap(menu => flat(menu.items).filter(entry => (entry.type === 'page' || entry.type === 'children') && entry.page_id).flatMap(entry => {
+      const target = pagesById.get(entry.page_id!);
+      if (!target) return [`"${menu.name}": item ${entry.id} links to a page that no longer exists`];
+      if (target.status !== 'published') return [`"${menu.name}": item ${entry.id} links to ${label(target)}, which is not published`];
+      return [];
+    })),
+  ];
+  items.push(menuProblems.length
+    ? item('menus', 'warning', `${menuProblems.length} menu problem${menuProblems.length === 1 ? '' : 's'}: menu items that are left out of the published site, or locations filled twice.`,
+      'Point each item at a published page or remove it, publish the page, and keep each location in one menu.', menuProblems)
+    : item('menus', 'ok', menus.length ? 'Menu items link to published pages, and each location shows one menu.' : 'The site has no menus.', 'None needed.'));
+
   // orphan_pages
-  const liveSources = new Set([...live.map(page => `page:${page.id}`), ...partials.map(partial => `partial:${partial.id}`), ...input.templates.filter(t => t.status === 'published').map(t => `template:${t.id}`)]);
+  const liveSources = new Set([...live.map(page => `page:${page.id}`), ...partials.map(partial => `partial:${partial.id}`), ...publishedTemplates.map(t => `template:${t.id}`), ...[...placedMenus].map(id => `menu:${id}`)]);
   const listed = new Set<string>();
   for (const page of live) listedContentTypes(page.blocks, listed);
   for (const partial of partials) listedContentTypes(partial.blocks, listed);
@@ -351,18 +377,19 @@ export async function readSiteReadiness(args: {
   readZone: () => Promise<ZoneAiPolicyRead>;
 }): Promise<SiteReadinessReport> {
   const { store, orgId, siteId, versionId } = args;
-  const [settings, pages, partials, templates, contentTypes, blockTypes, media, apps, links, zone] = await Promise.all([
+  const [settings, pages, partials, templates, contentTypes, blockTypes, menus, media, apps, links, zone] = await Promise.all([
     vstore.settings(orgId, siteId, versionId),
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
     vstore.pageTemplates(orgId, siteId, versionId),
     vstore.contentTypes(orgId, siteId, versionId),
     vstore.blockTypes(orgId, siteId, versionId),
+    vstore.menus(orgId, siteId, versionId),
     store.listDocs<Media>(paths.media(orgId, siteId)),
     store.getDoc<SiteApps>(paths.apps(orgId, siteId)),
     checkInternalLinks({ store, orgId, siteId, versionId, site: args.site, includeLinks: true }),
     args.readZone().catch(() => ({ status: 'unavailable', host: args.site.domain ?? '' }) as ZoneAiPolicyRead),
   ]);
   if (!settings) throw new Error('Site settings not found');
-  return buildSiteReadiness({ siteId, settings, pages, partials, templates, contentTypes, blockTypes, media, apps: apps ?? null, links, zone });
+  return buildSiteReadiness({ siteId, settings, pages, partials, templates, contentTypes, blockTypes, menus, media, apps: apps ?? null, links, zone });
 }

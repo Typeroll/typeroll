@@ -906,3 +906,40 @@ describe('chat action editor links', () => {
     expect(saved.action).toMatchObject({ type: 'update_page', href: '/app/sites/mysite/pages/about', link_label: 'Edit page' });
   });
 });
+
+describe('menu tools', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('create, read, add an item to a submenu and refuse a stale replace', async () => {
+    const { ctx, runTool } = await setup();
+    const created = await runTool('update_menu', { menu_id: 'primary', name: 'Main menu', locations: ['primary'], items: [{ id: 'home', type: 'page', page_id: 'home' }, { id: 'services', type: 'page', page_id: 'services' }] }, ctx);
+    expect(created.result).toMatchObject({ ok: true, menu: { id: 'primary', locations: ['primary'] } });
+    expect(created.action).toMatchObject({ type: 'update_menu', href: `/app/sites/${SITE}/menus/primary` });
+
+    const added = await runTool('add_menu_item', { menu_id: 'primary', parent_item_id: 'services', item: { type: 'url', href: 'https://shop.example.com', label: 'Shop' } }, ctx);
+    expect(added.result).toMatchObject({ ok: true, item_id: 'shop' });
+    const read = (await runTool('read_menu', { menu_id: 'primary' }, ctx)).result as { menu: import('@typeroll/shared').Menu };
+    expect(read.menu.items[1]!.children!.map((item) => item.id)).toEqual(['shop']);
+    expect(read.menu.locations).toEqual(['primary']);
+
+    const unchecked = await runTool('update_menu', { menu_id: 'primary', name: 'Main menu', items: [] }, ctx);
+    expect((unchecked.result as { error: string }).error).toMatch(/expected_updated_at/);
+    const stale = await runTool('update_menu', { menu_id: 'primary', name: 'Main menu', items: [], expected_updated_at: created.result && (created.result as { menu: { updated_at: string } }).menu.updated_at }, ctx);
+    expect((stale.result as { error: string }).error).toMatch(/saved by someone else/);
+
+    const listed = (await runTool('list_menus', {}, ctx)).result as { menus: Array<{ id: string }> };
+    expect(listed.menus.map((menu) => menu.id)).toEqual(['primary']);
+  });
+
+  it('returns validation errors with their paths', async () => {
+    const { ctx, runTool } = await setup();
+    const out = await runTool('update_menu', { menu_id: 'bad', name: 'Bad', items: [{ id: 'x', type: 'url' }] }, ctx);
+    expect((out.result as { errors: Array<{ path: string }> }).errors.map((e) => e.path)).toContain('items[0].href');
+  });
+
+  it('teaches the assistant to change the menu rather than the header', async () => {
+    const { PLAYBOOK_STARTER } = await import('../../lib/playbook');
+    expect(PLAYBOOK_STARTER).toContain('add_menu_item');
+    expect(PLAYBOOK_STARTER).toContain('auto_add_pages');
+  });
+});

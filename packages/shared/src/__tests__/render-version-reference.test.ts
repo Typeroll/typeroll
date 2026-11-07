@@ -30,6 +30,8 @@ import {
   siteThemeCss,
 } from '../index.js';
 import type { Block, BlockType, FieldDefinition } from '../types.js';
+import type { Menu } from '../menus.js';
+import type { RenderBlocksOptions } from '../render-blocks.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const registry = buildCoreBlockRegistry();
@@ -60,8 +62,30 @@ function sampleBlock(type: BlockType): Block {
   return block;
 }
 
+/** A site menu with a plain submenu and a wide one (columns with headings). */
+const SAMPLE_MENU: Menu = {
+  id: 'main', name: 'Main', locations: ['primary'], items: [
+    { id: 'home', type: 'url', href: '/', label: 'Home' },
+    { id: 'services', type: 'page', page_id: 'services', children: [
+      { id: 'design', type: 'page', page_id: 'design', description: 'Houses & schools' },
+      { id: 'advice', type: 'url', href: '/advice/', label: 'Advice' },
+    ] },
+    { id: 'work', type: 'heading', label: 'Work', children: [
+      { id: 'homes', type: 'heading', label: 'Homes', children: [{ id: 'villa', type: 'url', href: '/work/villa/', label: 'Villa' }] },
+      { id: 'public', type: 'url', href: '/work/public/', label: 'Public', children: [{ id: 'school', type: 'url', href: '/work/school/', label: 'School' }] },
+    ] },
+  ],
+};
+const MENU_SOURCE: RenderBlocksOptions['menuSource'] = {
+  menus: [SAMPLE_MENU],
+  pages: () => [
+    { id: 'services', title: 'Services', path: '/services/' },
+    { id: 'design', title: 'Design', path: '/services/design/', parent: 'services' },
+  ],
+};
+
 /** Extra samples for parts of a block that the default sample leaves empty. */
-const EXTRA_SAMPLES: Array<{ name: string; block: Block }> = [
+const EXTRA_SAMPLES: Array<{ name: string; block: Block; from?: number; options?: Partial<RenderBlocksOptions> }> = [
   {
     name: 'core__heading--grouped',
     block: {
@@ -74,18 +98,27 @@ const EXTRA_SAMPLES: Array<{ name: string; block: Block }> = [
     name: 'core__button--classed',
     block: { id: 'ref', type: 'core/button', data: { label: 'Sample', href: '/sample' }, style_overrides: { custom_class: 'custom-button' } },
   },
+  {
+    name: 'core__navigation_links--menu-row', from: 15, options: { menuSource: MENU_SOURCE, context: { page: { path: '/services/design/' } } },
+    block: { id: 'ref', type: 'core/navigation_links', data: { source: 'menu', menu: 'location:primary', direction: 'row' } },
+  },
+  {
+    name: 'core__navigation_links--menu-column', from: 15, options: { menuSource: MENU_SOURCE, context: { page: { path: '/' } } },
+    block: { id: 'ref', type: 'core/navigation_links', data: { source: 'menu', menu: 'main', group_label: 'Explore' } },
+  },
 ];
 
-function render(type: BlockType, renderVersion: number, sample?: Block): string {
+function render(type: BlockType, renderVersion: number, sample?: Block, options: Partial<RenderBlocksOptions> = {}): string {
   const block = sample ?? sampleBlock(type);
   let html: string;
   try {
-    html = renderBlocks([block], { registry, renderVersion });
+    html = renderBlocks([block], { ...options, registry, renderVersion });
   } catch (error) {
     html = `<!-- render error: ${(error as Error).message} -->`;
   }
-  const css = collectBlockAssets([block], registry, { renderVersion }).css;
-  return `${html}\n\n/* css */\n${css}\n`;
+  const assets = collectBlockAssets([block], registry, { renderVersion });
+  // Script is recorded only for the samples that pass options (added in version 15).
+  return `${html}\n\n/* css */\n${assets.css}\n${options.menuSource && assets.js ? `\n/* js */\n${assets.js}\n` : ''}`;
 }
 
 const coreTypes = [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));
@@ -134,9 +167,9 @@ for (const { version } of RENDER_VERSIONS) {
       });
     }
 
-    for (const { name, block } of EXTRA_SAMPLES) {
+    for (const { name, block, options } of EXTRA_SAMPLES.filter(sample => version >= (sample.from ?? 1))) {
       it(`keeps ${name}`, async () => {
-        await expect(render(registry.get(block.type)!, version, block)).toMatchFileSnapshot(
+        await expect(render(registry.get(block.type)!, version, block, options)).toMatchFileSnapshot(
           `./__render-reference__/v${version}/${name}.html`,
         );
       });

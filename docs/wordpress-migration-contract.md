@@ -108,10 +108,25 @@ other bodies intact, and obtain the deployment/data-change approval required by
 the installation. Images do not need to move merely because category fields
 become references. Preserve a rollback copy before applying a reviewed repair.
 
+## Menus
+
+`import_menus` runs after `extract_content`. Each WordPress menu becomes a
+menu `wp-<slug>`: items whose object is an imported page, post or term
+(`wp-<type>-<id>`, `wp-term-<taxonomy>-<id>`), or whose address is a page's
+old WordPress URL or path, become page items by id; `#` parents become
+headings; other items keep their address (same-site addresses as paths).
+Nesting beyond three levels moves up into the third level, in order. Theme
+locations map by name to `primary`, `footer` and `mobile`; other valid names
+are kept. A location an untouched starter menu fills passes to the imported
+menu; one an edited menu fills stays there and is logged. A menu id that
+already exists is preserved, so a rerun changes nothing. Unreadable menus are
+logged and never fail the migration.
+
 ## Evidence
 
 Run focused workflow, taxonomy, media preservation and launch-report tests; the
-shared renderer tests; `php wp-helper-plugin/tests/taxonomies.php` and
+shared renderer tests; `php wp-helper-plugin/tests/taxonomies.php`,
+`php wp-helper-plugin/tests/menus.php` and
 `php wp-helper-plugin/tests/security.php`; browser
 `article-layout.spec.ts`; then `node scripts/oss-release-check.mjs`.
 The regression tests must reject the previous workflow/renderer. Production

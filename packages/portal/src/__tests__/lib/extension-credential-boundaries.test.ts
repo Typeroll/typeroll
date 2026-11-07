@@ -119,6 +119,9 @@ describe('REST scope map', () => {
       ['/media', 'GET', 'media:read'], ['/deploy', 'POST', 'deploy:request'], ['/deploys/j1', 'GET', 'deploy:request'],
       ['/delivery/email', 'POST', 'email:send'], [`/delivery/inbound/${'a'.repeat(64)}`, 'GET', 'email:inbound:status'],
       ['/extensions/self', 'GET', 'extension:config:read'], ['/apps/documentation', 'GET', 'content:read'],
+      ['/menus', 'GET', 'content:read'], ['/menus', 'POST', 'content:write'], ['/menus/main/', 'PUT', 'content:write'],
+      ['/menus/main', 'DELETE', 'content:write'], ['/menus/main/usage', 'GET', 'content:read'],
+      ['/menus/main/revisions/r1', 'GET', 'content:read'], ['/menus/main/revisions/r1/restore', 'POST', 'content:write'],
     ];
     for (const [path, method, scope] of cases) {
       expect(extensionScopeForApiRequest(`/api/v1/sites/site${path}`, method), `${method} ${path}`).toBe(scope);

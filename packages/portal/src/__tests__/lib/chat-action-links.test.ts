@@ -7,6 +7,7 @@ describe('chatEditLink', () => {
     expect(chatEditLink('mysite', 'block_type', 'counter')).toEqual({ href: '/app/sites/mysite/blocks?type=counter', link_label: 'Edit block type' });
     expect(chatEditLink('mysite', 'partial', 'header')).toEqual({ href: '/app/sites/mysite/partials/header', link_label: 'Edit global block' });
     expect(chatEditLink('mysite', 'template', 'blog-post')).toEqual({ href: '/app/sites/mysite/templates/blog-post', link_label: 'Edit template' });
+    expect(chatEditLink('mysite', 'menu', 'main-menu')).toEqual({ href: '/app/sites/mysite/menus/main-menu', link_label: 'Edit menu' });
   });
 
   it('encodes ids', () => {

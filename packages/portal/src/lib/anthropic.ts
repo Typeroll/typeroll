@@ -42,6 +42,9 @@ import { AI_NOT_ENABLED_MESSAGE, getAnthropicForSite } from './ai/organization-a
 import { snapshotRevision } from './revisions';
 import { applyContentWrite } from './content-write';
 import { chatEditLink } from './chat-action-links';
+import { createMenu, MenuSaveError, replaceMenu } from './menu-write';
+import { appendMenuItem } from './menu-items';
+import type { Menu } from '@typeroll/shared';
 import {
   mergeJsonLd,
   STRUCTURED_DATA,
@@ -602,6 +605,48 @@ const tools: Anthropic.Tool[] = [
     },
   },
 
+  // Menus — the site's navigation links, shown by navigation blocks
+  {
+    name: 'list_menus',
+    description: 'List the site\'s menus with their locations (primary = header, footer, mobile), auto_add_pages, items and updated_at. The header and footer show navigation from menus when their core/navigation_links block has source "menu" (for example menu "location:primary").',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'read_menu',
+    description: 'Read one menu with its whole item tree and updated_at.',
+    input_schema: { type: 'object', properties: { menu_id: { type: 'string' } }, required: ['menu_id'] },
+  },
+  {
+    name: 'update_menu',
+    description:
+      'Replace a whole menu, or create it when menu_id is new. Items: {type:"page", page_id} links a page by id (label and address follow renames; label overrides the title), {type:"children", page_id, label?} lists that page\'s child pages as an automatic submenu, {type:"url", href, label} any other address, {type:"heading", label} a column title. Any item can have children (at most 3 levels). Locations: primary, footer, mobile; one menu per location. auto_add_pages appends new top-level pages automatically. To change an existing menu, read_menu first and pass its updated_at as expected_updated_at. Saved directly (not a draft); live at the next publication. Invalid menus come back with errors and their paths.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        menu_id: { type: 'string', description: 'The menu to replace or create, e.g. "primary".' },
+        name: { type: 'string' },
+        locations: { type: 'array', items: { type: 'string' } },
+        auto_add_pages: { type: 'boolean' },
+        items: { type: 'array', items: { type: 'object' }, description: 'The whole item tree.' },
+        expected_updated_at: { type: 'string', description: 'The updated_at you read. Required to replace an existing menu.' },
+      },
+      required: ['menu_id', 'name', 'items'],
+    },
+  },
+  {
+    name: 'add_menu_item',
+    description: 'Append one item to a menu (at the top level, or in the submenu of parent_item_id) and save it. Use {type:"page", page_id} for pages on the site. Prefer this over editing the header for "add X to the menu".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        menu_id: { type: 'string' },
+        item: { type: 'object', description: 'A menu item, e.g. {"type":"page","page_id":"about"}.' },
+        parent_item_id: { type: 'string', description: 'Put the item in this item\'s submenu. Omit for the top level.' },
+      },
+      required: ['menu_id', 'item'],
+    },
+  },
+
   // Design reference — the starter design system the site MAY follow
   {
     name: 'read_design_notes',
@@ -932,6 +977,10 @@ Three flavours, all managed via update_partial / read_partial / list_partials:
 3. **free blocks** (kind="free") — reusable HTML you can drop into any page with \`<x-include name="block-id" />\` (the renderer expands it at build time using the published version). Good for announcement bars, newsletter CTAs, cookie banners, anything that appears on multiple pages and should change in one place. Call update_partial with a kebab-case partial_id (e.g. "newsletter-cta") and the full HTML; the kind defaults to "free" for anything that isn't header/footer.
 
 When updating the header, keep the brand/logo area and the nav links structure unless the user asked you to redo them.
+
+## Menus
+
+The site's navigation links can live in **menus** (\`list_menus\`, \`read_menu\`, \`update_menu\`, \`add_menu_item\`) instead of in the header. A menu is a tree of items (at most 3 levels): \`page\` items link a page by \`page_id\` so renames follow, \`children\` items list a page's child pages as an automatic submenu, \`url\` items hold other addresses, and \`heading\` items are column titles. A menu fills locations: \`primary\` (header), \`footer\`, \`mobile\`. A header or footer shows a menu with a \`core/navigation_links\` block whose data is \`{ source: "menu", menu: "location:primary" }\` (render version 15). When the header shows a menu, change the menu (\`add_menu_item\`), not the header. Check \`read_partial\` first: an HTML header, or navigation_links with its own \`links\`, keeps its links in the header. A menu with \`auto_add_pages\` adds new top-level pages by itself. Menu saves are not drafts: they apply at once and go live with the next publication.
 
 When the user wants to embed a free block in a page, edit the page's html_content and add \`<x-include name="block-id" />\` where it should appear — don't paste the block's HTML inline, that defeats the point.
 
@@ -1865,6 +1914,62 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           ...chatEditLink(ctx.siteId, 'partial', id),
         },
       };
+    }
+
+    // ─── Menus ─────────────────────────────────────────────────────────────
+    case 'list_menus': {
+      const menus = await vstore.menus(ctx.orgId, ctx.siteId, ctx.versionId);
+      return { result: { menus } };
+    }
+
+    case 'read_menu': {
+      const menu = await vstore.menu(ctx.orgId, ctx.siteId, ctx.versionId, String(input.menu_id ?? ''));
+      return { result: menu ? { menu } : { error: 'Menu not found' } };
+    }
+
+    case 'update_menu':
+    case 'add_menu_item': {
+      const menuId = String(input.menu_id ?? '').trim();
+      if (!menuId) return { result: { error: 'menu_id required' } };
+      try {
+        const existing = await vstore.menu(ctx.orgId, ctx.siteId, ctx.versionId, menuId);
+        let saved: Menu;
+        let itemId: string | undefined;
+        if (name === 'add_menu_item') {
+          if (!existing) return { result: { error: `No menu ${menuId}. list_menus shows the menus; update_menu creates one.` } };
+          const added = appendMenuItem(existing.items, input.item, input.parent_item_id ? String(input.parent_item_id) : undefined);
+          if ('error' in added) return { result: { error: added.error } };
+          itemId = added.id;
+          saved = await replaceMenu(wcCtx(ctx), menuId, {
+            name: existing.name, items: added.items,
+            ...(existing.locations ? { locations: existing.locations } : {}),
+            ...(existing.auto_add_pages ? { auto_add_pages: true } : {}),
+          }, { updatedBy: 'chat-ai', expectedUpdatedAt: existing.updated_at ?? '' });
+        } else {
+          const body = {
+            name: input.name, items: input.items,
+            ...(input.locations !== undefined ? { locations: input.locations } : {}),
+            ...(input.auto_add_pages !== undefined ? { auto_add_pages: input.auto_add_pages } : {}),
+          };
+          if (existing && typeof input.expected_updated_at !== 'string')
+            return { result: { error: `The menu ${menuId} exists. read_menu first and pass its updated_at as expected_updated_at.` } };
+          saved = existing
+            ? await replaceMenu(wcCtx(ctx), menuId, body, { updatedBy: 'chat-ai', expectedUpdatedAt: String(input.expected_updated_at) })
+            : await createMenu(wcCtx(ctx), { ...body, id: menuId });
+        }
+        return {
+          result: { ok: true, menu: saved, ...(itemId ? { item_id: itemId } : {}) },
+          action: {
+            type: 'update_menu',
+            description: name === 'add_menu_item' ? `Added an item to the menu ${saved.name}.` : existing ? `Updated the menu ${saved.name}.` : `Created the menu ${saved.name}.`,
+            target: menuId,
+            ...chatEditLink(ctx.siteId, 'menu', menuId),
+          },
+        };
+      } catch (error) {
+        if (error instanceof MenuSaveError) return { result: { error: error.message, ...(error.errors ? { errors: error.errors } : {}) } };
+        throw error;
+      }
     }
 
     // ─── Design reference ──────────────────────────────────────────────────

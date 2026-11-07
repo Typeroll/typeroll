@@ -161,6 +161,14 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'The site setting motion: reduced turns off entrance animations, carousel autoplay, background and hero videos, moving rows, counting figures and scroll films for every visitor.',
     ],
   },
+  {
+    version: 15, core_version: '0.3.9', title: 'Menus with submenus',
+    changes: [
+      'A Navigation links block can show one of the site\'s menus (source: menu, chosen by id or by a location such as location:primary) instead of its own links. Page items take the page\'s current title and address, so renames and moves follow; unpublished or deleted pages drop out. The current page is marked with aria-current and its parent items with block-nav-parent--current. A menu that does not exist renders an empty list. Blocks with their own links render as before.',
+      'Menu items with children get a submenu with a button that opens it (aria-expanded, Escape closes). Submenus are "auto" by default: a dropdown panel under the item in a row of links, an accordion in a column and in the mobile menu. They can also always show their links (expanded) or be left out (none). A submenu whose items have children of their own is laid out in columns; headings and short descriptions show in it.',
+      'Without script a dropdown opens on hover and keyboard focus, and an accordion shows its links. The small submenu script ships only on pages with a menu-sourced Navigation links block.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

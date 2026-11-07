@@ -15,6 +15,8 @@ interface VersionDiff {
   contentTypes: ChangeSet;
   pageTemplates: ChangeSet;
   blockTypes: ChangeSet;
+  /** Absent in a diff from a portal that predates menus. */
+  menus?: ChangeSet;
   settings: 'unchanged' | 'modified';
   totalChanges: number;
 }
@@ -265,6 +267,7 @@ function SyncDialog({ siteId, branch, action, onClose }: SyncDialogProps) {
                 <DiffRow label="Content types" c={diff.contentTypes} />
                 <DiffRow label="Page templates" c={diff.pageTemplates} />
                 <DiffRow label="Block types" c={diff.blockTypes} />
+                {diff.menus && <DiffRow label="Menus" c={diff.menus} />}
 
                 {diff.settings === 'modified' && (
                   <tr>

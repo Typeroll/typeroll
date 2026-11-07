@@ -98,6 +98,7 @@ All site routes below start with `/sites/{siteId}`.
 | Settings | `GET/PATCH /settings` |
 | Pages | `GET/POST /pages`, `GET/PATCH/PUT/DELETE /pages/{pageId}`, `POST /pages/batch-read`, `PATCH /pages/batch`, clone, mode conversion, preview and block-container routes; history under `/pages/{pageId}/revisions` (list, read, `GET …/{revId}/preview`, `POST …/{revId}/restore`) |
 | Partials | `GET/POST /partials`, `GET/PATCH/PUT/DELETE /partials/{partialId}`, `POST /partials/{partialId}/mode`, usage and block-container routes; history under `/partials/{partialId}/revisions` (list, read, `POST …/{revId}/restore`) |
+| Menus | `GET/POST /menus`, `GET/PUT/DELETE /menus/{menuId}` (PUT replaces the whole menu; send `expected_updated_at` to refuse a save over a newer one with `409`), `GET /menus/{menuId}/usage`; history under `/menus/{menuId}/revisions` (list, read, `POST …/{revId}/restore`). No working copy: a save takes effect at the next publication. A location another menu fills is refused with `409`. |
 | Page templates | `GET/POST /page-templates`, `GET/PATCH/DELETE /page-templates/{templateId}`. Create accepts `starter` or `blocks`. |
 | Content types | `GET/POST /content-types`, `GET/PATCH/DELETE /content-types/{name}`, `GET /content-types/{name}/completeness` |
 | Composition starters | `GET /composition-starters?kind=profile` returns one native editable tree without saving. Supports Page starters, header/footer and archive (requires `content_type`, optional `title`). |
@@ -205,7 +206,7 @@ POST /sites/{siteId}/versions/{versionId}/reset
 
 `diff` returns `{ version_id, base_version_id: "main", diff }`, where `diff`
 lists added, modified and deleted ids for `pages`, `partials`, `redirects`,
-`contentTypes`, `pageTemplates` and `blockTypes`, plus `settings` and
+`contentTypes`, `pageTemplates`, `blockTypes` and `menus`, plus `settings` and
 `totalChanges`. It needs read access. `reset` discards every override and
 tombstone on the branch and returns the cleared diff; the branch, its deploy
 address and its revision history remain. Creating, merging, resetting and deleting

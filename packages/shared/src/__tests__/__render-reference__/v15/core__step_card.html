@@ -1,0 +1,78 @@
+<div data-block="step_card">
+  <div class="block-step-marker"><span class="block-step-number"></span><span class="block-step-icon" data-icon=""></span></div>
+  <h3 class="block-step-title">Sample title</h3>
+  <div class="block-step-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
+</div>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/step_card */
+[data-block="step_card"] { display: flex; flex-direction: column; gap: 0.5rem; }
+[data-block="step_card"] .block-step-marker { display: flex; align-items: center; gap: 0.5rem; }
+[data-block="step_card"] .block-step-number {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2.5rem; height: 2.5rem; border-radius: 50%;
+  background: var(--color-primary, #111); color: var(--color-primary-fg, white);
+  font-weight: 700; font-size: 1.125rem;
+}
+[data-block="step_card"] .block-step-number:empty { display: none; }
+[data-block="step_card"] .block-step-icon  { font-size: 1.5rem; }
+[data-block="step_card"] .block-step-title { margin: 0.5rem 0 0; font-size: 1.125rem; font-weight: 600; line-height: 1.3; }
+[data-block="step_card"] .block-step-text  { line-height: 1.5; opacity: 0.85; }
+
+/* core/step_card defaults */
+/* The step marker is a circle for a number and grows with a label: wider first, then taller, wrapping between words. */
+[data-block="step_card"] .block-step-number { display:inline-block; box-sizing:border-box; inline-size:auto; block-size:auto; min-inline-size:2.5rem; max-inline-size:min(100%, 18rem); padding:.3rem .65rem; line-height:1.9rem; border-radius:1.25rem; text-align:center; overflow-wrap:break-word; hyphens:auto; }
+/* A label that wraps stays a compact badge at text size, with its icon on the first line. */
+[data-block="step_card"] .block-step-number { font-size:1rem; }
+[data-block="step_card"] .block-step-marker { align-items:flex-start; }
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
+:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}

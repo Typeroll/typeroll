@@ -1,9 +1,9 @@
-import { blockTreeError, CORE_BLOCK_TYPES, type Block, type BlockType } from '@typeroll/shared';
+import { blockTreeError, CORE_BLOCK_TYPES, findMenu, isMenuNavigation, locationConflicts, resolveMenu, resolveRenderVersion, validateMenu, withGlobalBlockContent, globalBlockSourceFromPartials, type Block, type BlockType, type Menu, type MenuPage } from '@typeroll/shared';
 import { projectPublicationBlocks, projectPublicationBlockTypes, projectPublicationSchema } from '../../../../../scripts/lib/publication-blocks.mjs';
 import { ConnectionError } from './connections';
 
 type Document = { id: string; [key: string]: any };
-export interface ExportContent { pages: Document[]; partials: Document[]; pageTemplates: Document[]; blockTypes: Document[]; contentTypes: Document[] }
+export interface ExportContent { pages: Document[]; partials: Document[]; menus?: Document[]; pageTemplates: Document[]; blockTypes: Document[]; contentTypes: Document[] }
 
 /** Pure export validation: no render, media copy, provider call or publication. */
 export function assertContentExportable(content: ExportContent): void {
@@ -64,10 +64,56 @@ export function assertContentExportable(content: ExportContent): void {
     if (!['html', 'blocks'].includes(partial.content_mode)) fail(`partials/${partial.id}`, 'Content mode must be html or blocks.');
     if (partial.content_mode === 'blocks') tree(partial, `partials/${partial.id}`);
   }
+  // Menus are saved validated; a menu that no longer validates would publish links nobody checked.
+  for (const menu of content.menus ?? []) {
+    const { errors } = validateMenu(menu);
+    if (errors.length) fail(`menus/${menu.id}${errors[0]!.path ? `.${errors[0]!.path}` : ''}`, errors[0]!.message);
+  }
   for (const type of content.contentTypes) for (const facet of type.facets ?? []) if (facet.template) used.add(facet.template);
   for (const id of used) {
     const template = templates.get(id);
     if (!template || template.status !== 'published') fail(`page_templates/${id}`, 'Referenced Page template must exist and be published.');
     tree(template!, `page_templates/${id}`, true);
   }
+}
+
+/**
+ * Non-blocking menu findings for a frozen publication: locations two menus
+ * claim, Navigation links blocks that name a menu that does not exist or
+ * render before menus do (render version 15), and menu items whose page is
+ * missing or unpublished. The publication still runs; the job lists them.
+ */
+export function publicationMenuWarnings(publication: { settings?: Record<string, any>; pages?: Document[]; partials?: Document[]; pageTemplates?: Document[]; menus?: Document[] }): string[] {
+  const menus = (publication.menus ?? []) as unknown as Menu[];
+  const warnings = locationConflicts(menus).map(location => `More than one menu fills the location "${location}"; Navigation links blocks show the first.`);
+  const free = (publication.partials ?? []).filter(partial => partial.kind === 'free');
+  const references = new Map<string, string>();
+  const visit = (blocks: Block[], where: string) => {
+    for (const block of withGlobalBlockContent(blocks, globalBlockSourceFromPartials(free as never))) {
+      if (isMenuNavigation(block)) references.set(String(block.data?.menu ?? '').trim(), where);
+      visit(block.children ?? [], where);
+      for (const slot of block.slots ?? []) visit(slot, where);
+    }
+  };
+  for (const page of publication.pages ?? []) if (Array.isArray(page.blocks)) visit(page.blocks, `page ${page.id}`);
+  for (const partial of publication.partials ?? []) if (Array.isArray(partial.blocks)) visit(partial.blocks, `partial ${partial.id}`);
+  for (const template of publication.pageTemplates ?? []) if (Array.isArray(template.blocks)) visit(template.blocks, `page template ${template.id}`);
+  if (!references.size) return warnings;
+  if (resolveRenderVersion(publication.settings?.render_version) < 15) {
+    warnings.push(`Navigation links blocks that show a site menu render their own links until the site uses render version 15 (first in ${[...references.values()][0]}).`);
+    return warnings;
+  }
+  const pages: MenuPage[] = (publication.pages ?? []).map(page => ({
+    id: String(page.id), title: String(page.title ?? ''), path: String(page.path ?? `/${page.slug ?? ''}`),
+    parent: page.parent ?? null, sort_order: typeof page.sort_order === 'number' ? page.sort_order : null, status: page.status,
+  }));
+  const resolved = new Set<string>();
+  for (const [reference, where] of references) {
+    const menu = findMenu(menus, reference);
+    if (!menu) { warnings.push(reference ? `${where} shows the menu "${reference}", which does not exist; the block renders no links.` : `${where} has a Navigation links block that shows a site menu but names none.`); continue; }
+    if (resolved.has(menu.id)) continue;
+    resolved.add(menu.id);
+    warnings.push(...resolveMenu(menu, pages, '/').warnings);
+  }
+  return warnings;
 }

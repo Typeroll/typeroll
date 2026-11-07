@@ -1,6 +1,8 @@
 import type { APIRoute } from 'astro';
 import { getPageTemplateStarter, getPartialCompositionStarter, getArchiveCompositionStarter, getPageBodyStarter, isPageBodyStarterKind, type PageTemplateStarterKind } from '@typeroll/shared';
+import { resolveRenderVersion } from '@typeroll/shared';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
+import { vstore } from '../../../../../lib/version-store';
 
 /** Read one native editable composition. Never changes a Page or partial. */
 export const GET: APIRoute = async ({ request, params }) => {
@@ -10,7 +12,9 @@ export const GET: APIRoute = async ({ request, params }) => {
   const kind = query.get('kind') ?? '';
   let blocks;
   if (kind === 'header' || kind === 'footer') {
-    blocks = getPartialCompositionStarter(kind, { links: [{ label: 'Home', href: '/' }] });
+    // From render version 15 the starter shows the site's primary and footer menus.
+    const settings = await vstore.settings(guard.value.orgId, guard.value.siteId, guard.value.versionId);
+    blocks = getPartialCompositionStarter(kind, { links: [{ label: 'Home', href: '/' }], renderVersion: resolveRenderVersion(settings?.render_version) });
   } else if (kind === 'archive') {
     const contentType = query.get('content_type');
     if (!contentType?.trim()) return apiError('content_type is required for an archive starter', 400);

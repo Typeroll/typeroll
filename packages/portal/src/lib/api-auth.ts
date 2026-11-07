@@ -170,7 +170,7 @@ const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
   { path: new RegExp(`^/pages/${ID}/owner-fields$`), scope: () => 'content:owner' },
   { path: new RegExp(`^/containers/${ID}/${ID}/blocks(?:/.*)?$`), scope: (w) => (w ? 'content:write' : 'content:read') },
   {
-    path: /^\/(?:pages|content-types|partials|block-types|block-templates|blocks|settings|styles)(?:\/.*)?$/,
+    path: /^\/(?:pages|content-types|partials|menus|block-types|block-templates|blocks|settings|styles)(?:\/.*)?$/,
     scope: (w) => (w ? 'content:write' : 'content:read'),
   },
 ];

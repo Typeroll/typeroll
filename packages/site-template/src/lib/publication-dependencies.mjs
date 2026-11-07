@@ -53,6 +53,20 @@ export function trackedMediaLookup(lookup) {
     return typeof value === 'function' ? value.bind(target) : value;
   } }) };
 }
+/**
+ * What site menus read about pages (title, address, parent, order), as one
+ * receipt per render: a menu follows renames and new child pages, while an
+ * edit to a page's body leaves every route that only shows it in a menu.
+ */
+export function trackedMenuPages(compute) {
+  let value;
+  return () => {
+    value ??= compute();
+    const dependencies = active.getStore();
+    if (dependencies && !dependencies.some(entry => entry.kind === 'menu_pages')) dependencies.push({ kind: 'menu_pages', hash: digest(value) });
+    return value;
+  };
+}
 export function recordNavigation(pageId, value) {
   active.getStore()?.push({ kind: 'navigation', id: pageId, hash: digest(value) });
   return value;
@@ -80,6 +94,7 @@ export function dependenciesMatch(dependencies, resolvers, queries = new Map()) 
       if (entry.kind === 'media') return digest(resolvers.media.byUrl.get(entry.url) ?? null) === entry.hash;
       if (entry.kind === 'backlinks') return digest(resolvers.backlinks[entry.id] ?? null) === entry.hash;
       if (entry.kind === 'navigation') return digest(resolvers.navigation(entry.id)) === entry.hash;
+      if (entry.kind === 'menu_pages') return digest(resolvers.menuPages()) === entry.hash;
       return false;
     });
   } catch { return false; }
@@ -103,6 +118,7 @@ export function refreshDependencies(dependencies, resolvers, from, to, replace) 
     if (entry.kind === 'media') return { ...entry, hash: digest(resolvers.media.byUrl.get(entry.url) ?? null) };
     if (entry.kind === 'backlinks') return { ...entry, hash: digest(resolvers.backlinks[entry.id] ?? null) };
     if (entry.kind === 'navigation') return { ...entry, hash: digest(resolvers.navigation(entry.id)) };
+    if (entry.kind === 'menu_pages') return { ...entry, hash: digest(resolvers.menuPages()) };
     throw new Error('Unknown cached dependency');
   });
 }

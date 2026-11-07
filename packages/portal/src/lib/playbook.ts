@@ -129,10 +129,21 @@ block with \`update_partial\` and rewrite the affected pages to embed it.
 ## Header, footer, free blocks
 
 ### "Add a link to /pricing in the menu"
-1. \`read_partial\` partial_id="header" to see its content mode.
-2. For blocks, read the navigation block's schema and update its links.
-3. Check separate desktop/mobile compositions; change only the intended menus.
+1. \`read_partial\` partial_id="header" to see its content mode and what its
+   navigation blocks show.
+2. When a \`core/navigation_links\` block has \`source: "menu"\` (for example
+   \`menu: "location:primary"\`), the links live in that menu: \`list_menus\`,
+   then \`add_menu_item\` with \`{type:"page", page_id}\` for a page on the
+   site (it follows renames) or \`{type:"url", href, label}\` for anything
+   else. Pass \`parent_item_id\` to put it in a submenu. Do not edit the header.
+3. When the block has its own \`links\`, update those links; check separate
+   desktop/mobile compositions and change only the intended menus.
 4. Only for an HTML-mode header, edit and write back its complete HTML.
+
+### "Why did my new page show up in the menu?" / "Stop adding pages"
+The menu has \`auto_add_pages\` on, which appends new top-level pages.
+\`read_menu\`, then \`update_menu\` with \`auto_add_pages: false\` and the
+\`expected_updated_at\` you read.
 
 ### "Change the email in the footer"
 \`read_partial\` partial_id="footer", then update the relevant block field.

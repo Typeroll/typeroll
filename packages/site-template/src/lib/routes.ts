@@ -1,5 +1,5 @@
 import { selectChangedRoutes } from './publication-route-cache.mjs';
-import { getDerivedDataUrl, getDerived, buildBacklinks, buildPageSource, getAllPages, getAllMedia, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
+import { getDerivedDataUrl, getDerived, buildBacklinks, buildMenuPages, buildPageSource, getAllPages, getAllMedia, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
 import { queryDerivedSource, buildMediaLookup, pageNavigation, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
 import type { Block, FacetRoute, Page } from '@typeroll/shared';
 
@@ -100,7 +100,7 @@ export async function getChangedSiteRoutes() {
   return selectChangedRoutes(routes, {
     derived: (config: Parameters<typeof queryDerivedSource>[1]) => config.source === '$data_url' ? [{ url: dataUrl }] : queryDerivedSource(derived, config),
     media: buildMediaLookup(await getAllMedia()),
-    query: await buildPageSource(), backlinks: await buildBacklinks(),
+    query: await buildPageSource(), backlinks: await buildBacklinks(), menuPages: await buildMenuPages(),
     navigation: (id: string) => {
       const page = routes.find(route => route.props.page.id === id)?.props.page;
       const type = page && types.find(type => type.id === (page.content_type ?? 'page'));

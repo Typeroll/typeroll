@@ -56,7 +56,7 @@ export function publicationContentFiles(publication) {
     (contentFiles.metadata ??= {})[field] = name;
     delete metadata[field];
   }
-  for (const kind of ['pages', 'partials', 'pageTemplates', 'blockTypes', 'contentTypes']) {
+  for (const kind of ['pages', 'partials', 'menus', 'pageTemplates', 'blockTypes', 'contentTypes']) {
     const records = metadata[kind];
     if (!Array.isArray(records)) continue;
     const names = [], seen = new Set();
@@ -93,7 +93,7 @@ export async function readPublicationContent(metadata, readFile, manifest) {
     publication[field] = JSON.parse(await readFile(verified(name)));
   }
   for (const [kind, names] of Object.entries(index)) {
-    if (!['pages', 'partials', 'pageTemplates', 'blockTypes', 'contentTypes'].includes(kind) || !Array.isArray(names) || new Set(names).size !== names.length) throw Error('Invalid publication content index');
+    if (!['pages', 'partials', 'menus', 'pageTemplates', 'blockTypes', 'contentTypes'].includes(kind) || !Array.isArray(names) || new Set(names).size !== names.length) throw Error('Invalid publication content index');
     publication[kind] = [];
     // Keep large exports below the host's open-file limit.
     for (let offset = 0; offset < names.length; offset += 32) publication[kind].push(...await Promise.all(names.slice(offset, offset + 32).map(async name => {

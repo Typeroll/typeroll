@@ -17,7 +17,7 @@ function input(overrides: Partial<ReadinessInput> = {}, settings: Partial<SiteSe
     siteId: 'site', now: new Date('2026-11-01T12:00:00Z'),
     settings: { ...defaultSiteSettings, site_name: 'Acme', logo: '/logo.png', favicon: '/favicon.png', default_og_image: 'https://cdn.example/share.png',
       organization: { name: 'Acme', same_as: ['https://github.com/acme'] }, scripts_head: '<meta name="google-site-verification" content="x">', ...settings },
-    pages, partials: overrides.partials ?? [nav(['/about/', '/contact/', '/privacy/'])], templates: [], contentTypes: [], blockTypes: [],
+    pages, partials: overrides.partials ?? [nav(['/about/', '/contact/', '/privacy/'])], templates: [], contentTypes: [], blockTypes: [], menus: overrides.menus,
     media: overrides.media ?? [], apps: 'apps' in overrides ? overrides.apps! : { apps: { analytics: { enabled: true, config: {} } } } as never,
     links: overrides.links ?? { links: ['/about/', '/contact/', '/privacy/'].map(path => ({ from: 'partial:header', path })) },
     zone: overrides.zone ?? { status: 'no_host' },
@@ -46,6 +46,32 @@ describe('site launch readiness', () => {
     const media = [{ id: 'm', cdn_url: 'https://cdn.example/share.png', width: 400 } as Media];
     expect(byId(buildSiteReadiness(input({ media }))).share_image.message).toContain('400 px');
     expect(shareImageProblem('https://cdn.example/share.png', [])).toBeNull();
+  });
+
+  it('warns about menu items left out of the published site and locations filled twice', () => {
+    const pages = [page('home', '/'), page('about', '/about/'), page('contact', '/contact/'), page('privacy', '/privacy/'), page('wip', '/wip/', { status: 'draft' })];
+    const menus = [
+      { id: 'main', name: 'Main', locations: ['primary'], items: [{ id: 'a', type: 'page' as const, page_id: 'about' }, { id: 'b', type: 'page' as const, page_id: 'gone' }] },
+      { id: 'other', name: 'Other', locations: ['primary'], items: [{ id: 'c', type: 'url' as const, href: '/x/', label: 'X', children: [{ id: 'd', type: 'page' as const, page_id: 'wip' }] }] },
+    ];
+    const items = byId(buildSiteReadiness(input({ pages, menus })));
+    expect(items.menus.status).toBe('warning');
+    expect(items.menus.details).toEqual([
+      'Location "primary" is filled by "Main" and "Other"',
+      '"Main": item b links to a page that no longer exists',
+      '"Other": item d links to /wip/, which is not published',
+    ]);
+    expect(byId(buildSiteReadiness(input({ pages, menus: [menus[0]!].map(menu => ({ ...menu, items: menu.items.slice(0, 1) })) }))).menus.status).toBe('ok');
+  });
+
+  it('counts links from a menu only where live content shows it', () => {
+    const pages = [page('home', '/'), page('about', '/about/'), page('contact', '/contact/'), page('privacy', '/privacy/'), page('team', '/team/')];
+    const menus = [{ id: 'main', name: 'Main', locations: ['primary'], items: [{ id: 't', type: 'page' as const, page_id: 'team' }] }];
+    const links = { links: [...['/about/', '/contact/', '/privacy/'].map(path => ({ from: 'partial:header', path })), { from: 'menu:main', path: '/team/' }] };
+    expect(byId(buildSiteReadiness(input({ pages, menus, links }))).orphan_pages.details).toEqual(['/team/']);
+    const header = { ...nav(['/about/', '/contact/', '/privacy/']) };
+    header.blocks = [...header.blocks!, { id: 'menu', type: 'core/navigation_links', data: { source: 'menu', menu: 'location:primary' } }];
+    expect(byId(buildSiteReadiness(input({ pages, menus, links, partials: [header] }))).orphan_pages.status).toBe('ok');
   });
 
   it('reports orphans, duplicate titles, long descriptions and H1 problems', () => {

@@ -31,6 +31,8 @@ import { wordpressDate } from '../wp/dates';
 import { sameSourceSite } from '../net/safe-fetch';
 import { reviewGate, stepYield, type WorkflowDef } from './types';
 import { assignRedirectDocId } from '../redirect-write';
+import { convertWordPressMenu, isStarterMenu, type WordPressMenuSource } from '../wp/menu-import';
+import { createMenu, MenuSaveError, replaceMenu } from '../menu-write';
 
 // REST `content.rendered` shorter than this triggers the public-page fallback —
 // page builders sometimes return just shortcode markup that hasn't been
@@ -740,6 +742,75 @@ export const migrationWorkflow: WorkflowDef = {
     },
 
     {
+      name: 'import_menus',
+      label: 'Import menus and their locations',
+      async run(ctx) {
+        const url = String(ctx.state.wp_url);
+        const sourceOrigin = new URL(url).origin;
+        const helperKey = ctx.state.helper_api_key as string | null;
+        const version = migrationVersion(ctx);
+        let sources: WordPressMenuSource[];
+        try {
+          sources = await readWordPressMenus(url, Boolean(ctx.state.helper_active) && helperKey ? helperKey : null);
+        } catch (error) {
+          // Menus are not content: a source without readable menus imports
+          // everything else, and the menus are recreated under Menus.
+          ctx.log(`WordPress menus could not be read (${error instanceof Error ? error.message : String(error)}). Recreate the navigation under Menus.`);
+          return { state: { menus_imported: [] } };
+        }
+        if (!sources.length) {
+          ctx.log('No WordPress menus found (without Typeroll Helper, WordPress lists menus only to logged-in users). Build the navigation under Menus.');
+          return { state: { menus_imported: [] } };
+        }
+        const pages = (await vstore.pages(ctx.orgId, ctx.siteId, version))
+          .map(page => ({ id: page.id, title: page.title, path: page.path, old_wp_url: page.old_wp_url }));
+        const menuCtx = { orgId: ctx.orgId, siteId: ctx.siteId, versionId: version };
+        const imported: Array<{ menu_id: string; source_id: number; locations: string[]; items: number }> = [];
+        for (const source of sources) {
+          const { menu, dropped_locations: dropped } = convertWordPressMenu(source, pages, sourceOrigin);
+          for (const location of dropped) ctx.log(`Menu "${menu.name}": the WordPress location "${location}" has no Typeroll equivalent; it was left out.`);
+          const current = await vstore.menus(ctx.orgId, ctx.siteId, version);
+          if (current.some(other => other.id === menu.id)) {
+            ctx.log(`Menu "${menu.name}" (${menu.id}) already imported; preserving it and its edits.`);
+            continue;
+          }
+          const locations: string[] = [];
+          for (const location of menu.locations ?? []) {
+            const holder = current.find(other => other.locations?.includes(location));
+            if (!holder) { locations.push(location); continue; }
+            if (isStarterMenu(holder)) {
+              // The new site's starter menu gives the location to the imported menu.
+              await replaceMenu(menuCtx, holder.id, {
+                name: holder.name, items: holder.items,
+                ...(holder.auto_add_pages ? { auto_add_pages: true } : {}),
+                locations: (holder.locations ?? []).filter(value => value !== location),
+              }, { updatedBy: 'wordpress-migration', expectedUpdatedAt: holder.updated_at ?? '', note: `Location ${location} taken by the imported menu ${menu.id}` });
+              holder.locations = (holder.locations ?? []).filter(value => value !== location);
+              ctx.log(`The starter menu "${holder.name}" no longer fills ${location}; the imported "${menu.name}" does. Delete the starter menu under Menus if you do not need it.`);
+              locations.push(location);
+              continue;
+            }
+            ctx.log(`Menu "${menu.name}": the location ${location} is already filled by "${holder.name}"; imported without it. Move the location under Menus if the imported menu should show there.`);
+          }
+          const { locations: _mapped, ...rest } = menu;
+          try {
+            const saved = await createMenu(menuCtx, { ...rest, ...(locations.length ? { locations } : {}) });
+            const count = (list: typeof saved.items): number => list.reduce((sum, item) => sum + 1 + count(item.children ?? []), 0);
+            imported.push({ menu_id: saved.id, source_id: source.id, locations, items: count(saved.items) });
+            ctx.log(`Imported menu "${saved.name}" as ${saved.id}${locations.length ? ` (${locations.join(', ')})` : ''} with ${count(saved.items)} item(s).`);
+          } catch (error) {
+            if (!(error instanceof MenuSaveError)) throw error;
+            ctx.log(`Menu "${menu.name}" was not imported: ${error.message}`);
+          }
+        }
+        if (imported.length) {
+          ctx.log('Pages linked from menus show once they are published. Show a menu in the header or footer with a Navigation links block set to a site menu (location:primary or location:footer, render version 15).');
+        }
+        return { state: { menus_imported: imported } };
+      },
+    },
+
+    {
       name: 'generate_redirects',
       label: 'Generate redirects from old URLs',
       async run(ctx) {
@@ -1001,4 +1072,31 @@ async function ensurePostsContentType(
   };
   await store.setDoc(paths.contentType(orgId, siteId, COLL_NAME, versionId), def);
   return COLL_NAME;
+}
+
+/** WordPress menus with their theme locations, from the helper or (logged-in) REST. */
+async function readWordPressMenus(url: string, helperKey: string | null): Promise<WordPressMenuSource[]> {
+  if (helperKey) {
+    return (await new WPHelperClient(url, helperKey).menus()).map(menu => ({
+      id: menu.id, name: menu.name, slug: menu.slug, locations: menu.locations ?? [],
+      items: menu.items.map(item => ({
+        id: item.id, title: item.title, url: item.url, parent: item.parent, order: item.order,
+        object: item.object, object_id: item.object_id, type: item.type, description: item.description,
+      })),
+    }));
+  }
+  const client = new WPClient(url);
+  const menus = await client.listMenus();
+  const out: WordPressMenuSource[] = [];
+  for (const menu of menus) {
+    const items = await client.listMenuItems(menu.id);
+    out.push({
+      id: menu.id, name: menu.name, slug: menu.slug, locations: menu.locations ?? [],
+      items: items.map(item => ({
+        id: item.id, title: item.title?.rendered ?? '', url: item.url, parent: item.parent, order: item.menu_order,
+        object: item.object, object_id: item.object_id, type: item.type, description: item.description,
+      })),
+    });
+  }
+  return out;
 }

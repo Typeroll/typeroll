@@ -22,6 +22,7 @@ import {
   renderBlocks,
   type Block,
   type BlockType,
+  type RenderBlocksOptions,
   type RenderContext,
 } from '../index.js';
 
@@ -116,7 +117,7 @@ export interface SampleDom {
 export function sampleDom(block: Block, registry: Map<string, BlockType>, renderVersion: number): SampleDom | null {
   const window = new Window();
   const container = window.document.createElement('div');
-  container.innerHTML = renderBlocks([block], { registry, renderVersion, context: PART_SAMPLE_CONTEXTS[block.type] });
+  container.innerHTML = renderBlocks([block], { registry, renderVersion, context: PART_SAMPLE_CONTEXTS[block.type], menuSource: PART_SAMPLE_MENUS[block.type] });
   const root = container.firstElementChild as unknown as Element | null;
   if (root) PART_SAMPLE_MARKUP[block.type]?.(root);
   return root ? { root, container: container as unknown as Element } : null;
@@ -188,7 +189,8 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     items: [{ html: '<p>One</p>' }, { html: '<p>Two</p>' }],
   },
   'core/tabs': { headline: 'Plans', labels: [{ label: 'Monthly', icon: 'star' }, { label: 'Yearly' }, { label: 'Compare', href: '/compare/', icon: 'check' }] },
-  'core/navigation_links': { group_label: 'Explore', links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/', icon: 'star' }] },
+  // The links render up to version 14; from 15 the menu (PART_SAMPLE_MENUS) with its submenus.
+  'core/navigation_links': { group_label: 'Explore', links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/', icon: 'star' }], source: 'menu', menu: 'location:primary', direction: 'row' },
   'core/rich_heading': { level: 'h2', html: 'Read <a href="/guide/">the guide</a>' },
   'core/heading': { level: 'h2', eyebrow: 'Eyebrow', text: 'Heading', subtitle: 'Subtitle' },
   'core/button': { label: 'Get started', href: '/start/' },
@@ -250,6 +252,23 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
 };
 
 /** Render context a block's sample needs besides its data (repeater item data, a field list's Page fields, template page and site values). */
+/** Site menus for samples that show one (render version 15). */
+export const PART_SAMPLE_MENUS: Record<string, RenderBlocksOptions['menuSource']> = {
+  'core/navigation_links': {
+    pages: () => [],
+    menus: [{ id: 'main', name: 'Main', locations: ['primary'], items: [
+      { id: 'home', type: 'url', href: '/', label: 'Home' },
+      { id: 'about', type: 'url', href: '/about/', label: 'About', icon: 'star', children: [
+        { id: 'team', type: 'url', href: '/about/team/', label: 'Team', description: 'Who we are' },
+      ] },
+      { id: 'work', type: 'heading', label: 'Work', children: [
+        { id: 'homes', type: 'heading', label: 'Homes', children: [{ id: 'villa', type: 'url', href: '/work/villa/', label: 'Villa' }] },
+        { id: 'public', type: 'url', href: '/work/public/', label: 'Public', children: [{ id: 'school', type: 'url', href: '/work/school/', label: 'School' }] },
+      ] },
+    ] }],
+  },
+};
+
 export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
   'core/post_card': { item: { pdf: '/media/notes.pdf' } },
   'core/field_list': {

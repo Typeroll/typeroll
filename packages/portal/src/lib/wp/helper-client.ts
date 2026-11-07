@@ -84,6 +84,8 @@ export interface HelperMenu {
   id: number;
   name: string;
   slug: string;
+  /** Theme locations the menu fills (helper 0.4.1 and later). */
+  locations?: string[];
   items: Array<{
     id: number;
     title: string;
@@ -92,6 +94,11 @@ export interface HelperMenu {
     order: number;
     target: string;
     classes: string[];
+    /** Post type or taxonomy linked to and its id (helper 0.4.1 and later). */
+    object?: string;
+    object_id?: number;
+    type?: string;
+    description?: string;
   }>;
 }
 

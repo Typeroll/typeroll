@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, recordNavigation, dependenciesMatch } from '../packages/site-template/src/lib/publication-dependencies.mjs';
+import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, trackedMenuPages, recordNavigation, dependenciesMatch, refreshDependencies } from '../packages/site-template/src/lib/publication-dependencies.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -181,6 +181,22 @@ test('partial output equals a clean full build after edits, deletion, noindex an
   assert.deepEqual(await output(), removedFiles);
 });
 
+
+test('a route showing a menu depends on the menu fields of pages, once, and not on their bodies', async () => {
+  let pages = [{ id: 'about', title: 'About', path: '/about/' }];
+  const menuPages = () => pages;
+  const tracked = trackedMenuPages(menuPages);
+  const { dependencies } = await captureDependencies(async () => { tracked(); tracked(); });
+  assert.deepEqual(dependencies.map(entry => entry.kind), ['menu_pages']);
+  const resolvers = { menuPages };
+  assert.ok(dependenciesMatch(dependencies, resolvers));
+  pages = [{ id: 'about', title: 'About us', path: '/about/' }];
+  assert.ok(!dependenciesMatch(dependencies, resolvers));
+  const refreshed = refreshDependencies(dependencies, resolvers, [], [], entry => entry);
+  assert.ok(dependenciesMatch(refreshed, resolvers));
+  const untracked = await captureDependencies(async () => 'no menu here');
+  assert.deepEqual(untracked.dependencies, []);
+});
 
 test('recorded queries detect membership, ordering, empty results and only the visited pagination slice', async () => {
   const records = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C' }];

@@ -92,6 +92,35 @@ function assertIdentity(doc) {
   return doc;
 }
 
+// Mirrors validateMenu (packages/shared/src/menus.ts): menus travel with the
+// publication as structured values, and only known fields reach a build.
+const MENU_ITEM_TYPES = ['page', 'url', 'children', 'heading'];
+const menuId = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+/** A site menu as the renderer reads it (render version 15); timestamps are not render input. */
+export function projectMenu(menu) {
+  if (!menu || typeof menu !== 'object' || Array.isArray(menu) || !menuId.test(menu.id ?? '')) throw new Error('Invalid publication menu');
+  const output = projectStrings(menu, ['id', 'name']);
+  if (menu.locations !== undefined) {
+    output.locations = projectStringArray(menu.locations, 'menu.locations');
+    if (output.locations.some(location => !/^[a-z][a-z0-9_-]{0,39}$/.test(location))) throw new Error('Invalid publication menu location');
+  }
+  if (menu.auto_add_pages === true) output.auto_add_pages = true;
+  let count = 0;
+  const item = (value, depth) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || !menuId.test(value.id ?? '') || !MENU_ITEM_TYPES.includes(value.type) || ++count > 200 || depth > 3) throw new Error('Invalid publication menu item');
+    const projected = projectStrings(value, ['id', 'type', 'page_id', 'href', 'label', 'description', 'icon', 'link_rel']);
+    if (projected.href !== undefined && /^\s*(javascript|data|vbscript):/i.test(projected.href)) throw new Error('Invalid publication menu address');
+    if (value.children !== undefined) {
+      if (!Array.isArray(value.children)) throw new Error('Invalid publication menu item');
+      if (value.children.length) projected.children = value.children.map(child => item(child, depth + 1));
+    }
+    return projected;
+  };
+  if (!Array.isArray(menu.items)) throw new Error('Invalid publication menu');
+  output.items = menu.items.map(entry => item(entry, 1));
+  return output;
+}
+
 function assertPublicUrl(value) {
   const url = new URL(value);
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) throw new Error('Public asset URLs must be permanent HTTPS URLs without credentials or query parameters');
@@ -246,6 +275,8 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     }
     return projected;
   });
+  if (input.menus !== undefined && !Array.isArray(input.menus)) throw new Error('Invalid publication menus');
+  const menus = (input.menus ?? []).map(projectMenu);
   if (!Array.isArray(input.pageTemplates)) throw new Error('Invalid publication page templates');
   const referencedTemplates = new Set([...pages.map(page => page.template), ...contentTypes.flatMap(type => (type.facets ?? []).map(facet => facet.template))].filter(Boolean));
   const pageTemplates = input.pageTemplates.filter(template => referencedTemplates.has(template.id)).map(template => {
@@ -279,7 +310,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     });
     return projected;
   });
-  for (const list of [pages, partials, media, blockTypes, pageTemplates, redirects, contentTypes]) {
+  for (const list of [pages, partials, menus, media, blockTypes, pageTemplates, redirects, contentTypes]) {
     list.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     if (new Set(list.map((item) => item.id)).size !== list.length) throw new Error('Duplicate public document ID');
   }
@@ -288,7 +319,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     publication_id: digest(JSON.stringify({ siteUrl, coreCommit, publishedAt, versionId })),
     version_id: versionId, git_branch: gitBranch, robots_blocked: versionId !== 'main' || noindex,
     core_commit: coreCommit, published_at: publishedAt, site_url: siteUrl,
-    site: projectStrings(input.site, stringFields.site), settings, pages, partials, media, blockTypes, pageTemplates, redirects,
+    site: projectStrings(input.site, stringFields.site), settings, pages, partials, menus, media, blockTypes, pageTemplates, redirects,
     contentTypes, forms,
     apps: input.publicRuntime?.apps ?? { apps: {} },
     extensions: input.publicRuntime?.extensions ?? { installations: [] },
