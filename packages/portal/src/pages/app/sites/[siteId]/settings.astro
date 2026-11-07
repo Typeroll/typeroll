@@ -3,7 +3,7 @@ import { SITE_SETTINGS_SECTIONS, isSiteSettingsSection } from '../../../../lib/s
 import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
-import { TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, usesCustomerPublishing, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
+import { CONTENT_WIDTH_DEFAULTS, CONTENT_WIDTH_LIMITS, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, usesCustomerPublishing, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
 import TypographyPreview from '../../../../components/TypographyPreview';
 import OnColorFields from '../../../../components/OnColorFields';
@@ -147,6 +147,37 @@ const domainBlocksArchiving =
           <option value="reveal_on_scroll_up" selected={settings.header_behavior === 'reveal_on_scroll_up'}>Hides on scroll down, returns compact on scroll up</option>
         </select>
         <p class="muted text-sm">The compact header shows the menu button at every width. Keyboard focus and an open menu keep it visible.</p>
+      </div>
+    </div>
+
+    <div class="card stack" data-settings-section="design" hidden={section !== 'design'}>
+      <h2 style="font-size: 1.125rem;">Dates, content widths and motion</h2>
+      <div class="field">
+        <label for="setting-date_format">Date format</label>
+        <select id="setting-date_format" name="date_format">
+          <option value="medium" selected={!settings.date_format || settings.date_format === 'medium'}>Short month (12 Oct 2026, 12 okt. 2026) — default</option>
+          <option value="long" selected={settings.date_format === 'long'}>Full month (12 October 2026)</option>
+          <option value="numeric" selected={settings.date_format === 'numeric'}>Numbers in the site language's order (10/12/2026, 2026-10-12)</option>
+          <option value="iso" selected={settings.date_format === 'iso'}>ISO (2026-10-12)</option>
+        </select>
+        <p class="muted text-sm">Page dates and card dates, in the page language. A Page date block with its own format keeps it. Render version 14.</p>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:1rem">
+        {(['narrow', 'normal', 'wide'] as const).map(key => (
+          <div class="field">
+            <label for={`setting-content_widths-${key}`}>{key[0]!.toUpperCase() + key.slice(1)} width (px)</label>
+            <input id={`setting-content_widths-${key}`} type="number" name={`content_widths.${key}`} min={CONTENT_WIDTH_LIMITS[key][0]} max={CONTENT_WIDTH_LIMITS[key][1]} step="1" value={settings.content_widths?.[key] ?? ''} placeholder={String(CONTENT_WIDTH_DEFAULTS[key])} />
+          </div>
+        ))}
+      </div>
+      <p class="muted text-sm">Sections, containers, heroes, feature rows and calls to action share these widths, so blocks of the same width line up. Leave a field empty for the default. Render version 14.</p>
+      <div class="field">
+        <label for="setting-motion">Motion</label>
+        <select id="setting-motion" name="motion">
+          <option value="full" selected={settings.motion !== 'reduced'}>As each block says — default</option>
+          <option value="reduced" selected={settings.motion === 'reduced'}>Reduced for every visitor</option>
+        </select>
+        <p class="muted text-sm">Reduced turns off entrance animations, carousel autoplay, background videos, moving logo rows and scroll films for everyone; they show their still image or content instead. Visitors who ask their device for reduced motion always get this. Render version 14.</p>
       </div>
     </div>
 

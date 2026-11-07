@@ -15,7 +15,7 @@ import { getStore } from '../../../../../lib/datastore';
 import { siteMediaPrefix } from '../../../../../lib/media-keys';
 import { paths } from '@typeroll/shared';
 import { usesPrivateMedia } from '../../../../../lib/publishing/media-policy';
-import { createMediaUpload } from '../../../../../lib/publishing/media-storage';
+import { createMediaUpload, UPLOADABLE_MEDIA_TYPE } from '../../../../../lib/publishing/media-storage';
 import { connectionFailure } from '../../../../../lib/publishing/http';
 import { withMediaExtension } from '../../../../../lib/media/file-types';
 import { platformSvgStaging, requiresSvgSanitization, SVG_MEDIA_TYPE } from '../../../../../lib/media/svg-media';
@@ -45,7 +45,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (size && size > MAX_SIZE) {
     return json({ error: `File too large (max ${MAX_SIZE} bytes)` }, 413);
   }
-  if (!contentType.startsWith('image/') && contentType !== 'application/pdf') {
+  if (!UPLOADABLE_MEDIA_TYPE.test(contentType)) {
     return json({ error: 'Unsupported content type' }, 415);
   }
   // Static website hosts serve media by file extension: a name without the

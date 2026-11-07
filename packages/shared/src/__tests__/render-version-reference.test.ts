@@ -9,7 +9,7 @@
  * intended output, update the reference with `vitest -u` and note it in the
  * changelog. See docs/plans/design-system-and-render-versions.md.
  */
-import { LEGACY_STANDARD_STYLES } from './fixtures/legacy-standard-styles.js';
+import { LEGACY_STANDARD_STYLES, standardStylesBefore037 } from './fixtures/legacy-standard-styles.js';
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -100,9 +100,9 @@ const SATURATED_COLORS = { ...defaultSiteSettings.colors, primary: '#3b82f6', se
 function themeColorCss(version: number): string {
   const breakpoints = resolveBreakpointWidths(undefined);
   return [
-    ['siteStylesCss (standard styles, default palette)', siteStylesCss(version < 10 ? LEGACY_STANDARD_STYLES : newSiteStyles(), { breakpoints, colors: defaultSiteSettings.colors, renderVersion: version })],
+    ['siteStylesCss (standard styles, default palette)', siteStylesCss(version < 10 ? LEGACY_STANDARD_STYLES : version < 14 ? standardStylesBefore037(newSiteStyles()) : newSiteStyles(), { breakpoints, colors: defaultSiteSettings.colors, renderVersion: version })],
     ['siteStylesCss (no styles, saturated palette)', siteStylesCss([], { breakpoints, colors: SATURATED_COLORS, renderVersion: version })],
-    ['siteStylesCss (standard styles, saturated palette)', siteStylesCss(version < 10 ? LEGACY_STANDARD_STYLES : newSiteStyles(), { breakpoints, colors: SATURATED_COLORS, renderVersion: version })],
+    ['siteStylesCss (standard styles, saturated palette)', siteStylesCss(version < 10 ? LEGACY_STANDARD_STYLES : version < 14 ? standardStylesBefore037(newSiteStyles()) : newSiteStyles(), { breakpoints, colors: SATURATED_COLORS, renderVersion: version })],
   ].map(([name, value]) => `/* ${name} */\n${value}`).join('\n\n') + '\n';
 }
 

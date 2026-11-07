@@ -34,8 +34,8 @@ export const MEDIA_EXTENSIONS: Readonly<Record<string, readonly string[]>> = Obj
   'image/heif': ['heif', 'heic'],
   'image/jxl': ['jxl'],
   'application/pdf': ['pdf'],
-  // Uploads accept image/* and application/pdf only (routes and
-  // createMediaUpload). The rest are listed so existing records stay publishable.
+  // Uploads accept image/*, application/pdf, video/mp4 and video/webm
+  // (UPLOADABLE_MEDIA_TYPE). The rest are listed so existing records stay publishable.
   'video/mp4': ['mp4', 'm4v'],
   'video/webm': ['webm'],
   'video/quicktime': ['mov'],

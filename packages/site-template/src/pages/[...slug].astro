@@ -27,7 +27,7 @@ import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
   buildCoreBlockRegistry,
   buildMediaLookup,
   buildPageSchema,
-  collectBlockAssets,
+  collectBlockAssets, platformLayer,
   collectClientCapabilities,
   pageNavigation,
   pageContentValues,
@@ -230,7 +230,7 @@ if (bodyHtml) bodyHtml = resolveBuildVariables(bodyHtml, getBuildYear());
 // AFTER sanitization on purpose: the runtime is platform code (same trust
 // class as BLOCKS_RUNTIME_CSS), and the sanitizer would strip <script>.
 if (bodyHtml && bodyHtml.includes('data-tr-form')) {
-  formsRuntimeTag = `<style>${FORM_SHELL_CSS}</style><script>${FORMS_RUNTIME_JS}</script>`;
+  formsRuntimeTag = `<style>${platformLayer('blocks', FORM_SHELL_CSS, renderVersion)}</style><script>${FORMS_RUNTIME_JS}</script>`;
   bodyHtml += formsRuntimeTag;
 }
 

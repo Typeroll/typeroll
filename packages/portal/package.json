@@ -12,7 +12,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "test:e2e:install": "playwright install --with-deps chromium firefox webkit"
+    "test:e2e:install": "playwright install --with-deps chromium firefox webkit",
+    "test:layout": "playwright test -c playwright.layout.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",

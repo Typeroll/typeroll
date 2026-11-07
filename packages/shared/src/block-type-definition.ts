@@ -43,7 +43,7 @@ export const BLOCK_TYPE_FIELD_TYPES: readonly FieldType[] = [
 ];
 const FIELD_KEYS = new Set(['name', 'type', 'label', 'help', 'required', 'default', 'placeholder', 'options', 'option_labels', 'fields',
   'item_label', 'min_items', 'max_items', 'responsive', 'min', 'max', 'style_target', 'editor_group', 'ref_content_type', 'choices_markup',
-  'responsive_css', 'css_unit', 'design_token', 'item_key', 'style_default_role', 'min_render_version']);
+  'responsive_css', 'css_unit', 'design_token', 'item_key', 'style_default_role', 'min_render_version', 'ui_text', 'media']);
 /** Properties a block type definition may carry. */
 export const BLOCK_TYPE_WRITABLE = ['name', 'label', 'icon', 'category', 'container', 'slot_count', 'slot_labels', 'item_compatible',
   'expand_to', 'schema', 'template', 'styles', 'script', 'composition', 'description', 'parts'] as const;

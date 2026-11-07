@@ -45,9 +45,38 @@ export const CONTENT_WELL_CSS = `
 [data-block="semantic-container"][data-rhythm="article"] > :last-child { margin-block-end:0; }
 `.trim();
 
+/**
+ * Render version 14: space before the footer and heading rhythm in block flow.
+ * - A page that ends with content outside a section keeps the section padding
+ *   before the footer; a last section or hero pads itself.
+ * - A Heading block between blocks of running text sits much closer to the
+ *   text it introduces than to the text before it, like a heading inside a
+ *   Text block.
+ */
+const FLOW = ':is(.block-section-inner,.page-content--blocks,:is([data-block="container"],[data-block="semantic-container"])[data-rhythm="article"])';
+const HEADING_BLOCK = ':is([data-block="heading"],[data-block="rich_heading"])';
+// Running text: the blocks a heading can introduce or follow inside an article-like flow.
+const TEXT_BLOCK = ':is([data-block="prose"],[data-block="text"],[data-block="list"],[data-block="table"],[data-block="image"],[data-block="video"])';
+export const CONTENT_WELL_V14_CSS = `
+@media (max-width:639px) { :root { --section-padding:calc(var(--space-xl) * .75); } }
+:root { --heading-flow-before:calc(var(--block-gap) * 1.75); --heading-flow-after:min(var(--block-gap), .75rem); --breadcrumbs-after:clamp(1rem, .5rem + 2vw, 2.5rem); }
+
+.block-section-inner { --heading-flow-before:calc(var(--section-child-gap,var(--block-gap)) * 1.75); --heading-flow-after:min(var(--section-child-gap,var(--block-gap)), .75rem); }
+.page-content--blocks > :nth-last-child(1 of :not(style,script)):not([data-block="section"],[data-block="hero"]) { margin-block-end:var(--page-end-space,var(--section-padding)); }
+${FLOW} > ${TEXT_BLOCK} + ${HEADING_BLOCK} { margin-block-start:var(--heading-flow-before); }
+${FLOW} > ${HEADING_BLOCK} + ${TEXT_BLOCK} { margin-block-start:var(--heading-flow-after); }
+/* Two plain sections in a row (no background or shape) are one flow: the second does not repeat the space above it. */
+.page-content--blocks > [data-block="section"][style*="--block-bg:;"]:not([style*="--surface"],[data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"],[data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"],[data-bg-media]) + [data-block="section"][style*="--block-bg:;"]:not([style*="--surface"],[data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"],[data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"],[data-bg-media]) { padding-block-start:0; }
+/* A block placed directly in the page is its content width plus the page gutter, so its content starts where a section's does. */
+.page-content--blocks > :not([data-block="section"],[data-block="hero"],[data-block="container"][data-width="full"],[data-block="semantic-container"][data-width="full"],style,script) { max-width:calc(var(--band-width, var(--content-normal, 65rem)) + 2 * var(--content-gutter)); }
+.page-content--blocks > :is([data-block="container"],[data-block="semantic-container"],[data-block="feature_row"],[data-block="cta"])[data-width="narrow"] { --band-width:var(--content-narrow, 42rem); }
+.page-content--blocks > :is([data-block="container"],[data-block="semantic-container"],[data-block="feature_row"],[data-block="cta"])[data-width="wide"] { --band-width:var(--content-wide, 80rem); }
+`.trim();
+
 /** Preserve historical geometry; new versions consume the configurable scales. */
 export function contentWellCss(version: number): string {
   if (version < 10) return CONTENT_WELL_CSS;
+  if (version >= 14) return `${contentWellCss(13)}\n${CONTENT_WELL_V14_CSS}`;
   const slots: Record<string,string> = {'1':'var(--space-xs)','2':'var(--space-sm)','3':'calc(var(--space-sm) * 1.5)','4':'var(--space-md)','5':'var(--space-lg)','6':'calc(var(--space-md) * 2)','7':'calc(var(--space-md) * 2.5)','8':'var(--space-xl)','9':'calc(var(--space-xl) * 1.33333)','10':'calc(var(--space-xl) * 1.66667)','11':'calc(var(--space-xl) * 2)','12':'calc(var(--space-xl) * 2.66667)'};
   return CONTENT_WELL_CSS.replace(/var\(--space-(\d+)\)/g, (match,step) => slots[step] ?? match)
     .replace(/--type-h([1-6]):[^;]+;/g, (_,level) => `--type-h${level}:var(--type-size-${['3xl','2xl','xl','lg','md','sm'][Number(level)-1]});`)

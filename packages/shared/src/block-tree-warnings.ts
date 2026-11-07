@@ -1,3 +1,4 @@
+import { SLOT_BLOCK_TYPES } from './block-ids.js';
 // Write-time warnings: things a caller got wrong that the platform would
 // otherwise store, return and build without comment.
 //
@@ -27,7 +28,7 @@ export interface BlockTreeWarning {
    * block's `part_styles` and need the site's styles (block-parts.ts
    * `partStyleIssues`); the portal adds them to tree writes.
    */
-  code: 'ineffective_whole_card_link' | 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field' | 'unknown_style' | 'style_target_mismatch' | 'part_style_contrast';
+  code: 'ineffective_whole_card_link' | 'children_in_slot_block' | 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field' | 'unknown_style' | 'style_target_mismatch' | 'part_style_contrast';
   /** The block's id where it has one; a tree may be written before ids exist. */
   block_id?: string;
   /** Path to the offending key, e.g. `blocks[0].style_overrides.class`. */
@@ -97,6 +98,15 @@ export function blockTreeWarnings(value: unknown, root = 'blocks', registry?: Re
       warnings.push(...blockBehaviorWarnings(block as { id?: string; type?: string; data?: Record<string, unknown> }, at));
       if (typeof (block as { type?: unknown }).type === 'string') typed.push([block as { type: string }, at]);
       const children = (block as { children?: unknown }).children;
+      if (Array.isArray(children) && children.length && SLOT_BLOCK_TYPES.has(String((block as { type?: unknown }).type))) {
+        const id = (block as { id?: unknown }).id;
+        warnings.push({
+          code: 'children_in_slot_block',
+          ...(typeof id === 'string' && id ? { block_id: id } : {}),
+          path: `${at}.children`,
+          message: `${String((block as { type?: unknown }).type)} shows only its slots. These ${children.length} blocks are saved at the end of slots[0]; put each in the slot (column or panel) where it belongs.`,
+        });
+      }
       if (children !== undefined) visit(children, `${at}.children`);
       const slots = (block as { slots?: unknown }).slots;
       if (Array.isArray(slots)) slots.forEach((slot, s) => visit(slot, `${at}.slots[${s}]`));

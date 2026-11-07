@@ -140,6 +140,27 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Navigation links can have a group label: a visible title above the links that also names the list for screen readers. Lists without a label render as before.',
     ],
   },
+  {
+    version: 14, core_version: '0.3.7', title: 'Layered platform styles and balanced phone layouts',
+    changes: [
+      'Platform CSS (reset, base, theme values, blocks, site styles and per-block values) is emitted in cascade layers. Site and page CSS are unlayered, so a plain class or element rule overrides a platform default without !important.',
+      'Phones get smaller headings by default (a type ratio of 1.15 below the site setting\'s explicit value), so a heading no longer breaks into lines of a few words.',
+      'Pages that end with content outside a section get space before the footer. A Heading block between other blocks in a section has more space above than below, like a heading inside a Text block.',
+      'Block defaults fit every width: long words wrap in every block, cards and grids stay inside their column, touch targets are at least 24px, a call to action without a background uses the theme colours, and card padding is compact on phones.',
+      'A navigation link\'s minimum height (44px by default, or link_min_height_px) includes its vertical padding, so a heading above a stacked list of links stays further from the links than they are from each other.',
+      'Sections, containers, heroes, feature rows and calls to action share three content widths (narrow, normal and wide), so blocks of the same width start at the same edge on wide screens. Heroes and calls to action get a width setting; a block placed directly in the page follows its width instead of a fixed 1080px.',
+      'Built-in labels left at their English default (Learn more, On this page, Menu, Previous, Next, Download PDF and others) render in the page language.',
+      'A list of ordinary Pages with no filter and no chosen Pages lists the current Page\'s children, instead of every Page on the site.',
+      'A feature row inside a tab, column, grid cell or container drops its default outer padding and fills the block around it, and it stacks by its own width, so it also stacks in a narrow column on a wide screen.',
+      'Two site settings: date_format (medium, long, numeric, iso or a pattern) and content_widths (the narrow, normal and wide widths in px).',
+      'Page dates and card dates read in the page language ("12 okt. 2026" on a Swedish page). A Page date block\'s format setting now applies; card dates keep the machine-readable date in datetime.',
+      'An entrance animation (motion: fade, rise, scale or custom) on sections, containers, grids, columns, lists and the larger content blocks. It plays once as the block scrolls in; containers bring in their blocks one after another. Content is visible without script, in print and for visitors who prefer reduced motion.',
+      'Sections get a background image, and sections, containers and calls to action a background video file: it starts in view, pauses out of view, has a pause button, shows the image on phones unless asked to play, and never plays for reduced motion. A darkening layer (background_overlay) keeps white text readable.',
+      'Text over images: darkening evenly, from one side or behind the text in a chosen color; a plate behind the text (solid, see-through, glass that blurs the image, or a full-width band) in a rounded, square, pill, organic, slanted or custom shape; and in sections a text position per screen size with a minimum height.',
+      'A gallery opens its images larger on click, with previous and next, the arrow keys and swiping (lightbox, on by default). A logo cloud can be a slowly moving row (layout: marquee) with a pause button.',
+      'The site setting motion: reduced turns off entrance animations, carousel autoplay, background and hero videos, moving rows, counting figures and scroll films for every visitor.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

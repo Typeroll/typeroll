@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Media } from '@typeroll/shared';
 import MediaDetail from './MediaDetail';
+import { filterMedia, mediaKind, MediaKindFilter, MediaThumb, mediaThumbStyles, type MediaFilter } from './MediaThumb';
 import { finalizeUpload } from '../lib/media/client-upload';
 
 interface UploadState {
@@ -28,6 +29,9 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
   const [preparation, setPreparation] = useState<{ state: string; completed: number; total: number; error: string | null } | null>(null);
   const [preparationError, setPreparationError] = useState('');
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<MediaFilter>('all');
+  const [query, setQuery] = useState('');
+  const shown = filterMedia(items, filter, query);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const activeItem = activeId ? items.find((m) => m.id === activeId) ?? null : null;
@@ -180,11 +184,11 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
         <button className="btn" onClick={() => inputRef.current?.click()}>
           + Upload files
         </button>
-        <span className="muted text-sm">— or drag and drop anywhere on the page</span>
+        <span className="muted text-sm">— or drag and drop anywhere on the page. Images, PDFs and MP4 or WebM video up to 25 MB.</span>
         <input
           ref={inputRef}
           type="file"
-          accept="image/*,application/pdf"
+          accept="image/*,application/pdf,video/mp4,video/webm"
           multiple
           style={{ display: 'none' }}
           onChange={(e) => {
@@ -237,8 +241,14 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
           <p className="muted" style={{ marginTop: '0.75rem' }}>No media yet. Drop files anywhere or click upload.</p>
         </div>
       ) : (
+        <>
+        <div className="media__filters">
+          <MediaKindFilter items={items} value={filter} onChange={setFilter} />
+          <input type="search" className="media__search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name or description" aria-label="Search the media library" />
+        </div>
+        {shown.length === 0 && <p className="muted">Nothing matches. Clear the search or choose another type.</p>}
         <div className="media__grid">
-          {items.map((m) => (
+          {shown.map((m) => (
             <div key={m.id} className="media__item">
               <button
                 type="button"
@@ -246,11 +256,8 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
                 onClick={() => (selectable && onSelect ? onSelect(m) : setActiveId(m.id))}
                 title={selectable ? 'Select' : 'Open details'}
               >
-                {m.mime_type?.startsWith('image') ? (
-                  <img src={m.cdn_url} alt={m.alt_text ?? m.filename} loading="lazy" />
-                ) : (
-                  <div className="media__placeholder">{(m.mime_type ?? 'file').split('/')[1] ?? 'file'}</div>
-                )}
+                <MediaThumb item={m} size={200} />
+                <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)', whiteSpace: 'nowrap' }}>{`${m.filename} (${mediaKind(m)})`}</span>
               </button>
               <div className="media__meta">
                 <div className="text-sm" title={m.filename} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.filename}</div>
@@ -266,6 +273,7 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
             </div>
           ))}
         </div>
+        </>
       )}
 
       {activeItem && !selectable && (
@@ -281,7 +289,10 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
         />
       )}
 
-      <style>{styles}</style>
+      <style>{`${styles}
+.media__filters { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; margin-bottom:1rem; }
+.media__search { flex:1; min-width:12rem; max-width:24rem; padding:.4rem .65rem; border:1px solid var(--color-border); border-radius:6px; background:#fff; color:var(--color-text); }
+${mediaThumbStyles}`}</style>
     </div>
   );
 }
@@ -424,7 +435,7 @@ const styles = `
 .media__bar-fill { height: 100%; transition: width 0.2s; }
 .media__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 9.5rem), 1fr));
   gap: 1rem;
 }
 .media__item {

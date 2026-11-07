@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.3.8 (candidate, MCP 0.45.121)
+
+- **Render version 14** is the default for new sites. Platform CSS is layered
+  (`@layer`), so a site's own CSS wins without `!important`; every block gets
+  responsive defaults; sites can set `content_widths` and `date_format`; and
+  interface labels and dates follow the page language. Versions 1–13 render
+  exactly as before. See [settings](packages/docs-site/src/content/docs/tools/settings.md#render-versions).
+- **Motion and background media** (render version 14): `motion` entrance
+  animation on sections, containers, lists and content blocks; background
+  images and muted looping MP4/WebM videos on sections, containers and CTAs,
+  with several sizes and a phone choice; text over images with gradients,
+  translucent or glass panels, shaped plates and per-breakpoint positions. A
+  site setting `motion: reduced` turns movement off. Runtimes ship only on
+  pages that use them.
+- **Story blocks:** `core/stats` (count-up figures), `core/timeline`,
+  `core/audio`, `core/before_after`, `core/announcement_bar`,
+  `core/scroll_steps`, `core/scroll_film` (scroll-driven frames or video with
+  captions) and `core/svg_animation` (draw, sequence or reveal on enter, at a
+  position, with scroll or in a loop). Galleries gain a lightbox and logo
+  clouds a moving row. CSS variables, attributes and events let a site's own
+  CSS and scripts hook in.
+- The media library accepts MP4 and WebM up to 25 MB, filters by type, shows
+  thumbnails and previews videos; the picker in the block editor does the same.
+- From render version 14 a navigation link's minimum height includes its
+  vertical padding (a one-line link is 44 px, not 60 px), so a heading above
+  stacked links stays further from them than they are from each other.
+- Restoring standard styles on a site below render version 14 writes the
+  heading spacing that version had (1em before, 0.5em after), so the site's
+  output does not change.
+
 ## 0.3.7 (candidate, MCP 0.45.120)
 
 - Frozen publication snapshots are pruned at the end of each publication of

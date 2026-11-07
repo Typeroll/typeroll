@@ -3,7 +3,7 @@ import { isSiteSettingsSection, scopedSettings } from '../../../../lib/site-sett
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
+import { contentWidthsError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 
@@ -81,6 +81,13 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
   if (includesSection('design') && breakpointError) return new Response(breakpointError, { status: 400 });
   const agentInstructions = form.has('agent_instructions') ? String(form.get('agent_instructions') || '') : existing.agent_instructions;
   if (includesSection('access') && agentInstructions && agentInstructions.length > 12000) return new Response('Agent instructions must be at most 12000 characters.', { status: 400 });
+  // Empty fields keep the default width; a site stores only the widths it changes.
+  const contentWidthEntries = (['narrow', 'normal', 'wide'] as const).flatMap(key => {
+    const value = String(form.get(`content_widths.${key}`) ?? '').trim();
+    return value ? [[key, Number(value)] as const] : [];
+  });
+  const content_widths = contentWidthEntries.length ? Object.fromEntries(contentWidthEntries) : undefined;
+  if (includesSection('design') && content_widths) { const error = contentWidthsError(content_widths); if (error) return new Response(error, { status: 400 }); }
   const next: SiteSettings = {
     ...existing,
     responsive_breakpoints,
@@ -113,6 +120,11 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     header_behavior: ['sticky', 'reveal_on_scroll_up'].includes(String(form.get('header_behavior')))
       ? String(form.get('header_behavior')) as 'sticky' | 'reveal_on_scroll_up'
       : undefined,
+    // medium is the default and is stored as an absent value.
+    date_format: ['long', 'numeric', 'iso'].includes(String(form.get('date_format'))) ? String(form.get('date_format')) : undefined,
+    content_widths,
+    // full is the default and is stored as an absent value.
+    motion: form.get('motion') === 'reduced' ? 'reduced' : undefined,
     sitewide_noindex: form.get('sitewide_noindex') === 'on',
     seo_review,
     external_routes,

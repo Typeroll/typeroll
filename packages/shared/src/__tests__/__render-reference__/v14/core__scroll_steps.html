@@ -1,0 +1,83 @@
+<div data-block="scroll_steps" data-side="end" data-aspect="4:3" data-fit="cover" data-block-type="core/scroll_steps"><div class="block-steps-layout"><div class="block-steps-media" aria-hidden="true"></div><ol class="block-steps-list"></ol></div></div>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/scroll_steps */
+[data-block="scroll_steps"] { container-type:inline-size; --steps-ratio:4/3; }
+[data-block="scroll_steps"][data-aspect="1:1"] { --steps-ratio:1; }
+[data-block="scroll_steps"][data-aspect="3:4"] { --steps-ratio:3/4; }
+[data-block="scroll_steps"][data-aspect="16:9"] { --steps-ratio:16/9; }
+/* Without script, and in narrow columns, each step shows its own picture above the text. */
+[data-block="scroll_steps"] .block-steps-media { display:none; }
+[data-block="scroll_steps"] .block-steps-list { display:grid; gap:var(--steps-gap, 2.5rem); margin:0; padding:0; list-style:none; }
+[data-block="scroll_steps"] .block-steps-step-media { display:block; inline-size:100%; block-size:auto; aspect-ratio:var(--steps-ratio); object-fit:cover; margin-block-end:var(--steps-media-space, 1rem); border-radius:var(--steps-radius, .75rem); }
+[data-block="scroll_steps"][data-fit="contain"] .block-steps-step-media { object-fit:contain; background:var(--color-surface, #f4f4f5); }
+[data-block="scroll_steps"] .block-steps-title { margin:0 0 .5rem; font-size:var(--type-h3, 1.5rem); line-height:1.25; }
+[data-block="scroll_steps"] .block-steps-text > :first-child { margin-block-start:0; }
+[data-block="scroll_steps"] .block-steps-text > :last-child { margin-block-end:0; }
+@container (min-width: 52rem) {
+  [data-block="scroll_steps"][data-enhanced] .block-steps-layout { display:grid; grid-template-columns:minmax(0, 1.15fr) minmax(0, 1fr); gap:var(--steps-columns-gap, clamp(2rem, 5cqi, 5rem)); align-items:start; }
+  [data-block="scroll_steps"][data-enhanced][data-side="start"] .block-steps-media { order:-1; }
+  [data-block="scroll_steps"][data-enhanced][data-side="end"] .block-steps-list { grid-row:1; grid-column:1; }
+  [data-block="scroll_steps"][data-enhanced] .block-steps-media { display:block; position:sticky; inset-block-start:calc(var(--steps-top, 0px) + max(1.5rem, (100svh - var(--steps-top, 0px) - min(70svh, 40rem)) / 2)); aspect-ratio:var(--steps-ratio); max-block-size:70svh; inline-size:100%; overflow:hidden; border-radius:.75rem; background:var(--color-surface, #f4f4f5); }
+  [data-block="scroll_steps"][data-enhanced] .block-steps-frame { position:absolute; inset:0; inline-size:100%; block-size:100%; object-fit:cover; opacity:0; transition:opacity .5s ease; }
+  [data-block="scroll_steps"][data-enhanced][data-fit="contain"] .block-steps-frame { object-fit:contain; }
+  [data-block="scroll_steps"][data-enhanced] .block-steps-frame[data-active] { opacity:var(--steps-frame-active, 1); }
+  [data-block="scroll_steps"][data-enhanced] .block-steps-list { gap:0; }
+  [data-block="scroll_steps"][data-enhanced] .block-steps-step { display:flex; align-items:center; min-block-size:70svh; opacity:var(--steps-inactive, .4); transition:opacity .4s ease; }
+  [data-block="scroll_steps"][data-enhanced] .block-steps-step[data-active] { opacity:var(--steps-active, 1); }
+  /* The last step only needs to reach the middle of the screen, not leave a screen of space below it. */
+  [data-block="scroll_steps"][data-enhanced] .block-steps-step:last-child { min-block-size:50svh; }
+  [data-block="scroll_steps"][data-enhanced] .block-steps-step-media { display:none; }
+}
+@media (prefers-reduced-motion: reduce) { [data-block="scroll_steps"] :is(.block-steps-frame, .block-steps-step) { transition:none !important; } }
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
+:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}

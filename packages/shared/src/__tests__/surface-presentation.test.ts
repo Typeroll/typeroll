@@ -28,11 +28,13 @@ describe('native surface presentation', () => {
     expect(html.match(/<a\b/g)).toHaveLength(1);
     expect(registry.get('core/post_card')!.schema.some(field => field.name === 'download_hover_color')).toBe(true);
   });
-  it('offers compact desktop footer links without changing primary menu defaults', () => {
+  it('stacks compact footer links on phones without changing primary menu defaults', () => {
     const schema = registry.get('core/navigation_links')!.schema;
     expect(schema.find(field => field.name === 'density')?.default).toBe('comfortable');
     const footer = getPartialCompositionStarter('footer', { links: [{ label: 'Home', href: '/' }] });
-    expect(renderBlocks(footer, { registry })).toContain('data-density="compact-desktop"');
+    const footerHtml = renderBlocks(footer, { registry });
+    expect(footerHtml).toContain('data-density="compact"');
+    expect(footerHtml).toMatch(/--direction:column/);
     const ordinary: Block[] = [{ id: 'nav', type: 'core/navigation_links', data: { links: [{ label: 'Home', href: '/' }] } }];
     expect(renderBlocks(ordinary, { registry })).toContain('data-density="comfortable"');
     expect(collectBlockAssets(ordinary, registry).css).toContain('pointer:fine');

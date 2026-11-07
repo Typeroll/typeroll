@@ -17,3 +17,11 @@ export const LEGACY_STANDARD_STYLES: readonly SiteStyle[] = [
   { id: 'button-secondary', name: 'Secondary button', role: 'button_secondary', targets: ['button'], description: 'Secondary action next to a primary button.', base: { background: 'transparent', color: 'primary', weight: 600, padding: '0.6875rem 1.1875rem', radius: '0.5rem', decoration: 'none', border: { width: '1px', style: 'solid', color: 'primary' } } },
   { id: 'section', name: 'Section', role: 'section', targets: ['container'], description: 'Vertical rhythm for a page section.', base: { padding: '3rem 0' }, at: { tablet: { padding: '4rem 0' }, desktop: { padding: '6rem 0' } } },
 ];
+
+/**
+ * Standard styles as new sites got them before Core 0.3.7: render versions 10–13 are recorded with these.
+ * A frozen copy of what `standardStylesFor` gives below render version 14, to compare it against.
+ */
+export function standardStylesBefore037(styles: readonly SiteStyle[]): SiteStyle[] {
+  return styles.map(style => /^h[1-6]$/.test(style.role ?? '') ? { ...style, base: { ...style.base, space_before: '1em', space_after: '0.5em' } } : style);
+}

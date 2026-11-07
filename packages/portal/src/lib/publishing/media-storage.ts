@@ -52,13 +52,20 @@ async function uploadDestination(orgId: string) {
     generation: connection.revision };
 }
 
+/**
+ * Media people can upload: images, PDFs and web-ready video (MP4, WebM). Video
+ * follows the same 25 MB limit as everything else, because publication reads
+ * each file whole; a phone original is prepared to fit first (Advanced Design).
+ */
+export const UPLOADABLE_MEDIA_TYPE = /^(image\/[a-zA-Z0-9.+-]+|application\/pdf|video\/mp4|video\/webm)$/;
+
 export async function createMediaUpload(orgId: string, siteId: string, input: { filename: string; contentType: string; size?: number; altText?: string; actor: string }) {
   if (typeof input.filename !== 'string' || !input.filename || input.filename.length > 255 || typeof input.contentType !== 'string' ||
-      !/^(image\/[a-zA-Z0-9.+-]+|application\/pdf)$/.test(input.contentType)) throw new ConnectionError('Choose an image or PDF with a valid filename.', 415);
+      !UPLOADABLE_MEDIA_TYPE.test(input.contentType)) throw new ConnectionError('Choose an image, PDF or MP4 or WebM video with a valid filename.', 415);
   // Static hosts serve a file by its extension: a name without the type's
   // extension gets it appended (415 for a type that cannot be published).
   const filename = withMediaExtension(input.filename, input.contentType);
-  if (filename.length > 255) throw new ConnectionError('Choose an image or PDF with a valid filename.', 415);
+  if (filename.length > 255) throw new ConnectionError('Choose an image, PDF or MP4 or WebM video with a valid filename.', 415);
   if (input.size !== undefined && (!Number.isSafeInteger(input.size) || input.size < 1 || input.size > MAX_BYTES)) throw new ConnectionError('The file must be between 1 byte and 25 MB.', 413);
   const uploadTtl = await organizationUploadTtl(orgId);
   const destination = await uploadDestination(orgId);

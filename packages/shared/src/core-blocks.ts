@@ -20,6 +20,8 @@ import { TEMPLATE_BLOCK_TYPES } from './template-blocks.js';
 import { TIER1_BLOCK_TYPES } from './tier1-blocks.js';
 import { FIELD_LIST_BLOCK } from './field-list.js';
 import { withPartStylesField } from './block-parts.js';
+import { withPresentationEffectFields } from './block-effects.js';
+import { STORY_BLOCK_TYPES } from './story-blocks.js';
 import type { BlockType } from './types.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
@@ -539,7 +541,7 @@ const button: BlockType = {
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'button', editor_group: 'content' },
-    { name: 'label', type: 'text', label: 'Button text', required: true, default: 'Learn more' },
+    { name: 'label', type: 'text', label: 'Button text', required: true, default: 'Learn more', ui_text: 'learn_more' },
     { name: 'href', type: 'url', label: 'Link to', required: true },
     { name: 'variant', type: 'select', label: 'Style', options: ['primary', 'secondary', 'ghost'], default: 'primary' },
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg'], default: 'md' },
@@ -648,6 +650,8 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   // every block ID a page could reference.
   ...TIER1_BLOCK_TYPES,
   ...ARTICLE_BLOCK_TYPES,
+  // Key figures, timeline, audio, before/after, announcement bar, scroll steps and scroll film — see story-blocks.ts.
+  ...STORY_BLOCK_TYPES,
   // Repeater + aliases — see repeater-blocks.ts. These come after Tier 1
   // because some of them reference Tier 1 item blocks via `expand_to`.
   ...REPEATER_BLOCK_TYPES,
@@ -658,7 +662,7 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   // bind {{page.title}} once and every blog post renders correctly.
   ...TEMPLATE_BLOCK_TYPES,
   // A type with parts gets the part_styles field (block-parts.ts).
-].map(block => withPartStylesField(block)).map(block => ({ ...block, schema: [...block.schema, componentBreakpointsField].map(groupPresentationField) }));
+].map(block => withPresentationEffectFields(withPartStylesField(block))).map(block => ({ ...block, schema: [...block.schema, componentBreakpointsField].map(groupPresentationField) }));
 
 /**
  * Build a registry Map for use with `renderBlocks`. Custom block types
