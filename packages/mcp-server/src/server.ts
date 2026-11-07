@@ -47,6 +47,7 @@ import { extensionTools, developerExtensionTools } from './tools/extensions.js';
 import { skillTools } from './tools/skills.js';
 import { accessTools } from './tools/access.js';
 import { collectionTools } from './tools/collection.js';
+import { clipboardTools } from './tools/clipboard.js';
 import { workflowTools } from './tools/workflows.js';
 import { fail, ok, type ToolDef, type ToolDeps } from './tools/helpers.js';
 import { VERSION } from './version.js';
@@ -79,6 +80,7 @@ export const ALL_TOOLS: ToolDef[] = [
   ...reusableBlockTools,
   ...packageTools,
   ...collectionTools,
+  ...clipboardTools,
   ...migrationTools,
   ...formTools,
   ...emailTools,
@@ -176,7 +178,8 @@ export function effectFor(name: string): ToolEffect {
     || name === 'set_incoming_email_forwarding'
   ) return 'admin';
   // Compute an answer and write nothing, like the preview_* tools.
-  if (name === 'validate_block_type' || name === 'inspect_package' || name.startsWith('find_')) return 'read';
+  // copy_blocks builds a clipboard from a page and writes nothing.
+  if (name === 'validate_block_type' || name === 'inspect_package' || name === 'copy_blocks' || name.startsWith('find_')) return 'read';
   if (name === 'diff_version') return 'read';
   if (
     name.startsWith('list_') ||

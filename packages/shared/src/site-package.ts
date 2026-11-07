@@ -528,6 +528,13 @@ export function freeId(id: string, taken: ReadonlySet<string>, max = 64): string
   throw new Error(`No free id for ${id}`);
 }
 
+/** Whether `candidate` is how an import renames `id` when it is taken: `<id>-2`, `<id>-3`… */
+const renamedCopyOf = (candidate: string, id: string) => {
+  const match = /^(.+)-(\d+)$/.exec(candidate);
+  // freeId keeps the whole id unless it had to shorten it to fit.
+  return !!match && candidate !== id && Number(match[2]) >= 2 && (match[1] === id || (match[1].length >= 40 && id.startsWith(match[1])));
+};
+const roleless = (style: SiteStyle): SiteStyle => { const { role: _role, ...rest } = style; void _role; return rest; };
 const styleBody = (style: SiteStyle) => canonicalJson({ ...style, id: undefined, name: undefined, description: undefined, updated_at: undefined });
 const typeBody = (type: Record<string, unknown>) => canonicalJson({ ...type, created_at: undefined, updated_at: undefined, imported_from: undefined });
 
@@ -565,6 +572,9 @@ export function planPackageImport(pkg: SitePackage, target: PackageImportTarget,
   const blockTypes: PackageImportPlan['block_types'] = typeIds.map(id => {
     const existing = existingTypes.get(id);
     if (existing && typeBody(existing) === typeBody(packageTypes.get(id)!)) return { action: 'reuse', from: id, to: id };
+    // An earlier import's renamed copy (`<id>-2`) with the same definition is reused, so importing twice adds nothing.
+    const copy = existing ? target.blockTypes.find(type => renamedCopyOf(type.id, id) && typeBody({ ...type, id }) === typeBody(packageTypes.get(id)!)) : undefined;
+    if (copy) { maps.blockTypes.set(id, copy.id); return { action: 'reuse', from: id, to: copy.id }; }
     const to = existing ? freeId(id, takenTypes) : id;
     takenTypes.add(to);
     if (to !== id) maps.blockTypes.set(id, to);
@@ -598,6 +608,9 @@ export function planPackageImport(pkg: SitePackage, target: PackageImportTarget,
     if (!usedStyles.has(style.id) && options.design === 'content') continue;
     const existing = existingStyles.get(style.id);
     if (existing && styleBody(existing) === styleBody(style)) { styles.push({ action: 'reuse', from: style.id, to: style.id, name: existing.name, style: existing }); continue; }
+    // An earlier import's renamed copy (`hero-2`, "Hero (imported)") with the same definition is reused.
+    const copy = existing ? target.styles.find(candidate => renamedCopyOf(candidate.id, style.id) && (styleBody(candidate) === styleBody(style) || styleBody(candidate) === styleBody(roleless(style)))) : undefined;
+    if (copy) { styles.push({ action: 'reuse', from: style.id, to: copy.id, name: copy.name, style: copy }); maps.styles.set(style.id, copy.id); continue; }
     // A standard role is held by one style per site: a copy beside the site's own is a plain class style.
     const roleTaken = !!style.role && existingRoles.has(style.role);
     const to = existing ? freeId(style.id, takenStyles, 48) : style.id;

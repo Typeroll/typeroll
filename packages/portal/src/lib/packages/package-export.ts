@@ -14,12 +14,18 @@
 // (`kind: site`) holds everything: pages (published, unlisted and drafts),
 // header and footer, menus, site fields with their values, every style and
 // the design.
+//
+// Copied blocks (`kind: clipboard`, block-clipboard.ts in shared) are built
+// here too, with `media: 'reference'`: the blocks with the styles, block
+// types and free global blocks they use, and no files. Their media keep
+// their addresses (listed with the library file each belongs to) and their
+// page links stay, so a paste into the same site changes nothing.
 
 import {
   blockStyleRefs, blockTypeRefs, CORE_VERSION, contentPagePath, DEFAULT_CONTENT_TYPE, globalBlockRefs,
   packageMediaUrl, PACKAGE_LIMITS, paths, portableBlockType, rewriteBlockReferences, sitePackageErrors, SITE_PACKAGE_FORMAT,
   SITE_PACKAGE_FORMAT_VERSION, STYLE_ELEMENT_ROLES, validateSiteStyle,
-  type Block, type BlockTemplate, type BlockType, type Media, type Menu, type MenuItem, type PackageBlockTemplate,
+  type Block, type BlockTemplate, type BlockType, type ClipboardMediaRef, type Media, type Menu, type MenuItem, type PackageBlockTemplate,
   type PackageDesign, type PackageFont, type PackageGlobalBlock, type PackageMedia, type PackagePage, type PackagePageTemplate,
   type Page, type Partial as PartialDoc, type SitePackage, type SiteSettings, type SiteStyle,
 } from '@typeroll/shared';
@@ -36,7 +42,9 @@ import { mediaAddresses } from './demo-media';
 import { PackageError, packageIntegrity, sha256Hex, writeSitePackageZip } from './package-zip';
 
 export interface PackageExportSelection {
-  kind: 'collection' | 'site';
+  kind: 'collection' | 'site' | 'clipboard';
+  /** Clipboard packages: the copied blocks. */
+  blocks?: Block[];
   block_templates?: string[] | 'all';
   page_templates?: string[] | 'all';
   /** Free global blocks. */
@@ -69,6 +77,23 @@ export interface PackageExportResult {
   filename: string;
   sha256: string;
   warnings: string[];
+}
+
+export interface BuiltPackage {
+  manifest: SitePackage;
+  files: Map<string, Uint8Array>;
+  warnings: string[];
+  /** With `media: 'reference'`: the library files the content uses, by the addresses it uses. */
+  media: ClipboardMediaRef[];
+  /** Clipboard packages: addresses of the site's pages the blocks link to. */
+  page_links: Record<string, string>;
+}
+
+export interface PackageBuildOptions {
+  media?: PackageMediaIO;
+  now?: Date;
+  /** `embed` (default): media files travel in the package; `reference`: content keeps its addresses. */
+  mediaMode?: 'embed' | 'reference';
 }
 
 export interface ExportCtx { orgId: string; siteId: string; versionId: string }
@@ -171,7 +196,7 @@ function pick<T extends { id: string }>(all: readonly T[], wanted: string[] | 'a
  * Collections must not point at the source site's pages: a link to a page
  * keeps its address as a plain URL, a page list loses its pages.
  */
-function detachPageLinks(blocks: Block[], pageUrl: (id: string) => string | undefined, counts: { links: number; lists: number }): Block[] {
+export function detachPageLinks(blocks: Block[], pageUrl: (id: string) => string | undefined, counts: { links: number; lists: number }): Block[] {
   const visit = (value: unknown, key = ''): unknown => {
     if (Array.isArray(value)) {
       if (key === 'page_ids' && value.length) { counts.lists++; return []; }
@@ -242,7 +267,7 @@ function packageDesign(settings: SiteSettings): PackageDesign {
   };
 }
 
-function mediaFileExtension(media: Media): string {
+export function mediaFileExtension(media: Media): string {
   const type = media.mime_type ?? '';
   const allowed = allowedMediaExtensions(type);
   const own = mediaExtension(media.filename ?? '');
@@ -259,16 +284,42 @@ function typeDependencies(type: BlockType): string[] {
   return [...out];
 }
 
+/** The page ids a block tree links to (page_id, parent_page_id, page_ids). */
+function pageLinkRefs(blocks: readonly Block[]): string[] {
+  const found = new Set<string>();
+  const visit = (value: unknown, key = '') => {
+    if (typeof value === 'string') { if (key === 'page_id' || key === 'parent_page_id') found.add(value); }
+    else if (Array.isArray(value)) value.forEach(item => (key === 'page_ids' && typeof item === 'string' ? found.add(item) : visit(item)));
+    else if (isRecord(value)) for (const [inner, child] of Object.entries(value)) visit(child, inner);
+  };
+  const walk = (list: readonly Block[] | undefined) => { for (const block of list ?? []) { visit(block.data ?? {}); walk(block.children); for (const slot of block.slots ?? []) walk(slot); } };
+  walk(blocks);
+  return [...found];
+}
+
 /**
  * Build a package from a site version. Throws PackageError when the selection
  * names something the site does not have, a media file cannot be read, or the
  * result would break the package limits.
  */
 export async function exportSitePackage(ctx: ExportCtx, selection: PackageExportSelection, meta: PackageExportMeta, options: { media?: PackageMediaIO; now?: Date } = {}): Promise<PackageExportResult> {
+  const { manifest, files, warnings } = await buildSitePackage(ctx, selection, meta, options);
+  const total = [...files.values()].reduce((sum, file) => sum + file.byteLength, 0);
+  if (total > PACKAGE_LIMITS.uncompressed_bytes) throw new PackageError(`The package would hold ${Math.round(total / 1024 / 1024)} MB of files; at most ${PACKAGE_LIMITS.uncompressed_bytes / 1024 / 1024} MB are allowed`, 413, 'package_too_large');
+  const zip = await writeSitePackageZip(manifest, files);
+  if (zip.byteLength > PACKAGE_LIMITS.zip_bytes) throw new PackageError(`The package would be ${Math.round(zip.byteLength / 1024 / 1024)} MB; at most ${PACKAGE_LIMITS.zip_bytes / 1024 / 1024} MB are allowed`, 413, 'package_too_large');
+  return { manifest, files, zip, filename: `${meta.id}-${meta.version}.typeroll`, sha256: sha256Hex(zip), warnings };
+}
+
+/** The package's manifest and files, without the zip: what exportSitePackage writes, and copied blocks. */
+export async function buildSitePackage(ctx: ExportCtx, selection: PackageExportSelection, meta: PackageExportMeta, options: PackageBuildOptions = {}): Promise<BuiltPackage> {
   const io = options.media ?? defaultPackageMediaIO;
   const store = getStore();
   const { orgId, siteId, versionId } = ctx;
   const site = selection.kind === 'site';
+  const clipboard = selection.kind === 'clipboard';
+  const reference = options.mediaMode === 'reference';
+  if (clipboard && !selection.blocks?.length) throw invalid('A clipboard package needs the copied blocks');
   const warnings: string[] = [];
   const [settings, partials, pageTemplates, siteTypes, menus, siteFields, pages, contentTypes, templates, library, fontLibrary] = await Promise.all([
     vstore.settings(orgId, siteId, versionId),
@@ -315,7 +366,7 @@ export async function exportSitePackage(ctx: ExportCtx, selection: PackageExport
   // Free global blocks that chosen content places come along, transitively.
   const partialById = new Map(freePartials.map(partial => [partial.id, partial]));
   const included = new Map(chosenPartials.map(partial => [partial.id, partial]));
-  let pending = [...chosenTemplates.map(t => t.blocks), ...chosenPageTemplates.map(t => t.blocks ?? []), ...chosenPages.map(p => p.blocks ?? []), ...chosenPartials.map(p => p.blocks ?? [])]
+  let pending = [...chosenTemplates.map(t => t.blocks), ...chosenPageTemplates.map(t => t.blocks ?? []), ...chosenPages.map(p => p.blocks ?? []), ...chosenPartials.map(p => p.blocks ?? []), ...(clipboard ? [selection.blocks!] : [])]
     .flatMap(tree => globalBlockRefs(tree));
   for (let depth = 0; depth < 6 && pending.length; depth++) {
     const next: string[] = [];
@@ -343,7 +394,8 @@ export async function exportSitePackage(ctx: ExportCtx, selection: PackageExport
   const linkCounts = { links: 0, lists: 0 };
   const prepare = (blocks: Block[] | undefined): Block[] => {
     const copy = rewriteBlockReferences(clone(blocks ?? []), { blockTypes: typeMap });
-    return site ? copy : detachPageLinks(copy, pageUrl, linkCounts);
+    // A whole site keeps its pages; copied blocks keep their links for a paste into the same site.
+    return site || clipboard ? copy : detachPageLinks(copy, pageUrl, linkCounts);
   };
   const block_templates: PackageBlockTemplate[] = chosenTemplates.map(template => ({
     id: template.id, name: template.name,
@@ -360,11 +412,14 @@ export async function exportSitePackage(ctx: ExportCtx, selection: PackageExport
   }));
   const global_blocks: PackageGlobalBlock[] = [...included.values()].map(partial => ({ id: partial.id, name: partial.name ?? partial.id, kind: partial.kind, blocks: prepare(partial.blocks) }));
   const packagePages = chosenPages.map(page => ({ ...packagePage(page), blocks: prepare(page.blocks) }));
+  const copiedBlocks = clipboard ? prepare(selection.blocks) : [];
+  const page_links: Record<string, string> = {};
+  if (clipboard) for (const id of pageLinkRefs(copiedBlocks)) { const url = pageUrl(id); if (url !== undefined) page_links[id] = url; }
   if (linkCounts.links || linkCounts.lists) {
     warnings.push(`Links to pages of this site are kept as plain addresses (${linkCounts.links} link${linkCounts.links === 1 ? '' : 's'})${linkCounts.lists ? `, and ${linkCounts.lists} list${linkCounts.lists === 1 ? '' : 's'} of chosen pages ${linkCounts.lists === 1 ? 'is' : 'are'} emptied` : ''}; the buyer points them at their own pages.`);
   }
 
-  const trees = [...block_templates.map(t => t.blocks), ...page_templates.map(t => t.blocks ?? []), ...global_blocks.map(g => g.blocks), ...packagePages.map(p => p.blocks ?? [])];
+  const trees = [...block_templates.map(t => t.blocks), ...page_templates.map(t => t.blocks ?? []), ...global_blocks.map(g => g.blocks), ...packagePages.map(p => p.blocks ?? []), ...(clipboard ? [copiedBlocks] : [])];
   const wantedTypes = new Set<string>(trees.flatMap(tree => blockTypeRefs(tree)).filter(id => typeById.has(id)));
   for (const id of site ? [...typeById.keys()] : pick(exportable, selection.block_types, 'block type').map(type => type.id)) wantedTypes.add(id);
   for (let changed = true; changed;) {
@@ -446,12 +501,21 @@ export async function exportSitePackage(ctx: ExportCtx, selection: PackageExport
     ...(fieldGroups.length ? { site_fields: fieldGroups } : {}),
     ...(site && Object.keys(siteFields.values ?? {}).length ? { site_field_values: clone(siteFields.values) } : {}),
     ...(packagePages.length ? { pages: packagePages } : {}),
+    ...(clipboard ? { blocks: copiedBlocks } : {}),
   };
 
   // Media: every library file the contents reference travels as a file and a token.
   const addressOwner = new Map<string, Media>();
   for (const media of library) if (media.id) for (const address of mediaAddresses(media)) if (!addressOwner.has(address)) addressOwner.set(address, media);
   const found = findReferences(JSON.stringify(contents), addressOwner.keys());
+  const referenced = new Map<string, ClipboardMediaRef>();
+  if (reference) for (const address of [...found].sort()) {
+    const media = addressOwner.get(address)!;
+    const entry = referenced.get(media.id) ?? { site_id: siteId, media_id: media.id, addresses: [], ...(media.filename ? { filename: media.filename.slice(0, 200) } : {}) };
+    entry.addresses.push(address);
+    referenced.set(media.id, entry);
+  }
+  if (reference) found.clear();
   const demo = new Set(selection.demo_media ?? []);
   const packageMedia = new Map<string, PackageMedia>();
   const replacements = new Map<string, string>();
@@ -492,7 +556,8 @@ export async function exportSitePackage(ctx: ExportCtx, selection: PackageExport
     if (match) template.preview = match[1];
     else { warnings.push(`The preview image of the block template "${template.name}" is not in the Media library; it is left out.`); delete template.preview; }
   }
-  const unresolved = privateMediaReferences(packaged);
+  // Referenced media keep every address; a paste resolves the ones it may read.
+  const unresolved = reference ? [] : privateMediaReferences(packaged);
   if (unresolved.length) {
     warnings.push(`${unresolved.length} image or file reference${unresolved.length === 1 ? '' : 's'} point${unresolved.length === 1 ? 's' : ''} at private media that is not in this site's library; ${unresolved.length === 1 ? 'it is' : 'they are'} removed from the package.`);
     // Every private address still left belongs to no file of this library; it would not resolve anywhere else.
@@ -517,11 +582,7 @@ export async function exportSitePackage(ctx: ExportCtx, selection: PackageExport
   };
   const errors = sitePackageErrors(manifest);
   if (errors.length) throw new PackageError(`The site's content cannot be packaged: ${errors[0]}${errors.length > 1 ? ` (and ${errors.length - 1} more)` : ''}`, 422, 'package_invalid', { errors: errors.slice(0, 50) });
-  const total = [...files.values()].reduce((sum, file) => sum + file.byteLength, 0);
-  if (total > PACKAGE_LIMITS.uncompressed_bytes) throw new PackageError(`The package would hold ${Math.round(total / 1024 / 1024)} MB of files; at most ${PACKAGE_LIMITS.uncompressed_bytes / 1024 / 1024} MB are allowed`, 413, 'package_too_large');
-  const zip = await writeSitePackageZip(manifest, files);
-  if (zip.byteLength > PACKAGE_LIMITS.zip_bytes) throw new PackageError(`The package would be ${Math.round(zip.byteLength / 1024 / 1024)} MB; at most ${PACKAGE_LIMITS.zip_bytes / 1024 / 1024} MB are allowed`, 413, 'package_too_large');
-  return { manifest, files, zip, filename: `${meta.id}-${meta.version}.typeroll`, sha256: sha256Hex(zip), warnings };
+  return { manifest, files, warnings, media: [...referenced.values()], page_links };
 }
 
 /** What the export form can offer: the site's templates, blocks, styles, fonts and media. */

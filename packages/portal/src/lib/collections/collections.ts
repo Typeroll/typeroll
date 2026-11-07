@@ -23,7 +23,7 @@
 import { randomBytes } from 'node:crypto';
 import {
   COLLECTION_ENTRY_ID, MAX_COLLECTION_ENTRIES, blockStyleRefs, blockTypeRefs, builtinCollectionEntries,
-  collectionEntryBlocks, collectionEntryFieldErrors, collectionEntryTarget, copyBlocksWithNewIds, globalBlockRefs,
+  collectionEntryBlocks, collectionEntryFieldErrors, collectionEntryTarget, globalBlockRefs,
   packageMediaRefs, paths, sitePackageErrors, verifySitePackage,
   type Block, type BlockType, type CollectionEntry, type CollectionEntryKind, type CollectionEntrySource,
   type PackageBlockType, type PackageGlobalBlock, type SitePackage, type SharePermission,
@@ -31,11 +31,9 @@ import {
 import { getStore } from '../datastore';
 import { vstore } from '../version-store';
 import { listBlockTemplates } from '../block-templates-store';
-import { loadDraftTree, saveDraftTree } from '../page-draft-tree';
-import { findBlock } from '../block-mutations';
-import { insertBlocks } from '../reusable-block-ops';
 import { exportSitePackage } from '../packages/package-export';
-import { importSitePackageIntoVersion, preparePackageImport, trustedPackageKeys, type PackageImportReport } from '../packages/package-import';
+import { importSitePackageIntoVersion, preparePackageImport, trustedPackageKeys, type PackageImportReport, type PreparedImport } from '../packages/package-import';
+import { placePackageBlocks } from '../packages/package-place';
 import { packageIntegrity, readSitePackageZip, type PackageFiles } from '../packages/package-zip';
 import type { PackageMediaIO } from '../packages/package-media';
 import { packageFailureBody } from '../packages/package-requests';
@@ -493,37 +491,19 @@ export async function insertFromCollection(ctx: InsertCtx, entry: CollectionEntr
   if (ctx.permission === 'read') throw new CollectionError('Inserting needs write permission on the site', 403, 'collection_permission');
   const site = { orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId };
   const { pkg, only, place } = insertPackage(entry, target);
-  // The page and position are checked before anything is written.
-  let draft: Awaited<ReturnType<typeof loadDraftTree>> = null;
-  let at: { parent_id?: string | null; slot_index?: number; position?: number } = {};
-  if (target.target === 'page') {
-    draft = await loadDraftTree(site, target.page_id);
-    if (!draft) throw new CollectionError('Page not found', 404, 'page_not_found');
-    if (draft.page.content_mode === 'html') throw new CollectionError('This page uses HTML mode; blocks cannot be inserted into it', 400, 'collection_insert_invalid');
-    if (target.after_block_id) {
-      const found = findBlock(draft.tree, target.after_block_id);
-      if (!found) throw new CollectionError(`Block not found: ${target.after_block_id}`, 404, 'block_not_found');
-      at = { parent_id: found.parent?.id ?? null, ...(found.parentSlotIndex !== null ? { slot_index: found.parentSlotIndex } : {}), position: found.index + 1 };
-    } else {
-      at = { ...(target.parent_id !== undefined ? { parent_id: target.parent_id } : {}), ...(target.slot_index !== undefined ? { slot_index: target.slot_index } : {}), ...(target.position !== undefined ? { position: target.position } : {}) };
-      if (at.parent_id && !findBlock(draft.tree, at.parent_id)) throw new CollectionError(`Parent block not found: ${at.parent_id}`, 404, 'block_not_found');
-    }
+  // The entry was checked when it was stored; its own signature (a whole package) is reported in the warnings.
+  const dropUnsigned = (prepared: PreparedImport) => { prepared.warnings = prepared.warnings.filter(warning => !warning.startsWith('The package is not signed')); };
+  if (target.target === 'page' && place) {
+    // The blocks come the way copied blocks are pasted (package-place.ts);
+    // the page and position are checked before anything is written.
+    const files = await entryFiles(ctx.orgId, entry, deps);
+    return placePackageBlocks(ctx, { manifest: pkg, files }, place, target, { code: 'collection_insert_invalid', media: deps.media, prepare: dropUnsigned });
   }
   const files = await entryFiles(ctx.orgId, entry, deps);
   const prepared = await preparePackageImport(site, { manifest: pkg, files }, { design: 'content', ...(only ? { only } : {}) });
-  // The entry was checked when it was stored; its own signature (a whole package) is reported in the warnings.
-  prepared.warnings = prepared.warnings.filter(warning => !warning.startsWith('The package is not signed') && !warning.startsWith('Copied blocks are pasted'));
-  let convert: ((blocks: Block[]) => Block[]) | null = null;
-  const report = await importSitePackageIntoVersion({ ...site, permission: ctx.permission, design: ctx.design, actor: ctx.actor }, prepared, {
-    media: deps.media, onImported: (fn) => { convert = fn; },
-  });
-  if (!place || !draft || !convert) return { report };
-  // Re-read the draft: the import took a moment, and an editor may have saved since.
-  const current = (await loadDraftTree(site, draft.page.id)) ?? draft;
-  const blocks = copyBlocksWithNewIds((convert as (blocks: Block[]) => Block[])(clone(place)));
-  const inserted = insertBlocks(current.tree, blocks, at);
-  await saveDraftTree(site, current.page.id, inserted.blocks);
-  return { report, page: { id: current.page.id, added_ids: inserted.added_ids, blocks: inserted.blocks } };
+  dropUnsigned(prepared);
+  const report = await importSitePackageIntoVersion({ ...site, permission: ctx.permission, design: ctx.design, actor: ctx.actor }, prepared, { media: deps.media });
+  return { report };
 }
 
 // ── Errors ────────────────────────────────────────────────────────────────

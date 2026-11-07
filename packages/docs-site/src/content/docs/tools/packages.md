@@ -31,7 +31,7 @@ imported.
 | ------------ | ------------------------------------------------------------------------------------------------------------- |
 | `collection` | What the author chose: templates, page templates, free global blocks, block types, styles, design, menus      |
 | `site`       | A whole site: pages (published, unlisted and drafts), header and footer, menus, site fields with their values |
-| `clipboard`  | Blocks copied from a page, with the styles, block types and media they use                                    |
+| `clipboard`  | Blocks copied from a page, with the styles, block types and free global blocks they use                       |
 
 What the chosen content uses comes along by itself: the free global blocks it
 places, the site block types it uses (and those they build on), and the
@@ -128,6 +128,8 @@ stays as the author made it and can then be changed site-wide:
 - Renaming a style later changes only its display name; ids stay.
 - A standard role (for example `lead`) is held by one style per site: an
   imported copy beside the site's own is a plain class style.
+- Importing or pasting the same content again reuses the earlier copy
+  (`hero-2`) when its definition is still the same.
 
 ## Design modes
 
@@ -256,18 +258,112 @@ Refusals carry a `code`: `package_invalid`, `package_too_large`,
 `font_redistribution_unconfirmed`, `package_selection_invalid`,
 `package_source_unavailable` and `package_import_partial`.
 
+## Copy and paste blocks
+
+Copied blocks travel as a package of kind `clipboard` inside a small JSON text,
+the one the block editor puts on the system clipboard
+([Copy and paste blocks](../../guides/the-editor/#copy-and-paste-blocks)):
+
+```json
+{
+  "typeroll_clipboard": 1,
+  "source": {
+    "portal": "https://cms.example.com",
+    "site_id": "studio",
+    "site_key": "…",
+    "page_id": "home"
+  },
+  "copied_at": "2026-11-07T12:00:00.000Z",
+  "package": {
+    "format": "typeroll-package",
+    "kind": "clipboard",
+    "contents": {
+      "blocks": [],
+      "styles": [],
+      "block_types": [],
+      "global_blocks": []
+    },
+    "media": []
+  },
+  "media": [
+    {
+      "site_id": "studio",
+      "media_id": "…",
+      "addresses": ["https://cms.example.com/api/sites/studio/media/…/content"]
+    }
+  ],
+  "page_links": { "about": "/about" },
+  "text": "Fresh bread"
+}
+```
+
+The package holds the copied blocks with the styles, site block types (app
+blocks by their app) and free global blocks they use. Media files are not
+embedded: the blocks keep their addresses, and `media` lists the library file
+behind each. A clipboard is at most 2 MB and 200 top-level blocks.
+
+Pasting into another site imports the package the way a
+[collection entry](../collection/) is inserted into a page: styles are created,
+never mapped to "nearest" styles (see above), block types and global blocks
+likewise, and the blocks get new ids. A media file is copied into the target
+site's Media library only when the caller can read the site it came from, with
+the same session or key: an organization key reads the organization's sites
+and those shared with it, a site key only its own site. A private file the
+caller cannot read is left out with a warning; nothing is read with other
+rights. Pasting into the same site places the blocks as they are. Copying
+needs read permission on the source site, pasting write permission on the
+target, which also covers creating the styles, block types and global blocks
+the blocks need.
+
+### `copy_blocks`
+
+Copy blocks of a page's draft. Answers `{ clipboard, count, warnings }`, where
+`clipboard` is the JSON text above. Writes nothing.
+
+| Parameter   | Type     | Required | Notes                                                             |
+| ----------- | -------- | -------- | ----------------------------------------------------------------- |
+| `page_id`   | string   | yes      |                                                                   |
+| `block_ids` | string[] | yes      | The blocks to copy; a block inside another listed one comes along |
+| `version`   | string   | no       | A branch id                                                       |
+
+### `paste_blocks`
+
+Paste a clipboard into a page's draft, after `after_block_id` (in its parent or
+slot when it is nested) or at `position` (in `parent_id` / `slot_index`); at the
+end by default. Answers `{ report, page: { id, added_ids, blocks }, mode, media:
+{ copied, reused, left_out, kept_external }, message }`. Save the page to
+publish the change.
+
+| Parameter        | Type           | Required | Notes                                     |
+| ---------------- | -------------- | -------- | ----------------------------------------- |
+| `clipboard`      | string         | yes      | The text from `copy_blocks`, unchanged    |
+| `page_id`        | string         | yes      |                                           |
+| `after_block_id` | string         | no       | Not together with a position              |
+| `position`       | integer        | no       | Index in the parent; the end when omitted |
+| `parent_id`      | string \| null | no       | A container block                         |
+| `slot_index`     | integer        | no       | A slot of `parent_id`                     |
+| `version`        | string         | no       | A branch id                               |
+
+Refusals: `clipboard_invalid` (not copied blocks, another version, invalid
+content; `details.errors`), `clipboard_too_large`, `clipboard_permission`,
+`clipboard_paste_invalid`, `page_not_found` and `block_not_found`.
+
 ## REST endpoints
 
-| Method and path                                         | Body                                      | Answer                                                            |
-| ------------------------------------------------------- | ----------------------------------------- | ----------------------------------------------------------------- |
-| `POST /api/v1/sites/{siteId}/packages/export`           | `{ selection, meta }`                     | `{ download_url, filename, bytes, sha256, expires_at, warnings }` |
-| `GET /api/v1/sites/{siteId}/packages/downloads/{token}` |                                           | The `.typeroll` file (the signed token is the credential)         |
-| `POST /api/v1/sites/{siteId}/packages/inspect`          | `{ data_base64 \| source_url, options? }` | `{ package, signature, plan, warnings, errors, needs }`           |
-| `POST /api/v1/sites/{siteId}/packages/import`           | `{ data_base64 \| source_url, options }`  | `{ report }`                                                      |
+| Method and path                                         | Body                                                                            | Answer                                                            |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `POST /api/v1/sites/{siteId}/packages/export`           | `{ selection, meta }`                                                           | `{ download_url, filename, bytes, sha256, expires_at, warnings }` |
+| `GET /api/v1/sites/{siteId}/packages/downloads/{token}` |                                                                                 | The `.typeroll` file (the signed token is the credential)         |
+| `POST /api/v1/sites/{siteId}/packages/inspect`          | `{ data_base64 \| source_url, options? }`                                       | `{ package, signature, plan, warnings, errors, needs }`           |
+| `POST /api/v1/sites/{siteId}/packages/import`           | `{ data_base64 \| source_url, options }`                                        | `{ report }`                                                      |
+| `POST /api/v1/sites/{siteId}/clipboard/copy`            | `{ page_id, block_ids }`                                                        | `{ clipboard, clipboard_text, clipboard_html, count, warnings }`  |
+| `POST /api/v1/sites/{siteId}/clipboard/paste`           | `{ clipboard, page_id, after_block_id? \| position?, parent_id?, slot_index? }` | `{ report, page, mode, media, message }`                          |
 
 The portal uses session routes with the same rules:
 `POST /api/sites/{siteId}/packages/export` answers with the file itself
 (`application/vnd.typeroll.package+zip`), `inspect` and `import` take a
 multipart upload (`file` and `options` as JSON), and
 `GET /api/sites/{siteId}/packages/exportable` lists what the export form can
-offer. Extension credentials cannot export or import packages.
+offer. `POST /api/sites/{siteId}/clipboard/copy` and `…/clipboard/paste` take
+the same JSON as the v1 routes. Extension credentials cannot export or import
+packages, or copy and paste blocks.

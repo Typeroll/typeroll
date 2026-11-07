@@ -924,6 +924,40 @@ Permission: `read`
 
 Discover what the site-template renderer supports for this site. Returns a manifest of feature flags (blocks-mode, x-include, content-type routes, custom block scripts, dry-run deploys, etc.) plus template_capabilities_version + the core block type ids. Call this when you're about to do something structural (set route_template on a content type, switch a page to blocks-mode, install a custom block type) and want to feature-detect rather than guess. The manifest is platform-wide today; per-site custom templates land later.
 
+## Site: Clipboard
+
+### `copy_blocks`
+
+`POST /api/v1/sites/{siteId}/clipboard/copy`
+
+Permission: `read`
+
+Copy blocks of a page's draft (with everything inside them) to a clipboard, as Cmd/Ctrl+C does in the block editor. Returns { clipboard, count: { top, total }, warnings }: clipboard is a JSON text marked "typeroll_clipboard" that holds the blocks in page order with the styles, site block types and free global blocks they use; media stay at their addresses. Pass clipboard unchanged to paste_blocks on this or another site. A person can paste the same text in the block editor with Cmd/Ctrl+V. Writes nothing.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `page_id` | body | string | yes |  |
+| `block_ids` | body | string[] | yes | Ids of the blocks to copy (from read_page); a block inside another listed block comes with it. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `paste_blocks`
+
+`POST /api/v1/sites/{siteId}/clipboard/paste`
+
+Permission: `write`
+
+Paste blocks from copy_blocks (or text a person copied in the block editor) into a page's draft, with new block ids: after after_block_id (in that block's parent or slot when it is nested), or at position (top level, or in parent_id / slot_index); at the end by default. Returns { report, page: { id, added_ids, blocks }, mode (same_site | other_site), media: { copied, reused, left_out, kept_external }, message }; save the page to publish the change. Into another site, the styles the blocks use are created there, never mapped to "nearest" styles: one the site has with another definition is created under a new id (hero-2, "Hero (imported)") and the pasted blocks are rewritten to it; an identical one is reused. Site block types and free global blocks follow the same rule, app blocks reconnect to the app when the site has it installed, and links to the source site's pages become plain addresses. Each media file is copied into the site's Media library only when this connection may read the site it came from (an organization key reads the organization's sites, a site key only its own); a private file it cannot read is left out with a warning. Into the same site the blocks are placed as they are.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `clipboard` | body | string | yes | The clipboard text from copy_blocks, unchanged. |
+| `page_id` | body | string | yes |  |
+| `after_block_id` | body | string | no |  |
+| `position` | body | integer | no |  |
+| `parent_id` | body | string \| null | no |  |
+| `slot_index` | body | integer | no |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
 ## Site: Collection
 
 ### `list_collection_entries`

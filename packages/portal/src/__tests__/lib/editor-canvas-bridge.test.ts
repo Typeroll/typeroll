@@ -18,6 +18,9 @@ describe('isolated editor canvas bridge', () => {
     expect(script).toContain('event.source!==parent');
     expect(script).toContain('"geometry"');
     expect(script).toContain('"edit"');
+    // Clipboard keys go to the editor as an action, never with clipboard content.
+    expect(script).toContain('send("clipboard",{action:');
+    expect(script).not.toMatch(/clipboardData|readText/);
     expect(script).toContain('data-tr-drop-indicator');
     expect(() => new Function(script)).not.toThrow();
   });

@@ -33,7 +33,7 @@ import { EDITOR_CANVAS_FRAME_SANDBOX, isEditorCanvasMessage, useEditorCanvasId }
 import {
   Monitor, Tablet, Smartphone, ChevronRight, ChevronDown,
   Trash2, Copy, GripVertical, Plus, Square, Columns, Type, Heading, Image as ImageIcon, MousePointerClick,
-  ArrowLeft, SlidersHorizontal, Undo2, Redo2,
+  ArrowLeft, SlidersHorizontal, Undo2, Redo2, ClipboardCopy, ClipboardPaste,
 } from 'lucide-react';
 import { DocStatus } from './EditorStatus';
 import PublishMenu, { PAGE_STATUS_OPTIONS } from './PublishMenu';
@@ -50,6 +50,7 @@ import { newBlockId, replaceBlockIn } from '../lib/block-tree-ops';
 import { loadInternalPages } from './internal-pages';
 import { CollectionLibrarySection, useEditorCollection } from './CollectionLibrarySection';
 import { templateSaveKind, type CollectionEntryView, type CollectionInsertResult } from './collection-model';
+import { copiedLine, copyBlocksToClipboard, installClipboardShortcuts, pasteClipboardText, pastedLine, readBlockClipboard } from './block-clipboard';
 
 interface Props {
   responsiveBreakpoints?: ResponsiveBreakpoints | null;
@@ -415,6 +416,74 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     });
   }
 
+  // ─── Copy and paste (block-clipboard.ts) ──────────────────────────────
+  // Copy asks the server for the clipboard of the block's current draft, so
+  // pending field edits are saved first. Paste goes after the selected block
+  // (else at the end); the server writes the working copy, so the draft is
+  // reloaded from there, as after a collection insert.
+  const [clipNotice, setClipNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  const clipNoticeTimer = useRef<number | null>(null);
+  function showClipNotice(text: string, error = false): void {
+    if (clipNoticeTimer.current) window.clearTimeout(clipNoticeTimer.current);
+    setClipNotice({ text, error });
+    clipNoticeTimer.current = window.setTimeout(() => setClipNotice(null), error ? 10000 : 6000);
+  }
+
+  async function copyBlock(blockId: string, cut = false): Promise<void> {
+    try {
+      await fieldFlush.current?.();
+      await blockWrite.current.catch(() => {});
+      await editorWrites.current.catch(() => {});
+      const result = await copyBlocksToClipboard(siteId, page.id, [blockId]);
+      if (cut) {
+        await callMutation({ method: 'DELETE', query: { block_id: blockId } });
+        if (selectedIdRef.current === blockId) setSelectedId(null);
+      }
+      showClipNotice(copiedLine(result.count.top, cut));
+    } catch (e) {
+      showClipNotice((e as Error).message || 'Copying failed', true);
+    }
+  }
+
+  async function pasteText(text: string, afterBlockId: string | null = selectedIdRef.current): Promise<void> {
+    await blockWrite.current.catch(() => {});
+    await fieldFlush.current?.();
+    return enqueueWrite(async () => {
+      setStatus('saving');
+      setError(null);
+      try {
+        const after = afterBlockId && findBlock(draftRef.current.blocks ?? [], afterBlockId) ? afterBlockId : null;
+        const result = await pasteClipboardText(siteId, page.id, text, after);
+        const res = await fetch(`${resourceUrl}/blocks`, { headers: { accept: 'application/json' } });
+        const body = res.ok ? await res.json().catch(() => ({})) as { blocks?: Block[] } : {};
+        const blocks = body.blocks ?? result.page.blocks;
+        setDraft((d) => ({ ...d, blocks }));
+        setHasWc(true);
+        historyRef.current?.record(blocks, `paste:${Date.now()}`);
+        bumpHist();
+        reloadPreview();
+        if (result.page.added_ids[0]) selectBlock(result.page.added_ids[0]);
+        setStatus('saved');
+        window.setTimeout(() => setStatus('idle'), 1200);
+        showClipNotice(pastedLine(result));
+      } catch (e) {
+        setStatus('idle');
+        showClipNotice((e as Error).message || 'Pasting failed', true);
+      }
+    });
+  }
+
+  /** A Paste button, or ⌘V in the canvas (quiet: other clipboard content is ignored there, as in the editor). */
+  async function pasteFromButton(afterBlockId: string | null, quiet = false): Promise<void> {
+    try {
+      const text = await readBlockClipboard();
+      if (!text) { if (!quiet) showClipNotice('The clipboard holds no copied blocks. Copy a block with ⌘C / Ctrl+C first.', true); return; }
+      await pasteText(text, afterBlockId);
+    } catch (e) {
+      showClipNotice((e as Error).message || 'Pasting failed', true);
+    }
+  }
+
   async function saveSiteTemplate(block: Block, name: string, description: string): Promise<BlockTemplate> {
     await fieldFlush.current?.();
     await blockWrite.current.catch(() => {});
@@ -595,6 +664,16 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     save: saveAll,
   });
   shortcutsRef.current = { history: applyHistory, duplicate: handleDuplicate, remove: handleRemove, save: saveAll };
+  const clipboardRef = useRef({ copy: copyBlock, paste: pasteText, pasteFromButton });
+  clipboardRef.current = { copy: copyBlock, paste: pasteText, pasteFromButton };
+
+  // Cmd/Ctrl+C, X and V for the selected block (block-clipboard.ts); text
+  // fields keep their own. Installed once, like the shortcuts below.
+  useEffect(() => installClipboardShortcuts(window, {
+    canCopy: () => Boolean(selectedIdRef.current),
+    copy: (cut) => { if (selectedIdRef.current) void clipboardRef.current.copy(selectedIdRef.current, cut); },
+    paste: (text) => { void clipboardRef.current.paste(text); },
+  }), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -689,6 +768,11 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       const data = event.data;
       if (data.type === 'history' && (data.direction === 'undo' || data.direction === 'redo')) {
         void shortcutsRef.current.history(data.direction);
+      } else if (data.type === 'clipboard' && (data.action === 'copy' || data.action === 'cut' || data.action === 'paste')) {
+        // The canvas forwards the keys only; the clipboard is read and written here.
+        editorFocusRef.current?.focus({ preventScroll: true });
+        if (data.action === 'paste') void clipboardRef.current.pasteFromButton(selectedIdRef.current, true);
+        else if (selectedIdRef.current) void clipboardRef.current.copy(selectedIdRef.current, data.action === 'cut');
       } else if (data.type === 'geometry' && Array.isArray(data.blocks) && data.body && typeof data.body === 'object') {
         canvasGeometryRef.current = { blocks: data.blocks.slice(0, 5000), body: data.body } as CanvasGeometry;
       } else if (data.type === 'select') {
@@ -941,6 +1025,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
             docUpdatedAt={draft.date_updated ?? null}
             lastDeployedAt={lastDeployedAt}
           /></div>
+          {clipNotice && <p className="block-editor__clip-notice" role={clipNotice.error ? 'alert' : 'status'} data-error={clipNotice.error ? 'true' : undefined}>{clipNotice.text}</p>}
         </div>
         <div className="block-editor__actions">
           <div style={{ display: 'flex', gap: '0.125rem' }}>
@@ -1056,6 +1141,8 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
                 onSelect={selectBlock}
                 onRemove={handleRemove}
                 onDuplicate={handleDuplicate}
+                onCopy={(id) => void copyBlock(id)}
+                onPaste={(id) => void pasteFromButton(id)}
                 onRename={handleRename}
                 registry={registry}
                 dropTarget={dnd.dropTarget}
@@ -1273,6 +1360,10 @@ type TreeCtx = {
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
+  /** Copy the block to the clipboard (⌘C). */
+  onCopy?: (id: string) => void;
+  /** Paste copied blocks after the block (⌘V). */
+  onPaste?: (id: string) => void;
   onRename: (id: string, name: string) => void;
   registry: Map<string, BlockType>;
   /** Live drop position from the parent's drag handlers; null when idle. */
@@ -1280,18 +1371,20 @@ type TreeCtx = {
 };
 
 export function BlockTree({
-  blocks, selectedId, onSelect, onRemove, onDuplicate, onRename, registry, dropTarget,
+  blocks, selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry, dropTarget,
 }: {
   blocks: Block[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
+  onCopy?: (id: string) => void;
+  onPaste?: (id: string) => void;
   onRename: (id: string, name: string) => void;
   registry: Map<string, BlockType>;
   dropTarget: DropTarget | null;
 }) {
-  const ctx: TreeCtx = { selectedId, onSelect, onRemove, onDuplicate, onRename, registry, dropTarget };
+  const ctx: TreeCtx = { selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry, dropTarget };
 
   // Empty page: still render the (droppable) root list so a block dragged
   // from the library has a landing zone, with a hint above it.
@@ -1407,7 +1500,7 @@ function BlockNodeInner({
   ctx: TreeCtx;
   dragHandleProps?: React.HTMLAttributes<HTMLElement>;
 }) {
-  const { selectedId, onSelect, onRemove, onDuplicate, onRename, registry } = ctx;
+  const { selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry } = ctx;
   const [open, setOpen] = useState(true);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -1490,6 +1583,24 @@ function BlockNodeInner({
         >
           <Copy size={12} />
         </button>
+        {onCopy && <button
+          type="button"
+          style={iconBtn}
+          onClick={(e) => { e.stopPropagation(); onCopy(block.id); }}
+          title="Copy (⌘C) — paste on any page or site"
+          aria-label={`Copy ${rowLabel}`}
+        >
+          <ClipboardCopy size={12} />
+        </button>}
+        {onPaste && <button
+          type="button"
+          style={iconBtn}
+          onClick={(e) => { e.stopPropagation(); onPaste(block.id); }}
+          title="Paste after this block (⌘V)"
+          aria-label={`Paste after ${rowLabel}`}
+        >
+          <ClipboardPaste size={12} />
+        </button>}
         <button
           type="button"
           style={iconBtn}

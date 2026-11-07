@@ -26,7 +26,10 @@ export type PackageErrorCode =
   | 'package_invalid' | 'package_too_large' | 'package_unsafe' | 'package_integrity_failed'
   | 'package_selection_invalid' | 'package_conflict' | 'package_media_unavailable' | 'package_permission'
   | 'font_licence_required' | 'font_redistribution_unconfirmed' | 'package_source_unavailable'
-  | 'package_download_expired' | 'package_import_partial' | 'package_options_invalid';
+  | 'package_download_expired' | 'package_import_partial' | 'package_options_invalid'
+  // Placing blocks in a page (a collection insert, a paste).
+  | 'page_not_found' | 'block_not_found' | 'collection_insert_invalid' | 'clipboard_paste_invalid' | 'clipboard_permission'
+  | 'clipboard_invalid' | 'clipboard_too_large';
 
 /** A refused package or request, with an HTTP status and a stable code. */
 export class PackageError extends Error {
