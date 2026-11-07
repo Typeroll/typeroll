@@ -149,6 +149,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Block defaults fit every width: long words wrap in every block, cards and grids stay inside their column, touch targets are at least 24px, a call to action without a background uses the theme colours, and card padding is compact on phones.',
       'Sections, containers, heroes, feature rows and calls to action share three content widths (narrow, normal and wide), so blocks of the same width start at the same edge on wide screens. Heroes and calls to action get a width setting; a block placed directly in the page follows its width instead of a fixed 1080px.',
       'Built-in labels left at their English default (Learn more, On this page, Menu, Previous, Next, Download PDF and others) render in the page language.',
+      'A list of ordinary Pages with no filter and no chosen Pages lists the current Page\'s children, instead of every Page on the site.',
       'Page dates and card dates read in the page language ("12 okt. 2026" on a Swedish page). A Page date block\'s format setting now applies; card dates keep the machine-readable date in datetime.',
     ],
   },

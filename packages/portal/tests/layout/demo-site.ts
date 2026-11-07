@@ -195,7 +195,7 @@ function journal() {
   return page('journal', '/journal/', 'Journal', [
     section([
       heading('Journal', { level: 'h1', subtitle: 'Tankar om ljus, material och hur man bor bra i norr.' }),
-      b('core/page_list', { cols: 3, filter_field: 'parent', filter_value: 'journal' }),
+      b('core/page_list', { cols: 3 }),
     ]),
     section([
       heading('Mest lästa'),

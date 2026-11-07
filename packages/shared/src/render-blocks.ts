@@ -847,8 +847,15 @@ function renderRepeater(
     const inherited = options.context?.facet?.filters?.[0];
     const filterField = typeof data.filter_field === 'string' && data.filter_field
       ? data.filter_field : inherited?.field;
-    const filterValue = typeof data.filter_value === 'string' && data.filter_value !== undefined
+    let filterValue = typeof data.filter_value === 'string' && data.filter_value !== undefined
       ? data.filter_value : inherited?.value;
+    // From version 14 a list of ordinary pages with no filter and no chosen pages lists the
+    // current page's children, so a section index does not list Home, Contact and every other page.
+    const generic = !data.content_type || data.content_type === 'page';
+    const pageId = options.context?.page?.id;
+    const childrenOf = resolveRenderVersion(options.renderVersion) >= 14 && generic && !filterField && pageId
+      && !(Array.isArray(data.page_ids) && data.page_ids.length);
+    if (childrenOf) filterValue = String(pageId);
     items = options.pageSource({
       content_type: String(data.content_type ?? ''),
       ids: Array.isArray(data.page_ids) && data.page_ids.length ? refIds(data.page_ids) : undefined,
@@ -858,7 +865,7 @@ function renderRepeater(
       limit: perPage > 0 ? undefined : (typeof data.limit === 'number' ? data.limit : undefined),
       sort_by: typeof data.sort_by === 'string' ? data.sort_by : undefined,
       sort_order: data.sort_order === 'asc' || data.sort_order === 'desc' ? data.sort_order : undefined,
-      filter_field: filterField,
+      filter_field: childrenOf ? 'parent' : filterField,
       filter_value: filterValue,
       pinned_ids: Array.isArray(data.pinned_ids) ? (data.pinned_ids as string[]) : undefined,
     });
