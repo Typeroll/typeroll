@@ -170,7 +170,15 @@ const NAVIGATION_LINKS_V11_CSS = `${navigationLinks.styles}
 @media (min-width:1024px) and (hover:hover) and (pointer:fine) {
   [data-block="navigation_links"][data-density="compact-desktop"] { row-gap:var(--gap_px,4px); }
 }`;
+const NAVIGATION_LINKS_V13_CSS = `${itemsAnyDepth(NAVIGATION_LINKS_V11_CSS)}\n${LABELLED_NAVIGATION_CSS}`;
+// Version 14: the minimum link height is the whole touch target, padding
+// included (44px, not 44px plus padding). Stacked links no longer sit so far
+// apart that a heading above them reads closer to the links than they do to
+// each other. A label wrapping to two lines still grows the link.
+const NAVIGATION_LINKS_V14_CSS = `${NAVIGATION_LINKS_V13_CSS}
+[data-block="navigation_links"] li > a { box-sizing:border-box; }`;
 navigationLinks.render_versions = [
   { from: 11, styles: NAVIGATION_LINKS_V11_CSS },
-  { from: 13, template: LABELLED_NAVIGATION_TEMPLATE, styles: `${itemsAnyDepth(NAVIGATION_LINKS_V11_CSS)}\n${LABELLED_NAVIGATION_CSS}` },
+  { from: 13, template: LABELLED_NAVIGATION_TEMPLATE, styles: NAVIGATION_LINKS_V13_CSS },
+  { from: 14, template: LABELLED_NAVIGATION_TEMPLATE, styles: NAVIGATION_LINKS_V14_CSS },
 ];

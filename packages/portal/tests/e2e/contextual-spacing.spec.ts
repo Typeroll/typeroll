@@ -8,11 +8,10 @@ import {
   siteStylesCss,
   defaultSiteSettings,
   contentWellCss,
-  newSiteStyles,
   resolveBreakpointWidths,
+  standardStylesFor,
   type Block,
 } from "@typeroll/shared";
-import { standardStylesBefore037 } from "../../../shared/src/__tests__/fixtures/legacy-standard-styles";
 const globalCss = readFileSync(
   new URL("../../../site-template/src/styles/global.css", import.meta.url),
   "utf8",
@@ -108,100 +107,103 @@ const fixture: Block[] = [
     },
   },
 ];
-for (const width of [375, 768, 1280])
-  for (const savedStyles of [false, true])
-    test(`contextual spacing at ${width}px, saved roles ${savedStyles}`, async ({
-      page,
-    }, info) => {
-      const version = 11;
-      await page.setViewportSize({ width, height: 1000 });
-      const settings = {
-        ...structuredClone(defaultSiteSettings),
-        render_version: version,
-        styles: [
-          // The standard styles a render version 11 site was created with;
-          // new sites start at the latest version.
-          ...(savedStyles ? standardStylesBefore037(newSiteStyles()) : []),
-          {
-            id: "tight-heading",
-            name: "Tight heading",
-            targets: ["heading" as const],
-            base: { space_before: "0", space_after: "0" },
-          },
-        ],
-      };
-      const assets = collectBlockAssets(fixture, registry, {
-        renderVersion: version,
-      });
-      await page.setContent(
-        `<style>${globalCss}${contentWellCss(version)}${assets.css}${siteThemeCss(settings)}${siteStylesCss(settings.styles, { colors: settings.colors, breakpoints: resolveBreakpointWidths(), renderVersion: version })}</style><main class="page-content">${renderBlocks(fixture, { registry, renderVersion: version, annotate: true, provenance: true })}</main>`,
-      );
-      const image = await page.locator("#image").boundingBox();
-      const title = await page
-        .getByRole("heading", { name: "Heading after image", exact: true })
-        .boundingBox();
-      expect(title!.y - image!.y - image!.height).toBeGreaterThan(20);
-      for (const name of [
-        "Opening title",
-        "Column opening",
-        "Card title",
-        "Destinations",
-      ])
-        await expect(
-          page.getByRole("heading", { name, exact: true }),
-        ).toHaveCSS("margin-top", "0px");
-      expect(
-        await page
-          .getByRole("heading", { name: "Later prose heading" })
-          .evaluate((el) => parseFloat(getComputedStyle(el).marginTop)),
-      ).toBeGreaterThan(20);
-      await expect(
-        page.getByRole("heading", { name: "Explicit spacing" }),
-      ).toHaveCSS("margin-top", "18px");
-      await expect(
-        page.getByRole("heading", { name: "Explicit spacing" }),
-      ).toHaveCSS("margin-bottom", "7px");
-      await expect(
-        page.locator('[data-source-block-id="explicit-links"]'),
-      ).toHaveCSS("row-gap", "20px");
-      await expect(
-        page.getByRole("heading", { name: "Named spacing" }),
-      ).toHaveCSS("margin-top", "0px");
-      await expect(
-        page.getByRole("heading", { name: "Named spacing" }),
-      ).toHaveCSS("margin-bottom", "0px");
-      const footer = page.locator('[data-source-block-id="footer-links"]');
-      if (width < 1024) {
-        await expect(footer).toHaveCSS("row-gap", "0px");
-        const first = await footer.locator("a").first().boundingBox();
-        const second = await footer.locator("a").nth(1).boundingBox();
-        const textGap = await page.evaluate(() => {
-          const glyph = (el: Element) => {
-            const range = document.createRange();
-            range.selectNodeContents(el);
-            return range.getBoundingClientRect();
-          };
-          const heading = glyph(
-            document.querySelector(
-              '[data-source-block-id="footer-heading"] h2',
-            )!,
-          );
-          const links = document.querySelectorAll(
-            '[data-source-block-id="footer-links"] a',
-          );
-          const first = glyph(links[0]);
-          const second = glyph(links[1]);
-          return {
-            headingToLink: first.top - heading.bottom,
-            betweenLinks: second.top - first.bottom,
-          };
+// Render version 11 introduced contextual spacing; 14 is the first with the
+// current standard styles and layered platform CSS.
+for (const version of [11, 14])
+  for (const width of [375, 768, 1280])
+    for (const savedStyles of [false, true])
+      test(`contextual spacing at ${width}px, saved roles ${savedStyles}, render version ${version}`, async ({
+        page,
+      }, info) => {
+        await page.setViewportSize({ width, height: 1000 });
+        const settings = {
+          ...structuredClone(defaultSiteSettings),
+          render_version: version,
+          styles: [
+            // The standard styles of a site at this render version.
+            ...(savedStyles ? standardStylesFor(version) : []),
+            {
+              id: "tight-heading",
+              name: "Tight heading",
+              targets: ["heading" as const],
+              base: { space_before: "0", space_after: "0" },
+            },
+          ],
+        };
+        const assets = collectBlockAssets(fixture, registry, {
+          renderVersion: version,
         });
-        expect(textGap.headingToLink).toBeGreaterThan(textGap.betweenLinks);
-        expect(first!.height).toBeGreaterThanOrEqual(44);
-        expect(second!.y - first!.y - first!.height).toBeCloseTo(0);
-      } else await expect(footer).toHaveCSS("row-gap", "4px");
-      await page.screenshot({
-        path: info.outputPath(`rhythm-${width}-${savedStyles}.png`),
-        fullPage: true,
+        await page.setContent(
+          `<style>${globalCss}${contentWellCss(version)}${assets.css}${siteThemeCss(settings)}${siteStylesCss(settings.styles, { colors: settings.colors, breakpoints: resolveBreakpointWidths(), renderVersion: version })}</style><main class="page-content">${renderBlocks(fixture, { registry, renderVersion: version, annotate: true, provenance: true })}</main>`,
+        );
+        const image = await page.locator("#image").boundingBox();
+        const title = await page
+          .getByRole("heading", { name: "Heading after image", exact: true })
+          .boundingBox();
+        expect(title!.y - image!.y - image!.height).toBeGreaterThan(20);
+        for (const name of [
+          "Opening title",
+          "Column opening",
+          "Card title",
+          "Destinations",
+        ])
+          await expect(
+            page.getByRole("heading", { name, exact: true }),
+          ).toHaveCSS("margin-top", "0px");
+        expect(
+          await page
+            .getByRole("heading", { name: "Later prose heading" })
+            .evaluate((el) => parseFloat(getComputedStyle(el).marginTop)),
+        ).toBeGreaterThan(20);
+        await expect(
+          page.getByRole("heading", { name: "Explicit spacing" }),
+        ).toHaveCSS("margin-top", "18px");
+        await expect(
+          page.getByRole("heading", { name: "Explicit spacing" }),
+        ).toHaveCSS("margin-bottom", "7px");
+        await expect(
+          page.locator('[data-source-block-id="explicit-links"]'),
+        ).toHaveCSS("row-gap", "20px");
+        await expect(
+          page.getByRole("heading", { name: "Named spacing" }),
+        ).toHaveCSS("margin-top", "0px");
+        await expect(
+          page.getByRole("heading", { name: "Named spacing" }),
+        ).toHaveCSS("margin-bottom", "0px");
+        const footer = page.locator('[data-source-block-id="footer-links"]');
+        if (width < 1024) {
+          await expect(footer).toHaveCSS("row-gap", "0px");
+          const first = await footer.locator("a").first().boundingBox();
+          const second = await footer.locator("a").nth(1).boundingBox();
+          const textGap = await page.evaluate(() => {
+            const glyph = (el: Element) => {
+              const range = document.createRange();
+              range.selectNodeContents(el);
+              return range.getBoundingClientRect();
+            };
+            const heading = glyph(
+              document.querySelector(
+                '[data-source-block-id="footer-heading"] h2',
+              )!,
+            );
+            const links = document.querySelectorAll(
+              '[data-source-block-id="footer-links"] a',
+            );
+            const first = glyph(links[0]);
+            const second = glyph(links[1]);
+            return {
+              headingToLink: first.top - heading.bottom,
+              betweenLinks: second.top - first.bottom,
+            };
+          });
+          expect(textGap.headingToLink).toBeGreaterThan(textGap.betweenLinks);
+          expect(first!.height).toBeGreaterThanOrEqual(44);
+          expect(second!.y - first!.y - first!.height).toBeCloseTo(0);
+        } else await expect(footer).toHaveCSS("row-gap", "4px");
+        await page.screenshot({
+          path: info.outputPath(
+            `rhythm-${version}-${width}-${savedStyles}.png`,
+          ),
+          fullPage: true,
+        });
       });
-    });

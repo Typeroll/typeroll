@@ -23,6 +23,9 @@
   CSS and scripts hook in.
 - The media library accepts MP4 and WebM up to 25 MB, filters by type, shows
   thumbnails and previews videos; the picker in the block editor does the same.
+- From render version 14 a navigation link's minimum height includes its
+  vertical padding (a one-line link is 44 px, not 60 px), so a heading above
+  stacked links stays further from them than they are from each other.
 - Restoring standard styles on a site below render version 14 writes the
   heading spacing that version had (1em before, 0.5em after), so the site's
   output does not change.
