@@ -136,10 +136,19 @@ regard to case.
 | `image/heic`, `image/heif`                 | `.heic`, `.heif`                 |
 | `image/jxl`                                | `.jxl`                           |
 | `application/pdf`                          | `.pdf`                           |
+| `video/mp4`                                | `.mp4`, `.m4v`                   |
+| `video/webm`                               | `.webm`                          |
 
-Uploads accept images and PDFs of these types. Records from earlier imports can
-also be video (`.mp4`, `.m4v`, `.webm`, `.mov`), audio (`.mp3`, `.wav`, `.ogg`) or
-fonts (`.woff`, `.woff2`).
+Uploads accept images, PDFs and MP4 or WebM video of these types, up to 25 MB
+per file. A longer or larger video is compressed to fit first (`ffmpeg` with
+H.264 for MP4 or VP9 for WebM; a 1080p clip of about 90 seconds fits at 2
+Mbit/s). Records from earlier imports can also be QuickTime video (`.mov`),
+audio (`.mp3`, `.wav`, `.ogg`) or fonts (`.woff`, `.woff2`).
+
+A block can offer the same video in several sizes and formats: `core/video`
+takes `sources` and sections, containers and calls to action take
+`background_video_sources`, each a list of `{ src, width, type }`. See
+[Blocks](../blocks/library/#motion-background-media-and-story-blocks-render-version-14).
 
 - Uploads and imports (`upload-url`, `create_upload_url`, `upload_media_*`,
   URL and WordPress imports) append the type's canonical extension when the
