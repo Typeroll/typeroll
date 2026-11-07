@@ -44,6 +44,7 @@ import { applyContentWrite } from './content-write';
 import { chatEditLink } from './chat-action-links';
 import { createMenu, MenuSaveError, replaceMenu } from './menu-write';
 import { appendMenuItem } from './menu-items';
+import { readSiteFields, siteFieldsResponse, SiteFieldsSaveError, updateSiteFieldValues } from './site-fields-write';
 import type { Menu } from '@typeroll/shared';
 import {
   mergeJsonLd,
@@ -647,6 +648,26 @@ const tools: Anthropic.Tool[] = [
     },
   },
 
+  // Site fields — settings pages the client fills in (opening hours, toggles)
+  {
+    name: 'read_site_fields',
+    description: 'Read the site fields: the settings pages (groups of fields such as opening hours, a "show the booking calendar" checkbox or the delivery time), their saved values, updated_at and editable_groups (the groups this person may change). Read it before update_site_fields.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'update_site_fields',
+    description:
+      'Change site field values: send only the fields to change, by name; null removes a value; an object or list is replaced whole. Opening hours: { days: [{ day: "monday", opens: "09:00", closes: "17:00" }, …, { day: "sunday", closed: true }], exceptions: [{ date: "2026-12-24", closed: true, note: "Christmas Eve" }] }. Pass the updated_at from read_site_fields as expected_updated_at. Groups with access "admin" need admin permission. You cannot add or change the fields themselves; for new fields ask a site admin. Saved directly (not a draft); live at the next publication. Invalid values come back with errors and their paths.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        values: { type: 'object', description: 'Field name → new value, e.g. {"show_booking": false}.' },
+        expected_updated_at: { type: 'string', description: 'The updated_at you read ("" when it was null).' },
+      },
+      required: ['values'],
+    },
+  },
+
   // Design reference — the starter design system the site MAY follow
   {
     name: 'read_design_notes',
@@ -981,6 +1002,10 @@ When updating the header, keep the brand/logo area and the nav links structure u
 ## Menus
 
 The site's navigation links can live in **menus** (\`list_menus\`, \`read_menu\`, \`update_menu\`, \`add_menu_item\`) instead of in the header. A menu is a tree of items (at most 3 levels): \`page\` items link a page by \`page_id\` so renames follow, \`children\` items list a page's child pages as an automatic submenu, \`url\` items hold other addresses, and \`heading\` items are column titles. A menu fills locations: \`primary\` (header), \`footer\`, \`mobile\`. A header or footer shows a menu with a \`core/navigation_links\` block whose data is \`{ source: "menu", menu: "location:primary" }\` (render version 15). When the header shows a menu, change the menu (\`add_menu_item\`), not the header. Check \`read_partial\` first: an HTML header, or navigation_links with its own \`links\`, keeps its links in the header. A menu with \`auto_add_pages\` adds new top-level pages by itself. Menu saves are not drafts: they apply at once and go live with the next publication.
+
+## Site fields
+
+**Site fields** are the site's settings pages (\`read_site_fields\`, \`update_site_fields\`): values the whole site shares, such as opening hours, a visiting address, a "show the booking calendar" checkbox or the current delivery time. Pages show them through \`{{site.fields.name}}\` in templates and block text, the \`core/site_field\` block and \`core/show_if\` conditions (\`site.fields.show_booking\`). When the user asks to change something that is a site field ("we're closed on Christmas Eve", "hide the booking calendar"), change the value with \`update_site_fields\` — not the pages that show it. Opening hours exceptions go in \`exceptions\` by date. Saves apply at once and go live with the next publication.
 
 When the user wants to embed a free block in a page, edit the page's html_content and add \`<x-include name="block-id" />\` where it should appear — don't paste the block's HTML inline, that defeats the point.
 
@@ -1968,6 +1993,34 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         };
       } catch (error) {
         if (error instanceof MenuSaveError) return { result: { error: error.message, ...(error.errors ? { errors: error.errors } : {}) } };
+        throw error;
+      }
+    }
+
+    // ─── Site fields ───────────────────────────────────────────────────────
+    case 'read_site_fields': {
+      return { result: siteFieldsResponse(await readSiteFields(wcCtx(ctx)), ctx.permission) };
+    }
+
+    case 'update_site_fields': {
+      try {
+        const expected = input.expected_updated_at;
+        const saved = await updateSiteFieldValues(wcCtx(ctx), input.values, {
+          permission: ctx.permission, updatedBy: 'chat-ai',
+          ...(typeof expected === 'string' ? { expectedUpdatedAt: expected } : {}),
+        });
+        const changed = input.values && typeof input.values === 'object' ? Object.keys(input.values) : [];
+        return {
+          result: { ok: true, ...siteFieldsResponse(saved, ctx.permission) },
+          action: {
+            type: 'update_site_fields',
+            description: `Updated the site field${changed.length === 1 ? '' : 's'} ${changed.join(', ')}.`,
+            target: 'site_fields',
+            ...chatEditLink(ctx.siteId, 'site_fields', ''),
+          },
+        };
+      } catch (error) {
+        if (error instanceof SiteFieldsSaveError) return { result: { error: error.message, ...(error.errors ? { errors: error.errors } : {}) } };
         throw error;
       }
     }

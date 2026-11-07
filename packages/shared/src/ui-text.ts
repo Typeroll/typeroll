@@ -183,6 +183,71 @@ export function localizeDefaultLabel(value: unknown, key: UiLabelKey, language: 
   return value === undefined || value === uiLabel('en', key) ? uiLabel(language, key) : value;
 }
 
+/**
+ * Words of the opening-hours formats of `core/site_field`: a closed day, open
+ * now until a time, the next opening (`{day}` is today, tomorrow or a weekday
+ * name from Intl) and the words for today and tomorrow.
+ */
+export interface OpeningHoursText { closed: string; open_until: string; opens: string; today: string; tomorrow: string }
+type OpeningHoursRow = [closed: string, open_until: string, opens: string, today: string, tomorrow: string];
+const OPENING_HOURS_TEXT: Record<UiLanguage, OpeningHoursRow> = {
+  en: ['Closed', 'Open now, until {time}', 'Opens {day} {time}', 'today', 'tomorrow'],
+  sv: ['Stängt', 'Öppet nu, till {time}', 'Öppnar {day} {time}', 'i dag', 'i morgon'],
+  nb: ['Stengt', 'Åpent nå, til {time}', 'Åpner {day} {time}', 'i dag', 'i morgen'],
+  da: ['Lukket', 'Åbent nu, til {time}', 'Åbner {day} {time}', 'i dag', 'i morgen'],
+  de: ['Geschlossen', 'Jetzt geöffnet, bis {time}', 'Öffnet {day} um {time}', 'heute', 'morgen'],
+  nl: ['Gesloten', 'Nu open, tot {time}', 'Opent {day} om {time}', 'vandaag', 'morgen'],
+  fi: ['Suljettu', 'Avoinna nyt, {time} asti', 'Avautuu: {day} klo {time}', 'tänään', 'huomenna'],
+  fr: ['Fermé', 'Ouvert, jusqu’à {time}', 'Ouvre {day} à {time}', 'aujourd’hui', 'demain'],
+  pl: ['Zamknięte', 'Otwarte, do {time}', 'Otwarcie: {day}, {time}', 'dziś', 'jutro'],
+  it: ['Chiuso', 'Aperto ora, fino alle {time}', 'Apre {day} alle {time}', 'oggi', 'domani'],
+  es: ['Cerrado', 'Abierto ahora, hasta las {time}', 'Abre {day} a las {time}', 'hoy', 'mañana'],
+  pt: ['Fechado', 'Aberto agora, até às {time}', 'Abre {day} às {time}', 'hoje', 'amanhã'],
+  ru: ['Закрыто', 'Открыто, до {time}', 'Откроется: {day}, {time}', 'сегодня', 'завтра'],
+  uk: ['Зачинено', 'Відчинено, до {time}', 'Відчиниться: {day}, {time}', 'сьогодні', 'завтра'],
+  cs: ['Zavřeno', 'Otevřeno, do {time}', 'Otevírá: {day} {time}', 'dnes', 'zítra'],
+  sk: ['Zatvorené', 'Otvorené, do {time}', 'Otvára: {day} {time}', 'dnes', 'zajtra'],
+  hu: ['Zárva', 'Most nyitva, {time}-ig', 'Nyit: {day} {time}', 'ma', 'holnap'],
+  ro: ['Închis', 'Deschis acum, până la {time}', 'Se deschide {day} la {time}', 'azi', 'mâine'],
+  bg: ['Затворено', 'Отворено, до {time}', 'Отваря: {day}, {time}', 'днес', 'утре'],
+  hr: ['Zatvoreno', 'Otvoreno, do {time}', 'Otvara: {day} u {time}', 'danas', 'sutra'],
+  sr: ['Затворено', 'Отворено, до {time}', 'Отвара: {day} у {time}', 'данас', 'сутра'],
+  bs: ['Zatvoreno', 'Otvoreno, do {time}', 'Otvara: {day} u {time}', 'danas', 'sutra'],
+  sl: ['Zaprto', 'Odprto, do {time}', 'Odpre: {day} ob {time}', 'danes', 'jutri'],
+  mk: ['Затворено', 'Отворено, до {time}', 'Се отвора: {day} во {time}', 'денес', 'утре'],
+  sq: ['Mbyllur', 'Hapur tani, deri në {time}', 'Hapet: {day} në {time}', 'sot', 'nesër'],
+  el: ['Κλειστό', 'Ανοιχτό τώρα, έως τις {time}', 'Ανοίγει: {day} στις {time}', 'σήμερα', 'αύριο'],
+  lt: ['Uždaryta', 'Atidaryta, iki {time}', 'Atsidaro: {day} {time}', 'šiandien', 'rytoj'],
+  lv: ['Slēgts', 'Atvērts, līdz {time}', 'Atver: {day} {time}', 'šodien', 'rīt'],
+  et: ['Suletud', 'Avatud, kuni {time}', 'Avatakse: {day} {time}', 'täna', 'homme'],
+  is: ['Lokað', 'Opið núna, til {time}', 'Opnar: {day} kl. {time}', 'í dag', 'á morgun'],
+  tr: ['Kapalı', 'Şu an açık, {time} saatine kadar', 'Açılış: {day} {time}', 'bugün', 'yarın'],
+  az: ['Bağlıdır', 'İndi açıqdır, {time}-dək', 'Açılır: {day} {time}', 'bu gün', 'sabah'],
+  kk: ['Жабық', 'Қазір ашық, {time} дейін', 'Ашылады: {day} {time}', 'бүгін', 'ертең'],
+  ka: ['დაკეტილია', 'ახლა ღიაა, {time}-მდე', 'იხსნება: {day} {time}', 'დღეს', 'ხვალ'],
+  ar: ['مغلق', 'مفتوح الآن حتى {time}', 'يفتح {day} الساعة {time}', 'اليوم', 'غدًا'],
+  he: ['סגור', 'פתוח עכשיו, עד {time}', 'נפתח {day} ב-{time}', 'היום', 'מחר'],
+  fa: ['بسته', 'اکنون باز است، تا {time}', 'باز می‌شود: {day} ساعت {time}', 'امروز', 'فردا'],
+  ur: ['بند', 'ابھی کھلا ہے، {time} تک', 'کھلے گا: {day} {time}', 'آج', 'کل'],
+  hi: ['बंद', 'अभी खुला है, {time} तक', 'खुलेगा: {day} {time}', 'आज', 'कल'],
+  bn: ['বন্ধ', 'এখন খোলা, {time} পর্যন্ত', 'খুলবে: {day} {time}', 'আজ', 'আগামীকাল'],
+  ta: ['மூடப்பட்டுள்ளது', 'இப்போது திறந்துள்ளது, {time} வரை', 'திறக்கும்: {day} {time}', 'இன்று', 'நாளை'],
+  th: ['ปิด', 'เปิดอยู่ ถึง {time}', 'เปิด{day} เวลา {time}', 'วันนี้', 'พรุ่งนี้'],
+  vi: ['Đóng cửa', 'Đang mở cửa, đến {time}', 'Mở cửa {day} lúc {time}', 'hôm nay', 'ngày mai'],
+  id: ['Tutup', 'Buka sekarang, sampai {time}', 'Buka {day} pukul {time}', 'hari ini', 'besok'],
+  ms: ['Tutup', 'Dibuka sekarang, hingga {time}', 'Dibuka {day} pada {time}', 'hari ini', 'esok'],
+  ja: ['休業', '営業中（{time}まで）', '{day} {time}に開店', '今日', '明日'],
+  ko: ['휴무', '영업 중, {time}까지', '{day} {time} 영업 시작', '오늘', '내일'],
+  zh: ['休息', '营业中，至 {time}', '{day} {time} 开门', '今天', '明天'],
+  'zh-Hant': ['休息', '營業中，至 {time}', '{day} {time} 開門', '今天', '明天'],
+  ca: ['Tancat', 'Obert ara, fins a les {time}', 'Obre {day} a les {time}', 'avui', 'demà'],
+};
+
+export function openingHoursText(language: unknown): OpeningHoursText {
+  const [closed, open_until, opens, today, tomorrow] = OPENING_HOURS_TEXT[uiLanguage(language)];
+  return { closed, open_until, opens, today, tomorrow };
+}
+
 
 const DEFAULT_DATE_FORMAT = 'MMM D, YYYY';
 

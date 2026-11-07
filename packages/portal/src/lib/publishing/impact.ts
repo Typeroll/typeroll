@@ -42,6 +42,8 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
     for (const value of (values ?? []) as any[]) add(kind, value);
   }
   for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', extensions: 'Extensions', runtime_dependencies: 'Runtime connections', impact_origins: 'Publication addresses' })) add('configuration', { id: key, name: title, value: publication[key] ?? null });
+  // Only a publication with site fields lists them, so earlier snapshots compare unchanged.
+  if (publication.siteFields) add('configuration', { id: 'siteFields', name: 'Site fields', value: publication.siteFields });
   const content = JSON.stringify(publication);
   for (const item of media) {
     const urls = [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map((variant: any) => variant.cdn_url)];

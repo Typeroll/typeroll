@@ -216,6 +216,9 @@ export async function renderPreview(
   const pageSource = createPageSource(contentTypes, previewPages, settings.trailing_slash ?? 'always');
   // Site menus for Navigation links blocks that show one (render version 15).
   const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
+  // The version's site fields: values as {{site.fields.*}}, definitions for core/site_field formats.
+  const siteFields = await vstore.siteFields(orgId, siteId, versionId);
+  const siteFieldOptions = { siteFieldDefinitions: siteFields.groups };
   const contentType = contentTypes.find(type => type.id === (page!.content_type ?? 'page'))
     ?? ((page.content_type ?? 'page') === 'page' ? DEFAULT_CONTENT_TYPE : null);
   if (!contentType) throw new Error(`Unknown content type: ${page.content_type}`);
@@ -236,7 +239,7 @@ export async function renderPreview(
       ...pageContentValues(publicContentPage(page, contentType)),
       breadcrumbs,
     },
-    site: { ...siteContext(settings as unknown as Record<string, unknown>), url: seoBase },
+    site: { ...siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields), url: seoBase },
     // Paginating listings render their first slice in the preview; the
     // pager appears but its /page/N/ links only exist on the deployed
     // site (route generation is the SSG's job).
@@ -263,7 +266,7 @@ export async function renderPreview(
     if (!p) return '';
     if (p.content_mode === 'blocks' && p.blocks?.length) {
       return sanitizeBody(
-        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, menuSource, onMissingType, renderVersion, globalBlockSource }),
+        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, menuSource, ...siteFieldOptions, onMissingType, renderVersion, globalBlockSource }),
         settings.iframe_allowed_hosts,
       );
     }
@@ -295,7 +298,7 @@ export async function renderPreview(
     renderCtx.page = { ...renderCtx.page, blocks: pageBlocks };
     // Normalize before deriving the outline so demoted headings retain TOC links.
     renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
-      registry: blockRegistry, context: renderCtx, pageSource, menuSource, formSource, onMissingType, renderVersion, globalBlockSource,
+      registry: blockRegistry, context: renderCtx, pageSource, menuSource, ...siteFieldOptions, formSource, onMissingType, renderVersion, globalBlockSource,
     }), settings.iframe_allowed_hosts), !countBlockH1s(templateBlocks))) };
     const effectiveBlocks = templateBlocks.length
       ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
@@ -304,6 +307,7 @@ export async function renderPreview(
       context: renderCtx,
       pageSource,
       menuSource,
+      ...siteFieldOptions,
       formSource,
       onMissingType,
       annotate: opts.annotate,
@@ -329,6 +333,7 @@ export async function renderPreview(
     includeScripts: opts.allowScripts === true,
     renderVersion,
     globalBlockSource,
+    siteFieldValues: renderCtx.site?.fields,
     // Block part styles, as the published build emits them.
     siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
   });
@@ -451,15 +456,16 @@ export async function renderBlockTypePreview(
   const pages = await vstore.pages(orgId, siteId, versionId);
   const pageSource = createPageSource(contentTypes, pages, settings.trailing_slash ?? 'always');
   const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
+  const siteFields = await vstore.siteFields(orgId, siteId, versionId);
   const block: Block = { id: 'block-preview', type: type.id, data: input.data };
   const onMissingType = (typeId: string) =>
     `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert">Missing block type: ${escapeHtml(typeId)}</div>`;
   const context: RenderContext = {
-    site: siteContext(settings as unknown as Record<string, unknown>),
+    site: siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields),
     page: { title: type.label, slug: 'block-preview' },
   };
   const html = sanitizeBody(
-    renderBlocks([block], { registry, context, pageSource, menuSource, onMissingType, renderVersion, globalBlockSource }),
+    renderBlocks([block], { registry, context, pageSource, menuSource, siteFieldDefinitions: siteFields.groups, onMissingType, renderVersion, globalBlockSource }),
     settings.iframe_allowed_hosts,
   );
   const css = collectBlockAssets([block], registry, {

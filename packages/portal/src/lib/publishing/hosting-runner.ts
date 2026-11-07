@@ -47,6 +47,7 @@ import { digest } from './providers.mjs';
 import { recordPublishedMedia } from './published-media';
 import { readSnapshot, saveSnapshot, type SnapshotReference } from './publication-snapshot';
 import { resolvePublicationVersion } from './publication-version';
+import { publicationSiteFieldWarnings } from './content-preflight';
 import { assertPublishingReady } from './readiness';
 import { publicationRuntime } from './runtime-projection';
 import { recordPublishingOrigin } from './runtime-origins';
@@ -194,7 +195,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       if (mapped.manifest && mapped.manifest.delivery !== 'static') {
         throw new ConnectionError('Images of a hosted site are published with the site. Remove the organization media host in Publishing, then publish again.', 409, 'hosted_media_host_unsupported');
       }
-      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen)];
+      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationSiteFieldWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       const impactSnapshot = await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
       // Absolute links to earlier addresses of the site are frozen as links to its canonical host.

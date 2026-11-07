@@ -30,6 +30,8 @@ export interface VersionDiff {
   blockTypes: ChangeSet;
   menus: ChangeSet;
   settings: 'unchanged' | 'modified';
+  /** Whether the branch overrides the site fields (definitions and values). */
+  siteFields: 'unchanged' | 'modified';
   /** Total number of changed entities across the diff. */
   totalChanges: number;
 }
@@ -108,6 +110,8 @@ export async function diffVersion(
   // Settings (singleton)
   const branchSettings = await getStore().getDoc<SiteSettings>(paths.settings(orgId, siteId, branchId));
   const settings: 'unchanged' | 'modified' = branchSettings ? 'modified' : 'unchanged';
+  const branchSiteFields = await getStore().getDoc(paths.siteFields(orgId, siteId, branchId));
+  const siteFields: 'unchanged' | 'modified' = branchSiteFields ? 'modified' : 'unchanged';
 
   const totalChanges =
     pages.added.length + pages.modified.length + pages.deleted.length +
@@ -117,9 +121,10 @@ export async function diffVersion(
     pageTemplates.added.length + pageTemplates.modified.length + pageTemplates.deleted.length +
     blockTypes.added.length + blockTypes.modified.length + blockTypes.deleted.length +
     menus.added.length + menus.modified.length + menus.deleted.length +
-    (settings === 'modified' ? 1 : 0);
+    (settings === 'modified' ? 1 : 0) +
+    (siteFields === 'modified' ? 1 : 0);
 
-  return { pages, partials, redirects, contentTypes, pageTemplates, blockTypes, menus, settings, totalChanges };
+  return { pages, partials, redirects, contentTypes, pageTemplates, blockTypes, menus, settings, siteFields, totalChanges };
 }
 
 /**
@@ -241,6 +246,12 @@ export async function promoteBranch(
     await copy(paths.settings(orgId, siteId, branchId), paths.settings(orgId, siteId, baseId));
   }
 
+  // Site fields: the base's document is kept as a revision first.
+  if (diff.siteFields === 'modified') {
+    await snapshotBase('site_fields', ['default'], paths.siteFields(orgId, siteId, baseId));
+    await copy(paths.siteFields(orgId, siteId, branchId), paths.siteFields(orgId, siteId, baseId));
+  }
+
   return diff;
 }
 
@@ -283,6 +294,9 @@ export async function resetBranch(
   await deleteAll([...diff.menus.added, ...diff.menus.modified], id => paths.menu(orgId, siteId, id, branchId));
   if (diff.settings === 'modified') {
     await store.deleteDoc(paths.settings(orgId, siteId, branchId)).catch(() => {});
+  }
+  if (diff.siteFields === 'modified') {
+    await store.deleteDoc(paths.siteFields(orgId, siteId, branchId)).catch(() => {});
   }
 
   // Tombstones

@@ -278,6 +278,7 @@ Traditional (`zh-Hant`, `zh-TW`, `zh-HK`, `zh-MO`), Catalan (`ca`) and English
 | Video, carousel and rating | play, pause, previous, next and rating labels                                                                                                                                             |
 | 404 page                   | title, message and the link back to the home page                                                                                                                                         |
 | Cookie banner              | heading, buttons and links ([settings](../../settings/))                                                                                                                                  |
+| Opening hours              | closed, open now until a time, the next opening, today and tomorrow in a [Site field block](#site-fields-on-pages); weekday names come from the browser's language data                   |
 
 Serbian wording is in Cyrillic; a site in Latin-script Serbian can write its own labels. Other languages, such as Welsh or Swahili, use English. A publication for such a language lists the
 wording that fell back to English in its job `warnings`; a language above
@@ -529,6 +530,68 @@ These read from the render context (`page`/`site`/`item`) rather than from autho
 - Site-context: `template/site_logo`, `template/site_title`, `template/site_tagline`
 - Item-context: `template/page_title`, `template_content_slot`, `template/page_featured_image`
 - Conditional: `template/show_if` (renders children only if a condition is truthy)
+
+### Site fields on pages
+
+[Site fields](../../site-fields/) are values the client keeps on settings
+pages: a phone number, a booking toggle, the opening hours. Pages, templates,
+headers and footers show them in three ways, in every render version:
+
+- `{{site.fields.name}}` in a block type's template, escaped like any text
+  (`{{{site.fields.intro}}}` inserts rich text, cleaned like the rest of the
+  page). A dot reads inside a group (`{{site.fields.address.city}}`), and
+  `{{#each site.fields.staff}}…{{/each}}` repeats over a list. A whole block
+  field can be bound too, for example a Text line with
+  `text: "{{site.fields.phone}}"`. A token inside other text stays as written.
+- `core/site_field` (**Site field**) shows one value. `field` names it, with
+  dots for a value inside a group or list (`address.city`, `staff.0.name`).
+  `format`:
+  - `auto` (default) follows the field: rich text, numbers and dates in the
+    page language, option labels for a dropdown, links for an address, email
+    or page reference, a list for a list, and the week for opening hours;
+  - `text`, `richtext`, `number`, `date` and `list` choose one;
+  - `opening_hours_week`: a table of this week, Monday first, with weekday
+    names in the page language, today's row marked (`data-today`,
+    `aria-current="date"`) and this week's exceptions, such as a holiday,
+    with their note;
+  - `opening_hours_today`: today's hours ("09:00–17:00", or "Closed");
+  - `next_opening`: "Opens tomorrow 09:00", or "Open now, until 17:00" while
+    it is open;
+  - `open_now`: "Open now, until 17:00" or "Closed".
+
+  `label` is shown before the value (the week's caption), `empty_text` when
+  the field is empty; without it an empty field renders nothing. `tag` is
+  `p`, `span` or `div`; the week, lists and rich text use `div`. Parts:
+  `label`, `value`, and for the week `day`, `hours` and `today`.
+
+- `core/show_if` (**Show if**) shows the blocks inside it only when its
+  `condition` holds: `site.fields.show_booking` (a ticked checkbox),
+  `!site.fields.closed`, `site.fields.season === "winter"`, combined with `&&`
+  and `||`. It reads page values too (`page.language === "en"`), like
+  `template/show_if`. A condition that cannot be read hides the blocks.
+
+```json
+{
+  "type": "core/show_if",
+  "data": { "condition": "site.fields.show_booking" },
+  "children": [
+    {
+      "type": "core/site_field",
+      "data": { "field": "opening_hours", "format": "next_opening" }
+    }
+  ]
+}
+```
+
+Opening hours use the site's time zone (Europe/Stockholm until the site sets
+another). The hours depending on the day are computed when the site is
+published and refreshed in the visitor's browser, so a page published on
+Monday shows Tuesday's hours on Tuesday without a new publication. A small
+script ships only on pages that show such a format; without script the
+published value shows. Other values change with the next publication. Fields
+a builder marks as not rendered never reach the published site, and a
+publication lists blocks that read a field the site does not define in its
+job `warnings`.
 
 ## Site search
 

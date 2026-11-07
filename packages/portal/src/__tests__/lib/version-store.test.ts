@@ -151,6 +151,23 @@ describe('vstore chain reads', () => {
     expect((await vstore.menu(ORG, SITE, BRANCH, 'main-menu'))?.name).toBe('Again');
   });
 
+  it('inherits, forks and guards the site fields', async () => {
+    const { store, vstore } = await setup();
+    const { SiteFieldsWriteConflict } = await import('../../lib/version-store');
+    expect(await vstore.siteFields(ORG, SITE, BRANCH)).toEqual({ groups: [], values: {} });
+    const groups = [{ id: 'booking', label: 'Booking', access: 'editor' as const, fields: [{ name: 'show_booking', type: 'boolean' as const, label: 'Show' }] }];
+    await vstore.writeSiteFields(ORG, SITE, MAIN_VERSION_ID, { groups, values: { show_booking: true }, updated_at: 'T1' }, null);
+    expect(await store.getDoc(paths.siteFields(ORG, SITE, MAIN_VERSION_ID))).toMatchObject({ values: { show_booking: true } });
+    expect(await vstore.siteFields(ORG, SITE, BRANCH)).toEqual({ groups, values: { show_booking: true }, updated_at: 'T1' });
+
+    await vstore.writeSiteFields(ORG, SITE, BRANCH, { groups, values: { show_booking: false }, updated_at: 'T2' }, 'T1');
+    expect((await vstore.siteFields(ORG, SITE, BRANCH)).values).toEqual({ show_booking: false });
+    expect((await vstore.siteFields(ORG, SITE, MAIN_VERSION_ID)).values).toEqual({ show_booking: true });
+    // A save based on what the branch showed before is refused.
+    await expect(vstore.writeSiteFields(ORG, SITE, BRANCH, { groups, values: {}, updated_at: 'T3' }, 'T1')).rejects.toBeInstanceOf(SiteFieldsWriteConflict);
+    await expect(vstore.writeSiteFields(ORG, SITE, MAIN_VERSION_ID, { groups, values: {} }, null)).rejects.toBeInstanceOf(SiteFieldsWriteConflict);
+  });
+
   // Regression: Firestore rejects doc paths with an odd number of segments.
   // Tombstone paths previously used `_tombstones/{kind}/{id}` which produces
   // 9 segments under a version doc — 500-ing every chain read on prod.

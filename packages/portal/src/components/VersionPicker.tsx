@@ -18,6 +18,8 @@ interface VersionDiff {
   /** Absent in a diff from a portal that predates menus. */
   menus?: ChangeSet;
   settings: 'unchanged' | 'modified';
+  /** Absent in a diff from a portal that predates site fields. */
+  siteFields?: 'unchanged' | 'modified';
   totalChanges: number;
 }
 
@@ -272,6 +274,14 @@ function SyncDialog({ siteId, branch, action, onClose }: SyncDialogProps) {
                 {diff.settings === 'modified' && (
                   <tr>
                     <td>Site settings</td>
+                    <td className="vpd__col-num">—</td>
+                    <td className="vpd__col-num">1</td>
+                    <td className="vpd__col-num">—</td>
+                  </tr>
+                )}
+                {diff.siteFields === 'modified' && (
+                  <tr>
+                    <td>Site fields</td>
                     <td className="vpd__col-num">—</td>
                     <td className="vpd__col-num">1</td>
                     <td className="vpd__col-num">—</td>

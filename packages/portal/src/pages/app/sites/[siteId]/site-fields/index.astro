@@ -1,0 +1,18 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import SiteFieldsEditor from '../../../../../components/SiteFieldsEditor.tsx';
+import { vstore } from '../../../../../lib/version-store';
+import { loadSiteContext } from '../../../../../lib/access';
+
+// Settings pages shared by the whole site. Everyone with access sees them;
+// editors fill in the values of the pages open to editors, administrators
+// also define the pages and their fields.
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId, permission } = ctx;
+const siteId = site.id;
+const initial = await vstore.siteFields(orgId, siteId, versionId);
+---
+<AppLayout title={`Site fields — ${site.name}`} siteId={siteId}>
+  <SiteFieldsEditor client:load siteId={siteId} versionId={versionId} permission={permission} initial={initial} />
+</AppLayout>

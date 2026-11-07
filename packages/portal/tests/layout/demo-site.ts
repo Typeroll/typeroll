@@ -5,7 +5,7 @@
  * renderer; the layout contract and screenshots read it.
  */
 import {
-  LATEST_RENDER_VERSION, defaultSiteSettings, getPageTemplateStarter, getPartialCompositionStarter, newSiteStyles, type Block,
+  LATEST_RENDER_VERSION, defaultSiteSettings, getPageTemplateStarter, getPartialCompositionStarter, newSiteStyles, openingHoursField, type Block,
 } from '@typeroll/shared';
 import { demoImage } from './demo-media';
 
@@ -51,6 +51,22 @@ const MENUS = [
   ] },
   { id: 'sidfot', name: 'Sidfot', locations: ['footer'], items: ['tjanster', 'projekt', 'priser', 'journal', 'om-oss', 'kontakt'].map(id => ({ id, type: 'page', page_id: id })) },
 ];
+
+/** The studio's settings page: a booking toggle and the opening hours, with Christmas Eve closed. */
+const SITE_FIELDS = {
+  groups: [{ id: 'kontakt', label: 'Kontakt', fields: [
+    { name: 'show_booking', type: 'boolean', label: 'Visa bokning' },
+    { name: 'booking_note', type: 'text', label: 'Bokningstext' },
+    openingHoursField('opening_hours', 'Öppettider'),
+  ] }],
+  values: {
+    show_booking: true, booking_note: 'Första mötet är kostnadsfritt och tar en timme.',
+    opening_hours: {
+      days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, index) => index < 5 ? { day, opens: '08:00', closes: '17:00' } : { day, closed: true }),
+      exceptions: [{ date: '2026-12-24', closed: true, note: 'Julafton' }],
+    },
+  },
+};
 
 const page = (id: string, path: string, title: string, blocks: Block[], extra: Record<string, unknown> = {}) =>
   ({ id, slug: id, path, title, status: 'published', content_mode: 'blocks', blocks, ...extra });
@@ -304,6 +320,12 @@ function contact() {
           b('core/icon', { icon: 'mail', size: 'lg' }),
           b('core/text', { text: 'hej@ljusrum.example' }),
           b('core/html', { html: '<address>Ljusrum Arkitekter<br>Smedjegatan 4<br>903 26 Umeå</address>' }),
+          b('core/icon', { icon: 'clock', size: 'lg' }),
+          b('core/site_field', { field: 'opening_hours', format: 'next_opening' }),
+          b('core/site_field', { field: 'opening_hours', label: 'Öppettider' }),
+          b('core/show_if', { condition: 'site.fields.show_booking' }, [
+            b('core/site_field', { field: 'booking_note', label: 'Boka' }),
+          ]),
         ]),
         b('core/container', { gap: 'sm' }, [
           heading('Hitta rätt', { level: 'h3' }),
@@ -337,7 +359,7 @@ export function demoSite(renderVersion = LATEST_RENDER_VERSION) {
     publication: {
       format: 'typeroll-static-publication', format_version: 2, publication_id: 'd'.repeat(64), core_commit: 'd'.repeat(40),
       site_url: 'https://ljusrum.example.invalid', version_id: 'main', site: { name: 'Ljusrum Arkitekter' }, settings,
-      pages, media: [], contentTypes: [], blockTypes: [], forms: [], redirects: [],
+      pages, media: [], contentTypes: [], blockTypes: [], forms: [], redirects: [], siteFields: SITE_FIELDS,
       ...(renderVersion >= 15 ? { menus: MENUS } : {}),
       pageTemplates: [{ id: 'starter-article', name: 'Artikel', status: 'published', blocks: swedishLabels(getPageTemplateStarter('article')!) }],
       partials: [

@@ -122,6 +122,8 @@ describe('REST scope map', () => {
       ['/menus', 'GET', 'content:read'], ['/menus', 'POST', 'content:write'], ['/menus/main/', 'PUT', 'content:write'],
       ['/menus/main', 'DELETE', 'content:write'], ['/menus/main/usage', 'GET', 'content:read'],
       ['/menus/main/revisions/r1', 'GET', 'content:read'], ['/menus/main/revisions/r1/restore', 'POST', 'content:write'],
+      ['/site-fields', 'GET', 'site_fields:read'], ['/site-fields', 'PUT', 'site_fields:write'], ['/site-fields/', 'PATCH', 'site_fields:write'],
+      ['/site-fields/revisions', 'GET', 'site_fields:read'], ['/site-fields/revisions/r1/restore', 'POST', 'site_fields:write'],
     ];
     for (const [path, method, scope] of cases) {
       expect(extensionScopeForApiRequest(`/api/v1/sites/site${path}`, method), `${method} ${path}`).toBe(scope);

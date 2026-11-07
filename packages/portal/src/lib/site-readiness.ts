@@ -6,18 +6,19 @@
 import {
   DEFAULT_CONTENT_TYPE, checkJsonLd, findMenu, lintSiteCss, locationConflicts, paths, resolveContentPage,
   type Block, type BlockType, type ContentType, type CssLintFinding, type Media, type Menu, type MenuItem, type Page,
-  type AppId, type PageTemplate, type Partial as PartialDoc, type Site, type SiteApps, type SiteSettings,
+  type AppId, type PageTemplate, type Partial as PartialDoc, type Site, type SiteApps, type SiteFields, type SiteSettings,
 } from '@typeroll/shared';
 import type { ReadWriteStore } from './datastore';
 import { checkInternalLinks, type InternalLinkReport } from './internal-link-check';
 import { menuRefs } from './menu-usage';
+import { missingRequiredSiteFields } from './site-fields-write';
 import { vstore } from './version-store';
 import { compareZoneAiPolicy, type ZoneAiPolicyRead } from './publishing/zone-ai-policy';
 
 export const READINESS_ITEM_IDS = [
   'share_image', 'home_description', 'organization', 'same_as', 'favicon', 'analytics_consent', 'search_console',
   'privacy_page', 'contact_page', 'not_found_page',
-  'indexable_pages', 'orphan_pages', 'menus', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
+  'indexable_pages', 'orphan_pages', 'menus', 'site_fields', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
   'duplicate_fonts', 'custom_css_overrides',
   'ai_crawler_zone_conflict', 'structured_data',
 ] as const;
@@ -59,6 +60,8 @@ export interface ReadinessInput {
   blockTypes: BlockType[];
   /** The site's menus; absent is the same as none. */
   menus?: Menu[];
+  /** The site fields; absent is the same as none. */
+  siteFields?: SiteFields;
   media: Media[];
   apps: SiteApps | null;
   links: Pick<InternalLinkReport, 'links'>;
@@ -261,6 +264,13 @@ export function buildSiteReadiness(input: ReadinessInput): SiteReadinessReport {
       'Point each item at a published page or remove it, publish the page, and keep each location in one menu.', menuProblems)
     : item('menus', 'ok', menus.length ? 'Menu items link to published pages, and each location shows one menu.' : 'The site has no menus.', 'None needed.'));
 
+  // site_fields: a required field without a value renders as nothing.
+  const missingFields = input.siteFields ? missingRequiredSiteFields(input.siteFields) : [];
+  items.push(missingFields.length
+    ? item('site_fields', 'warning', `${missingFields.length} required site field${missingFields.length === 1 ? ' has' : 's have'} no value. Where the site shows ${missingFields.length === 1 ? 'it' : 'them'}, visitors see nothing.`,
+      'Fill in each listed field on its settings page under Site fields.', missingFields.map(entry => `${entry.group.label}: ${entry.label} (${entry.name})`))
+    : item('site_fields', 'ok', input.siteFields?.groups.length ? 'Every required site field has a value.' : 'The site has no site fields.', 'None needed.'));
+
   // orphan_pages
   const liveSources = new Set([...live.map(page => `page:${page.id}`), ...partials.map(partial => `partial:${partial.id}`), ...publishedTemplates.map(t => `template:${t.id}`), ...[...placedMenus].map(id => `menu:${id}`)]);
   const listed = new Set<string>();
@@ -377,7 +387,7 @@ export async function readSiteReadiness(args: {
   readZone: () => Promise<ZoneAiPolicyRead>;
 }): Promise<SiteReadinessReport> {
   const { store, orgId, siteId, versionId } = args;
-  const [settings, pages, partials, templates, contentTypes, blockTypes, menus, media, apps, links, zone] = await Promise.all([
+  const [settings, pages, partials, templates, contentTypes, blockTypes, menus, siteFields, media, apps, links, zone] = await Promise.all([
     vstore.settings(orgId, siteId, versionId),
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
@@ -385,11 +395,12 @@ export async function readSiteReadiness(args: {
     vstore.contentTypes(orgId, siteId, versionId),
     vstore.blockTypes(orgId, siteId, versionId),
     vstore.menus(orgId, siteId, versionId),
+    vstore.siteFields(orgId, siteId, versionId),
     store.listDocs<Media>(paths.media(orgId, siteId)),
     store.getDoc<SiteApps>(paths.apps(orgId, siteId)),
     checkInternalLinks({ store, orgId, siteId, versionId, site: args.site, includeLinks: true }),
     args.readZone().catch(() => ({ status: 'unavailable', host: args.site.domain ?? '' }) as ZoneAiPolicyRead),
   ]);
   if (!settings) throw new Error('Site settings not found');
-  return buildSiteReadiness({ siteId, settings, pages, partials, templates, contentTypes, blockTypes, menus, media, apps: apps ?? null, links, zone });
+  return buildSiteReadiness({ siteId, settings, pages, partials, templates, contentTypes, blockTypes, menus, siteFields, media, apps: apps ?? null, links, zone });
 }

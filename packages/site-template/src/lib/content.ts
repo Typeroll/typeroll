@@ -1,5 +1,5 @@
-import { trackedPageSource, trackedBacklinks, trackedMenuPages } from './publication-dependencies.mjs';
-import { createPageSource, DEFAULT_CONTENT_TYPE, menuPagesFromSource, resolveContentPage, publicContentPage, type MenuPage, type MenuSource, type PageSourceConfig } from '@typeroll/shared';
+import { trackedPageSource, trackedBacklinks, trackedMenuPages, trackedSiteFields } from './publication-dependencies.mjs';
+import { createPageSource, DEFAULT_CONTENT_TYPE, menuPagesFromSource, resolveContentPage, publicContentPage, siteFieldValues, type MenuPage, type MenuSource, type PageSourceConfig, type SiteFieldGroup, type SiteFields } from '@typeroll/shared';
 // Build-time content fetching. All functions resolve the org+site IDs from
 // env vars so call sites don't need to thread them through.
 
@@ -24,6 +24,11 @@ import { getStore } from './datastore.js';
 // Frozen publication builds pass the year captured before media preparation.
 const publicationYear = Number(process.env.TYPEROLL_BUILD_YEAR ?? new Date().getUTCFullYear());
 export function getBuildYear(): number { return import.meta.env.PROD ? publicationYear : new Date().getUTCFullYear(); }
+// One moment per build for date-dependent site fields (today's opening hours);
+// TYPEROLL_BUILD_TIME pins it. The browser refreshes them after the build.
+const buildTime = Date.parse(process.env.TYPEROLL_BUILD_TIME ?? '');
+const buildNow = new Date(Number.isFinite(buildTime) ? buildTime : Date.now());
+export function getBuildNow(): Date { return import.meta.env.PROD ? buildNow : new Date(); }
 
 function ids() {
   const orgId = process.env.TYPEROLL_ORG_ID || 'default';
@@ -94,6 +99,8 @@ export function _resetBuildCachesForTests(): void {
   getPartials = buildMemo(loadPartials);
   getMenus = buildMemo(loadMenus);
   buildMenuPages = buildMemo(loadMenuPages);
+  getSiteFields = buildMemo(loadSiteFields);
+  buildSiteFields = buildMemo(loadSiteFieldContext);
   getContentTypes = buildMemo(loadContentTypes);
   getPages = buildMemo(loadPages);
   getBlockTypes = buildMemo(loadBlockTypes);
@@ -227,6 +234,28 @@ export let buildMenuPages = buildMemo(loadMenuPages);
 export async function buildMenuSource(): Promise<MenuSource> {
   return { menus: await getMenus(), pages: await buildMenuPages() };
 }
+
+/** The version's site fields: definitions and values, one document. */
+async function loadSiteFields(): Promise<Pick<SiteFields, 'groups' | 'values'>> {
+  const { orgId, siteId, versionId } = ids();
+  const doc = await getStore().getDoc<SiteFields>(paths.siteFields(orgId, siteId, versionId));
+  return {
+    groups: Array.isArray(doc?.groups) ? doc.groups : [],
+    values: doc?.values && typeof doc.values === 'object' && !Array.isArray(doc.values) ? doc.values : {},
+  };
+}
+export let getSiteFields = buildMemo(loadSiteFields);
+
+/**
+ * What every render receives of the site fields: the values as `site.fields`
+ * (recorded as a dependency on the first read) and the definitions, which
+ * pick the format of a `core/site_field` block.
+ */
+async function loadSiteFieldContext(): Promise<{ values: Record<string, unknown>; definitions: SiteFieldGroup[] }> {
+  const fields = await getSiteFields();
+  return { values: trackedSiteFields(siteFieldValues(fields), () => fields), definitions: fields.groups };
+}
+export let buildSiteFields = buildMemo(loadSiteFieldContext);
 
 async function loadPages(): Promise<Page[]> {
   const { orgId, siteId, versionId } = ids();
@@ -464,8 +493,10 @@ export async function renderPartialHtml(
     iframeAllowedHosts?: string[];
   },
 ): Promise<string | null> {
-  context = { ...context, site: { ...context?.site, current_year: getBuildYear() } };
+  const siteFields = await buildSiteFields();
+  context = { ...context, site: { fields: siteFields.values, ...context?.site, current_year: getBuildYear() } };
   const { expandExtensionIncludes, expandIncludes, renderBlocks } = await import('@typeroll/shared');
+  const { recordClockOutput } = await import('./publication-dependencies.mjs');
   const { sanitizeBody } = await import('./sanitize.js');
 
   // Expand HTML directives before selecting the cache key. The 404 route is
@@ -512,6 +543,9 @@ export async function renderPartialHtml(
         context,
         pageSource: await buildPageSource(),
         menuSource: await buildMenuSource(),
+        siteFieldDefinitions: siteFields.definitions,
+        now: getBuildNow(),
+        onClockOutput: recordClockOutput,
         onMissingType: (typeId) => {
           throw new Error(`Cannot build partial with missing block type: ${typeId}`);
         },

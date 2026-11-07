@@ -215,7 +215,7 @@ const FULL_SETTINGS = {
   }, twitter_handle: '@site',
   default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
   organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },
-  robots_txt: 'User-agent: *', ai_crawler_policy: 'no_training', header_behavior: 'reveal_on_scroll_up', date_format: 'long', motion: 'reduced', content_widths: { narrow: 640, normal: 1120, wide: 1360 }, sitewide_noindex: true, sitewide_nofollow: true,
+  robots_txt: 'User-agent: *', ai_crawler_policy: 'no_training', header_behavior: 'reveal_on_scroll_up', date_format: 'long', time_zone: 'Europe/Oslo', motion: 'reduced', content_widths: { narrow: 640, normal: 1120, wide: 1360 }, sitewide_noindex: true, sitewide_nofollow: true,
   external_routes: [{ path: '/app', owner: 'Separate deployment' }],
   seo_review: { forbidden_markers: ['TODO'], claims: [{ phrase: 'best', guidance: 'Check' }], notes: ['Note'] },
   language_sections: [{ language: 'en', home_path: '/en/', tagline: 'English', default_meta_description: 'In English',
@@ -473,6 +473,103 @@ test('a frozen render version 15 project shows the primary menu with its submenu
   assert.match(design, /<li class="block-nav-parent block-nav-parent--current" data-submenu="dropdown">/);
   assert.match(design, /<a href="\/services\/design\/" aria-current="page">/);
   assert.doesNotMatch(design, /<a href="\/" aria-current="page">/);
+});
+
+test('site fields travel as values of public fields with the definitions of their formats', () => {
+  const value = input();
+  value.siteFields = {
+    updated_at: '2026-11-07T00:00:00Z',
+    groups: [{ id: 'contact', label: 'Contact', access: 'admin', description: 'private-value', fields: [
+      { name: 'phone', type: 'text', label: 'Phone', help: 'private-value' },
+      { name: 'season', type: 'select', label: 'Season', options: ['summer', 'winter'], option_labels: ['Summer', 'Winter'] },
+      { name: 'note', type: 'text', label: 'Note', rendered: false },
+      { name: 'logo', type: 'image', label: 'Logo' },
+      { name: 'opening_hours', type: 'object', label: 'Hours', presentation: 'opening_hours', fields: [
+        { name: 'days', type: 'array', label: 'Week', fields: [{ name: 'day', type: 'select', label: 'Day', options: ['monday'] }, { name: 'opens', type: 'text', label: 'Opens' }, { name: 'secret', type: 'text', label: 'S', rendered: false }] },
+      ] },
+    ] }],
+    values: { phone: '090-12 34 56', season: 'winter', note: 'private-value', removed: 'private-value', logo: 'https://media.example.invalid/private.png',
+      opening_hours: { days: [{ day: 'monday', opens: '09:00', secret: 'private-value' }] } },
+  };
+  const publication = projectStaticPublication(value, identity);
+  assert.deepEqual(publication.siteFields, {
+    groups: [{ id: 'contact', fields: [
+      { name: 'phone', type: 'text' },
+      { name: 'season', type: 'select', options: ['summer', 'winter'], option_labels: ['Summer', 'Winter'] },
+      { name: 'logo', type: 'image' },
+      { name: 'opening_hours', type: 'object', presentation: 'opening_hours', fields: [
+        { name: 'days', type: 'array', fields: [{ name: 'day', type: 'select', options: ['monday'] }, { name: 'opens', type: 'text' }] },
+      ] },
+    ] }],
+    values: { phone: '090-12 34 56', season: 'winter', logo: 'https://media.example.invalid/private.png', opening_hours: { days: [{ day: 'monday', opens: '09:00' }] } },
+  });
+  assert.doesNotMatch(JSON.stringify(publication.siteFields), /private-value/);
+  // A site field image is published media.
+  assert.ok(publication.media.some(item => item.id === 'unused'));
+  // A site without site fields publishes exactly as before.
+  assert.equal('siteFields' in projectStaticPublication(input(), identity), false);
+  assert.equal('siteFields' in projectStaticPublication({ ...input(), siteFields: { groups: [], values: {} } }, identity), false);
+  for (const siteFields of [[], { groups: {} }, { groups: [{ id: 'Bad!', fields: [] }] }, { groups: [{ id: 'a', fields: [{ name: 'x', type: 'script' }] }] }, { groups: [], values: [] }]) {
+    assert.throws(() => projectStaticPublication({ ...input(), siteFields }, identity), /site field/);
+  }
+});
+
+test('site field values are not a render-cache global, but a domain rebase needs them unchanged', () => {
+  const value = input();
+  value.siteFields = { groups: [{ id: 'contact', label: 'Contact', fields: [{ name: 'phone', type: 'text', label: 'Phone' }] }], values: { phone: '1' } };
+  const before = createRenderPlan(projectStaticPublication(value, identity), { files: {} });
+  value.siteFields.values.phone = '2';
+  const after = createRenderPlan(projectStaticPublication(value, identity), { files: {} });
+  assert.equal(after.globalKey, before.globalKey);
+  assert.notEqual(after.domainKey, before.domainKey);
+});
+
+test('a frozen project shows site fields, conditions and opening hours that refresh in the browser', async (t) => {
+  const { build } = await import('esbuild');
+  const source = await build({ entryPoints: [fileURLToPath(new URL('../packages/shared/src/core-blocks.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { CORE_BLOCK_TYPES } = await import(`data:text/javascript;base64,${Buffer.from(source.outputFiles[0].text).toString('base64')}`);
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-static-site-fields-'));
+  t.after(() => fs.rm(tmp, { recursive: true, force: true }));
+  const value = input();
+  value.settings.render_version = 15;
+  value.settings.language = 'sv';
+  const week = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, index) => index < 5 ? { day, opens: '09:00', closes: '17:00' } : { day, closed: true });
+  value.siteFields = { groups: [{ id: 'contact', label: 'Contact', fields: [
+    { name: 'phone', type: 'text', label: 'Phone' }, { name: 'show_booking', type: 'boolean', label: 'Booking' },
+    { name: 'opening_hours', type: 'object', label: 'Hours', presentation: 'opening_hours', fields: [
+      { name: 'days', type: 'array', label: 'Week', fields: [{ name: 'day', type: 'select', label: 'Day', options: week.map(entry => entry.day) }, { name: 'closed', type: 'boolean', label: 'Closed' }, { name: 'opens', type: 'text', label: 'Opens' }, { name: 'closes', type: 'text', label: 'Closes' }] },
+      { name: 'exceptions', type: 'array', label: 'Exceptions', fields: [{ name: 'date', type: 'date', label: 'Date' }, { name: 'closed', type: 'boolean', label: 'Closed' }, { name: 'note', type: 'text', label: 'Note' }] },
+    ] },
+  ] }], values: { phone: '090-12 34 56 <b>', show_booking: true, opening_hours: { days: week, exceptions: [{ date: '2026-11-10', closed: true, note: 'Personaldag' }] } } };
+  value.pages = [{ id: 'home', slug: '', title: 'Home', status: 'published', content_mode: 'blocks', blocks: [
+    { id: 'phone', type: 'core/site_field', data: { field: 'phone', label: 'Telefon' } },
+    { id: 'show', type: 'core/show_if', data: { condition: 'site.fields.show_booking' }, children: [{ id: 'book', type: 'core/prose', data: { html: '<p>Boka ett besök</p>' } }] },
+    { id: 'hide', type: 'core/show_if', data: { condition: '!site.fields.show_booking' }, children: [{ id: 'nobook', type: 'core/prose', data: { html: '<p>Ingen bokning</p>' } }] },
+    { id: 'now', type: 'core/site_field', data: { field: 'opening_hours', format: 'open_now' } },
+  ] }, { id: 'about', slug: 'about', title: 'About', status: 'published', content_mode: 'blocks', blocks: [{ id: 'about-text', type: 'core/prose', data: { html: '<p>About</p>' } }] }];
+  value.partials = [{ id: 'footer', name: 'Footer', kind: 'footer', status: 'published', content_mode: 'blocks', blocks: [
+    { id: 'week', type: 'core/site_field', data: { field: 'opening_hours', label: 'Öppettider' } },
+  ] }];
+  const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES });
+  const destination = path.join(tmp, 'site');
+  await createStaticPublicationProject(publication, destination);
+  await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
+  await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
+  await sealPublicationProject(destination);
+  // Monday 2026-11-09, 11:30 in Stockholm.
+  const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: destination, env: { TYPEROLL_BUILD_TIME: '2026-11-09T10:30:00Z' }, encoding: 'utf8', timeout: 120_000 });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const home = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');
+  assert.match(home, /<span class="block-site-field-label">Telefon<\/span> <span class="block-site-field-value">090-12 34 56 &lt;b&gt;<\/span>/);
+  assert.match(home, /Boka ett besök/);
+  assert.doesNotMatch(home, /Ingen bokning/);
+  assert.match(home, /data-site-field-clock="[^"]+">Öppet nu, till 17:00<\/span>/);
+  assert.match(home, /<tr data-day="monday" data-today="true" aria-current="date"><th>Måndag<\/th><td>09:00–17:00<\/td><\/tr><tr data-day="tuesday"><th>Tisdag<\/th><td>Stängt \(Personaldag\)<\/td><\/tr>/);
+  assert.match(home, /core\/site_field opening hours/);
+  // The footer's week ships the refresh script on a page without other site fields too.
+  const about = await fs.readFile(path.join(destination, 'dist/about/index.html'), 'utf8');
+  assert.match(about, /<caption class="block-site-field-label">Öppettider<\/caption>/);
+  assert.match(about, /core\/site_field opening hours/);
 });
 
 test('a resolved branch cannot accidentally publish its frozen source as main', () => {

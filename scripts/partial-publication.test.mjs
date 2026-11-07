@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, trackedMenuPages, recordNavigation, dependenciesMatch, refreshDependencies } from '../packages/site-template/src/lib/publication-dependencies.mjs';
+import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, trackedMenuPages, trackedSiteFields, recordClockOutput, recordNavigation, dependenciesMatch, refreshDependencies } from '../packages/site-template/src/lib/publication-dependencies.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -196,6 +196,39 @@ test('a route showing a menu depends on the menu fields of pages, once, and not 
   assert.ok(dependenciesMatch(refreshed, resolvers));
   const untracked = await captureDependencies(async () => 'no menu here');
   assert.deepEqual(untracked.dependencies, []);
+});
+
+test('a route depends on site fields only when it reads them, once, values and definitions together', async () => {
+  let doc = { groups: [{ id: 'contact', fields: [{ name: 'phone', type: 'text' }] }], values: { phone: '1' } };
+  const values = trackedSiteFields({ ...doc.values }, () => doc);
+  const site = { name: 'Acme', fields: values };
+  const reads = await captureDependencies(async () => { const copy = { ...site }; return [copy.fields.phone, 'phone' in copy.fields, Object.keys(copy.fields)]; });
+  assert.deepEqual(reads.value, ['1', true, ['phone']]);
+  assert.deepEqual(reads.dependencies.map(entry => entry.kind), ['site_fields']);
+  // Spreading the site context does not read the values.
+  const untouched = await captureDependencies(async () => ({ ...site, current_year: 2026 }).name);
+  assert.deepEqual(untouched.dependencies, []);
+  const resolvers = { siteFields: () => doc };
+  assert.ok(dependenciesMatch(reads.dependencies, resolvers));
+  doc = { ...doc, values: { phone: '2' } };
+  assert.ok(!dependenciesMatch(reads.dependencies, resolvers));
+  doc = { groups: [{ id: 'contact', fields: [{ name: 'phone', type: 'number' }] }], values: { phone: '1' } };
+  assert.ok(!dependenciesMatch(reads.dependencies, resolvers));
+  assert.ok(dependenciesMatch(refreshDependencies(reads.dependencies, resolvers, [], [], entry => entry), resolvers));
+});
+
+test('date-dependent output is recomputed for the new build and reused while it is the same', async () => {
+  const input = { f: 'open_now', z: 'Europe/Stockholm' };
+  let output = 'Open now, until 17:00';
+  const { dependencies } = await captureDependencies(async () => recordClockOutput(input, output));
+  assert.deepEqual(dependencies.map(entry => entry.kind), ['clock']);
+  const resolvers = { clock: received => { assert.deepEqual(received, input); return output; } };
+  assert.ok(dependenciesMatch(dependencies, resolvers));
+  assert.deepEqual(refreshDependencies(dependencies, resolvers, [], [], entry => entry), dependencies);
+  output = 'Closed';
+  assert.ok(!dependenciesMatch(dependencies, resolvers));
+  // A domain rebase reuses the HTML, so it must not paper over changed output.
+  assert.throws(() => refreshDependencies(dependencies, resolvers, [], [], entry => entry), /changed/);
 });
 
 test('recorded queries detect membership, ordering, empty results and only the visited pagination slice', async () => {

@@ -22,6 +22,7 @@ import { FIELD_LIST_BLOCK } from './field-list.js';
 import { withPartStylesField } from './block-parts.js';
 import { withPresentationEffectFields } from './block-effects.js';
 import { STORY_BLOCK_TYPES } from './story-blocks.js';
+import { SITE_FIELD_BLOCK_TYPES } from './site-field-blocks.js';
 import type { BlockType } from './types.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
@@ -652,6 +653,8 @@ export const CORE_BLOCK_TYPES: readonly BlockType[] = [
   ...ARTICLE_BLOCK_TYPES,
   // Key figures, timeline, audio, before/after, announcement bar, scroll steps and scroll film — see story-blocks.ts.
   ...STORY_BLOCK_TYPES,
+  // A site field value and a container shown by a condition — see site-field-blocks.ts.
+  ...SITE_FIELD_BLOCK_TYPES,
   // Repeater + aliases — see repeater-blocks.ts. These come after Tier 1
   // because some of them reference Tier 1 item blocks via `expand_to`.
   ...REPEATER_BLOCK_TYPES,

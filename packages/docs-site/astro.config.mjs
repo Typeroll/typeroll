@@ -154,6 +154,7 @@ export default defineConfig({
             { label: 'Pages', slug: 'tools/pages' },
             { label: 'Partials', slug: 'tools/partials' },
             { label: 'Menus', slug: 'tools/menus' },
+            { label: 'Site fields', slug: 'tools/site-fields' },
             { label: 'Settings', slug: 'tools/settings' },
             { label: 'Site block types', slug: 'tools/custom-block-types' },
             { label: 'Forms', slug: 'tools/forms' },

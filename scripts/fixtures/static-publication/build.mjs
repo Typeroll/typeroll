@@ -68,6 +68,8 @@ async function writeDoc(relative, doc) {
 await writeDoc(base, publication.site);
 await writeDoc(`${base}/versions/${versionId}`, { kind: versionId === 'main' ? 'main' : 'branch', robots_blocked: publication.robots_blocked === true });
 await writeDoc(`${base}/versions/${versionId}/settings/default`, publication.settings);
+// Site fields: values for {{site.fields.*}} and the definitions that pick formats.
+if (publication.siteFields) await writeDoc(`${base}/versions/${versionId}/site_fields/default`, publication.siteFields);
 await writeDoc(`${base}/apps/default`, publication.apps ?? { apps: {} });
 // Build output an app derived from this publication's frozen content. One doc
 // rather than one per source: it is written and read whole, and source ids
@@ -93,6 +95,8 @@ const env = {
   ASTRO_TELEMETRY_DISABLED: '1', TYPEROLL_ORG_ID: 'default', TYPEROLL_SITE_ID: 'default',
   TYPEROLL_VERSION_ID: versionId, TYPEROLL_FIXTURES_DIR: fixtures, TYPEROLL_SITE_URL: publication.site_url,
   TYPEROLL_RENDER_CACHE_WORK: cacheWork, TYPEROLL_BUILD_YEAR: String(buildYear),
+  // The moment date-dependent site fields (today's opening hours) are built for; the build's own time otherwise.
+  ...(Number.isFinite(Date.parse(process.env.TYPEROLL_BUILD_TIME ?? '')) ? { TYPEROLL_BUILD_TIME: process.env.TYPEROLL_BUILD_TIME } : {}),
 };
 const dist = path.join(root, 'dist');
 await fs.rm(dist, { recursive: true, force: true });

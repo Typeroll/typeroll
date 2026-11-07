@@ -58,6 +58,8 @@ import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
 import { isMenuNavigation, renderMenuNavigation, usesMenuSubmenus, type MenuSource } from './menu-render.js';
 import { NAVIGATION_SUBMENU_SCRIPT } from './navigation-menu.js';
+import { prepareSiteField, siteFieldValues, SITE_FIELD_CLOCK_SCRIPT, usesSiteFieldClock, type SiteFieldClockInput } from './site-field-blocks.js';
+import type { SiteFieldGroup, SiteFields } from './site-fields.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
@@ -220,6 +222,19 @@ export interface RenderBlocksOptions {
    * empty list.
    */
   menuSource?: MenuSource;
+  /**
+   * The site's field definitions, for `core/site_field` blocks with an
+   * automatic format (rich text, dates, option labels, opening hours). The
+   * values themselves are read from `context.site.fields`.
+   */
+  siteFieldDefinitions?: readonly Pick<SiteFieldGroup, 'fields'>[];
+  /** The moment date-dependent site field formats are computed for (today's opening hours). Defaults to now. */
+  now?: Date;
+  /**
+   * Receives each output that depends on `now` with its input, so a render
+   * cache can recompute it later (siteFieldClockHtml) and tell when it is stale.
+   */
+  onClockOutput?: (input: SiteFieldClockInput, html: string) => void;
   /** Resolves `core/global_block` references (reusable-blocks.ts). Without it they render nothing. */
   globalBlockSource?: GlobalBlockSource;
   /** Internal: global blocks being rendered, outermost first, to stop cycles. */
@@ -500,6 +515,16 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     if (resolveRenderVersion(options.renderVersion) >= 14 && compiled.flatData.date) {
       compiled.flatData.date = formatDisplayDate(compiled.flatData.date, options.context?.page?.language ?? options.context?.site?.language, options.context?.site?.date_format);
     }
+  }
+  if (effectiveBlock.type === 'core/site_field') {
+    const site = options.context?.site;
+    const prepared = prepareSiteField(compiled.flatData, {
+      values: site?.fields, definitions: options.siteFieldDefinitions,
+      language: options.context?.page?.language ?? site?.language, timeZone: site?.time_zone, dateFormat: site?.date_format,
+      now: options.now, onClockOutput: options.onClockOutput, pageSource: options.pageSource,
+    });
+    if (!prepared.html) return '';
+    Object.assign(compiled.flatData, { site_field_html: prepared.html, site_field_format: prepared.format, site_field_empty: prepared.empty, tag: prepared.tag });
   }
   let fieldListHtml: string | undefined;
   if (effectiveBlock.type === 'core/field_list') {
@@ -1178,9 +1203,11 @@ function wrapRepeater(
 export function siteContext(
   settings: Record<string, unknown> | null | undefined,
   year: number = new Date().getUTCFullYear(),
+  fields?: Pick<SiteFields, 'groups' | 'values'> | null,
 ): Record<string, unknown> {
   const s = settings ?? {};
-  return { ...s, name: s.site_name ?? s.name ?? '', current_year: year };
+  // Site field values only, as `{{site.fields.*}}`; definitions stay out (site-field-blocks.ts).
+  return { ...s, name: s.site_name ?? s.name ?? '', current_year: year, ...(fields ? { fields: siteFieldValues(fields) } : {}) };
 }
 
 /** Only this reserved build variable expands inside authored text/HTML.
@@ -2301,6 +2328,12 @@ export interface CollectAssetsOptions {
    * and each instance's `part_styles`. Without it no part CSS is emitted.
    */
   siteStyles?: { styles: readonly unknown[] | undefined; breakpoints: BreakpointWidths };
+  /**
+   * The site field values (`site.fields`), so a `core/site_field` with an
+   * automatic format ships the opening-hours script only for opening hours.
+   * Without them an automatic format counts as opening hours.
+   */
+  siteFieldValues?: unknown;
 }
 
 export function collectBlockAssets(
@@ -2345,6 +2378,10 @@ export function collectBlockAssets(
   // Submenus of a site menu need their small runtime; other link lists stay without script.
   if (resolveRenderVersion(opts?.renderVersion) >= 15 && used.includes('core/navigation_links') && usesMenuSubmenus(blocks)) {
     js.push(`/* core/navigation_links submenus */\n${NAVIGATION_SUBMENU_SCRIPT}`);
+  }
+  // Today's opening hours and the like refresh in the browser; other site fields need no script.
+  if (used.includes('core/site_field') && usesSiteFieldClock(blocks, opts?.siteFieldValues)) {
+    js.push(`/* core/site_field opening hours */\n${SITE_FIELD_CLOCK_SCRIPT}`);
   }
   if (resolveRenderVersion(opts?.renderVersion) >= 14 && css.length) css.push(`/* block defaults */\n${BLOCK_DEFAULTS_V14_CSS}`);
   // From render version 14 platform block CSS is one layer; an author's

@@ -522,6 +522,8 @@ export interface SiteSettings {
   header_behavior?: 'static' | 'sticky' | 'reveal_on_scroll_up';
   /** How page and card dates read (render version 14): medium (default), long, numeric, iso or a YYYY/MMM/D pattern. */
   date_format?: string;
+  /** IANA time zone for opening hours and other time-of-day content, e.g. Europe/Stockholm (the default). */
+  time_zone?: string;
   /** Motion for every visitor (render version 14): full (default) or reduced, which turns off entrance animations, autoplay, background video and moving rows. */
   motion?: 'full' | 'reduced';
   /** The shared narrow, normal and wide content widths in px (render version 14). */
@@ -823,7 +825,7 @@ export interface Page {
  * What was edited. Used to surface the right kind of restore action in the UI
  * (page editor vs partial editor).
  */
-export type RevisionKind = 'page' | 'partial' | 'menu';
+export type RevisionKind = 'page' | 'partial' | 'menu' | 'site_fields';
 
 /**
  * A pre-edit snapshot. The full doc body lives under `doc` so restoring is a

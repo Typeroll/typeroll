@@ -72,6 +72,7 @@ export * from './custom-css.js';
 export * from './reusable-blocks.js';
 export * from './menus.js';
 export * from './site-fields.js';
+export * from './site-field-blocks.js';
 export { isMenuNavigation, menuPageFromRecord, menuPagesFromSource, renderMenuNavigation, submenuDisplay, usesMenuSubmenus, type MenuSource } from './menu-render.js';
 export { NAVIGATION_SUBMENU_SCRIPT } from './navigation-menu.js';
 export * from './contrast.js';

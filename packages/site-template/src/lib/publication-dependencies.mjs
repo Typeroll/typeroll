@@ -67,6 +67,33 @@ export function trackedMenuPages(compute) {
     return value;
   };
 }
+/**
+ * The site field values a render reads (`site.fields.*`, a condition, a site
+ * field block), as one receipt on the first read: a route that never reads
+ * them does not depend on them. `receipt` returns what the hash covers, the
+ * values and the definitions that pick their formats.
+ */
+export function trackedSiteFields(values, receipt) {
+  let hash;
+  const record = () => {
+    const dependencies = active.getStore();
+    if (dependencies && !dependencies.some(entry => entry.kind === 'site_fields')) dependencies.push({ kind: 'site_fields', hash: hash ??= digest(receipt()) });
+  };
+  return new Proxy(values, {
+    get(target, key, receiver) { record(); return Reflect.get(target, key, receiver); },
+    has(target, key) { record(); return Reflect.has(target, key); },
+    ownKeys(target) { record(); return Reflect.ownKeys(target); },
+    getOwnPropertyDescriptor(target, key) { record(); return Reflect.getOwnPropertyDescriptor(target, key); },
+  });
+}
+/**
+ * Output that depends on the build's date and time (today's opening hours),
+ * with its input: a later build recomputes it and renders the route again
+ * only when the output differs.
+ */
+export function recordClockOutput(input, html) {
+  active.getStore()?.push({ kind: 'clock', input: structuredClone(input), hash: digest(html) });
+}
 export function recordNavigation(pageId, value) {
   active.getStore()?.push({ kind: 'navigation', id: pageId, hash: digest(value) });
   return value;
@@ -95,6 +122,8 @@ export function dependenciesMatch(dependencies, resolvers, queries = new Map()) 
       if (entry.kind === 'backlinks') return digest(resolvers.backlinks[entry.id] ?? null) === entry.hash;
       if (entry.kind === 'navigation') return digest(resolvers.navigation(entry.id)) === entry.hash;
       if (entry.kind === 'menu_pages') return digest(resolvers.menuPages()) === entry.hash;
+      if (entry.kind === 'site_fields') return digest(resolvers.siteFields()) === entry.hash;
+      if (entry.kind === 'clock') return digest(resolvers.clock(entry.input)) === entry.hash;
       return false;
     });
   } catch { return false; }
@@ -119,6 +148,12 @@ export function refreshDependencies(dependencies, resolvers, from, to, replace) 
     if (entry.kind === 'backlinks') return { ...entry, hash: digest(resolvers.backlinks[entry.id] ?? null) };
     if (entry.kind === 'navigation') return { ...entry, hash: digest(resolvers.navigation(entry.id)) };
     if (entry.kind === 'menu_pages') return { ...entry, hash: digest(resolvers.menuPages()) };
+    if (entry.kind === 'site_fields') return { ...entry, hash: digest(resolvers.siteFields()) };
+    // Reused HTML holds the earlier output: a rebase is only safe while it is still the same.
+    if (entry.kind === 'clock') {
+      if (digest(resolvers.clock(entry.input)) !== entry.hash) throw new Error('Date-dependent output changed');
+      return entry;
+    }
     throw new Error('Unknown cached dependency');
   });
 }

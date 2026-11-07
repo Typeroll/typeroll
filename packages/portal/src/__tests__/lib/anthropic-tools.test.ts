@@ -943,3 +943,37 @@ describe('menu tools', () => {
     expect(PLAYBOOK_STARTER).toContain('auto_add_pages');
   });
 });
+
+describe('site field tools', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('reads and updates values, with group access and the revision check', async () => {
+    const { ctx, runTool } = await setup();
+    const { defineSiteFields } = await import('../../lib/site-fields-write');
+    await defineSiteFields({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID }, [
+      { id: 'booking', label: 'Booking', fields: [{ name: 'show_booking', type: 'boolean', label: 'Show the booking calendar' }] },
+      { id: 'company', label: 'Company', access: 'admin', fields: [{ name: 'org_number', type: 'text', label: 'Organization number' }] },
+    ], { permission: 'admin', updatedBy: 'test' });
+
+    const read = (await runTool('read_site_fields', {}, ctx)).result as { updated_at: string; editable_groups: string[] };
+    expect(read.editable_groups).toEqual(['booking', 'company']);
+    const saved = await runTool('update_site_fields', { values: { show_booking: false }, expected_updated_at: read.updated_at }, ctx);
+    expect(saved.result).toMatchObject({ ok: true, values: { show_booking: false } });
+    expect(saved.action).toMatchObject({ type: 'update_site_fields', href: `/app/sites/${SITE}/site-fields`, link_label: 'Edit site fields' });
+
+    const stale = await runTool('update_site_fields', { values: { show_booking: true }, expected_updated_at: read.updated_at }, ctx);
+    expect((stale.result as { error: string }).error).toContain('saved by someone else');
+    const invalid = await runTool('update_site_fields', { values: { show_booking: 'no' } }, ctx);
+    expect((invalid.result as { errors: Array<{ path: string }> }).errors.map((e) => e.path)).toEqual(['show_booking']);
+
+    const editor = { ...ctx, permission: 'write' as const };
+    expect(((await runTool('read_site_fields', {}, editor)).result as { editable_groups: string[] }).editable_groups).toEqual(['booking']);
+    expect(((await runTool('update_site_fields', { values: { org_number: '1' } }, editor)).result as { error: string }).error).toContain('administrator');
+  });
+
+  it('teaches the assistant to change the value, not the pages that show it', async () => {
+    const { PLAYBOOK_STARTER } = await import('../../lib/playbook');
+    expect(PLAYBOOK_STARTER).toContain('update_site_fields');
+    expect(PLAYBOOK_STARTER).toContain('exceptions');
+  });
+});

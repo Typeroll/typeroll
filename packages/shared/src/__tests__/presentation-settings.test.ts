@@ -282,6 +282,8 @@ describe('every core block field changes what renders', () => {
     'template/page_author.part_styles': 'needs an author (presentation-audit PART_SAMPLE_CONTEXTS)',
     'template/site_logo.link_to_home': 'needs a site logo',
     'template/show_if.condition': 'needs page values the condition can test',
+    'core/show_if.condition': 'needs site field or page values the condition can test (site-field-blocks.test.ts)',
+    ...Object.fromEntries(['field', 'format', 'label', 'tag', 'part_styles'].map(name => [`core/site_field.${name}`, 'needs the site\'s field values (site-field-blocks.test.ts)'])),
     ...Object.fromEntries(['text', 'email', 'phone', 'url', 'number', 'textarea', 'select', 'radio_group', 'boolean', 'checkbox_group', 'toggle', 'slider', 'date', 'consent']
       .map(name => [`form/${name}.required_message`, 'the form\'s validation message for a required field (form-fields.ts, tested in form-fields.test.ts); not part of the field markup'])),
   };

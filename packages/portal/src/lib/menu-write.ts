@@ -122,7 +122,7 @@ export async function replaceMenu(
   const menu = validated({
     ...raw, id: menuId, items: withItemIds(raw.items),
     ...(existing.created_at ? { created_at: existing.created_at } : {}),
-    updated_at: new Date().toISOString(),
+    updated_at: laterStamp(existing.updated_at),
   });
   await assertLocationsFree(ctx, menu);
   await snapshotRevision({
@@ -145,4 +145,15 @@ export async function restoreMenuRevision(ctx: MenuCtx, menuId: string, doc: Par
 export async function removeMenu(ctx: MenuCtx, menuId: string): Promise<void> {
   if (!(await vstore.menu(ctx.orgId, ctx.siteId, ctx.versionId, menuId))) throw new MenuSaveError('Menu not found', 404);
   await vstore.deleteMenu(ctx.orgId, ctx.siteId, ctx.versionId, menuId);
+}
+
+/**
+ * A new `updated_at`, always later than the saved one. Two saves in the same
+ * millisecond would otherwise share a stamp, and a stale replace that sent
+ * the first save's stamp would pass the revision check.
+ */
+export function laterStamp(previous: string | undefined): string {
+  const now = Date.now();
+  const before = previous ? Date.parse(previous) : NaN;
+  return new Date(Number.isFinite(before) && before >= now ? before + 1 : now).toISOString();
 }

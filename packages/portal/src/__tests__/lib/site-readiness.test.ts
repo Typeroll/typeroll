@@ -17,7 +17,7 @@ function input(overrides: Partial<ReadinessInput> = {}, settings: Partial<SiteSe
     siteId: 'site', now: new Date('2026-11-01T12:00:00Z'),
     settings: { ...defaultSiteSettings, site_name: 'Acme', logo: '/logo.png', favicon: '/favicon.png', default_og_image: 'https://cdn.example/share.png',
       organization: { name: 'Acme', same_as: ['https://github.com/acme'] }, scripts_head: '<meta name="google-site-verification" content="x">', ...settings },
-    pages, partials: overrides.partials ?? [nav(['/about/', '/contact/', '/privacy/'])], templates: [], contentTypes: [], blockTypes: [], menus: overrides.menus,
+    pages, partials: overrides.partials ?? [nav(['/about/', '/contact/', '/privacy/'])], templates: [], contentTypes: [], blockTypes: [], menus: overrides.menus, siteFields: overrides.siteFields,
     media: overrides.media ?? [], apps: 'apps' in overrides ? overrides.apps! : { apps: { analytics: { enabled: true, config: {} } } } as never,
     links: overrides.links ?? { links: ['/about/', '/contact/', '/privacy/'].map(path => ({ from: 'partial:header', path })) },
     zone: overrides.zone ?? { status: 'no_host' },
@@ -62,6 +62,24 @@ describe('site launch readiness', () => {
       '"Other": item d links to /wip/, which is not published',
     ]);
     expect(byId(buildSiteReadiness(input({ pages, menus: [menus[0]!].map(menu => ({ ...menu, items: menu.items.slice(0, 1) })) }))).menus.status).toBe('ok');
+  });
+
+  it('warns about required site fields without a value', () => {
+    const siteFields = {
+      groups: [{ id: 'visit', label: 'Visit us', access: 'editor' as const, fields: [
+        { name: 'visiting_address', type: 'textarea' as const, label: 'Visiting address', required: true },
+        { name: 'staff', type: 'array' as const, label: 'Staff', required: true, fields: [{ name: 'name', type: 'text' as const, label: 'Name' }] },
+        { name: 'note', type: 'text' as const, label: 'Note' },
+      ] }],
+      values: { staff: [] },
+    };
+    const item = byId(buildSiteReadiness(input({ siteFields })));
+    expect(item.site_fields.status).toBe('warning');
+    expect(item.site_fields.details).toEqual(['Visit us: Visiting address (visiting_address)', 'Visit us: Staff (staff)']);
+    expect(item.site_fields.guide).toMatch(/#site-fields$/);
+    const filled = { ...siteFields, values: { visiting_address: 'Storgatan 1', staff: [{ name: 'Ada' }] } };
+    expect(byId(buildSiteReadiness(input({ siteFields: filled }))).site_fields.status).toBe('ok');
+    expect(byId(buildSiteReadiness(input())).site_fields).toMatchObject({ status: 'ok', message: 'The site has no site fields.' });
   });
 
   it('counts links from a menu only where live content shows it', () => {

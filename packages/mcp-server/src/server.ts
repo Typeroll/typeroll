@@ -17,6 +17,7 @@ import { pageTools } from './tools/pages.js';
 import { structuredDataTools } from './tools/structured-data.js';
 import { partialTools } from './tools/partials.js';
 import { menuTools } from './tools/menus.js';
+import { siteFieldTools } from './tools/site-fields.js';
 import { contentTypeTools } from './tools/content-types.js';
 import { pageTemplateTools } from './tools/page-templates.js';
 import { mediaTools } from './tools/media.js';
@@ -61,6 +62,7 @@ export const ALL_TOOLS: ToolDef[] = [
   ...ownerReviewTools,
   ...partialTools,
   ...menuTools,
+  ...siteFieldTools,
   ...blockTypeTools,
   ...pageBlockTools,
   ...workingCopyTools,
@@ -115,6 +117,8 @@ export function effectFor(name: string): ToolEffect {
     // Same role as the portal: Settings, lifecycle and media purge are
     // admin actions (the v1 routes enforce it as well).
     || name === 'update_site_settings'
+    // Site field definitions are site administration; values are write.
+    || name === 'define_site_fields'
     || name === 'archive_site'
     || name === 'restore_site'
     || name === 'purge_site_media'

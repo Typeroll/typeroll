@@ -149,6 +149,24 @@ The menu has \`auto_add_pages\` on, which appends new top-level pages.
 \`read_partial\` partial_id="footer", then update the relevant block field.
 Only edit full HTML when the existing footer is in HTML mode.
 
+## Site fields
+
+### "We're closed on Christmas Eve" / "Change our opening hours"
+1. \`read_site_fields\` and find the opening hours field (an object with
+   \`presentation: "opening_hours"\`) and its current value.
+2. For one date, add \`{ date: "2026-12-24", closed: true, note: "Christmas Eve" }\`
+   to \`exceptions\` (or \`opens\`/\`closes\` for changed hours); for the
+   regular week, change that day in \`days\`. Keep the other entries.
+3. \`update_site_fields\` with the whole opening hours value and the
+   \`expected_updated_at\` you read. Do not edit the pages that show it.
+
+### "Hide the booking calendar" / "Delivery is 5 days now"
+\`read_site_fields\`; when a field holds it (\`show_booking\`,
+\`delivery_days\`), \`update_site_fields\` with only that value. A
+\`core/show_if\` block with \`site.fields.show_booking\` hides the calendar by
+itself. When no field exists, say so: a site admin adds fields under Site
+fields.
+
 ### "Make a reusable newsletter signup I can drop into any page"
 Create a reusable partial with a native Form block and suitable layout blocks.
 Reference it instead of duplicating content. Existing HTML Pages may use

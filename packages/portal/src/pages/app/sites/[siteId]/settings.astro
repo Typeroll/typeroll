@@ -160,6 +160,10 @@ const domainBlocksArchiving =
           <option value="numeric" selected={settings.date_format === 'numeric'}>Numbers in the site language's order (10/12/2026, 2026-10-12)</option>
           <option value="iso" selected={settings.date_format === 'iso'}>ISO (2026-10-12)</option>
         </select>
+        <label for="setting-time_zone">Time zone</label>
+        <input id="setting-time_zone" name="time_zone" value={settings.time_zone ?? 'Europe/Stockholm'} placeholder="Europe/Stockholm" list="time-zones" />
+        <datalist id="time-zones">{['Europe/Stockholm', 'Europe/Oslo', 'Europe/Copenhagen', 'Europe/Helsinki', 'Europe/London', 'Europe/Berlin', 'America/New_York', 'America/Los_Angeles', 'Asia/Tokyo', 'UTC'].map((zone) => <option value={zone} />)}</datalist>
+        <p class="muted text-sm">Used for opening hours and other content that depends on the time of day.</p>
         <p class="muted text-sm">Page dates and card dates, in the page language. A Page date block with its own format keeps it. Render version 14.</p>
       </div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(10rem,1fr));gap:1rem">

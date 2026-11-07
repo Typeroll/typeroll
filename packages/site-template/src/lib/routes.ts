@@ -1,6 +1,6 @@
 import { selectChangedRoutes } from './publication-route-cache.mjs';
-import { getDerivedDataUrl, getDerived, buildBacklinks, buildMenuPages, buildPageSource, getAllPages, getAllMedia, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
-import { queryDerivedSource, buildMediaLookup, pageNavigation, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
+import { getDerivedDataUrl, getDerived, buildBacklinks, buildMenuPages, buildPageSource, getBuildNow, getSiteFields, getAllPages, getAllMedia, getSiteSettings, getContentTypes, getBlockTypes, getPageTemplate, getPages, pageForFacet, isHomePage, urlFor } from './content';
+import { queryDerivedSource, siteFieldClockHtml, buildMediaLookup, pageNavigation, buildCoreBlockRegistry, composePageWithTemplate, findPaginatedListing, facetRoutes, pageBreadcrumbs, pageContentValues } from '@typeroll/shared';
 import type { Block, FacetRoute, Page } from '@typeroll/shared';
 
 // A taxonomy page IS a page — synthetic Page doc, optional PageTemplate,
@@ -97,10 +97,13 @@ export async function getChangedSiteRoutes() {
   const settings = await getSiteSettings();
   const derived = await getDerived();
   const dataUrl = await getDerivedDataUrl();
+  const siteFieldsDoc = await getSiteFields();
   return selectChangedRoutes(routes, {
     derived: (config: Parameters<typeof queryDerivedSource>[1]) => config.source === '$data_url' ? [{ url: dataUrl }] : queryDerivedSource(derived, config),
     media: buildMediaLookup(await getAllMedia()),
     query: await buildPageSource(), backlinks: await buildBacklinks(), menuPages: await buildMenuPages(),
+    // The receipts of site fields (content.ts buildSiteFields) and of date-dependent output.
+    siteFields: () => siteFieldsDoc, clock: (input: Parameters<typeof siteFieldClockHtml>[0]) => siteFieldClockHtml(input, getBuildNow()),
     navigation: (id: string) => {
       const page = routes.find(route => route.props.page.id === id)?.props.page;
       const type = page && types.find(type => type.id === (page.content_type ?? 'page'));

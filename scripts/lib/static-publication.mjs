@@ -16,7 +16,7 @@ const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const safeFieldName = /^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$/;
 const stringFields = {
   site: ['name', 'domain', 'domain_alias'],
-  settings: ['site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'scripts_head', 'scripts_body_end', 'custom_css', 'language', 'twitter_handle', 'default_seo_suffix', 'default_meta_description', 'image_sizes_default', 'default_og_image', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'motion', 'trailing_slash'],
+  settings: ['site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'scripts_head', 'scripts_body_end', 'custom_css', 'language', 'twitter_handle', 'default_seo_suffix', 'default_meta_description', 'image_sizes_default', 'default_og_image', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'time_zone', 'motion', 'trailing_slash'],
   page: ['id', 'content_type', 'template', 'title', 'breadcrumb_label', 'slug', 'path', 'parent', 'language', 'content_mode', 'html_content', 'custom_css', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'lastmod_override', 'json_ld', 'kind', 'schema_type', 'author', 'image_sizes_default', 'status', 'date_updated', 'date_published'],
   partial: ['id', 'name', 'kind', 'content_mode', 'html_content', 'status', 'date_updated'],
   media: ['id', 'filename', 'cdn_url', 'alt_text', 'title', 'caption', 'mime_type'],
@@ -119,6 +119,35 @@ export function projectMenu(menu) {
   if (!Array.isArray(menu.items)) throw new Error('Invalid publication menu');
   output.items = menu.items.map(entry => item(entry, 1));
   return output;
+}
+
+// Mirrors validateSiteFieldGroups (packages/shared/src/site-fields.ts). The
+// definitions travel because they pick a site field block's format (rich
+// text, dates, option labels, opening hours); labels and private fields
+// (rendered: false) stay behind, and only values of the fields left travel.
+const SITE_FIELD_TYPES = ['text', 'textarea', 'richtext', 'boolean', 'number', 'select', 'multiselect', 'date', 'datetime', 'image', 'url', 'email', 'page_ref', 'array', 'object'];
+function projectSiteFieldDefinition(field, depth) {
+  if (!field || typeof field !== 'object' || Array.isArray(field) || !/^[a-z][a-z0-9_]{0,63}$/.test(field.name ?? '') || !SITE_FIELD_TYPES.includes(field.type) || depth > 3) throw new Error('Invalid publication site field');
+  const output = { name: field.name, type: field.type };
+  if (field.presentation === 'opening_hours') output.presentation = 'opening_hours';
+  for (const name of ['options', 'option_labels']) if (field[name] !== undefined) output[name] = projectStringArray(field[name], `site field ${name}`);
+  if (field.fields !== undefined) {
+    if (!Array.isArray(field.fields)) throw new Error('Invalid publication site field');
+    output.fields = field.fields.filter(child => child?.rendered !== false).map(child => projectSiteFieldDefinition(child, depth + 1));
+  }
+  return output;
+}
+/** The site's fields as the renderer reads them: `site.fields` values and the definitions of their formats. */
+export function projectSiteFields(input) {
+  if (input === undefined || input === null) return undefined;
+  if (typeof input !== 'object' || Array.isArray(input) || (input.groups !== undefined && !Array.isArray(input.groups))) throw new Error('Invalid publication site fields');
+  const groups = (input.groups ?? []).map(group => {
+    if (!group || typeof group !== 'object' || !/^[a-z][a-z0-9_-]{0,63}$/.test(group.id ?? '') || !Array.isArray(group.fields)) throw new Error('Invalid publication site field group');
+    return { id: group.id, fields: group.fields.filter(field => field?.rendered !== false).map(field => projectSiteFieldDefinition(field, 1)) };
+  });
+  const values = input.values ?? {};
+  if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('Invalid publication site field values');
+  return { groups, values: projectPublicationData(values, groups.flatMap(group => group.fields)) };
 }
 
 function assertPublicUrl(value) {
@@ -277,6 +306,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   });
   if (input.menus !== undefined && !Array.isArray(input.menus)) throw new Error('Invalid publication menus');
   const menus = (input.menus ?? []).map(projectMenu);
+  const siteFields = projectSiteFields(input.siteFields);
   if (!Array.isArray(input.pageTemplates)) throw new Error('Invalid publication page templates');
   const referencedTemplates = new Set([...pages.map(page => page.template), ...contentTypes.flatMap(type => (type.facets ?? []).map(facet => facet.template))].filter(Boolean));
   const pageTemplates = input.pageTemplates.filter(template => referencedTemplates.has(template.id)).map(template => {
@@ -298,7 +328,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
       /[\s\x00-\x1f]/.test(result.from_path + result.to_path) || ![301, 302].includes(redirect.status_code)) throw new Error('Invalid publication redirect');
     return { ...result, status_code: redirect.status_code };
   });
-  const renderedContent = JSON.stringify({ settings, pages, partials, blockTypes, pageTemplates, contentTypes, forms });
+  const renderedContent = JSON.stringify({ settings, pages, partials, blockTypes, pageTemplates, contentTypes, forms, ...(siteFields ? { siteFields } : {}) });
   const referencedMedia = input.media.filter((item) => [item.cdn_url, ...(item.variants ?? []).map((variant) => variant.cdn_url)]
     .some((url) => typeof url === 'string' && url.length > 0 && renderedContent.includes(url)));
   const media = referencedMedia.map((item) => {
@@ -321,6 +351,8 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     core_commit: coreCommit, published_at: publishedAt, site_url: siteUrl,
     site: projectStrings(input.site, stringFields.site), settings, pages, partials, menus, media, blockTypes, pageTemplates, redirects,
     contentTypes, forms,
+    // Site fields (values for {{site.fields.*}} and core/site_field); left out when the site has none.
+    ...(siteFields && (siteFields.groups.length || Object.keys(siteFields.values).length) ? { siteFields } : {}),
     apps: input.publicRuntime?.apps ?? { apps: {} },
     extensions: input.publicRuntime?.extensions ?? { installations: [] },
     runtime_dependencies: input.publicRuntime?.dependencies ?? [],

@@ -1,4 +1,4 @@
-import { blockTreeError, CORE_BLOCK_TYPES, findMenu, isMenuNavigation, locationConflicts, resolveMenu, resolveRenderVersion, validateMenu, withGlobalBlockContent, globalBlockSourceFromPartials, type Block, type BlockType, type Menu, type MenuPage } from '@typeroll/shared';
+import { blockTreeError, CORE_BLOCK_TYPES, findMenu, unknownSiteFieldReferences, type SiteFieldGroup, isMenuNavigation, locationConflicts, resolveMenu, resolveRenderVersion, validateMenu, withGlobalBlockContent, globalBlockSourceFromPartials, type Block, type BlockType, type Menu, type MenuPage } from '@typeroll/shared';
 import { projectPublicationBlocks, projectPublicationBlockTypes, projectPublicationSchema } from '../../../../../scripts/lib/publication-blocks.mjs';
 import { ConnectionError } from './connections';
 
@@ -115,5 +115,32 @@ export function publicationMenuWarnings(publication: { settings?: Record<string,
     resolved.add(menu.id);
     warnings.push(...resolveMenu(menu, pages, '/').warnings);
   }
+  return warnings;
+}
+
+/**
+ * Non-blocking site field findings for a frozen publication: Site field
+ * blocks and `site.fields.*` conditions that name a field the site does not
+ * define (or keeps private). Such a block renders nothing and such a
+ * condition is false; the job lists them once per field.
+ */
+export function publicationSiteFieldWarnings(publication: { pages?: Document[]; partials?: Document[]; pageTemplates?: Document[]; siteFields?: { groups?: SiteFieldGroup[] } }): string[] {
+  const definitions = publication.siteFields?.groups ?? [];
+  const free = (publication.partials ?? []).filter(partial => partial.kind === 'free');
+  const seen = new Set<string>();
+  const warnings: string[] = [];
+  const check = (blocks: unknown, where: string) => {
+    if (!Array.isArray(blocks)) return;
+    for (const name of unknownSiteFieldReferences(withGlobalBlockContent(blocks as Block[], globalBlockSourceFromPartials(free as never)), definitions)) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      warnings.push(name
+        ? `${where} reads the site field "${name}", which the site does not define or keeps private; a Site field block shows nothing for it and a condition on it is false.`
+        : `${where} has a Site field block that names no field.`);
+    }
+  };
+  for (const page of publication.pages ?? []) check(page.blocks, `page ${page.id}`);
+  for (const partial of publication.partials ?? []) check(partial.blocks, `partial ${partial.id}`);
+  for (const template of publication.pageTemplates ?? []) check(template.blocks, `page template ${template.id}`);
   return warnings;
 }

@@ -84,6 +84,14 @@ const MENU_SOURCE: RenderBlocksOptions['menuSource'] = {
   ],
 };
 
+/** Site field values with opening hours, shown on a fixed Monday (2026-11-09, 11:30 in Stockholm). */
+const WEEK = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, index) => (
+  index < 5 ? { day, opens: '09:00', closes: '17:00' } : index === 5 ? { day, opens: '10:00', closes: '14:00' } : { day, closed: true }));
+const SITE_FIELDS: Partial<RenderBlocksOptions> = {
+  now: new Date('2026-11-09T10:30:00Z'),
+  context: { site: { language: 'en', fields: { phone: '+46 90-12 34 56', show_booking: true, opening_hours: { days: WEEK, exceptions: [{ date: '2026-11-11', closed: true, note: 'Staff day' }] } } } },
+};
+
 /** Extra samples for parts of a block that the default sample leaves empty. */
 const EXTRA_SAMPLES: Array<{ name: string; block: Block; from?: number; options?: Partial<RenderBlocksOptions> }> = [
   {
@@ -106,6 +114,22 @@ const EXTRA_SAMPLES: Array<{ name: string; block: Block; from?: number; options?
     name: 'core__navigation_links--menu-column', from: 15, options: { menuSource: MENU_SOURCE, context: { page: { path: '/' } } },
     block: { id: 'ref', type: 'core/navigation_links', data: { source: 'menu', menu: 'main', group_label: 'Explore' } },
   },
+  {
+    name: 'core__site_field--week', from: 15, options: SITE_FIELDS,
+    block: { id: 'ref', type: 'core/site_field', data: { field: 'opening_hours', label: 'Opening hours' } },
+  },
+  {
+    name: 'core__site_field--open-now', from: 15, options: SITE_FIELDS,
+    block: { id: 'ref', type: 'core/site_field', data: { field: 'opening_hours', format: 'open_now', tag: 'span' } },
+  },
+  {
+    name: 'core__site_field--text', from: 15, options: SITE_FIELDS,
+    block: { id: 'ref', type: 'core/site_field', data: { field: 'phone', label: 'Phone' } },
+  },
+  {
+    name: 'core__show_if--site-field', from: 15, options: SITE_FIELDS,
+    block: { id: 'ref', type: 'core/show_if', data: { condition: 'site.fields.show_booking' }, children: [{ id: 'ref-child', type: 'core/prose', data: { html: '<p>Book a time</p>' } }] },
+  },
 ];
 
 function render(type: BlockType, renderVersion: number, sample?: Block, options: Partial<RenderBlocksOptions> = {}): string {
@@ -118,7 +142,7 @@ function render(type: BlockType, renderVersion: number, sample?: Block, options:
   }
   const assets = collectBlockAssets([block], registry, { renderVersion });
   // Script is recorded only for the samples that pass options (added in version 15).
-  return `${html}\n\n/* css */\n${assets.css}\n${options.menuSource && assets.js ? `\n/* js */\n${assets.js}\n` : ''}`;
+  return `${html}\n\n/* css */\n${assets.css}\n${(options.menuSource || options.now) && assets.js ? `\n/* js */\n${assets.js}\n` : ''}`;
 }
 
 const coreTypes = [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));

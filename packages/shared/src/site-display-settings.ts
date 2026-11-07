@@ -15,6 +15,12 @@ export function dateFormatError(value: unknown): string | null {
   return /YYYY|M|D/.test(value) ? null : 'date_format pattern must contain YYYY, a month (M, MM, MMM, MMMM) or a day (D, DD)';
 }
 
+/** A valid IANA time zone name, such as Europe/Stockholm. */
+export function timeZoneError(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,2}$/.test(value) || value.length > 64) return 'time_zone must be an IANA time zone such as Europe/Stockholm';
+  try { new Intl.DateTimeFormat('en', { timeZone: value }); return null; } catch { return `${value} is not a time zone this runtime knows`; }
+}
+
 export interface ContentWidths { narrow?: number; normal?: number; wide?: number }
 
 /** Defaults in px (42, 65 and 80rem) and the range each width accepts. */

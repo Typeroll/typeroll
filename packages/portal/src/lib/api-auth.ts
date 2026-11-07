@@ -169,6 +169,9 @@ const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
   { path: /^\/media(?:\/.*)?$/, scope: (w) => (w ? 'media:write' : 'media:read') },
   { path: new RegExp(`^/pages/${ID}/owner-fields$`), scope: () => 'content:owner' },
   { path: new RegExp(`^/containers/${ID}/${ID}/blocks(?:/.*)?$`), scope: (w) => (w ? 'content:write' : 'content:read') },
+  // Site fields have their own scopes: their values steer what the site shows
+  // (opening hours, a booking toggle) and their definitions are site admin.
+  { path: /^\/site-fields(?:\/.*)?$/, scope: (w) => (w ? 'site_fields:write' : 'site_fields:read') },
   {
     path: /^\/(?:pages|content-types|partials|menus|block-types|block-templates|blocks|settings|styles)(?:\/.*)?$/,
     scope: (w) => (w ? 'content:write' : 'content:read'),
