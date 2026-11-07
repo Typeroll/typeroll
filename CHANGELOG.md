@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.8 (candidate, MCP 0.45.120)
+## 0.3.8 (candidate, MCP 0.45.121)
 
 - **Render version 14** is the default for new sites. Platform CSS is layered
   (`@layer`), so a site's own CSS wins without `!important`; every block gets
