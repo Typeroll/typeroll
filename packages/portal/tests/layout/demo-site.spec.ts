@@ -51,6 +51,8 @@ test('the demo site uses every block type, has no custom CSS and meets the layou
         await page.setViewportSize({ width, height: 900 });
         for (const pathname of pages) {
           await page.goto(origin + pathname, { waitUntil: 'load' });
+          // Measure with the real web fonts, not the fallback shown while they load.
+          await page.evaluate(() => document.fonts.ready.then(() => undefined));
           const broken = await page.evaluate(() => [...document.images].filter(image => image.complete && image.naturalWidth === 0 && image.checkVisibility()).map(image => image.getAttribute('src')));
           for (const src of broken) problems.push(`${pathname} @${width} broken_image ${src}`);
           for (const problem of await page.evaluate(measureLayout)) problems.push(`${pathname} @${width} ${problem.check} ${problem.block}: ${problem.detail}`);

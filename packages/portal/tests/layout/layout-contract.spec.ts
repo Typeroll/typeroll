@@ -46,6 +46,8 @@ test('every block type and page template meets the layout contract at every widt
         await page.setViewportSize({ width, height: 900 });
         for (const pathname of pages) {
           await page.goto(origin + pathname, { waitUntil: 'load' });
+          // Measure with the real web fonts, not the fallback shown while they load.
+          await page.evaluate(() => document.fonts.ready.then(() => undefined));
           for (const problem of await page.evaluate(measureLayout)) {
             const key = `${pathname} @${width} ${problem.check} ${problem.block}`;
             if (!found.has(key)) found.set(key, { ...problem, page: pathname, width });
