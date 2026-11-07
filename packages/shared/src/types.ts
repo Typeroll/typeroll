@@ -2084,6 +2084,9 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/pages/${pageId}/revisions`,
   partialRevisions: (orgId: string, siteId: string, partialId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/partials/${partialId}/revisions`,
+  /** Live snippets are not versioned: one copy per site, published on save. */
+  snippets: (orgId: string, siteId: string) => `organizations/${orgId}/sites/${siteId}/snippets`,
+  snippet: (orgId: string, siteId: string, snippetId: string) => `organizations/${orgId}/sites/${siteId}/snippets/${snippetId}`,
   siteFields: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/site_fields/default`,
   menus: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
