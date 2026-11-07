@@ -91,7 +91,9 @@
 /* Flex and grid children can shrink below their longest word, and nothing
    inside a block grows wider than its parent (tables and code scroll instead). */
 :where([data-block], [data-block] *) { min-width:0; }
-:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *)) { max-inline-size:100%; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
 /* Icons keep their size in a row; the text beside them gives way. */
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
 /* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */

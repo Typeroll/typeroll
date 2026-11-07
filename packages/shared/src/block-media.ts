@@ -295,6 +295,14 @@ window.TyperollBlocks.register('core/repeater', function (el) {
 });
 `;
 
+/**
+ * From version 14 the controls show only while the track scrolls: when every
+ * card fits, there is nothing to page through.
+ */
+export const CAROUSEL_RUNTIME_V14 = CAROUSEL_RUNTIME
+  .replace('  function update() {\n    var at = current();', '  function update() {\n    controls.hidden = maxScroll() <= 1;\n    var at = current();')
+  .replace('  controls.hidden = false;\n  update();', '  update();');
+
 /** Provider connections start only after an explicit visitor action. No automatic thumbnails. */
 export const VIDEO_FACADE_RUNTIME = String.raw`
 window.TyperollBlocks.register('core/video', function (el) {

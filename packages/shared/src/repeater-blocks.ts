@@ -8,7 +8,7 @@ import { pixels } from './presentation-fields.js';
 // with curated defaults — see `BlockType.expand_to`.
 
 import type { BlockType } from './types.js';
-import { CAROUSEL_RUNTIME } from './block-media.js';
+import { CAROUSEL_RUNTIME, CAROUSEL_RUNTIME_V14 } from './block-media.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
@@ -485,6 +485,7 @@ const CAROUSEL_V7 = `[data-block="repeater"][data-layout="carousel"] { position:
 @media (prefers-reduced-motion: reduce) { [data-block="repeater"][data-layout="carousel"] > .tr-carousel-track { scroll-behavior: auto; } }`;
 if (!repeater.styles!.includes(CAROUSEL_V6)) throw new Error('repeater carousel styles changed; update CAROUSEL_V6');
 repeater.render_versions = [{ from: 7, styles: repeater.styles!.replace(CAROUSEL_V6, CAROUSEL_V7), script: CAROUSEL_RUNTIME }];
+repeater.render_versions.push({ from: 14, script: CAROUSEL_RUNTIME_V14 });
 
 export const REPEATER_BLOCK_TYPES: readonly BlockType[] = [
   repeater,
