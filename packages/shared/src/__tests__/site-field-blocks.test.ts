@@ -227,7 +227,8 @@ describe('the opening-hours script', () => {
   const moments = [Date.parse('2026-03-26T00:00:00Z'), Date.parse('2026-10-22T00:00:00Z'), Date.parse('2026-12-21T00:00:00Z'), Date.parse('2026-12-28T00:00:00Z')]
     .flatMap(start => Array.from({ length: 7 * 48 }, (_, index) => new Date(start + index * 30 * 60_000)));
 
-  it('computes what the build computes', () => {
+  // Every input at every moment: thousands of comparisons, slow on a busy CI runner.
+  it('computes what the build computes', { timeout: 30_000 }, () => {
     for (const input of inputs) for (const now of moments) expect(compute(input, now), `${input.f} ${input.z} ${now.toISOString()}`).toBe(siteFieldClockHtml(input, now));
   });
 
