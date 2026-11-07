@@ -184,9 +184,9 @@ function projects() {
 function withTabPanels(projectsPage: ReturnType<typeof projects>) {
   const tabs = projectsPage.blocks[1]!.children![0]!;
   tabs.slots = [
-    [b('core/feature_row', { heading: 'Villa Sjöbris', text: '<p>Fyra sovrum, ett glasat allrum och en brygga.</p>', image: demoImage('project-1'), image_alt: 'Villa Sjöbris', padding_y: 'none' })],
-    [b('core/feature_row', { heading: 'Ekhagenskolan', text: '<p>En F–6-skola för 300 elever, byggd i massivträ.</p>', image: demoImage('project-3'), image_alt: 'Ekhagenskolan', padding_y: 'none' })],
-    [b('core/feature_row', { heading: 'Kontor vid älven', text: '<p>Tjugo arbetsplatser och ett kafé som är öppet för grannarna.</p>', image: demoImage('project-6'), image_alt: 'Kontoret', padding_y: 'none' })],
+    [b('core/feature_row', { heading: 'Villa Sjöbris', text: '<p>Fyra sovrum, ett glasat allrum och en brygga.</p>', image: demoImage('project-1'), image_alt: 'Villa Sjöbris' })],
+    [b('core/feature_row', { heading: 'Ekhagenskolan', text: '<p>En F–6-skola för 300 elever, byggd i massivträ.</p>', image: demoImage('project-3'), image_alt: 'Ekhagenskolan' })],
+    [b('core/feature_row', { heading: 'Kontor vid älven', text: '<p>Tjugo arbetsplatser och ett kafé som är öppet för grannarna.</p>', image: demoImage('project-6'), image_alt: 'Kontoret' })],
   ];
   return projectsPage;
 }

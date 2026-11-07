@@ -91,7 +91,29 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 [data-block="feature_row"][data-width="wide"][data-image-max="lg"] { --frow-img-max:100%; }
 [data-block="feature_row"][data-width="wide"] .block-frow-body { max-width:100%; }
 /* Inside a section, column or tab a row without its own background starts where the text beside it starts. */
-:is(.block-section-inner, .block-columns-col, .block-tabs-panel) > [data-block="feature_row"][style$="--bg:"] { padding-inline:0; }`,
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel) > [data-block="feature_row"][style$="--bg:"] { padding-inline:0; }
+/* Inside a tab, column, grid cell or container the row drops its default outer padding: the block around it spaces it. */
+:is(.block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][style*="--padding_y:lg"] { --block-py:0; }
+:is(.block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][style$="--bg:"] { padding-inline:0; }
+/* A row inside another block fills it: the block around it sets the width, so the row's edges match the content beside it. */
+:is(.block-section-inner, .block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] .block-frow-inner { max-width:none; }
+:is(.block-section-inner, .block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][data-image-max="lg"] { --frow-img-max:100%; }
+:is(.block-section-inner, .block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] .block-frow-body { max-width:100%; }
+/* The row stacks by its own width, so it also stacks in a narrow column or grid cell on a wide screen. */
+[data-block="feature_row"] { container-type:inline-size; }
+/* The heading scales with the row, not the screen. */
+[data-block="feature_row"] .block-frow-heading { font-size:clamp(1.375rem, 1rem + 2.5cqi, 2.25rem); }
+@container (max-width: 42rem) {
+  [data-block="feature_row"] .block-frow-inner { grid-template-columns: 1fr; gap: var(--space-md, 1rem); }
+  [data-block="feature_row"] .block-frow-media,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-media { order: 1; }
+  [data-block="feature_row"] .block-frow-body,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-body { order: 2; margin-inline: 0; max-width: none; }
+  [data-block="feature_row"] .block-frow-media img,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-media img { margin-inline: auto; }
+  [data-block="feature_row"][data-stack-order="text-first"] .block-frow-media { order: 2; }
+  [data-block="feature_row"][data-stack-order="text-first"] .block-frow-body { order: 1; }
+}`,
   'core/post_card': `/* A card title link stays a comfortable target even when it holds only an icon. */
 [data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }`,
   'core/table_of_contents': `/* Links in the outline are touch targets of at least 24px. */
