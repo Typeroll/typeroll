@@ -132,8 +132,41 @@ export function providerEmbedUrl(address: string, options: { autoplay: boolean; 
 }
 
 /** The player for core/video. Empty when there is no usable address. */
+/**
+ * A video's sizes and formats, from `sources` items ({ src, width, type }),
+ * largest last. The type comes from the item, else the file extension; a media
+ * library address has none, and the browser then reads the file to tell.
+ */
+export function videoSources(value: unknown): { src: string; width: number; type: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const record: Data = item && typeof item === 'object' ? item as Data : { src: item };
+    const src = mediaAddress(record.src);
+    const width = Number(record.width ?? 0);
+    const declared = record.type === 'video/webm' || record.type === 'video/mp4' ? record.type : '';
+    const type = declared || (/\.webm(?:$|[?#])/i.test(src) ? 'video/webm' : /\.(?:mp4|m4v)(?:$|[?#])/i.test(src) ? 'video/mp4' : '');
+    return src && !YOUTUBE.test(src) && !VIMEO.test(src) ? [{ src, width: Number.isFinite(width) && width > 0 ? Math.round(width) : 0, type }] : [];
+  }).slice(0, 12).sort((a, b) => (a.width || 1e9) - (b.width || 1e9) || (a.type === 'video/webm' ? -1 : 1));
+}
+
+/**
+ * <source> elements for several sizes and formats. The browser takes the first
+ * that fits: each smaller size up to two thirds of its width in CSS pixels (so
+ * a high-density phone gets a sharp file), WebM before MP4, the largest last
+ * without a media condition.
+ */
+export function videoSourcesHtml(value: unknown): string {
+  const sources = videoSources(value);
+  const largest = Math.max(0, ...sources.map((source) => source.width));
+  return sources.map((source) => {
+    const media = source.width && source.width < largest ? ` media="(max-width: ${Math.round(source.width / 1.5)}px)"` : '';
+    return `<source src="${escapeAttr(source.src)}"${source.type ? ` type="${source.type}"` : ''}${media} />`;
+  }).join('');
+}
+
 export function videoPlayerHtml(data: Data): string {
-  const address = mediaAddress(data.video_url);
+  const sourcesHtml = data.source === 'url' ? videoSourcesHtml(data.sources) : '';
+  const address = mediaAddress(data.video_url) || (sourcesHtml ? videoSources(data.sources).at(-1)!.src : '');
   if (!address) return '';
   const title = String(data.title ?? '').trim() || 'Video';
   const autoplay = data.autoplay === true;
@@ -143,7 +176,8 @@ export function videoPlayerHtml(data: Data): string {
   if (data.source === 'url') {
     const poster = mediaAddress(data.poster);
     const attrs = [
-      `src="${escapeAttr(address)}"`,
+      // With several sizes and formats the <source> elements choose; otherwise the one file.
+      sourcesHtml ? '' : `src="${escapeAttr(address)}"`,
       poster ? `poster="${escapeAttr(poster)}"` : '',
       controls ? 'controls' : '',
       autoplay ? 'autoplay' : '',
@@ -154,7 +188,7 @@ export function videoPlayerHtml(data: Data): string {
       `preload="${lazy && !autoplay ? 'none' : 'metadata'}"`,
       `aria-label="${escapeAttr(title)}"`,
     ].filter(Boolean).join(' ');
-    return `<video ${attrs}></video>`;
+    return `<video ${attrs}>${sourcesHtml}</video>`;
   }
   // A YouTube or Vimeo page address becomes the embed address; an address the
   // block cannot convert is kept and left to the iframe host allowlist.

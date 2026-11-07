@@ -254,6 +254,7 @@ describe('every core block field changes what renders', () => {
     'core/audio.transcript_label': { transcript_url: '/transcript/' },
     ...Object.fromEntries(['section', 'hero', 'cta'].flatMap(type => [[`core/${type}.overlay_side`, { overlay_style: 'gradient', background_image: '/bg.jpg' }], [`core/${type}.text_panel_shape`, { text_panel: 'dark_glass' }]])),
     'core/container.overlay_side': { overlay_style: 'gradient', background_video: '/bg.mp4' },
+    'core/scroll_film.frames_phone': { frames: [{ src: '/d1.webp' }, { src: '/d2.webp' }] },
     'core/announcement_bar.link_label': { link_url: '/more/' },
     ...Object.fromEntries(['frames_pattern', 'frame_count', 'frame_first', 'frames_pattern_phone'].map(name => [`core/scroll_film.${name}`, { frames_pattern: '/f/{nnn}.webp', frame_count: 3, frames_pattern_phone: '/p/{nnn}.webp' }])),
     ...Object.fromEntries(['link_rel', 'new_tab'].map(name => [`core/image.${name}`, { link: '/linked-image/' }])),

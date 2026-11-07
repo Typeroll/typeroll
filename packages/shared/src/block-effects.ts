@@ -18,7 +18,7 @@
 // - events: `typeroll:motion-in` (bubbles) on each element that enters.
 
 import type { Block, BlockType, FieldDefinition } from './types.js';
-import { mediaAddress, videoFileAddress, PAUSE_ICON, PLAY_ICON } from './block-media.js';
+import { mediaAddress, videoFileAddress, videoSources, PAUSE_ICON, PLAY_ICON } from './block-media.js';
 import { uiLabel } from './ui-text.js';
 
 const escapeAttr = (value: unknown) =>
@@ -51,6 +51,9 @@ export function backgroundMediaFields(withImage: boolean): FieldDefinition[] {
     ] : []),
     { name: 'background_video', type: 'url', label: 'Background video (MP4 or WebM file)', min_render_version: 14, editor_group: 'appearance',
       help: 'A muted, looping video file behind the content. It starts when the block is in view, has a pause button and never plays for visitors who prefer reduced motion. YouTube and Vimeo addresses are not used as backgrounds.' },
+    { name: 'background_video_sources', type: 'array', label: 'Background video sizes and formats', min_render_version: 14, editor_group: 'appearance',
+      help: 'The same loop in several widths and formats (MP4, WebM); the smallest that fills the block is played. Advanced Design fills this in.',
+      fields: [{ name: 'src', type: 'url', label: 'File' }, { name: 'width', type: 'number', label: 'Width (px)', min: 1, max: 7680 }, { name: 'type', type: 'select', label: 'Format', options: ['video/mp4', 'video/webm'] }] },
     { name: 'background_overlay', type: 'number', label: 'Background darkening (0-100)', min: 0, max: 100, default: 40, min_render_version: 14, editor_group: 'appearance',
       help: 'Darkens a background image or video so white text stays readable. 0 turns it off; then set a text color that suits the image.' },
     { name: 'background_video_phones', type: 'select', label: 'Background video on phones', options: ['poster', 'play'], option_labels: ['Show the image only', 'Play the video'], default: 'poster', min_render_version: 14, editor_group: 'appearance' },
@@ -170,7 +173,8 @@ export function backgroundMedia(blockType: BlockType, data: Record<string, unkno
   // Container and CTA paint their own background image; it is the video's poster.
   const paintedImage = blockType.id === 'core/container' || (blockType.id === 'core/cta' && data.image_position === 'background') ? mediaAddress(data.background_image) : '';
   const reduced = context.siteMotion === 'reduced';
-  const video = reduced ? '' : videoFileAddress(data.background_video);
+  const sources = reduced ? [] : videoSources(data.background_video_sources);
+  const video = reduced ? '' : videoFileAddress(data.background_video) || sources.at(-1)?.src || '';
   if (!ownImage && !video) return none;
   const overlayRaw = Number(data.background_overlay ?? 40);
   const overlay = Number.isFinite(overlayRaw) ? Math.min(100, Math.max(0, overlayRaw)) : 40;
@@ -180,7 +184,7 @@ export function backgroundMedia(blockType: BlockType, data: Record<string, unkno
   if (String(data.text_color ?? '').trim() || overlay === 0) attrs['data-bg-own-fg'] = '';
   const layers = [
     ownImage ? `<img src="${escapeAttr(ownImage)}" alt="" loading="lazy" decoding="async" />` : '',
-    video ? `<video data-src="${escapeAttr(video)}"${poster ? ` poster="${escapeAttr(poster)}"` : ''} data-phones="${phones}" muted loop playsinline preload="none"></video>` : '',
+    video ? `<video data-src="${escapeAttr(video)}"${sources.length ? ` data-sources="${escapeAttr(JSON.stringify(sources))}"` : ''}${poster ? ` poster="${escapeAttr(poster)}"` : ''} data-phones="${phones}" muted loop playsinline preload="none"></video>` : '',
   ].join('');
   const toggle = video
     ? `<button type="button" class="tr-bg-media-toggle" data-label-pause="${escapeAttr(uiLabel(context.language, 'pause_animation'))}" data-label-play="${escapeAttr(uiLabel(context.language, 'play_animation'))}" aria-label="${escapeAttr(uiLabel(context.language, 'pause_animation'))}" hidden>${PAUSE_ICON}</button>`
@@ -259,7 +263,7 @@ export function usedEffects(blocks: readonly Block[]): { motion: boolean; backgr
       const data = block.data ?? {};
       if (MOTION_BLOCK_TYPES.has(block.type) && MOTION_VALUES.has(String(data.motion ?? ''))) used.motion = true;
       if (block.type in BACKGROUND_MEDIA_TYPES) {
-        if (videoFileAddress(data.background_video)) { used.backgroundVideo = true; used.backgroundMedia = true; }
+        if (videoFileAddress(data.background_video) || videoSources(data.background_video_sources).length) { used.backgroundVideo = true; used.backgroundMedia = true; }
         if (BACKGROUND_MEDIA_TYPES[block.type] && mediaAddress(data.background_image)) used.backgroundMedia = true;
       }
       if (OVERLAY_ONLY_TYPES.has(block.type) && (['gradient', 'spot'].includes(String(data.overlay_style)) || data.overlay_color)) used.textOverMedia = true;
@@ -442,8 +446,18 @@ export const BACKGROUND_MEDIA_RUNTIME = String.raw`
     if (video.getAttribute('data-phones') !== 'play' && phone && phone.matches) return;
     var toggle = host.querySelector(':scope > .tr-bg-media-toggle');
     var paused = false;
+    // Of several sizes and formats: the smallest playable one at least as wide as the block on this screen.
+    function choose() {
+      var list = []; try { list = JSON.parse(video.getAttribute('data-sources') || '[]'); } catch (e) {}
+      var need = host.getBoundingClientRect().width * Math.min(2, window.devicePixelRatio || 1);
+      var playable = list.filter(function (s) { return !s.type || video.canPlayType(s.type); });
+      var webm = playable.filter(function (s) { return s.type === 'video/webm'; });
+      var pool = webm.length ? webm : playable;
+      var fit = pool.filter(function (s) { return !s.width || s.width >= need; })[0] || pool[pool.length - 1];
+      return fit ? fit.src : video.getAttribute('data-src');
+    }
     function play() {
-      if (!video.getAttribute('src')) video.setAttribute('src', video.getAttribute('data-src'));
+      if (!video.getAttribute('src')) video.setAttribute('src', choose());
       var played = video.play(); if (played && played.catch) played.catch(function () {});
     }
     video.addEventListener('playing', function () { video.setAttribute('data-playing', ''); });

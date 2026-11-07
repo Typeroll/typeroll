@@ -117,3 +117,26 @@ describe('SVG animation', () => {
     expect(registry.get('core/svg_animation')!.script).toContain("el.getAttribute('data-static') === 'true'");
   });
 });
+
+describe('video sets', () => {
+  const sources = [{ src: '/v/video-1080.mp4', width: 1080 }, { src: '/v/video-480.webm', width: 480 }, { src: '/v/video-480.mp4', width: 480 }, { src: '/v/video-1080.webm', width: 1080 }, { src: 'https://youtu.be/dQw4w9WgXcQ', width: 720 }];
+  it('lets the browser choose a size and format for a video with controls', () => {
+    const html = render([{ id: 'v', type: 'core/video', data: { source: 'url', sources, poster: '/v/poster.jpg' } }]);
+    expect(html).toContain('<source src="/v/video-480.webm" type="video/webm" media="(max-width: 320px)" /><source src="/v/video-480.mp4" type="video/mp4" media="(max-width: 320px)" /><source src="/v/video-1080.webm" type="video/webm" /><source src="/v/video-1080.mp4" type="video/mp4" />');
+    expect(html).not.toMatch(/<video [^>]*src=/);
+    expect(html).not.toContain('youtu');
+  });
+  it('plays the smallest background video that fills the block', () => {
+    const html = render([{ id: 's', type: 'core/section', data: { background_image: '/p.jpg', background_video_sources: sources }, children: [] }]);
+    expect(html).toContain('data-src="/v/video-1080.mp4"');
+    expect(html).toContain('data-sources="[{&quot;src&quot;:&quot;/v/video-480.webm&quot;');
+  });
+  it('gives a scroll film its phone frames; a phone uses them when there are at least two', () => {
+    const data = { frames: [{ src: '/d1.webp' }, { src: '/d2.webp' }], frames_phone: [{ src: '/p1.webp' }, { src: '/p2.webp' }] };
+    expect(render([{ id: 'f', type: 'core/scroll_film', data }])).toContain('data-film-frames-phone="[&quot;/p1.webp&quot;,&quot;/p2.webp&quot;]"');
+    expect(render([{ id: 'f', type: 'core/scroll_film', data: { ...data, frames_phone: [] } }])).not.toContain('data-film-frames-phone');
+    // A media library address has no extension: the source then has no type and the browser reads the file.
+    expect(render([{ id: 'v', type: 'core/video', data: { source: 'url', sources: [{ src: '/api/sites/s/media/1/content', width: 720, type: 'video/webm' }, { src: '/api/sites/s/media/2/content', width: 1080 }] } }]))
+      .toContain('<source src="/api/sites/s/media/1/content" type="video/webm" media="(max-width: 480px)" /><source src="/api/sites/s/media/2/content" />');
+  });
+});

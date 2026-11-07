@@ -413,6 +413,7 @@ const scrollFilm: BlockType = {
     { name: 'frames_pattern_phone', type: 'text', label: 'Frame address pattern on phones (optional)', placeholder: '/media/film/phone-{nnnn}.webp',
       help: 'Smaller or upright frames for phones, with the same number of frames.' },
     { name: 'frames', type: 'array', label: 'Frames (instead of a pattern)', fields: [{ name: 'src', type: 'image', label: 'Frame' }] },
+    { name: 'frames_phone', type: 'array', label: 'Phone frames (instead of a phone pattern)', help: 'Upright or smaller frames for phones, usually as many as the frames above.', fields: [{ name: 'src', type: 'image', label: 'Frame' }] },
     { name: 'video', type: 'url', label: 'Video file (instead of frames)',
       help: 'Plays as the page scrolls. It is smoothest when the video has a keyframe on every frame; frames are smoother still.' },
     { name: 'poster', type: 'image', label: 'Still image', help: 'Shown before the film loads, without script and for reduced motion. Defaults to the first frame.' },
@@ -462,6 +463,7 @@ window.TyperollBlocks.register('core/scroll_film', function (el) {
   var phone = window.matchMedia && matchMedia('(max-width: 767px)').matches;
   var frames = [];
   try { frames = JSON.parse(el.getAttribute('data-film-frames') || '[]'); } catch (e) { frames = []; }
+  try { var phoneFrames = JSON.parse(el.getAttribute('data-film-frames-phone') || '[]'); if (phone && phoneFrames.length >= 2) frames = phoneFrames; } catch (e) {}
   var pattern = (phone && el.getAttribute('data-film-pattern-phone')) || el.getAttribute('data-film-pattern');
   var count = Number(el.getAttribute('data-film-count')), first = Number(el.getAttribute('data-film-first')) || 0;
   if (!frames.length && pattern && count > 1) {
@@ -778,7 +780,12 @@ export function prepareStoryBlock(blockType: BlockType, data: Record<string, unk
     const color = String(data.background ?? '').trim();
     data.film_bg = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%/]+\)|hsla?\([\d\s.,%/deg]+\)|[a-z]+)$/i.test(color) ? color : 'var(--film-default-bg, #0b0b0d)';
     if (options.reduced) return {};
-    if (list.length >= 2) return { 'data-film-frames': JSON.stringify(list.slice(0, 600)) };
+    if (list.length >= 2) {
+      const phone = Array.isArray(data.frames_phone)
+        ? data.frames_phone.map(frame => mediaAddress(frame && typeof frame === 'object' ? (frame as { src?: unknown }).src : frame)).filter(Boolean)
+        : [];
+      return { 'data-film-frames': JSON.stringify(list.slice(0, 600)), ...(phone.length ? { 'data-film-frames-phone': JSON.stringify(phone.slice(0, 600)) } : {}) };
+    }
     if (pattern.length) {
       const attrs: Record<string, string> = {
         'data-film-pattern': String(data.frames_pattern).trim(),

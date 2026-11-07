@@ -91,6 +91,12 @@ From [render version 14](../../settings/#render-versions):
     `min_height` (`sm`, `md`, `lg`, `screen`). The text keeps to the content
     column of the sections around it. A hero places its text with
     `text_vertical` and `text_align` as before.
+- **Video in several sizes and formats.** `core/video` (with `source: "url"`)
+  takes `sources`, a list of `{ src, width, type }` (MP4 and WebM in several
+  widths); the browser picks the smallest that is sharp on the screen. Sections,
+  containers and CTAs take `background_video_sources` the same way, and the
+  background plays the smallest playable file at least as wide as the block.
+  The media library accepts MP4 and WebM video up to 25 MB per file.
 - **Gallery lightbox.** `core/gallery` opens images that have no link larger,
   with previous and next, the arrow keys, swiping and Escape; `lightbox: false`
   turns it off.
@@ -121,7 +127,7 @@ New blocks (any render version):
   with captions that show between two points of the film (`start`, `end` in
   percent). Give the frames as an address pattern (`frames_pattern` such as
   `/media/film/frame-{nnnn}.webp` with `frame_count`, optionally a phone
-  pattern) or a list (`frames`), or a `video` file. Frames are smoothest:
+  pattern) or a list (`frames`, with `frames_phone` for phones), or a `video` file. Frames are smoothest:
   export 60–200 WebP or AVIF frames about 1600–2000 px wide. A video plays
   smoothly when every frame is a keyframe. Without script and for reduced
   motion the block is its still image (`poster`, or the first frame) followed
