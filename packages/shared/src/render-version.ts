@@ -151,6 +151,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Built-in labels left at their English default (Learn more, On this page, Menu, Previous, Next, Download PDF and others) render in the page language.',
       'A list of ordinary Pages with no filter and no chosen Pages lists the current Page\'s children, instead of every Page on the site.',
       'A feature row inside a tab, column, grid cell or container drops its default outer padding and fills the block around it, and it stacks by its own width, so it also stacks in a narrow column on a wide screen.',
+      'Two site settings: date_format (medium, long, numeric, iso or a pattern) and content_widths (the narrow, normal and wide widths in px).',
       'Page dates and card dates read in the page language ("12 okt. 2026" on a Swedish page). A Page date block\'s format setting now applies; card dates keep the machine-readable date in datetime.',
     ],
   },

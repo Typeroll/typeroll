@@ -520,6 +520,10 @@ export interface SiteSettings {
   ai_crawler_policy?: 'allow_all' | 'no_training' | 'block_all';
   /** Site header while scrolling: static (default), sticky, or hidden on scroll down and shown compact on scroll up. */
   header_behavior?: 'static' | 'sticky' | 'reveal_on_scroll_up';
+  /** How page and card dates read (render version 14): medium (default), long, numeric, iso or a YYYY/MMM/D pattern. */
+  date_format?: string;
+  /** The shared narrow, normal and wide content widths in px (render version 14). */
+  content_widths?: import('./site-display-settings.js').ContentWidths;
   /**
    * Emit `noindex` on every HTML document without conflating the
    * indexing directive with robots.txt crawl policy. Useful for staging sites

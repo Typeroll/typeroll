@@ -200,7 +200,10 @@ export function formatDisplayDate(value: unknown, language: unknown, format: unk
   try { locale = Intl.getCanonicalLocales(String(language ?? '') || 'en')[0] ?? 'en'; } catch { /* an invalid tag reads as English */ }
   const part = (options: Intl.DateTimeFormatOptions) => new Intl.DateTimeFormat(locale, { timeZone: 'UTC', ...options }).format(date);
   const pattern = String(format ?? '').trim();
-  if (!pattern || pattern === DEFAULT_DATE_FORMAT) return part({ year: 'numeric', month: 'short', day: 'numeric' });
+  if (!pattern || pattern === DEFAULT_DATE_FORMAT || pattern === 'medium') return part({ year: 'numeric', month: 'short', day: 'numeric' });
+  if (pattern === 'long') return part({ year: 'numeric', month: 'long', day: 'numeric' });
+  if (pattern === 'numeric') return part({ year: 'numeric', month: '2-digit', day: '2-digit' });
+  if (pattern === 'iso') return date.toISOString().slice(0, 10);
   const day = date.getUTCDate(), month = date.getUTCMonth() + 1;
   return pattern.replace(/YYYY|MMMM|MMM|MM|M|DD|D/g, token => ({
     YYYY: String(date.getUTCFullYear()), MMMM: part({ month: 'long' }), MMM: part({ month: 'short' }),

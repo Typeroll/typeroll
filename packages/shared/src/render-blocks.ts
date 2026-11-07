@@ -386,7 +386,10 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     compiled.flatData.selected_page_date = options.context?.page?.[fieldName]
       ?? '';
     if (!String(compiled.flatData.selected_page_date).trim()) return '';
-    compiled.flatData.selected_page_date_text = formatDisplayDate(compiled.flatData.selected_page_date, options.context?.page?.language ?? options.context?.site?.language, compiled.flatData.format);
+    // A format left at the block default follows the site's date format.
+    const blockFormat = compiled.flatData.format;
+    const dateFormat = blockFormat && blockFormat !== 'MMM D, YYYY' ? blockFormat : options.context?.site?.date_format ?? blockFormat;
+    compiled.flatData.selected_page_date_text = formatDisplayDate(compiled.flatData.selected_page_date, options.context?.page?.language ?? options.context?.site?.language, dateFormat);
   }
   if (effectiveBlock.type === 'template/page_excerpt' && !String(options.context?.page?.excerpt ?? '').trim()) return '';
   if (effectiveBlock.type === 'template/page_author' && !String((options.context?.page?.author as { name?: string } | undefined)?.name ?? '').trim()) return '';
@@ -464,7 +467,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     // The machine-readable date is always the card's own date, never block data.
     compiled.flatData.date_iso = compiled.flatData.date ?? '';
     if (resolveRenderVersion(options.renderVersion) >= 14 && compiled.flatData.date) {
-      compiled.flatData.date = formatDisplayDate(compiled.flatData.date, options.context?.page?.language ?? options.context?.site?.language);
+      compiled.flatData.date = formatDisplayDate(compiled.flatData.date, options.context?.page?.language ?? options.context?.site?.language, options.context?.site?.date_format);
     }
   }
   let fieldListHtml: string | undefined;
