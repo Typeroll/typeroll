@@ -18,7 +18,7 @@ import { TyperollClient } from './client.js';
 import { runInitCli } from './init.js';
 import { runInstallSkillsCli } from './install-skills.js';
 import { resolveSiteId } from './resolve-site-id.js';
-import { buildServer } from './server.js';
+import { buildServer, serverInfo } from './server.js';
 import { VERSION } from './version.js';
 import { runExtensionCli } from './extension-cli.js';
 import { apiUrlProblem } from './api-url.js';
@@ -46,7 +46,7 @@ async function main(): Promise<void> {
     if (config.site_id) await verifyWorkspaceBinding(config, client);
     // An unbound workspace permits discovery/site creation only. Save the Site
     // binding and reconnect before content operations; never guess a target.
-    const server = buildServer({ client, ...(config.site_id ? { fixedSiteId: config.site_id } : { allowedSites: [] }), toolMode: config.tool_mode, info: { name: 'typeroll', version: VERSION } });
+    const server = buildServer({ client, ...(config.site_id ? { fixedSiteId: config.site_id } : { allowedSites: [] }), toolMode: config.tool_mode, info: serverInfo() });
     await server.connect(new StdioServerTransport()); return;
   }
   if (argv[0] === 'init') {
@@ -99,7 +99,7 @@ async function main(): Promise<void> {
     client,
     fixedSiteId: siteId,
     toolMode: mode as 'full' | 'compact',
-    info: { name: 'typeroll', version: VERSION },
+    info: serverInfo(),
   });
 
   const transport = new StdioServerTransport();

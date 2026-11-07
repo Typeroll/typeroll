@@ -70,9 +70,21 @@ export function packIcon(images) {
   return Buffer.concat([directory, ...images.map(image => image.bytes)]);
 }
 
-async function renderIcon(bytes, size) {
+async function renderIcon(bytes, size, fit = 'contain') {
   return sharp(bytes, { limitInputPixels: 16_000_000, failOn: 'error' }).rotate()
-    .resize(size, size, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+    .resize(size, size, { fit, background: { r: 0, g: 0, b: 0, alpha: 0 } }).png().toBuffer();
+}
+
+// iOS fills transparency with black and rounds the corners itself, so the
+// home screen icon is opaque. A transparent motif gets the site's background
+// colour and a margin; an opaque (full-bleed) image is used edge to edge.
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+async function renderTouchIcon(bytes, background, size = 180) {
+  const opaque = (await sharp(bytes, { limitInputPixels: 16_000_000, failOn: 'error' }).stats()).isOpaque;
+  const motif = opaque ? await renderIcon(bytes, size, 'cover') : await renderIcon(bytes, Math.round(size * 0.76));
+  const canvas = await sharp({ create: { width: size, height: size, channels: 3, background } })
+    .composite([{ input: motif, gravity: 'center' }]).png().toBuffer();
+  return sharp(canvas).flatten({ background }).removeAlpha().png().toBuffer();
 }
 
 /** No network or credential access. Callers supply bounded, verified public image bytes. */
@@ -89,39 +101,60 @@ export async function writeSiteIcons(dist, settings, readImage) {
     }
     return loaded.get(url);
   }
-  let favicon, icon192;
+  let favicon, icon192, icon512 = null, touch = null;
   try {
-    const source = await load('favicon') ?? await load('icon_192') ?? fallback;
+    const configured = await load('favicon') ?? await load('icon_192');
+    const source = configured ?? fallback;
     favicon = packIcon(await Promise.all([16, 32, 48].map(async size => ({ size, bytes: await renderIcon(source, size) }))));
-    icon192 = await renderIcon(await load('icon_192') ?? source, 192);
+    const appSource = await load('icon_192') ?? source;
+    icon192 = await renderIcon(appSource, 192);
+    // Derived sizes come from the site's own image; a site without one keeps
+    // only the transparent fallback and no home screen icon.
+    const touchSource = await load('apple_touch_icon') ?? configured;
+    if (configured) icon512 = await renderIcon(appSource, 512);
+    if (touchSource) {
+      const background = HEX.test(settings.colors?.background ?? '') ? settings.colors.background : '#ffffff';
+      touch = await renderTouchIcon(touchSource, background);
+    }
   } catch (error) {
     // Do not reflect URLs, signed query strings or decoder content in public errors.
-    throw new Error('site_icon_build_failed: check favicon and icon_192 image settings', { cause: error });
+    throw new Error('site_icon_build_failed: check favicon, icon_192 and apple_touch_icon image settings', { cause: error });
   }
   const faviconUrl = `/_assets/icons/favicon-${digest(favicon)}.ico`;
   const iconUrl = `/_assets/icons/icon-192-${digest(icon192)}.png`;
+  const icon512Url = icon512 && `/_assets/icons/icon-512-${digest(icon512)}.png`;
+  const touchUrl = touch && `/_assets/icons/apple-touch-icon-${digest(touch)}.png`;
   await fs.mkdir(path.join(dist, '_assets/icons'), { recursive: true });
   await fs.writeFile(path.join(dist, faviconUrl), favicon);
   await fs.writeFile(path.join(dist, iconUrl), icon192);
+  if (icon512) await fs.writeFile(path.join(dist, icon512Url), icon512);
+  if (touch) {
+    await fs.writeFile(path.join(dist, touchUrl), touch);
+    // iOS also requests the fixed address when a page names no icon.
+    await fs.writeFile(path.join(dist, 'apple-touch-icon.png'), touch);
+  }
   await fs.writeFile(path.join(dist, 'favicon.ico'), favicon);
   await fs.writeFile(path.join(dist, 'site.webmanifest'), JSON.stringify({
-    name: settings.site_name ?? '', icons: [{ src: iconUrl, sizes: '192x192', type: 'image/png' }],
+    name: settings.site_name ?? '', icons: [{ src: iconUrl, sizes: '192x192', type: 'image/png' },
+      ...(icon512 ? [{ src: icon512Url, sizes: '512x512', type: 'image/png' }] : [])],
   }));
+  const touchLink = touch ? `<link data-site-icon="apple_touch_icon" rel="apple-touch-icon" sizes="180x180" href="${touchUrl}">` : '';
   async function rewrite(directory) {
     for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
       const file = path.join(directory, entry.name);
       if (entry.isDirectory()) await rewrite(file);
       else if (entry.isFile() && entry.name.endsWith('.html')) {
         const html = await fs.readFile(file, 'utf8');
-        const next = html.replace(/<link\b[^>]*data-site-icon="(?:favicon|icon_192|manifest)"[^>]*>/g, '')
+        const next = html.replace(/<link\b[^>]*data-site-icon="(?:favicon|icon_192|apple_touch_icon|manifest)"[^>]*>/g, '')
           .replace(/<link\b[^>]*\brel\s*=\s*["']manifest["'][^>]*>/gi, '')
-          .replace('</head>', `<link data-site-icon="favicon" rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="${faviconUrl}"><link data-site-icon="icon_192" rel="icon" type="image/png" sizes="192x192" href="${iconUrl}"><link data-site-icon="manifest" rel="manifest" href="/site.webmanifest"></head>`);
+          .replace(touch ? /<link\b[^>]*\brel\s*=\s*["']apple-touch-icon(?:-precomposed)?["'][^>]*>/gi : /$^/, '')
+          .replace('</head>', `<link data-site-icon="favicon" rel="icon" type="image/x-icon" sizes="16x16 32x32 48x48" href="${faviconUrl}"><link data-site-icon="icon_192" rel="icon" type="image/png" sizes="192x192" href="${iconUrl}">${touchLink}<link data-site-icon="manifest" rel="manifest" href="/site.webmanifest"></head>`);
         if (next !== html) await fs.writeFile(file, next);
       }
     }
   }
   await rewrite(dist);
-  return { favicon_url: faviconUrl, icon_192_url: iconUrl };
+  return { favicon_url: faviconUrl, icon_192_url: iconUrl, icon_512_url: icon512Url, apple_touch_icon_url: touchUrl };
 }
 
 /** Resolve only records in the frozen media manifest, never arbitrary URLs or paths. */
@@ -133,7 +166,7 @@ export async function readFrozenIcon(publication, files, url) {
 }
 
 export function isSiteIconEntry(publication, entry) {
-  return [publication.settings?.favicon, publication.settings?.icon_192].filter(Boolean).some(url => matchesIcon(publication, entry, url));
+  return [publication.settings?.favicon, publication.settings?.icon_192, publication.settings?.apple_touch_icon].filter(Boolean).some(url => matchesIcon(publication, entry, url));
 }
 
 function matchesIcon(publication, entry, raw) {

@@ -62,7 +62,7 @@ export const settingsTools: ToolDef[] = [
       agent_instructions: z.string().max(12000).optional().describe('Site-specific agent guidance, read live for this version. No secrets or permission overrides.'),
       logo: z.string().optional(),
       favicon: z.string().optional(),
-      apple_touch_icon: z.string().optional().describe('URL to a 180x180 PNG for iOS/Android home-screen bookmarks. Emitted as <link rel="apple-touch-icon">.'),
+      apple_touch_icon: z.string().optional().describe('Optional image for the iPhone/iPad home screen icon. Publication generates it from favicon when absent; set it only to use a different image.'),
       icon_192: z.string().optional().describe('URL to a 192x192 PNG app icon. Emitted with sizes="192x192".'),
       trailing_slash: z.enum(['always', 'never', 'ignore']).optional().describe('Canonical URL style. `always` is the default; `never` emits extensionless URLs without a final slash; `ignore` preserves authored paths.'),
       iframe_allowed_hosts: z.array(z.string()).max(50).optional().describe('Additional exact HTTPS iframe hostnames allowed on this site, e.g. ["player.example.com"]. No wildcards, schemes, ports or paths.'),

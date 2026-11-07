@@ -5,7 +5,7 @@
 
 import type { APIRoute } from 'astro';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { buildServer } from '@typeroll/mcp-server/server';
+import { buildServer, serverInfo } from '@typeroll/mcp-server/server';
 import { TyperollClient } from '@typeroll/mcp-server/client';
 import { verifyApiToken } from '../../../lib/api-keys';
 import { rateLimit } from '../../../lib/rate-limit';
@@ -84,7 +84,7 @@ async function handle(request: Request): Promise<Response> {
     if (!resolved.ok) throw new Error(`Unknown version "${version}". Select an existing version.`);
     return { ...selected, version: resolved.versionId };
   };
-  const server = personalUserId ? buildServer({ client, toolMode, selection: {
+  const server = personalUserId ? buildServer({ client, toolMode, info: serverInfo(process.env.PORTAL_PUBLIC_URL || request.url), selection: {
     select: async (organizationId, siteId, version) => {
       const selected = await resolveSelection(organizationId, siteId, version);
       return { site_context: issueSiteContext({ organizationId, siteId, version: selected.version }, apiKey),
@@ -99,9 +99,9 @@ async function handle(request: Request): Promise<Response> {
       return { client: client.forOrganization(decoded.organizationId, decoded.siteId, decoded.version), siteId: decoded.siteId, permission: selected.permission };
     },
   } }) : verified.siteId !== null
-    ? buildServer({ client, fixedSiteId: verified.siteId, toolMode })
+    ? buildServer({ client, fixedSiteId: verified.siteId, toolMode, info: serverInfo(process.env.PORTAL_PUBLIC_URL || request.url) })
     : buildServer({
-        client, toolMode,
+        client, toolMode, info: serverInfo(process.env.PORTAL_PUBLIC_URL || request.url),
         allowedSites: (await listAllowedSites(verified.orgId, null)).map((s) => ({
           siteId: s.siteId,
           permission: s.permission,

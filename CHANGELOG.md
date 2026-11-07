@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.7 (candidate, MCP 0.45.120)
+
+- Frozen publication snapshots are pruned at the end of each publication of
+  the site: snapshots of publications that are no longer running, recent, among
+  the three latest per version or referenced are removed, and the deploy
+  record stays. See [customer-owned publishing](docs/customer-owned-publishing.md).
+- Published sites get a home screen icon for iPhone and iPad and a 512 pixel
+  manifest icon, generated from the favicon unless `apple_touch_icon` is set.
+  Before, a site without a separately uploaded 180 pixel PNG showed a letter
+  on the home screen. The portal has the same icon.
+- The MCP server names itself "Typeroll CMS" and declares icons served by the
+  portal, a white tile with a margin around the symbol, so connector lists such
+  as Claude's no longer show the tightly cropped favicon. The portal also
+  serves `/favicon.ico` and a web manifest.
+
 ## 0.3.6 (candidate, MCP 0.45.119)
 
 - A new site can be published as it is: its seeded Home page is published,

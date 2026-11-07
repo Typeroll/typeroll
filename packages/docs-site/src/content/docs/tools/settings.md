@@ -572,10 +572,14 @@ Every published HTML page links to a content-hashed copy. Changing the icon and
 publishing again changes that link, including on pages whose HTML was reused.
 No custom code or manual ICO conversion is needed.
 
-`icon_192` supplies the 192 pixel image in `/site.webmanifest`. If it is absent,
-Typeroll generates that image from the favicon. A site without either setting
-receives a small transparent fallback icon, so `/favicon.ico` does not return
-an HTML error page. `apple_touch_icon` remains a separate setting.
+`icon_192` supplies the 192 and 512 pixel images in `/site.webmanifest`. If it
+is absent, Typeroll generates them from the favicon. The home screen icon for
+iPhone and iPad (`/apple-touch-icon.png`, 180 pixels) is generated too: from
+`apple_touch_icon` when set, otherwise from the favicon. iOS does not allow
+transparency there, so a transparent motif is placed with a margin on the
+site's background colour, and an opaque image fills the icon. A site without
+any icon setting receives a small transparent fallback favicon, so
+`/favicon.ico` does not return an HTML error page, and no home screen icon.
 
 Use PNG, SVG, JPEG, WebP or ICO (PNG-backed or uncompressed Windows bitmap entries).
 For customer builds, both icon settings must reference uploaded media included

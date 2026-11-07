@@ -8,6 +8,7 @@
 // vs write). This is the plumbing the hosted MCP plan calls out as
 // safety-critical when one connector can touch many sites.
 
+import type { Implementation } from '@modelcontextprotocol/sdk/types.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z, type ZodRawShape } from 'zod';
 import { TyperollClient } from './client.js';
@@ -187,7 +188,7 @@ export interface BuildServerOptions {
   fixedSiteId?: string;
   /** Multi-site mode: every tool gains a `site_id` arg, validated against this list. */
   allowedSites?: AllowedSite[];
-  info?: { name: string; version: string };
+  info?: Implementation;
   toolMode?: 'full' | 'compact';
   /** Stateless personal connections require an explicit organization/site/version selection. */
   selection?: {
@@ -196,7 +197,22 @@ export interface BuildServerOptions {
   };
 }
 
-const DEFAULT_INFO = { name: 'typeroll', version: VERSION };
+const DEFAULT_INFO: Implementation = { name: 'typeroll', title: 'Typeroll CMS', version: VERSION, websiteUrl: 'https://typeroll.com/docs/' };
+
+/**
+ * Server identity with icons served by a Typeroll portal. Clients such as
+ * Claude show them in their connector lists; the icons are opaque tiles with
+ * a margin around the symbol, so no client crops or fills them.
+ */
+export function serverInfo(portalOrigin?: string | null): Implementation {
+  if (!portalOrigin) return DEFAULT_INFO;
+  const origin = new URL(portalOrigin).origin;
+  return { ...DEFAULT_INFO, icons: [
+    { src: `${origin}/icon.svg`, mimeType: 'image/svg+xml', sizes: ['any'] },
+    { src: `${origin}/icon-512.png`, mimeType: 'image/png', sizes: ['512x512'] },
+    { src: `${origin}/icon-192.png`, mimeType: 'image/png', sizes: ['192x192'] },
+  ] };
+}
 
 /**
  * Server-level instructions — returned in the MCP `initialize` response and
