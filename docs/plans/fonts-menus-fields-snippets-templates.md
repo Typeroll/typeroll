@@ -1,6 +1,12 @@
 # Fonts, menus, site fields, live snippets and templates
 
-Status: proposal (2026-11-07). Five areas where a site builder, an agency or an
+Status: implemented on stacked branches, not released (2026-11-08): menus
+(#178), site fields (#179), live snippets (#180), fonts (#181), `.typeroll`
+packages (#182), the organization collection and the builder role (#183),
+block copy and paste (#184), new sites from templates (#185), and templates
+that follow the site with client handover (#186). The Agency app lives in
+Typeroll Cloud. Built-in starters keep their bracketed placeholders for agents;
+readiness lists any left in content. Originally a proposal (2026-11-07). Five areas where a site builder, an agency or an
 app needs more than Core offers today. Each section says what exists, what is
 missing, the proposal, and whether it belongs in Core or in an app.
 
