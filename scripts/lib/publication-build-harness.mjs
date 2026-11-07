@@ -10,18 +10,37 @@ import { createStaticPublicationProject, sealPublicationProject } from './static
 import { publicationContentFiles } from '../fixtures/static-publication/content.mjs';
 import { digest } from '../../packages/site-template/src/lib/publication-render-cache.mjs';
 
+const INTER = fileURLToPath(new URL('../../node_modules/@fontsource-variable/inter/', import.meta.url));
+
+/**
+ * Self-hosted theme fonts come from the build's font cache, so builds stay
+ * offline. The cache holds real Inter (the default theme font), laid out as
+ * the build would copy it from Google Fonts: one variable woff2 per subset,
+ * named by content hash. Screenshots then show the type customers see.
+ */
+async function seedInterFontCache(destination) {
+  const fontCss = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
+  const fonts = path.join(destination, '.publication-fonts', createHash('sha256').update(fontCss).digest('hex').slice(0, 32));
+  await fs.mkdir(fonts, { recursive: true });
+  const rules = [];
+  for (const [, file, range] of (await fs.readFile(path.join(INTER, 'wght.css'), 'utf8'))
+    .matchAll(/src: url\(\.\/files\/([\w-]+\.woff2)\)[^;]*;\s*unicode-range: ([^;]+);/g)) {
+    const bytes = await fs.readFile(path.join(INTER, 'files', file));
+    const name = `${createHash('sha256').update(bytes).digest('hex').slice(0, 32)}.woff2`;
+    await fs.writeFile(path.join(fonts, name), bytes);
+    rules.push(`@font-face{font-family:'Inter';font-style:normal;font-weight:400 700;font-display:swap;src:url(/_typeroll/fonts/${name}) format('woff2');unicode-range:${range}}`);
+  }
+  assert.ok(rules.length, 'Inter font files not found in @fontsource-variable/inter');
+  await fs.writeFile(path.join(fonts, 'fonts.css'), rules.join('\n') + '\n');
+}
+
 export async function publicationBuildHarness(publication) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-partial-'));
   const destination = path.join(root, 'site');
   await createStaticPublicationProject(publication, destination);
   await fs.symlink(fileURLToPath(new URL('../../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
   await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
-  // Self-hosted theme fonts come from the build's font cache, so builds stay offline.
-  const fontCss = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
-  const fonts = path.join(destination, '.publication-fonts', createHash('sha256').update(fontCss).digest('hex').slice(0, 32));
-  await fs.mkdir(fonts, { recursive: true });
-  await fs.writeFile(path.join(fonts, `${'0'.repeat(32)}.woff2`), 'synthetic font');
-  await fs.writeFile(path.join(fonts, 'fonts.css'), `@font-face{font-family:'Inter';src:url(/_typeroll/fonts/${'0'.repeat(32)}.woff2) format('woff2')}\n`);
+  await seedInterFontCache(destination);
   return {
     destination,
     cleanup: () => fs.rm(root, { recursive: true, force: true }),
