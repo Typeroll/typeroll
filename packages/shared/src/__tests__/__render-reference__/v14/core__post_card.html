@@ -114,6 +114,8 @@
 /* A title icon sits on the first line of a title that wraps. */
 [data-block="post_card"] .block-postcard-title:has(.block-postcard-title-icon) > a { align-items:flex-start; }
 [data-block="post_card"] .block-postcard-title-icon { margin-block-start:calc((1lh - 1em) / 2); }
+/* A card image never fills a whole screen: on a wide card it is cropped to a comfortable height. */
+[data-block="post_card"] .block-postcard-media img { max-block-size:min(26rem, 70vh); object-fit:cover; }
 [data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }
 
 /* block defaults */

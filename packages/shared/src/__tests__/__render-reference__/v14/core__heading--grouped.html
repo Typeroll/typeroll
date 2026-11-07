@@ -91,6 +91,8 @@
 /* core/heading defaults */
 /* The heading sits right under its eyebrow wherever the block is placed. */
 [data-block="heading"] .block-heading-eyebrow + .block-heading-text:not(#\#) { margin-block-start:0; }
+/* A heading in a narrow column or grid cell scales down with it, so it keeps whole words on a line. */
+[data-block="heading"]:not([data-size="theme"]) .block-heading-text { font-size:min(var(--heading-fs), max(1.25rem, 8cqi)); }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */

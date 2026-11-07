@@ -54,6 +54,8 @@
 /* core/pricing_plan defaults */
 /* The period sits a space after the price. */
 [data-block="pricing_plan"] .block-pricing-period:not(:empty) { margin-inline-start:.35em; }
+/* A single plan on its own keeps the width of a plan card instead of stretching across the page. */
+:is(.page-content--blocks, .block-section-inner, .block-tabs-panel, [data-block="container"]) > [data-block="pricing_plan"] { max-inline-size:26rem; }
 
 [data-presentation="core%2Fpricing_table"]{--gap_px:initial}
 
@@ -124,6 +126,8 @@
 /* Grids of repeated items: the column setting is the maximum, and each item keeps a minimum
    width, so a grid in a narrow column or on a phone has fewer columns instead of slivers. */
 [data-block="repeater"][data-layout="grid"] { --min-item:10rem; }
+/* An empty-state message spans the whole grid instead of filling the first cells. */
+[data-block="repeater"][data-layout="grid"] > :is(p,ul,ol,div:not([data-block])) { grid-column:1 / -1; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
 /* Fewer items than columns share the row instead of leaving empty columns. */

@@ -105,6 +105,8 @@
 /* A title icon sits on the first line of a title that wraps. */
 [data-block="post_card"] .block-postcard-title:has(.block-postcard-title-icon) > a { align-items:flex-start; }
 [data-block="post_card"] .block-postcard-title-icon { margin-block-start:calc((1lh - 1em) / 2); }
+/* A card image never fills a whole screen: on a wide card it is cropped to a comfortable height. */
+[data-block="post_card"] .block-postcard-media img { max-block-size:min(26rem, 70vh); object-fit:cover; }
 [data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }
 
 [data-presentation="core%2Frepeater"]{--gap_px:initial}
@@ -174,6 +176,8 @@
 /* Grids of repeated items: the column setting is the maximum, and each item keeps a minimum
    width, so a grid in a narrow column or on a phone has fewer columns instead of slivers. */
 [data-block="repeater"][data-layout="grid"] { --min-item:10rem; }
+/* An empty-state message spans the whole grid instead of filling the first cells. */
+[data-block="repeater"][data-layout="grid"] > :is(p,ul,ol,div:not([data-block])) { grid-column:1 / -1; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
 /* Fewer items than columns share the row instead of leaving empty columns. */

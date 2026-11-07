@@ -61,6 +61,8 @@
 /* core/pricing_plan defaults */
 /* The period sits a space after the price. */
 [data-block="pricing_plan"] .block-pricing-period:not(:empty) { margin-inline-start:.35em; }
+/* A single plan on its own keeps the width of a plan card instead of stretching across the page. */
+:is(.page-content--blocks, .block-section-inner, .block-tabs-panel, [data-block="container"]) > [data-block="pricing_plan"] { max-inline-size:26rem; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */

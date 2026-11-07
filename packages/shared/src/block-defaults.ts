@@ -39,6 +39,8 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
   'core/section': `/* A shape divider fills the space between sections; it never covers the content of the block next to it. */
 [data-block="section"]:is([data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"]) { margin-block-start:clamp(34px, 6vw, 80px); }
 [data-block="section"]:is([data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"]) { margin-block-end:clamp(34px, 6vw, 80px); }
+/* A section inside a column, grid cell, tab or container groups content; without its own background it adds no padding. */
+:is(.block-columns-col, [data-block="grid"], .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="section"][style*="--block-bg:;"]:not([style*="--surface"]) { padding:0; }
 /* Content widths come from the shared narrow, normal and wide widths. */
 [data-block="section"] > .block-section-inner { max-width:var(--max_width_px, var(--content-normal, 65rem)); }
 [data-block="section"][data-width="narrow"] > .block-section-inner { max-width:var(--max_width_px, var(--content-narrow, 42rem)); }
@@ -64,6 +66,8 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
   'core/repeater': `/* Grids of repeated items: the column setting is the maximum, and each item keeps a minimum
    width, so a grid in a narrow column or on a phone has fewer columns instead of slivers. */
 [data-block="repeater"][data-layout="grid"] { --min-item:10rem; }
+/* An empty-state message spans the whole grid instead of filling the first cells. */
+[data-block="repeater"][data-layout="grid"] > :is(p,ul,ol,div:not([data-block])) { grid-column:1 / -1; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
 /* Fewer items than columns share the row instead of leaving empty columns. */
@@ -76,7 +80,10 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
   'core/testimonial': `/* The author keeps a readable column: the avatar never shrinks and the company logo moves below when space runs out. */
 [data-block="testimonial"] .block-testimonial-cite { flex-wrap:wrap; }
 [data-block="testimonial"] .block-testimonial-avatar { flex:none; }
-[data-block="testimonial"] .block-testimonial-meta { flex:1 1 10rem; }`,
+[data-block="testimonial"] .block-testimonial-meta { flex:1 1 10rem; }
+/* The avatar sits beside the name, and the company logo is readable. */
+[data-block="testimonial"] .block-testimonial-cite { align-items:flex-start; }
+[data-block="testimonial"] .block-testimonial-logo { max-height:2rem; min-width:3rem; opacity:.8; align-self:center; }`,
   'core/hero': `/* Centred heroes centre their buttons too. */
 [data-block="hero"][style*="--layout:centered"] .block-hero-actions,
 [data-block="hero"][style*="--hero-text-align:center"] .block-hero-actions { justify-content:center; }
@@ -134,6 +141,8 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
 /* A title icon sits on the first line of a title that wraps. */
 [data-block="post_card"] .block-postcard-title:has(.block-postcard-title-icon) > a { align-items:flex-start; }
 [data-block="post_card"] .block-postcard-title-icon { margin-block-start:calc((1lh - 1em) / 2); }
+/* A card image never fills a whole screen: on a wide card it is cropped to a comfortable height. */
+[data-block="post_card"] .block-postcard-media img { max-block-size:min(26rem, 70vh); object-fit:cover; }
 [data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }`,
   'core/table_of_contents': `/* Links in the outline are touch targets of at least 24px. */
 [data-block="table_of_contents"] a { display:inline-block; padding-block:.15rem; }
@@ -165,7 +174,9 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
   'core/logo_item': `/* A logo row is as tall as its logos. */
 [data-block="logo_item"] { min-height:3rem; }`,
   'core/pricing_plan': `/* The period sits a space after the price. */
-[data-block="pricing_plan"] .block-pricing-period:not(:empty) { margin-inline-start:.35em; }`,
+[data-block="pricing_plan"] .block-pricing-period:not(:empty) { margin-inline-start:.35em; }
+/* A single plan on its own keeps the width of a plan card instead of stretching across the page. */
+:is(.page-content--blocks, .block-section-inner, .block-tabs-panel, [data-block="container"]) > [data-block="pricing_plan"] { max-inline-size:26rem; }`,
   'core/table': `/* Table cells keep words whole (hyphenating a long one); a table wider than its column scrolls. */
 [data-block="table"] :is(th,td) { overflow-wrap:normal; hyphens:auto; }
 /* The caption wraps to the visible width and stays in view while a wide table scrolls. */
@@ -180,7 +191,9 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
 [data-block="step_card"] .block-step-marker { align-items:flex-start; }`,
   'core/button': `[data-block="button"] { hyphens:auto; }`,
   'core/heading': `/* The heading sits right under its eyebrow wherever the block is placed. */
-[data-block="heading"] .block-heading-eyebrow + .block-heading-text:not(#\\#) { margin-block-start:0; }`,
+[data-block="heading"] .block-heading-eyebrow + .block-heading-text:not(#\\#) { margin-block-start:0; }
+/* A heading in a narrow column or grid cell scales down with it, so it keeps whole words on a line. */
+[data-block="heading"]:not([data-size="theme"]) .block-heading-text { font-size:min(var(--heading-fs), max(1.25rem, 8cqi)); }`,
   'core/accordion': `/* The open-close mark keeps a gap from a title that wraps. */
 [data-block="accordion"] summary { gap:1rem; }
 [data-block="accordion"] summary::after { flex:none; }`,

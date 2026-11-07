@@ -61,6 +61,9 @@
 [data-block="testimonial"] .block-testimonial-cite { flex-wrap:wrap; }
 [data-block="testimonial"] .block-testimonial-avatar { flex:none; }
 [data-block="testimonial"] .block-testimonial-meta { flex:1 1 10rem; }
+/* The avatar sits beside the name, and the company logo is readable. */
+[data-block="testimonial"] .block-testimonial-cite { align-items:flex-start; }
+[data-block="testimonial"] .block-testimonial-logo { max-height:2rem; min-width:3rem; opacity:.8; align-self:center; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */

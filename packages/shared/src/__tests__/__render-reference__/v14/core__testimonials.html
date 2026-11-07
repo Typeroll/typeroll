@@ -93,6 +93,8 @@
 /* Grids of repeated items: the column setting is the maximum, and each item keeps a minimum
    width, so a grid in a narrow column or on a phone has fewer columns instead of slivers. */
 [data-block="repeater"][data-layout="grid"] { --min-item:10rem; }
+/* An empty-state message spans the whole grid instead of filling the first cells. */
+[data-block="repeater"][data-layout="grid"] > :is(p,ul,ol,div:not([data-block])) { grid-column:1 / -1; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
 /* Fewer items than columns share the row instead of leaving empty columns. */
@@ -128,6 +130,9 @@
 [data-block="testimonial"] .block-testimonial-cite { flex-wrap:wrap; }
 [data-block="testimonial"] .block-testimonial-avatar { flex:none; }
 [data-block="testimonial"] .block-testimonial-meta { flex:1 1 10rem; }
+/* The avatar sits beside the name, and the company logo is readable. */
+[data-block="testimonial"] .block-testimonial-cite { align-items:flex-start; }
+[data-block="testimonial"] .block-testimonial-logo { max-height:2rem; min-width:3rem; opacity:.8; align-self:center; }
 
 [data-presentation="core%2Ftestimonials"]{--gap_px:initial}
 
