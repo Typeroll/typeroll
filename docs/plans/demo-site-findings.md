@@ -1,6 +1,6 @@
 # Platform findings from the demo site
 
-Status: open list (2026-11-06). The demo site (`packages/portal/tests/layout/demo-site.ts`)
+Status: all fixed at render version 14 (2026-11-07). The demo site (`packages/portal/tests/layout/demo-site.ts`)
 is an architecture studio with eight typical pages, real Swedish copy,
 images, every core block type and no custom CSS. It is built by the real
 static renderer and checked by the layout contract. Building it the way a
@@ -51,35 +51,31 @@ customer would surfaced the platform issues below.
   the layout contract checks that top-level blocks of the same width start
   at the same edge.
 
-## Open: needs a decision or its own change
+- **Interface defaults were English whatever the site language** (finding 1),
+  and template interface words could not follow the site (finding 8). A
+  label left at its English default (Learn more, On this page, Menu, Open
+  menu, Previous, Next, Download PDF, Continue, Get started, Search, Home)
+  now renders in the page language, in all 50 built-in languages; an
+  authored label wins. Starter templates hold the English defaults, so
+  they follow the site too.
+- **Dates were not localized** (finding 2). Page and card dates read in the
+  page language ("12 okt. 2026"); the Page date block's format setting now
+  applies, and the site setting `date_format` sets the default.
+- **The page list listed every page by default** (finding 3). An unfiltered
+  list of ordinary Pages lists the current Page's children.
+- **The feature grid hid the card link label** (finding 4). Each card has
+  its own link label field; the other collection blocks already exposed
+  their text fields.
+- **Slot containers dropped children silently** (finding 5). Blocks given as
+  children of columns, tabs or a block menu move to the end of its first
+  slot when saved, and the save returns a `children_in_slot_block` warning.
+- **Nested components kept section padding** (finding 6). A feature row in a
+  tab, column, grid cell or container drops its default outer padding and
+  fills the block around it.
+- **Feature rows kept two columns in a narrow cell** (finding 10). The row
+  stacks by its own width (a container query).
 
-1. **Interface defaults are English whatever the site language.** A Swedish
-   site shows "Learn more", "Home", "On this page", "Menu", "Get started",
-   "Search…", "Download PDF", "Continue", "Previous/Next" and
-   "Explore options" unless every block sets its own label. `uiText()`
-   already localizes three words in about 50 languages.
-   Proposal: an untouched default label renders the site language's word
-   (as breadcrumbs already do for language sections), with translations for
-   the full label set.
-2. **Dates are not localized.** Post cards and the article date show
-   `2026-10-12`; the template default format is English (`MMM D, YYYY`).
-   Dates should follow the site language ("12 okt. 2026").
-3. **The page list lists every page by default.** Without a filter, a blog
-   index lists Home, Contact and Prices too. Default to the current page's
-   children, or require a source.
-4. **Collection blocks hide item fields.** The feature grid does not expose
-   the item link label; changing it needs `item_overrides`, which no editor
-   or agent will find. Expose the item fields that carry text.
-5. **Slot containers drop `children` silently.** Columns and tabs render
-   only `slots`; content given as children disappears without a warning.
-   Check that the API, MCP and editor reject or convert it.
-6. **Nested components keep section padding.** A feature row inside a tab
-   keeps its section-level vertical padding. Components inside another block
-   should drop their outer padding by default.
-8. **Template interface words cannot be set per site.** The article
-   starter's breadcrumb home label and outline title are English; a site
-   has to edit its template copy.
-10. **Feature rows keep two columns in a narrow cell.** A feature row in a
-    grid cell or a narrow column stays side by side at desktop widths, so
-    its heading breaks after every word. It should stack by the width of
-    its container (container queries, design phase 4).
+## Open
+
+None. Per-site settings that came up while fixing these are collected in
+[site-settings-proposals.md](site-settings-proposals.md).
