@@ -100,6 +100,10 @@
 /* A shape divider fills the space between sections; it never covers the content of the block next to it. */
 [data-block="section"]:is([data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"]) { margin-block-start:clamp(34px, 6vw, 80px); }
 [data-block="section"]:is([data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"]) { margin-block-end:clamp(34px, 6vw, 80px); }
+/* Content widths come from the shared narrow, normal and wide widths. */
+[data-block="section"] > .block-section-inner { max-width:var(--max_width_px, var(--content-normal, 65rem)); }
+[data-block="section"][data-width="narrow"] > .block-section-inner { max-width:var(--max_width_px, var(--content-narrow, 42rem)); }
+[data-block="section"][data-width="wide"] > .block-section-inner { max-width:var(--max_width_px, var(--content-wide, 80rem)); }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */

@@ -92,6 +92,10 @@
 /* A constrained container in a section, column, tab or grid cell starts where the text beside it starts and fills
    the space up to its maximum width, instead of centring and shrinking to its content. */
 :is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"]) > [data-block="container"]:is([data-width="narrow"],[data-width="normal"],[data-width="wide"]) { margin-inline:0; inline-size:100%; }
+/* Content widths come from the shared narrow, normal and wide widths. */
+[data-block="container"][data-width="narrow"] { max-width:var(--max_width_px, var(--content-narrow, 42rem)); }
+[data-block="container"][data-width="normal"] { max-width:var(--max_width_px, var(--content-normal, 65rem)); }
+[data-block="container"][data-width="wide"] { max-width:var(--max_width_px, var(--content-wide, 80rem)); }
 
 [data-presentation="core%2Fprose"]{--font_size_px:initial;--line_height:initial;--paragraph_spacing_px:initial}
 

@@ -30,14 +30,22 @@ ${selector} > [data-block] { margin-block:0; }`;
 export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
   'core/section': `/* A shape divider fills the space between sections; it never covers the content of the block next to it. */
 [data-block="section"]:is([data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"]) { margin-block-start:clamp(34px, 6vw, 80px); }
-[data-block="section"]:is([data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"]) { margin-block-end:clamp(34px, 6vw, 80px); }`,
+[data-block="section"]:is([data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"]) { margin-block-end:clamp(34px, 6vw, 80px); }
+/* Content widths come from the shared narrow, normal and wide widths. */
+[data-block="section"] > .block-section-inner { max-width:var(--max_width_px, var(--content-normal, 65rem)); }
+[data-block="section"][data-width="narrow"] > .block-section-inner { max-width:var(--max_width_px, var(--content-narrow, 42rem)); }
+[data-block="section"][data-width="wide"] > .block-section-inner { max-width:var(--max_width_px, var(--content-wide, 80rem)); }`,
   'core/prose': `/* Text blocks: the first and last element sit flush with the block, so spacing comes from the layout. */
 [data-block="prose"] > :first-child { margin-block-start:0; }
 [data-block="prose"] > :last-child { margin-block-end:0; }`,
   'core/container': `${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-container"]:not([data-rhythm="article"]))')}
 /* A constrained container in a section, column, tab or grid cell starts where the text beside it starts and fills
    the space up to its maximum width, instead of centring and shrinking to its content. */
-:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"]) > [data-block="container"]:is([data-width="narrow"],[data-width="normal"],[data-width="wide"]) { margin-inline:0; inline-size:100%; }`,
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"]) > [data-block="container"]:is([data-width="narrow"],[data-width="normal"],[data-width="wide"]) { margin-inline:0; inline-size:100%; }
+/* Content widths come from the shared narrow, normal and wide widths. */
+[data-block="container"][data-width="narrow"] { max-width:var(--max_width_px, var(--content-narrow, 42rem)); }
+[data-block="container"][data-width="normal"] { max-width:var(--max_width_px, var(--content-normal, 65rem)); }
+[data-block="container"][data-width="wide"] { max-width:var(--max_width_px, var(--content-wide, 80rem)); }`,
   'core/columns': CONTAINER_CHILDREN('[data-block="columns"]'),
   'core/grid': `${CONTAINER_CHILDREN('[data-block="grid"]')}
 /* The column count is the maximum, and a cell keeps at least 8rem, so a grid inside a narrow
@@ -62,7 +70,11 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 [data-block="hero"][style*="--layout:centered"] .block-hero-actions,
 [data-block="hero"][style*="--hero-text-align:center"] .block-hero-actions { justify-content:center; }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
-[data-block="hero"] .block-btn { border-radius:1.6rem; }`,
+[data-block="hero"] .block-btn { border-radius:1.6rem; }
+/* The hero's content lines up with sections of the same width. */
+[data-block="hero"] .block-hero-inner { max-width:var(--content-normal, 65rem); }
+[data-block="hero"][data-width="narrow"] .block-hero-inner { max-width:var(--content-narrow, 42rem); }
+[data-block="hero"][data-width="wide"] .block-hero-inner { max-width:var(--content-wide, 80rem); }`,
   'core/feature_row': `/* Each column keeps its maximum width without leaving its grid track. */
 [data-block="feature_row"] .block-frow-body { max-width:min(34rem, 100%); }
 /* Phones get compact padding; desktops keep the previous space. */
@@ -71,7 +83,15 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 [data-block="feature_row"][style*="--padding_y:xl"] { --block-py:clamp(2.5rem, .5rem + 7vw, 6rem); }
 @media (max-width: 767px) { [data-block="feature_row"] .block-frow-inner { gap:var(--space-md,1rem); } }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
-[data-block="feature_row"] .block-btn { border-radius:1.6rem; }`,
+[data-block="feature_row"] .block-btn { border-radius:1.6rem; }
+/* The row's content lines up with sections of the same width. */
+[data-block="feature_row"] .block-frow-inner { max-width:var(--content-normal, 65rem); }
+[data-block="feature_row"][data-width="wide"] .block-frow-inner { max-width:var(--content-wide, 80rem); }
+/* In a wide row the default image and the text fill their columns, so they reach the same edges as a wide hero or section. */
+[data-block="feature_row"][data-width="wide"][data-image-max="lg"] { --frow-img-max:100%; }
+[data-block="feature_row"][data-width="wide"] .block-frow-body { max-width:100%; }
+/* Inside a section, column or tab a row without its own background starts where the text beside it starts. */
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel) > [data-block="feature_row"][style$="--bg:"] { padding-inline:0; }`,
   'core/post_card': `/* A card title link stays a comfortable target even when it holds only an icon. */
 [data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }`,
   'core/table_of_contents': `/* Links in the outline are touch targets of at least 24px. */
@@ -91,7 +111,9 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 /* Phones get compact padding; desktops keep the previous space. */
 [data-block="cta"] { padding:clamp(2rem, 1rem + 4vw, 4rem) clamp(1.25rem, 1rem + 1vw, 1.5rem); }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
-[data-block="cta"] .block-btn { border-radius:1.6rem; }`,
+[data-block="cta"] .block-btn { border-radius:1.6rem; }
+/* Left-aligned text uses the full width of the band, so it lines up with sections of the same width. */
+[data-block="cta"][style*="--align:left"] .block-cta-inner { max-width:none; }`,
   'core/logo_item': `/* A logo row is as tall as its logos. */
 [data-block="logo_item"] { min-height:3rem; }`,
   'core/pricing_plan': `/* The period sits a space after the price. */

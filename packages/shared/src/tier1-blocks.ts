@@ -520,6 +520,7 @@ const hero: BlockType = {
     { name: 'text_vertical', type: 'select', label: 'Text position', options: ['start','center','end'], default: 'center', responsive: true, responsive_css: { start:'--hero-align:start;',center:'--hero-align:center;',end:'--hero-align:end;' } },
     { name: 'text_align', type: 'select', label: 'Text alignment', options: ['start','center','end'], default: 'start', responsive: true, responsive_css: { start:'--hero-justify:start;--hero-text-align:start;',center:'--hero-justify:center;--hero-text-align:center;',end:'--hero-justify:end;--hero-text-align:end;' } },
     { name: 'height', type: 'select', label: 'Height', options: ['auto', 'half-screen', 'screen'], default: 'auto' },
+    { name: 'width', type: 'select', label: 'Content width', options: ['narrow', 'normal', 'wide'], default: 'normal', min_render_version: 14 },
     { name: 'overlay_opacity', type: 'number', label: 'Overlay opacity (0-100)', default: 0, min: 0, max: 100 },
     { name: 'background', type: 'color', label: 'Background color' },
   ],
@@ -632,6 +633,7 @@ const cta: BlockType = {
     { name: 'background', type: 'color', label: 'Background color' },
     { name: 'background_image', type: 'image', label: 'Background image' },
     { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center'], default: 'center', responsive: true },
+    { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide'], default: 'normal', min_render_version: 14 },
     { name: 'image_position', type: 'select', label: 'Image position', options: ['none', 'left', 'right', 'background'], default: 'none' },
   ],
   template: `<section data-block="cta" data-image-pos="{{image_position}}" style="--align:{{align}};--bg:{{background}};--bg-image:url({{background_image}})">
@@ -1913,6 +1915,9 @@ hero.render_versions = [{
 @media (prefers-reduced-motion: reduce) { [data-block="hero"] > .block-hero-video, [data-block="hero"] > .block-hero-video-toggle { display: none; } }`,
   script: HERO_VIDEO_RUNTIME,
 }];
+// From version 14 the hero and call to action name their content width, so they line up with sections.
+hero.render_versions.push({ from: 14, template: hero.render_versions[0]!.template!.replace('<section data-block="hero" ', '<section data-block="hero" data-width="{{width}}" ') });
+cta.render_versions = [{ from: 14, template: cta.template!.replace('<section data-block="cta" ', '<section data-block="cta" data-width="{{width}}" ') }];
 testimonial.render_versions = [{
   from: 7,
   template: testimonial.template!.replace('<blockquote class="block-testimonial-quote">', '{{{rating_html}}}<blockquote class="block-testimonial-quote">'),

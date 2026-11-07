@@ -61,3 +61,18 @@ test('links in running text, closed panels, icons in a field and a coloured last
     <form style="position:relative"><input style="padding:12px 12px 12px 40px;width:200px;font-size:16px" value="Search"><span style="position:absolute;left:12px;top:14px;width:16px;height:16px;background:#888"></span></form></section>
     <section style="background:#eef">${'<p>Last</p>'}</section>`, 'main > section:last-child{padding-bottom:0}')).toEqual([]);
 });
+
+test('content edges that differ between blocks of the same width are found (finding 9)', async ({ page: browser }) => {
+  const edges = async (frowWidth: string) => {
+    await browser.setViewportSize({ width: 1440, height: 800 });
+    await browser.setContent(`<!doctype html><style>body{margin:0;font:16px/1.5 sans-serif} .page-content--blocks>*{box-sizing:border-box;margin-inline:auto;padding:24px 28px}
+      .block-section-inner,.block-frow-inner{margin-inline:auto}</style>
+      <main class="page-content--blocks">
+        <section data-block="section" data-width="normal"><div class="block-section-inner" style="max-width:1040px"><p>Section</p></div></section>
+        <section data-block="feature_row" data-width="normal" style="max-width:1096px"><div class="block-frow-inner" style="max-width:${frowWidth}"><p>Row</p></div></section>
+      </main>`);
+    return (await browser.evaluate(measureLayout)).map(problem => problem.check);
+  };
+  expect(await edges('1040px')).not.toContain('content_edge');
+  expect(await edges('900px')).toContain('content_edge');
+});

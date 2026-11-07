@@ -154,6 +154,24 @@ background on a section, and points to the decoration fields.
   - touch targets are at least 24 × 24 px (WCAG 2.2 AA);
   - side gutters never drop below `--content-gutter`.
 
+### 4b. Shared content widths
+
+- Version 14 defines `--content-narrow` (42rem), `--content-normal` (65rem)
+  and `--content-wide` (80rem). Sections, containers, heroes, feature rows
+  and calls to action take their content width from them; heroes and calls
+  to action get a `width` field (narrow, normal, wide) like the others.
+- A block placed directly in the page is its content width plus the page
+  gutter on each side, so its content starts where a section of the same
+  width starts. (Before, the content well held every such block at
+  `--container-medium`, 1080px, whatever its `width`.)
+- A wide feature row lets its default image and its text fill their
+  columns; a feature row without its own background in a section starts at
+  the section's content edge.
+- The layout contract checks it: at 1024px and wider, top-level blocks of
+  the same width start their content at the same left edge.
+- Page template content slots keep their reading widths (560, 720 and
+  1120px); those are a text measure, not a page edge.
+
 ### 5. Automated layout contract
 
 A new Playwright suite, `tests/e2e/layout-contract.spec.ts`, renders the

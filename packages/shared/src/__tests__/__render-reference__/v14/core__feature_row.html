@@ -112,6 +112,14 @@
 @media (max-width: 767px) { [data-block="feature_row"] .block-frow-inner { gap:var(--space-md,1rem); } }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
 [data-block="feature_row"] .block-btn { border-radius:1.6rem; }
+/* The row's content lines up with sections of the same width. */
+[data-block="feature_row"] .block-frow-inner { max-width:var(--content-normal, 65rem); }
+[data-block="feature_row"][data-width="wide"] .block-frow-inner { max-width:var(--content-wide, 80rem); }
+/* In a wide row the default image and the text fill their columns, so they reach the same edges as a wide hero or section. */
+[data-block="feature_row"][data-width="wide"][data-image-max="lg"] { --frow-img-max:100%; }
+[data-block="feature_row"][data-width="wide"] .block-frow-body { max-width:100%; }
+/* Inside a section, column or tab a row without its own background starts where the text beside it starts. */
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel) > [data-block="feature_row"][style$="--bg:"] { padding-inline:0; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */

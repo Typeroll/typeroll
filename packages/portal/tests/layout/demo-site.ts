@@ -33,7 +33,7 @@ function home() {
       eyebrow: 'Arkitektkontor i Umeå', heading: 'Hus som tar vara på ljuset',
       subheading: '<p>Vi ritar bostäder, skolor och arbetsplatser i norr, där dagsljuset är kort på vintern och nästan oändligt på sommaren.</p>',
       primary_label: 'Se våra projekt', primary_url: '/projekt/', secondary_label: 'Boka ett första möte', secondary_url: '/kontakt/',
-      image: demoImage('hero'), layout: 'split-right',
+      image: demoImage('hero'), layout: 'split-right', width: 'wide',
     }),
     section([
       b('core/text', { text: 'Uppdragsgivare vi har arbetat med', align: 'center' }),
@@ -49,11 +49,11 @@ function home() {
     ]),
     b('core/feature_row', {
       eyebrow: 'Utvalt projekt', heading: 'Villa Sjöbris', text: '<p>En familj ville bo nära vattnet utan att offra utsikten för grannarna. Huset trappar ned mot stranden och har ett glasat allrum som fångar kvällssolen.</p>',
-      primary_label: 'Läs om projektet', primary_url: '/projekt/', image: demoImage('project-1'), image_alt: 'Villa Sjöbris från sjösidan', image_side: 'left',
+      primary_label: 'Läs om projektet', primary_url: '/projekt/', image: demoImage('project-1'), image_alt: 'Villa Sjöbris från sjösidan', image_side: 'left', width: 'wide',
     }),
     b('core/feature_row', {
       eyebrow: 'Inredning', heading: 'Rum som går att leva i', text: '<p>Vi ritar fasta möbler, förvaring och belysning tillsammans med huset, så att allt får plats från början.</p>',
-      primary_label: 'Våra tjänster', primary_url: '/tjanster/', image: demoImage('interior-1'), image_alt: 'Vardagsrum med stora fönster', image_side: 'right',
+      primary_label: 'Våra tjänster', primary_url: '/tjanster/', image: demoImage('interior-1'), image_alt: 'Vardagsrum med stora fönster', image_side: 'right', width: 'wide',
     }),
     section([
       heading('Det här säger våra kunder', { align: 'center' }),
@@ -65,7 +65,7 @@ function home() {
     ], { background: '#f3efe8', divider_top: 'wave' }),
     b('core/cta', {
       eyebrow: 'Nästa steg', heading: 'Berätta om ditt projekt', subheading: '<p>Ett första samtal är kostnadsfritt. Vi svarar inom två arbetsdagar.</p>',
-      primary_label: 'Boka ett möte', primary_url: '/kontakt/', secondary_label: 'Se priser', secondary_url: '/priser/',
+      primary_label: 'Boka ett möte', primary_url: '/kontakt/', secondary_label: 'Se priser', secondary_url: '/priser/', width: 'wide',
     }),
   ], { excerpt: 'Arkitektkontor i Umeå som ritar ljusa hus för livet i norr.' });
 }

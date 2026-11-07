@@ -223,5 +223,24 @@ export function measureLayout(): LayoutProblem[] {
     const ratio = (a! + 0.05) / (b! + 0.05);
     if (ratio < 3) add('unreadable_text', element, `${element.tagName.toLowerCase()} ${getComputedStyle(element).color} on ${backdrop} (${ratio.toFixed(2)}:1)`);
   }
+
+  // 8. On wide screens, blocks placed directly in the page that share a width (narrow, normal or
+  // wide) start their content at the same left edge, whatever their type.
+  if (viewport >= 1024) {
+    const BANDS = 'section,hero,feature_row,cta,container,semantic-container,repeater,prose,heading,rich_heading,text,list,table'.split(',');
+    const INNER: Record<string, string> = { section: '.block-section-inner', hero: '.block-hero-inner', feature_row: '.block-frow-inner' };
+    const groups = new Map<string, { left: number; element: Element }[]>();
+    for (const band of document.querySelector('.page-content--blocks')?.children ?? []) {
+      const type = band.getAttribute('data-block') ?? '', width = band.getAttribute('data-width') ?? 'normal';
+      if (!BANDS.includes(type) || width === 'full' || !visible(band)) continue;
+      const inner = (INNER[type] && [...band.children].find(child => child.matches(INNER[type]!))) || band;
+      const style = getComputedStyle(inner);
+      const left = inner.getBoundingClientRect().left + parseFloat(style.paddingLeft) + parseFloat(style.borderLeftWidth);
+      groups.set(width, [...(groups.get(width) ?? []), { left, element: band }]);
+    }
+    for (const [width, [first, ...rest]] of groups) for (const item of rest) {
+      if (Math.abs(item.left - first!.left) > 2) add('content_edge', item.element, `${width} content starts at ${round(item.left)}px, not at ${round(first!.left)}px like the ${first!.element.getAttribute('data-block')} above`);
+    }
+  }
   return problems;
 }

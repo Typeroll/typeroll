@@ -1,4 +1,4 @@
-<section data-block="cta" data-image-pos="none" style="--align:center;--bg:;--bg-image:url()">
+<section data-block="cta" data-width="normal" data-image-pos="none" style="--align:center;--bg:;--bg-image:url()">
   <div class="block-cta-inner">
     <span class="block-cta-eyebrow"></span>
     <h2 class="block-cta-heading"></h2>
@@ -64,6 +64,8 @@
 [data-block="cta"] { padding:clamp(2rem, 1rem + 4vw, 4rem) clamp(1.25rem, 1rem + 1vw, 1.5rem); }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
 [data-block="cta"] .block-btn { border-radius:1.6rem; }
+/* Left-aligned text uses the full width of the band, so it lines up with sections of the same width. */
+[data-block="cta"][style*="--align:left"] .block-cta-inner { max-width:none; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */

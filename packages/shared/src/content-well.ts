@@ -65,6 +65,12 @@ export const CONTENT_WELL_V14_CSS = `
 .page-content--blocks > :nth-last-child(1 of :not(style,script)):not([data-block="section"],[data-block="hero"]) { margin-block-end:var(--page-end-space,var(--section-padding)); }
 ${FLOW} > ${TEXT_BLOCK} + ${HEADING_BLOCK} { margin-block-start:var(--heading-flow-before); }
 ${FLOW} > ${HEADING_BLOCK} + ${TEXT_BLOCK} { margin-block-start:var(--heading-flow-after); }
+/* Shared content widths. Sections, heroes, feature rows, calls to action and containers line their content up on these. */
+:root { --content-narrow:42rem; --content-normal:65rem; --content-wide:80rem; }
+/* A block placed directly in the page is its content width plus the page gutter, so its content starts where a section's does. */
+.page-content--blocks > :not([data-block="section"],[data-block="hero"],[data-block="container"][data-width="full"],[data-block="semantic-container"][data-width="full"],style,script) { max-width:calc(var(--band-width, var(--content-normal, 65rem)) + 2 * var(--content-gutter)); }
+.page-content--blocks > :is([data-block="container"],[data-block="semantic-container"],[data-block="feature_row"],[data-block="cta"])[data-width="narrow"] { --band-width:var(--content-narrow, 42rem); }
+.page-content--blocks > :is([data-block="container"],[data-block="semantic-container"],[data-block="feature_row"],[data-block="cta"])[data-width="wide"] { --band-width:var(--content-wide, 80rem); }
 `.trim();
 
 /** Preserve historical geometry; new versions consume the configurable scales. */

@@ -44,6 +44,12 @@ customer would surfaced the platform issues below.
   in a row from tablet up, with compact 24px targets (WCAG 2.2 AA) and an
   8px gap. Decided by the owner on 2026-11-07. (Starter data: existing
   footers keep their links.)
+- **Content edges differed between block types on wide screens.** Hero,
+  feature row and call to action had their own maximum widths, and the
+  content well held every other top-level block at 1080px. Every block now
+  takes its content width from shared narrow, normal and wide widths, and
+  the layout contract checks that top-level blocks of the same width start
+  at the same edge.
 
 ## Open: needs a decision or its own change
 
@@ -73,8 +79,7 @@ customer would surfaced the platform issues below.
 8. **Template interface words cannot be set per site.** The article
    starter's breadcrumb home label and outline title are English; a site
    has to edit its template copy.
-9. **Content edges differ between block types on wide screens.** Sections
-   follow the site width, while hero, feature row and call to action use
-   their own maximum widths, so left edges sit at different places down the
-   page. A shared set of content widths (narrow, normal, wide) for every
-   block would line them up.
+10. **Feature rows keep two columns in a narrow cell.** A feature row in a
+    grid cell or a narrow column stays side by side at desktop widths, so
+    its heading breaks after every word. It should stack by the width of
+    its container (container queries, design phase 4).

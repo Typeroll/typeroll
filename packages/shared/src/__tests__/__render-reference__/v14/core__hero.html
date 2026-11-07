@@ -1,4 +1,4 @@
-<section data-block="hero" data-height="auto" data-aspect="auto" style="--hero-fit:cover;--hero-align:center;--hero-justify:start;--hero-text-align:start;--layout:centered;--bg:;--overlay:0%;--bg-image:url();--focal_x:50;--focal_y:50" data-presentation="core%2Fhero" data-block-type="core/hero">
+<section data-block="hero" data-width="normal" data-height="auto" data-aspect="auto" style="--hero-fit:cover;--hero-align:center;--hero-justify:start;--hero-text-align:start;--layout:centered;--bg:;--overlay:0%;--bg-image:url();--focal_x:50;--focal_y:50" data-presentation="core%2Fhero" data-block-type="core/hero">
   <div class="block-hero-inner">
     <div class="block-hero-text">
       <span class="block-hero-eyebrow"></span>
@@ -103,6 +103,10 @@
 [data-block="hero"][style*="--hero-text-align:center"] .block-hero-actions { justify-content:center; }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
 [data-block="hero"] .block-btn { border-radius:1.6rem; }
+/* The hero's content lines up with sections of the same width. */
+[data-block="hero"] .block-hero-inner { max-width:var(--content-normal, 65rem); }
+[data-block="hero"][data-width="narrow"] .block-hero-inner { max-width:var(--content-narrow, 42rem); }
+[data-block="hero"][data-width="wide"] .block-hero-inner { max-width:var(--content-wide, 80rem); }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
