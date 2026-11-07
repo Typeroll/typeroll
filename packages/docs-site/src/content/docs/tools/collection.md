@@ -54,7 +54,7 @@ entry also removes the files no other entry uses. An entry belongs to the
 Organization, not to the site it was saved from: deleting or changing that
 site does not change the entry.
 
-`list_collection` answers
+`list_collection_entries` answers
 `{ entries: [{ id, kind, name, description, category, preview_url, languages, source, read_only, updated_at, summary }] }`.
 `summary` counts the blocks (`block_count`, `top_level_types`) and the styles,
 block types and media the entry brings. `source` says where it came from:

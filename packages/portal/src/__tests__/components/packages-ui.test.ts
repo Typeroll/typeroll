@@ -103,7 +103,7 @@ describe('PackageImport', () => {
     await mount(createElement(PackageImport, { siteId: 'site-1', canEdit: true, isAdmin: false }));
     await chooseFile();
     expect(labelled('Whole look').disabled).toBe(true);
-    expect(container.textContent).toContain('Only a site admin can import the whole look');
+    expect(container.textContent).toContain('Only an administrator or builder can import the whole look');
   });
 
   it('blocks an invalid signature', async () => {

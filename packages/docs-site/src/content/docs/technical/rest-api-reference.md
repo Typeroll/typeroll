@@ -926,7 +926,7 @@ Discover what the site-template renderer supports for this site. Returns a manif
 
 ## Site: Collection
 
-### `list_collection`
+### `list_collection_entries`
 
 `GET /api/v1/sites/{siteId}/collection`
 
@@ -948,7 +948,7 @@ Read one collection entry with its whole package (blocks, styles, block types, g
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `entry_id` | path | string | yes | Entry id from list_collection. |
+| `entry_id` | path | string | yes | Entry id from list_collection_entries. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `save_to_collection`
@@ -991,7 +991,7 @@ Insert a collection entry into this site. target "library" adds the block templa
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `entry_id` | path | string | yes | Entry id from list_collection. |
+| `entry_id` | path | string | yes | Entry id from list_collection_entries. |
 | `target` | body | "library" \| "page" | no |  |
 | `page_id` | body | string | no | Required for target "page". |
 | `after_block_id` | body | string | no |  |
@@ -1010,7 +1010,7 @@ Change a collection entry's name, description or category (an empty description 
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `entry_id` | path | string | yes | Entry id from list_collection. |
+| `entry_id` | path | string | yes | Entry id from list_collection_entries. |
 | `name` | body | string | no |  |
 | `description` | body | string | no |  |
 | `category` | body | string | no |  |
@@ -1025,7 +1025,7 @@ Remove an entry from the organization collection, and the stored files no other 
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `entry_id` | path | string | yes | Entry id from list_collection. |
+| `entry_id` | path | string | yes | Entry id from list_collection_entries. |
 
 ## Site: Composition starters
 

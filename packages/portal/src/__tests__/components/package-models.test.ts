@@ -103,7 +103,7 @@ describe('choosing entries', () => {
   it('needs an admin for the whole look and the font licence when fonts come', () => {
     const result = inspected({ needs: { admin: true, font_licence: true } });
     expect(importBlockers({ result, isAdmin: false, fontLicenceConfirmed: false })).toEqual([
-      'This import changes the site’s look; only a site admin can import it.', 'Confirm the font licence first.',
+      'This import changes the site’s look; only an administrator or builder can import it.', 'Confirm the font licence first.',
     ]);
     expect(importBlockers({ result, isAdmin: true, fontLicenceConfirmed: true })).toEqual([]);
   });

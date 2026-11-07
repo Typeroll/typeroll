@@ -23,7 +23,7 @@ const BASE = 'https://example.test/api/v1/sites/mysite/collection';
 describe('collection tools', () => {
   it('maps onto the collection routes', async () => {
     const { client, siteId, calls } = setup();
-    await tool('list_collection').handler({} as never, { client, siteId });
+    await tool('list_collection_entries').handler({} as never, { client, siteId });
     await tool('save_to_collection').handler({ kind: 'section', id: 'hero', category: 'Heroes' } as never, { client, siteId });
     await tool('add_package_to_collection').handler({ data_base64: 'UEsDBA==' } as never, { client, siteId });
     await tool('insert_from_collection').handler({ entry_id: 'hero-1a2b3c4d', target: 'page', page_id: 'home', after_block_id: 'b1', version: 'redesign' } as never, { client, siteId });
@@ -51,7 +51,7 @@ describe('collection tools', () => {
       'DELETE https://example.test/api/v1/organization/members/u1',
     ]);
     expect(calls[1]!.body).toEqual({ role: 'builder' });
-    expect(['list_organization_members', 'update_organization_member_role', 'remove_organization_member', 'list_collection', 'insert_from_collection'].map(effectFor))
+    expect(['list_organization_members', 'update_organization_member_role', 'remove_organization_member', 'list_collection_entries', 'insert_from_collection'].map(effectFor))
       .toEqual(['read', 'admin', 'admin', 'read', 'write']);
   });
 

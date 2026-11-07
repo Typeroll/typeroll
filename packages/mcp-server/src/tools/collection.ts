@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { ok, versionParam, withErrorBoundary, type ToolDef } from './helpers.js';
 
 const v = (version?: string) => (version ? { version } : undefined);
-const entryId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/).describe('Entry id from list_collection.');
+const entryId = z.string().regex(/^[a-z0-9][a-z0-9_-]{0,79}$/).describe('Entry id from list_collection_entries.');
 
 const WHO =
   'The collection belongs to the site\'s organization and is visible to its owners, administrators and builders; a client given one site through a share never sees it (404), nor does a site-scoped key. Typeroll\'s built-in starters are listed as read-only entries.';
@@ -17,7 +17,7 @@ const STYLES =
 
 export const collectionTools: ToolDef[] = [
   {
-    name: 'list_collection',
+    name: 'list_collection_entries',
     description:
       'List the organization collection: { entries: [{ id, kind (section | block_template | page_template | global_block | block_type | package), name, description, category, preview_url, languages, source ({ type: site | package | builtin | app, publisher, verified, extension_id }), read_only, updated_at, summary: { block_count, top_level_types, styles, block_types, media } }] }. ' +
       WHO + ' Insert an entry with insert_from_collection.',
