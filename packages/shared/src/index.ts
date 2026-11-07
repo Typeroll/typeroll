@@ -70,6 +70,7 @@ export * from './cascade-layers.js';
 export * from './block-defaults.js';
 export * from './custom-css.js';
 export * from './reusable-blocks.js';
+export * from './menus.js';
 export * from './contrast.js';
 export * from './site-styles.js';
 export * from './block-fields.js';

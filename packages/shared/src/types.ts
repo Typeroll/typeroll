@@ -823,7 +823,7 @@ export interface Page {
  * What was edited. Used to surface the right kind of restore action in the UI
  * (page editor vs partial editor).
  */
-export type RevisionKind = 'page' | 'partial';
+export type RevisionKind = 'page' | 'partial' | 'menu';
 
 /**
  * A pre-edit snapshot. The full doc body lives under `doc` so restoring is a
@@ -2080,6 +2080,12 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/pages/${pageId}/revisions`,
   partialRevisions: (orgId: string, siteId: string, partialId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/partials/${partialId}/revisions`,
+  menus: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/menus`,
+  menu: (orgId: string, siteId: string, menuId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/menus/${menuId}`,
+  menuRevisions: (orgId: string, siteId: string, menuId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/menus/${menuId}/revisions`,
 
   redirects: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/redirects`,
