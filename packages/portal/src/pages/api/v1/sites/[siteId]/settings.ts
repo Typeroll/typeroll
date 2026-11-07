@@ -18,6 +18,11 @@
 // An Extension installation credential with `content:write` may change the
 // presentational settings, but never the fields that run code on or change
 // the indexing and origins of every published page: see INSTALLATION_REFUSED.
+//
+// `handover` (shared/src/site-handover.ts: checklist, start page, structure
+// lock) is replaced whole, and null removes it; it needs design rights (an
+// administrator or builder). An app installation writes it only with the
+// `site:handover` scope, which reads the settings and writes that key alone.
 
 import type { APIRoute } from 'astro';
 import { apiCanDesign, apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
@@ -30,6 +35,7 @@ import { getStore } from '../../../../../lib/datastore';
 import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentionError } from '../../../../../lib/form-submissions';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
 import { fontSettingsWarnings, listSiteFonts } from '../../../../../lib/fonts/font-library';
+import { handoverWriteErrors, normalizedHandover } from '../../../../../lib/site-handover-write';
 import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, siteFontsErrors, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
@@ -111,8 +117,15 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (ctx.permission !== 'admin' && !ctx.extensionIdentity && !apiCanDesign(ctx)) return apiError('Insufficient permission (admin required)', 403, ctx);
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON body');
+  if (ctx.extensionIdentity?.scope === 'site:handover') {
+    // An app that hands sites over: the handover key and nothing else.
+    const other = Object.keys(body).filter((key) => key !== 'handover');
+    if (other.length || body.handover === undefined) return apiError(`The site:handover scope writes only the handover key${other.length ? `; refused: ${other.join(', ')}` : ''}`, 403, ctx);
+  } else if (ctx.extensionIdentity && body.handover !== undefined && !ctx.extensionIdentity.scopes.includes('site:handover')) {
+    return apiError('handover needs the site:handover scope', 403, ctx);
+  }
   if (ctx.permission !== 'admin' && !ctx.extensionIdentity) {
-    const notDesign = Object.keys(body).filter((key) => !DESIGN_SETTINGS_KEYS.has(key));
+    const notDesign = Object.keys(body).filter((key) => !DESIGN_SETTINGS_KEYS.has(key) && key !== 'handover');
     if (notDesign.length) return apiError(`These settings need admin permission on the site; a builder changes the design settings only: ${notDesign.join(', ')}`, 403, ctx);
   }
   if (ctx.extensionIdentity) {
@@ -229,6 +242,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
   }
 
+  if (body.handover !== undefined) {
+    const errors = await handoverWriteErrors(ctx, body.handover);
+    if (errors.length) return apiError(errors.join('; '), 400, ctx, { details: { errors } });
+  }
+
   const existing = ((await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {}) as Record<string, unknown>;
   if (body.language_sections !== undefined) {
     const siteLanguage = typeof body.language === 'string' ? body.language : existing.language as string | undefined;
@@ -240,6 +258,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const unknown_keys: string[] = [];
   for (const [k, v] of Object.entries(body)) {
     if (v === undefined) continue;
+    // Replaced whole (not merged like fonts); null removes it.
+    if (k === 'handover') { update.handover = normalizedHandover(v); continue; }
     if (NESTED.has(k) && v && typeof v === 'object') {
       // For contact specifically, the `address` field accepts either a
       // string (legacy) or a PostalAddress object. We pass whatever the

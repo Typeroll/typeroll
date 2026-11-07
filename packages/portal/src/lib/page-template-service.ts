@@ -1,4 +1,5 @@
-import { countBlockH1s, ensureBlockIds, getPageTemplateStarter, templateMatchesContentType, type PageTemplate, type PageTemplateStarterKind } from '@typeroll/shared';
+import { countBlockH1s, ensureBlockIds, getPageTemplateStarter, templateMatchesContentType, type Block, type PageTemplate, type PageTemplateStarterKind } from '@typeroll/shared';
+import { assertStructureChange, StructureLockedError } from './structure-lock';
 import { vstore } from './version-store';
 import { blockTreeInputError } from './block-tree-input';
 import { markSiteDirty } from './auto-deploy';
@@ -8,6 +9,7 @@ export async function savePageTemplate(ctx: ContentTypeContext, id: string, inpu
   if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) throw new ContentTypeError('Template ID must use lowercase letters, digits, underscores or hyphens');
   const existing = await vstore.pageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, id);
   if (create && existing) throw new ContentTypeError('Template already exists', 409);
+  await lockedTemplateCheck(ctx, create || !existing ? undefined : { before: existing.blocks, after: Array.isArray(input.blocks) ? input.blocks as Block[] : existing.blocks });
   if (!create && !existing) throw new ContentTypeError('Template not found', 404);
   const patch = Object.fromEntries(['label', 'icon', 'applies_to', 'blocks', 'status'].filter(field => field in input).map(field => [field, input[field]]));
   const next = { ...existing, ...patch, id, name: id, created_at: existing?.created_at ?? new Date().toISOString(), date_updated: new Date().toISOString() } as PageTemplate;
@@ -37,9 +39,18 @@ export async function savePageTemplate(ctx: ContentTypeContext, id: string, inpu
 }
 
 export async function removePageTemplate(ctx: ContentTypeContext, id: string): Promise<void> {
+  await lockedTemplateCheck(ctx);
   const [pages, types] = await Promise.all([vstore.pages(ctx.orgId, ctx.siteId, ctx.versionId), vstore.contentTypes(ctx.orgId, ctx.siteId, ctx.versionId)]);
   if (pages.some(page => page.template === id) || types.some(type => type.template === id || type.allowed_templates?.includes(id))) throw new ContentTypeError('Choose another template for the pages and content types using this template first', 409);
   if (!await vstore.pageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, id)) throw new ContentTypeError('Template not found', 404);
   await vstore.deletePageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, id);
   await markSiteDirty(ctx.orgId, ctx.siteId, ctx.versionId);
+}
+
+/** A locked site's page templates keep their structure (lib/structure-lock): no new or removed templates or blocks. */
+async function lockedTemplateCheck(ctx: ContentTypeContext, trees?: { before: Block[] | undefined; after: Block[] | undefined }): Promise<void> {
+  try { await assertStructureChange(ctx, trees); } catch (error) {
+    if (error instanceof StructureLockedError) throw new ContentTypeError(error.message, 403, error.code);
+    throw error;
+  }
 }

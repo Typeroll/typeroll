@@ -4,7 +4,7 @@ import { vstore } from './version-store';
 import { markSiteDirty } from './auto-deploy';
 import { validatePageFields } from './page-fields';
 export interface ContentTypeContext { orgId: string; siteId: string; versionId: string }
-export class ContentTypeError extends Error { constructor(message: string, public status = 400) { super(message); } }
+export class ContentTypeError extends Error { constructor(message: string, public status = 400, public code?: string) { super(message); } }
 const writable = ['label_singular', 'label_plural', 'icon', 'fields', 'page_field_rules', 'route_template', 'sort_field', 'sort_dir', 'template', 'allowed_templates', 'schema_type', 'schema_field_map', 'schema_field_mode', 'facets', 'facet_combinations'] as const;
 const fieldTypes = new Set(['text', 'textarea', 'richtext', 'image', 'file', 'color', 'select', 'multiselect', 'boolean', 'number', 'url', 'email', 'date', 'datetime', 'list', 'list_simple', 'array', 'object', 'page_ref', 'page_ref_list']);
 export async function listContentTypes(ctx: ContentTypeContext): Promise<ContentType[]> {

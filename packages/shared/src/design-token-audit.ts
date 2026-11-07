@@ -5,7 +5,7 @@ import { onColorValue } from './site-styles.js';
 import type { Block, BlockType, FieldDefinition, SiteSettings } from './types.js';
 
 export interface DesignTokenSource {
-  kind: 'page' | 'partial' | 'template' | 'block_type';
+  kind: 'page' | 'partial' | 'template' | 'block_type' | 'block_template';
   id: string;
   blocks?: Block[];
   css?: string;
@@ -22,7 +22,30 @@ export interface DesignTokenFinding {
   message: string;
   block_id?: string;
   /** Only a direct scalar block colour can be migrated without rewriting CSS. */
-  replacement?: { target: { kind: 'page' | 'partial' | 'template'; id: string }; block_id: string; field: string; before: string; after: string };
+  replacement?: DesignTokenReplacement;
+}
+/** An exact, direct block colour replacement: `before` (a hex value) becomes the palette role `after`. */
+export interface DesignTokenReplacement { target: { kind: 'page' | 'partial' | 'template' | 'block_template'; id: string }; block_id: string; field: string; before: string; after: string }
+
+/**
+ * Apply exact replacements (DesignTokenFinding.replacement) to a block tree:
+ * each named block's field changes from `before` to `after` only while it
+ * still holds `before`. Returns a new tree; other blocks are untouched.
+ */
+export function applyDesignTokenReplacements(blocks: readonly Block[], replacements: readonly Pick<DesignTokenReplacement, 'block_id' | 'field' | 'before' | 'after'>[]): Block[] {
+  const byBlock = new Map<string, Array<Pick<DesignTokenReplacement, 'field' | 'before' | 'after'>>>();
+  for (const replacement of replacements) byBlock.set(replacement.block_id, [...(byBlock.get(replacement.block_id) ?? []), replacement]);
+  const visit = (list: readonly Block[]): Block[] => list.map(block => {
+    const changes = byBlock.get(block.id) ?? [];
+    let data = block.data;
+    for (const change of changes) if (data?.[change.field] === change.before) data = { ...data, [change.field]: change.after };
+    return {
+      ...block, data,
+      ...(block.children ? { children: visit(block.children) } : {}),
+      ...(block.slots ? { slots: block.slots.map(visit) } : {}),
+    };
+  });
+  return visit(blocks);
 }
 function rgb(value: string): number[] | null {
   const hex = value.toLowerCase();

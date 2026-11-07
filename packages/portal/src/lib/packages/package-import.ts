@@ -26,7 +26,7 @@ import {
   ensureBlockIds, freeId, contentWidthsError, packageMediaRefs, packageMediaUrl, paths, planPackageImport, PACKAGE_LIMITS,
   rewriteBlockReferences, siteFontsErrors, siteStyleLibraryErrors, styleContrastReport, stylePartErrors, typographyError,
   validateBlockTemplateInput, validateBlockTypeDefinition, validateMenu, validateSiteFieldValues, validateSiteStyle, validColor,
-  verifySitePackage, isOnColorValue, ON_COLOR_TOKENS, STYLE_ELEMENT_ROLES,
+  verifySitePackage, isOnColorValue, ON_COLOR_TOKENS, STYLE_ELEMENT_ROLES, localizedTemplate,
   type Block, type BlockType, type ContentType, type FieldDefinition, type Media, type Menu, type MenuItem, type PackageDesignMode,
   type PackageImportPlan, type PackageSignatureStatus, type Page, type SharePermission, type SiteFieldGroup, type SitePackage,
   type SiteSettings, type SiteStyle, type TrustedPackageKey,
@@ -144,6 +144,41 @@ export interface PreparedImport {
   pageTemplateMap: Map<string, string>;
   siteFieldGroups: SiteFieldGroup[];
   existingGroups: SiteFieldGroup[];
+  /** The language used for each template that carries translations. */
+  templateLanguages: TemplateLanguage[];
+}
+
+/**
+ * A template with translations, and which language the import used: the
+ * site's (or the page's) language, its base language, else the template's
+ * own text (`language: null`). Only that language is written to the site.
+ */
+export interface TemplateLanguage { section: 'block_templates' | 'page_templates'; id: string; language: string | null; available: string[] }
+
+/**
+ * The package with each block and page template in one language, for the
+ * site it goes into. Translations are dropped, so the planner, the checks and
+ * the import see only the text that is stored.
+ */
+export function localizePackage(pkg: SitePackage, language: string | undefined): { pkg: SitePackage; languages: TemplateLanguage[] } {
+  const languages: TemplateLanguage[] = [];
+  const pick = <T extends { id: string; name: string; translations?: Record<string, unknown> }>(section: TemplateLanguage['section'], template: T): T => {
+    const available = Object.keys(template.translations ?? {});
+    if (!available.length) return template;
+    const chosen = localizedTemplate(template as never, language) as T & { language?: string };
+    const { language: used, ...rest } = chosen;
+    languages.push({ section, id: template.id, language: used ?? null, available });
+    return rest as unknown as T;
+  };
+  const c = pkg.contents;
+  if (!c.block_templates?.some(t => t.translations) && !c.page_templates?.some(t => t.translations)) return { pkg, languages };
+  return {
+    pkg: { ...pkg, contents: { ...c,
+      ...(c.block_templates ? { block_templates: c.block_templates.map(t => pick('block_templates', t)) } : {}),
+      ...(c.page_templates ? { page_templates: c.page_templates.map(t => pick('page_templates', t)) } : {}),
+    } },
+    languages,
+  };
 }
 
 const PARTIAL_ID = /^[a-z0-9][a-z0-9-]{0,63}$/;
@@ -245,16 +280,18 @@ export async function preparePackageImport(ctx: ImportTargetCtx, read: PackageFi
   trusted?: TrustedPackageKey[];
   /** Content the caller writes itself after the import (a site copy's settings and HTML pages): its package media are imported too. */
   extraContent?: unknown;
+  /** The language of the templates' text; default the site's language (a page insert passes the page's). */
+  language?: string;
 } = {}): Promise<PreparedImport> {
-  const { manifest: pkg, files } = read;
+  const { manifest: sourcePkg, files } = read;
   const { orgId, siteId, versionId } = ctx;
   const store = getStore();
   const errors: string[] = [];
   const warnings: string[] = [];
-  const signature = await verifySitePackage(pkg, deps.trusted ?? trustedPackageKeys());
+  const signature = await verifySitePackage(sourcePkg, deps.trusted ?? trustedPackageKeys());
   if (signature.status === 'invalid') warnings.push('The package signature does not match its contents: it was changed after it was signed. Import it only if you trust where it came from.');
-  else if (signature.status === 'unknown_key') warnings.push(`The package is signed with a key this portal does not know (${pkg.signature?.key_id}); its author${pkg.author ? ` "${pkg.author.name}"` : ''} is not verified.`);
-  else if (signature.status === 'unsigned' && pkg.author) warnings.push(`The package is not signed; that it comes from "${pkg.author.name}" is not verified.`);
+  else if (signature.status === 'unknown_key') warnings.push(`The package is signed with a key this portal does not know (${sourcePkg.signature?.key_id}); its author${sourcePkg.author ? ` "${sourcePkg.author.name}"` : ''} is not verified.`);
+  else if (signature.status === 'unsigned' && sourcePkg.author) warnings.push(`The package is not signed; that it comes from "${sourcePkg.author.name}" is not verified.`);
 
   const [styleSite, siteTypes, templates, pageTemplates, partials, menus, pages, siteFields, settings, library, fontLibrary, contentTypes] = await Promise.all([
     readStyles(ctx),
@@ -271,6 +308,8 @@ export async function preparePackageImport(ctx: ImportTargetCtx, read: PackageFi
     vstore.contentTypes(orgId, siteId, versionId),
   ]);
   const siteSettings = (settings ?? {}) as SiteSettings;
+  // Sample text in the site's language: one language per template is planned and stored.
+  const { pkg, languages: templateLanguages } = localizePackage(sourcePkg, deps.language ?? siteSettings.language);
   const ownTypes = siteTypes.filter(type => type.id && !type.extension);
   const target = {
     styles: styleSite.styles,
@@ -468,7 +507,7 @@ export async function preparePackageImport(ctx: ImportTargetCtx, read: PackageFi
   return {
     pkg, files, options, plan, signature, warnings: [...new Set(warnings)], errors: [...new Set(errors)], needs, media, pages: plannedPages,
     blockTypes, styles, designPatch: patch && Object.keys(patch).length ? patch : null, pageTemplateMap,
-    siteFieldGroups: createdGroups, existingGroups: siteFields.groups ?? [],
+    siteFieldGroups: createdGroups, existingGroups: siteFields.groups ?? [], templateLanguages,
   };
 }
 
@@ -495,6 +534,7 @@ export function serializablePlan(prepared: PreparedImport) {
     design: plan.design ? { keys: Object.keys(prepared.designPatch ?? {}), element_styles: plan.styles.filter(entry => entry.style.role && (STYLE_ELEMENT_ROLES as readonly string[]).includes(entry.style.role)).map(entry => entry.to) } : null,
     fonts: plan.fonts.map(({ family, weight, style, bytes, licence_note }) => ({ family, weight, style, bytes, ...(licence_note ? { licence_note } : {}) })),
     media: prepared.media,
+    template_languages: prepared.templateLanguages,
     maps: { styles: object(plan.maps.styles), block_types: object(plan.maps.blockTypes), global_blocks: object(plan.maps.globalBlocks), pages: object(plan.maps.pages), menus: object(plan.maps.menus) },
   };
 }
@@ -544,16 +584,18 @@ export interface PackageImportReport {
   skipped: Array<{ section: string; id: string }>;
   design: { updated: string[] } | null;
   counts: Record<string, number>;
+  /** Templates with translations: the language whose text was imported. */
+  template_languages: TemplateLanguage[];
   warnings: string[];
 }
 
-function emptyReport(pkg: SitePackage, warnings: string[]): PackageImportReport {
+function emptyReport(pkg: SitePackage, warnings: string[], templateLanguages: TemplateLanguage[] = []): PackageImportReport {
   return {
     package: { id: pkg.id, name: pkg.name, version: pkg.version },
     created: { styles: [], block_types: [], block_templates: [], page_templates: [], global_blocks: [], menus: [], site_field_groups: [], pages: [], media: [], fonts: [] },
     reused: { styles: [], block_types: [], media: [], fonts: [], site_field_groups: [] },
     replaced: { styles: [], global_blocks: [] },
-    renamed: [], skipped: [], design: null, counts: {}, warnings: [...warnings],
+    renamed: [], skipped: [], design: null, counts: {}, template_languages: templateLanguages, warnings: [...warnings],
   };
 }
 
@@ -596,7 +638,7 @@ export async function importSitePackageIntoVersion(ctx: ImportCtx, prepared: Pre
   const io = deps.media ?? defaultPackageMediaIO;
   const { pkg, plan, files } = prepared;
   const { orgId, siteId, versionId } = ctx;
-  const report = emptyReport(pkg, prepared.warnings);
+  const report = emptyReport(pkg, prepared.warnings, prepared.templateLanguages);
   const maps = { styles: plan.maps.styles, blockTypes: plan.maps.blockTypes, globalBlocks: plan.maps.globalBlocks, pages: plan.maps.pages, menus: plan.maps.menus };
   const tokens = new Map<string, string>();
   let step = 'media';

@@ -59,7 +59,8 @@ export type ExtensionScope =
   | 'snippets:read'
   | 'snippets:write'
   | 'collection:read'
-  | 'collection:write';
+  | 'collection:write'
+  | 'site:handover';
 
 export interface ExtensionScopeDefinition {
   scope: ExtensionScope;
@@ -91,6 +92,7 @@ export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, Extension
   'snippets:write': { scope: 'snippets:write', minimum_permission: 'write', sensitive: true, description: 'Create, change and delete live snippets; a change shows on the live site within a minute, without a publication.' },
   'collection:read': { scope: 'collection:read', minimum_permission: 'read', sensitive: false, description: 'List and read the entries of the organization collection the site belongs to.' },
   'collection:write': { scope: 'collection:write', minimum_permission: 'write', sensitive: true, description: 'Add ready-made entries to the organization collection, and change or remove the entries this app added.' },
+  'site:handover': { scope: 'site:handover', minimum_permission: 'admin', sensitive: true, description: 'Read the site settings and hand the site over to a client: write its handover (checklist, start page and structure lock) and nothing else in the settings.' },
   'page_handoff:read': { scope: 'page_handoff:read', minimum_permission: 'read', sensitive: true, description: 'In the visitor\'s browser, receive the values typed into a navigation form that sent the visitor to the component\'s page, when the page author binds that form to the component.' },
 };
 

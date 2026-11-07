@@ -31,8 +31,9 @@ import {
 import { getStore } from '../datastore';
 import { vstore } from '../version-store';
 import { listBlockTemplates } from '../block-templates-store';
+import { blockTemplateDesignFindings, type TemplateDesignFinding } from '../design-token-audit';
 import { exportSitePackage } from '../packages/package-export';
-import { importSitePackageIntoVersion, preparePackageImport, trustedPackageKeys, type PackageImportReport, type PreparedImport } from '../packages/package-import';
+import { importSitePackageIntoVersion, localizePackage, preparePackageImport, trustedPackageKeys, type PackageImportReport, type PreparedImport, type TemplateLanguage } from '../packages/package-import';
 import { placePackageBlocks } from '../packages/package-place';
 import { packageIntegrity, readSitePackageZip, type PackageFiles } from '../packages/package-zip';
 import type { PackageMediaIO } from '../packages/package-media';
@@ -175,7 +176,7 @@ export interface SaveFromSiteInput { kind: unknown; id: unknown; name?: unknown;
  * block types to its organization's collection. A block template becomes a
  * `section` or a `block_template` entry by the template's own kind.
  */
-export async function saveToCollection(ctx: { orgId: string; siteId: string; versionId: string }, input: SaveFromSiteInput, actor: CollectionActor, deps: CollectionDeps = {}): Promise<{ entry: CollectionEntry; warnings: string[] }> {
+export async function saveToCollection(ctx: { orgId: string; siteId: string; versionId: string }, input: SaveFromSiteInput, actor: CollectionActor, deps: CollectionDeps = {}): Promise<{ entry: CollectionEntry; warnings: string[]; design_findings?: TemplateDesignFinding[] }> {
   if (typeof input.kind !== 'string' || !(SAVE_KINDS as readonly string[]).includes(input.kind)) {
     throw new CollectionError(`kind must be one of ${SAVE_KINDS.join(', ')}`, 400, 'collection_entry_invalid');
   }
@@ -231,7 +232,9 @@ export async function saveToCollection(ctx: { orgId: string; siteId: string; ver
     created_by: actor.label, created_at: stamp, updated_at: stamp,
   };
   await storeEntry(orgId, entry, exported.files, deps);
-  return { entry, warnings: exported.warnings };
+  // A saved block template: its hard-coded colours and fonts, with the token or role to use (non-blocking).
+  const template = kind === 'section' || kind === 'block_template' ? (await listBlockTemplates({ orgId, siteId })).find(candidate => candidate.id === id) : undefined;
+  return { entry, warnings: exported.warnings, ...(template ? { design_findings: await blockTemplateDesignFindings(ctx, template) } : {}) };
 }
 
 // ── Adding a package ──────────────────────────────────────────────────────
@@ -495,6 +498,15 @@ export interface InsertResult {
 export async function insertFromCollection(ctx: InsertCtx, entry: CollectionEntry, target: InsertTarget, deps: CollectionDeps = {}): Promise<InsertResult> {
   if (ctx.permission === 'read') throw new CollectionError('Inserting needs write permission on the site', 403, 'collection_permission');
   const site = { orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId };
+  // Sample text in the site's language, or the page's when it has one; the
+  // library import picks the site's language itself (package-import.ts).
+  let templateLanguages: TemplateLanguage[] = [];
+  if (target.target === 'page') {
+    const [page, settings] = await Promise.all([vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.page_id), vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)]);
+    const localized = localizePackage(entry.package, page?.language || settings?.language);
+    entry = { ...entry, package: localized.pkg };
+    templateLanguages = localized.languages;
+  }
   const { pkg, only, place } = insertPackage(entry, target);
   // The entry was checked when it was stored; its own signature (a whole package) is reported in the warnings.
   const dropUnsigned = (prepared: PreparedImport) => { prepared.warnings = prepared.warnings.filter(warning => !warning.startsWith('The package is not signed')); };
@@ -502,7 +514,7 @@ export async function insertFromCollection(ctx: InsertCtx, entry: CollectionEntr
     // The blocks come the way copied blocks are pasted (package-place.ts);
     // the page and position are checked before anything is written.
     const files = await entryFiles(ctx.orgId, entry, deps);
-    return placePackageBlocks(ctx, { manifest: pkg, files }, place, target, { code: 'collection_insert_invalid', media: deps.media, prepare: dropUnsigned });
+    return placePackageBlocks(ctx, { manifest: pkg, files }, place, target, { code: 'collection_insert_invalid', media: deps.media, prepare: (prepared) => { dropUnsigned(prepared); if (templateLanguages.length) prepared.templateLanguages = templateLanguages; } });
   }
   const files = await entryFiles(ctx.orgId, entry, deps);
   const prepared = await preparePackageImport(site, { manifest: pkg, files }, { design: 'content', ...(only ? { only } : {}) });

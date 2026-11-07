@@ -67,7 +67,7 @@ import {
   publicContentPage,
   pageBreadcrumbs,
   siteContext,
-  resolveBuildVariables,
+  resolveAuthoredVariables,
   STICKY_HEADER_RUNTIME_JS,
   activeHeaderBehavior,
   withHeaderBehaviorAttribute,
@@ -270,6 +270,8 @@ export async function renderPreview(
   ];
   const formSource = await previewFormSource(orgId, siteId, blockRegistry, settings, assetBlocks);
 
+  // Authored HTML: {{site.current_year}}, and from render version 15 {{site.name}} and {{site.fields.*}}, as the build does.
+  const authored = (html: string) => resolveAuthoredVariables(html, { year: renderCtx.site?.current_year, renderVersion, siteName: renderCtx.site?.name, fields: renderCtx.site?.fields as Record<string, unknown> | undefined });
   const renderPartial = (p: typeof header): string => {
     if (!p) return '';
     if (p.content_mode === 'blocks' && p.blocks?.length) {
@@ -282,7 +284,7 @@ export async function renderPreview(
       expandIncludes(p.html_content ?? '', freeBlocks),
       extensionSource,
     );
-    return sanitizeBody(resolveBuildVariables(expanded, renderCtx.site?.current_year), settings.iframe_allowed_hosts);
+    return sanitizeBody(authored(expanded), settings.iframe_allowed_hosts);
   };
   let bodyHtml = '';
   let blockCss = '';
@@ -298,7 +300,7 @@ export async function renderPreview(
       ),
       extensionSource,
     );
-    bodyHtml = rewriteIf(sanitizeBody(resolveBuildVariables(expanded, renderCtx.site?.current_year), settings.iframe_allowed_hosts));
+    bodyHtml = rewriteIf(sanitizeBody(authored(expanded), settings.iframe_allowed_hosts));
   } else if (page.content_mode === 'blocks') {
     const tpl = page.template ? await vstore.pageTemplate(orgId, siteId, versionId, page.template) : null;
     const templateBlocks = tpl?.blocks ?? [];

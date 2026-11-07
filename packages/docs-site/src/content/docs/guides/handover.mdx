@@ -1,0 +1,119 @@
+---
+title: Hand a site over
+description: Hand a finished site to the people who edit it, with a checklist, the page they start on and an optional lock so editors change text and images but not the structure.
+---
+
+When a site is built, the people who edit it every day are often not the
+people who built it: a client, a shop owner, a marketing team. A **handover**
+prepares the site for them:
+
+- a **checklist** of what is left to do, such as replacing sample photos or
+  connecting the domain,
+- a **start page** that editors open first,
+- an optional **structure lock**: editors change text and images, but the
+  blocks, their order and the pages stay as you built them.
+
+The handover belongs to the site. It works in Typeroll Cloud and on a
+self-hosted portal alike.
+
+## Who can set it
+
+Administrators and builders of the site's Organization set the handover: they
+have **design rights**. Editors, and clients who reach the site through a
+[share](../agencies/#give-the-client-access) with write permission, do not.
+See [Teams and roles](../teams-and-roles/).
+
+## Set it up in the portal
+
+1. Open the site and go to **Settings → Access & AI**, then select
+   **Manage handover**.
+2. Add the checklist items. An item can link to a place in the portal, such as
+   `/app/sites/<site id>/media` for the Media library. Reorder or remove items
+   with the buttons beside them, and tick off what is done.
+3. Choose the **start page**, usually the home page.
+4. Turn on **Lock the structure for editors** if editors should keep the
+   layout as it is.
+5. Select **Save handover**. When the site is handed over, select
+   **Mark as handed over**; the date is saved with it.
+
+**Remove handover** deletes the checklist and unlocks the structure.
+
+## What editors see
+
+On the site's overview page, people without design rights see a **start
+view** first: a welcome, a button to edit the start page, the checklist and
+how much of it is done (read-only for them), and the pages they edit.
+Administrators and builders see a small **Handover** card with the progress and
+a link to change it.
+
+## What the structure lock allows
+
+With the lock on, an editor can:
+
+- change text, images, links, colours chosen from the palette and other block
+  settings,
+- edit page titles, SEO fields and custom fields,
+- copy blocks to the clipboard,
+- save drafts and publish them as usual.
+
+An editor cannot:
+
+- add a block, from the block library, a template, the collection or the
+  clipboard,
+- delete, duplicate or move a block, or drag it in the structure,
+- make a block global or detach a global block,
+- change a block's type, or turn it into a block type,
+- apply another page template or change the page's content type or mode,
+- create or delete pages, page templates or global blocks, or change the
+  structure of the header, the footer or a global block,
+- restore a revision that has other blocks.
+
+The editor hides these actions and says: "The site's structure is locked; you
+can edit text and images." The server refuses them too, for the portal, the
+[REST API](../rest-api/) and [MCP](../../getting-started/agent-workspace/)
+alike, with `403` and `code: "structure_locked"`. Builders and administrators
+are never locked, so you can still change the site after the handover.
+
+A draft with structural changes made before the lock was turned on cannot be
+saved by an editor; a builder saves or discards it.
+
+## Before you hand it over
+
+Run the [launch checklist](../launch-checklist/). Two items matter most for a
+handover:
+
+- [Placeholders](../launch-checklist/#placeholders): bracketed sample text such
+  as `[Feature name]` left on live pages.
+- [Demo media](../launch-checklist/#demo-media): sample photos from a template
+  package.
+
+Each lists the pages with a link to edit them.
+
+## Set it through the API or an agent
+
+The handover is the `handover` object of the site settings. Send the whole
+object; it is replaced, not merged, and `null` removes it:
+
+```http
+PATCH /api/v1/sites/{siteId}/settings
+Content-Type: application/json
+
+{
+  "handover": {
+    "lock_structure": true,
+    "start_page": "home",
+    "checklist": [
+      { "id": "photos", "label": "Replace the sample photos", "href": "/app/sites/bistro/media" },
+      { "id": "domain", "label": "Connect the domain", "done": true }
+    ],
+    "handed_over_at": "2026-11-07T12:00:00Z"
+  }
+}
+```
+
+An agent does the same with `update_site_settings`. The fields are described
+in the [settings reference](../../tools/settings/#handover-object).
+
+An app can offer handover too: with the `site:handover` scope in its
+[manifest](../../extensions/manifest/), its installation reads the site
+settings and writes the `handover` key, and nothing else in the settings.

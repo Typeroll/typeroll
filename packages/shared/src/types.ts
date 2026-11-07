@@ -449,6 +449,11 @@ export interface SiteSettings {
    * in a site's settings.
    */
   font_plan?: import('./font-plan.js').FontPlan;
+  /**
+   * Handing the site over to a client: checklist, structure lock and start
+   * view (site-handover.ts). Written as a whole object; null removes it.
+   */
+  handover?: import('./site-handover.js').SiteHandover;
   contact?: {
     email?: string;
     phone?: string;

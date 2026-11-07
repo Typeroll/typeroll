@@ -157,6 +157,8 @@ export const SITE_COPY_SETTINGS: { [K in keyof Required<SiteSettings>]: 'copy' |
   // Roles travel in the package; smoothing and delivery are copied with the look; font services (kits bound to the source's domains) are not.
   fonts: 'package',
   font_plan: 'strip',
+  // A copy is a new site being built: it has not been handed over to anyone.
+  handover: 'strip',
   contact: 'copy',
   social: 'copy',
   // Tracking and analytics snippets carry the source's account ids.

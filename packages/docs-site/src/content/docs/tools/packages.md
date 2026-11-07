@@ -130,6 +130,108 @@ stays as the author made it and can then be changed site-wide:
   imported copy beside the site's own is a plain class style.
 - Importing or pasting the same content again reuses the earlier copy
   (`hero-2`) when its definition is still the same.
+- A style the content uses that **neither the package nor the site has** is
+  the one case of a mapping: the site's standard style of the same role is
+  used (`button-secondary` becomes the site's secondary button style), with a
+  warning. Without one, those blocks keep their default look.
+
+## Templates that follow the site
+
+A template looks right on every site it is inserted into when it uses the
+site's design and words instead of fixed values.
+
+### Colours and fonts
+
+Use palette roles (`primary`, `surface`, `on_primary` …) and font roles
+(`heading`, `body`, `display`, `accent`, `mono`) rather than hex values and
+font families. Saving a block template, from the editor's **Save as
+template…**, `save_block_template`, `update_block_template`, the collection or
+an export, answers with `design_findings`: each hard-coded colour or font
+family, where it is (`path`, `block_id`) and the role to use (`suggestions`).
+When exactly one palette role has the colour, `replacement` gives the field
+change; the editor and the block templates list offer it as **Use primary**
+and save the template again. Nothing is blocked. `lint_design_tokens` lists
+the same findings for the site's block templates.
+
+### Text that names the site
+
+From [render version 15](../settings/#render-versions), authored text and HTML
+can use `{{site.name}}` and `{{site.fields.<name>}}` (a
+[site field](../site-fields/) with a text, number or true/false value), next
+to `{{site.current_year}}`:
+
+```html
+<p>Welcome to {{site.name}}. Call us on {{site.fields.phone}}.</p>
+```
+
+The values are inserted as text (escaped) when the page is rendered: the
+preview shows the current values, and a publication the values it froze. A
+field with another kind of value, or one the site lacks, shows nothing.
+Before render version 15 these tokens show as written; only
+`{{site.current_year}}` expands.
+
+### Text in the site's language
+
+A block or page template can carry its text in several languages under
+`translations`, keyed by language code. Each translation has its own `blocks`
+and, optionally, `name`, `description` and (page templates) `label`:
+
+```json
+{
+  "id": "welcome",
+  "name": "Welcome",
+  "kind": "section",
+  "blocks": [
+    { "id": "p", "type": "core/prose", "data": { "html": "<p>Welcome</p>" } }
+  ],
+  "translations": {
+    "sv": {
+      "name": "Välkommen",
+      "blocks": [
+        {
+          "id": "p",
+          "type": "core/prose",
+          "data": { "html": "<p>Välkommen</p>" }
+        }
+      ]
+    },
+    "de": {
+      "name": "Willkommen",
+      "blocks": [
+        {
+          "id": "p",
+          "type": "core/prose",
+          "data": { "html": "<p>Willkommen</p>" }
+        }
+      ]
+    }
+  }
+}
+```
+
+Import picks the site's language (an exact match such as `sv-FI`, else the base
+language `sv`), and otherwise the template's own text. Placing a template in a
+page that has its own language (a [language section](../../guides/multilingual-sites/))
+uses the page's language. Only the chosen language is stored on the site.
+`inspect_package` and the import report list each such template in
+`template_languages`: `{ section, id, language, available }`, where `language`
+is `null` when the template's own text was used.
+
+An export writes one language per template, the text as it is on the site,
+also on a site with several languages. To offer more, add `translations` to the
+templates in `typeroll.json` before you share the package. Media a
+translation uses must be in the package's `media` list and files, as for any
+other content. A changed manifest no longer matches a
+[signature](#signatures-and-trusted-publishers), so sign the package again.
+Translated trees are checked like the others, and the styles they use travel
+with the package.
+
+### Placeholders
+
+The built-in starters mark text to replace with brackets, such as
+`[Feature name]`. Live pages that still show such placeholders are listed in
+the [launch checklist](../../guides/launch-checklist/#placeholders) and the
+publication's warnings. Prefer real sample text in your own templates.
 
 ## Design modes
 
@@ -243,7 +345,10 @@ admin, like the content export.
 `menus` take a list of ids or `"all"`; `styles` is `"used"` (default) or
 `"all"`; `site_fields` adds the settings page definitions. `kind: "site"`
 takes everything. The answer is
-`{ download_url, filename, bytes, sha256, expires_at, warnings }`.
+`{ download_url, filename, bytes, sha256, expires_at, warnings, design_findings }`,
+where `design_findings` lists hard-coded colours and fonts in the exported
+block templates, each with its `template_id` (see
+[Colours and fonts](#colours-and-fonts)).
 
 ## `inspect_package`
 
@@ -269,7 +374,8 @@ Import a package. The same body as `inspect_package`, with `options`:
 | `font_licence_confirmed` | `true`   | Required when the import adds font files                           |
 
 The answer is `{ report }` with what was `created`, `reused`, `renamed`,
-`replaced` and `skipped`, the design keys updated, counts and warnings.
+`replaced` and `skipped`, the design keys updated, counts, the language used
+for each template with translations (`template_languages`) and warnings.
 Imported block templates record where they came from in `imported_from`
 (package id, name, version, author and time).
 

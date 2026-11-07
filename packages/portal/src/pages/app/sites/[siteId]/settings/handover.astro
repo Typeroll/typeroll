@@ -1,0 +1,35 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import { loadSiteContext } from '../../../../../lib/access';
+import { vstore } from '../../../../../lib/version-store';
+import HandoverEditor from '../../../../../components/HandoverEditor.tsx';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, owner_org_id: orgId, versionId, design } = ctx;
+const siteId = site.id;
+
+// Design rights (administrators and builders), as PATCH /api/sites/{siteId}/settings { handover }.
+if (!design) return Astro.redirect(`/app/sites/${siteId}`);
+
+const settings = await vstore.settings(orgId, siteId, versionId);
+const pages = (await vstore.pages(orgId, siteId, versionId))
+  .map(page => ({ id: page.id, title: page.title, path: page.path || (page.slug ? `/${page.slug}` : '/') }))
+  .sort((a, b) => a.title.localeCompare(b.title));
+---
+<AppLayout title={`Handover — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <h1>Handover</h1>
+    <p class="muted text-sm" style="max-width: 720px;">
+      Hand <strong>{site.name}</strong> over to the people who edit it: a checklist of what is left, the page they start on, and an optional lock so editors change text and images but not the structure.
+    </p>
+  </div>
+
+  <div style="max-width: 760px;">
+    <HandoverEditor client:load siteId={siteId} initial={settings?.handover ?? null} pages={pages} />
+  </div>
+
+  <p class="text-sm muted" style="margin-top: 1.5rem;">
+    <a href={`/app/sites/${siteId}/settings?section=access`}>← Back to site settings</a>
+  </p>
+</AppLayout>

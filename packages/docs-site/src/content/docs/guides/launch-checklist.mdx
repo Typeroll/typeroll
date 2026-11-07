@@ -41,7 +41,8 @@ The response looks like this:
 }
 ```
 
-`details` lists up to 20 affected pages or values when an item has them. The
+`details` lists up to 20 affected pages or values when an item has them, and
+`links` the portal address to fix each one, when it has one. The
 [tool reference](../../tools/deploy/#read_site_readiness) summarizes what each
 item checks.
 
@@ -206,6 +207,17 @@ publication lists them too; nothing is blocked.
 
 **Fix:** replace each listed file with your own in the **Media** library, or
 keep it there to mark it as the site's own.
+
+## Placeholders
+
+**Warning** when live pages or published global blocks (the header and footer
+included) still show bracketed placeholder text, such as `[Feature name]` or
+`[Your product]`. The built-in starters and many templates mark what to
+replace that way. The report lists up to three examples per page with a link
+to edit it, and the publication lists them too; nothing is blocked. Markdown
+links and lower-case brackets such as `[note]` are not placeholders.
+
+**Fix:** replace each placeholder with the real text, or remove the block.
 
 ## Time zone
 

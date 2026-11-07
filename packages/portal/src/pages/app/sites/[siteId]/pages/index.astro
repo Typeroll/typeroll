@@ -1,5 +1,5 @@
 ---
-import { paths, type SiteVersion } from '@typeroll/shared';
+import { paths, structureLocked, type SiteVersion } from '@typeroll/shared';
 import { getStore } from '../../../../../lib/datastore';
 import { listContentPages } from '../../../../../lib/content-pages';
 import DeploymentNotice from '../../../../../components/DeploymentNotice.tsx';
@@ -10,8 +10,10 @@ import { loadSiteContext } from '../../../../../lib/access';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
-const { site, versionId, owner_org_id: orgId } = ctx;
+const { site, versionId, owner_org_id: orgId, design } = ctx;
 const siteId = site.id;
+// A handed-over site may lock its structure: no new pages for people without design rights.
+const locked = structureLocked((await vstore.settings(orgId, siteId, versionId))?.handover, design);
 
 
 const versionDoc = await getStore().getDoc<SiteVersion>(paths.version(orgId, siteId, versionId));
@@ -27,11 +29,11 @@ const pages = allPages.filter(page => (!selectedType || page.content_type === se
       <h1>📄 Pages</h1>
       <p class="muted">All pages, articles and other content types</p>
     </div>
-    <form method="POST" action={`/api/sites/${siteId}/pages/create`} class="row app-header__create-form">
+    {locked ? <p class="muted text-sm" data-structure-locked>The site's structure is locked; you can edit text and images.</p> : <form method="POST" action={`/api/sites/${siteId}/pages/create`} class="row app-header__create-form">
       <select name="content_type" aria-label="Content type for new page"><option value="page">Page</option>{contentTypes.map(type => <option value={type.name} selected={selectedType === type.name}>{type.label_singular}</option>)}</select>
       <input name="title" required placeholder="Page title" style="padding: 0.5rem 0.75rem; border: 1px solid var(--color-border); border-radius: var(--radius-md);" />
       <button type="submit" class="btn">+ New page</button>
-    </form>
+    </form>}
   </div>
 
   <DeploymentNotice client:load siteId={siteId} />

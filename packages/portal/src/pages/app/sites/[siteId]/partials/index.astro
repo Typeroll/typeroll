@@ -8,6 +8,7 @@ import type { Partial as PartialDoc, Site } from '@typeroll/shared';
 import { listBlockTemplates } from '../../../../../lib/block-templates-store';
 import { describeBlockUsage, emptyBlockUsage, getAllBlockUsage } from '../../../../../lib/partials-usage';
 import BlockTemplateList from '../../../../../components/BlockTemplateList';
+import { templatesDesignFindings } from '../../../../../lib/design-token-audit';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
@@ -22,6 +23,9 @@ const footer = partials.find((p) => p.kind === 'footer');
 const freeBlocks = partials.filter((p) => p.kind === 'free').sort((a, b) => a.name.localeCompare(b.name));
 const usage = await getAllBlockUsage(orgId, siteId, versionId);
 const blockTemplates = await listBlockTemplates({ orgId, siteId });
+// Hard-coded colours and fonts per template, with the token or role to use (non-blocking).
+const templateFindings: Record<string, Awaited<ReturnType<typeof templatesDesignFindings>>> = {};
+for (const { template_id, ...finding } of await templatesDesignFindings({ orgId, siteId, versionId }, blockTemplates)) (templateFindings[template_id] ??= []).push({ template_id, ...finding });
 const canEdit = ctx.permission !== 'read';
 ---
 <AppLayout title={`Global blocks — ${site.name}`} siteId={siteId}>
@@ -93,7 +97,7 @@ const canEdit = ctx.permission !== 'read';
       <h2>Block templates</h2>
       <span class="gb-section__hint">Copied into a page when inserted; later edits stay on that page.</span>
     </div>
-    <BlockTemplateList client:load siteId={siteId} initial={blockTemplates} canEdit={canEdit} canUseCollection={ctx.is_owner && ctx.design && canEdit} />
+    <BlockTemplateList client:load siteId={siteId} initial={blockTemplates} findings={templateFindings} canEdit={canEdit} canUseCollection={ctx.is_owner && ctx.design && canEdit} />
   </section>
 
   <style is:global>

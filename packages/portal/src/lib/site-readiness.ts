@@ -13,6 +13,7 @@ import type { ReadWriteStore } from './datastore';
 import { checkInternalLinks, type InternalLinkReport } from './internal-link-check';
 import { menuRefs } from './menu-usage';
 import { demoMediaReferenced } from './packages/demo-media';
+import { placeholderEditorHref, placeholderFindings, placeholderLine } from './placeholder-content';
 import { missingRequiredSiteFields } from './site-fields-write';
 import { vstore } from './version-store';
 import { compareZoneAiPolicy, type ZoneAiPolicyRead } from './publishing/zone-ai-policy';
@@ -20,7 +21,7 @@ import { compareZoneAiPolicy, type ZoneAiPolicyRead } from './publishing/zone-ai
 export const READINESS_ITEM_IDS = [
   'share_image', 'home_description', 'organization', 'same_as', 'favicon', 'analytics_consent', 'search_console',
   'privacy_page', 'contact_page', 'not_found_page',
-  'indexable_pages', 'orphan_pages', 'menus', 'site_fields', 'live_snippets', 'demo_media', 'time_zone', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
+  'indexable_pages', 'orphan_pages', 'menus', 'site_fields', 'live_snippets', 'demo_media', 'placeholders', 'time_zone', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
   'duplicate_fonts', 'custom_css_overrides',
   'ai_crawler_zone_conflict', 'structured_data',
 ] as const;
@@ -35,6 +36,8 @@ export interface ReadinessItem {
   guide: string;
   /** Affected pages or values, at most 20. */
   details?: string[];
+  /** Where to fix each detail in the portal, when it has a place (same order as details). */
+  links?: Array<{ label: string; href: string }>;
 }
 
 export interface SiteReadinessReport {
@@ -292,6 +295,17 @@ export function buildSiteReadiness(input: ReadinessInput): SiteReadinessReport {
     ? item('demo_media', 'warning', `${demoShown.length} demo image${demoShown.length === 1 ? '' : 's'} from a template package ${demoShown.length === 1 ? 'is' : 'are'} used on live pages and will be published.`,
       'Replace each listed file with your own in the Media library, or keep it there to mark it as the site\'s own.', demoShown.map(entry => `${entry.filename || entry.id} (${entry.id})`))
     : item('demo_media', 'ok', media.some(entry => entry.demo) ? 'Demo images from template packages are not used on live pages.' : 'The site uses no demo images.', 'None needed.'));
+
+  // placeholders: bracketed sample text such as "[Feature name]" left on live pages and global blocks.
+  const placeholders = placeholderFindings({ pages: live, partials });
+  if (placeholders.length) {
+    const shown = placeholders.slice(0, MAX_DETAILS);
+    items.push({
+      ...item('placeholders', 'warning', `${placeholders.length} live page${placeholders.length === 1 ? '' : 's'} or global block${placeholders.length === 1 ? '' : 's'} still show${placeholders.length === 1 ? 's' : ''} placeholder text such as "${placeholders[0].examples[0]}".`,
+        'Replace each bracketed placeholder with the real text, or remove the block.', shown.map(placeholderLine)),
+      links: shown.map(entry => ({ label: entry.label, href: placeholderEditorHref(input.siteId, entry) })),
+    });
+  } else items.push(item('placeholders', 'ok', 'No placeholder text is left on live pages.', 'None needed.'));
 
   // time_zone: opening hours and dated snippets need the business's time zone (older sites may lack it).
   const timed = [

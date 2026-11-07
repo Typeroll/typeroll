@@ -19,8 +19,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== 'object') return apiError('Send { kind, id, name?, description?, category? }', 400, ctx, { code: 'collection_entry_invalid' });
   try {
-    const { entry, warnings } = await saveToCollection({ orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId }, body, apiCollectionActor(ctx));
-    return apiResponse(ctx, { entry: collectionEntrySummary(entry, collectionPreviewBase('/api/v1/sites', ctx.siteId)), warnings }, 201, body);
+    const { entry, warnings, design_findings } = await saveToCollection({ orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId }, body, apiCollectionActor(ctx));
+    return apiResponse(ctx, { entry: collectionEntrySummary(entry, collectionPreviewBase('/api/v1/sites', ctx.siteId)), warnings, ...(design_findings ? { design_findings } : {}) }, 201, body);
   } catch (error) {
     const refused = collectionRefusal(error);
     return apiError(refused.body.error, refused.status, ctx, { code: refused.body.code, ...(refused.body.details ? { details: refused.body.details } : {}) });

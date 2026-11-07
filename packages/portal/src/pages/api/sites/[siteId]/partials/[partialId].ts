@@ -6,6 +6,7 @@ import { vstore } from '../../../../../lib/version-store';
 import { snapshotRevision } from '../../../../../lib/revisions';
 import { sanitizeBody } from '../../../../../lib/sanitize';
 import type { Partial as PartialDoc } from '@typeroll/shared';
+import { structureLockRefusal } from '../../../../../lib/structure-lock';
 
 const ALLOWED: Array<keyof PartialDoc> = ['name', 'kind', 'content_mode', 'blocks', 'html_content', 'status'];
 
@@ -43,6 +44,10 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     if (error) return json({ error }, 400);
     update.blocks = ensureBlockIds(update.blocks);
   }
+  // A locked site's global blocks keep their structure too (lib/structure-lock).
+  const locked = await structureLockRefusal({ orgId: owner_org_id, siteId: site.id, versionId, canDesign: guard.value.design },
+    existing && update.content_mode !== existing.content_mode ? undefined : { before: existing?.blocks ?? [], after: update.blocks ?? existing?.blocks ?? [] });
+  if (locked) return locked;
   if (!update.name && !existing) {
     update.name = body.name ?? partialId;
   }

@@ -3,7 +3,8 @@ import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { paths } from '@typeroll/shared';
+import { paths, structureLocked } from '@typeroll/shared';
+import { HandoverCard, HandoverStartView } from '../../../../components/HandoverStartView.tsx';
 import type { Site, Page, SiteSettings, SiteVersion } from '@typeroll/shared';
 import DeployBanner from '../../../../components/DeployBanner.tsx';
 import DeployHistory from '../../../../components/DeployHistory.tsx';
@@ -14,7 +15,7 @@ import { canUseAiChat } from '../../../../lib/ai/organization-ai';
 
 const ctx = await loadSiteContext(Astro);
 if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
-const { session, site, versionId, owner_org_id: orgId, permission } = ctx;
+const { session, site, versionId, owner_org_id: orgId, permission, design } = ctx;
 const siteId = site.id;
 const aiChatEnabled = await canUseAiChat({ orgId, siteId }, permission);
 
@@ -51,6 +52,17 @@ const counts = {
 
 
 const hostInfo = siteDisplayHost(site);
+
+// After a handover: people without design rights see a start view first;
+// administrators and builders a small card with the progress.
+const handover = settings?.handover;
+const pageLink = (page: Page) => ({ id: page.id, title: page.title, path: page.path || (page.slug ? `/${page.slug}` : '/') });
+const startPage = handover?.start_page ? pages.find(page => page.id === handover.start_page) : undefined;
+const startView = handover && !design ? {
+  startPage: startPage ? pageLink(startPage) : null,
+  pages: pages.filter(page => page.id !== startPage?.id).slice(0, 12).map(pageLink),
+  locked: structureLocked(handover, design),
+} : null;
 ---
 <AppLayout title={site.name} siteId={siteId}>
   <div class="app-header">
@@ -80,6 +92,9 @@ const hostInfo = siteDisplayHost(site);
       {aiChatEnabled && <a href={`/app/sites/${siteId}/ai`} class="btn">AI chat</a>}
     </div>
   </div>
+
+  {startView && handover && <HandoverStartView siteId={siteId} siteName={site.name} handover={handover} startPage={startView.startPage} pages={startView.pages} locked={startView.locked} />}
+  {handover && design && <HandoverCard siteId={siteId} handover={handover} />}
 
   <style is:global>
     html[data-typeroll-deployment="distributing"] [data-live-site-link] { display: none; }

@@ -22,6 +22,8 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../../../lib/api-auth';
+import { WorkingCopyError } from '../../../../../../../../../lib/working-copy';
+import { apiStructureLockRefusal } from '../../../../../../../../../lib/structure-lock';
 import { bodyShapeError } from '../../../../../../../../../lib/api-body';
 import {
   loadContainer,
@@ -63,6 +65,7 @@ function parseTarget(params: Record<string, string | undefined>):
 }
 
 function mutError(e: unknown): Response {
+  if (e instanceof WorkingCopyError) return apiError(e.message, e.status, undefined, e);
   if (e instanceof ContainerError) return apiError(e.message, e.status);
   if (e instanceof BlockMutationError) {
     const status = e.code === 'not_found' ? 404 : 400;
@@ -91,6 +94,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  const locked = await apiStructureLockRefusal(ctx);
+  if (locked) return locked;
   const t = parseTarget(params as Record<string, string | undefined>);
   if (!t.ok) return t.response;
   const body = await request.json().catch(() => null) as {
@@ -198,6 +203,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  const locked = await apiStructureLockRefusal(ctx);
+  if (locked) return locked;
   const t = parseTarget(params as Record<string, string | undefined>);
   if (!t.ok) return t.response;
   const body = await request.json().catch(() => null) as {
@@ -235,6 +242,8 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  const locked = await apiStructureLockRefusal(ctx);
+  if (locked) return locked;
   const t = parseTarget(params as Record<string, string | undefined>);
   if (!t.ok) return t.response;
   const url = new URL(request.url);

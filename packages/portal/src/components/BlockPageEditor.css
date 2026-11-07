@@ -16,6 +16,7 @@
 .block-editor__body { display: grid; grid-template-columns: 280px minmax(0, 1fr) 320px; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 .block-editor__blocks { display: flex; flex-direction: column; border-right: 1px solid #2a2a30; overflow: hidden; min-width: 0; min-height: 0; }
 .block-editor__block-list { flex: 1; min-height: 0; overflow: auto; padding: 12px; overscroll-behavior: contain; }
+.block-editor__locked-note { margin: 0 0 10px; padding: 8px 10px; border: 1px solid #3f3f46; border-radius: 6px; background: #1f1f24; color: #d4d4d8; font-size: .8rem; }
 .block-editor__preview { display: flex; flex-direction: column; min-width: 0; min-height: 0; background: #0a0a0d; }
 .block-editor__canvas { flex: 1; min-height: 0; padding: 16px; overflow: hidden; }
 .block-editor__fields { border-left: 1px solid #2a2a30; padding: 16px; overflow: auto; min-width: 0; min-height: 0; overscroll-behavior: contain; overflow-wrap: anywhere; }

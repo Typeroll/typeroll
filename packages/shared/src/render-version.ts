@@ -170,6 +170,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Fonts load only the weights and italics the site uses (its styles, block weights and their defaults, and bold and italic rich text, plus fonts.load) instead of a fixed 400–700, and no italics unless the site has italic text. A variable family loads as one file covering the range in use. The body family\'s upright Latin file is preloaded.',
       'A self-hosted family has its own metric-matched fallback face, measured from the copied files, so text keeps its place while the font loads.',
       'Two more font roles: display (large headings and heroes) and accent (eyebrows and quotes), as --font-display and --font-accent. Unset, they use the heading and body families. Blocks and styles choose them like the other roles.',
+      'Authored text and HTML can use {{site.name}} and {{site.fields.<name>}} (text, number or true/false values, escaped), so a template names the site it is inserted into. Before, only {{site.current_year}} expanded and other tokens showed as written.',
     ],
   },
 ];

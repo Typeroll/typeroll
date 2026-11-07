@@ -16,7 +16,7 @@ function v(version?: string): Record<string, string | undefined> | undefined {
 export const settingsTools: ToolDef[] = [
   {
     name: 'lint_design_tokens',
-    description: 'Read-only design audit of saved Pages, partials, page templates, custom block types, styles and custom CSS in the selected Version. Lists hardcoded colours, typography and spacing with exact paths and token suggestions. exact_replacements is a dry-run plan for unambiguous direct block hex matches; never apply ambiguous roles or CSS automatically. css_findings lists custom CSS that works against the theme (heavy !important use, fonts not in the theme, theme fonts loaded twice, a first-section background image set in CSS, rules on platform block classes), each with the Style, token or block setting that replaces it. Does not block launch. Unsaved working copies are excluded.',
+    description: 'Read-only design audit of saved Pages, partials, page templates, block templates, custom block types, styles and custom CSS in the selected Version. Lists hardcoded colours, typography and spacing with exact paths and token suggestions. exact_replacements is a dry-run plan for unambiguous direct block hex matches; never apply ambiguous roles or CSS automatically. css_findings lists custom CSS that works against the theme (heavy !important use, fonts not in the theme, theme fonts loaded twice, a first-section background image set in CSS, rules on platform block classes), each with the Style, token or block setting that replaces it. Does not block launch. Unsaved working copies are excluded.',
     inputSchema: { version: versionParam },
     handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.get(siteId, 'design-token-audit', v(args.version)))),
   },
@@ -157,6 +157,17 @@ export const settingsTools: ToolDef[] = [
           }).optional(),
         }).optional().describe('Banner wording for this language. Without text or labels the banner uses the built-in wording in this language; scripts and enabled stay site-wide.'),
       })).nullable().optional().describe('One site, several languages: each section is a language whose pages (Page.language) live under home_path. Pages in a section get its home link in breadcrumbs, a 404 page at <home_path>404.html, and its tagline, fallback description and banner wording. Pages in the site language keep the top-level settings. Replaces the whole list; null or [] clears it. Use template/show_if on page.language in the header and footer for per-language menus.'),
+      handover: z.object({
+        lock_structure: z.boolean().optional().describe('Lock the structure for people without design rights (editors, clients with a shared site): they change text and images but cannot add, remove, move, duplicate or retype blocks, apply a page template or create or delete pages; those writes answer 403 structure_locked. Administrators and builders are never locked.'),
+        start_page: z.string().max(128).optional().describe('Page id the start view links to first; must be a page of the site.'),
+        checklist: z.array(z.object({
+          id: z.string().regex(/^[a-z0-9][a-z0-9_-]{0,63}$/),
+          label: z.string().min(1).max(200),
+          done: z.boolean().optional(),
+          href: z.string().max(501).optional().describe('A portal path starting with /, e.g. /app/sites/<siteId>/media.'),
+        }).strict()).max(40).optional(),
+        handed_over_at: z.string().optional().describe('ISO date when the site was handed over; absent while it is being built.'),
+      }).strict().nullable().optional().describe('Handing the site over to its editors: a checklist, the start page and an optional structure lock. Replaces the whole object (not merged); null removes it. Needs design rights (an administrator or builder).'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { version, ...body } = args;

@@ -37,6 +37,7 @@ import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDo
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
 import { publicationMenuWarnings, publicationSiteFieldWarnings, publicationSnippetWarnings } from './content-preflight';
 import { publicationDemoMediaWarnings } from '../packages/demo-media';
+import { publicationPlaceholderWarnings } from '../placeholder-content';
 import { freezeSiteFonts } from './theme-font-freeze';
 import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest, collapseMediaHostChains } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
@@ -408,7 +409,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
       const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true });
       // Non-blocking findings (for example media left out of this publication) stay on the job for users and agents.
-      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia)];
+      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
       const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);

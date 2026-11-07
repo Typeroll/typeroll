@@ -66,7 +66,9 @@ describe('site fields in the render context', () => {
   it('binds a whole block field to a site field', () => {
     const html = render([{ id: 't', type: 'core/text', data: { text: '{{site.fields.phone}}' } }]);
     expect(html).toContain('>090-12 34 56 &lt;b&gt;</p>');
-    expect(render([{ id: 't', type: 'core/text', data: { text: 'Call {{site.fields.phone}}' } }])).toContain('Call {{site.fields.phone}}');
+    // Inside other text the variable expands from render version 15 (resolveAuthoredVariables), escaped; before, it shows as written.
+    expect(render([{ id: 't', type: 'core/text', data: { text: 'Call {{site.fields.phone}}' } }])).toContain('Call 090-12 34 56 &lt;b&gt;<');
+    expect(render([{ id: 't', type: 'core/text', data: { text: 'Call {{site.fields.phone}}' } }], { renderVersion: 14 })).toContain('Call {{site.fields.phone}}');
   });
 });
 

@@ -1,3 +1,4 @@
+import { TemplateDesignFindings, type TemplateDesignFindingView } from './TemplateDesignFindings';
 import { decodeHTML } from 'entities';
 import PageDraftRecovery from './PageDraftRecovery';
 // Block-mode page editor.
@@ -75,7 +76,16 @@ interface Props {
   lastDeployedAt: string | null;
   /** Site editors and admins may create block types ("Turn into block type…"). */
   canManageBlockTypes?: boolean;
+  /**
+   * The site's handover locks its structure for this person (no design
+   * rights): text and images stay editable, but blocks cannot be added,
+   * removed, moved, duplicated, pasted or made global, and the page keeps
+   * its template and content type. The server refuses those writes too.
+   */
+  structureLocked?: boolean;
 }
+
+export const STRUCTURE_LOCKED_NOTE = "The site's structure is locked; you can edit text and images.";
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 type LeftTab = 'add' | 'structure';
@@ -126,7 +136,7 @@ export default function BlockPageEditor(props: Props) {
   </PageDraftRecovery>;
 }
 
-function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, siteFonts, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false }: Props) {
+function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, siteFonts, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false, structureLocked = false }: Props) {
   const [globalBlocks, setGlobalBlocks] = useState(initialGlobalBlocks);
   const [blockTemplates, setBlockTemplates] = useState(initialTemplates);
   // The organization collection; null when this person may not use it.
@@ -336,6 +346,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     extraData?: Record<string, unknown>,
     name?: string,
   ): Promise<void> {
+    if (lockedNotice()) return;
     const bt = registry.get(typeId);
     const data: Record<string, unknown> = {};
     if (bt) {
@@ -357,12 +368,14 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   }
 
   async function handleRemove(blockId: string): Promise<void> {
+    if (lockedNotice()) return;
     if (!confirm('Delete this block and everything inside it?')) return;
     await callMutation({ method: 'DELETE', query: { block_id: blockId } });
     if (selectedId === blockId) setSelectedId(null);
   }
 
   async function handleDuplicate(blockId: string): Promise<void> {
+    if (lockedNotice()) return;
     const result = await callMutation({ method: 'POST', body: { duplicate_of: blockId } });
     if (result?.added_id) selectBlock(result.added_id);
   }
@@ -390,6 +403,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     selected?.block.children !== undefined || selected?.block.slots !== undefined ? { parent_id: selected!.block.id, position: 0 } : { parent_id: null };
 
   async function insertTemplate(templateId: string): Promise<void> {
+    if (lockedNotice()) return;
     try {
       const result = await callReusable({ action: 'insert_template', template_id: templateId, ...insertTarget() });
       if (result.added_ids?.[0]) selectBlock(result.added_ids[0]);
@@ -399,6 +413,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   // A collection entry goes after the selected block, else at the end; the
   // server writes it into the working copy, so reload the draft from there.
   async function insertFromCollection(entry: CollectionEntryView): Promise<CollectionInsertResult> {
+    if (structureLocked) throw new Error(STRUCTURE_LOCKED_NOTE);
     await blockWrite.current.catch(() => {});
     await fieldFlush.current?.();
     return enqueueWrite(async () => {
@@ -429,7 +444,16 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     clipNoticeTimer.current = window.setTimeout(() => setClipNotice(null), error ? 10000 : 6000);
   }
 
+  /** While the structure is locked: say so and refuse the action. */
+  function lockedNotice(): boolean {
+    if (!structureLocked) return false;
+    showClipNotice(STRUCTURE_LOCKED_NOTE, true);
+    return true;
+  }
+
   async function copyBlock(blockId: string, cut = false): Promise<void> {
+    // Cutting removes the block: copy only while the structure is locked.
+    if (cut && structureLocked) cut = false;
     try {
       await fieldFlush.current?.();
       await blockWrite.current.catch(() => {});
@@ -446,6 +470,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   }
 
   async function pasteText(text: string, afterBlockId: string | null = selectedIdRef.current): Promise<void> {
+    if (lockedNotice()) return;
     await blockWrite.current.catch(() => {});
     await fieldFlush.current?.();
     return enqueueWrite(async () => {
@@ -484,14 +509,14 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     }
   }
 
-  async function saveSiteTemplate(block: Block, name: string, description: string): Promise<BlockTemplate> {
+  async function saveSiteTemplate(block: Block, name: string, description: string): Promise<SavedTemplate> {
     await fieldFlush.current?.();
     await blockWrite.current.catch(() => {});
     const res = await fetch(`/api/sites/${siteId}/block-templates`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, ...(description ? { description } : {}), from: { page_id: page.id, block_id: block.id } }) });
-    const body = await res.json().catch(() => ({})) as { block_template?: BlockTemplate; error?: string };
+    const body = await res.json().catch(() => ({})) as { block_template?: BlockTemplate; design_findings?: TemplateDesignFindingView[]; error?: string };
     if (!res.ok || !body.block_template) throw new Error(body.error ?? `Could not save the template (${res.status})`);
     setBlockTemplates(list => [...list, body.block_template!].sort((a, b) => a.name.localeCompare(b.name)));
-    return body.block_template;
+    return { template: body.block_template, findings: body.design_findings ?? [] };
   }
 
   function addGlobalBlock(globalBlockId: string): void {
@@ -511,13 +536,16 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       if (result.added_ids?.[0]) selectBlock(result.added_ids[0]);
     },
     async saveTemplate(name, description) {
-      await saveSiteTemplate(block, name, description);
+      return saveSiteTemplate(block, name, description);
+    },
+    templateSaved(template) {
+      setBlockTemplates(list => list.map(item => item.id === template.id ? template : item));
     },
     // The collection saves existing site items, so the block becomes a site
     // template first (the same flow as Save as template) and that is saved.
     ...(collection.entries && block.type !== GLOBAL_BLOCK_TYPE_ID ? {
       async saveToCollection(name: string, description: string, category: string) {
-        const template = await saveSiteTemplate(block, name, description);
+        const { template } = await saveSiteTemplate(block, name, description);
         await collection.save(templateSaveKind(template), template.id, { name, description, category });
       },
     } : {}),
@@ -711,6 +739,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   }
 
   async function handleMove(blockId: string, targetParentId: string | null, targetSlotIndex?: number, targetPosition?: number): Promise<void> {
+    if (lockedNotice()) return;
     await callMutation({
       method: 'PUT',
       body: {
@@ -1104,13 +1133,13 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
         {/* Left panel: tabs + content */}
         <aside id="block-editor-blocks" className="block-editor__blocks">
           <div style={tabBar}>
-            <button
+            {!structureLocked && <button
               type="button"
               style={tabBtn(leftTab === 'add')}
               onClick={() => setLeftTab('add')}
             >
               <Plus size={14} /> Add
-            </button>
+            </button>}
             <button
               type="button"
               style={tabBtn(leftTab === 'structure')}
@@ -1120,7 +1149,8 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
             </button>
           </div>
           <div className="block-editor__block-list">
-            {leftTab === 'add' && (
+            {structureLocked && <p role="note" className="block-editor__locked-note" data-structure-locked>{STRUCTURE_LOCKED_NOTE}</p>}
+            {leftTab === 'add' && !structureLocked && (
               <BlockLibrary
                 registry={registry}
                 customTypes={customTypes}
@@ -1134,8 +1164,9 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
                 }}
               />
             )}
-            {leftTab === 'structure' && (
+            {(leftTab === 'structure' || structureLocked) && (
               <BlockTree
+                locked={structureLocked}
                 blocks={draft.blocks ?? []}
                 selectedId={selectedId}
                 onSelect={selectBlock}
@@ -1193,7 +1224,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
               activeBp={activeBp}
               onChange={(data) => handleUpdateData(selected.block.id, data)}
               onStyleOverrides={(overrides) => handleUpdateOverrides(selected.block.id, overrides)}
-              reuse={reuseActions(selected.block)}
+              reuse={structureLocked ? undefined : reuseActions(selected.block)}
               blockTypeHref={canManageBlockTypes && registry.get(selected.block.type)?.origin === 'user' ? `/app/sites/${siteId}/blocks?type=${encodeURIComponent(selected.block.type)}` : undefined}
             />
           ) : (
@@ -1204,6 +1235,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
               hasUnsaved={hasWc || status === 'saving'}
               draft={draft}
               onChange={updateMeta}
+              structureLocked={structureLocked}
             />
           )}
         </aside>
@@ -1368,10 +1400,12 @@ type TreeCtx = {
   registry: Map<string, BlockType>;
   /** Live drop position from the parent's drag handlers; null when idle. */
   dropTarget: DropTarget | null;
+  /** The structure is locked: no dragging, duplicating, pasting or deleting. */
+  locked?: boolean;
 };
 
 export function BlockTree({
-  blocks, selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry, dropTarget,
+  blocks, selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry, dropTarget, locked = false,
 }: {
   blocks: Block[];
   selectedId: string | null;
@@ -1383,8 +1417,9 @@ export function BlockTree({
   onRename: (id: string, name: string) => void;
   registry: Map<string, BlockType>;
   dropTarget: DropTarget | null;
+  locked?: boolean;
 }) {
-  const ctx: TreeCtx = { selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry, dropTarget };
+  const ctx: TreeCtx = { selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste: locked ? undefined : onPaste, onRename, registry, dropTarget, locked };
 
   // Empty page: still render the (droppable) root list so a block dragged
   // from the library has a landing zone, with a hint above it.
@@ -1474,7 +1509,7 @@ function SortableBlockNode({
   containerId: string;
   ctx: TreeCtx;
 }) {
-  const sortable = useSortable({ id: block.id, data: { containerId } });
+  const sortable = useSortable({ id: block.id, data: { containerId }, disabled: ctx.locked });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
@@ -1500,7 +1535,7 @@ function BlockNodeInner({
   ctx: TreeCtx;
   dragHandleProps?: React.HTMLAttributes<HTMLElement>;
 }) {
-  const { selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry } = ctx;
+  const { selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry, locked } = ctx;
   const [open, setOpen] = useState(true);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -1540,9 +1575,9 @@ function BlockNodeInner({
         style={treeRow(isSelected, depth)}
         onClick={() => onSelect(block.id)}
       >
-        <span {...dragHandleProps} style={{ ...dragHandle, touchAction: 'none' }} title="Drag to move">
+        {locked ? <span style={{ width: 12 }} /> : <span {...dragHandleProps} style={{ ...dragHandle, touchAction: 'none' }} title="Drag to move">
           <GripVertical size={12} />
-        </span>
+        </span>}
         {expandable ? (
           <button type="button" style={chevron} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}>
             {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -1575,14 +1610,14 @@ function BlockNodeInner({
             {rowLabel}
           </button>
         )}
-        <button
+        {!locked && <button
           type="button"
           style={iconBtn}
           onClick={(e) => { e.stopPropagation(); onDuplicate(block.id); }}
           title="Duplicate (⌘D)"
         >
           <Copy size={12} />
-        </button>
+        </button>}
         {onCopy && <button
           type="button"
           style={iconBtn}
@@ -1601,14 +1636,14 @@ function BlockNodeInner({
         >
           <ClipboardPaste size={12} />
         </button>}
-        <button
+        {!locked && <button
           type="button"
           style={iconBtn}
           onClick={(e) => { e.stopPropagation(); onRemove(block.id); }}
           title="Delete"
         >
           <Trash2 size={12} />
-        </button>
+        </button>}
       </div>
       {open && isContainer && (
         <SortableList
@@ -1671,13 +1706,15 @@ function mergeResponsive(raw: unknown, bp: Breakpoint, value: unknown): unknown 
 // SEO, template, content mode — so block-mode pages can edit their title/SEO
 // without leaving the editor. Saves are debounced by the parent's updateMeta.
 function MetaPanel({
-  siteId, page, draft, onChange, contentType, hasUnsaved,
+  siteId, page, draft, onChange, contentType, hasUnsaved, structureLocked = false,
 }: {
   siteId: string;
   page: Page;
   draft: Page;
   contentType?: ContentType;
   hasUnsaved: boolean;
+  /** The page keeps its template and content type while the structure is locked. */
+  structureLocked?: boolean;
   onChange: <K extends keyof Page>(key: K, value: Page[K]) => void;
 }) {
   const siteStyles = useContext(SiteStylesContext);
@@ -1791,7 +1828,7 @@ function MetaPanel({
       </label>
 
       <div style={{ borderTop: '1px solid #2a2a30', paddingTop: '0.85rem' }}>
-        <PageContentTypePicker siteId={siteId} page={page} disabled={hasUnsaved} />
+        <PageContentTypePicker siteId={siteId} page={page} disabled={hasUnsaved || structureLocked} />
         {contentType ? <>
           <p>Content type: <a style={{ color: '#a5b4fc' }} href={`/app/sites/${siteId}/content-types/${contentType.name}`}>{contentType.label_singular}</a></p>
           {contentType.fields.map(field =>
@@ -1801,7 +1838,7 @@ function MetaPanel({
         <label style={fieldLabel} htmlFor="page-sort-order">Page order</label>
         <input id="page-sort-order" type="number" step="any" style={textInput} value={draft.sort_order ?? ''} onChange={e => onChange('sort_order', e.target.value === '' ? null : Number(e.target.value))} />
         <p style={{ color: '#a1a1aa', fontSize: '.85rem' }}>Lower numbers come first when sorting by page order. Empty values come last.</p>
-        <TemplatePicker siteId={siteId} pageId={page.id} currentTemplate={draft.template} contentType={page.content_type} defaultTemplate={contentType?.template} onChange={value => onChange('template', value)} />
+        {!structureLocked && <TemplatePicker siteId={siteId} pageId={page.id} currentTemplate={draft.template} contentType={page.content_type} defaultTemplate={contentType?.template} onChange={value => onChange('template', value)} />}
         <ContentModeSwitcher siteId={siteId} pageId={page.id} currentMode="blocks" />
       </div>
 
@@ -1975,7 +2012,7 @@ export function BlockFieldForm({
         })}
       </form>
       </EditedBlockTypeContext.Provider>
-      {reuse && <ReusePanel key={block.id} block={block} actions={reuse} />}
+      {reuse && <ReusePanel key={block.id} block={block} actions={reuse} siteId={siteId} />}
     </div>
   );
 }
@@ -1984,10 +2021,16 @@ function countBlocks(blocks: readonly Block[]): number {
   return blocks.reduce((sum, block) => sum + 1 + countBlocks(block.children ?? []) + (block.slots ?? []).reduce((n, slot) => n + countBlocks(slot), 0), 0);
 }
 
+/** A template saved from a block, with its design findings. */
+export interface SavedTemplate { template: BlockTemplate; findings: TemplateDesignFindingView[] }
+
 export interface ReuseActions {
   makeGlobal(name: string): Promise<void>;
   detach(): Promise<void>;
-  saveTemplate(name: string, description: string): Promise<void>;
+  /** Saves the block as a site template; answers with its hard-coded colours and fonts (design_findings). */
+  saveTemplate(name: string, description: string): Promise<SavedTemplate>;
+  /** The template changed after a "Use <token>" fix. */
+  templateSaved?(template: BlockTemplate): void;
   /** Save as a site template and put that in the organization collection. Only when the collection is available. */
   saveToCollection?(name: string, description: string, category: string): Promise<void>;
   /** Admins: make a block type from this block and its children (TurnIntoBlockType). */
@@ -2000,7 +2043,8 @@ export interface ReuseActions {
  * Reuse a block: as a global block (shared, every page shows the same
  * content) or as a template (a starting point copied into pages).
  */
-function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions }) {
+function ReusePanel({ block, actions, siteId }: { block: Block; actions: ReuseActions; siteId?: string }) {
+  const [saved, setSaved] = useState<SavedTemplate | null>(null);
   const [mode, setMode] = useState<'global' | 'template' | 'collection' | 'block_type' | null>(null);
   const [name, setName] = useState(block.name ?? '');
   const [description, setDescription] = useState('');
@@ -2045,7 +2089,7 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
           if (!name.trim()) return;
           if (mode === 'global') run(() => actions.makeGlobal(name.trim()), 'Now a global block. Other pages can add it from the block library.');
           else if (mode === 'collection' && actions.saveToCollection) run(() => actions.saveToCollection!(name.trim(), description.trim(), category.trim()), 'Saved to the organization’s collection, and as a template on this site. Insert it into any of the organization’s sites.');
-          else run(() => actions.saveTemplate(name.trim(), description.trim()), 'Saved as a template. Insert it from the block library.');
+          else run(async () => { setSaved(await actions.saveTemplate(name.trim(), description.trim())); }, 'Saved as a template. Insert it from the block library.');
         }}>
           {mode === 'collection' && <p>Saves this block as a template on this site and a copy, with the styles it uses, in the organization’s collection.</p>}
           <label htmlFor={nameId} style={fieldLabel}>{mode === 'global' ? 'Global block name' : 'Template name'}</label>
@@ -2062,6 +2106,8 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
         </form>}
       </>}
       {message && <p role="status">{message}</p>}
+      {saved && siteId && <TemplateDesignFindings siteId={siteId} template={saved.template} findings={saved.findings}
+        onSaved={(result) => { setSaved(result); actions.templateSaved?.(result.template); setMessage(result.findings.length ? 'Template saved with the token.' : 'Template saved: it now follows the site’s design.'); }} />}
     </details>
   );
 }

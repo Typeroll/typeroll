@@ -672,7 +672,7 @@ Read one block template, including its block tree.
 
 Permission: `write`
 
-Save a block template: a section starter that editors and agents insert as an independent copy. Pass `from: { page_id, block_id }` to save a block from a page (its draft), or `blocks`. Prefer templates that use named styles (style_id, part_styles) over one-off values, so copies stay consistent. Templates belong to the site, not a branch.
+Save a block template: a section starter that editors and agents insert as an independent copy. Pass `from: { page_id, block_id }` to save a block from a page (its draft), or `blocks`. Prefer templates that use named styles (style_id, part_styles) over one-off values, so copies stay consistent. The answer's design_findings lists hard-coded colours and font families (not blocking) with the palette or font role to use instead; `replacement` gives the exact field change when one role matches, which update_block_template applies by sending the changed blocks. Templates belong to the site, not a branch.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -688,7 +688,7 @@ Save a block template: a section starter that editors and agents insert as an in
 
 Permission: `write`
 
-Rename a block template, change its description, or replace its blocks. Pages that already inserted it do not change.
+Rename a block template, change its description, or replace its blocks. Pages that already inserted it do not change. Answers with design_findings, as save_block_template.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -1277,7 +1277,7 @@ Status of a single deploy job. Optional top-level build_progress reports the exa
 
 Permission: `read`
 
-Read-only design audit of saved Pages, partials, page templates, custom block types, styles and custom CSS in the selected Version. Lists hardcoded colours, typography and spacing with exact paths and token suggestions. exact_replacements is a dry-run plan for unambiguous direct block hex matches; never apply ambiguous roles or CSS automatically. css_findings lists custom CSS that works against the theme (heavy !important use, fonts not in the theme, theme fonts loaded twice, a first-section background image set in CSS, rules on platform block classes), each with the Style, token or block setting that replaces it. Does not block launch. Unsaved working copies are excluded.
+Read-only design audit of saved Pages, partials, page templates, block templates, custom block types, styles and custom CSS in the selected Version. Lists hardcoded colours, typography and spacing with exact paths and token suggestions. exact_replacements is a dry-run plan for unambiguous direct block hex matches; never apply ambiguous roles or CSS automatically. css_findings lists custom CSS that works against the theme (heavy !important use, fonts not in the theme, theme fonts loaded twice, a first-section background image set in CSS, rules on platform block classes), each with the Style, token or block setting that replaces it. Does not block launch. Unsaved working copies are excluded.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -3623,6 +3623,7 @@ Patch site settings, including responsive breakpoints for block layouts and visi
 | `social` | body | object | no |  |
 | `cookie_consent` | body | object | no | Native consent banner configuration. Partial updates preserve omitted fields. Script fields execute in visitor browsers and are accepted under the API key authority. |
 | `language_sections` | body | object[] \| null | no | One site, several languages: each section is a language whose pages (Page.language) live under home_path. Pages in a section get its home link in breadcrumbs, a 404 page at &lt;home_path&gt;404.html, and its tagline, fallback description and banner wording. Pages in the site language keep the top-level settings. Replaces the whole list; null or [] clears it. Use template/show_if on page.language in the header and footer for per-language menus. |
+| `handover` | body | object \| null | no | Handing the site over to its editors: a checklist, the start page and an optional structure lock. Replaces the whole object (not merged); null removes it. Needs design rights (an administrator or builder). |
 
 ### `set_site_fonts`
 

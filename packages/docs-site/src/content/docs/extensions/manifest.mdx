@@ -104,6 +104,10 @@ deploy. The developer CLI and MCP tool queue that deploy by default.
   [organization collection](../../tools/collection/) of the site's
   organization: list its entries, and add ready-made ones; an app changes and
   removes only the entries it added itself)
+- `site:handover` (read the site settings and write only their `handover`
+  object: the checklist, start page and structure lock of
+  [handing a site over](../../guides/handover/); every other settings key is
+  refused)
 
 The effective permission is the intersection of the manifest request, the
 site administrator's grant, and the current Typeroll user's permission. The

@@ -3,6 +3,7 @@ import { requireSiteAccess, json, requirePermission } from '../../../../../../li
 import { vstore } from '../../../../../../lib/version-store';
 import { listRevisions, getRevision, snapshotRevision } from '../../../../../../lib/revisions';
 import type { Page } from '@typeroll/shared';
+import { structureLockRefusal } from '../../../../../../lib/structure-lock';
 
 export const GET: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -46,6 +47,12 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!rev) return json({ error: 'Revision not found' }, 404);
 
   const current = await vstore.page(owner_org_id, site.id, versionId, pageId);
+  // Restoring an older version may bring back other blocks: a structural change on a locked site.
+  const restoredDoc = rev.doc as Partial<Page>;
+  const locked = await structureLockRefusal({ orgId: owner_org_id, siteId: site.id, versionId, canDesign: guard.value.design },
+    String(restoredDoc.template ?? '') !== String(current?.template ?? '') || (restoredDoc.content_mode ?? current?.content_mode) !== current?.content_mode
+      ? undefined : { before: current?.blocks, after: restoredDoc.blocks ?? current?.blocks });
+  if (locked) return locked;
   if (current) {
     await snapshotRevision({
       orgId: owner_org_id,

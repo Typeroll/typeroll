@@ -17,9 +17,11 @@ import {
 import {
   mergeWorkingCopy,
   readWorkingCopy,
+  WorkingCopyError,
   type WcCtx,
 } from '../../../../../../lib/working-copy';
 import type { Block } from '@typeroll/shared';
+import { structureLockRefusal } from '../../../../../../lib/structure-lock';
 
 type GuardOk = {
   error: null;
@@ -28,6 +30,7 @@ type GuardOk = {
   versionId: string;
   pageId: string;
   page: import('@typeroll/shared').Page;
+  canDesign: boolean;
 };
 type GuardErr = { error: Response };
 
@@ -40,7 +43,7 @@ async function guardPage(cookies: any, params: any, locals: any, write = false):
   if (!pageId) return { error: json({ error: 'Missing pageId' }, 400) };
   const page = await vstore.page(owner_org_id, site.id, versionId, pageId);
   if (!page) return { error: json({ error: 'Page not found' }, 404) };
-  return { error: null, orgId: owner_org_id, siteId: site.id, versionId, pageId, page };
+  return { error: null, orgId: owner_org_id, siteId: site.id, versionId, pageId, page, canDesign: guard.value.design };
 }
 
 /**
@@ -49,7 +52,7 @@ async function guardPage(cookies: any, params: any, locals: any, write = false):
  * ships until the deliberate Save (the Publish menu / commit) promotes it.
  */
 async function loadTree(g: GuardOk): Promise<{ tree: Block[]; ctx: WcCtx }> {
-  const ctx: WcCtx = { orgId: g.orgId, siteId: g.siteId, versionId: g.versionId };
+  const ctx: WcCtx = { orgId: g.orgId, siteId: g.siteId, versionId: g.versionId, canDesign: g.canDesign };
   const wc = await readWorkingCopy(ctx, { kind: 'page', id: g.pageId });
   return { tree: (wc?.fields?.blocks as Block[] | undefined) ?? g.page.blocks ?? [], ctx };
 }
@@ -84,6 +87,8 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!body?.block?.type && !body?.duplicate_of) {
     return json({ error: 'block.type or duplicate_of required' }, 400);
   }
+  const locked = await structureLockRefusal(lockCtx(g));
+  if (locked) return locked;
   try {
     const { tree, ctx } = await loadTree(g);
     if (body.duplicate_of) {
@@ -139,6 +144,8 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     target_position?: number;
   } | null;
   if (!body?.block_id) return json({ error: 'block_id required' }, 400);
+  const locked = await structureLockRefusal(lockCtx(g));
+  if (locked) return locked;
   try {
     const { tree, ctx } = await loadTree(g);
     const blocks = moveBlock(tree, {
@@ -160,6 +167,8 @@ export const DELETE: APIRoute = async ({ request, cookies, params, locals }) => 
   const url = new URL(request.url);
   const blockId = url.searchParams.get('block_id');
   if (!blockId) return json({ error: 'block_id query param required' }, 400);
+  const locked = await structureLockRefusal(lockCtx(g));
+  if (locked) return locked;
   try {
     const { tree, ctx } = await loadTree(g);
     const blocks = removeBlock(tree, blockId);
@@ -170,7 +179,10 @@ export const DELETE: APIRoute = async ({ request, cookies, params, locals }) => 
   }
 };
 
+const lockCtx = (g: GuardOk) => ({ orgId: g.orgId, siteId: g.siteId, versionId: g.versionId, canDesign: g.canDesign });
+
 function mutErr(e: unknown): Response {
+  if (e instanceof WorkingCopyError) return json(e.toBody(), e.status);
   if (e instanceof BlockMutationError) {
     return json({ error: e.message, code: e.code }, e.code === 'not_found' ? 404 : 400);
   }

@@ -3,6 +3,10 @@
 //   { name, description?, id?, blocks }                  from a block tree, or
 //   { name, description?, id?, from: { page_id, block_id } } from a page block (draft)
 //
+// Writes answer with design_findings: hard-coded colours and font families
+// in the template, with the palette or font role to use instead and an exact
+// `replacement` when one role matches. Non-blocking.
+//
 // Block templates are copy-in section starters, stored per site (not per
 // version). Insert one with POST .../pages/{pageId}/blocks/insert-template.
 
@@ -10,6 +14,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { BlockTemplateError, createBlockTemplate, listBlockTemplates } from '../../../../../../lib/block-templates-store';
 import { templateInputFromPage } from '../../../../../../lib/block-template-input';
+import { blockTemplateDesignFindings } from '../../../../../../lib/design-token-audit';
 
 export const GET: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -27,7 +32,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Body must be a JSON object');
   try {
     const input = await templateInputFromPage(ctx, body);
-    return apiResponse(ctx, { block_template: await createBlockTemplate(ctx, input) }, 201);
+    const template = await createBlockTemplate(ctx, input);
+    return apiResponse(ctx, { block_template: template, design_findings: await blockTemplateDesignFindings(ctx, template) }, 201);
   } catch (error) {
     if (error instanceof BlockTemplateError) return apiError(error.message, error.status);
     throw error;

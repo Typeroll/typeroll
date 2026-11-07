@@ -99,6 +99,7 @@
               "site_fields:write",
               "collection:read",
               "collection:write",
+              "site:handover",
               "snippets:read",
               "snippets:write"
             ]

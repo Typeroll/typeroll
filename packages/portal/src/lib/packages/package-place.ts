@@ -15,6 +15,7 @@ import { insertBlocks } from '../reusable-block-ops';
 import { importSitePackageIntoVersion, preparePackageImport, type PackageImportReport, type PreparedImport } from './package-import';
 import type { PackageMediaIO } from './package-media';
 import { PackageError, type PackageErrorCode, type PackageFiles } from './package-zip';
+import { STRUCTURE_LOCKED_MESSAGE, structureLockApplies } from '../structure-lock';
 
 export interface PagePosition {
   page_id: string;
@@ -81,8 +82,11 @@ export async function placePackageBlocks(ctx: PlaceCtx, read: PackageFiles, plac
   prepare?: (prepared: PreparedImport) => void;
 }): Promise<PlaceResult> {
   const site = { orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId };
+  // Pasted or inserted blocks add to the page: refused while a handover locks the structure.
+  if (await structureLockApplies({ ...site, canDesign: ctx.permission === 'admin' || ctx.design === true })) throw new PackageError(STRUCTURE_LOCKED_MESSAGE, 403, 'structure_locked');
   const { draft, at } = await resolvePagePosition(site, target, options.code);
-  const prepared = await preparePackageImport(site, read, { design: 'content' });
+  // Templates' sample text in the page's language (else the site's).
+  const prepared = await preparePackageImport(site, read, { design: 'content' }, { ...(draft.page.language ? { language: draft.page.language } : {}) });
   prepared.warnings = prepared.warnings.filter(warning => !warning.startsWith('Copied blocks are pasted'));
   options.prepare?.(prepared);
   let convert: ((blocks: Block[]) => Block[]) | null = null;

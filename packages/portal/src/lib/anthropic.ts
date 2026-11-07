@@ -1,3 +1,4 @@
+import { STRUCTURE_LOCKED_CODE, STRUCTURE_LOCKED_MESSAGE, structureLockApplies } from './structure-lock';
 import { createPage } from './page-create';
 import { listContentTypes } from './content-type-service';
 import { DESIGN_SETTINGS_KEYS } from './site-settings-sections';
@@ -1314,9 +1315,12 @@ function absolutePreviewUrl(ctx: ToolContext, page: Parameters<typeof pagePrevie
 }
 
 /** Ctx triple for the working-copy / content-write libs. */
-function wcCtx(ctx: ToolContext): { orgId: string; siteId: string; versionId: string } {
-  return { orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId };
+function wcCtx(ctx: ToolContext): { orgId: string; siteId: string; versionId: string; canDesign: boolean } {
+  return { orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, canDesign: ctx.permission === 'admin' || ctx.design === true };
 }
+
+/** Chat tools that add, remove, move or retype blocks or pages: refused while a handover locks the structure. */
+const STRUCTURAL_TOOLS = new Set(['create_page', 'add_block', 'move_block', 'remove_block', 'duplicate_block', 'set_page_mode', 'set_page_template']);
 
 /**
  * Compose the ChatAction payload for a block-container mutation. Page
@@ -1357,6 +1361,7 @@ interface ToolOutput {
 
 export async function runTool(name: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput> {
   const store = getStore();
+  if (STRUCTURAL_TOOLS.has(name) && await structureLockApplies(wcCtx(ctx))) return { result: { error: STRUCTURE_LOCKED_MESSAGE, code: STRUCTURE_LOCKED_CODE } };
 
   switch (name) {
     // ─── Pages ─────────────────────────────────────────────────────────────
@@ -1545,7 +1550,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           action: { type: kind === 'partial' ? 'update_partial' : 'update_page', description: `Saved ${kind} ${id}.`, target: id, ...chatEditLink(ctx.siteId, kind, id) },
         };
       } catch (e) {
-        if (e instanceof WorkingCopyError) return { result: { error: e.message } };
+        if (e instanceof WorkingCopyError) return { result: { error: e.message, ...(e.code ? { code: e.code } : {}) } };
         throw e;
       }
     }

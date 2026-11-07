@@ -7,6 +7,7 @@ import { siteFontsErrors, contentWidthsError, siteTimeZone, timeZoneError, TOKEN
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 import { fontSettingsWarnings, listSiteFonts } from '../../../../lib/fonts/font-library';
+import { handoverWriteErrors, normalizedHandover } from '../../../../lib/site-handover-write';
 
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -248,4 +249,27 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     return Response.json({ saved: true, section, ...(warnings.length ? { warnings } : {}) });
   }
   return redirect(`/app/sites/${site.id}/settings${section ? `?section=${section}&saved=1` : ''}`);
+};
+
+/**
+ * PATCH { handover } — the site's handover (shared/src/site-handover.ts),
+ * replaced whole; null removes it. Design rights (administrators and
+ * builders), as in the v1 settings PATCH.
+ */
+export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
+  const guard = await requireSiteAccess(cookies, params.siteId, locals);
+  if (!guard.ok) return guard.response;
+  const check = requireDesign(guard.value);
+  if (!check.ok) return check.response;
+  const { site, versionId, owner_org_id } = guard.value;
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return Response.json({ error: 'JSON object required' }, { status: 400 });
+  const other = Object.keys(body).filter(key => key !== 'handover');
+  if (other.length || body.handover === undefined) return Response.json({ error: `This route writes the handover only${other.length ? `; unknown: ${other.join(', ')}` : ''}` }, { status: 400 });
+  const ctx = { orgId: owner_org_id, siteId: site.id, versionId };
+  const errors = await handoverWriteErrors(ctx, body.handover);
+  if (errors.length) return Response.json({ error: errors.join('; '), details: { errors } }, { status: 400 });
+  const handover = normalizedHandover(body.handover);
+  await vstore.writeSettings(owner_org_id, site.id, versionId, { handover });
+  return Response.json({ saved: true, handover: handover ?? null });
 };

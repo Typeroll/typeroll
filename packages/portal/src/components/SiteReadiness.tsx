@@ -12,6 +12,8 @@ interface Item {
   fix: string;
   guide: string;
   details?: string[];
+  /** Where to fix each detail (same order), e.g. a page's editor. */
+  links?: Array<{ label: string; href: string }>;
 }
 interface Report {
   checked_at: string;
@@ -82,7 +84,7 @@ export default function SiteReadiness({ siteId }: { siteId: string }) {
                 <details className="text-sm" style={{ marginTop: '0.25rem' }}>
                   <summary>{item.details.length === 1 ? '1 detail' : `${item.details.length} details`}</summary>
                   <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1.1rem' }}>
-                    {item.details.map(detail => <li key={detail}>{detail}</li>)}
+                    {item.details.map((detail, index) => <li key={detail}>{detail}{item.links?.[index] ? <> · <a href={item.links[index].href}>Edit</a></> : null}</li>)}
                   </ul>
                 </details>
               ) : null}

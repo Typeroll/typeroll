@@ -77,7 +77,10 @@ in the category Restaurants.
 ```
 
 Links to the source site's pages become plain addresses, as in a package
-export; `warnings` says so.
+export; `warnings` says so. Saving a block template also answers with
+`design_findings`: its hard-coded colours and font families with the palette or
+font role to use instead, so the entry follows the design of every site it is
+inserted into (see [Colours and fonts](../packages/#colours-and-fonts)).
 
 ## Insert from the collection
 
@@ -102,9 +105,31 @@ the site's Media library, reusing a file with the same bytes. Nothing on the
 site changes otherwise: an insert never touches the site's colours, fonts or
 element styles.
 
+A style the entry uses that neither the entry nor the site has is the one
+exception: the site's standard style of the same role is used, with a warning
+(see [Styles are created, not mapped](../packages/#styles-are-created-not-mapped)).
+
+**Language.** An entry whose templates carry `translations` is inserted in the
+site's language, or in the page's own language when you place it in a page
+that has one. Only that language is written; the report's `template_languages`
+says which was used. See [Text in the site's language](../packages/#text-in-the-sites-language).
+
+**Text that names the site.** From render version 15 an entry's text can use
+`{{site.name}}` and `{{site.fields.<name>}}`, which show the name and site
+field values of the site it is inserted into.
+
+**Placeholders.** Bracketed sample text such as `[Feature name]` in the
+built-in starters is listed by the
+[launch checklist](../../guides/launch-checklist/#placeholders) until it is
+replaced.
+
 The answer is `{ report, page? }`: the [package import report](../packages/#import_package)
 (what was created, reused, renamed and replaced) and, for a page, its `id`, the
 `added_ids` and the draft's `blocks`.
+
+While a [handover](../../guides/handover/) locks a site's structure, placing
+an entry in a page is refused for people without design rights
+(`403 structure_locked`); the collection is not shown to them anyway.
 
 ## Add a package to the collection
 

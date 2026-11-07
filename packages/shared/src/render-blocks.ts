@@ -322,7 +322,11 @@ function sectionHomeHref(site: Record<string, unknown> | undefined, language: un
 }
 
 export function renderBlock(block: Block, options: RenderBlocksOptions): string {
-  return resolveBuildVariables(renderBlockContent(block, options), options.context?.site?.current_year);
+  const site = options.context?.site;
+  const html = renderBlockContent(block, options);
+  // Without a site context (a bare preview) only the year expands, as before.
+  if (!site) return resolveBuildVariables(html, undefined);
+  return resolveAuthoredVariables(html, { year: site.current_year, renderVersion: resolveRenderVersion(options.renderVersion), siteName: site.name, fields: site.fields as Record<string, unknown> | undefined });
 }
 
 function renderBlockContent(block: Block, options: RenderBlocksOptions): string {
@@ -1230,6 +1234,29 @@ export function siteContext(
 export function resolveBuildVariables(value: string, year: unknown = new Date().getUTCFullYear()): string {
   if (!Number.isInteger(year) || Number(year) < 1 || Number(year) > 9999) throw new Error('Invalid build year');
   return value.replace(/\{\{\s*site\.current_year\s*\}\}/g, String(year));
+}
+
+/** First render version that expands `{{site.name}}` and `{{site.fields.<name>}}` in authored text. */
+export const AUTHORED_SITE_VARIABLES_VERSION = 15;
+
+// Braces too, so an expanded value is never read as another variable when an enclosing block's HTML is expanded.
+const escapeVariable = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;');
+
+/**
+ * Build variables in authored text/HTML. Every version expands
+ * `{{site.current_year}}`. From render version 15 `{{site.name}}` and
+ * `{{site.fields.<name>}}` expand too, so a template's text can name the site
+ * it is inserted into. Only text, number and true/false field values expand,
+ * escaped as text; other values and unknown names expand to nothing. Values
+ * are never evaluated again.
+ */
+export function resolveAuthoredVariables(value: string, context: { year?: unknown; renderVersion?: number; siteName?: unknown; fields?: Record<string, unknown> | null }): string {
+  const withYear = resolveBuildVariables(value, context.year ?? new Date().getUTCFullYear());
+  if ((context.renderVersion ?? 1) < AUTHORED_SITE_VARIABLES_VERSION || !withYear.includes('{{')) return withYear;
+  return withYear.replace(/\{\{\s*site\.(name|fields\.([a-z][a-z0-9_]{0,63}))\s*\}\}/g, (_, key: string, field?: string) => {
+    const raw = field ? context.fields?.[field] : context.siteName;
+    return typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean' ? escapeVariable(String(raw)) : '';
+  });
 }
 
 /**

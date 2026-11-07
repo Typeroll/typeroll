@@ -62,7 +62,11 @@ export interface ApiContext {
    *  log paths. Equal to the URL pathname; doesn't include the origin. */
   path: string;
   /** Present when the caller used a scoped Extension installation credential. */
-  extensionIdentity?: { installationId: string; extensionId?: string; scopes: ExtensionScope[] };
+  extensionIdentity?: {
+    installationId: string; extensionId?: string; scopes: ExtensionScope[];
+    /** The scope this request runs under (extensionScopeForApiRequest, or an alternative such as `site:handover`). */
+    scope?: ExtensionScope;
+  };
   /**
    * Design work below admin: a personal connection of a builder in the
    * owning organization (member-role.ts → siteDesignAccess). Admin permission
@@ -197,6 +201,30 @@ const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
   },
 ];
 
+/**
+ * Narrower scopes that may stand in for the route's own scope, each limited
+ * further by the route: `site:handover` reads the settings and writes only
+ * their `handover` key (pages/api/v1/sites/[siteId]/settings.ts).
+ */
+const EXTENSION_ALTERNATIVE_SCOPES: Array<{ path: RegExp; scope: (method: string) => ExtensionScope | null }> = [
+  { path: /^\/settings$/, scope: (m) => (m === 'GET' || m === 'HEAD' || m === 'PATCH' ? 'site:handover' : null) },
+];
+
+/** The scope an installation credential's request runs under: the route's own, else a held alternative; null when refused. */
+export function extensionGrantedScope(pathname: string, method: string, held: readonly ExtensionScope[]): ExtensionScope | null {
+  const own = extensionScopeForApiRequest(pathname, method);
+  if (own && held.includes(own)) return own;
+  const match = SITE_API_PATH.exec(pathname);
+  const rest = (match?.[1] ?? '').replace(/\/+$/, '');
+  if (!match || !rest) return null;
+  for (const alternative of EXTENSION_ALTERNATIVE_SCOPES) {
+    if (!alternative.path.test(rest)) continue;
+    const scope = alternative.scope(method);
+    if (scope && held.includes(scope)) return scope;
+  }
+  return null;
+}
+
 export function extensionScopeForApiRequest(pathname: string, method: string): ExtensionScope | null {
   const match = SITE_API_PATH.exec(pathname);
   if (!match) return null;
@@ -244,8 +272,8 @@ async function requireExtensionApiCredential(
   // name the site this request was routed to, or the two could disagree.
   let pathSiteId: string | null = null;
   try { pathSiteId = decodeURIComponent(pathname.split('/')[4] ?? ''); } catch { pathSiteId = null; }
-  const requiredScope = pathSiteId === urlSiteId ? extensionScopeForApiRequest(pathname, request.method) : null;
-  if (!requiredScope || !authenticated.scopes.includes(requiredScope)) {
+  const requiredScope = pathSiteId === urlSiteId ? extensionGrantedScope(pathname, request.method, authenticated.scopes) : null;
+  if (!requiredScope) {
     return { ok: false, response: json({ error: 'Extension credential lacks the required scope' }, 403) };
   }
   const site = await getStore().getDoc<Site>(paths.site(ownerOrgId, urlSiteId));
@@ -280,7 +308,7 @@ async function requireExtensionApiCredential(
       permission: extensionPermissionForScope(requiredScope),
       request,
       path: pathname,
-      extensionIdentity: { installationId, extensionId: authenticated.installation.extension_id, scopes: authenticated.scopes },
+      extensionIdentity: { installationId, extensionId: authenticated.installation.extension_id, scopes: authenticated.scopes, scope: requiredScope },
     },
   };
 }

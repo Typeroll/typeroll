@@ -554,6 +554,17 @@ const domainBlocksArchiving =
       </div>
     </div>
   </div>
+  {ctx.design && <div data-settings-section="access" hidden={section !== 'access'} style="max-width: 720px; margin-top: 1rem;">
+    <div class="card stack">
+      <h2 style="font-size: 1.125rem; margin: 0;">Handover</h2>
+      <p class="muted text-sm" style="margin: 0;">
+        Hand the site over to its editors: a checklist, the page they start on, and an optional lock on the structure.
+      </p>
+      <div>
+        <a href={`/app/sites/${siteId}/settings/handover`} class="btn">Manage handover →</a>
+      </div>
+    </div>
+  </div>}
 
   <div data-settings-section="advanced" hidden={section !== 'advanced'} style="max-width: 720px; margin-top: 1rem;">
     <div class="card stack">

@@ -13,6 +13,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { exportSitePackage, parseExportMeta, parseExportSelection } from '../../../../../../lib/packages/package-export';
 import { packageDownloadUrl, storePackageDownload } from '../../../../../../lib/packages/package-download';
 import { packageApiFailure } from '../../../../../../lib/packages/package-api';
+import { templatesDesignFindings } from '../../../../../../lib/design-token-audit';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -31,6 +32,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     return apiResponse(ctx, {
       download_url: packageDownloadUrl(request, ctx.siteId, stored.token), filename: result.filename, bytes: result.zip.byteLength,
       sha256: result.sha256, expires_at: stored.expires_at, warnings: result.warnings,
+      // Hard-coded colours and fonts in the exported block templates (non-blocking).
+      design_findings: await templatesDesignFindings(ctx, result.manifest.contents.block_templates ?? []),
     }, 200, body);
   } catch (error) { return packageApiFailure(error, ctx); }
 };

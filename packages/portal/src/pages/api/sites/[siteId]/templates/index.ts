@@ -8,7 +8,7 @@ const handle: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
   const { owner_org_id: orgId, site, versionId } = guard.value;
-  const ctx = { orgId, siteId: site.id, versionId };
+  const ctx = { orgId, siteId: site.id, versionId, canDesign: guard.value.design };
   if (request.method === 'GET') return json({ templates: await vstore.pageTemplates(orgId, site.id, versionId) });
   const permission = requirePermission(guard.value, 'write');
   if (!permission.ok) return permission.response;
@@ -25,7 +25,7 @@ const handle: APIRoute = async ({ request, cookies, params, locals }) => {
     if (typeof id !== 'string') throw new ContentTypeError('Template ID is required');
     return json(await savePageTemplate(ctx, id, body, create));
   } catch (error) {
-    if (error instanceof ContentTypeError) return json({ error: error.message }, error.status);
+    if (error instanceof ContentTypeError) return json({ error: error.message, ...(error.code ? { code: error.code } : {}) }, error.status);
     throw error;
   }
 };

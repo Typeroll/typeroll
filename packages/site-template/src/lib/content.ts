@@ -18,7 +18,7 @@ import type {
   SiteSettings,
   SiteVersion,
 } from '@typeroll/shared';
-import { defaultSiteSettings, resolveBuildVariables } from '@typeroll/shared';
+import { defaultSiteSettings, resolveAuthoredVariables } from '@typeroll/shared';
 import { getStore } from './datastore.js';
 
 // Frozen publication builds pass the year captured before media preparation.
@@ -587,7 +587,12 @@ export async function renderPartialHtml(
       }), directives?.iframeAllowedHosts);
     }
     if (expandedHtml) {
-      return sanitizeBody(resolveBuildVariables(expandedHtml, getBuildYear()), directives?.iframeAllowedHosts);
+      // Authored HTML: {{site.current_year}}, and from render version 15 {{site.name}} and {{site.fields.*}} (frozen values).
+      const { resolveRenderVersion } = await import('@typeroll/shared');
+      return sanitizeBody(resolveAuthoredVariables(expandedHtml, {
+        year: getBuildYear(), renderVersion: resolveRenderVersion((await getSiteSettings()).render_version),
+        siteName: context?.site?.name, fields: context?.site?.fields as Record<string, unknown> | undefined,
+      }), directives?.iframeAllowedHosts);
     }
     return null;
   };

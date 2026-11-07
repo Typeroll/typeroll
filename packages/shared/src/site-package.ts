@@ -89,10 +89,15 @@ export interface PackageFont {
   licence_note?: string;
 }
 
+/** The same template in another language: its name, description and blocks. */
+export interface PackageTranslation { name?: string; description?: string; blocks: Block[] }
+
 export interface PackageBlockTemplate {
   id: string;
   name: string;
   description?: string;
+  /** Other languages, keyed by language code (`sv`, `en-GB`); the import picks the site's. */
+  translations?: Record<string, PackageTranslation>;
   /** `section`: a full-width page section; `block`: any other block group. */
   kind?: 'block' | 'section';
   category?: string;
@@ -108,7 +113,25 @@ export interface PackageGlobalBlock {
   blocks: Block[];
 }
 
-export type PackagePageTemplate = Pick<PageTemplate, 'id' | 'name' | 'label' | 'icon' | 'applies_to' | 'blocks'>;
+export type PackagePageTemplate = Pick<PageTemplate, 'id' | 'name' | 'label' | 'icon' | 'applies_to' | 'blocks'> & {
+  translations?: Record<string, PackageTranslation & { label?: string }>;
+};
+
+/**
+ * The language variant of a template that suits a site: an exact language
+ * match, then the same base language (`sv` for `sv-FI`), else the template's
+ * own text.
+ */
+export function localizedTemplate<T extends { name: string; description?: string; blocks?: Block[]; translations?: Record<string, PackageTranslation & { label?: string }> }>(template: T, language: string | undefined): T & { language?: string } {
+  const translations = template.translations ?? {};
+  const wanted = String(language ?? '').toLowerCase();
+  const key = Object.keys(translations).find(code => code.toLowerCase() === wanted)
+    ?? Object.keys(translations).find(code => code.toLowerCase().split('-')[0] === wanted.split('-')[0]);
+  const { translations: _translations, ...rest } = template;
+  if (!key) return rest as T;
+  const chosen = translations[key];
+  return { ...rest, ...(chosen.name ? { name: chosen.name } : {}), ...(chosen.description ? { description: chosen.description } : {}), ...('label' in chosen && chosen.label ? { label: chosen.label } : {}), blocks: chosen.blocks, language: key } as T & { language?: string };
+}
 
 /** A site block type, as defined on its site (core and template types are never packaged). */
 export type PackageBlockType = Omit<BlockType, 'created_at' | 'updated_at'> & Record<string, unknown>;
@@ -296,8 +319,8 @@ export function rewriteBlockReferences(blocks: readonly Block[], maps: BlockRefe
 export function packageBlockTrees(pkg: Pick<SitePackage, 'contents'>): Array<{ where: string; blocks: Block[] }> {
   const c = pkg.contents;
   return [
-    ...(c.block_templates ?? []).map(t => ({ where: `block_templates.${t.id}`, blocks: t.blocks })),
-    ...(c.page_templates ?? []).map(t => ({ where: `page_templates.${t.id}`, blocks: t.blocks ?? [] })),
+    ...(c.block_templates ?? []).flatMap(t => [{ where: `block_templates.${t.id}`, blocks: t.blocks }, ...Object.entries(t.translations ?? {}).map(([code, tr]) => ({ where: `block_templates.${t.id}.translations.${code}`, blocks: tr.blocks }))]),
+    ...(c.page_templates ?? []).flatMap(t => [{ where: `page_templates.${t.id}`, blocks: t.blocks ?? [] }, ...Object.entries(t.translations ?? {}).map(([code, tr]) => ({ where: `page_templates.${t.id}.translations.${code}`, blocks: tr.blocks }))]),
     ...(c.global_blocks ?? []).map(g => ({ where: `global_blocks.${g.id}`, blocks: g.blocks })),
     ...(c.pages ?? []).map(p => ({ where: `pages.${p.id}`, blocks: p.blocks ?? [] })),
     ...(c.blocks ? [{ where: 'blocks', blocks: c.blocks }] : []),
@@ -557,7 +580,8 @@ export function planPackageImport(pkg: SitePackage, target: PackageImportTarget,
   const pageTemplates = (c.page_templates ?? []).filter(t => wanted('page_templates', t.id));
   const pages = pkg.kind === 'site' ? (c.pages ?? []).filter(p => wanted('pages', p.id)) : [];
   // Global blocks: those chosen plus those the chosen content places.
-  const chosenTrees = [...blockTemplates.map(t => t.blocks), ...pageTemplates.map(t => t.blocks ?? []), ...pages.map(p => p.blocks ?? []), ...(c.blocks ? [c.blocks] : [])];
+  const translated = (t: { translations?: Record<string, PackageTranslation> }) => Object.values(t.translations ?? {}).map(tr => tr.blocks);
+  const chosenTrees = [...blockTemplates.flatMap(t => [t.blocks, ...translated(t)]), ...pageTemplates.flatMap(t => [t.blocks ?? [], ...translated(t)]), ...pages.map(p => p.blocks ?? []), ...(c.blocks ? [c.blocks] : [])];
   const globalIds = new Set((c.global_blocks ?? []).filter(g => wanted('global_blocks', g.id)).map(g => g.id));
   for (const tree of chosenTrees) for (const id of collectGlobalRefs(tree)) globalIds.add(id);
   const globals = (c.global_blocks ?? []).filter(g => globalIds.has(g.id));
@@ -620,7 +644,14 @@ export function planPackageImport(pkg: SitePackage, target: PackageImportTarget,
     styles.push({ action: to === style.id ? 'create' : 'rename', from: style.id, to, name, style: { ...(roleTaken ? withoutRole : style), id: to, name } });
     if (to !== style.id) maps.styles.set(style.id, to);
   }
-  for (const id of usedStyles) if (!packageStyles.has(id) && !existingStyles.has(id)) warnings.push(`The content uses the style "${id}", which neither the package nor the site has; those blocks keep their default look.`);
+  // A style neither the package nor the site has: the site's standard style of the same role, if any.
+  for (const id of usedStyles) {
+    if (packageStyles.has(id) || existingStyles.has(id)) continue;
+    const role = id.replace(/-/g, '_');
+    const standard = existingRoles.get(role as never) ?? existingRoles.get(id as never);
+    if (standard) { maps.styles.set(id, standard.id); warnings.push(`The content uses the style "${id}", which the package does not include; it uses the site's ${standard.name} style instead.`); }
+    else warnings.push(`The content uses the style "${id}", which neither the package nor the site has; those blocks keep their default look.`);
+  }
 
   const plan = <T extends { id: string; name: string }>(list: T[], taken: readonly string[], map?: Map<string, string>) => {
     const used = new Set(taken);

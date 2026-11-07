@@ -49,6 +49,7 @@ export default defineConfig({
             { label: 'Self-hosting quickstart', slug: 'getting-started/self-hosting-quickstart' },
             { label: 'Teams and roles', slug: 'guides/teams-and-roles' },
             { label: 'Agencies and client sites', slug: 'guides/agencies' },
+            { label: 'Hand a site over', slug: 'guides/handover' },
             { label: 'Export and backup', slug: 'guides/export-and-backup' },
             { label: 'Archive a site', slug: 'guides/archive-a-site' },
           ],

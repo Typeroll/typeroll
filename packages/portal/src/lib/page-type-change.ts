@@ -3,7 +3,7 @@ import { pageAuthorityFields, paths, type Page } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { vstore, pageWriteSnapshot, contentTypeWriteSnapshot } from './version-store';
 import { pageAddress, pageContentType, validatePageFields, validatePagePresentation } from './page-fields';
-import { readWorkingCopy, WorkingCopyError, type WcCtx } from './working-copy';
+import { readWorkingCopy, refuseLockedStructure, WorkingCopyError, type WcCtx } from './working-copy';
 import { applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
 import { snapshotRevision } from './revisions';
 import { markSiteDirty } from './auto-deploy';
@@ -12,6 +12,7 @@ import { markSiteDirty } from './auto-deploy';
  * publication state and existing public path survive changing the field schema. */
 export async function changePageContentType(ctx: WcCtx, pageId: string, input: { content_type?: unknown; fields?: unknown }, actor: WriteActor, actorId: string): Promise<Page> {
   if (typeof input.content_type !== 'string' || !input.content_type) throw new WorkingCopyError('content_type is required', 400);
+  await refuseLockedStructure(ctx);
   const store = getStore();
   const documentPath = paths.page(ctx.orgId, ctx.siteId, pageId, ctx.versionId);
   const snapshot = await pageWriteSnapshot(ctx.orgId, ctx.siteId, ctx.versionId, pageId);

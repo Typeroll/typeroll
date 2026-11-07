@@ -217,6 +217,7 @@ const NOT_PUBLISHED = {
   agent_instructions: 'guidance for agents, read live through the API; never rendered',
   extension_public_config: 'resolved into each Extension installation\'s public config (extensions/version-config.ts), which the publication carries in its runtime snapshot',
   font_plan: 'computed from the frozen content when the publication is frozen (publishing/theme-font-freeze.ts), never projected from stored settings',
+  handover: 'the portal\'s checklist, start page and structure lock for the people who edit the site; never rendered',
 };
 const FULL_SETTINGS = {
   site_name: 'Site', tagline: 'Tagline', logo: '/logo.png', favicon: '/favicon.ico', apple_touch_icon: '/apple.png', icon_192: '/icon-192.png',

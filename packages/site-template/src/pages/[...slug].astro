@@ -1,5 +1,5 @@
 ---
-import { resolveBuildVariables } from '@typeroll/shared';
+import { resolveAuthoredVariables } from '@typeroll/shared';
 import { getBuildYear } from '../lib/content';
 import { navigationContext, recordClockOutput, trackedMediaLookup, trackedDerivedSource } from '../lib/publication-dependencies.mjs';
 import BaseLayout from '../layouts/BaseLayout.astro';
@@ -217,7 +217,8 @@ let formsRuntimeTag = '';
     bodyBlocks = effectiveBlocks;
     blocksBody = true;
   }
-if (bodyHtml) bodyHtml = resolveBuildVariables(bodyHtml, getBuildYear());
+// Authored text: {{site.current_year}}, and from render version 15 {{site.name}} and {{site.fields.*}} (the publication's frozen values).
+if (bodyHtml) bodyHtml = resolveAuthoredVariables(bodyHtml, { year: getBuildYear(), renderVersion, siteName: renderCtx.site?.name, fields: renderCtx.site?.fields as Record<string, unknown> | undefined });
 
 // Block assets for EVERYTHING on the page — the header and footer partials as
 // well as the body. Collected in one call so a block type used in both the

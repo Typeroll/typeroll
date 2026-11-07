@@ -69,7 +69,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       retired_redirects: result.retired_redirects,
     }, 200, body);
   } catch (e) {
-    if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
+    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);
     throw e;
   }
 };

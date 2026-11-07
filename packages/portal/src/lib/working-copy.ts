@@ -27,6 +27,7 @@ import { paths, type Media, type Page, type Partial as PartialDoc, type WorkingC
 import { getStore } from './datastore';
 import { vstore } from './version-store';
 import { snapshotRevision } from './revisions';
+import { assertStructureChange, structureLockApplies, StructureLockedError } from './structure-lock';
 import { sanitizeBody } from './sanitize';
 import { buildMediaLookup, transformBodyForSeo, lintBodyForSeo } from './seo-transform';
 import { PROVENANCE_KEY, applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
@@ -38,6 +39,47 @@ export interface WcCtx {
   orgId: string;
   siteId: string;
   versionId: string;
+  /**
+   * Whether the writer has design rights. False applies the structure lock
+   * of a handed-over site (lib/structure-lock.ts) to every draft write and
+   * commit; an API context's `permission`/`design` count the same way.
+   */
+  canDesign?: boolean;
+}
+
+type StructureBase = { blocks?: unknown; template?: unknown } | null | undefined;
+
+/**
+ * Refuse a draft or commit that changes a locked site's structure: a block
+ * tree with other blocks, order or types than the one it replaces, or another
+ * page template. Content changes pass.
+ */
+async function checkStructure(ctx: WcCtx, target: WcTarget, fields: Record<string, unknown>, base: StructureBase): Promise<void> {
+  const touchesTree = Object.hasOwn(fields, 'blocks');
+  const touchesTemplate = target.kind === 'page' && Object.hasOwn(fields, 'template');
+  if (!touchesTree && !touchesTemplate) return;
+  if (!(await structureLockApplies(ctx))) return;
+  try {
+    if (touchesTemplate && String(fields.template ?? '') !== String(base?.template ?? '')) await assertStructureChange(ctx);
+    if (touchesTree) await assertStructureChange(ctx, { before: (base?.blocks as Block[] | undefined) ?? [], after: (fields.blocks as Block[] | null | undefined) ?? [] });
+  } catch (error) {
+    if (error instanceof StructureLockedError) throw new WorkingCopyError(error.message, 403, error.code);
+    throw error;
+  }
+}
+
+/** Refuse an action that is structural by nature (creating a page, changing its type) for a locked writer. */
+export async function refuseLockedStructure(ctx: WcCtx): Promise<void> {
+  try { await assertStructureChange(ctx); } catch (error) {
+    if (error instanceof StructureLockedError) throw new WorkingCopyError(error.message, 403, error.code);
+    throw error;
+  }
+}
+
+async function savedStructureBase(ctx: WcCtx, target: WcTarget): Promise<StructureBase> {
+  return target.kind === 'page'
+    ? vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id)
+    : vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
 }
 
 export type WcTarget =
@@ -182,6 +224,10 @@ export async function mergeWorkingCopy(
     fields = { ...fields, html_content: await sanitizeSiteHtml(ctx, fields.html_content) };
   }
   const existing = await readWorkingCopy(ctx, target);
+  if (await structureLockApplies(ctx)) {
+    const saved = await savedStructureBase(ctx, target);
+    await checkStructure(ctx, target, fields, { ...(saved ?? {}), ...(existing?.fields ?? {}) });
+  }
   const page = target.kind === 'page' && fields.fields && !existing?.answer_base
     ? await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id) : null;
   const next: WorkingCopy = {
@@ -331,6 +377,7 @@ export async function commitWorkingCopy(
   if (target.kind === 'page') {
     const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
     if (!existing) throw new WorkingCopyError('Page not found', 404);
+    await checkStructure(ctx, target, wc.fields, existing);
     if (wc.answer_base && !isDeepStrictEqual(wc.answer_base, { fields: existing.fields ?? {}, provenance: existing._provenance ?? {} }))
       throw new WorkingCopyError('Structured answers changed after this draft started. Reload and review the current answers before saving.', 409);
     const update: Record<string, unknown> = { ...await filterWcFields(ctx, target, wc.fields), date_updated: now };
@@ -391,6 +438,7 @@ export async function commitWorkingCopy(
 
   if (target.kind === 'partial') {
     const existing = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
+    await checkStructure(ctx, target, wc.fields, existing);
     const update: Record<string, unknown> = { ...wc.fields, date_updated: now };
     if (typeof update.html_content === 'string') {
       const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
