@@ -167,6 +167,21 @@ Only edit full HTML when the existing footer is in HTML mode.
 itself. When no field exists, say so: a site admin adds fields under Site
 fields.
 
+## Live snippets
+
+### "Here is this week's lunch" / "Put up a notice"
+Content that changes often belongs in a live snippet, not in a page: a save
+reaches the live site within a minute, without publishing.
+1. \`read_snippet\` (no id) to find the snippet (for example \`lunch\`) and
+   its \`updated_at\`.
+2. \`update_snippet\` with the whole snippet: for the week's lunch
+   \`kind: "dated"\` with one entry per weekday (dated entries for exceptions)
+   and the \`expected_updated_at\` you read. Write the whole week at once.
+3. When no page shows it yet, place a \`core/snippet\` block
+   \`{ snippet: "lunch" }\` on the page; that edit needs a publication.
+If \`live.published\` is false, say that the change shows at the next
+publication and why.
+
 ### "Make a reusable newsletter signup I can drop into any page"
 Create a reusable partial with a native Form block and suitable layout blocks.
 Reference it instead of duplicating content. Existing HTML Pages may use

@@ -4,6 +4,8 @@
 import { describe, expect, it } from 'vitest';
 import { openingHoursField, validateSiteFieldGroups, validateSiteFieldValues, type SiteFieldGroup } from '@typeroll/shared';
 import {
+  breakProblem, hoursNote, setHoursNote,
+  addCalendarDays, addUpcomingException, duplicateExceptionDates, exceptionOrder, isPastDate, nextFreeExceptionDate, removePastExceptions,
   addException, addFieldTo, addGroup, addOpeningHours, canEditGroup, copyDay, definitionsPutBody, describeProblemPath, describeValue,
   exceptionRows, fieldAt, fieldNameProblem, fieldUsage, groupHasDefinitionErrors, mapDefinitionErrors, mapValueErrors, moveFieldAt,
   openingHoursRows, openingHoursValue, optionsFromText, optionsToText, parseErrorPath, problemsUnder, reindexKeys, removeException,
@@ -179,7 +181,7 @@ describe('opening hours rows', () => {
   it('always shows seven days, Monday first', () => {
     const rows = openingHoursRows({ days: [{ day: 'sunday', closed: true }, { day: 'monday', opens: '09:00', closes: '17:00' }] });
     expect(rows.map((row) => row.day)).toEqual(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']);
-    expect(rows[0]).toEqual({ day: 'monday', closed: false, opens: '09:00', closes: '17:00' });
+    expect(rows[0]).toEqual({ day: 'monday', closed: false, opens: '09:00', closes: '17:00', break_starts: '', break_ends: '', note: '' });
     expect(rows[6]!.closed).toBe(true);
     expect(openingHoursRows(undefined)).toHaveLength(7);
   });
@@ -206,5 +208,78 @@ describe('opening hours rows', () => {
     expect(timeProblem({ closed: false, opens: '9am', closes: '17:00' })).toMatch(/24-hour/);
     expect(timeProblem({ closed: false, opens: '17:00', closes: '09:00' })).toMatch(/before/);
     expect(timeProblem({ closed: false, opens: '09:00', closes: '17:00' })).toBeNull();
+  });
+});
+
+describe('dates with deviating hours', () => {
+  const hours = (dates: string[]) => ({ days: [], exceptions: dates.map((date) => ({ date, closed: true })) });
+
+  it('adds a closed day on the first free date after today', () => {
+    const next = addUpcomingException(hours(['2026-11-08', '2026-11-09']), '2026-11-07');
+    expect(next.exceptions!.at(-1)).toEqual({ date: '2026-11-10', closed: true });
+    expect(nextFreeExceptionDate(hours([]), '2026-12-31')).toBe('2026-12-31');
+    expect(addCalendarDays('2026-12-31', 1)).toBe('2027-01-01');
+  });
+
+  it('lists the exceptions in date order, rows without a date last', () => {
+    expect(exceptionOrder(hours(['2026-12-31', '', '2026-12-24', '2026-06-19']))).toEqual([3, 2, 0, 1]);
+  });
+
+  it('flags two exceptions on the same date', () => {
+    expect([...duplicateExceptionDates(hours(['2026-12-24', '2026-12-25', '2026-12-24', '']))]).toEqual(['2026-12-24']);
+  });
+
+  it('tells past dates and removes them', () => {
+    expect(isPastDate('2026-11-06', '2026-11-07')).toBe(true);
+    expect(isPastDate('2026-11-07', '2026-11-07')).toBe(false);
+    expect(isPastDate('', '2026-11-07')).toBe(false);
+    const kept = removePastExceptions(hours(['2026-11-01', '2026-11-07', '2026-12-24', '']), '2026-11-07');
+    expect(kept.exceptions!.map((row) => row.date)).toEqual(['2026-11-07', '2026-12-24', '']);
+  });
+});
+
+describe('breaks and comments in opening hours', () => {
+  const week = {
+    days: [{ day: 'monday', closed: false, opens: '09:00', closes: '17:00', break_starts: '12:00', break_ends: '13:00', note: 'Lunch closed 12–13' }],
+    exceptions: [{ date: '2026-12-24', closed: false, opens: '10:00', closes: '14:00', note: 'Christmas Eve' }],
+    note: 'Lunch closed 12–13 on weekdays',
+  };
+
+  it('reads and writes the break, the comments and the note under the hours', () => {
+    const monday = openingHoursRows(week)[0]!;
+    expect(monday).toMatchObject({ break_starts: '12:00', break_ends: '13:00', note: 'Lunch closed 12–13' });
+    expect(hoursNote(week)).toBe('Lunch closed 12–13 on weekdays');
+    const next = setDay(week, 'tuesday', { opens: '08:00' });
+    expect(next.note).toBe('Lunch closed 12–13 on weekdays');
+    expect(next.days![0]).toEqual(week.days[0]);
+    expect(setHoursNote(week, '  ').note).toBeUndefined();
+  });
+
+  it('drops the break of a closed day', () => {
+    const closed = setDay(week, 'monday', { closed: true });
+    expect(closed.days![0]).toEqual({ day: 'monday', closed: true, note: 'Lunch closed 12–13' });
+  });
+
+  it('copies Monday with its break and comment', () => {
+    const copied = copyDay(week, 'monday', ['tuesday', 'wednesday', 'thursday', 'friday']);
+    expect(copied.days![4]).toEqual({ ...week.days[0], day: 'friday' });
+    expect(copied.days![5]).toEqual({ day: 'saturday', closed: false });
+  });
+
+  it('gives a date exception a break', () => {
+    const next = updateException(week, 0, { break_starts: '12:00', break_ends: '12:30' });
+    expect(next.exceptions![0]).toEqual({ ...week.exceptions[0], break_starts: '12:00', break_ends: '12:30' });
+    expect(addException(week, '2026-12-31').exceptions![1]).toEqual({ date: '2026-12-31', closed: true });
+  });
+
+  it('checks that a break lies inside the opening hours', () => {
+    const row = { closed: false, opens: '09:00', closes: '17:00', break_starts: '', break_ends: '' };
+    expect(breakProblem(row)).toBeNull();
+    expect(breakProblem({ ...row, break_starts: '12:00', break_ends: '13:00' })).toBeNull();
+    expect(breakProblem({ ...row, break_starts: '12:00' })).toBe('Give the break both a start and an end');
+    expect(breakProblem({ ...row, break_starts: '13:00', break_ends: '12:00' })).toBe('The break ends before it starts');
+    expect(breakProblem({ ...row, break_starts: '08:00', break_ends: '09:30' })).toBe('The break must lie inside the opening hours (09:00–17:00)');
+    expect(breakProblem({ ...row, break_starts: '16:30', break_ends: '17:00' })).toBe('The break must lie inside the opening hours (09:00–17:00)');
+    expect(breakProblem({ ...row, closed: true, break_starts: '08:00' })).toBeNull();
   });
 });

@@ -96,7 +96,9 @@
               "page_handoff:read",
               "forms:actions",
               "site_fields:read",
-              "site_fields:write"
+              "site_fields:write",
+              "snippets:read",
+              "snippets:write"
             ]
           },
           "reason": {

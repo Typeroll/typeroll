@@ -57,7 +57,8 @@ export async function contentSnapshot(store: Store, orgId: string, siteId: strin
   const resolved = await resolvePublicationVersion(orgId, siteId, versionId);
   // The Turnstile secret stays on the server; forms get only the public site key below.
   const { form_turnstile: _turnstile, ...exportSite } = site;
-  put(paths.site(orgId, siteId), exportSite as Record<string, unknown>);
+  // The live base URL rides on the site doc, where the site-template reads it (site.live_base_url).
+  put(paths.site(orgId, siteId), { ...exportSite, ...(resolved.liveBaseUrl ? { live_base_url: resolved.liveBaseUrl } : {}) } as Record<string, unknown>);
 
   // Apps: ONLY the public projection of enabled apps (enabled flag + each
   // app's declared public config, e.g. the analytics beacon token). Secrets
@@ -106,6 +107,9 @@ export async function contentSnapshot(store: Store, orgId: string, siteId: strin
   if (resolved.siteFields && (resolved.siteFields.groups.length || Object.keys(resolved.siteFields.values ?? {}).length)) {
     put(paths.siteFields(orgId, siteId, versionId), resolved.siteFields as unknown as Record<string, unknown>);
   }
+
+  // Live snippets (not versioned), as of now; who wrote them stays behind.
+  for (const { updated_by: _writer, ...snippet } of resolved.snippets) put(paths.snippet(orgId, siteId, snippet.id), snippet as unknown as Record<string, unknown>);
 
   // Pages — only published and unlisted ones are public content.
   const typeIndex = new Map(resolved.contentTypes.map(type => [type.id, type]));

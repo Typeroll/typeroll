@@ -17,13 +17,36 @@ function input(overrides: Partial<ReadinessInput> = {}, settings: Partial<SiteSe
     siteId: 'site', now: new Date('2026-11-01T12:00:00Z'),
     settings: { ...defaultSiteSettings, site_name: 'Acme', logo: '/logo.png', favicon: '/favicon.png', default_og_image: 'https://cdn.example/share.png',
       organization: { name: 'Acme', same_as: ['https://github.com/acme'] }, scripts_head: '<meta name="google-site-verification" content="x">', ...settings },
-    pages, partials: overrides.partials ?? [nav(['/about/', '/contact/', '/privacy/'])], templates: [], contentTypes: [], blockTypes: [], menus: overrides.menus, siteFields: overrides.siteFields,
+    pages, partials: overrides.partials ?? [nav(['/about/', '/contact/', '/privacy/'])], templates: [], contentTypes: [], blockTypes: [], menus: overrides.menus, siteFields: overrides.siteFields, snippets: overrides.snippets, liveFiles: overrides.liveFiles,
     media: overrides.media ?? [], apps: 'apps' in overrides ? overrides.apps! : { apps: { analytics: { enabled: true, config: {} } } } as never,
     links: overrides.links ?? { links: ['/about/', '/contact/', '/privacy/'].map(path => ({ from: 'partial:header', path })) },
     zone: overrides.zone ?? { status: 'no_host' },
   };
 }
 const byId = (report: ReturnType<typeof buildSiteReadiness>) => Object.fromEntries(report.items.map(item => [item.id, item]));
+
+describe('live content readiness', () => {
+  const fields = { groups: [{ id: 'shop', label: 'Shop', fields: [{ name: 'delivery_days', type: 'number', label: 'Delivery days', live: true },
+    { name: 'opening_hours', type: 'object', label: 'Opening hours', presentation: 'opening_hours', fields: [{ name: 'note', type: 'text', label: 'Note' }] }] }], values: {} } as never;
+  const lunch = { id: 'lunch', name: 'Lunch', kind: 'dated', entries: [] } as never;
+
+  it('warns when snippets or live fields have nowhere to be served', () => {
+    const warned = byId(buildSiteReadiness(input({ snippets: [lunch], siteFields: fields, liveFiles: { base_url: null, reason: 'The site has no media host.' } })));
+    expect(warned.live_snippets).toMatchObject({ status: 'warning', details: ['Snippet: Lunch (lunch)', 'Live site field: delivery_days'] });
+    expect(warned.live_snippets.message).toContain('only when the site is published');
+    expect(warned.live_snippets.guide).toMatch(/#live-snippets$/);
+    expect(byId(buildSiteReadiness(input({ snippets: [lunch], liveFiles: { base_url: 'https://media.example.com/live' } }))).live_snippets.status).toBe('ok');
+    expect(byId(buildSiteReadiness(input())).live_snippets).toMatchObject({ status: 'ok', message: 'The site has no live snippets.' });
+  });
+
+  it('asks an older site without a time zone to choose one when it shows opening hours or dated snippets', () => {
+    const missing = byId(buildSiteReadiness(input({ snippets: [lunch], siteFields: fields }, { time_zone: undefined })));
+    expect(missing.time_zone).toMatchObject({ status: 'warning', details: ['Site field: Opening hours (opening_hours)', 'Dated snippet: Lunch (lunch)'] });
+    expect(missing.time_zone.fix).toBe('Choose the site\'s time zone in Settings, next to Language. It decides which day and hour it is at the business.');
+    expect(byId(buildSiteReadiness(input({ snippets: [lunch] }, { time_zone: 'Europe/Oslo' }))).time_zone.status).toBe('ok');
+    expect(byId(buildSiteReadiness(input({}, { time_zone: undefined }))).time_zone.status).toBe('ok');
+  });
+});
 
 describe('site launch readiness', () => {
   it('returns every item id once, in contract order, with guide links', () => {

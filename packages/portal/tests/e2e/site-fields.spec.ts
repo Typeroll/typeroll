@@ -44,9 +44,11 @@ test('define a settings page, fill it in and keep the values', async ({ page }) 
   await expect(panel.getByLabel('Friday closes')).toHaveValue('17:00');
   await panel.getByLabel('Sunday closed').check();
   await expect(panel.getByLabel('Sunday opens')).toBeDisabled();
-  await panel.getByRole('button', { name: 'Add exception' }).click();
-  await panel.getByLabel('Date of exception 1').fill('2026-12-24');
-  await panel.getByLabel('Note for 2026-12-24').fill('Christmas Eve');
+  // A date with deviating hours: the new row starts on a future date and takes focus.
+  await panel.getByRole('button', { name: 'Add date' }).click();
+  await expect(page.locator(':focus')).toHaveAttribute('type', 'date');
+  await page.locator(':focus').fill('2026-12-24');
+  await panel.getByLabel('Comment shown to visitors on 2026-12-24').fill('Christmas Eve');
   await expect(page.getByText('Unsaved changes in 1 page')).toBeVisible();
   await panel.getByRole('button', { name: `Save ${title}` }).click();
   await expect(page.getByText(`Saved “${title}”.`)).toBeVisible();
@@ -58,7 +60,7 @@ test('define a settings page, fill it in and keep the values', async ({ page }) 
   await expect(saved.getByLabel('Monday opens')).toHaveValue('09:00');
   await expect(saved.getByLabel('Thursday closes')).toHaveValue('17:00');
   await expect(saved.getByLabel('Sunday closed')).toBeChecked();
-  await expect(saved.getByLabel('Note for 2026-12-24')).toHaveValue('Christmas Eve');
+  await expect(saved.getByLabel('Comment shown to visitors on 2026-12-24')).toHaveValue('Christmas Eve');
 
   // Clean up: deleting the page deletes its values, which saving asks to confirm.
   await page.getByRole('button', { name: 'Define fields' }).click();

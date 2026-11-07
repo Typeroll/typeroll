@@ -8,24 +8,28 @@
 import { Fragment, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ArrowDown, ArrowUp, Check, ChevronDown, ChevronRight, Clock, Copy, Lock, Plus, Trash2 } from 'lucide-react';
 import {
-  MAIN_VERSION_ID, MAX_SITE_FIELD_GROUPS, MAX_SITE_FIELDS, WEEKDAYS, validateSiteFieldGroups, validateSiteFieldValues,
+  MAIN_VERSION_ID, MAX_SITE_FIELD_GROUPS, MAX_SITE_FIELDS, WEEKDAYS, localDate, siteTimeZone, validateSiteFieldGroups, validateSiteFieldValues,
   type FieldDefinition, type FieldType, type SiteFieldError, type SiteFieldGroup, type SiteFields, type Weekday,
 } from '@typeroll/shared';
 import FieldInput from './FieldInput';
 import HistoryPanel from './HistoryPanel';
+import TimeZoneNote from './TimeZoneNote';
 import { suggestFieldName } from '../lib/block-type-builder';
 import {
   SITE_FIELD_TYPE_LABELS, WEEKDAY_LABELS, MAX_EXCEPTIONS,
-  addException, addFieldTo, addGroup, addOpeningHours, canAddField, canAddGroup, canEditGroup, canMoveField, copyDay,
+  addFieldTo, addUpcomingException, breakProblem, hasBreak, hoursNote, setHoursNote, withoutBreak, duplicateExceptionDates, exceptionOrder, isPastDate, removePastExceptions, addGroup, addOpeningHours, canAddField, canAddGroup, canEditGroup, canMoveField, copyDay,
   countSiteFields, definitionKey, definitionsPutBody, describeProblemPath, describeValue, exceptionRows, fieldNameProblem,
   fieldUsage, groupHasDefinitionErrors, groupIdProblem, groupValues, isOpeningHours, mapDefinitionErrors, mapValueErrors,
   moveFieldAt, moveInList, openingHoursRows, optionsFromText, optionsToText, problemsUnder, reindexKeys, removeException,
   removeFieldAt, removeGroup, setDay, siteFieldNames, suggestGroupId, timeProblem, typeChange, typesAtDepth, updateException,
   updateFieldAt, updateGroup, valuesLostBySave, valuesPatchBody,
-  type DefinitionErrors, type FieldPath, type ValueProblem,
+  type DayRow, type DefinitionErrors, type ExceptionRow, type FieldPath, type ValueProblem,
 } from './site-fields-model';
 
 type Permission = 'read' | 'write' | 'admin';
+
+/** A top-level field marked live updates on the site without a publication. */
+export const isLiveField = (field: FieldDefinition): boolean => (field as FieldDefinition & { live?: boolean }).live === true;
 
 interface Props {
   siteId: string;
@@ -34,6 +38,10 @@ interface Props {
   permission: Permission;
   /** Server-loaded fields; without them the editor loads them itself. */
   initial?: SiteFields | null;
+  /** The site's time zone (`siteTimeZone(settings)`), which opening hours' "today" follows. */
+  timeZone?: string;
+  /** For tests: the moment "today" is read from (else the browser's clock after loading). */
+  now?: Date;
 }
 
 interface Problem { kind: 'stale' | 'error'; message: string }
@@ -47,7 +55,7 @@ function readFields(body: SaveResponse): SiteFields | null {
   return Array.isArray(source.groups) ? { groups: source.groups, values: source.values ?? {}, ...(source.updated_at ? { updated_at: source.updated_at } : {}) } : null;
 }
 
-export default function SiteFieldsEditor({ siteId, versionId, permission, initial }: Props) {
+export default function SiteFieldsEditor({ siteId, versionId, permission, initial, timeZone, now }: Props) {
   const isAdmin = permission === 'admin';
   const query = versionId && versionId !== MAIN_VERSION_ID ? `?version=${encodeURIComponent(versionId)}` : '';
   const endpoint = `/api/sites/${encodeURIComponent(siteId)}/site-fields${query}`;
@@ -69,6 +77,9 @@ export default function SiteFieldsEditor({ siteId, versionId, permission, initia
   const [confirmLoss, setConfirmLoss] = useState(false);
   const [open, setOpen] = useState<Set<string>>(new Set());
   const pendingFocus = useRef<string | null>(null);
+  // Today in the site's time zone, read in the browser so hydration matches.
+  const [today, setToday] = useState<string | null>(() => (now ? todayIn(timeZone, now) : null));
+  useEffect(() => { if (!now) setToday(todayIn(timeZone)); }, [now, timeZone]);
 
   useEffect(() => {
     if (initial) return;
@@ -157,7 +168,10 @@ export default function SiteFieldsEditor({ siteId, versionId, permission, initia
       setSaved(next);
       setDrafts((current) => { const copy = { ...current }; delete copy[group.id]; return copy; });
       setValueErrors((current) => { const copy = { ...current }; delete copy[group.id]; return copy; });
-      setNotice(`Saved “${group.label}”. Published pages show the change after the next publish.`);
+      const live = group.fields.filter(isLiveField).length;
+      setNotice(live === 0 ? `Saved “${group.label}”. Published pages show the change after the next publish.`
+        : live === group.fields.length ? `Saved “${group.label}”. Live fields show on the site within a minute.`
+        : `Saved “${group.label}”. Live fields show on the site within a minute; the others after the next publish.`);
     } catch (error) {
       setProblem({ kind: 'error', message: error instanceof Error ? error.message : 'Saving failed' });
     } finally {
@@ -389,7 +403,7 @@ export default function SiteFieldsEditor({ siteId, versionId, permission, initia
           </div>
           {group && (
             <GroupValues key={group.id} id={`${domId}-panel`} labelledBy={`${domId}-tab-${group.id}`} siteId={siteId} group={group}
-              draft={draftOf(group)} editable={canEditGroup(group, permission)} permission={permission} saving={saving}
+              draft={draftOf(group)} editable={canEditGroup(group, permission)} permission={permission} saving={saving} timeZone={timeZone} today={today}
               dirty={dirtyGroups.includes(group.id)} errors={valueErrors[group.id] ?? new Map()}
               onChange={(name, value) => changeValue(group, name, value)}
               onSave={() => saveGroup(group)}
@@ -416,8 +430,9 @@ function Header({ children }: { children?: React.ReactNode }) {
 
 // ─── Values ─────────────────────────────────────────────────────────────
 
-function GroupValues({ id, labelledBy, siteId, group, draft, editable, permission, saving, dirty, errors, onChange, onSave, onDiscard }: {
+function GroupValues({ id, labelledBy, siteId, group, draft, editable, permission, saving, timeZone, today, dirty, errors, onChange, onSave, onDiscard }: {
   id: string; labelledBy: string; siteId: string; group: SiteFieldGroup; draft: Record<string, unknown>; editable: boolean; permission: Permission;
+  timeZone?: string; today: string | null;
   saving: boolean; dirty: boolean; errors: Map<string, ValueProblem[]>;
   onChange: (name: string, value: unknown) => void; onSave: () => void; onDiscard: () => void;
 }) {
@@ -444,7 +459,7 @@ function GroupValues({ id, labelledBy, siteId, group, draft, editable, permissio
           return (
             <div key={field.name} className={`sf-field${problems.length ? ' sf-field--error' : ''}`}>
               {isOpeningHours(field)
-                ? <OpeningHoursInput field={field} value={value} disabled={!editable} problems={problems} onChange={(next) => onChange(field.name, next)} />
+                ? <OpeningHoursInput siteId={siteId} timeZone={timeZone} today={today} field={field} value={value} disabled={!editable} problems={problems} onChange={(next) => onChange(field.name, next)} />
                 : editable
                   ? <FieldInput siteId={siteId} field={field} value={value} onChange={(next) => onChange(field.name, next)} />
                   : <ReadOnlyValue field={field} value={value} />}
@@ -455,6 +470,7 @@ function GroupValues({ id, labelledBy, siteId, group, draft, editable, permissio
                   ))}
                 </ul>
               )}
+              {isLiveField(field) && <p className="sf-live-note"><span className="sf-live">Live</span> <span className="sf-muted">Site field blocks show a saved value within a minute, without publishing.</span></p>}
               <UsageHint field={field} />
             </div>
           );
@@ -479,7 +495,52 @@ function ReadOnlyValue({ field, value }: { field: FieldDefinition; value: unknow
   );
 }
 
-function OpeningHoursInput({ field, value, disabled, problems, onChange }: {
+/**
+ * A row's break (behind "Add break" until it has one) and, for weekdays, its
+ * comment shown to visitors. Date exceptions keep their comment in the row.
+ */
+function RowExtras({ rowKey, name, row, disabled, breakOpen, setBreakOpen, commentPlaceholder, onChange }: {
+  rowKey: string; name: string; row: DayRow | ExceptionRow; disabled: boolean;
+  breakOpen: Set<string>; setBreakOpen: React.Dispatch<React.SetStateAction<Set<string>>>;
+  /** Given for weekdays: shows the comment input. */
+  commentPlaceholder?: string;
+  onChange: (patch: Partial<DayRow & ExceptionRow>) => void;
+}) {
+  const base = useId().replace(/[^a-zA-Z0-9_-]/g, '');
+  const open = hasBreak(row) || breakOpen.has(rowKey);
+  const toggle = (on: boolean) => setBreakOpen((current) => { const next = new Set(current); if (on) next.add(rowKey); else next.delete(rowKey); return next; });
+  return (
+    <div className="sf-hours__extras">
+      {row.closed ? null : open ? (
+        <span className="sf-hours__break" role="group" aria-label={`Break on ${name}`}>
+          <label><span>Break from</span><input id={`${base}-from`} type="time" value={row.break_starts} aria-label={`${name} break from`}
+            onChange={(event) => onChange({ break_starts: event.target.value })} /></label>
+          <label><span>until</span><input type="time" value={row.break_ends} aria-label={`${name} break until`}
+            onChange={(event) => onChange({ break_ends: event.target.value })} /></label>
+          {!disabled && <button type="button" className="btn btn--ghost btn--sm" onClick={() => { toggle(false); onChange({ ...withoutBreak }); }}>Remove break</button>}
+        </span>
+      ) : !disabled && (
+        <button type="button" className="btn btn--ghost btn--sm" aria-label={`Add break on ${name}`}
+          onClick={() => { toggle(true); window.setTimeout(() => document.getElementById(`${base}-from`)?.focus(), 0); }}>
+          <Plus size={14} aria-hidden="true" /> Add break
+        </button>
+      )}
+      {commentPlaceholder !== undefined && (
+        <label className="sf-hours__comment"><span>Comment</span><input value={row.note} maxLength={200} placeholder={commentPlaceholder}
+          aria-label={`Comment for ${name}`} onChange={(event) => onChange({ note: event.target.value })} /></label>
+      )}
+    </div>
+  );
+}
+
+const EXCEPTION_DAY = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+const exceptionDayLabel = (date: string) => { const [y, m, d] = date.split('-').map(Number); return EXCEPTION_DAY.format(new Date(Date.UTC(y!, m! - 1, d!, 12))); };
+const todayIn = (timeZone: string | undefined, at = new Date()) => {
+  try { return localDate(at, timeZone ?? siteTimeZone(undefined)).date; } catch { return localDate(at).date; }
+};
+
+function OpeningHoursInput({ siteId, timeZone, today, field, value, disabled, problems, onChange }: {
+  siteId: string; timeZone?: string; today: string | null;
   field: FieldDefinition; value: unknown; disabled: boolean; problems: ValueProblem[]; onChange: (value: unknown) => void;
 }) {
   const base = useId().replace(/[^a-zA-Z0-9_-]/g, '');
@@ -488,18 +549,29 @@ function OpeningHoursInput({ field, value, disabled, problems, onChange }: {
   const own = problems.filter((problem) => !problem.path);
   const rowProblems = (prefix: string) => problemsUnder(problems, prefix).map((problem) => problem.message);
   const weekdays = WEEKDAYS.slice(0, 5) as readonly Weekday[];
+  const order = exceptionOrder(value);
+  const duplicates = duplicateExceptionDates(value);
+  const pastCount = today ? exceptions.filter((row) => isPastDate(row.date, today)).length : 0;
+  const focusNew = useRef<string | null>(null);
+  const [breakOpen, setBreakOpen] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!focusNew.current) return;
+    document.getElementById(focusNew.current)?.focus();
+    focusNew.current = null;
+  });
   return (
     <fieldset className="sf-hours" disabled={disabled}>
       <legend className="sf-label"><Clock size={14} aria-hidden="true" /> {field.label}{field.required && <span aria-hidden="true"> *</span>}</legend>
       {field.help && <p className="sf-muted sf-small">{field.help}</p>}
       {own.length > 0 && <ul className="sf-errors" role="alert">{own.map((problem) => <li key={problem.message}>{problem.message}</li>)}</ul>}
+      <TimeZoneNote siteId={siteId} zone={timeZone ?? siteTimeZone(undefined)} className="sf-muted" />
       <table className="sf-hours__week">
         <caption className="sf-sr">Weekly hours</caption>
         <thead><tr><th scope="col">Day</th><th scope="col">Closed</th><th scope="col">Opens</th><th scope="col">Closes</th></tr></thead>
         <tbody>
           {days.map((row, index) => {
             const label = WEEKDAY_LABELS[row.day];
-            const messages = [...rowProblems(`days[${index}]`), ...(timeProblem(row) ? [timeProblem(row)!] : [])];
+            const messages = [...rowProblems(`days[${index}]`), ...(timeProblem(row) ? [timeProblem(row)!] : []), ...(breakProblem(row) ? [breakProblem(row)!] : [])];
             return (
               <Fragment key={row.day}>
               <tr className={messages.length ? 'is-error' : ''}>
@@ -511,6 +583,10 @@ function OpeningHoursInput({ field, value, disabled, problems, onChange }: {
                 <td data-label="Closes"><input type="time" aria-label={`${label} closes`} value={row.closes} disabled={row.closed}
                   onChange={(event) => onChange(setDay(value, row.day, { closes: event.target.value }))} /></td>
               </tr>
+              <tr className="sf-hours__extra-row"><td colSpan={4} className="sf-hours__extra">
+                <RowExtras rowKey={row.day} name={label} row={row} disabled={disabled} breakOpen={breakOpen} setBreakOpen={setBreakOpen}
+                  commentPlaceholder="Lunch closed 12–13" onChange={(patch) => onChange(setDay(value, row.day, patch))} />
+              </td></tr>
               {messages.length > 0 && <tr className="sf-hours__note-row"><td className="sf-hours__note" colSpan={4} role="alert">{label}: {messages.join(' · ')}</td></tr>}
               </Fragment>
             );
@@ -522,36 +598,71 @@ function OpeningHoursInput({ field, value, disabled, problems, onChange }: {
           <button type="button" className="btn btn--secondary btn--sm" onClick={() => onChange(copyDay(value, 'monday', weekdays.slice(1)))}>Copy Monday to Tuesday–Friday</button>
         </p>
       )}
-      <p className="sf-muted sf-small">A day without both times shows as closed.</p>
+      <p className="sf-muted sf-small">A day without both times shows as closed. A break is a closed period inside the day, such as lunch.</p>
+      <div className="sf-input">
+        <label htmlFor={`${base}-note`}>Comment under the hours</label>
+        <textarea id={`${base}-note`} rows={2} maxLength={500} value={hoursNote(value)} placeholder="Lunch closed 12–13 on weekdays"
+          onChange={(event) => onChange(setHoursNote(value, event.target.value))} />
+        <small className="sf-muted">Shown to visitors under the opening hours.</small>
+      </div>
 
-      <h3 className="sf-label" id={`${base}-exceptions`}>Exceptions</h3>
-      <p className="sf-muted sf-small">Holidays and other dates with different hours. An exception wins over the weekday.</p>
-      {exceptions.length === 0 && <p className="sf-muted sf-small">No exceptions.</p>}
+      <h3 className="sf-label" id={`${base}-exceptions`}>Deviating hours on a date</h3>
+      <p className="sf-muted sf-small">
+        Holidays and other single dates with different hours, entered in advance. A date wins over its weekday.
+        The comment is shown in bold under the weekday name when that date is in the week shown.
+      </p>
+      {exceptions.length === 0 && <p className="sf-muted sf-small">No dates with deviating hours.</p>}
       <ol className="sf-hours__exceptions" aria-labelledby={`${base}-exceptions`}>
-        {exceptions.map((row, index) => {
-          const name = row.date || `exception ${index + 1}`;
-          const messages = [...rowProblems(`exceptions[${index}]`), ...(timeProblem(row) ? [timeProblem(row)!] : [])];
+        {order.map((index, position) => {
+          const row = exceptions[index]!;
+          const name = row.date || `new date ${position + 1}`;
+          const past = today ? isPastDate(row.date, today) : false;
+          const twice = !!row.date && duplicates.has(row.date);
+          const messages = [
+            ...rowProblems(`exceptions[${index}]`),
+            ...(timeProblem(row) ? [timeProblem(row)!] : []),
+            ...(breakProblem(row) ? [breakProblem(row)!] : []),
+            ...(twice ? [`Two exceptions on ${row.date}: keep one`] : []),
+            ...(!row.date ? ['Pick a date'] : []),
+          ];
+          const id = `${base}-ex-${index}`;
           return (
-            <li key={index} className={messages.length ? 'is-error' : ''}>
-              <label><span>Date</span><input type="date" required value={row.date} aria-label={`Date of ${name}`}
+            <li key={index} className={`${messages.length ? 'is-error' : ''}${past ? ' is-past' : ''}`.trim() || undefined}>
+              <label><span>Date{past ? ' (past)' : ''}</span><input id={`${id}-date`} type="date" required value={row.date} aria-label={`Date of ${name}`}
+                aria-invalid={twice || !row.date || undefined}
                 onChange={(event) => onChange(updateException(value, index, { date: event.target.value }))} /></label>
+              {row.date && <span className="sf-hours__weekday">{exceptionDayLabel(row.date)}</span>}
               <label className="sf-check"><input type="checkbox" checked={row.closed} aria-label={`Closed on ${name}`}
                 onChange={(event) => onChange(updateException(value, index, { closed: event.target.checked }))} /> Closed</label>
               <label><span>Opens</span><input type="time" value={row.opens} disabled={row.closed} aria-label={`Opens on ${name}`}
                 onChange={(event) => onChange(updateException(value, index, { opens: event.target.value }))} /></label>
               <label><span>Closes</span><input type="time" value={row.closes} disabled={row.closed} aria-label={`Closes on ${name}`}
                 onChange={(event) => onChange(updateException(value, index, { closes: event.target.value }))} /></label>
-              <label className="sf-hours__note-input"><span>Note</span><input value={row.note} maxLength={200} placeholder="Christmas Eve" aria-label={`Note for ${name}`}
+              <label className="sf-hours__note-input"><span>Comment shown to visitors</span><input value={row.note} maxLength={200} placeholder="Christmas Eve"
+                aria-label={`Comment shown to visitors on ${name}`}
                 onChange={(event) => onChange(updateException(value, index, { note: event.target.value }))} /></label>
               {!disabled && <button type="button" className="sf-iconbtn" aria-label={`Remove ${name}`} title="Remove" onClick={() => onChange(removeException(value, index))}><Trash2 size={15} aria-hidden="true" /></button>}
+              <div className="sf-hours__exception-break">
+                <RowExtras rowKey={`ex-${index}`} name={name} row={row} disabled={disabled} breakOpen={breakOpen} setBreakOpen={setBreakOpen}
+                  onChange={(patch) => onChange(updateException(value, index, patch))} />
+              </div>
               {messages.length > 0 && <p className="sf-error sf-small" role="alert">{messages.join(' · ')}</p>}
             </li>
           );
         })}
       </ol>
       {!disabled && (
-        <button type="button" className="btn btn--secondary btn--sm" disabled={exceptions.length >= MAX_EXCEPTIONS}
-          onClick={() => onChange(addException(value))}><Plus size={14} aria-hidden="true" /> Add exception</button>
+        <p className="sf-row">
+          <button type="button" className="btn btn--secondary btn--sm" disabled={exceptions.length >= MAX_EXCEPTIONS}
+            onClick={() => { onChange(addUpcomingException(value, today ?? todayIn(timeZone))); focusNew.current = `${base}-ex-${exceptions.length}-date`; }}>
+            <Plus size={14} aria-hidden="true" /> Add date
+          </button>
+          {pastCount > 0 && (
+            <button type="button" className="btn btn--ghost btn--sm" onClick={() => onChange(removePastExceptions(value, today!))}>
+              Remove past dates ({pastCount})
+            </button>
+          )}
+        </p>
       )}
     </fieldset>
   );
@@ -774,7 +885,7 @@ function FieldCard(props: DefinitionContext & {
     pendingFocus.current = `${domId}-${childKey}-label`;
   }
 
-  const meta = `${field.name} · ${hours ? 'Opening hours' : SITE_FIELD_TYPE_LABELS[field.type] ?? field.type}${field.required ? ' · required' : ''}`;
+  const meta = `${field.name} · ${hours ? 'Opening hours' : SITE_FIELD_TYPE_LABELS[field.type] ?? field.type}${field.required ? ' · required' : ''}${topLevel && isLiveField(field) ? ' · live' : ''}`;
   return (
     <li className={`sf-defcard${problems.length ? ' sf-defcard--error' : ''}`}>
       <div className="sf-defcard__head">
@@ -826,6 +937,13 @@ function FieldCard(props: DefinitionContext & {
             <input id={id} value={field.help ?? ''} maxLength={300} placeholder="Shown with the field" onChange={(event) => set({ help: event.target.value })} />
           </>}</Labeled>
           <label className="sf-check"><input type="checkbox" checked={!!field.required} onChange={(event) => set({ required: event.target.checked || undefined })} /> Required</label>
+          {topLevel && (
+            <div className="sf-input">
+              <label className="sf-check"><input type="checkbox" checked={isLiveField(field)} aria-describedby={`${controlId}-live-help`}
+                onChange={(event) => set({ live: event.target.checked || undefined } as Partial<FieldDefinition>)} /> Live (updates without publishing)</label>
+              <small id={`${controlId}-live-help`} className="sf-muted">A saved value reaches <strong>Site field</strong> blocks on the site within a minute, without publishing. Use it for values that change often, such as the current delivery time. Placeholders and conditions still follow the publication.</small>
+            </div>
+          )}
           {['text', 'textarea', 'url', 'email', 'number'].includes(field.type) && (
             <Labeled label="Placeholder (optional)">{(id) => <>
               <input id={id} value={field.placeholder ?? ''} maxLength={120} onChange={(event) => set({ placeholder: event.target.value })} />
@@ -923,6 +1041,8 @@ const SITE_FIELDS_CSS = `
 .sf-fields { display: grid; gap: .5rem; }
 .sf-field { display: grid; gap: .35rem; padding: .75rem; border: 1px solid #2a2a30; border-radius: 8px; min-width: 0; }
 .sf-field--error { border-color: #ef4444; }
+.sf-live { display: inline-block; font-size: .72rem; font-weight: 600; padding: 0 8px; border-radius: 999px; border: 1px solid #166534; background: #052e16; color: #bbf7d0; }
+.sf-live-note { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; margin: 0; font-size: .78rem; }
 .sf-usage { display: flex; flex-wrap: wrap; align-items: center; gap: .25rem .5rem; font-size: .78rem; }
 .sf-tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #3a3a42; }
 .sf-tabs button { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: .45rem .75rem; background: none; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; color: #c4c4cc; font-weight: 500; cursor: pointer; }
@@ -955,6 +1075,17 @@ const SITE_FIELDS_CSS = `
 .sf-hours__exceptions { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; }
 .sf-hours__exceptions li { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem .75rem; padding: .6rem; border: 1px solid #2a2a30; border-radius: 8px; }
 .sf-hours__exceptions li.is-error { border-color: #ef4444; }
+.sf-hours__exceptions li.is-past { opacity: .62; border-style: dashed; }
+.sf-hours__exceptions li.is-past:focus-within { opacity: 1; }
+.sf-hours__week .sf-hours__extra-row td { padding-top: 0; }
+.sf-hours__extras { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .35rem .75rem; padding-bottom: .4rem; border-bottom: 1px solid #2a2a30; }
+.sf-hours__break { display: inline-flex; flex-wrap: wrap; align-items: flex-end; gap: .35rem .5rem; }
+.sf-hours__break label, .sf-hours__comment { display: grid; gap: 2px; font-size: .78rem; color: #c4c4cc; }
+.sf-hours__break input[type="time"] { width: 8rem; }
+.sf-hours__comment { flex: 1 1 14rem; min-width: 0; }
+.sf-hours__exception-break { flex-basis: 100%; }
+.sf-hours__exception-break .sf-hours__extras { border-bottom: 0; padding-bottom: 0; }
+.sf-hours__weekday { align-self: center; font-size: .82rem; color: #e4e4e7; min-width: 9rem; }
 .sf-hours__exceptions label:not(.sf-check) { display: grid; gap: 2px; font-size: .78rem; color: #c4c4cc; }
 .sf-hours__exceptions input[type="time"] { width: 8rem; }
 .sf-hours__note-input { flex: 1 1 10rem; }
@@ -986,7 +1117,11 @@ const SITE_FIELDS_CSS = `
   .sf-hours__week thead { display: none; }
   .sf-hours__week, .sf-hours__week tbody { display: block; width: 100%; }
   .sf-hours__week tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem .5rem; padding: .5rem 0; border-top: 1px solid #2a2a30; }
-  .sf-hours__week tr.sf-hours__note-row { border-top: 0; padding-top: 0; }
+  .sf-hours__week tr.sf-hours__note-row, .sf-hours__week tr.sf-hours__extra-row { border-top: 0; padding-top: 0; }
+  .sf-hours__week td.sf-hours__extra { grid-column: 1 / -1; }
+  .sf-hours__break { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .sf-hours__break input[type="time"] { width: 100%; min-height: 40px; }
+  .sf-hours__break .btn { grid-column: 1 / -1; justify-self: start; }
   .sf-hours__week th, .sf-hours__week td { padding: 0; min-width: 0; }
   .sf-hours__week tbody th, .sf-hours__week td[data-label="Closed"], .sf-hours__note { grid-column: 1 / -1; }
   .sf-hours__week td[data-label="Closed"] { display: flex; align-items: center; gap: .5rem; font-size: .8rem; color: #c4c4cc; }

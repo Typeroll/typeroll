@@ -9,7 +9,7 @@
 // A new seed step belongs here, not duplicated in a route.
 
 import { randomBytes } from 'node:crypto';
-import { defaultSiteSettings, getPartialCompositionStarter, LATEST_RENDER_VERSION, newSiteStyles, paths, slugify } from '@typeroll/shared';
+import { defaultSiteSettings, getPartialCompositionStarter, LATEST_RENDER_VERSION, newSiteStyles, paths, siteTimeZone, slugify } from '@typeroll/shared';
 import type { Menu, Site } from '@typeroll/shared';
 import { getStore, generateDocId } from './datastore';
 import { randomMediaId } from './media-keys';
@@ -113,6 +113,8 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
     site_name: name,
     // The settings language drives <html lang>; the site document keeps it too.
     ...(input.language ? { language: input.language } : {}),
+    // Always set: the usual zone for the language, changed in Settings when the business is elsewhere.
+    time_zone: siteTimeZone({ language: input.language ?? defaultSiteSettings.language }),
   });
 
   // Default home page in HTML mode. Published, so the first publication of a

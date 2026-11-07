@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import { SEO_VALIDATOR_VERSION } from './publication-validation.mjs';
-export const RENDER_CACHE_FORMAT = 9;
+export const RENDER_CACHE_FORMAT = 10;
 export const MAX_RENDER_CACHE_BYTES = 32 * 1024 * 1024;
 export const digest = value => createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest('hex');
 
@@ -29,9 +29,10 @@ export function createRenderPlan(publication, manifest, runtime = process.versio
     const mediaOrigin = `https://${publication.media_manifest.media_host}`;
     if (!origins.includes(mediaOrigin)) origins.push(mediaOrigin);
   }
-  // Site field values are tracked per route (a site_fields receipt), so they
-  // are not a global; a rebase still needs them unchanged.
-  const proof = { globals, pages, media: publication.media ?? [], derived: publication.derived ?? {}, siteFields: publication.siteFields ?? null };
+  // Site field values and live snippets are tracked per route (site_fields and
+  // snippet receipts), so they are not globals; a rebase still needs them unchanged.
+  // The live base URL travels in `site`, a global.
+  const proof = { globals, pages, media: publication.media ?? [], derived: publication.derived ?? {}, siteFields: publication.siteFields ?? null, snippets: publication.snippets ?? null };
   // The proof covers ALL render inputs, not just the current Page. Rebase is
   // allowed only for an origin substitution with no content or policy change.
   const normalized = normalizeOrigins(proof, origins);

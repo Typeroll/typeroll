@@ -413,63 +413,129 @@ export function fieldUsage(field: FieldDefinition): { placeholder: string; condi
 
 // ─── Opening hours ──────────────────────────────────────────────────────
 
-export interface DayRow { day: Weekday; closed: boolean; opens: string; closes: string }
-export interface ExceptionRow { date: string; closed: boolean; opens: string; closes: string; note: string }
+/** A closed period inside the day, such as lunch, and a comment shown to visitors. */
+interface RowExtras { break_starts: string; break_ends: string; note: string }
+export interface DayRow extends RowExtras { day: Weekday; closed: boolean; opens: string; closes: string }
+export interface ExceptionRow extends RowExtras { date: string; closed: boolean; opens: string; closes: string }
+
+const hoursOf = (value: unknown) => (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as OpeningHours;
+const extrasOf = (entry: { break_starts?: string; break_ends?: string; note?: string } | undefined): RowExtras => ({
+  break_starts: entry?.break_starts ?? '', break_ends: entry?.break_ends ?? '', note: entry?.note ?? '',
+});
 
 /** Seven rows, Monday first, whatever the stored value holds. */
 export function openingHoursRows(value: unknown): DayRow[] {
-  const hours = (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as OpeningHours;
+  const hours = hoursOf(value);
   return WEEKDAYS.map((day) => {
     const stored = hours.days?.find((entry) => entry?.day === day);
-    return { day, closed: stored?.closed === true, opens: stored?.opens ?? '', closes: stored?.closes ?? '' };
+    return { day, closed: stored?.closed === true, opens: stored?.opens ?? '', closes: stored?.closes ?? '', ...extrasOf(stored) };
   });
 }
 
 export function exceptionRows(value: unknown): ExceptionRow[] {
-  const hours = (value && typeof value === 'object' && !Array.isArray(value) ? value : {}) as OpeningHours;
-  return (hours.exceptions ?? []).map((entry) => ({
-    date: entry?.date ?? '', closed: entry?.closed === true, opens: entry?.opens ?? '', closes: entry?.closes ?? '', note: entry?.note ?? '',
+  return (hoursOf(value).exceptions ?? []).map((entry) => ({
+    date: entry?.date ?? '', closed: entry?.closed === true, opens: entry?.opens ?? '', closes: entry?.closes ?? '', ...extrasOf(entry),
   }));
 }
 
-/** The stored value for rows: closed days keep no times, empty strings are left out. */
-export function openingHoursValue(days: DayRow[], exceptions: ExceptionRow[]): OpeningHours {
-  const times = (row: { closed: boolean; opens: string; closes: string }) => (row.closed ? {} : {
-    ...(row.opens.trim() ? { opens: row.opens.trim() } : {}), ...(row.closes.trim() ? { closes: row.closes.trim() } : {}),
+/** The comment shown under the whole opening hours. */
+export const hoursNote = (value: unknown): string => hoursOf(value).note ?? '';
+
+/**
+ * The stored value for rows: closed days keep no times or break, empty
+ * strings are left out, the comments are kept trimmed.
+ */
+export function openingHoursValue(days: DayRow[], exceptions: ExceptionRow[], note = ''): OpeningHours {
+  const trimmed = (key: string, text: string) => (text.trim() ? { [key]: text.trim() } : {});
+  const times = (row: DayRow | ExceptionRow) => (row.closed ? {} : {
+    ...trimmed('opens', row.opens), ...trimmed('closes', row.closes),
+    ...trimmed('break_starts', row.break_starts), ...trimmed('break_ends', row.break_ends),
   });
   return {
-    days: days.map((row) => ({ day: row.day, closed: row.closed, ...times(row) })),
-    exceptions: exceptions.map((row) => ({
-      date: row.date, closed: row.closed, ...times(row), ...(row.note.trim() ? { note: row.note.trim() } : {}),
-    })),
+    days: days.map((row) => ({ day: row.day, closed: row.closed, ...times(row), ...trimmed('note', row.note) })),
+    exceptions: exceptions.map((row) => ({ date: row.date, closed: row.closed, ...times(row), ...trimmed('note', row.note) })),
+    ...trimmed('note', note),
   };
 }
 
-export function setDay(value: unknown, day: Weekday, patch: Partial<Omit<DayRow, 'day'>>): OpeningHours {
-  return openingHoursValue(openingHoursRows(value).map((row) => (row.day === day ? { ...row, ...patch } : row)), exceptionRows(value));
+/** Rows written back with the value's own comment under the hours. */
+const rebuild = (value: unknown, days: DayRow[], exceptions: ExceptionRow[]): OpeningHours => openingHoursValue(days, exceptions, hoursNote(value));
+
+export function setHoursNote(value: unknown, note: string): OpeningHours {
+  return openingHoursValue(openingHoursRows(value), exceptionRows(value), note);
 }
 
-/** Give `targets` the hours of `from` (e.g. Monday to every weekday). */
+/** Remove a row's break (the "Add break" control collapses again). */
+export const withoutBreak = { break_starts: '', break_ends: '' } as const;
+
+/** Whether a row shows its break inputs: it has a break or one was asked for. */
+export const hasBreak = (row: { break_starts: string; break_ends: string }): boolean => !!(row.break_starts || row.break_ends);
+
+export function setDay(value: unknown, day: Weekday, patch: Partial<Omit<DayRow, 'day'>>): OpeningHours {
+  return rebuild(value, openingHoursRows(value).map((row) => (row.day === day ? { ...row, ...patch } : row)), exceptionRows(value));
+}
+
+/** Give `targets` the hours of `from`, with its break and comment (e.g. Monday to every weekday). */
 export function copyDay(value: unknown, from: Weekday, targets: readonly Weekday[]): OpeningHours {
   const rows = openingHoursRows(value);
   const source = rows.find((row) => row.day === from)!;
-  return openingHoursValue(rows.map((row) => (targets.includes(row.day) ? { ...source, day: row.day } : row)), exceptionRows(value));
+  return rebuild(value, rows.map((row) => (targets.includes(row.day) ? { ...source, day: row.day } : row)), exceptionRows(value));
 }
 
 export const MAX_EXCEPTIONS = 60;
 
 export function addException(value: unknown, date = ''): OpeningHours {
   const exceptions = exceptionRows(value);
-  if (exceptions.length >= MAX_EXCEPTIONS) return openingHoursValue(openingHoursRows(value), exceptions);
-  return openingHoursValue(openingHoursRows(value), [...exceptions, { date, closed: true, opens: '', closes: '', note: '' }]);
+  if (exceptions.length >= MAX_EXCEPTIONS) return rebuild(value, openingHoursRows(value), exceptions);
+  return rebuild(value, openingHoursRows(value), [...exceptions, { date, closed: true, opens: '', closes: '', break_starts: '', break_ends: '', note: '' }]);
+}
+
+/** A calendar date `n` days later (YYYY-MM-DD, time-zone free). */
+export function addCalendarDays(date: string, n: number): string {
+  const [y, m, d] = date.split('-').map(Number);
+  return new Date(Date.UTC(y!, m! - 1, d! + n)).toISOString().slice(0, 10);
+}
+
+/** The first date from `from` on that has no exception yet. */
+export function nextFreeExceptionDate(value: unknown, from: string): string {
+  const taken = new Set(exceptionRows(value).map((row) => row.date));
+  let date = from;
+  for (let i = 0; i < 400 && taken.has(date); i++) date = addCalendarDays(date, 1);
+  return date;
+}
+
+/** A closed day on the first free date after `today`: exceptions are entered in advance. */
+export function addUpcomingException(value: unknown, today: string): OpeningHours {
+  return addException(value, nextFreeExceptionDate(value, addCalendarDays(today, 1)));
+}
+
+/** The exceptions' indexes in date order; rows without a date last, as added. */
+export function exceptionOrder(value: unknown): number[] {
+  const rows = exceptionRows(value);
+  return rows.map((row, index) => ({ row, index }))
+    .sort((a, b) => (a.row.date && b.row.date ? a.row.date.localeCompare(b.row.date) : a.row.date ? -1 : b.row.date ? 1 : 0) || a.index - b.index)
+    .map(({ index }) => index);
+}
+
+/** Dates that two or more exceptions use. */
+export function duplicateExceptionDates(value: unknown): Set<string> {
+  const seen = new Set<string>(), twice = new Set<string>();
+  for (const { date } of exceptionRows(value)) if (date) (seen.has(date) ? twice : seen).add(date);
+  return twice;
+}
+
+export const isPastDate = (date: string, today: string): boolean => !!date && date < today;
+
+export function removePastExceptions(value: unknown, today: string): OpeningHours {
+  return rebuild(value, openingHoursRows(value), exceptionRows(value).filter((row) => !isPastDate(row.date, today)));
 }
 
 export function updateException(value: unknown, index: number, patch: Partial<ExceptionRow>): OpeningHours {
-  return openingHoursValue(openingHoursRows(value), exceptionRows(value).map((row, i) => (i === index ? { ...row, ...patch } : row)));
+  return rebuild(value, openingHoursRows(value), exceptionRows(value).map((row, i) => (i === index ? { ...row, ...patch } : row)));
 }
 
 export function removeException(value: unknown, index: number): OpeningHours {
-  return openingHoursValue(openingHoursRows(value), exceptionRows(value).filter((_, i) => i !== index));
+  return rebuild(value, openingHoursRows(value), exceptionRows(value).filter((_, i) => i !== index));
 }
 
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
@@ -483,6 +549,23 @@ export function timeProblem(row: { closed: boolean; opens: string; closes: strin
   if (!TIME.test(opens) || !TIME.test(closes)) return 'Use 24-hour times like 09:00';
   const minutes = (time: string) => Number(time.split(':')[0]) * 60 + Number(time.split(':')[1]);
   if (minutes(closes) <= minutes(opens)) return 'The closing time is before the opening time';
+  return null;
+}
+
+const minutesOf = (time: string) => Number(time.split(':')[0]) * 60 + Number(time.split(':')[1]);
+
+/** A problem with a row's break: both times, in order and inside the opening hours. */
+export function breakProblem(row: { closed: boolean; opens: string; closes: string; break_starts: string; break_ends: string }): string | null {
+  if (row.closed) return null;
+  const starts = row.break_starts.trim(), ends = row.break_ends.trim();
+  if (!starts && !ends) return null;
+  if (!starts || !ends) return 'Give the break both a start and an end';
+  if (!TIME.test(starts) || !TIME.test(ends)) return 'Use 24-hour times like 12:00';
+  if (minutesOf(ends) <= minutesOf(starts)) return 'The break ends before it starts';
+  const opens = row.opens.trim(), closes = row.closes.trim();
+  if (TIME.test(opens) && TIME.test(closes) && (minutesOf(starts) <= minutesOf(opens) || minutesOf(ends) >= minutesOf(closes))) {
+    return `The break must lie inside the opening hours (${opens}–${closes})`;
+  }
   return null;
 }
 

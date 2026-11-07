@@ -70,6 +70,11 @@ await writeDoc(`${base}/versions/${versionId}`, { kind: versionId === 'main' ? '
 await writeDoc(`${base}/versions/${versionId}/settings/default`, publication.settings);
 // Site fields: values for {{site.fields.*}} and the definitions that pick formats.
 if (publication.siteFields) await writeDoc(`${base}/versions/${versionId}/site_fields/default`, publication.siteFields);
+// Live snippets are not versioned: one copy per site, as the CMS keeps them.
+for (const snippet of publication.snippets ?? []) {
+  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(snippet.id)) throw new Error('Invalid publication snippet ID');
+  await writeDoc(`${base}/snippets/${snippet.id}`, snippet);
+}
 await writeDoc(`${base}/apps/default`, publication.apps ?? { apps: {} });
 // Build output an app derived from this publication's frozen content. One doc
 // rather than one per source: it is written and read whole, and source ids

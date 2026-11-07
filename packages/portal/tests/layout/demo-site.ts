@@ -68,6 +68,14 @@ const SITE_FIELDS = {
   },
 };
 
+/** The studio café's lunch, a dated live snippet: one dish on weekdays, closed at weekends and on Christmas Eve. */
+const SNIPPETS = [{ id: 'lunch', kind: 'dated', format: 'html', updated_at: '2026-11-08T08:00:00.000Z',
+  entries: [
+    ...['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(weekday => ({ weekday,
+      content: '<p><strong>Dagens lunch i smedjan:</strong> ärtsoppa med pannkakor och sylt, kaffe ingår.</p>' })),
+    { date: '2026-12-24', content: '<p><strong>Julafton:</strong> stängt.</p>' },
+  ], fallback: '<p>Ingen lunch i dag.</p>' }];
+
 const page = (id: string, path: string, title: string, blocks: Block[], extra: Record<string, unknown> = {}) =>
   ({ id, slug: id, path, title, status: 'published', content_mode: 'blocks', blocks, ...extra });
 
@@ -326,6 +334,7 @@ function contact() {
           b('core/show_if', { condition: 'site.fields.show_booking' }, [
             b('core/site_field', { field: 'booking_note', label: 'Boka' }),
           ]),
+          b('core/snippet', { snippet: 'lunch', tag: 'section', empty_text: 'Ingen lunch i dag.' }),
         ]),
         b('core/container', { gap: 'sm' }, [
           heading('Hitta rätt', { level: 'h3' }),
@@ -359,7 +368,7 @@ export function demoSite(renderVersion = LATEST_RENDER_VERSION) {
     publication: {
       format: 'typeroll-static-publication', format_version: 2, publication_id: 'd'.repeat(64), core_commit: 'd'.repeat(40),
       site_url: 'https://ljusrum.example.invalid', version_id: 'main', site: { name: 'Ljusrum Arkitekter' }, settings,
-      pages, media: [], contentTypes: [], blockTypes: [], forms: [], redirects: [], siteFields: SITE_FIELDS,
+      pages, media: [], contentTypes: [], blockTypes: [], forms: [], redirects: [], siteFields: SITE_FIELDS, snippets: SNIPPETS,
       ...(renderVersion >= 15 ? { menus: MENUS } : {}),
       pageTemplates: [{ id: 'starter-article', name: 'Artikel', status: 'published', blocks: swedishLabels(getPageTemplateStarter('article')!) }],
       partials: [

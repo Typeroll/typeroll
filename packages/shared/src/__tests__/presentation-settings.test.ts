@@ -284,6 +284,7 @@ describe('every core block field changes what renders', () => {
     'template/show_if.condition': 'needs page values the condition can test',
     'core/show_if.condition': 'needs site field or page values the condition can test (site-field-blocks.test.ts)',
     ...Object.fromEntries(['field', 'format', 'label', 'tag', 'part_styles'].map(name => [`core/site_field.${name}`, 'needs the site\'s field values (site-field-blocks.test.ts)'])),
+    ...Object.fromEntries(['snippet', 'tag', 'live'].map(name => [`core/snippet.${name}`, 'needs the site\'s snippets and live base URL (snippet-blocks.test.ts)'])),
     ...Object.fromEntries(['text', 'email', 'phone', 'url', 'number', 'textarea', 'select', 'radio_group', 'boolean', 'checkbox_group', 'toggle', 'slider', 'date', 'consent']
       .map(name => [`form/${name}.required_message`, 'the form\'s validation message for a required field (form-fields.ts, tested in form-fields.test.ts); not part of the field markup'])),
   };

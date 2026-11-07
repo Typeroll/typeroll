@@ -10,6 +10,8 @@ import { buildFormSource,
   buildPageSource,
   buildMenuSource,
   buildSiteFields,
+  buildSnippetSource,
+  getLiveBaseUrl,
   getBuildNow,
   getAllMedia,
   getAllPages,
@@ -110,11 +112,14 @@ const extensionSource = (blockTypeId: string) => {
 const backlinks = await buildBacklinks();
 // Site field values as {{site.fields.*}}; definitions pick a site field block's format.
 const siteFields = await buildSiteFields();
+// Live snippets as of this build, and where the browser fetches their newest content.
+const snippetSource = await buildSnippetSource();
+const liveBaseUrl = await getLiveBaseUrl();
 const contentType = (await getContentTypes()).find(type => type.id === (props.page.content_type ?? 'page'));
 const navigationPages = await getAllPages();
 const renderCtx: RenderContext = {
   page: { ...pageContentValues(props.page), breadcrumbs: props.breadcrumbs },
-  site: { ...siteContext(settings as unknown as Record<string, unknown>, getBuildYear()), fields: siteFields.values, url: Astro.site?.href, get derived_data_url() { return derivedDataUrl(); } },
+  site: { ...siteContext(settings as unknown as Record<string, unknown>, getBuildYear()), fields: siteFields.values, live_base_url: liveBaseUrl, url: Astro.site?.href, get derived_data_url() { return derivedDataUrl(); } },
   content_type: contentType ? navigationContext(contentType, props.page.id, () => pageNavigation(props.page, contentType, navigationPages, settings.trailing_slash)) : undefined,
   // Archive pagination: which slice a paginating repeater renders + where
   // its pager links point. Present on every page render (current: 1 when
@@ -190,7 +195,7 @@ let formsRuntimeTag = '';
     // Derive the outline from the same heading levels used in the final body.
     renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
       registry: blockRegistry, context: renderCtx, pageSource, menuSource, formSource, onMissingType, renderVersion, globalBlockSource,
-      siteFieldDefinitions: siteFields.definitions, now: getBuildNow(),
+      siteFieldDefinitions: siteFields.definitions, snippetSource, now: getBuildNow(),
     }), iframeAllowedHosts), !countBlockH1s(templateBlocks))) };
     const effectiveBlocks: Block[] = templateBlocks.length
       ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
@@ -201,6 +206,7 @@ let formsRuntimeTag = '';
       pageSource,
       menuSource,
       siteFieldDefinitions: siteFields.definitions,
+      snippetSource,
       now: getBuildNow(),
       onClockOutput: recordClockOutput,
       formSource,
@@ -231,6 +237,8 @@ if (bodyHtml) bodyHtml = resolveBuildVariables(bodyHtml, getBuildYear());
     renderVersion, globalBlockSource,
     // Opening hours ship their refresh script only where an automatic format shows them.
     siteFieldValues: siteFields.values,
+    // Live snippets and live site fields ship their script only with a live base URL.
+    liveBaseUrl, siteFieldDefinitions: siteFields.definitions,
     // Block part styles (site-wide and per instance), the same CSS the preview emits.
     siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
   });

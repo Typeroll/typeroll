@@ -38,7 +38,8 @@ const SITE_FIELDS_MODEL =
   'Opening hours: an object field with presentation "opening_hours" and exactly this shape (a 7-day week plus dated exceptions such as holidays): ' + OPENING_HOURS_SHAPE + ' ' +
   'Its value: { days: [{ day: "monday", opens: "09:00", closes: "17:00" }, …, { day: "sunday", closed: true }], exceptions: [{ date: "2026-12-24", closed: true, note: "Christmas Eve" }] }. ' +
   'Using values on the site: `{{site.fields.name}}` (and `{{#each site.fields.list}}…{{/each}}`) in page templates and block text; the `core/site_field` block shows one value with data { field: "name", format } where format is text, date, number, list, opening_hours_today, opening_hours_week, next_opening or open_now; ' +
-  'and the `core/show_if` block shows its children only when its condition holds, e.g. { condition: "site.fields.show_booking" } around a booking calendar. Values reach the live site with the next publication.';
+  'and the `core/show_if` block shows its children only when its condition holds, e.g. { condition: "site.fields.show_booking" } around a booking calendar. Values reach the live site with the next publication, ' +
+  'except for a top-level field defined with `live: true` (any type, but no list inside a list; opening hours qualify): its value is also published as a live file when saved, and the `core/site_field` block then shows the newest value without a publication (see list_snippets).';
 
 /** A refused save carries every problem with its path; show them plainly. */
 function siteFieldsFailure(error: unknown, what: 'definitions' | 'values'): ToolResult {

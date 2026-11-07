@@ -2,7 +2,7 @@
 import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
-import { buildSiteFields, getAllPages, getBuildYear, getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings, urlFor } from '../lib/content';
+import { buildSiteFields, getLiveBaseUrl, getAllPages, getBuildYear, getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings, urlFor } from '../lib/content';
 import { collectBlockAssets, globalBlockSourceFromPartials, notFoundText, resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage, siteContext } from '@typeroll/shared';
 import type { Block, LanguageSection, Page, RenderContext } from '@typeroll/shared';
 
@@ -19,6 +19,7 @@ const extensionsPublic = await getExtensionsPublic();
 const { header, footer, freeBlocks } = await getPartials();
 const blockRegistry = await getBlockRegistry();
 const siteFields = await buildSiteFields();
+const liveBaseUrl = await getLiveBaseUrl();
 const extensionSource = (blockTypeId: string) => {
   const blockType = blockRegistry.get(blockTypeId);
   return blockType?.extension ? {
@@ -43,6 +44,7 @@ const { css: blockCss, js: blockJs } = collectBlockAssets(
     renderVersion: resolveRenderVersion(settings.render_version),
     globalBlockSource: globalBlockSourceFromPartials(freeBlocks),
     siteFieldValues: siteFields.values,
+    liveBaseUrl, siteFieldDefinitions: siteFields.definitions,
     siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
   },
 );
@@ -73,7 +75,7 @@ const hasHome = (await getAllPages()).some(candidate => section
 const homeHref = section ? urlFor({ slug: '', path: homePath }, settings.trailing_slash) : '/';
 const renderCtx: RenderContext = {
   page: page as unknown as Record<string, unknown>,
-  site: { ...siteContext(settings as unknown as Record<string, unknown>, getBuildYear()), fields: siteFields.values },
+  site: { ...siteContext(settings as unknown as Record<string, unknown>, getBuildYear()), fields: siteFields.values, live_base_url: liveBaseUrl },
 };
 ---
 <BaseLayout page={page} settings={settings} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs}>

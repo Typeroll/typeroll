@@ -1,5 +1,5 @@
-import { trackedPageSource, trackedBacklinks, trackedMenuPages, trackedSiteFields } from './publication-dependencies.mjs';
-import { createPageSource, DEFAULT_CONTENT_TYPE, menuPagesFromSource, resolveContentPage, publicContentPage, siteFieldValues, type MenuPage, type MenuSource, type PageSourceConfig, type SiteFieldGroup, type SiteFields } from '@typeroll/shared';
+import { trackedPageSource, trackedBacklinks, trackedMenuPages, trackedSiteFields, trackedSnippets } from './publication-dependencies.mjs';
+import { createPageSource, DEFAULT_CONTENT_TYPE, menuPagesFromSource, resolveContentPage, publicContentPage, siteFieldValues, liveBaseUrlOf, siteTimeZone, snippetFile, snippetReceipt, snippetSourceFrom, type MenuPage, type Snippet, type SnippetFile, type SnippetSource, type MenuSource, type PageSourceConfig, type SiteFieldGroup, type SiteFields } from '@typeroll/shared';
 // Build-time content fetching. All functions resolve the org+site IDs from
 // env vars so call sites don't need to thread them through.
 
@@ -101,6 +101,9 @@ export function _resetBuildCachesForTests(): void {
   buildMenuPages = buildMemo(loadMenuPages);
   getSiteFields = buildMemo(loadSiteFields);
   buildSiteFields = buildMemo(loadSiteFieldContext);
+  getSnippetFiles = buildMemo(loadSnippetFiles);
+  getLiveBaseUrl = buildMemo(loadLiveBaseUrl);
+  buildSnippetSource = buildMemo(loadSnippetSource);
   getContentTypes = buildMemo(loadContentTypes);
   getPages = buildMemo(loadPages);
   getBlockTypes = buildMemo(loadBlockTypes);
@@ -256,6 +259,37 @@ async function loadSiteFieldContext(): Promise<{ values: Record<string, unknown>
   return { values: trackedSiteFields(siteFieldValues(fields), () => fields), definitions: fields.groups };
 }
 export let buildSiteFields = buildMemo(loadSiteFieldContext);
+
+/**
+ * The site's live snippets as their public files, with the site's time zone.
+ * Snippets are not versioned; a publication freezes the copy it was built
+ * from, and the browser fetches the newest from the live base URL.
+ */
+async function loadSnippetFiles(): Promise<SnippetFile[]> {
+  const { orgId, siteId } = ids();
+  const zone = siteTimeZone(await getSiteSettings());
+  return (await getStore().listDocs<Snippet>(paths.snippets(orgId, siteId))).map(snippet => snippetFile(snippet, zone));
+}
+export let getSnippetFiles = buildMemo(loadSnippetFiles);
+
+/** Where the site's live files are (`site.live_base_url`), or null: blocks then show the published content only. */
+async function loadLiveBaseUrl(): Promise<string | null> {
+  const { orgId, siteId } = ids();
+  const site = await getStore().getDoc<{ live_base_url?: unknown }>(paths.site(orgId, siteId));
+  return liveBaseUrlOf(site?.live_base_url);
+}
+export let getLiveBaseUrl = buildMemo(loadLiveBaseUrl);
+
+/**
+ * The snippets every render receives. A route records each snippet it shows
+ * (the content as of the build date, its version and, for dated snippets,
+ * the date), so only pages that show a changed snippet are built again.
+ */
+async function loadSnippetSource(): Promise<SnippetSource> {
+  const lookup = snippetSourceFrom(await getSnippetFiles());
+  return trackedSnippets(lookup, (file: SnippetFile | null | undefined) => snippetReceipt(file, getBuildNow()));
+}
+export let buildSnippetSource = buildMemo(loadSnippetSource);
 
 async function loadPages(): Promise<Page[]> {
   const { orgId, siteId, versionId } = ids();
@@ -494,7 +528,7 @@ export async function renderPartialHtml(
   },
 ): Promise<string | null> {
   const siteFields = await buildSiteFields();
-  context = { ...context, site: { fields: siteFields.values, ...context?.site, current_year: getBuildYear() } };
+  context = { ...context, site: { fields: siteFields.values, live_base_url: await getLiveBaseUrl(), ...context?.site, current_year: getBuildYear() } };
   const { expandExtensionIncludes, expandIncludes, renderBlocks } = await import('@typeroll/shared');
   const { recordClockOutput } = await import('./publication-dependencies.mjs');
   const { sanitizeBody } = await import('./sanitize.js');
@@ -544,6 +578,7 @@ export async function renderPartialHtml(
         pageSource: await buildPageSource(),
         menuSource: await buildMenuSource(),
         siteFieldDefinitions: siteFields.definitions,
+        snippetSource: await buildSnippetSource(),
         now: getBuildNow(),
         onClockOutput: recordClockOutput,
         onMissingType: (typeId) => {

@@ -45,6 +45,7 @@ import { chatEditLink } from './chat-action-links';
 import { createMenu, MenuSaveError, replaceMenu } from './menu-write';
 import { appendMenuItem } from './menu-items';
 import { readSiteFields, siteFieldsResponse, SiteFieldsSaveError, updateSiteFieldValues } from './site-fields-write';
+import { listSnippets, readSnippet, saveSnippet, SnippetSaveError, snippetLiveInfo } from './snippet-write';
 import type { Menu } from '@typeroll/shared';
 import {
   mergeJsonLd,
@@ -668,6 +669,32 @@ const tools: Anthropic.Tool[] = [
     },
   },
 
+  // Live snippets — content outside the build that changes without publishing
+  {
+    name: 'read_snippet',
+    description: 'Read the site\'s live snippets: small pieces of content outside the build (today\'s lunch, a notice) that change on the live site within a minute, without publishing. With snippet_id, one snippet; without, all of them and live.base_url (null with a reason when the site cannot serve live files, so snippets only change at publication). Read it before update_snippet.',
+    input_schema: { type: 'object', properties: { snippet_id: { type: 'string', description: 'The snippet id, e.g. "lunch". Omit to list all.' } } },
+  },
+  {
+    name: 'update_snippet',
+    description:
+      'Create or replace a whole live snippet; the live site shows it within a minute, without publishing. kind "html" or "text" uses content; kind "dated" uses entries by weekday or date, e.g. { kind: "dated", entries: [{ weekday: "monday", content: "<p>Pea soup</p>" }, …, { date: "2026-12-24", content: "<p>Closed</p>" }], fallback: "<p>No lunch today</p>" } — the page shows today\'s entry, so write a whole week at once. Send every field you keep. Pass the updated_at from read_snippet as expected_updated_at ("" for a new snippet). A page shows a snippet with a core/snippet block { snippet: "<id>" }; only placing that block needs a publication. The result\'s live says whether the live file was written.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        snippet_id: { type: 'string', description: 'Lowercase letters, digits, - and _.' },
+        name: { type: 'string' },
+        kind: { type: 'string', enum: ['html', 'text', 'dated'] },
+        format: { type: 'string', enum: ['html', 'text'], description: 'dated snippets: HTML (default) or plain text entries.' },
+        content: { type: 'string' },
+        entries: { type: 'array', items: { type: 'object' }, description: 'dated snippets: [{ weekday | date, content }].' },
+        fallback: { type: 'string' },
+        expected_updated_at: { type: 'string', description: 'The updated_at you read ("" for a new snippet).' },
+      },
+      required: ['snippet_id', 'name', 'kind'],
+    },
+  },
+
   // Design reference — the starter design system the site MAY follow
   {
     name: 'read_design_notes',
@@ -1006,6 +1033,8 @@ The site's navigation links can live in **menus** (\`list_menus\`, \`read_menu\`
 ## Site fields
 
 **Site fields** are the site's settings pages (\`read_site_fields\`, \`update_site_fields\`): values the whole site shares, such as opening hours, a visiting address, a "show the booking calendar" checkbox or the current delivery time. Pages show them through \`{{site.fields.name}}\` in templates and block text, the \`core/site_field\` block and \`core/show_if\` conditions (\`site.fields.show_booking\`). When the user asks to change something that is a site field ("we're closed on Christmas Eve", "hide the booking calendar"), change the value with \`update_site_fields\` — not the pages that show it. Opening hours exceptions go in \`exceptions\` by date. Saves apply at once and go live with the next publication.
+
+**Live snippets** (\`read_snippet\`, \`update_snippet\`) are content outside the build, such as the week's lunch or a notice: a save reaches the live site within a minute, without publishing. A dated snippet holds entries by weekday or date and the page shows today's, so write a whole week at once. Pages show one with a \`core/snippet\` block.
 
 When the user wants to embed a free block in a page, edit the page's html_content and add \`<x-include name="block-id" />\` where it should appear — don't paste the block's HTML inline, that defeats the point.
 
@@ -2021,6 +2050,40 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         };
       } catch (error) {
         if (error instanceof SiteFieldsSaveError) return { result: { error: error.message, ...(error.errors ? { errors: error.errors } : {}) } };
+        throw error;
+      }
+    }
+
+    // ─── Live snippets ─────────────────────────────────────────────────────
+    case 'read_snippet': {
+      const snippetCtx = { orgId: ctx.orgId, siteId: ctx.siteId };
+      if (typeof input.snippet_id === 'string' && input.snippet_id) {
+        const snippet = await readSnippet(snippetCtx, input.snippet_id);
+        return { result: snippet ? { snippet } : { error: `No snippet is called ${input.snippet_id}` } };
+      }
+      const [snippets, live] = await Promise.all([listSnippets(snippetCtx), snippetLiveInfo(snippetCtx)]);
+      return { result: { snippets, live } };
+    }
+
+    case 'update_snippet': {
+      try {
+        const { snippet_id: snippetId, expected_updated_at: expected, ...body } = input as Record<string, unknown>;
+        if (typeof snippetId !== 'string' || !snippetId) return { result: { error: 'snippet_id is required' } };
+        const saved = await saveSnippet({ orgId: ctx.orgId, siteId: ctx.siteId }, body, {
+          mode: 'replace', id: snippetId, permission: ctx.permission, updatedBy: 'chat-ai',
+          ...(typeof expected === 'string' ? { expectedUpdatedAt: expected } : {}),
+        });
+        return {
+          result: { ok: true, snippet: saved.snippet, live: saved.live },
+          action: {
+            type: 'update_snippet',
+            description: `${saved.created ? 'Created' : 'Updated'} the snippet ${saved.snippet.name}${saved.live.published ? '; it is live within a minute' : ''}.`,
+            target: snippetId,
+            ...chatEditLink(ctx.siteId, 'snippet', snippetId),
+          },
+        };
+      } catch (error) {
+        if (error instanceof SnippetSaveError) return { result: { error: error.message, ...(error.errors ? { errors: error.errors } : {}) } };
         throw error;
       }
     }

@@ -6,7 +6,8 @@
 import {
   DEFAULT_CONTENT_TYPE, checkJsonLd, findMenu, lintSiteCss, locationConflicts, paths, resolveContentPage,
   type Block, type BlockType, type ContentType, type CssLintFinding, type Media, type Menu, type MenuItem, type Page,
-  type AppId, type PageTemplate, type Partial as PartialDoc, type Site, type SiteApps, type SiteFields, type SiteSettings,
+  type AppId, type PageTemplate, type Partial as PartialDoc, type Site, type SiteApps, type SiteFields, type SiteSettings, type Snippet,
+  liveSiteFieldNames,
 } from '@typeroll/shared';
 import type { ReadWriteStore } from './datastore';
 import { checkInternalLinks, type InternalLinkReport } from './internal-link-check';
@@ -18,7 +19,7 @@ import { compareZoneAiPolicy, type ZoneAiPolicyRead } from './publishing/zone-ai
 export const READINESS_ITEM_IDS = [
   'share_image', 'home_description', 'organization', 'same_as', 'favicon', 'analytics_consent', 'search_console',
   'privacy_page', 'contact_page', 'not_found_page',
-  'indexable_pages', 'orphan_pages', 'menus', 'site_fields', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
+  'indexable_pages', 'orphan_pages', 'menus', 'site_fields', 'live_snippets', 'time_zone', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
   'duplicate_fonts', 'custom_css_overrides',
   'ai_crawler_zone_conflict', 'structured_data',
 ] as const;
@@ -62,6 +63,10 @@ export interface ReadinessInput {
   menus?: Menu[];
   /** The site fields; absent is the same as none. */
   siteFields?: SiteFields;
+  /** The site's live snippets; absent is the same as none. */
+  snippets?: Snippet[];
+  /** Where live files are served (read only when the site has live content). */
+  liveFiles?: { base_url: string | null; reason?: string };
   media: Media[];
   apps: SiteApps | null;
   links: Pick<InternalLinkReport, 'links'>;
@@ -271,6 +276,25 @@ export function buildSiteReadiness(input: ReadinessInput): SiteReadinessReport {
       'Fill in each listed field on its settings page under Site fields.', missingFields.map(entry => `${entry.group.label}: ${entry.label} (${entry.name})`))
     : item('site_fields', 'ok', input.siteFields?.groups.length ? 'Every required site field has a value.' : 'The site has no site fields.', 'None needed.'));
 
+  // live_snippets: live content on a site that cannot serve live files only changes at publication.
+  const snippets = input.snippets ?? [];
+  const liveFields = input.siteFields ? liveSiteFieldNames(input.siteFields.groups) : [];
+  const liveCount = snippets.length + liveFields.length;
+  items.push(liveCount && input.liveFiles && !input.liveFiles.base_url
+    ? item('live_snippets', 'warning', `The site has ${[snippets.length ? `${snippets.length} snippet${snippets.length === 1 ? '' : 's'}` : '', liveFields.length ? `${liveFields.length} live site field${liveFields.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')}, but nowhere to serve live files, so ${liveCount === 1 ? 'it changes' : 'they change'} only when the site is published. ${input.liveFiles.reason ?? ''}`.trim(),
+      'Set a media host for the site or the organization in Publishing, or publish after each change.', [...snippets.map(snippet => `Snippet: ${snippet.name} (${snippet.id})`), ...liveFields.map(name => `Live site field: ${name}`)])
+    : item('live_snippets', 'ok', liveCount ? 'Snippets and live site fields reach the live site without a publication.' : 'The site has no live snippets.', 'None needed.'));
+
+  // time_zone: opening hours and dated snippets need the business's time zone (older sites may lack it).
+  const timed = [
+    ...(input.siteFields?.groups ?? []).flatMap(group => group.fields.filter(field => field.presentation === 'opening_hours').map(field => `Site field: ${field.label} (${field.name})`)),
+    ...snippets.filter(snippet => snippet.kind === 'dated').map(snippet => `Dated snippet: ${snippet.name} (${snippet.id})`),
+  ];
+  items.push(timed.length && !input.settings.time_zone
+    ? item('time_zone', 'warning', 'The site has no time zone, but it shows opening hours or dated snippets, which depend on which day and hour it is at the business.',
+      'Choose the site\'s time zone in Settings, next to Language. It decides which day and hour it is at the business.', timed)
+    : item('time_zone', 'ok', input.settings.time_zone ? `The site's time zone is ${input.settings.time_zone}.` : 'Nothing on the site depends on the time zone.', 'None needed.'));
+
   // orphan_pages
   const liveSources = new Set([...live.map(page => `page:${page.id}`), ...partials.map(partial => `partial:${partial.id}`), ...publishedTemplates.map(t => `template:${t.id}`), ...[...placedMenus].map(id => `menu:${id}`)]);
   const listed = new Set<string>();
@@ -402,5 +426,8 @@ export async function readSiteReadiness(args: {
     args.readZone().catch(() => ({ status: 'unavailable', host: args.site.domain ?? '' }) as ZoneAiPolicyRead),
   ]);
   if (!settings) throw new Error('Site settings not found');
-  return buildSiteReadiness({ siteId, settings, pages, partials, templates, contentTypes, blockTypes, menus, siteFields, media, apps: apps ?? null, links, zone });
+  const snippets = await store.listDocs<Snippet>(paths.snippets(orgId, siteId));
+  const liveFiles = snippets.length || liveSiteFieldNames(siteFields.groups).length
+    ? await (await import('./snippet-write')).snippetLiveInfo({ orgId, siteId }) : undefined;
+  return buildSiteReadiness({ siteId, settings, pages, partials, templates, contentTypes, blockTypes, menus, siteFields, snippets, liveFiles, media, apps: apps ?? null, links, zone });
 }

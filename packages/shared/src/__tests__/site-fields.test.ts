@@ -74,3 +74,37 @@ describe('opening hours', () => {
     expect(hoursAhead(hours, new Date('2026-11-07T10:30:00Z'), 3, 'Europe/Stockholm').map((day) => day.weekday)).toEqual(['saturday', 'sunday', 'monday']);
   });
 });
+
+describe('siteTimeZone', () => {
+  it('uses the site setting, then the language, then Stockholm', async () => {
+    const { siteTimeZone } = await import('../site-display-settings.js');
+    expect(siteTimeZone({ time_zone: 'Europe/Oslo', language: 'sv' })).toBe('Europe/Oslo');
+    expect(siteTimeZone({ language: 'nb' })).toBe('Europe/Oslo');
+    expect(siteTimeZone({ language: 'en-GB' })).toBe('Europe/London');
+    expect(siteTimeZone({ language: 'fi-FI' })).toBe('Europe/Helsinki');
+    expect(siteTimeZone({ language: 'en' })).toBe('Europe/Stockholm');
+    expect(siteTimeZone({ time_zone: 'Mars/Olympus', language: 'da' })).toBe('Europe/Copenhagen');
+    expect(siteTimeZone(undefined)).toBe('Europe/Stockholm');
+  });
+});
+
+describe('opening hours with a break and comments', () => {
+  const hours: OpeningHours = {
+    days: [{ day: 'monday', opens: '09:00', closes: '17:00', break_starts: '12:00', break_ends: '13:00', note: 'Lunch closed 12–13' }],
+    exceptions: [{ date: '2026-11-16', opens: '10:00', closes: '14:00', note: 'Staff day' }],
+    note: 'Lunch closed 12–13 on weekdays',
+  };
+
+  it('keeps a break inside the day and the weekday comment; an exception comment wins', () => {
+    expect(hoursOn(hours, '2026-11-09', 'monday')).toMatchObject({ break: { starts: '12:00', ends: '13:00' }, note: 'Lunch closed 12–13' });
+    expect(hoursOn(hours, '2026-11-16', 'monday')).toMatchObject({ opens: '10:00', closes: '14:00', note: 'Staff day', exception: true });
+    expect(hoursOn({ days: [{ day: 'monday', opens: '09:00', closes: '17:00', break_starts: '18:00', break_ends: '19:00' }] }, '2026-11-09', 'monday').break).toBeUndefined();
+  });
+
+  it('is closed during the break and opens again when it ends', () => {
+    // Monday 9 November 2026 in Stockholm (UTC+1).
+    expect(openingStatus(hours, new Date('2026-11-09T10:30:00Z'), 'Europe/Stockholm')).toEqual({ open: true, until: '12:00' });
+    expect(openingStatus(hours, new Date('2026-11-09T11:30:00Z'), 'Europe/Stockholm')).toMatchObject({ open: false, next: { weekday: 'monday', opens: '13:00' } });
+    expect(openingStatus(hours, new Date('2026-11-09T12:30:00Z'), 'Europe/Stockholm')).toEqual({ open: true, until: '17:00' });
+  });
+});

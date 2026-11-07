@@ -57,10 +57,15 @@ const SITE_FIELDS = {
     exceptions: [{ date: '2026-12-24', closed: true, note: 'Christmas Eve' }],
   } },
 };
-/** Blocks whose sample data would show nothing without site fields. */
+/** A dated live snippet, "Today's lunch": the same dish every weekday so the page reads the same whatever day it is built. */
+const SNIPPETS = [{ id: 'lunch', kind: 'dated', format: 'html', updated_at: '2026-11-08T08:00:00.000Z', fallback: '<p>No lunch today.</p>',
+  entries: [...['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(weekday => ({ weekday, content: '<p><strong>Today\'s lunch:</strong> pea soup with pancakes and jam, coffee included.</p>' })),
+    { date: '2026-12-24', content: '<p><strong>Christmas Eve:</strong> closed.</p>' }] }];
+/** Blocks whose sample data would show nothing without site fields or snippets. */
 const SAMPLE_DATA: Record<string, Record<string, unknown>> = {
   'core/site_field': { field: 'opening_hours', format: 'auto' },
   'core/show_if': { condition: 'site.fields.show_booking' },
+  'core/snippet': { snippet: 'lunch', tag: 'section' },
 };
 
 function sample(type: BlockType, id: string, long = false): Block {
@@ -168,7 +173,7 @@ export function layoutGallery(renderVersion = LATEST_RENDER_VERSION) {
       site_url: 'https://gallery.example.invalid', version_id: 'main', site: { name: 'Layout gallery' },
       // What a new site starts with: default theme values and standard styles.
       settings: { ...structuredClone(defaultSiteSettings), styles: newSiteStyles(), site_name: 'Layout gallery', trailing_slash: 'always', render_version: renderVersion },
-      pages, pageTemplates, media: [], contentTypes: [], blockTypes: [], forms: [], siteFields: SITE_FIELDS,
+      pages, pageTemplates, media: [], contentTypes: [], blockTypes: [], forms: [], siteFields: SITE_FIELDS, snippets: SNIPPETS,
       partials: (['header', 'footer'] as const).map(kind => ({ id: kind, kind, status: 'published', content_mode: 'blocks',
         blocks: getPartialCompositionStarter(kind, { links }) })),
     },

@@ -94,6 +94,20 @@ export function trackedSiteFields(values, receipt) {
 export function recordClockOutput(input, html) {
   active.getStore()?.push({ kind: 'clock', input: structuredClone(input), hash: digest(html) });
 }
+/**
+ * A live snippet a render shows, by id, on the first read: `receipt(file)`
+ * is what the output depends on (snippetReceipt: the content as of the build
+ * date, its version and the date of a dated snippet), so a later build
+ * renders the route again only when that differs. Unknown ids are recorded too.
+ */
+export function trackedSnippets(lookup, receipt) {
+  return id => {
+    const file = lookup(id);
+    const dependencies = active.getStore();
+    if (dependencies && !dependencies.some(entry => entry.kind === 'snippet' && entry.id === id)) dependencies.push({ kind: 'snippet', id, hash: digest(receipt(file)) });
+    return file;
+  };
+}
 export function recordNavigation(pageId, value) {
   active.getStore()?.push({ kind: 'navigation', id: pageId, hash: digest(value) });
   return value;
@@ -124,6 +138,7 @@ export function dependenciesMatch(dependencies, resolvers, queries = new Map()) 
       if (entry.kind === 'menu_pages') return digest(resolvers.menuPages()) === entry.hash;
       if (entry.kind === 'site_fields') return digest(resolvers.siteFields()) === entry.hash;
       if (entry.kind === 'clock') return digest(resolvers.clock(entry.input)) === entry.hash;
+      if (entry.kind === 'snippet') return typeof entry.id === 'string' && digest(resolvers.snippet(entry.id)) === entry.hash;
       return false;
     });
   } catch { return false; }
@@ -152,6 +167,10 @@ export function refreshDependencies(dependencies, resolvers, from, to, replace) 
     // Reused HTML holds the earlier output: a rebase is only safe while it is still the same.
     if (entry.kind === 'clock') {
       if (digest(resolvers.clock(entry.input)) !== entry.hash) throw new Error('Date-dependent output changed');
+      return entry;
+    }
+    if (entry.kind === 'snippet') {
+      if (digest(resolvers.snippet(entry.id)) !== entry.hash) throw new Error('Snippet output changed');
       return entry;
     }
     throw new Error('Unknown cached dependency');

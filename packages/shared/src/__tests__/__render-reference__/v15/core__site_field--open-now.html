@@ -1,4 +1,4 @@
-<span data-block="site_field" data-format="open_now"><span class="block-site-field-value" data-site-field-clock="{&quot;f&quot;:&quot;open_now&quot;,&quot;z&quot;:&quot;Europe/Stockholm&quot;,&quot;d&quot;:[{&quot;day&quot;:&quot;monday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;tuesday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;wednesday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;thursday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;friday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;saturday&quot;,&quot;opens&quot;:&quot;10:00&quot;,&quot;closes&quot;:&quot;14:00&quot;},{&quot;day&quot;:&quot;sunday&quot;,&quot;closed&quot;:true}],&quot;x&quot;:[{&quot;date&quot;:&quot;2026-11-11&quot;,&quot;closed&quot;:true,&quot;note&quot;:&quot;Staff day&quot;}],&quot;w&quot;:[&quot;Monday&quot;,&quot;Tuesday&quot;,&quot;Wednesday&quot;,&quot;Thursday&quot;,&quot;Friday&quot;,&quot;Saturday&quot;,&quot;Sunday&quot;],&quot;t&quot;:{&quot;closed&quot;:&quot;Closed&quot;,&quot;open_until&quot;:&quot;Open now, until {time}&quot;,&quot;opens&quot;:&quot;Opens {day} {time}&quot;,&quot;today&quot;:&quot;today&quot;,&quot;tomorrow&quot;:&quot;tomorrow&quot;}}">Open now, until 17:00</span></span>
+<span data-block="site_field" data-format="open_now"><span class="block-site-field-value" data-site-field-clock="{&quot;f&quot;:&quot;open_now&quot;,&quot;z&quot;:&quot;Europe/Stockholm&quot;,&quot;d&quot;:[{&quot;day&quot;:&quot;monday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;tuesday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;wednesday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;thursday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;friday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;saturday&quot;,&quot;opens&quot;:&quot;10:00&quot;,&quot;closes&quot;:&quot;14:00&quot;},{&quot;day&quot;:&quot;sunday&quot;,&quot;closed&quot;:true}],&quot;x&quot;:[{&quot;date&quot;:&quot;2026-11-11&quot;,&quot;closed&quot;:true,&quot;note&quot;:&quot;Staff day&quot;}],&quot;w&quot;:[&quot;Monday&quot;,&quot;Tuesday&quot;,&quot;Wednesday&quot;,&quot;Thursday&quot;,&quot;Friday&quot;,&quot;Saturday&quot;,&quot;Sunday&quot;],&quot;t&quot;:{&quot;closed&quot;:&quot;Closed&quot;,&quot;open_until&quot;:&quot;Open now, until {time}&quot;,&quot;opens&quot;:&quot;Opens {day} {time}&quot;,&quot;today&quot;:&quot;today&quot;,&quot;tomorrow&quot;:&quot;tomorrow&quot;,&quot;reopens&quot;:&quot;Closed, opens again {time}&quot;}}">Open now, until 17:00</span></span>
 
 /* css */
 @layer typeroll.platform{
@@ -82,22 +82,35 @@
     var exception = find(p.x, function (entry) { return entry.date === iso; });
     var source = exception || find(p.d, function (entry) { return entry.day === DAYS[index]; });
     var opens = valid(source && source.opens), closes = valid(source && source.closes);
-    return { index: index, closed: !source || source.closed === true || !opens || !closes, opens: opens, closes: closes, note: exception && exception.note ? String(exception.note) : '' };
+    var breakStarts = valid(source && source.break_starts), breakEnds = valid(source && source.break_ends);
+    var hasBreak = !!(opens && closes && breakStarts && breakEnds && opens < breakStarts && breakStarts < breakEnds && breakEnds < closes);
+    return { index: index, exception: !!exception, closed: !source || source.closed === true || !opens || !closes, opens: opens, closes: closes,
+      breakStarts: hasBreak ? breakStarts : '', breakEnds: hasBreak ? breakEnds : '', note: source && typeof source.note === 'string' ? source.note.replace(/^\s+|\s+$/g, '') : '' };
   }
-  function text(day) { return (day.closed ? esc(p.t.closed) : esc(day.opens + '\u2013' + day.closes)) + (day.note ? ' (' + esc(day.note) + ')' : ''); }
+  function text(day) {
+    return day.closed ? esc(p.t.closed) : day.breakStarts ? esc(day.opens + '\u2013' + day.breakStarts + ', ' + day.breakEnds + '\u2013' + day.closes) : esc(day.opens + '\u2013' + day.closes);
+  }
+  function note(day) { return !day.note ? '' : day.exception ? '<strong class="block-site-field-note">' + esc(day.note) + '</strong>' : '<span class="block-site-field-note">' + esc(day.note) + '</span>'; }
+  function holiday(day) { return day.exception ? note(day) : ''; }
+  function withNote(day, html) { return holiday(day) ? holiday(day) + ': ' + html : html; }
+  function capital(value) { return value.charAt(0).toUpperCase() + value.slice(1); }
   function toMinutes(value) { return Number(value.slice(0, 2)) * 60 + Number(value.slice(3)); }
   var today = hours(0);
-  var open = !today.closed && minutes >= toMinutes(today.opens) && minutes < toMinutes(today.closes);
-  var until = esc(fill(p.t.open_until, 'time', today.closes));
-  if (p.f === 'opening_hours_today') return text(today);
-  if (p.f === 'open_now') return open ? until : esc(p.t.closed);
+  var within = !today.closed && minutes >= toMinutes(today.opens) && minutes < toMinutes(today.closes);
+  var inBreak = within && !!today.breakStarts && minutes >= toMinutes(today.breakStarts) && minutes < toMinutes(today.breakEnds);
+  var open = within && !inBreak;
+  var until = esc(fill(p.t.open_until, 'time', today.breakStarts && minutes < toMinutes(today.breakStarts) ? today.breakStarts : today.closes));
+  var reopens = esc(fill(p.t.reopens === undefined ? p.t.closed : p.t.reopens, 'time', today.breakEnds));
+  if (p.f === 'opening_hours_today') return holiday(today) ? esc(capital(String(p.t.today))) + ' \u00b7 ' + holiday(today) + ': ' + text(today) : text(today);
+  if (p.f === 'open_now') return withNote(today, open ? until : inBreak ? reopens : esc(p.t.closed));
   if (p.f === 'next_opening') {
-    if (open) return until;
+    if (open) return withNote(today, until);
+    if (inBreak) return withNote(today, reopens);
     for (var offset = 0; offset < 14; offset++) {
       var day = offset ? hours(offset) : today;
       if (!day.closed && (offset > 0 || minutes < toMinutes(day.opens))) {
         var name = offset === 0 ? p.t.today : offset === 1 ? p.t.tomorrow : String(p.w[day.index] || '');
-        return esc(fill(fill(p.t.opens, 'day', name), 'time', day.opens));
+        return fill(fill(esc(p.t.opens), 'day', esc(name) + (holiday(day) ? ' (' + holiday(day) + ')' : '')), 'time', esc(day.opens));
       }
     }
     return esc(p.t.closed);
@@ -105,7 +118,8 @@
   var rows = '';
   for (var index = 0; index < 7; index++) {
     var weekday = hours(index - today.index), label = String(p.w[index] || '');
-    rows += '<tr data-day="' + DAYS[index] + '"' + (index === today.index ? ' data-today="true" aria-current="date"' : '') + '><th>' + esc(label.charAt(0).toUpperCase() + label.slice(1)) + '</th><td>' + text(weekday) + '</td></tr>';
+    rows += '<tr data-day="' + DAYS[index] + '"' + (index === today.index ? ' data-today="true" aria-current="date"' : '') + (weekday.exception ? ' data-exception="true"' : '')
+      + '><th>' + esc(capital(label)) + (weekday.note ? '<br>' + note(weekday) : '') + '</th><td>' + text(weekday) + '</td></tr>';
   }
   return rows;
 };

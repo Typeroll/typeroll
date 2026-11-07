@@ -98,6 +98,8 @@ deploy. The developer CLI and MCP tool queue that deploy by default.
 - `page_handoff:read`
 - `site_fields:read`, `site_fields:write` (define settings pages and change any
   site field value; acts as site administrator on the site fields routes only)
+- `snippets:read`, `snippets:write` (live snippets: content that changes on the
+  live site without a publication, such as the week's lunch menu)
 
 The effective permission is the intersection of the manifest request, the
 site administrator's grant, and the current Typeroll user's permission. The

@@ -188,7 +188,7 @@ export function localizeDefaultLabel(value: unknown, key: UiLabelKey, language: 
  * now until a time, the next opening (`{day}` is today, tomorrow or a weekday
  * name from Intl) and the words for today and tomorrow.
  */
-export interface OpeningHoursText { closed: string; open_until: string; opens: string; today: string; tomorrow: string }
+export interface OpeningHoursText { closed: string; open_until: string; opens: string; today: string; tomorrow: string; /** Closed for a break, `{time}` it opens again. */ reopens: string }
 type OpeningHoursRow = [closed: string, open_until: string, opens: string, today: string, tomorrow: string];
 const OPENING_HOURS_TEXT: Record<UiLanguage, OpeningHoursRow> = {
   en: ['Closed', 'Open now, until {time}', 'Opens {day} {time}', 'today', 'tomorrow'],
@@ -243,9 +243,27 @@ const OPENING_HOURS_TEXT: Record<UiLanguage, OpeningHoursRow> = {
   ca: ['Tancat', 'Obert ara, fins a les {time}', 'Obre {day} a les {time}', 'avui', 'demà'],
 };
 
+/** Closed for a break inside the day (lunch), with the time it opens again. */
+const REOPENS_TEXT: Record<UiLanguage, string> = {
+  en: 'Closed, opens again {time}', sv: 'Stängt, öppnar igen {time}', nb: 'Stengt, åpner igjen {time}', da: 'Lukket, åbner igen {time}',
+  de: 'Geschlossen, wieder geöffnet ab {time}', nl: 'Gesloten, weer open om {time}', fi: 'Suljettu, avautuu taas klo {time}',
+  fr: 'Fermé, réouverture à {time}', pl: 'Zamknięte, ponowne otwarcie o {time}', it: 'Chiuso, riapre alle {time}', es: 'Cerrado, vuelve a abrir a las {time}',
+  pt: 'Fechado, reabre às {time}', ru: 'Закрыто, откроется снова в {time}', uk: 'Зачинено, знову відчиниться о {time}', cs: 'Zavřeno, znovu otevírá v {time}',
+  sk: 'Zatvorené, znova otvára o {time}', hu: 'Zárva, újra nyit: {time}', ro: 'Închis, se redeschide la {time}', bg: 'Затворено, отваря отново в {time}',
+  hr: 'Zatvoreno, ponovno otvara u {time}', sr: 'Затворено, поново отвара у {time}', bs: 'Zatvoreno, ponovo otvara u {time}', sl: 'Zaprto, ponovno odpre ob {time}',
+  mk: 'Затворено, повторно се отвора во {time}', sq: 'Mbyllur, rihapet në {time}', el: 'Κλειστό, ανοίγει ξανά στις {time}', lt: 'Uždaryta, vėl atsidaro {time}',
+  lv: 'Slēgts, atkal atver {time}', et: 'Suletud, avatakse uuesti {time}', is: 'Lokað, opnar aftur kl. {time}', tr: 'Kapalı, {time} saatinde yeniden açılır',
+  az: 'Bağlıdır, yenidən {time}-da açılır', kk: 'Жабық, қайта {time} ашылады', ka: 'დაკეტილია, ხელახლა იხსნება {time}-ზე', ar: 'مغلق، يفتح مجددًا الساعة {time}',
+  he: 'סגור, נפתח שוב ב-{time}', fa: 'بسته، دوباره ساعت {time} باز می‌شود', ur: 'بند، دوبارہ {time} کھلے گا', hi: 'बंद, फिर से {time} खुलेगा',
+  bn: 'বন্ধ, আবার খুলবে {time}', ta: 'மூடப்பட்டுள்ளது, மீண்டும் {time} திறக்கும்', th: 'ปิด เปิดอีกครั้งเวลา {time}', vi: 'Đóng cửa, mở lại lúc {time}',
+  id: 'Tutup, buka lagi pukul {time}', ms: 'Tutup, dibuka semula pada {time}', ja: '休憩中（{time}に再開）', ko: '휴식 중, {time} 재개',
+  zh: '休息中，{time} 再开', 'zh-Hant': '休息中，{time} 再開', ca: 'Tancat, torna a obrir a les {time}',
+};
+
 export function openingHoursText(language: unknown): OpeningHoursText {
-  const [closed, open_until, opens, today, tomorrow] = OPENING_HOURS_TEXT[uiLanguage(language)];
-  return { closed, open_until, opens, today, tomorrow };
+  const lang = uiLanguage(language);
+  const [closed, open_until, opens, today, tomorrow] = OPENING_HOURS_TEXT[lang];
+  return { closed, open_until, opens, today, tomorrow, reopens: REOPENS_TEXT[lang] };
 }
 
 

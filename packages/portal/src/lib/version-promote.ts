@@ -248,8 +248,14 @@ export async function promoteBranch(
 
   // Site fields: the base's document is kept as a revision first.
   if (diff.siteFields === 'modified') {
+    const previous = baseId === MAIN_VERSION_ID ? await vstore.siteFields(orgId, siteId, baseId) : null;
     await snapshotBase('site_fields', ['default'], paths.siteFields(orgId, siteId, baseId));
     await copy(paths.siteFields(orgId, siteId, branchId), paths.siteFields(orgId, siteId, baseId));
+    // Merged live fields reach the live site at once, as a save on main would.
+    if (previous) {
+      const { publishLiveSiteFields } = await import('./live-site-fields');
+      await publishLiveSiteFields({ orgId, siteId, versionId: baseId }, await vstore.siteFields(orgId, siteId, baseId), previous).catch(() => undefined);
+    }
   }
 
   return diff;

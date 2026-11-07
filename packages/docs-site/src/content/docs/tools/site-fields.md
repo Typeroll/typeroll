@@ -89,6 +89,15 @@ read them as `site.fields.name`. The types are `text`, `textarea`,
 `min_items`, `max_items`) and `object` (a group of fields). Lists and groups
 nest at most three levels.
 
+### Live fields
+
+A top-level field with `live: true` is also published as a live file the
+moment its value is saved on main, so the `core/site_field` block shows the
+newest value without a publication, for example the current delivery time or
+today's opening hours. Other fields wait for the next publication. A live
+field can be any type, but not a list inside a list; opening hours qualify. See [live snippets](../snippets/) for where the file is
+served and what a site needs for it.
+
 ### Opening hours
 
 An opening hours field is an `object` field with

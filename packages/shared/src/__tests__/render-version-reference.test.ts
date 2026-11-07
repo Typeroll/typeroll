@@ -28,6 +28,7 @@ import {
   resolveBreakpointWidths,
   siteStylesCss,
   siteThemeCss,
+  snippetSourceFrom,
 } from '../index.js';
 import type { Block, BlockType, FieldDefinition } from '../types.js';
 import type { Menu } from '../menus.js';
@@ -92,6 +93,14 @@ const SITE_FIELDS: Partial<RenderBlocksOptions> = {
   context: { site: { language: 'en', fields: { phone: '+46 90-12 34 56', show_booking: true, opening_hours: { days: WEEK, exceptions: [{ date: '2026-11-11', closed: true, note: 'Staff day' }] } } } },
 };
 
+/** A dated live snippet on a site with live files, shown on the same Monday. */
+const SNIPPETS: Partial<RenderBlocksOptions> = {
+  now: new Date('2026-11-09T10:30:00Z'),
+  snippetSource: snippetSourceFrom([{ id: 'lunch', kind: 'dated', format: 'html', time_zone: 'Europe/Stockholm', updated_at: '2026-11-08T08:00:00.000Z',
+    entries: [{ weekday: 'monday', content: '<p>Pea soup</p>' }], fallback: '<p>No lunch</p>' }]),
+  context: { site: { language: 'en', live_base_url: 'https://media.example.invalid/live' } },
+};
+
 /** Extra samples for parts of a block that the default sample leaves empty. */
 const EXTRA_SAMPLES: Array<{ name: string; block: Block; from?: number; options?: Partial<RenderBlocksOptions> }> = [
   {
@@ -125,6 +134,10 @@ const EXTRA_SAMPLES: Array<{ name: string; block: Block; from?: number; options?
   {
     name: 'core__site_field--text', from: 15, options: SITE_FIELDS,
     block: { id: 'ref', type: 'core/site_field', data: { field: 'phone', label: 'Phone' } },
+  },
+  {
+    name: 'core__snippet--dated', from: 15, options: SNIPPETS,
+    block: { id: 'ref', type: 'core/snippet', data: { snippet: 'lunch', tag: 'section', empty_text: 'Nothing today' } },
   },
   {
     name: 'core__show_if--site-field', from: 15, options: SITE_FIELDS,

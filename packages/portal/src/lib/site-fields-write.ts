@@ -6,6 +6,10 @@
 // they have revisions but no working copy; a save replaces the document at
 // the active version and reaches the live site with the next publication.
 //
+// Fields marked `live` are also published as the live file `_fields.json`
+// when a save on main changes them (lib/live-site-fields.ts); the result is
+// returned as `live` and a failed live write never undoes the save.
+//
 // Permissions follow the portal's roles:
 //   - definitions (and restoring a revision, which restores them) need site
 //     admin;
@@ -17,6 +21,7 @@ import {
   type SharePermission, type SiteFieldError, type SiteFieldGroup, type SiteFields,
 } from '@typeroll/shared';
 import { snapshotRevision } from './revisions';
+import { publishLiveSiteFields } from './live-site-fields';
 import { SiteFieldsWriteConflict, vstore } from './version-store';
 
 export interface SiteFieldsCtx { orgId: string; siteId: string; versionId: string }
@@ -60,7 +65,10 @@ function checkExpected(existing: SiteFields, expected: string | undefined): void
     throw new SiteFieldsSaveError('The site fields were saved by someone else after you read them. Read them again and reapply your change.', 409);
 }
 
-async function write(ctx: SiteFieldsCtx, doc: SiteFields, existing: SiteFields, options: SiteFieldsSaveOptions): Promise<void> {
+/** A saved document, with the outcome of its live file when live fields changed. */
+export type SavedSiteFields = SiteFields & { live?: Awaited<ReturnType<typeof publishLiveSiteFields>> };
+
+async function write(ctx: SiteFieldsCtx, doc: SiteFields, existing: SiteFields, options: SiteFieldsSaveOptions): Promise<SavedSiteFields> {
   // Keep what was there as a revision, so every save can be undone.
   if (existing.updated_at || existing.groups.length || Object.keys(existing.values).length) {
     await snapshotRevision({
@@ -73,6 +81,11 @@ async function write(ctx: SiteFieldsCtx, doc: SiteFields, existing: SiteFields, 
     if (error instanceof SiteFieldsWriteConflict) throw new SiteFieldsSaveError(error.message, 409);
     throw error;
   }
+  const live = await publishLiveSiteFields(ctx, doc, existing).catch((error) => {
+    console.warn(`[site-fields] site ${ctx.siteId}: live fields not published`, error instanceof Error ? error.message : error);
+    return { published: false as const, code: 'write_failed' as const, reason: 'The live fields file could not be written; the values show at the next publication.' };
+  });
+  return live ? { ...doc, live } : doc;
 }
 
 export function readSiteFields(ctx: SiteFieldsCtx): Promise<SiteFields> {
@@ -86,7 +99,7 @@ export function readSiteFields(ctx: SiteFieldsCtx): Promise<SiteFields> {
  */
 export async function defineSiteFields(
   ctx: SiteFieldsCtx, input: unknown, options: SiteFieldsSaveOptions,
-): Promise<{ siteFields: SiteFields; dropped: string[] }> {
+): Promise<{ siteFields: SavedSiteFields; dropped: string[] }> {
   if (options.permission !== 'admin') throw new SiteFieldsSaveError('Defining site fields needs admin permission on the site', 403);
   const { groups, errors } = validateSiteFieldGroups(input);
   if (errors.length) throw new SiteFieldsSaveError(`The site fields are not valid: ${describe(errors)}`, 400, errors);
@@ -97,8 +110,7 @@ export async function defineSiteFields(
   const { values } = validateSiteFieldValues(groups, kept);
   const dropped = Object.keys(existing.values).filter((name) => !(name in values)).sort();
   const siteFields: SiteFields = { groups, values, updated_at: nextStamp(existing) };
-  await write(ctx, siteFields, existing, options);
-  return { siteFields, dropped };
+  return { siteFields: await write(ctx, siteFields, existing, options), dropped };
 }
 
 /**
@@ -108,7 +120,7 @@ export async function defineSiteFields(
  */
 export async function updateSiteFieldValues(
   ctx: SiteFieldsCtx, patch: unknown, options: SiteFieldsSaveOptions,
-): Promise<SiteFields> {
+): Promise<SavedSiteFields> {
   if (RANK[options.permission] < RANK.write) throw new SiteFieldsSaveError('Changing site field values needs write permission on the site', 403);
   if (!patch || typeof patch !== 'object' || Array.isArray(patch))
     throw new SiteFieldsSaveError('values is an object of field names and values', 400, [{ path: 'values', message: 'values is an object' }]);
@@ -139,22 +151,20 @@ export async function updateSiteFieldValues(
     else values[name] = existing.values[name];
   }
   const siteFields: SiteFields = { groups: existing.groups, values, updated_at: nextStamp(existing) };
-  await write(ctx, siteFields, existing, options);
-  return siteFields;
+  return write(ctx, siteFields, existing, options);
 }
 
 /** Restores a revision's definitions and values (admin, since definitions change). */
 export async function restoreSiteFieldsRevision(
   ctx: SiteFieldsCtx, doc: Partial<SiteFields>, revId: string, options: Omit<SiteFieldsSaveOptions, 'note' | 'expectedUpdatedAt'>,
-): Promise<SiteFields> {
+): Promise<SavedSiteFields> {
   if (options.permission !== 'admin') throw new SiteFieldsSaveError('Restoring site fields needs admin permission on the site', 403);
   const { groups, errors } = validateSiteFieldGroups(doc.groups ?? []);
   if (errors.length) throw new SiteFieldsSaveError(`The revision is not valid: ${describe(errors)}`, 400, errors);
   const { values } = validateSiteFieldValues(groups, doc.values ?? {});
   const existing = await readSiteFields(ctx);
   const siteFields: SiteFields = { groups, values, updated_at: nextStamp(existing) };
-  await write(ctx, siteFields, existing, { ...options, note: `Replaced by restore of ${revId}` });
-  return siteFields;
+  return write(ctx, siteFields, existing, { ...options, note: `Replaced by restore of ${revId}` });
 }
 
 /** The groups whose values a caller with `permission` may change. */
@@ -180,6 +190,7 @@ export function siteFieldsFailureBody(error: unknown): { status: number; body: {
 }
 
 /** What a read returns: the document plus the settings pages this caller may fill in. */
-export function siteFieldsResponse(siteFields: SiteFields, permission: SharePermission): Omit<SiteFields, 'updated_at'> & { updated_at: string | null; editable_groups: string[] } {
-  return { groups: siteFields.groups, values: siteFields.values, updated_at: siteFields.updated_at ?? null, editable_groups: editableGroups(siteFields.groups, permission) };
+export function siteFieldsResponse(siteFields: SavedSiteFields, permission: SharePermission): Omit<SiteFields, 'updated_at'> & { updated_at: string | null; editable_groups: string[]; live?: SavedSiteFields['live'] } {
+  return { groups: siteFields.groups, values: siteFields.values, updated_at: siteFields.updated_at ?? null, editable_groups: editableGroups(siteFields.groups, permission),
+    ...(siteFields.live ? { live: siteFields.live } : {}) };
 }

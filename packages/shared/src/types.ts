@@ -1117,6 +1117,12 @@ export interface FieldDefinition {
   design_token?: import('./design-tokens.js').TokenScale;
   /** A ready-made editor and formats for a known structure (site fields). */
   presentation?: 'opening_hours';
+  /**
+   * Site fields: also publish the value as a live file when it is saved, so
+   * the live site shows the newest value without a publication. Top-level
+   * site fields only.
+   */
+  live?: boolean;
   min?: number;
   max?: number;
   /** For type 'choices': which control markup the renderer derives. */

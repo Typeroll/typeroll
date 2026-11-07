@@ -58,7 +58,9 @@ import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
 import { isMenuNavigation, renderMenuNavigation, usesMenuSubmenus, type MenuSource } from './menu-render.js';
 import { NAVIGATION_SUBMENU_SCRIPT } from './navigation-menu.js';
-import { prepareSiteField, siteFieldValues, SITE_FIELD_CLOCK_SCRIPT, usesSiteFieldClock, type SiteFieldClockInput } from './site-field-blocks.js';
+import { liveBaseUrlOf, prepareSiteField, siteFieldValues, SITE_FIELD_CLOCK_SCRIPT, SITE_FIELD_LIVE_SCRIPT, usesLiveSiteField, usesSiteFieldClock, type SiteFieldClockInput } from './site-field-blocks.js';
+import { prepareSnippet, SNIPPET_LIVE_SCRIPT, usesLiveSnippet, type SnippetSource } from './snippet-blocks.js';
+import { siteTimeZone } from './site-display-settings.js';
 import type { SiteFieldGroup, SiteFields } from './site-fields.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
@@ -235,6 +237,12 @@ export interface RenderBlocksOptions {
    * cache can recompute it later (siteFieldClockHtml) and tell when it is stale.
    */
   onClockOutput?: (input: SiteFieldClockInput, html: string) => void;
+  /**
+   * The site's live snippets as public files, for `core/snippet` blocks
+   * (snippet-blocks.ts). Without it such a block shows only its empty text.
+   * Where the live files are comes from `context.site.live_base_url`.
+   */
+  snippetSource?: SnippetSource;
   /** Resolves `core/global_block` references (reusable-blocks.ts). Without it they render nothing. */
   globalBlockSource?: GlobalBlockSource;
   /** Internal: global blocks being rendered, outermost first, to stop cycles. */
@@ -520,11 +528,16 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     const site = options.context?.site;
     const prepared = prepareSiteField(compiled.flatData, {
       values: site?.fields, definitions: options.siteFieldDefinitions,
-      language: options.context?.page?.language ?? site?.language, timeZone: site?.time_zone, dateFormat: site?.date_format,
-      now: options.now, onClockOutput: options.onClockOutput, pageSource: options.pageSource,
+      language: options.context?.page?.language ?? site?.language, timeZone: siteTimeZone(site), dateFormat: site?.date_format,
+      now: options.now, onClockOutput: options.onClockOutput, pageSource: options.pageSource, liveBaseUrl: site?.live_base_url,
     });
-    if (!prepared.html) return '';
-    Object.assign(compiled.flatData, { site_field_html: prepared.html, site_field_format: prepared.format, site_field_empty: prepared.empty, tag: prepared.tag });
+    if (!prepared.html && !prepared.attrs) return '';
+    Object.assign(compiled.flatData, { site_field_html: prepared.html, site_field_format: prepared.format, site_field_empty: prepared.empty, site_field_attrs: prepared.attrs, tag: prepared.tag });
+  }
+  if (effectiveBlock.type === 'core/snippet') {
+    const prepared = prepareSnippet(compiled.flatData, { source: options.snippetSource, liveBaseUrl: options.context?.site?.live_base_url, now: options.now });
+    if (!prepared) return '';
+    Object.assign(compiled.flatData, { snippet_html: prepared.html, snippet_attrs: prepared.attrs, tag: prepared.tag });
   }
   let fieldListHtml: string | undefined;
   if (effectiveBlock.type === 'core/field_list') {
@@ -2334,6 +2347,14 @@ export interface CollectAssetsOptions {
    * Without them an automatic format counts as opening hours.
    */
   siteFieldValues?: unknown;
+  /**
+   * Where the site's live files are (`site.live_base_url`). With it, live
+   * snippets and live site fields ship the script that fetches them; without
+   * it they show the published content and ship nothing.
+   */
+  liveBaseUrl?: unknown;
+  /** The site's field definitions, to tell which site field blocks are live. */
+  siteFieldDefinitions?: Parameters<typeof usesLiveSiteField>[1];
 }
 
 export function collectBlockAssets(
@@ -2382,6 +2403,11 @@ export function collectBlockAssets(
   // Today's opening hours and the like refresh in the browser; other site fields need no script.
   if (used.includes('core/site_field') && usesSiteFieldClock(blocks, opts?.siteFieldValues)) {
     js.push(`/* core/site_field opening hours */\n${SITE_FIELD_CLOCK_SCRIPT}`);
+  }
+  // Live content fetches its files only where the site has them.
+  if (liveBaseUrlOf(opts?.liveBaseUrl)) {
+    if (used.includes('core/snippet') && usesLiveSnippet(blocks)) js.push(`/* core/snippet live content */\n${SNIPPET_LIVE_SCRIPT}`);
+    if (used.includes('core/site_field') && usesLiveSiteField(blocks, opts?.siteFieldDefinitions)) js.push(`/* core/site_field live values */\n${SITE_FIELD_LIVE_SCRIPT}`);
   }
   if (resolveRenderVersion(opts?.renderVersion) >= 14 && css.length) css.push(`/* block defaults */\n${BLOCK_DEFAULTS_V14_CSS}`);
   // From render version 14 platform block CSS is one layer; an author's

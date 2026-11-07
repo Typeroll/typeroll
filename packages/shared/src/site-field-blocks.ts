@@ -16,9 +16,9 @@ import type { Block, BlockType, FieldDefinition } from './types.js';
 import type { SiteFieldGroup, SiteFields } from './site-fields.js';
 import { WEEKDAYS, localDate } from './site-fields.js';
 import { formatDisplayDate, openingHoursText, type OpeningHoursText } from './ui-text.js';
+import { siteTimeZone, timeZoneError } from './site-display-settings.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00.000Z';
-export const DEFAULT_SITE_TIME_ZONE = 'Europe/Stockholm';
 
 export const SITE_FIELD_FORMATS = [
   'auto', 'text', 'richtext', 'number', 'date', 'list',
@@ -41,6 +41,9 @@ export const SITE_FIELD_BLOCK: BlockType = {
     { name: 'day', label: 'Weekdays', selector: '.block-site-field-hours th', target: 'text' },
     { name: 'hours', label: 'Hours of a day', selector: '.block-site-field-hours td', target: 'text' },
     { name: 'today', label: 'Today in the week', selector: '.block-site-field-hours tr[data-today]', target: 'text' },
+    { name: 'exception', label: 'Day with other hours', selector: '.block-site-field-hours tr[data-exception]', target: 'text' },
+    { name: 'note', label: 'Comment of a day', selector: '.block-site-field-note', target: 'text' },
+    { name: 'hours_note', label: 'Comment under the hours', selector: '.block-site-field-hours-note', target: 'text' },
   ],
   schema: [
     { name: 'field', type: 'text', label: 'Site field', required: true, placeholder: 'phone',
@@ -54,7 +57,8 @@ export const SITE_FIELD_BLOCK: BlockType = {
       help: 'The week, lists and rich text always use div.' },
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'text', editor_group: 'content' },
   ],
-  template: '<{{=tag}} data-block="site_field" data-format="{{site_field_format}}"{{#site_field_empty}} data-empty="true"{{/site_field_empty}}>{{{site_field_html}}}</{{=tag}}>',
+  // site_field_attrs is empty unless the field is live (SITE_FIELD_LIVE_SCRIPT), so other output is unchanged.
+  template: '<{{=tag}} data-block="site_field" data-format="{{site_field_format}}"{{#site_field_empty}} data-empty="true"{{/site_field_empty}}{{{site_field_attrs}}}>{{{site_field_html}}}</{{=tag}}>',
   styles: `
 [data-block="site_field"] { margin: 0; }
 [data-block="site_field"] .block-site-field-hours { border-collapse: collapse; }
@@ -148,8 +152,8 @@ export function siteFieldPath(name: unknown): string[] {
 export interface SiteFieldClockInput {
   f: string;
   z: string;
-  d: Array<{ day?: string; closed?: boolean; opens?: string; closes?: string }>;
-  x: Array<{ date?: string; closed?: boolean; opens?: string; closes?: string; note?: string }>;
+  d: Array<{ day?: string; closed?: boolean; opens?: string; closes?: string; break_starts?: string; break_ends?: string; note?: string }>;
+  x: Array<{ date?: string; closed?: boolean; opens?: string; closes?: string; break_starts?: string; break_ends?: string; note?: string }>;
   w: string[];
   t: OpeningHoursText;
 }
@@ -161,7 +165,10 @@ const fill = (template: string, name: string, value: string) => template.split(`
 /**
  * The output of a date-dependent format at `now`: the text of today's hours,
  * open now or the next opening, or the rows of this week (Monday first).
- * SITE_FIELD_CLOCK_COMPUTE is the same function for the browser.
+ * A break inside a day (lunch) splits its hours and closes it meanwhile. A
+ * day's comment shows under its weekday in the week, in bold for a date
+ * exception (a holiday name); the short formats show an exception's comment
+ * in bold next to the day. SITE_FIELD_CLOCK_COMPUTE is the same function for the browser.
  */
 export function siteFieldClockHtml(input: SiteFieldClockInput, now: Date): string {
   const parts: Record<string, string> = {};
@@ -175,22 +182,39 @@ export function siteFieldClockHtml(input: SiteFieldClockInput, now: Date): strin
     const exception = (input.x ?? []).find(entry => entry && entry.date === iso);
     const source = exception ?? (input.d ?? []).find(entry => entry && entry.day === WEEKDAYS[index]);
     const opens = valid(source?.opens), closes = valid(source?.closes);
-    return { index, closed: !source || source.closed === true || !opens || !closes, opens, closes, note: exception?.note ? String(exception.note) : '' };
+    const breakStarts = valid(source?.break_starts), breakEnds = valid(source?.break_ends);
+    // A break counts only inside the opening hours and with its end after its start (hoursOn).
+    const hasBreak = !!(opens && closes && breakStarts && breakEnds && opens < breakStarts && breakStarts < breakEnds && breakEnds < closes);
+    return {
+      index, exception: !!exception, closed: !source || source.closed === true || !opens || !closes, opens, closes,
+      breakStarts: hasBreak ? breakStarts : '', breakEnds: hasBreak ? breakEnds : '', note: typeof source?.note === 'string' ? source.note.trim() : '',
+    };
   };
-  const text = (day: ReturnType<typeof hours>) => (day.closed ? escapeText(input.t.closed) : escapeText(`${day.opens}–${day.closes}`)) + (day.note ? ` (${escapeText(day.note)})` : '');
+  type Day = ReturnType<typeof hours>;
+  const text = (day: Day) => (day.closed ? escapeText(input.t.closed)
+    : day.breakStarts ? escapeText(`${day.opens}–${day.breakStarts}, ${day.breakEnds}–${day.closes}`) : escapeText(`${day.opens}–${day.closes}`));
+  // A date exception's comment (a holiday name) is bold; a weekday's own comment is not.
+  const note = (day: Day) => (!day.note ? '' : day.exception ? `<strong class="block-site-field-note">${escapeText(day.note)}</strong>` : `<span class="block-site-field-note">${escapeText(day.note)}</span>`);
+  const holiday = (day: Day) => (day.exception ? note(day) : '');
+  const withNote = (day: Day, html: string) => (holiday(day) ? `${holiday(day)}: ${html}` : html);
+  const capital = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
   const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
   const today = hours(0);
-  const open = !today.closed && minutes >= toMinutes(today.opens) && minutes < toMinutes(today.closes);
-  const until = escapeText(fill(input.t.open_until, 'time', today.closes));
-  if (input.f === 'opening_hours_today') return text(today);
-  if (input.f === 'open_now') return open ? until : escapeText(input.t.closed);
+  const within = !today.closed && minutes >= toMinutes(today.opens) && minutes < toMinutes(today.closes);
+  const inBreak = within && !!today.breakStarts && minutes >= toMinutes(today.breakStarts) && minutes < toMinutes(today.breakEnds);
+  const open = within && !inBreak;
+  const until = escapeText(fill(input.t.open_until, 'time', today.breakStarts && minutes < toMinutes(today.breakStarts) ? today.breakStarts : today.closes));
+  const reopens = escapeText(fill(input.t.reopens ?? input.t.closed, 'time', today.breakEnds));
+  if (input.f === 'opening_hours_today') return holiday(today) ? `${escapeText(capital(String(input.t.today)))} · ${holiday(today)}: ${text(today)}` : text(today);
+  if (input.f === 'open_now') return withNote(today, open ? until : inBreak ? reopens : escapeText(input.t.closed));
   if (input.f === 'next_opening') {
-    if (open) return until;
+    if (open) return withNote(today, until);
+    if (inBreak) return withNote(today, reopens);
     for (let offset = 0; offset < 14; offset++) {
       const day = offset ? hours(offset) : today;
       if (!day.closed && (offset > 0 || minutes < toMinutes(day.opens))) {
         const name = offset === 0 ? input.t.today : offset === 1 ? input.t.tomorrow : String(input.w[day.index] ?? '');
-        return escapeText(fill(fill(input.t.opens, 'day', name), 'time', day.opens));
+        return fill(fill(escapeText(input.t.opens), 'day', escapeText(name) + (holiday(day) ? ` (${holiday(day)})` : '')), 'time', escapeText(day.opens));
       }
     }
     return escapeText(input.t.closed);
@@ -199,7 +223,8 @@ export function siteFieldClockHtml(input: SiteFieldClockInput, now: Date): strin
   for (let index = 0; index < 7; index++) {
     const day = hours(index - today.index);
     const name = String(input.w[index] ?? '');
-    rows += `<tr data-day="${WEEKDAYS[index]}"${index === today.index ? ' data-today="true" aria-current="date"' : ''}><th>${escapeText(name.charAt(0).toUpperCase() + name.slice(1))}</th><td>${text(day)}</td></tr>`;
+    // A day with an exception is marked; a comment shows under the weekday, in the row header.
+    rows += `<tr data-day="${WEEKDAYS[index]}"${index === today.index ? ' data-today="true" aria-current="date"' : ''}${day.exception ? ' data-exception="true"' : ''}><th>${escapeText(capital(name))}${day.note ? `<br>${note(day)}` : ''}</th><td>${text(day)}</td></tr>`;
   }
   return rows;
 }
@@ -227,22 +252,35 @@ export const SITE_FIELD_CLOCK_COMPUTE = `function (p, now) {
     var exception = find(p.x, function (entry) { return entry.date === iso; });
     var source = exception || find(p.d, function (entry) { return entry.day === DAYS[index]; });
     var opens = valid(source && source.opens), closes = valid(source && source.closes);
-    return { index: index, closed: !source || source.closed === true || !opens || !closes, opens: opens, closes: closes, note: exception && exception.note ? String(exception.note) : '' };
+    var breakStarts = valid(source && source.break_starts), breakEnds = valid(source && source.break_ends);
+    var hasBreak = !!(opens && closes && breakStarts && breakEnds && opens < breakStarts && breakStarts < breakEnds && breakEnds < closes);
+    return { index: index, exception: !!exception, closed: !source || source.closed === true || !opens || !closes, opens: opens, closes: closes,
+      breakStarts: hasBreak ? breakStarts : '', breakEnds: hasBreak ? breakEnds : '', note: source && typeof source.note === 'string' ? source.note.replace(/^\\s+|\\s+$/g, '') : '' };
   }
-  function text(day) { return (day.closed ? esc(p.t.closed) : esc(day.opens + '\\u2013' + day.closes)) + (day.note ? ' (' + esc(day.note) + ')' : ''); }
+  function text(day) {
+    return day.closed ? esc(p.t.closed) : day.breakStarts ? esc(day.opens + '\\u2013' + day.breakStarts + ', ' + day.breakEnds + '\\u2013' + day.closes) : esc(day.opens + '\\u2013' + day.closes);
+  }
+  function note(day) { return !day.note ? '' : day.exception ? '<strong class="block-site-field-note">' + esc(day.note) + '</strong>' : '<span class="block-site-field-note">' + esc(day.note) + '</span>'; }
+  function holiday(day) { return day.exception ? note(day) : ''; }
+  function withNote(day, html) { return holiday(day) ? holiday(day) + ': ' + html : html; }
+  function capital(value) { return value.charAt(0).toUpperCase() + value.slice(1); }
   function toMinutes(value) { return Number(value.slice(0, 2)) * 60 + Number(value.slice(3)); }
   var today = hours(0);
-  var open = !today.closed && minutes >= toMinutes(today.opens) && minutes < toMinutes(today.closes);
-  var until = esc(fill(p.t.open_until, 'time', today.closes));
-  if (p.f === 'opening_hours_today') return text(today);
-  if (p.f === 'open_now') return open ? until : esc(p.t.closed);
+  var within = !today.closed && minutes >= toMinutes(today.opens) && minutes < toMinutes(today.closes);
+  var inBreak = within && !!today.breakStarts && minutes >= toMinutes(today.breakStarts) && minutes < toMinutes(today.breakEnds);
+  var open = within && !inBreak;
+  var until = esc(fill(p.t.open_until, 'time', today.breakStarts && minutes < toMinutes(today.breakStarts) ? today.breakStarts : today.closes));
+  var reopens = esc(fill(p.t.reopens === undefined ? p.t.closed : p.t.reopens, 'time', today.breakEnds));
+  if (p.f === 'opening_hours_today') return holiday(today) ? esc(capital(String(p.t.today))) + ' \\u00b7 ' + holiday(today) + ': ' + text(today) : text(today);
+  if (p.f === 'open_now') return withNote(today, open ? until : inBreak ? reopens : esc(p.t.closed));
   if (p.f === 'next_opening') {
-    if (open) return until;
+    if (open) return withNote(today, until);
+    if (inBreak) return withNote(today, reopens);
     for (var offset = 0; offset < 14; offset++) {
       var day = offset ? hours(offset) : today;
       if (!day.closed && (offset > 0 || minutes < toMinutes(day.opens))) {
         var name = offset === 0 ? p.t.today : offset === 1 ? p.t.tomorrow : String(p.w[day.index] || '');
-        return esc(fill(fill(p.t.opens, 'day', name), 'time', day.opens));
+        return fill(fill(esc(p.t.opens), 'day', esc(name) + (holiday(day) ? ' (' + holiday(day) + ')' : '')), 'time', esc(day.opens));
       }
     }
     return esc(p.t.closed);
@@ -250,7 +288,8 @@ export const SITE_FIELD_CLOCK_COMPUTE = `function (p, now) {
   var rows = '';
   for (var index = 0; index < 7; index++) {
     var weekday = hours(index - today.index), label = String(p.w[index] || '');
-    rows += '<tr data-day="' + DAYS[index] + '"' + (index === today.index ? ' data-today="true" aria-current="date"' : '') + '><th>' + esc(label.charAt(0).toUpperCase() + label.slice(1)) + '</th><td>' + text(weekday) + '</td></tr>';
+    rows += '<tr data-day="' + DAYS[index] + '"' + (index === today.index ? ' data-today="true" aria-current="date"' : '') + (weekday.exception ? ' data-exception="true"' : '')
+      + '><th>' + esc(capital(label)) + (weekday.note ? '<br>' + note(weekday) : '') + '</th><td>' + text(weekday) + '</td></tr>';
   }
   return rows;
 }`;
@@ -278,8 +317,17 @@ export interface SiteFieldRenderOptions {
   values: unknown;
   definitions?: readonly Pick<SiteFieldGroup, 'fields'>[];
   language?: unknown;
-  /** The site's time zone; Europe/Stockholm when unset or unknown. */
+  /**
+   * The site's resolved time zone (`siteTimeZone(settings)`): which day and
+   * hour it is at the business. An invalid value falls back to siteTimeZone's default.
+   */
   timeZone?: unknown;
+  /**
+   * Where the site's live files are (`site.live_base_url`). With it, a field
+   * whose definition is `live` also carries what the browser needs to show a
+   * newer value from `_fields.json` (SITE_FIELD_LIVE_SCRIPT).
+   */
+  liveBaseUrl?: unknown;
   dateFormat?: unknown;
   now?: Date;
   onClockOutput?: (input: SiteFieldClockInput, html: string) => void;
@@ -292,16 +340,17 @@ export interface PreparedSiteField {
   format: string;
   tag: 'p' | 'span' | 'div';
   empty: boolean;
+  /** Extra wrapper attributes of a live field (leading space), otherwise empty. */
+  attrs: string;
 }
 
 function localeOf(language: unknown): string {
   try { return Intl.getCanonicalLocales(String(language ?? '') || 'en')[0] ?? 'en'; } catch { return 'en'; }
 }
 
-export function siteTimeZone(value: unknown): string {
-  const zone = typeof value === 'string' ? value.trim() : '';
-  if (!zone) return DEFAULT_SITE_TIME_ZONE;
-  try { new Intl.DateTimeFormat('en', { timeZone: zone }); return zone; } catch { return DEFAULT_SITE_TIME_ZONE; }
+/** A zone resolved by siteTimeZone(settings); anything invalid gets its default. */
+function resolvedZone(value: unknown): string {
+  return typeof value === 'string' && value && !timeZoneError(value) ? value : siteTimeZone(undefined);
 }
 
 /** Weekday names in the page language, Monday first. */
@@ -311,7 +360,7 @@ export function weekdayNames(language: unknown): string[] {
   return WEEKDAYS.map((_, index) => format.format(new Date(Date.UTC(2024, 0, 1 + index))));
 }
 
-const isHours = (value: unknown): value is { days?: unknown; exceptions?: unknown } => isRecord(value) && (Array.isArray(value.days) || Array.isArray(value.exceptions));
+const isHours = (value: unknown): value is { days?: unknown; exceptions?: unknown; note?: unknown } => isRecord(value) && (Array.isArray(value.days) || Array.isArray(value.exceptions));
 const isEmpty = (value: unknown) => value === undefined || value === null || value === false
   || (typeof value === 'string' && !value.trim()) || (Array.isArray(value) && !value.length);
 
@@ -396,32 +445,31 @@ export function prepareSiteField(data: Record<string, unknown>, options: SiteFie
   const label = String(data.label ?? '').trim();
   const labelHtml = label ? `<span class="block-site-field-label">${escapeText(label)}</span> ` : '';
   const inline = (content: string) => `<span class="block-site-field-value">${content}</span>`;
+  const zone = resolvedZone(options.timeZone);
+  const locale = localeOf(options.language);
+  // A live field keeps its wrapper (hidden when empty) so the browser can fill it later.
+  const live = liveSpec(data, path, format, definition, options, { zone, locale, label });
+  const attrs = live ? ` data-site-field="${escapeText(path.join('.'))}" data-site-field-src="${escapeText(live.src)}" data-site-field-live="${escapeText(JSON.stringify(live.spec))}"` : '';
   const empty = (): PreparedSiteField => {
     const text = String(data.empty_text ?? '').trim();
-    return { html: text ? `${labelHtml}${inline(escapeText(text))}` : '', format, tag: chosenTag, empty: true };
+    const html = text ? `${labelHtml}${inline(escapeText(text))}` : '';
+    return { html, format, tag: live ? tag : chosenTag, empty: true, attrs: live && !html ? `${attrs} hidden` : attrs };
   };
 
   if (SITE_FIELD_CLOCK_FORMATS.has(format)) {
     if (!isHours(value)) return empty();
     const now = options.now ?? new Date();
-    const zone = siteTimeZone(options.timeZone);
-    // Exceptions from a week back on: this week's rows still show them, older ones never show again.
-    const from = new Date(Date.parse(`${localDate(now, zone).date}T00:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10);
-    const input: SiteFieldClockInput = {
-      f: format, z: zone,
-      d: (Array.isArray(value.days) ? value.days : []).filter(isRecord).map(day => pick(day, ['day', 'closed', 'opens', 'closes'])),
-      x: (Array.isArray(value.exceptions) ? value.exceptions : []).filter(isRecord)
-        .filter(day => typeof day.date === 'string' && day.date >= from).map(day => pick(day, ['date', 'closed', 'opens', 'closes', 'note'])),
-      w: weekdayNames(options.language), t: openingHoursText(options.language),
-    };
+    const input = clockInput(format, zone, value, now, weekdayNames(options.language), openingHoursText(options.language));
     const html = siteFieldClockHtml(input, now);
     options.onClockOutput?.(input, html);
     const clock = `data-site-field-clock="${escapeText(JSON.stringify(input))}"`;
     if (format === 'opening_hours_week') {
       const caption = label ? `<caption class="block-site-field-label">${escapeText(label)}</caption>` : '';
-      return { html: `<table class="block-site-field-value block-site-field-hours">${caption}<tbody ${clock}>${html}</tbody></table>`, format, tag, empty: false };
+      // The field's own comment ("Lunch closed 12–13 on weekdays") follows the table.
+      const comment = typeof value.note === 'string' && value.note.trim() ? `<p class="block-site-field-hours-note">${escapeText(value.note.trim())}</p>` : '';
+      return { html: `<table class="block-site-field-value block-site-field-hours">${caption}<tbody ${clock}>${html}</tbody></table>${comment}`, format, tag, empty: false, attrs };
     }
-    return { html: `${labelHtml}<span class="block-site-field-value" ${clock}>${html}</span>`, format, tag, empty: false };
+    return { html: `${labelHtml}<span class="block-site-field-value" ${clock}>${html}</span>`, format, tag, empty: false, attrs };
   }
 
   if (isEmpty(value) || isHours(value)) return empty();
@@ -432,7 +480,7 @@ export function prepareSiteField(data: Record<string, unknown>, options: SiteFie
       break;
     case 'number': {
       const number = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
-      content = Number.isFinite(number) ? inline(escapeText(new Intl.NumberFormat(localeOf(options.language)).format(number))) : '';
+      content = Number.isFinite(number) ? inline(escapeText(new Intl.NumberFormat(locale).format(number))) : '';
       break;
     }
     case 'date':
@@ -449,7 +497,210 @@ export function prepareSiteField(data: Record<string, unknown>, options: SiteFie
     }
   }
   if (!content) return empty();
-  return { html: `${format === 'richtext' || format === 'list' ? (label ? `<div class="block-site-field-label">${escapeText(label)}</div>` : '') : labelHtml}${content}`, format, tag, empty: false };
+  return { html: `${format === 'richtext' || format === 'list' ? (label ? `<div class="block-site-field-label">${escapeText(label)}</div>` : '') : labelHtml}${content}`, format, tag, empty: false, attrs };
+}
+
+const DAY_KEYS = ['day', 'closed', 'opens', 'closes', 'break_starts', 'break_ends', 'note'];
+const EXCEPTION_KEYS = ['date', 'closed', 'opens', 'closes', 'break_starts', 'break_ends', 'note'];
+/** What a date-dependent format embeds: the week and the exceptions from a week back on (older ones never show again). */
+function clockInput(format: string, zone: string, value: { days?: unknown; exceptions?: unknown }, now: Date, w: string[], t: OpeningHoursText): SiteFieldClockInput {
+  const from = new Date(Date.parse(`${localDate(now, zone).date}T00:00:00Z`) - 7 * 86_400_000).toISOString().slice(0, 10);
+  return {
+    f: format, z: zone,
+    d: (Array.isArray(value.days) ? value.days : []).filter(isRecord).map(day => pick(day, DAY_KEYS)),
+    x: (Array.isArray(value.exceptions) ? value.exceptions : []).filter(isRecord)
+      .filter(day => typeof day.date === 'string' && day.date >= from).map(day => pick(day, EXCEPTION_KEYS)),
+    w, t,
+  };
+}
+
+// ─── Live site fields ───────────────────────────────────────────────────
+
+/** Formats the browser can show again from a newer value; rich text and lists keep their published value. */
+export const SITE_FIELD_LIVE_FORMATS: ReadonlySet<string> = new Set(['text', 'number', 'date', ...SITE_FIELD_CLOCK_FORMATS]);
+/** Field types whose text the browser formats like the build (no page references, groups or lists). */
+const LIVE_TEXT_TYPES = new Set(['', 'text', 'textarea', 'select', 'email', 'url', 'image', 'number', 'date', 'datetime']);
+
+/**
+ * What the browser needs to format a newer value exactly as the build did,
+ * embedded as `data-site-field-live`: the format, the field type, option
+ * labels, locale, date format, label and empty text, and for opening hours
+ * the zone, weekday names and labels.
+ */
+export interface SiteFieldLiveSpec {
+  f: string;
+  k: string;
+  o?: Record<string, string>;
+  l: string;
+  df: string;
+  lb: string;
+  e: string;
+  c?: { z: string; w: string[]; t: OpeningHoursText };
+}
+
+/** The base URL of a site's live files, without a trailing slash, or null. */
+export function liveBaseUrlOf(value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return null;
+    return value.replace(/\/+$/, '');
+  } catch { return null; }
+}
+
+/** Whether a site field definition (top level) is live. */
+function liveDefinition(definitions: SiteFieldRenderOptions['definitions'], path: string[]): boolean {
+  return path.length > 0 && siteFieldDefinition(definitions, path.slice(0, 1))?.live === true;
+}
+
+function liveSpec(data: Record<string, unknown>, path: string[], format: string, definition: FieldDefinition | undefined, options: SiteFieldRenderOptions,
+  resolved: { zone: string; locale: string; label: string }): { src: string; spec: SiteFieldLiveSpec } | null {
+  const base = liveBaseUrlOf(options.liveBaseUrl);
+  if (!base || !liveDefinition(options.definitions, path) || !SITE_FIELD_LIVE_FORMATS.has(format)) return null;
+  const type = definition?.type ?? '';
+  if (!SITE_FIELD_CLOCK_FORMATS.has(format) && !LIVE_TEXT_TYPES.has(type)) return null;
+  const spec: SiteFieldLiveSpec = {
+    f: format, k: type, l: resolved.locale, df: String(options.dateFormat ?? ''), lb: resolved.label, e: String(data.empty_text ?? '').trim(),
+  };
+  if (type === 'select' && definition?.options) spec.o = Object.fromEntries(definition.options.map(option => [option, optionLabel(definition, option)]));
+  if (SITE_FIELD_CLOCK_FORMATS.has(format)) spec.c = { z: resolved.zone, w: weekdayNames(options.language), t: openingHoursText(options.language) };
+  return { src: `${base}/_fields.json`, spec };
+}
+
+/**
+ * The browser's formatter for a live site field: given the spec, the newer
+ * value, now and the opening-hours function (SITE_FIELD_CLOCK_COMPUTE), it
+ * returns `{ h: inner markup, e: empty }` as prepareSiteField would build
+ * it, or null for a value it cannot show (the published value stays).
+ * Plain ES5 without outside references; kept equal to prepareSiteField by tests.
+ */
+export const SITE_FIELD_LIVE_COMPUTE = `function (s, value, now, clock) {
+  var MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  function esc(v) { return String(v).replace(/[&<>"']/g, function (c) { return MAP[c]; }); }
+  function isRecord(v) { return !!v && typeof v === 'object' && !(v instanceof Array); }
+  function isHours(v) { return isRecord(v) && (v.days instanceof Array || v.exceptions instanceof Array); }
+  function trim(v) { return String(v).replace(/^\\s+|\\s+$/g, ''); }
+  function isEmpty(v) { return v === undefined || v === null || v === false || (typeof v === 'string' && !trim(v)) || (v instanceof Array && !v.length); }
+  function pad(n) { return n < 10 ? '0' + n : String(n); }
+  function pick(v, keys) { var out = {}; for (var i = 0; i < keys.length; i++) if (v[keys[i]] !== undefined && v[keys[i]] !== null && v[keys[i]] !== '') out[keys[i]] = v[keys[i]]; return out; }
+  function safeHref(v) {
+    var url = trim(v);
+    if (!url || /[\\u0000- \\\\]/.test(url)) return '';
+    if (url.charAt(0) === '/' && url.charAt(1) !== '/') return url;
+    try {
+      var parsed = new URL(url);
+      return (parsed.protocol === 'https:' || parsed.protocol === 'http:' || parsed.protocol === 'mailto:' || parsed.protocol === 'tel:') && !parsed.username && !parsed.password ? url : '';
+    } catch (error) { return ''; }
+  }
+  function displayDate(text) {
+    var date = /^\\d{4}-\\d{2}-\\d{2}/.test(text) ? new Date(text.length === 10 ? text + 'T00:00:00Z' : text) : null;
+    if (!date || isNaN(date.getTime())) return text;
+    function part(o) { o.timeZone = 'UTC'; return new Intl.DateTimeFormat(s.l, o).format(date); }
+    var pattern = trim(s.df || '');
+    if (!pattern || pattern === 'medium') return part({ year: 'numeric', month: 'short', day: 'numeric' });
+    if (pattern === 'long') return part({ year: 'numeric', month: 'long', day: 'numeric' });
+    if (pattern === 'numeric') return part({ year: 'numeric', month: '2-digit', day: '2-digit' });
+    if (pattern === 'iso') return date.toISOString().slice(0, 10);
+    var day = date.getUTCDate(), month = date.getUTCMonth() + 1;
+    return pattern.replace(/YYYY|MMMM|MMM|MM|M|DD|D/g, function (token) {
+      return token === 'YYYY' ? String(date.getUTCFullYear()) : token === 'MMMM' ? part({ month: 'long' }) : token === 'MMM' ? part({ month: 'short' })
+        : token === 'MM' ? pad(month) : token === 'M' ? String(month) : token === 'DD' ? pad(day) : String(day);
+    });
+  }
+  var label = s.lb ? '<span class="block-site-field-label">' + esc(s.lb) + '</span> ' : '';
+  function inline(content) { return '<span class="block-site-field-value">' + content + '</span>'; }
+  function empty() { return { h: s.e ? label + inline(esc(s.e)) : '', e: true }; }
+  if (s.c) {
+    if (!isHours(value)) return empty();
+    var parts = {};
+    new Intl.DateTimeFormat('en-GB', { timeZone: s.c.z, year: 'numeric', month: '2-digit', day: '2-digit' })
+      .formatToParts(now).forEach(function (p) { parts[p.type] = p.value; });
+    var from = new Date(Date.parse(parts.year + '-' + parts.month + '-' + parts.day + 'T00:00:00Z') - 7 * 86400000).toISOString().slice(0, 10);
+    var days = [], exceptions = [], i;
+    for (i = 0; i < (value.days instanceof Array ? value.days : []).length; i++) if (isRecord(value.days[i])) days.push(pick(value.days[i], ['day', 'closed', 'opens', 'closes', 'break_starts', 'break_ends', 'note']));
+    for (i = 0; i < (value.exceptions instanceof Array ? value.exceptions : []).length; i++) {
+      var x = value.exceptions[i];
+      if (isRecord(x) && typeof x.date === 'string' && x.date >= from) exceptions.push(pick(x, ['date', 'closed', 'opens', 'closes', 'break_starts', 'break_ends', 'note']));
+    }
+    var input = { f: s.f, z: s.c.z, d: days, x: exceptions, w: s.c.w, t: s.c.t };
+    var attr = 'data-site-field-clock="' + esc(JSON.stringify(input)) + '"', rows = clock(input, now);
+    if (s.f === 'opening_hours_week') return { h: '<table class="block-site-field-value block-site-field-hours">' + (s.lb ? '<caption class="block-site-field-label">' + esc(s.lb) + '</caption>' : '') + '<tbody ' + attr + '>' + rows + '</tbody></table>'
+      + (typeof value.note === 'string' && trim(value.note) ? '<p class="block-site-field-hours-note">' + esc(trim(value.note)) + '</p>' : ''), e: false };
+    return { h: label + '<span class="block-site-field-value" ' + attr + '>' + rows + '</span>', e: false };
+  }
+  if (isEmpty(value) || isHours(value)) return empty();
+  var content = '';
+  if (s.f === 'number') {
+    var number = typeof value === 'number' ? value : typeof value === 'string' && trim(value) ? Number(value) : NaN;
+    content = isFinite(number) ? inline(esc(new Intl.NumberFormat(s.l).format(number))) : '';
+  } else if (s.f === 'date') {
+    content = typeof value === 'string' ? inline(esc(displayDate(trim(value)))) : '';
+  } else {
+    if (isRecord(value) || value instanceof Array) return null;
+    var html = '';
+    if (typeof value !== 'boolean') {
+      var text = typeof value === 'number' ? new Intl.NumberFormat(s.l).format(value) : trim(value), href;
+      if (s.k === 'url') { href = safeHref(text); html = href ? '<a href="' + esc(href) + '">' + esc(text) + '</a>' : esc(text); }
+      else if (s.k === 'email') html = /^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(text) ? '<a href="mailto:' + esc(text) + '">' + esc(text) + '</a>' : esc(text);
+      else if (s.k === 'image') { href = safeHref(text); html = href ? '<img src="' + esc(href) + '" alt="" loading="lazy" decoding="async" />' : ''; }
+      else if (s.k === 'select') html = esc(s.o && Object.prototype.hasOwnProperty.call(s.o, text) ? s.o[text] : text);
+      else html = esc(text);
+    }
+    content = html ? inline(html) : '';
+  }
+  return content ? { h: label + content, e: false } : empty();
+}`;
+
+/**
+ * Shows the newest values of live site fields: fetches the site's
+ * `_fields.json` once per page and formats each field as the build did.
+ * A field missing from the file, a value it cannot show or a failed request
+ * keeps the published value. Ships only with a live site field.
+ */
+export const SITE_FIELD_LIVE_SCRIPT = `(function () {
+  var clock = ${SITE_FIELD_CLOCK_COMPUTE};
+  var compute = ${SITE_FIELD_LIVE_COMPUTE};
+  function valueAt(values, path) {
+    var current = values;
+    for (var i = 0; i < path.length; i++) {
+      if (current instanceof Array && /^\\d+$/.test(path[i])) current = current[Number(path[i])];
+      else if (current && typeof current === 'object' && Object.prototype.hasOwnProperty.call(current, path[i])) current = current[path[i]];
+      else return undefined;
+    }
+    return current;
+  }
+  function show(node, file) {
+    var path = String(node.getAttribute('data-site-field') || '').split('.');
+    if (!file || !file.values || typeof file.values !== 'object' || !Object.prototype.hasOwnProperty.call(file.values, path[0])) return;
+    var result = compute(JSON.parse(node.getAttribute('data-site-field-live')), valueAt(file.values, path), new Date(), clock);
+    if (!result) return;
+    if (node.innerHTML !== result.h) node.innerHTML = result.h;
+    if (result.e) node.setAttribute('data-empty', 'true'); else node.removeAttribute('data-empty');
+    node.hidden = !result.h;
+  }
+  function run() {
+    var nodes = document.querySelectorAll('[data-site-field-src]'), groups = {}, i;
+    for (i = 0; i < nodes.length; i++) {
+      var src = nodes[i].getAttribute('data-site-field-src');
+      (groups[src] = groups[src] || []).push(nodes[i]);
+    }
+    Object.keys(groups).forEach(function (src) {
+      fetch(src, { credentials: 'omit' }).then(function (response) {
+        if (!response.ok) throw new Error('unavailable');
+        return response.json();
+      }).then(function (file) {
+        groups[src].forEach(function (node) { try { show(node, file); } catch (error) { /* the published value stays */ } });
+      })['catch'](function () { /* the published values stay */ });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+})();`;
+
+/** Whether the blocks show a live site field, so the page needs SITE_FIELD_LIVE_SCRIPT (with a live base URL). */
+export function usesLiveSiteField(blocks: readonly Block[], definitions: SiteFieldRenderOptions['definitions']): boolean {
+  if (!definitions?.length) return false;
+  return walkBlocks(blocks, block => block.type === SITE_FIELD_BLOCK.id && liveDefinition(definitions, siteFieldPath(block.data?.field))
+    && !['richtext', 'list'].includes(String(block.data?.format ?? 'auto')));
 }
 
 function pick(value: Record<string, unknown>, keys: string[]): Record<string, unknown> {

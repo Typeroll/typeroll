@@ -134,24 +134,66 @@ describe('core/site_field', () => {
     // Saturday evening: Sunday is closed, Monday opens.
     expect(text(render([field({ field: 'opening_hours', format: 'next_opening' })], { now: new Date('2026-11-14T15:00:00Z') }))).toBe('Opens Monday 09:00');
     expect(text(render([field({ field: 'opening_hours', format: 'next_opening' })], { now: new Date('2026-11-09T06:00:00Z'), language: 'sv' }))).toBe('Öppnar i dag 09:00');
-    // An exception wins over the weekday; its note is escaped.
-    expect(text(render([field({ field: 'opening_hours', format: 'opening_hours_today' })], { now: new Date('2026-11-11T09:00:00Z') }))).toBe('12:00–15:00 (Staff &lt;meeting&gt;)');
+    // An exception wins over the weekday; its note shows in bold next to the day, escaped.
+    const wednesday = new Date('2026-11-11T09:00:00Z');
+    expect(render([field({ field: 'opening_hours', format: 'opening_hours_today' })], { now: wednesday })).toContain('>Today · <strong class="block-site-field-note">Staff &lt;meeting&gt;</strong>: 12:00–15:00</span>');
+    expect(text(render([field({ field: 'opening_hours', format: 'open_now' })], { now: wednesday }))).toBe('Staff &lt;meeting&gt;: Closed');
+    expect(text(render([field({ field: 'opening_hours', format: 'next_opening' })], { now: wednesday }))).toBe('Opens today (Staff &lt;meeting&gt;) 12:00');
+    expect(text(render([field({ field: 'opening_hours', format: 'next_opening' })], { now: new Date('2026-11-11T12:00:00Z') }))).toBe('Staff &lt;meeting&gt;: Open now, until 15:00');
+    // A day without an exception reads as before.
+    expect(render([field({ field: 'opening_hours', format: 'next_opening' })], { now: new Date('2026-11-10T17:30:00Z') })).toContain('>Opens tomorrow (<strong class="block-site-field-note">Staff &lt;meeting&gt;</strong>) 12:00</span>');
     // 16:30 UTC is 17:30 in Stockholm (closed) but 11:30 in New York (open).
     const late = new Date('2026-11-09T16:30:00Z');
     expect(text(render([field({ field: 'opening_hours', format: 'open_now' })], { now: late }))).toBe('Closed');
     expect(text(render([field({ field: 'opening_hours', format: 'open_now' })], { now: late, timeZone: 'America/New_York' }))).toBe('Open now, until 17:00');
-    // An unknown time zone falls back to Stockholm.
+    // An unknown time zone falls back to the zone of the site language.
     expect(text(render([field({ field: 'opening_hours', format: 'open_now' })], { now: late, timeZone: 'Mars/Olympus' }))).toBe('Closed');
+    // A Norwegian site without a time zone keeps Oslo time: 23:30 UTC on Sunday is already Monday there.
+    const sunday = new Date('2026-11-08T23:30:00Z');
+    expect(render([field({ field: 'opening_hours', format: 'open_now' })], { now: sunday, language: 'nb' })).toContain('&quot;z&quot;:&quot;Europe/Oslo&quot;');
+    expect(text(render([field({ field: 'opening_hours', format: 'opening_hours_today' })], { now: sunday, language: 'nb' }))).toBe('09:00–17:00');
+    expect(text(render([field({ field: 'opening_hours', format: 'opening_hours_today' })], { now: sunday, timeZone: 'Europe/London' }))).toBe('Closed');
   });
 
   it('shows the week in the page language with today and this week\'s exceptions', () => {
     const html = render([field({ field: 'opening_hours', label: 'Öppettider' })], { language: 'sv', now: new Date('2026-11-11T09:00:00Z') });
     expect(html).toContain('<caption class="block-site-field-label">Öppettider</caption>');
     expect(html).toContain('<tr data-day="monday"><th>Måndag</th><td>09:00–17:00</td></tr>');
-    expect(html).toContain('<tr data-day="wednesday" data-today="true" aria-current="date"><th>Onsdag</th><td>12:00–15:00 (Staff &lt;meeting&gt;)</td></tr>');
+    // A day with an exception is marked, with its note in bold under the weekday in the row header.
+    expect(html).toContain('<tr data-day="wednesday" data-today="true" aria-current="date" data-exception="true"><th>Onsdag<br><strong class="block-site-field-note">Staff &lt;meeting&gt;</strong></th><td>12:00–15:00</td></tr>');
+    expect(html).toContain('<tr data-day="tuesday"><th>Tisdag</th><td>09:00–17:00</td></tr>');
     expect(html).toContain('<tr data-day="sunday"><th>Söndag</th><td>Stängt</td></tr>');
     // Christmas week shows Christmas Eve closed.
-    expect(render([field({ field: 'opening_hours' })], { now: new Date('2026-12-21T09:00:00Z') })).toContain('<tr data-day="thursday"><th>Thursday</th><td>Closed (Christmas Eve)</td></tr>');
+    expect(render([field({ field: 'opening_hours' })], { now: new Date('2026-12-21T09:00:00Z') })).toContain('<tr data-day="thursday" data-exception="true"><th>Thursday<br><strong class="block-site-field-note">Christmas Eve</strong></th><td>Closed</td></tr>');
+  });
+
+  it('splits a day with a break, shows comments and the comment under the week', () => {
+    const lunch = { days: WEEK.map(day => (day.day === 'tuesday' ? { ...day, break_starts: '12:00', break_ends: '13:00', note: 'Lunch closed 12–13' } : day)),
+      exceptions: [{ date: '2026-11-12', opens: '10:00', closes: '15:00', note: 'Inventory' }], note: 'Lunch closed 12–13 on Tuesdays' };
+    const show = (data: Record<string, unknown>, now: Date, language = 'en') => renderBlocks([field({ field: 'hours', ...data })], {
+      registry, renderVersion: 15, now, context: { site: { language, fields: { hours: lunch } } },
+    });
+    const tuesday = (time: string) => new Date(`2026-11-10T${time}:00Z`);
+    const week = show({ format: 'opening_hours_week' }, tuesday('09:00'));
+    // A weekday's own comment in normal weight under the weekday; a date exception's in bold.
+    expect(week).toContain('<tr data-day="tuesday" data-today="true" aria-current="date"><th>Tuesday<br><span class="block-site-field-note">Lunch closed 12–13</span></th><td>09:00–12:00, 13:00–17:00</td></tr>');
+    expect(week).toContain('<tr data-day="thursday" data-exception="true"><th>Thursday<br><strong class="block-site-field-note">Inventory</strong></th><td>10:00–15:00</td></tr>');
+    expect(week).toContain('<tr data-day="monday"><th>Monday</th><td>09:00–17:00</td></tr>');
+    expect(week).toContain('</tbody></table><p class="block-site-field-hours-note">Lunch closed 12–13 on Tuesdays</p></div>');
+    // 11:30, 12:30 and 13:30 in Stockholm.
+    expect(text(show({ format: 'open_now' }, tuesday('10:30')))).toBe('Open now, until 12:00');
+    expect(text(show({ format: 'open_now' }, tuesday('11:30')))).toBe('Closed, opens again 13:00');
+    expect(text(show({ format: 'next_opening' }, tuesday('11:30')))).toBe('Closed, opens again 13:00');
+    expect(text(show({ format: 'next_opening' }, tuesday('11:30'), 'sv'))).toBe('Stängt, öppnar igen 13:00');
+    expect(text(show({ format: 'open_now' }, tuesday('12:30')))).toBe('Open now, until 17:00');
+    expect(text(show({ format: 'opening_hours_today' }, tuesday('09:00')))).toBe('09:00–12:00, 13:00–17:00');
+    // A weekday comment stays out of the short formats; a holiday shows there.
+    expect(text(show({ format: 'opening_hours_today' }, new Date('2026-11-12T09:00:00Z')))).toBe('Today · Inventory: 10:00–15:00');
+  });
+
+  it('has the words for a break in every language', async () => {
+    const { UI_LANGUAGES, openingHoursText } = await import('../ui-text.js');
+    for (const language of UI_LANGUAGES) expect(openingHoursText(language).reopens, language).toContain('{time}');
   });
 
   it('embeds the hours, from a week back, for the browser to recompute', () => {
@@ -172,9 +214,12 @@ describe('core/site_field', () => {
 describe('the opening-hours script', () => {
   const compute = new Function(`return ${SITE_FIELD_CLOCK_COMPUTE}`)() as (input: SiteFieldClockInput, now: Date) => string;
   const inputs = (['opening_hours_week', 'opening_hours_today', 'next_opening', 'open_now'] as const).flatMap(f => (['Europe/Stockholm', 'America/New_York', 'Asia/Tokyo'] as const).map(z => ({
-    f, z, d: WEEK, x: [...HOURS.exceptions, { date: '2026-03-29', opens: '9:00', closes: '12:00' }, { date: '2026-11-10', closed: true }],
+    f, z,
+    // Lunch breaks (one outside the day, ignored) and weekday comments.
+    d: WEEK.map((day, index) => (index === 1 ? { ...day, break_starts: '12:00', break_ends: '13:00', note: 'Lunch closed 12–13' } : index === 3 ? { ...day, break_starts: '18:00', break_ends: '19:00' } : day)),
+    x: [...HOURS.exceptions, { date: '2026-03-29', opens: '9:00', closes: '12:00' }, { date: '2026-11-10', closed: true }, { date: '2026-12-23', opens: '10:00', closes: '16:00', break_starts: '12:30', break_ends: '13:00', note: 'Lillejulafton' }],
     w: ['måndag', 'tisdag', 'onsdag', 'torsdag', 'fredag', 'lördag', 'söndag'],
-    t: { closed: 'Stängt', open_until: 'Öppet nu, till {time}', opens: 'Öppnar {day} {time}', today: 'i dag', tomorrow: 'i morgon' },
+    t: { closed: 'Stängt', open_until: 'Öppet nu, till {time}', opens: 'Öppnar {day} {time}', today: 'i dag', tomorrow: 'i morgon', reopens: 'Stängt, öppnar igen {time}' },
   })));
   // Every half hour across a week with a daylight saving change, Christmas and year end.
   const moments = [Date.parse('2026-03-26T00:00:00Z'), Date.parse('2026-10-22T00:00:00Z'), Date.parse('2026-12-21T00:00:00Z'), Date.parse('2026-12-28T00:00:00Z')]

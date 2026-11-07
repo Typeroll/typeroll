@@ -172,6 +172,8 @@ const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
   // Site fields have their own scopes: their values steer what the site shows
   // (opening hours, a booking toggle) and their definitions are site admin.
   { path: /^\/site-fields(?:\/.*)?$/, scope: (w) => (w ? 'site_fields:write' : 'site_fields:read') },
+  // Live snippets change the live site at once, without a publication.
+  { path: /^\/snippets(?:\/.*)?$/, scope: (w) => (w ? 'snippets:write' : 'snippets:read') },
   {
     path: /^\/(?:pages|content-types|partials|menus|block-types|block-templates|blocks|settings|styles)(?:\/.*)?$/,
     scope: (w) => (w ? 'content:write' : 'content:read'),

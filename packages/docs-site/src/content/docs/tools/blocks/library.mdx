@@ -551,18 +551,39 @@ headers and footers show them in three ways, in every render version:
     or page reference, a list for a list, and the week for opening hours;
   - `text`, `richtext`, `number`, `date` and `list` choose one;
   - `opening_hours_week`: a table of this week, Monday first, with weekday
-    names in the page language, today's row marked (`data-today`,
-    `aria-current="date"`) and this week's exceptions, such as a holiday,
-    with their note;
-  - `opening_hours_today`: today's hours ("09:00–17:00", or "Closed");
+    names in the page language and today's row marked (`data-today`,
+    `aria-current="date"`). A day with a break reads "09:00–12:00,
+    13:00–17:00". A date exception this week, such as a holiday, marks its
+    row (`data-exception`) and shows its hours or "Closed", with its comment
+    ("Julafton") in bold under the weekday name in the row header; a
+    weekday's own comment ("Lunch closed 12–13") shows there in normal weight.
+    The field's comment under the hours follows the table;
+  - `opening_hours_today`: today's hours ("09:00–17:00", or "Closed"); on a
+    date exception with a comment, "Today · **Julafton**: Closed";
   - `next_opening`: "Opens tomorrow 09:00", or "Open now, until 17:00" while
-    it is open;
-  - `open_now`: "Open now, until 17:00" or "Closed".
+    it is open, "Closed, opens again 13:00" during a break, and
+    "Opens Friday (**Juldagen**) 10:00" when that day's exception has a comment;
+  - `open_now`: "Open now, until 17:00" (until the break, before one), "Closed,
+    opens again 13:00" during a break, or "Closed"; on a date exception with a
+    comment, the comment comes first in bold.
 
   `label` is shown before the value (the week's caption), `empty_text` when
   the field is empty; without it an empty field renders nothing. `tag` is
   `p`, `span` or `div`; the week, lists and rich text use `div`. Parts:
-  `label`, `value`, and for the week `day`, `hours` and `today`.
+  `label`, `value`, and for the week `day`, `hours`, `today`, `exception`
+  (a row with other hours), `note` (a day's comment) and `hours_note` (the
+  comment under the hours).
+
+  A field its definition marks `live` (see [live site fields](../../site-fields/))
+  also updates in the browser on a site that has live files: the block names
+  the site's `_fields.json` (`data-site-field`, `data-site-field-src`) and a
+  small script reads it once when the page opens and shows the newest value,
+  formatted exactly as the publication would. This covers the formats
+  `text`, `number`, `date` and the opening-hours formats; rich text, lists,
+  page references and groups show the published value until the next
+  publication. A live field that is empty at publication keeps a hidden place
+  for its value. A failed request, or a field the file does not list, keeps
+  the published value.
 
 - `core/show_if` (**Show if**) shows the blocks inside it only when its
   `condition` holds: `site.fields.show_booking` (a ticked checkbox),
@@ -583,14 +604,64 @@ headers and footers show them in three ways, in every render version:
 }
 ```
 
-Opening hours use the site's time zone (Europe/Stockholm until the site sets
-another). The hours depending on the day are computed when the site is
+Opening hours use the site's time zone: its `time_zone` setting, otherwise the
+usual zone for the site language (Swedish Europe/Stockholm, Norwegian
+Europe/Oslo, Danish Europe/Copenhagen, Finnish Europe/Helsinki, British
+English Europe/London and so on), otherwise Europe/Stockholm. The hours you
+type are never converted; the zone only decides which day and hour it is. The hours depending on the day are computed when the site is
 published and refreshed in the visitor's browser, so a page published on
 Monday shows Tuesday's hours on Tuesday without a new publication. A small
 script ships only on pages that show such a format; without script the
 published value shows. Other values change with the next publication. Fields
 a builder marks as not rendered never reach the published site, and a
 publication lists blocks that read a field the site does not define in its
+job `warnings`.
+
+### Live snippets
+
+`core/snippet` (**Live snippet**) shows one of the site's
+[live snippets](../../snippets/): content kept outside the publication, such
+as today's lunch, that editors, agents and apps change without publishing.
+
+- `snippet` is the snippet's id.
+- The block shows the content as of the publication, so it is there without
+  script, for search engines and in print. For a dated snippet that is the
+  entry of the publication date in the site's time zone (a date wins over its
+  weekday, then the fallback). HTML is cleaned like the rest of the page;
+  text is shown as text, line breaks kept.
+- `live` (default on): on a site with live files the block also names the
+  snippet's file (`data-snippet-src`), and a small script fetches it when the
+  page opens, shows the newest content and chooses today's entry in the
+  visitor's browser. HTML from the file is cleaned again in the browser to the
+  tags of rich text (paragraphs, headings h2–h6, lists, quotes, emphasis,
+  links to web, email and phone addresses, and images). A dated snippet is
+  checked again at midnight while the page stays open, and every snippet
+  after the page was hidden for ten minutes or more. A failed request keeps
+  the published content. Off shows the published content only. The script
+  ships only on pages with a live snippet, and only for a site with live
+  files; on others the block shows the published content.
+- `empty_text` shows when the snippet has nothing today; without it the block
+  is hidden (`hidden`) and keeps its place for the browser to fill.
+- `tag` is `div` (default), `section`, `aside`, `p` or `span`. Use `div`,
+  `section` or `aside` for HTML with paragraphs or lists.
+- The block carries `data-snippet`, `data-format`, `data-updated` (when the
+  content was last written) and, for dated snippets, `data-snippet-date` (the
+  day it shows). Updates are not announced to screen readers: they happen
+  only right after the page opens and at midnight, never in response to the
+  visitor, so an announcement would only interrupt.
+
+```json
+{
+  "type": "core/snippet",
+  "data": {
+    "snippet": "lunch",
+    "tag": "section",
+    "empty_text": "No lunch today"
+  }
+}
+```
+
+A publication lists blocks that name a snippet the site does not have in its
 job `warnings`.
 
 ## Site search

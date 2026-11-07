@@ -977,3 +977,30 @@ describe('site field tools', () => {
     expect(PLAYBOOK_STARTER).toContain('exceptions');
   });
 });
+
+describe('snippet tools', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('reads and replaces a dated snippet with the revision check and an editor link', async () => {
+    const { ctx, runTool } = await setup();
+    const week = { snippet_id: 'lunch', name: 'Lunch', kind: 'dated', entries: [{ weekday: 'monday', content: '<p>Soup</p>' }], fallback: '<p>None</p>' };
+    const created = await runTool('update_snippet', { ...week, expected_updated_at: '' }, ctx);
+    expect(created.result).toMatchObject({ ok: true, snippet: { id: 'lunch', updated_by: 'chat-ai' }, live: { published: false } });
+    expect(created.action).toMatchObject({ type: 'update_snippet', target: 'lunch', href: `/app/sites/${SITE}/snippets#lunch`, link_label: 'Edit snippet' });
+    const listed = (await runTool('read_snippet', {}, ctx)).result as { snippets: Array<{ id: string }>; live: { base_url: string | null } };
+    expect(listed.snippets.map((s) => s.id)).toEqual(['lunch']);
+    expect(listed.live.base_url).toBeNull();
+    const one = (await runTool('read_snippet', { snippet_id: 'lunch' }, ctx)).result as { snippet: { updated_at: string } };
+    expect((await runTool('update_snippet', { ...week, expected_updated_at: 'stale' }, ctx)).result).toMatchObject({ error: expect.stringContaining('someone else') });
+    expect((await runTool('update_snippet', { ...week, expected_updated_at: one.snippet.updated_at }, ctx)).result).toMatchObject({ ok: true });
+    const invalid = await runTool('update_snippet', { ...week, entries: [{ weekday: 'funday', content: 'x' }] }, ctx);
+    expect((invalid.result as { errors: Array<{ path: string }> }).errors.map((e) => e.path)).toEqual(['entries[0].weekday']);
+    expect(((await runTool('update_snippet', week, { ...ctx, permission: 'read' as const })).result as { error: string }).error).toContain('write permission');
+  });
+
+  it('teaches the assistant to put changing content in a snippet', async () => {
+    const { PLAYBOOK_STARTER } = await import('../../lib/playbook');
+    expect(PLAYBOOK_STARTER).toContain('update_snippet');
+    expect(PLAYBOOK_STARTER).toContain('core/snippet');
+  });
+});

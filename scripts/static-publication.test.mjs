@@ -524,7 +524,7 @@ test('site field values are not a render-cache global, but a domain rebase needs
   assert.notEqual(after.domainKey, before.domainKey);
 });
 
-test('a frozen project shows site fields, conditions and opening hours that refresh in the browser', async (t) => {
+test('a frozen project shows site fields, conditions, opening hours and live snippets that refresh in the browser', async (t) => {
   const { build } = await import('esbuild');
   const source = await build({ entryPoints: [fileURLToPath(new URL('../packages/shared/src/core-blocks.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
   const { CORE_BLOCK_TYPES } = await import(`data:text/javascript;base64,${Buffer.from(source.outputFiles[0].text).toString('base64')}`);
@@ -535,7 +535,7 @@ test('a frozen project shows site fields, conditions and opening hours that refr
   value.settings.language = 'sv';
   const week = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, index) => index < 5 ? { day, opens: '09:00', closes: '17:00' } : { day, closed: true });
   value.siteFields = { groups: [{ id: 'contact', label: 'Contact', fields: [
-    { name: 'phone', type: 'text', label: 'Phone' }, { name: 'show_booking', type: 'boolean', label: 'Booking' },
+    { name: 'phone', type: 'text', label: 'Phone', live: true }, { name: 'show_booking', type: 'boolean', label: 'Booking' },
     { name: 'opening_hours', type: 'object', label: 'Hours', presentation: 'opening_hours', fields: [
       { name: 'days', type: 'array', label: 'Week', fields: [{ name: 'day', type: 'select', label: 'Day', options: week.map(entry => entry.day) }, { name: 'closed', type: 'boolean', label: 'Closed' }, { name: 'opens', type: 'text', label: 'Opens' }, { name: 'closes', type: 'text', label: 'Closes' }] },
       { name: 'exceptions', type: 'array', label: 'Exceptions', fields: [{ name: 'date', type: 'date', label: 'Date' }, { name: 'closed', type: 'boolean', label: 'Closed' }, { name: 'note', type: 'text', label: 'Note' }] },
@@ -546,11 +546,21 @@ test('a frozen project shows site fields, conditions and opening hours that refr
     { id: 'show', type: 'core/show_if', data: { condition: 'site.fields.show_booking' }, children: [{ id: 'book', type: 'core/prose', data: { html: '<p>Boka ett besök</p>' } }] },
     { id: 'hide', type: 'core/show_if', data: { condition: '!site.fields.show_booking' }, children: [{ id: 'nobook', type: 'core/prose', data: { html: '<p>Ingen bokning</p>' } }] },
     { id: 'now', type: 'core/site_field', data: { field: 'opening_hours', format: 'open_now' } },
+    { id: 'lunch', type: 'core/snippet', data: { snippet: 'lunch', tag: 'section' } },
   ] }, { id: 'about', slug: 'about', title: 'About', status: 'published', content_mode: 'blocks', blocks: [{ id: 'about-text', type: 'core/prose', data: { html: '<p>About</p>' } }] }];
   value.partials = [{ id: 'footer', name: 'Footer', kind: 'footer', status: 'published', content_mode: 'blocks', blocks: [
     { id: 'week', type: 'core/site_field', data: { field: 'opening_hours', label: 'Öppettider' } },
   ] }];
+  // A dated snippet: Monday's lunch, a date that wins over its weekday, and who wrote it (never published).
+  value.snippets = [{ id: 'lunch', name: 'Lunch', kind: 'dated', format: 'html', updated_by: 'user:ada', updated_at: '2026-11-08T08:00:00.000Z',
+    entries: [{ weekday: 'monday', content: '<p>Fiskgratäng</p>' }, { weekday: 'tuesday', content: '<p>Pytt i panna</p>' }, { date: '2026-11-11', content: '<p>Ärtsoppa</p>' }], fallback: '<p>Ingen lunch</p>' }];
+  value.liveBaseUrl = 'https://media.example.invalid/live/';
   const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES });
+  assert.deepEqual(publication.snippets, [{ id: 'lunch', kind: 'dated', format: 'html', updated_at: '2026-11-08T08:00:00.000Z',
+    entries: [{ weekday: 'monday', content: '<p>Fiskgratäng</p>' }, { weekday: 'tuesday', content: '<p>Pytt i panna</p>' }, { date: '2026-11-11', content: '<p>Ärtsoppa</p>' }], fallback: '<p>Ingen lunch</p>' }]);
+  assert.equal(publication.site.live_base_url, 'https://media.example.invalid/live');
+  assert.doesNotMatch(JSON.stringify(publication), /user:ada/);
+  assert.throws(() => projectStaticPublication({ ...value, liveBaseUrl: 'http://media.example.invalid/live' }, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES }), /HTTPS/);
   const destination = path.join(tmp, 'site');
   await createStaticPublicationProject(publication, destination);
   await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
@@ -564,12 +574,21 @@ test('a frozen project shows site fields, conditions and opening hours that refr
   assert.match(home, /Boka ett besök/);
   assert.doesNotMatch(home, /Ingen bokning/);
   assert.match(home, /data-site-field-clock="[^"]+">Öppet nu, till 17:00<\/span>/);
-  assert.match(home, /<tr data-day="monday" data-today="true" aria-current="date"><th>Måndag<\/th><td>09:00–17:00<\/td><\/tr><tr data-day="tuesday"><th>Tisdag<\/th><td>Stängt \(Personaldag\)<\/td><\/tr>/);
+  // An exception's note shows in bold under its weekday.
+  assert.match(home, /<tr data-day="monday" data-today="true" aria-current="date"><th>Måndag<\/th><td>09:00–17:00<\/td><\/tr><tr data-day="tuesday" data-exception="true"><th>Tisdag<br ?\/?><strong class="block-site-field-note">Personaldag<\/strong><\/th><td>Stängt<\/td><\/tr>/);
   assert.match(home, /core\/site_field opening hours/);
+  // A live site field names the live fields file; the page ships the script that reads it.
+  assert.match(home, /data-site-field="phone" data-site-field-src="https:\/\/media\.example\.invalid\/live\/_fields\.json"/);
+  assert.match(home, /core\/site_field live values/);
+  // The snippet shows Monday's entry as of the build and names its live file.
+  assert.match(home, /<section data-block="snippet" data-snippet="lunch" data-format="html" data-snippet-src="https:\/\/media\.example\.invalid\/live\/lunch\.json" data-updated="2026-11-08T08:00:00.000Z" data-snippet-date="2026-11-09"[^>]*><p>Fiskgratäng<\/p><\/section>/);
+  assert.match(home, /core\/snippet live content/);
   // The footer's week ships the refresh script on a page without other site fields too.
   const about = await fs.readFile(path.join(destination, 'dist/about/index.html'), 'utf8');
   assert.match(about, /<caption class="block-site-field-label">Öppettider<\/caption>/);
   assert.match(about, /core\/site_field opening hours/);
+  // A page without a live block ships no live script.
+  assert.doesNotMatch(about, /core\/snippet live content|core\/site_field live values/);
 });
 
 test('a resolved branch cannot accidentally publish its frozen source as main', () => {

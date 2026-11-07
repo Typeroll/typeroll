@@ -1,0 +1,21 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import SnippetEditor from '../../../../../components/SnippetEditor.tsx';
+import { vstore } from '../../../../../lib/version-store';
+import { loadSiteContext } from '../../../../../lib/access';
+import { siteTimeZone } from '@typeroll/shared';
+
+// One live snippet. The editor loads it from the snippets API; the site's
+// time zone decides which day it is for "By day/date" snippets and the week
+// preview (siteTimeZone covers older sites without the setting).
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId } = ctx;
+const snippetId = Astro.params.snippetId;
+if (!snippetId) return Astro.redirect(`/app/sites/${site.id}/snippets`);
+const settings = await vstore.settings(orgId, site.id, versionId);
+const timeZone = siteTimeZone(settings ?? undefined);
+---
+<AppLayout title={`Snippet — ${site.name}`} siteId={site.id}>
+  <SnippetEditor client:load siteId={site.id} snippetId={snippetId} canEdit={ctx.permission !== 'read'} timeZone={timeZone} />
+</AppLayout>

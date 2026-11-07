@@ -1,4 +1,4 @@
-import { blockTreeError, CORE_BLOCK_TYPES, findMenu, unknownSiteFieldReferences, type SiteFieldGroup, isMenuNavigation, locationConflicts, resolveMenu, resolveRenderVersion, validateMenu, withGlobalBlockContent, globalBlockSourceFromPartials, type Block, type BlockType, type Menu, type MenuPage } from '@typeroll/shared';
+import { blockTreeError, CORE_BLOCK_TYPES, findMenu, unknownSiteFieldReferences, unknownSnippetReferences, type SiteFieldGroup, isMenuNavigation, locationConflicts, resolveMenu, resolveRenderVersion, validateMenu, withGlobalBlockContent, globalBlockSourceFromPartials, type Block, type BlockType, type Menu, type MenuPage } from '@typeroll/shared';
 import { projectPublicationBlocks, projectPublicationBlockTypes, projectPublicationSchema } from '../../../../../scripts/lib/publication-blocks.mjs';
 import { ConnectionError } from './connections';
 
@@ -137,6 +137,33 @@ export function publicationSiteFieldWarnings(publication: { pages?: Document[]; 
       warnings.push(name
         ? `${where} reads the site field "${name}", which the site does not define or keeps private; a Site field block shows nothing for it and a condition on it is false.`
         : `${where} has a Site field block that names no field.`);
+    }
+  };
+  for (const page of publication.pages ?? []) check(page.blocks, `page ${page.id}`);
+  for (const partial of publication.partials ?? []) check(partial.blocks, `partial ${partial.id}`);
+  for (const template of publication.pageTemplates ?? []) check(template.blocks, `page template ${template.id}`);
+  return warnings;
+}
+
+/**
+ * Non-blocking snippet findings for a frozen publication: Live snippet
+ * blocks that name a snippet the site does not have. Such a block shows its
+ * empty text (or nothing) until a snippet with that id exists and the page
+ * is published again or fetches it.
+ */
+export function publicationSnippetWarnings(publication: { pages?: Document[]; partials?: Document[]; pageTemplates?: Document[]; snippets?: Array<{ id: string }> }): string[] {
+  const known = new Set((publication.snippets ?? []).map(snippet => snippet.id));
+  const free = (publication.partials ?? []).filter(partial => partial.kind === 'free');
+  const seen = new Set<string>();
+  const warnings: string[] = [];
+  const check = (blocks: unknown, where: string) => {
+    if (!Array.isArray(blocks)) return;
+    for (const id of unknownSnippetReferences(withGlobalBlockContent(blocks as Block[], globalBlockSourceFromPartials(free as never)), known)) {
+      if (seen.has(id)) continue;
+      seen.add(id);
+      warnings.push(id
+        ? `${where} shows the live snippet "${id}", which the site does not have; the block shows its empty text or nothing.`
+        : `${where} has a Live snippet block that names no snippet.`);
     }
   };
   for (const page of publication.pages ?? []) check(page.blocks, `page ${page.id}`);

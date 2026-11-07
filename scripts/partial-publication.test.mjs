@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, trackedMenuPages, trackedSiteFields, recordClockOutput, recordNavigation, dependenciesMatch, refreshDependencies } from '../packages/site-template/src/lib/publication-dependencies.mjs';
+import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, trackedMenuPages, trackedSiteFields, trackedSnippets, recordClockOutput, recordNavigation, dependenciesMatch, refreshDependencies } from '../packages/site-template/src/lib/publication-dependencies.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -229,6 +229,29 @@ test('date-dependent output is recomputed for the new build and reused while it 
   assert.ok(!dependenciesMatch(dependencies, resolvers));
   // A domain rebase reuses the HTML, so it must not paper over changed output.
   assert.throws(() => refreshDependencies(dependencies, resolvers, [], [], entry => entry), /changed/);
+});
+
+test('a route depends on each live snippet it shows, as of the build date, and on nothing else', async () => {
+  let files = { lunch: { id: 'lunch', kind: 'dated', updated_at: '1', entries: { monday: 'Fish', tuesday: 'Fish' } }, notice: { id: 'notice', kind: 'text', content: 'Hi', updated_at: '1' } };
+  let day = 'monday';
+  // Stands in for snippetReceipt: the content shown on the build date, its version and the date of a dated snippet.
+  const receipt = file => (file ? { content: file.kind === 'dated' ? file.entries[day] : file.content, updated_at: file.updated_at, ...(file.kind === 'dated' ? { date: day } : {}) } : null);
+  const source = trackedSnippets(id => files[id], receipt);
+  const reads = await captureDependencies(async () => [source('lunch'), source('lunch'), source('missing')].map(file => file?.id ?? null));
+  assert.deepEqual(reads.value, ['lunch', 'lunch', null]);
+  assert.deepEqual(reads.dependencies.map(entry => `${entry.kind}:${entry.id}`), ['snippet:lunch', 'snippet:missing']);
+  const resolvers = { snippet: id => receipt(files[id]) };
+  assert.ok(dependenciesMatch(reads.dependencies, resolvers));
+  // Another snippet changing leaves the route alone.
+  files = { ...files, notice: { ...files.notice, content: 'Hello', updated_at: '2' } };
+  assert.ok(dependenciesMatch(reads.dependencies, resolvers));
+  // A new day renders the route again (its markup names the date), as does a new entry or a new snippet.
+  day = 'tuesday';
+  assert.ok(!dependenciesMatch(reads.dependencies, resolvers));
+  day = 'monday';
+  files = { ...files, lunch: { ...files.lunch, updated_at: '2', entries: { monday: 'Soup' } } };
+  assert.ok(!dependenciesMatch(reads.dependencies, resolvers));
+  assert.throws(() => refreshDependencies(reads.dependencies, resolvers, [], [], entry => entry), /changed/);
 });
 
 test('recorded queries detect membership, ordering, empty results and only the visited pagination slice', async () => {

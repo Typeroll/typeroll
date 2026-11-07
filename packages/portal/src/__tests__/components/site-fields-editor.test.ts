@@ -47,7 +47,9 @@ describe('SiteFieldsEditor', () => {
     expect(html).toMatch(/aria-label="Monday opens" value="09:00"/);
     expect(html).toContain('value="2026-12-24"');
     expect(html).toContain('value="Christmas Eve"');
-    expect(html).toContain('Add exception');
+    expect(html).toContain('Deviating hours on a date');
+    expect(html).toContain('Comment shown to visitors');
+    expect(html).toContain('Add date');
     expect(html).toContain('Copy Monday to Tuesday–Friday');
   });
 

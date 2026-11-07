@@ -38,6 +38,26 @@ const GROUP_ID = /^[a-z][a-z0-9_-]{0,63}$/;
 
 export interface SiteFieldError { path: string; message: string }
 
+/** True when a list sits inside another list somewhere in the field. */
+function listInList(field: Record<string, unknown>, insideList = false): boolean {
+  if (field.type !== 'array' && field.type !== 'object') return false;
+  if (field.type === 'array' && insideList) return true;
+  const nested = Array.isArray(field.fields) ? field.fields : [];
+  return nested.some((child) => child && typeof child === 'object' && listInList(child as Record<string, unknown>, insideList || field.type === 'array'));
+}
+
+/** The names of the site fields marked live, which are also published as a live file. */
+export function liveSiteFieldNames(groups: SiteFieldGroup[]): string[] {
+  return groups.flatMap((group) => group.fields.filter((field) => field.live === true).map((field) => field.name));
+}
+
+/** The public live file of a site's live fields (`live/_fields.json`). */
+export interface LiveSiteFieldsFile {
+  values: Record<string, unknown>;
+  time_zone: string;
+  updated_at: string;
+}
+
 function checkField(field: unknown, path: string, depth: number, errors: SiteFieldError[], names: Set<string> | null): FieldDefinition | null {
   if (!field || typeof field !== 'object' || Array.isArray(field)) { errors.push({ path, message: 'A field is an object' }); return null; }
   const raw = field as Record<string, unknown>;
@@ -53,6 +73,13 @@ function checkField(field: unknown, path: string, depth: number, errors: SiteFie
   if (!label) errors.push({ path: `${path}.label`, message: 'Give the field a label' });
   if ((type === 'select' || type === 'multiselect') && !(Array.isArray(raw.options) && raw.options.length)) errors.push({ path: `${path}.options`, message: 'List the options' });
   const out: FieldDefinition = { ...(raw as unknown as FieldDefinition), name, type, label };
+  delete out.live;
+  if (raw.live !== undefined && raw.live !== false) {
+    if (raw.live !== true) errors.push({ path: `${path}.live`, message: 'live is true or false' });
+    else if (depth > 1) errors.push({ path: `${path}.live`, message: 'Only a top-level site field can be live' });
+    else if (listInList(raw)) errors.push({ path: `${path}.live`, message: 'A live field cannot hold a list inside a list' });
+    else out.live = true;
+  }
   if (type === 'array' || type === 'object') {
     if (depth >= 3) errors.push({ path: `${path}.fields`, message: 'Groups and lists nest at most three levels' });
     const nested = Array.isArray(raw.fields) ? raw.fields : [];
@@ -185,21 +212,40 @@ export function openingHoursField(name = 'opening_hours', label = 'Opening hours
         { name: 'day', label: 'Day', type: 'select', options: [...WEEKDAYS] },
         { name: 'closed', label: 'Closed', type: 'boolean' },
         time('opens', 'Opens'), time('closes', 'Closes'),
+        time('break_starts', 'Break from'), time('break_ends', 'Break until'),
+        { name: 'note', label: 'Comment', type: 'text', placeholder: 'Lunch closed 12–13' },
       ] },
       { name: 'exceptions', label: 'Exceptions', type: 'array', max_items: 60, item_label: 'date', fields: [
         { name: 'date', label: 'Date', type: 'date', required: true },
         { name: 'closed', label: 'Closed', type: 'boolean' },
-        time('opens', 'Opens'), time('closes', 'Closes'), { name: 'note', label: 'Note', type: 'text' },
+        time('opens', 'Opens'), time('closes', 'Closes'),
+        time('break_starts', 'Break from'), time('break_ends', 'Break until'),
+        { name: 'note', label: 'Comment', type: 'text', placeholder: 'Christmas Eve' },
       ] },
+      { name: 'note', label: 'Comment under the hours', type: 'textarea', placeholder: 'Lunch closed 12–13 on weekdays' },
     ],
   };
 }
 
+type DaySource = { closed?: boolean; opens?: string; closes?: string; break_starts?: string; break_ends?: string; note?: string };
 export interface OpeningHours {
-  days?: Array<{ day?: string; closed?: boolean; opens?: string; closes?: string }>;
-  exceptions?: Array<{ date?: string; closed?: boolean; opens?: string; closes?: string; note?: string }>;
+  days?: Array<DaySource & { day?: string }>;
+  exceptions?: Array<DaySource & { date?: string }>;
+  /** A comment shown under the hours, e.g. "Lunch closed 12–13 on weekdays". */
+  note?: string;
 }
-export interface DayHours { date: string; weekday: Weekday; closed: boolean; opens?: string; closes?: string; note?: string; exception: boolean }
+export interface DayHours {
+  date: string;
+  weekday: Weekday;
+  closed: boolean;
+  opens?: string;
+  closes?: string;
+  /** A closed period inside the day, e.g. lunch 12:00–13:00. */
+  break?: { starts: string; ends: string };
+  /** The date's exception comment (a holiday name), else the weekday's comment. */
+  note?: string;
+  exception: boolean;
+}
 
 const TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
 
@@ -216,11 +262,16 @@ export function hoursOn(hours: OpeningHours | undefined, date: string, weekday: 
   const source = exception ?? hours?.days?.find((entry) => entry.day === weekday);
   const valid = (value?: string) => (value && TIME.test(value) ? value.padStart(5, '0') : undefined);
   const opens = valid(source?.opens), closes = valid(source?.closes);
+  const breakStarts = valid(source?.break_starts), breakEnds = valid(source?.break_ends);
+  // A break counts only inside the opening hours and with its end after its start.
+  const hasBreak = !!(opens && closes && breakStarts && breakEnds && opens < breakStarts && breakStarts < breakEnds && breakEnds < closes);
+  const note = (source?.note ?? '').trim();
   return {
     date, weekday, exception: !!exception,
     closed: !source || source.closed === true || !opens || !closes,
     ...(opens ? { opens } : {}), ...(closes ? { closes } : {}),
-    ...(exception?.note ? { note: exception.note } : {}),
+    ...(hasBreak ? { break: { starts: breakStarts!, ends: breakEnds! } } : {}),
+    ...(note ? { note } : {}),
   };
 }
 
@@ -239,8 +290,13 @@ export function openingStatus(hours: OpeningHours | undefined, at: Date, timeZon
   const now = localDate(at, timeZone);
   const today = hoursOn(hours, now.date, now.weekday);
   const toMinutes = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
-  if (!today.closed && today.opens && today.closes && now.minutes >= toMinutes(today.opens) && now.minutes < toMinutes(today.closes))
-    return { open: true, until: today.closes };
+  if (!today.closed && today.opens && today.closes && now.minutes >= toMinutes(today.opens) && now.minutes < toMinutes(today.closes)) {
+    if (!today.break) return { open: true, until: today.closes };
+    // Before the break it is open until the break; during it, closed until it ends; after it, open until closing.
+    if (now.minutes < toMinutes(today.break.starts)) return { open: true, until: today.break.starts };
+    if (now.minutes >= toMinutes(today.break.ends)) return { open: true, until: today.closes };
+    return { open: false, next: { ...today, opens: today.break.ends } };
+  }
   const upcoming = hoursAhead(hours, at, 14, timeZone);
   const next = upcoming.find((day, index) => !day.closed && (index > 0 || (day.opens && now.minutes < toMinutes(day.opens))));
   return { open: false, ...(next ? { next } : {}) };

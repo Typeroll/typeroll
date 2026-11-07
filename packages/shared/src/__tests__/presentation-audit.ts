@@ -288,7 +288,9 @@ export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
   'template/page_breadcrumbs': { page: { breadcrumbs: [{ label: 'Blog', href: '/blog/' }, { label: 'Post', current: true }] } },
   'template/site_logo': { site: { name: 'Acme', logo: '/media/logo.svg' } },
   // A site field with opening hours shows the week.
-  'core/site_field': { site: { fields: { opening_hours: { days: [{ day: 'monday', opens: '09:00', closes: '17:00' }] } } } },
+  // Exceptions with a note around today, so the week shows a day with other hours whatever the date.
+  'core/site_field': { site: { fields: { opening_hours: { note: 'Lunch closed 12–13', days: [{ day: 'monday', opens: '09:00', closes: '17:00', note: 'Lunch closed' }],
+    exceptions: [-1, 0, 1].map(offset => ({ date: new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10), closed: true, note: 'Holiday' })) } } } },
 };
 
 /**

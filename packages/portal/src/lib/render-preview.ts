@@ -21,6 +21,7 @@ import type {
   SiteVersion,
 } from '@typeroll/shared';
 import { vstore } from './version-store';
+import { publicationLiveContent } from './publishing/publication-snippets';
 import {
   contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webFontFamilies, googleFontsCssUrl, WEBFONT_FALLBACK_CSS, webfontFallbackCss,
   pageRobots,
@@ -32,6 +33,9 @@ import {
   buildConsentEarlyPaintRuntime,
   buildCoreBlockRegistry,
   collectBlockAssets,
+  snippetFile,
+  snippetSourceFrom,
+  siteTimeZone,
   composePageWithTemplate,
   defaultSiteSettings,
   resolveRenderVersion,
@@ -218,7 +222,10 @@ export async function renderPreview(
   const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
   // The version's site fields: values as {{site.fields.*}}, definitions for core/site_field formats.
   const siteFields = await vstore.siteFields(orgId, siteId, versionId);
-  const siteFieldOptions = { siteFieldDefinitions: siteFields.groups };
+  // Live snippets as saved now, and where the published page fetches newer ones (null: no fetching).
+  const live = await publicationLiveContent(orgId, siteId);
+  const snippetSource = snippetSourceFrom(live.snippets.map(snippet => snippetFile(snippet, siteTimeZone(settings))));
+  const siteFieldOptions = { siteFieldDefinitions: siteFields.groups, snippetSource };
   const contentType = contentTypes.find(type => type.id === (page!.content_type ?? 'page'))
     ?? ((page.content_type ?? 'page') === 'page' ? DEFAULT_CONTENT_TYPE : null);
   if (!contentType) throw new Error(`Unknown content type: ${page.content_type}`);
@@ -239,7 +246,7 @@ export async function renderPreview(
       ...pageContentValues(publicContentPage(page, contentType)),
       breadcrumbs,
     },
-    site: { ...siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields), url: seoBase },
+    site: { ...siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields), url: seoBase, live_base_url: live.liveBaseUrl },
     // Paginating listings render their first slice in the preview; the
     // pager appears but its /page/N/ links only exist on the deployed
     // site (route generation is the SSG's job).
@@ -334,6 +341,7 @@ export async function renderPreview(
     renderVersion,
     globalBlockSource,
     siteFieldValues: renderCtx.site?.fields,
+    liveBaseUrl: live.liveBaseUrl, siteFieldDefinitions: siteFields.groups,
     // Block part styles, as the published build emits them.
     siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
   });
@@ -457,15 +465,17 @@ export async function renderBlockTypePreview(
   const pageSource = createPageSource(contentTypes, pages, settings.trailing_slash ?? 'always');
   const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
   const siteFields = await vstore.siteFields(orgId, siteId, versionId);
+  const live = await publicationLiveContent(orgId, siteId);
   const block: Block = { id: 'block-preview', type: type.id, data: input.data };
   const onMissingType = (typeId: string) =>
     `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert">Missing block type: ${escapeHtml(typeId)}</div>`;
   const context: RenderContext = {
-    site: siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields),
+    site: { ...siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields), live_base_url: live.liveBaseUrl },
     page: { title: type.label, slug: 'block-preview' },
   };
   const html = sanitizeBody(
-    renderBlocks([block], { registry, context, pageSource, menuSource, siteFieldDefinitions: siteFields.groups, onMissingType, renderVersion, globalBlockSource }),
+    renderBlocks([block], { registry, context, pageSource, menuSource, siteFieldDefinitions: siteFields.groups, onMissingType, renderVersion, globalBlockSource,
+      snippetSource: snippetSourceFrom(live.snippets.map(snippet => snippetFile(snippet, siteTimeZone(settings)))) }),
     settings.iframe_allowed_hosts,
   );
   const css = collectBlockAssets([block], registry, {

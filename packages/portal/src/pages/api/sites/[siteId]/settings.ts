@@ -3,7 +3,7 @@ import { isSiteSettingsSection, scopedSettings } from '../../../../lib/site-sett
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { contentWidthsError, timeZoneError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
+import { contentWidthsError, siteTimeZone, timeZoneError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 
@@ -122,8 +122,8 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
       : undefined,
     // medium is the default and is stored as an absent value.
     date_format: ['long', 'numeric', 'iso'].includes(String(form.get('date_format'))) ? String(form.get('date_format')) : undefined,
-    // Europe/Stockholm is the default and is stored as an absent value.
-    time_zone: (() => { const value = String(form.get('time_zone') ?? '').trim(); return value && value !== 'Europe/Stockholm' && !timeZoneError(value) ? value : undefined; })(),
+    // Never empty: an empty or unknown value keeps the zone the site has (or the usual one for its language).
+    time_zone: (() => { const value = String(form.get('time_zone') ?? '').trim(); return value && !timeZoneError(value) ? value : siteTimeZone({ time_zone: existing.time_zone, language: form.get('language') ?? existing.language }); })(),
     content_widths,
     // full is the default and is stored as an absent value.
     motion: form.get('motion') === 'reduced' ? 'reduced' : undefined,
