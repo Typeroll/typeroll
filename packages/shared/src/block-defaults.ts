@@ -13,6 +13,8 @@ export const BLOCK_DEFAULTS_V14_CSS = `
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
 /* Flex and grid children can shrink below their longest word, and nothing
    inside a block grows wider than its parent (tables and code scroll instead). */
 :where([data-block], [data-block] *) { min-width:0; }
@@ -21,6 +23,10 @@ export const BLOCK_DEFAULTS_V14_CSS = `
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
 /* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
 :where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
 `.trim();
 
 const CONTAINER_CHILDREN = (selector: string) => `/* Containers and grids space their children with gap; children add no margin of their own. */
@@ -38,7 +44,9 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
   'core/prose': `/* Text blocks: the first and last element sit flush with the block, so spacing comes from the layout. */
 [data-block="prose"] > :first-child { margin-block-start:0; }
 [data-block="prose"] > :last-child { margin-block-end:0; }`,
-  'core/container': `${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-container"]:not([data-rhythm="article"]))')}
+  'core/container': `/* A container without padding settings has none: it groups and lays out, the blocks around it space it. */
+:where([data-block="container"]) { --block-px:0; --block-py:0; }
+${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-container"]:not([data-rhythm="article"]))')}
 /* A constrained container in a section, column, tab or grid cell starts where the text beside it starts and fills
    the space up to its maximum width, instead of centring and shrinking to its content. */
 :is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"]) > [data-block="container"]:is([data-width="narrow"],[data-width="normal"],[data-width="wide"]) { margin-inline:0; inline-size:100%; }
@@ -48,15 +56,16 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 [data-block="container"][data-width="wide"] { max-width:var(--max_width_px, var(--content-wide, 80rem)); }`,
   'core/columns': CONTAINER_CHILDREN('[data-block="columns"]'),
   'core/grid': `${CONTAINER_CHILDREN('[data-block="grid"]')}
-/* The column count is the maximum, and a cell keeps at least 8rem, so a grid inside a narrow
+/* The column count is the maximum, and a cell keeps at least 10rem, so a grid inside a narrow
    column has fewer, usable columns. Stacking settings still apply first. */
-[data-block="grid"]:not([data-last-row="center"]) { grid-template-columns:repeat(auto-fill, minmax(min(100%, max(8rem, (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--container-gap, 1rem))) / var(--cols, 3))), 1fr)); }`,
+[data-block="grid"]:not([data-last-row="center"]) { grid-template-columns:repeat(auto-fill, minmax(min(100%, max(10rem, (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--container-gap, 1rem))) / var(--cols, 3))), 1fr)); }`,
   'core/repeater': `/* Grids of repeated items: the column setting is the maximum, and each item keeps a minimum
    width, so a grid in a narrow column or on a phone has fewer columns instead of slivers. */
 [data-block="repeater"][data-layout="grid"] { --min-item:10rem; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
-[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fill, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
+/* Fewer items than columns share the row instead of leaving empty columns. */
+[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fit, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
 /* Carousels show one card and a glimpse of the next on narrow screens. */
 [data-block="repeater"][data-layout="carousel"] { container-type:inline-size; }
 @container (max-width: 560px) {
@@ -71,6 +80,11 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 [data-block="hero"][style*="--hero-text-align:center"] .block-hero-actions { justify-content:center; }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
 [data-block="hero"] .block-btn { border-radius:1.6rem; }
+/* The heading scales with the hero, so a hero in a narrow column keeps whole words on a line. */
+[data-block="hero"] { container-type:inline-size; }
+[data-block="hero"] .block-hero-heading { font-size:min(var(--type-h1, 1.75rem), max(1.5rem, 9cqi)); }
+/* Inside a column, grid cell, tab or container the hero keeps compact padding: the block around it spaces it. */
+:is(.block-columns-col, [data-block="grid"], .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="hero"] { padding:clamp(1.25rem, 4cqi, 2.5rem); }
 /* The hero's content lines up with sections of the same width. */
 [data-block="hero"] .block-hero-inner { max-width:var(--content-normal, 65rem); }
 [data-block="hero"][data-width="narrow"] .block-hero-inner { max-width:var(--content-narrow, 42rem); }
@@ -115,9 +129,16 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
   [data-block="feature_row"][data-stack-order="text-first"] .block-frow-body { order: 1; }
 }`,
   'core/post_card': `/* A card title link stays a comfortable target even when it holds only an icon. */
+/* A title icon sits on the first line of a title that wraps. */
+[data-block="post_card"] .block-postcard-title:has(.block-postcard-title-icon) > a { align-items:flex-start; }
+[data-block="post_card"] .block-postcard-title-icon { margin-block-start:calc((1lh - 1em) / 2); }
 [data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }`,
   'core/table_of_contents': `/* Links in the outline are touch targets of at least 24px. */
-[data-block="table_of_contents"] a { display:inline-block; padding-block:.15rem; }`,
+[data-block="table_of_contents"] a { display:inline-block; padding-block:.15rem; }
+/* An outline with no headings to list takes no space. */
+[data-block="table_of_contents"][data-empty="true"] { display:none; }
+/* A nested level is a plain list, so its numbers do not look like they continue the level above. */
+[data-block="table_of_contents"] :is(ol,ul) :is(ol,ul) { list-style:disc; }`,
   'core/icon': `/* A linked icon is a touch target of at least 24 × 24 px (WCAG 2.2 AA). */
 [data-block="icon"] .block-icon-link { display:inline-flex; align-items:center; justify-content:center; min-inline-size:24px; min-block-size:24px; }`,
   'core/team_member': `/* A photo in a one-column layout stays portrait-sized instead of filling a phone screen. */
@@ -134,6 +155,9 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
 [data-block="cta"] { padding:clamp(2rem, 1rem + 4vw, 4rem) clamp(1.25rem, 1rem + 1vw, 1.5rem); }
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
 [data-block="cta"] .block-btn { border-radius:1.6rem; }
+/* The heading scales with the call to action, so a narrow one keeps whole words on a line. */
+[data-block="cta"] { container-type:inline-size; }
+[data-block="cta"] .block-cta-heading { font-size:clamp(1.25rem, .75rem + 3.5cqi, 2.5rem); }
 /* Left-aligned text uses the full width of the band, so it lines up with sections of the same width. */
 [data-block="cta"][style*="--align:left"] .block-cta-inner { max-width:none; }`,
   'core/logo_item': `/* A logo row is as tall as its logos. */
@@ -141,12 +165,30 @@ export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
   'core/pricing_plan': `/* The period sits a space after the price. */
 [data-block="pricing_plan"] .block-pricing-period:not(:empty) { margin-inline-start:.35em; }`,
   'core/table': `/* Table cells keep words whole (hyphenating a long one); a table wider than its column scrolls. */
-[data-block="table"] :is(th,td) { overflow-wrap:normal; hyphens:auto; }`,
+[data-block="table"] :is(th,td) { overflow-wrap:normal; hyphens:auto; }
+/* The caption wraps to the visible width and stays in view while a wide table scrolls. */
+[data-block="table"] .block-table-scroll { container-type:inline-size; }
+[data-block="table"] .block-table-scroll > table > caption { position:sticky; inset-inline-start:0; max-inline-size:100cqi; text-align:start; }`,
   'core/search': `/* In a column or a grid cell the search field starts where the content beside it starts. */
-:is(.block-columns-col, [data-block="container"], [data-block="grid"]) > [data-block="search"] { margin-inline:0; }`,
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="container"], [data-block="grid"]) > [data-block="search"] { margin-inline:0; padding-inline:0; }`,
   'core/step_card': `/* The step marker is a circle for a number and grows with a label: wider first, then taller, wrapping between words. */
-[data-block="step_card"] .block-step-number { display:inline-block; box-sizing:border-box; inline-size:auto; block-size:auto; min-inline-size:2.5rem; padding:.3rem .65rem; line-height:1.9rem; border-radius:1.25rem; text-align:center; overflow-wrap:break-word; hyphens:auto; }`,
+[data-block="step_card"] .block-step-number { display:inline-block; box-sizing:border-box; inline-size:auto; block-size:auto; min-inline-size:2.5rem; max-inline-size:min(100%, 18rem); padding:.3rem .65rem; line-height:1.9rem; border-radius:1.25rem; text-align:center; overflow-wrap:break-word; hyphens:auto; }
+/* A label that wraps stays a compact badge at text size, with its icon on the first line. */
+[data-block="step_card"] .block-step-number { font-size:1rem; }
+[data-block="step_card"] .block-step-marker { align-items:flex-start; }`,
   'core/button': `[data-block="button"] { hyphens:auto; }`,
+  'core/heading': `/* The heading sits right under its eyebrow wherever the block is placed. */
+[data-block="heading"] .block-heading-eyebrow + .block-heading-text:not(#\\#) { margin-block-start:0; }`,
+  'core/accordion': `/* The open-close mark keeps a gap from a title that wraps. */
+[data-block="accordion"] summary { gap:1rem; }
+[data-block="accordion"] summary::after { flex:none; }`,
   'core/media_card': `/* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
-[data-block="media_card"] .block-btn { border-radius:1.6rem; }`,
+[data-block="media_card"] .block-btn { border-radius:1.6rem; }
+/* The card wraps when its text column would be narrower than 18rem, image above text, so it also
+   stacks in a narrow column or grid cell. The text column takes the free space; the image keeps its width. */
+@media (min-width: 721px) {
+  [data-block="media_card"] { flex-wrap:wrap-reverse; }
+  [data-block="media_card"] .block-mediacard-body { flex:999 1 18rem; }
+  [data-block="media_card"] .block-mediacard-media { flex-grow:1; }
+}`,
 };

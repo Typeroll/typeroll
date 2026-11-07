@@ -102,6 +102,9 @@
 
 /* core/post_card defaults */
 /* A card title link stays a comfortable target even when it holds only an icon. */
+/* A title icon sits on the first line of a title that wraps. */
+[data-block="post_card"] .block-postcard-title:has(.block-postcard-title-icon) > a { align-items:flex-start; }
+[data-block="post_card"] .block-postcard-title-icon { margin-block-start:calc((1lh - 1em) / 2); }
 [data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }
 
 [data-presentation="core%2Frepeater"]{--gap_px:initial}
@@ -173,7 +176,8 @@
 [data-block="repeater"][data-layout="grid"] { --min-item:10rem; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
-[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fill, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
+/* Fewer items than columns share the row instead of leaving empty columns. */
+[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fit, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
 /* Carousels show one card and a glimpse of the next on narrow screens. */
 [data-block="repeater"][data-layout="carousel"] { container-type:inline-size; }
 @container (max-width: 560px) {
@@ -188,6 +192,8 @@
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
 /* Flex and grid children can shrink below their longest word, and nothing
    inside a block grows wider than its parent (tables and code scroll instead). */
 :where([data-block], [data-block] *) { min-width:0; }
@@ -196,4 +202,8 @@
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
 /* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
 :where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
 }

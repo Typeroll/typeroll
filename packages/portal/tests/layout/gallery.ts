@@ -7,6 +7,7 @@ import {
   LATEST_RENDER_VERSION, buildCoreBlockRegistry, defaultSiteSettings, newSiteStyles, getPageTemplateStarter, getPartialCompositionStarter, sampleBlockData,
   type Block, type BlockType, type PageTemplateStarterKind,
 } from '@typeroll/shared';
+import { demoImage } from './demo-media';
 
 const LONG = 'Grundstücksverkehrsgenehmigungszuständigkeitsübertragungsverordnung';
 // Blocks that need context the gallery does not have yet: a form definition,
@@ -35,8 +36,19 @@ function lengthen(value: unknown, fields: Fields): unknown {
   return out;
 }
 
+/** Fill image fields with real images (a logo for logo fields, a portrait for people), so the gallery shows how blocks hold media. */
+function withImages(value: Record<string, unknown>, fields: Fields, type: string): Record<string, unknown> {
+  const out = { ...value };
+  for (const field of fields ?? []) {
+    if (field.type === 'image') out[field.name] = /logo/.test(field.name) || type === 'core/logo_item' || type === 'core/logo_cloud' ? demoImage('logo-2')
+      : /avatar|photo|portrait/.test(field.name) || /team|testimonial/.test(type) ? demoImage('person-1') : demoImage('interior-1');
+    else if (field.type === 'array' && Array.isArray(out[field.name])) out[field.name] = (out[field.name] as unknown[]).map(item => item && typeof item === 'object' ? withImages(item as Record<string, unknown>, field.fields, type) : item);
+  }
+  return out;
+}
+
 function sample(type: BlockType, id: string, long = false): Block {
-  const data = sampleBlockData(type.schema);
+  const data = withImages(sampleBlockData(type.schema), type.schema as Fields, type.id);
   // Sample data fills numbers with their minimum (a gap of 0px); a new block leaves them unset and uses its defaults.
   for (const field of type.schema ?? []) if (field.type === 'number' && field.default === undefined) delete data[field.name];
   const block: Block = { id, type: type.id, data: long ? lengthen(data, type.schema as Fields) as Record<string, unknown> : data };

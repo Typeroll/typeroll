@@ -53,7 +53,7 @@ export const CONTENT_WELL_CSS = `
  *   text it introduces than to the text before it, like a heading inside a
  *   Text block.
  */
-const FLOW = ':is(.block-section-inner,.page-content--blocks)';
+const FLOW = ':is(.block-section-inner,.page-content--blocks,:is([data-block="container"],[data-block="semantic-container"])[data-rhythm="article"])';
 const HEADING_BLOCK = ':is([data-block="heading"],[data-block="rich_heading"])';
 // Running text: the blocks a heading can introduce or follow inside an article-like flow.
 const TEXT_BLOCK = ':is([data-block="prose"],[data-block="text"],[data-block="list"],[data-block="table"],[data-block="image"],[data-block="video"])';

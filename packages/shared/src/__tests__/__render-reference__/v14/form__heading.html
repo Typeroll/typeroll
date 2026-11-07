@@ -42,6 +42,8 @@
 /* Media never grows wider than the block it sits in. */
 :where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
 :where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
 /* Flex and grid children can shrink below their longest word, and nothing
    inside a block grows wider than its parent (tables and code scroll instead). */
 :where([data-block], [data-block] *) { min-width:0; }
@@ -50,4 +52,8 @@
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
 /* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
 :where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
 }

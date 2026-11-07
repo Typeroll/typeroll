@@ -7,6 +7,7 @@
  * Update the list with TYPEROLL_LAYOUT_BASELINE=write.
  */
 import { expect, test } from '@playwright/test';
+import { writeDemoImages } from './demo-media';
 import fs from 'node:fs/promises';
 import http from 'node:http';
 import path from 'node:path';
@@ -28,6 +29,7 @@ test('every block type and page template meets the layout contract at every widt
   try {
     await harness.run(true);
     const dist = path.join(harness.destination, 'dist');
+    await writeDemoImages(dist);
     // Keep the built gallery for inspection: TYPEROLL_LAYOUT_DIST=<empty directory>.
     if (process.env.TYPEROLL_LAYOUT_DIST) await fs.cp(dist, process.env.TYPEROLL_LAYOUT_DIST, { recursive: true });
     const server = http.createServer(async (request, response) => {

@@ -40,7 +40,8 @@ function starterBody(kind: PageTemplateStarterKind | undefined): Block[] | undef
         {
           ...blk('content', 'core/columns', { ratio: '3-1', gap: 'lg', align: 'start', stack_below: '1024', mobile_order: 'right-first' }),
           slots: [
-            [blk('body', 'template_content_slot', { field: 'body', max_width: 'normal', rhythm: 'article' })],
+            // The column sets the reading width, so the body starts at the same edge as the title.
+            [blk('body', 'template_content_slot', { field: 'body', rhythm: 'article' })],
             [blk('outline', 'core/table_of_contents', {
               title: 'On this page',
               levels: 'h2-h3',
@@ -109,7 +110,7 @@ function starterBody(kind: PageTemplateStarterKind | undefined): Block[] | undef
         blk('body', 'template_content_slot', { rhythm: 'article' }),
       ];
     case 'landing':
-      return [blk('title', 'template/page_title', { align: 'center' }), blk('summary', 'template/page_excerpt', {})];
+      return [blk('title', 'template/page_title', {}), blk('summary', 'template/page_excerpt', {})];
     case 'custom':
       return [
         blk('title', 'template/page_title', { level: 'h1', size: 'auto' }),
@@ -128,7 +129,8 @@ export function getPageTemplateStarter(kind: PageTemplateStarterKind | undefined
   for (const child of children) {
     if (child.type === 'template_content_slot') child.data = { rhythm: 'article', ...child.data };
   }
-  const frame: Block = { ...blk('frame', 'core/section', { width: kind === 'article' ? 'wide' : 'narrow' }), children };
+  // Article and landing frames share the normal content width, so their title lines up with the body below.
+  const frame: Block = { ...blk('frame', 'core/section', { width: kind === 'article' || kind === 'landing' ? 'normal' : 'narrow' }), children };
   return kind === 'landing' ? [frame, blk('body', 'template_content_slot', { max_width: 'full' })] : [frame];
 }
 
