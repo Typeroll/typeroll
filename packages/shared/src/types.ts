@@ -1113,6 +1113,8 @@ export interface FieldDefinition {
   css_unit?: 'px' | 'number';
   /** Named site scale; numeric values remain explicit overrides. */
   design_token?: import('./design-tokens.js').TokenScale;
+  /** A ready-made editor and formats for a known structure (site fields). */
+  presentation?: 'opening_hours';
   min?: number;
   max?: number;
   /** For type 'choices': which control markup the renderer derives. */
@@ -2080,6 +2082,8 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/pages/${pageId}/revisions`,
   partialRevisions: (orgId: string, siteId: string, partialId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/partials/${partialId}/revisions`,
+  siteFields: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/site_fields/default`,
   menus: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/menus`,
   menu: (orgId: string, siteId: string, menuId: string, versionId: string = MAIN_VERSION_ID) =>
