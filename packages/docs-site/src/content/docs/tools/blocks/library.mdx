@@ -74,8 +74,7 @@ From [render version 14](../../settings/#render-versions):
   CTAs take `background_video`, a muted looping MP4 or WebM file (YouTube and
   Vimeo are not backgrounds). The video starts when the block is in view,
   pauses out of view, has a pause button, and shows the image on phones unless
-  `background_video_phones` is `play`. `background_overlay` (0–100, default
-  40) darkens the media so white text reads; set a text color, or 0, for text
+  `background_video_phones` is `play`. `background_overlay` (0–100, default 40) darkens the media so white text reads; set a text color, or 0, for text
   in your own color.
 - **Text over images.** On hero, section and CTA:
   - `overlay_style`: `solid` (even), `gradient` (from `overlay_side`: bottom,
@@ -149,19 +148,19 @@ New blocks (any render version):
 Every effect has hooks for site CSS, a block's own CSS
 (`style_overrides.custom_css`) and the scripts of your own block types:
 
-| Hook | Where | What |
-| --- | --- | --- |
-| `--motion-duration`, `--motion-easing`, `--motion-distance`, `--motion-scale`, `--motion-stagger` | `:root` or any block | timing and travel of entrance animations |
-| `[data-motion-in]` and `motion: "custom"` | each element that enters | your own animation: `html[data-tr-motion] [data-motion-item="custom"]:not([data-motion-in]) { … }` (the `html[data-tr-motion]` part keeps content visible without script) |
-| `typeroll:motion-in` event | bubbles from the element | start your own effect when it enters |
-| `--bg-overlay`, `--bg-overlay-color` | `.tr-bg-media` | darkening strength (0–1) and color |
-| `--panel-bg`, `--panel-fg`, `--panel-blur`, `--panel-padding`, `--panel-radius`, `--panel-clip`, `--panel-width` | the block | the plate behind the text; `--panel-clip` takes any `clip-path` such as `polygon(…)` |
-| `--text-y`, `--text-margins`, `--spot-x`, `--spot-y` | a placed section | where the text and the darkening spot sit |
-| `--marquee-duration`, `--marquee-gap`, `--marquee-item` | the logo row | speed, spacing and logo width |
-| `--film-progress` (0–1), `[data-visible]` on captions, `[data-film-ready]` | `core/scroll_film` | drive anything from the film's position, for example `opacity: calc(1 - var(--film-progress))` |
-| `typeroll:film-progress` event (`{ progress, frame }`) | `core/scroll_film` | scripts in step with the film |
-| `[data-active]`, `--steps-top`, `typeroll:step-change` event (`{ index }`) | `core/scroll_steps` | style or react to the current step |
-| `--svg-progress` (0–1), `[data-svg-state]` (`idle`, `running`, `done`), `typeroll:svg-progress` event | `core/svg_animation` | drive your own SVG or CSS effect, for example with `effect: "custom"`; `--svg-width` sets its size |
+| Hook                                                                                                             | Where                    | What                                                                                                                                                                      |
+| ---------------------------------------------------------------------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `--motion-duration`, `--motion-easing`, `--motion-distance`, `--motion-scale`, `--motion-stagger`                | `:root` or any block     | timing and travel of entrance animations                                                                                                                                  |
+| `[data-motion-in]` and `motion: "custom"`                                                                        | each element that enters | your own animation: `html[data-tr-motion] [data-motion-item="custom"]:not([data-motion-in]) { … }` (the `html[data-tr-motion]` part keeps content visible without script) |
+| `typeroll:motion-in` event                                                                                       | bubbles from the element | start your own effect when it enters                                                                                                                                      |
+| `--bg-overlay`, `--bg-overlay-color`                                                                             | `.tr-bg-media`           | darkening strength (0–1) and color                                                                                                                                        |
+| `--panel-bg`, `--panel-fg`, `--panel-blur`, `--panel-padding`, `--panel-radius`, `--panel-clip`, `--panel-width` | the block                | the plate behind the text; `--panel-clip` takes any `clip-path` such as `polygon(…)`                                                                                      |
+| `--text-y`, `--text-margins`, `--spot-x`, `--spot-y`                                                             | a placed section         | where the text and the darkening spot sit                                                                                                                                 |
+| `--marquee-duration`, `--marquee-gap`, `--marquee-item`                                                          | the logo row             | speed, spacing and logo width                                                                                                                                             |
+| `--film-progress` (0–1), `[data-visible]` on captions, `[data-film-ready]`                                       | `core/scroll_film`       | drive anything from the film's position, for example `opacity: calc(1 - var(--film-progress))`                                                                            |
+| `typeroll:film-progress` event (`{ progress, frame }`)                                                           | `core/scroll_film`       | scripts in step with the film                                                                                                                                             |
+| `[data-active]`, `--steps-top`, `typeroll:step-change` event (`{ index }`)                                       | `core/scroll_steps`      | style or react to the current step                                                                                                                                        |
+| `--svg-progress` (0–1), `[data-svg-state]` (`idle`, `running`, `done`), `typeroll:svg-progress` event            | `core/svg_animation`     | drive your own SVG or CSS effect, for example with `effect: "custom"`; `--svg-width` sets its size                                                                        |
 
 Site CSS may also use the browser's own scroll-driven animations
 (`animation-timeline: view()` or `scroll()`); wrap them in
