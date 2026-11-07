@@ -520,6 +520,12 @@ export interface SiteSettings {
   ai_crawler_policy?: 'allow_all' | 'no_training' | 'block_all';
   /** Site header while scrolling: static (default), sticky, or hidden on scroll down and shown compact on scroll up. */
   header_behavior?: 'static' | 'sticky' | 'reveal_on_scroll_up';
+  /** How page and card dates read (render version 14): medium (default), long, numeric, iso or a YYYY/MMM/D pattern. */
+  date_format?: string;
+  /** Motion for every visitor (render version 14): full (default) or reduced, which turns off entrance animations, autoplay, background video and moving rows. */
+  motion?: 'full' | 'reduced';
+  /** The shared narrow, normal and wide content widths in px (render version 14). */
+  content_widths?: import('./site-display-settings.js').ContentWidths;
   /**
    * Emit `noindex` on every HTML document without conflating the
    * indexing directive with robots.txt crawl policy. Useful for staging sites
@@ -1072,6 +1078,16 @@ export interface FieldDefinition {
    * on an older version, where it would have no visible effect.
    */
   min_render_version?: number;
+  /**
+   * A url or file field that holds media: the editor offers the media library,
+   * showing only that kind (`any` shows every kind with a filter).
+   */
+  media?: 'image' | 'video' | 'audio' | 'any';
+  /**
+   * A built-in label (`uiLabel` key). From render version 14 a value left at
+   * the English default renders in the page language.
+   */
+  ui_text?: import('./ui-text.js').UiLabelKey;
   name: string;
   type: FieldType;
   label: string;

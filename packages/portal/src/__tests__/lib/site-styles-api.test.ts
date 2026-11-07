@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths, STANDARD_STYLES } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
-import type { Site, SiteVersion, SiteSettings } from '@typeroll/shared';
+import type { Site, SiteVersion, SiteSettings, SiteStyle } from '@typeroll/shared';
 
 const ORG = 'orgone';
 const SITE = 'mysite';
@@ -92,6 +92,17 @@ describe('style library API', () => {
     expect(again.added).toEqual([]);
     const reset = await (await call('standard', 'POST', '/standard', {}, { overwrite: true })).json() as { replaced: string[] };
     expect(reset.replaced).toContain('eyebrow');
+  });
+
+  it('restores the heading spacing of the site\'s render version', async () => {
+    const headings = async () => {
+      const res = await (await call('standard', 'POST', '/standard', {}, { overwrite: true })).json() as { styles: SiteStyle[] };
+      return res.styles.filter(style => /^h[1-6]$/.test(style.role ?? '')).map(style => [style.base?.space_before, style.base?.space_after]);
+    };
+    await setup({ render_version: 13 });
+    expect(await headings()).toEqual(Array(6).fill(['1em', '0.5em']));
+    await setup({ render_version: 14 });
+    expect(await headings()).toEqual(Array(6).fill(['1.6em', '0.35em']));
   });
 });
 

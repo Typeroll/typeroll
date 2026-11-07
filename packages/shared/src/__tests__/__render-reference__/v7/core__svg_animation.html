@@ -1,0 +1,39 @@
+<figure data-block="svg_animation" data-trigger="enter" data-effect="draw" data-size="medium" data-align="center" data-position="60" data-duration="2" data-loop-pause="1" data-static="false" data-label-pause="Pause animation" data-label-play="Play animation" data-block-type="core/svg_animation"><div class="block-svg-stage" aria-hidden="true">Sample svg</div></figure>
+
+/* css */
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/svg_animation */
+[data-block="svg_animation"] { --svg-width:28rem; margin:0; }
+[data-block="svg_animation"][data-size="small"] { --svg-width:16rem; }
+[data-block="svg_animation"][data-size="large"] { --svg-width:44rem; }
+[data-block="svg_animation"][data-size="full"] { --svg-width:100%; }
+[data-block="svg_animation"] .block-svg-stage { position:relative; max-inline-size:min(100%, var(--svg-width)); margin-inline:auto; }
+[data-block="svg_animation"][data-align="start"] .block-svg-stage { margin-inline:0; }
+[data-block="svg_animation"] .block-svg-stage > svg { display:block; inline-size:100%; block-size:auto; overflow:visible; }
+[data-block="svg_animation"] .block-svg-caption { margin-block-start:var(--svg-caption-space, .75rem); text-align:center; font-size:var(--svg-caption-size, .9375rem); color:var(--color-text-light, #64748b); }
+[data-block="svg_animation"][data-align="start"] .block-svg-caption { text-align:start; }
+[data-block="svg_animation"] .block-svg-toggle { position:absolute; inset-block-end:0; inset-inline-end:0; display:inline-grid; place-items:center; inline-size:2.25rem; block-size:2.25rem; padding:0; border:0; border-radius:var(--svg-toggle-radius, 999px); background:var(--svg-toggle-bg, var(--color-surface, #f4f4f5)); color:var(--color-text, #111); cursor:pointer; }
+[data-block="svg_animation"] .block-svg-toggle:focus-visible { outline:2px solid currentColor; outline-offset:2px; }

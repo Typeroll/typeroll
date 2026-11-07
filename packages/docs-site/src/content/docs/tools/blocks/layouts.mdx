@@ -542,6 +542,9 @@ at all widths and responsive `link_min_height_px` (minimum 24 px). For example,
 24 px link height, zero vertical padding and a 4 px gap produce a 28 px rhythm
 for one-line links; wrapped labels can grow. Comfortable navigation remains
 44 px by default, and `compact-desktop` retains its previous desktop behavior.
+From render version 14, the minimum link height includes the link's vertical
+padding: a one-line link is 44 px tall rather than 44 px plus its padding, so
+stacked links no longer sit further apart than a heading above them.
 
 ## Migration design controls
 

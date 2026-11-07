@@ -5,6 +5,7 @@ export * from './block-field-types.js';
 export * from './block-unknown-fields.js';
 export * from './block-media.js';
 export * from './ui-text.js';
+export * from './site-display-settings.js';
 export * from './not-found-text.js';
 export * from './rtl-css.js';
 export * from './breakpoints.js';
@@ -65,6 +66,8 @@ export * from './external-routes.mjs';
 
 export * from './fonts.js';
 export * from './render-version.js';
+export * from './cascade-layers.js';
+export * from './block-defaults.js';
 export * from './custom-css.js';
 export * from './reusable-blocks.js';
 export * from './contrast.js';

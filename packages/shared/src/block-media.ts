@@ -74,7 +74,7 @@ const TEXT = {
 } as const;
 
 /** http(s) or a root-relative path; anything else is not a media address. */
-function mediaAddress(value: unknown): string {
+export function mediaAddress(value: unknown): string {
   const url = String(value ?? '').trim();
   if (/^\/(?!\/)/.test(url)) return url;
   try {
@@ -87,6 +87,12 @@ function mediaAddress(value: unknown): string {
 
 const YOUTUBE = /^(?:https?:)?\/\/(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/|shorts\/|live\/)|youtu\.be\/|youtube-nocookie\.com\/embed\/)([A-Za-z0-9_-]{11})/;
 const VIMEO = /^(?:https?:)?\/\/(?:www\.|player\.)?vimeo\.com\/(?:video\/)?(\d{4,12})(?:\/([0-9a-f]{6,20}))?/;
+
+/** A video file address (not a YouTube or Vimeo page), or an empty string. */
+export function videoFileAddress(value: unknown): string {
+  const address = mediaAddress(value);
+  return address && !YOUTUBE.test(address) && !VIMEO.test(address) ? address : '';
+}
 
 /** Seconds from a YouTube `t`/`start` value such as 90, 90s or 1m30s. */
 function startSeconds(url: URL): number {
@@ -126,8 +132,41 @@ export function providerEmbedUrl(address: string, options: { autoplay: boolean; 
 }
 
 /** The player for core/video. Empty when there is no usable address. */
+/**
+ * A video's sizes and formats, from `sources` items ({ src, width, type }),
+ * largest last. The type comes from the item, else the file extension; a media
+ * library address has none, and the browser then reads the file to tell.
+ */
+export function videoSources(value: unknown): { src: string; width: number; type: string }[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const record: Data = item && typeof item === 'object' ? item as Data : { src: item };
+    const src = mediaAddress(record.src);
+    const width = Number(record.width ?? 0);
+    const declared = record.type === 'video/webm' || record.type === 'video/mp4' ? record.type : '';
+    const type = declared || (/\.webm(?:$|[?#])/i.test(src) ? 'video/webm' : /\.(?:mp4|m4v)(?:$|[?#])/i.test(src) ? 'video/mp4' : '');
+    return src && !YOUTUBE.test(src) && !VIMEO.test(src) ? [{ src, width: Number.isFinite(width) && width > 0 ? Math.round(width) : 0, type }] : [];
+  }).slice(0, 12).sort((a, b) => (a.width || 1e9) - (b.width || 1e9) || (a.type === 'video/webm' ? -1 : 1));
+}
+
+/**
+ * <source> elements for several sizes and formats. The browser takes the first
+ * that fits: each smaller size up to two thirds of its width in CSS pixels (so
+ * a high-density phone gets a sharp file), WebM before MP4, the largest last
+ * without a media condition.
+ */
+export function videoSourcesHtml(value: unknown): string {
+  const sources = videoSources(value);
+  const largest = Math.max(0, ...sources.map((source) => source.width));
+  return sources.map((source) => {
+    const media = source.width && source.width < largest ? ` media="(max-width: ${Math.round(source.width / 1.5)}px)"` : '';
+    return `<source src="${escapeAttr(source.src)}"${source.type ? ` type="${source.type}"` : ''}${media} />`;
+  }).join('');
+}
+
 export function videoPlayerHtml(data: Data): string {
-  const address = mediaAddress(data.video_url);
+  const sourcesHtml = data.source === 'url' ? videoSourcesHtml(data.sources) : '';
+  const address = mediaAddress(data.video_url) || (sourcesHtml ? videoSources(data.sources).at(-1)!.src : '');
   if (!address) return '';
   const title = String(data.title ?? '').trim() || 'Video';
   const autoplay = data.autoplay === true;
@@ -137,7 +176,8 @@ export function videoPlayerHtml(data: Data): string {
   if (data.source === 'url') {
     const poster = mediaAddress(data.poster);
     const attrs = [
-      `src="${escapeAttr(address)}"`,
+      // With several sizes and formats the <source> elements choose; otherwise the one file.
+      sourcesHtml ? '' : `src="${escapeAttr(address)}"`,
       poster ? `poster="${escapeAttr(poster)}"` : '',
       controls ? 'controls' : '',
       autoplay ? 'autoplay' : '',
@@ -148,7 +188,7 @@ export function videoPlayerHtml(data: Data): string {
       `preload="${lazy && !autoplay ? 'none' : 'metadata'}"`,
       `aria-label="${escapeAttr(title)}"`,
     ].filter(Boolean).join(' ');
-    return `<video ${attrs}></video>`;
+    return `<video ${attrs}>${sourcesHtml}</video>`;
   }
   // A YouTube or Vimeo page address becomes the embed address; an address the
   // block cannot convert is kept and left to the iframe host allowlist.
@@ -160,8 +200,8 @@ export function videoPlayerHtml(data: Data): string {
   return `<iframe src="${escapeAttr(src)}" title="${escapeAttr(title)}"${lazy ? ' loading="lazy"' : ''} allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>`;
 }
 
-const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
-const PLAY_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>';
+export const PAUSE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M7 5h4v14H7zM13 5h4v14h-4z"/></svg>';
+export const PLAY_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true" focusable="false"><path d="M8 5v14l11-7z"/></svg>';
 
 /**
  * A hero's background video: a video file, muted and looping behind the text,
@@ -294,6 +334,14 @@ window.TyperollBlocks.register('core/repeater', function (el) {
   }, 5000);
 });
 `;
+
+/**
+ * From version 14 the controls show only while the track scrolls: when every
+ * card fits, there is nothing to page through.
+ */
+export const CAROUSEL_RUNTIME_V14 = CAROUSEL_RUNTIME
+  .replace('  function update() {\n    var at = current();', '  function update() {\n    controls.hidden = maxScroll() <= 1;\n    var at = current();')
+  .replace('  controls.hidden = false;\n  update();', '  update();');
 
 /** Provider connections start only after an explicit visitor action. No automatic thumbnails. */
 export const VIDEO_FACADE_RUNTIME = String.raw`

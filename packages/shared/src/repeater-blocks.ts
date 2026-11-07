@@ -8,7 +8,7 @@ import { pixels } from './presentation-fields.js';
 // with curated defaults — see `BlockType.expand_to`.
 
 import type { BlockType } from './types.js';
-import { CAROUSEL_RUNTIME } from './block-media.js';
+import { CAROUSEL_RUNTIME, CAROUSEL_RUNTIME_V14 } from './block-media.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
@@ -199,6 +199,7 @@ const gallery: BlockType = {
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'masonry', 'justified'], default: 'grid' },
     { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
+    { name: 'lightbox', type: 'boolean', label: 'Open images larger on click', default: true, min_render_version: 14, help: 'Images without a link open full size, with previous and next, the arrow keys and swiping.' },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -236,6 +237,7 @@ const logoCloud: BlockType = {
     { name: 'cols', type: 'number', label: 'Columns', default: 6, min: 2, max: 8, responsive: true },
     pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
+    { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'marquee'], option_labels: ['Grid', 'Moving row'], default: 'grid', min_render_version: 14, help: 'A moving row scrolls the logos slowly sideways, pauses on hover, focus and its pause button, and stands still for visitors who prefer reduced motion.' },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -309,6 +311,7 @@ const featureGrid: BlockType = {
         { name: 'heading', type: 'text', label: 'Heading' },
         { name: 'text', type: 'richtext', label: 'Body' },
         { name: 'link', type: 'url', label: 'Link' },
+        { name: 'link_label', type: 'text', label: 'Link label', placeholder: 'Learn more' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
     pixels('gap_px', 'Gap (px)', 0, 240),
@@ -442,7 +445,7 @@ const collectionList: BlockType = {
       { name: 'href_field', type: 'text', label: 'Link field', default: 'url' },
       { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4'], default: 'h2' },
       { name: 'download_url_field', type: 'text', label: 'Download URL field' },
-      { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF' },
+      { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF', ui_text: 'download_pdf' },
     ] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'list', 'carousel', 'masonry'], default: 'grid' },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
@@ -484,6 +487,7 @@ const CAROUSEL_V7 = `[data-block="repeater"][data-layout="carousel"] { position:
 @media (prefers-reduced-motion: reduce) { [data-block="repeater"][data-layout="carousel"] > .tr-carousel-track { scroll-behavior: auto; } }`;
 if (!repeater.styles!.includes(CAROUSEL_V6)) throw new Error('repeater carousel styles changed; update CAROUSEL_V6');
 repeater.render_versions = [{ from: 7, styles: repeater.styles!.replace(CAROUSEL_V6, CAROUSEL_V7), script: CAROUSEL_RUNTIME }];
+repeater.render_versions.push({ from: 14, script: CAROUSEL_RUNTIME_V14 });
 
 export const REPEATER_BLOCK_TYPES: readonly BlockType[] = [
   repeater,

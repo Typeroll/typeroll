@@ -223,12 +223,14 @@ describe('renderPreview — blocks mode', () => {
     // heading CSS present
     expect(html!).toContain('[data-block="heading"]');
     expect(html!).toContain('data-blocks="1"');
-    // section / columns / button / image / prose CSS NOT present — page
-    // doesn't use them.
-    expect(html!).not.toContain('[data-block="section"] > .block-section-inner');
-    expect(html!).not.toContain('[data-block="columns"]');
-    expect(html!).not.toContain('[data-block="button"]');
-    expect(html!).not.toContain('[data-block="image"]');
+    // section / columns / button / image / prose CSS NOT present in the
+    // block bundle — page doesn't use them. (Shared page CSS such as the
+    // content well may name block types in its flow rules.)
+    const bundle = html!.match(/<style data-blocks="1">([\s\S]*?)<\/style>/)?.[1] ?? '';
+    expect(bundle).not.toContain('[data-block="section"] > .block-section-inner');
+    expect(bundle).not.toContain('[data-block="columns"]');
+    expect(bundle).not.toContain('[data-block="button"]');
+    expect(bundle).not.toContain('[data-block="image"]');
   });
 
   it('does not emit a blocks <style> for HTML-mode pages', async () => {

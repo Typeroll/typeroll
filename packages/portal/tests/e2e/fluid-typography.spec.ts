@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { test, expect } from '@playwright/test';
-import { buildCoreBlockRegistry, collectBlockAssets, renderBlocks, siteThemeCss, siteStylesCss, defaultSiteSettings, contentWellCss, newSiteStyles, resolveBreakpointWidths, type Block } from '@typeroll/shared';
+import { buildCoreBlockRegistry, collectBlockAssets, renderBlocks, siteThemeCss, siteStylesCss, defaultSiteSettings, contentWellCss, resolveBreakpointWidths, standardStylesFor, type Block } from '@typeroll/shared';
 import { gotoReady } from './helpers/ready';
 import { DEFAULT_MAIN, e2eStore } from './helpers/store';
 const globalCss = readFileSync(new URL('../../../site-template/src/styles/global.css',import.meta.url),'utf8');
@@ -14,7 +14,8 @@ const blocks: Block[] = [
 ];
 for(const width of [375,768,1280]) test(`fluid role rhythm and component boundaries at ${width}px`, async({page},info)=>{
   await page.setViewportSize({width,height:1000});
-  const settings = {...structuredClone(defaultSiteSettings),render_version:10,styles:newSiteStyles()};
+  // The standard styles of a render version 10 site; new sites start at the latest version.
+  const settings = {...structuredClone(defaultSiteSettings),render_version:10,styles:standardStylesFor(10)};
   const theme = () => siteThemeCss(settings)+siteStylesCss(settings.styles,{colors:settings.colors,breakpoints:resolveBreakpointWidths(),renderVersion:10});
   const assets = collectBlockAssets(blocks,registry,{renderVersion:10});
   await page.setContent(`<style>${globalCss}html{font-size:16px}body{margin:0;padding:20px}${contentWellCss(10)}${assets.css}</style><style id="theme">${theme()}</style><main class="page-content">${renderBlocks(blocks,{registry,renderVersion:10,annotate:true})}</main>`);

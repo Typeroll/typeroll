@@ -7,7 +7,7 @@
 // measured on each part's background (block-parts.ts).
 
 import {
-  STANDARD_STYLES,
+  standardStylesFor,
   STYLE_ELEMENT_ROLES,
   defaultSiteSettings,
   resolveRenderVersion,
@@ -177,7 +177,9 @@ export async function applyStandardStyles(ctx: StyleCtx, opts: { overwrite?: boo
   const adjusted: string[] = [];
   const warnings: string[] = [];
   const next = [...site.styles];
-  for (const original of STANDARD_STYLES) {
+  // The standard styles of the site's render version, so restoring them does
+  // not change the output of a site on an older version.
+  for (const original of standardStylesFor(site.renderVersion)) {
     const index = next.findIndex(style => style.role === original.role);
     if (index >= 0 && !opts.overwrite) continue;
     const { style: standard, notes } = readableOnPalette(original, site);

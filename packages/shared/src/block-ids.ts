@@ -24,6 +24,23 @@ function newBlockId(): string {
   return `blk_${uuid.slice(0, 12)}`;
 }
 
+/** Core block types that render only their slots (columns, tabs panels, the block menu). */
+export const SLOT_BLOCK_TYPES: ReadonlySet<string> = new Set(['core/columns', 'core/tabs', 'core/navigation_menu']);
+
+/**
+ * A slot block renders only its slots, so blocks given to it as children would
+ * disappear. They move to the end of its first slot instead.
+ */
+export function moveChildrenIntoSlots(block: Block): void {
+  if (!SLOT_BLOCK_TYPES.has(block.type) || !Array.isArray(block.children)) return;
+  if (block.children.length) {
+    const slots = Array.isArray(block.slots) ? block.slots : [];
+    slots[0] = [...(Array.isArray(slots[0]) ? slots[0] : []), ...block.children];
+    block.slots = slots;
+  }
+  delete block.children;
+}
+
 /**
  * Walks a Block[] tree (children + slots) and assigns a fresh id to every
  * block whose id is missing or not a non-empty string. Duplicate ids within
@@ -44,6 +61,7 @@ export function ensureBlockIds(blocks: Block[] | undefined | null): Block[] {
       }
       seen.add(block.id);
       block.data ??= {};
+      moveChildrenIntoSlots(block);
       if (Array.isArray(block.children)) walk(block.children);
       if (Array.isArray(block.slots)) {
         for (const slot of block.slots) {

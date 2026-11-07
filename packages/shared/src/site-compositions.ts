@@ -16,19 +16,26 @@ export function getPartialCompositionStarter(
 ): Block[] {
   const links = (id: string, direction: string) => block(id, 'core/navigation_links', {
     links: options.links, direction, gap_px: direction === 'row' ? 24 : 8,
-    ...(kind === 'footer' ? { density: 'compact-desktop' } : {}),
+  });
+  // Footer links stack one per line on phones and sit in a row from tablet up.
+  // Compact 24px targets (WCAG 2.2 AA) keep the stacked list tight.
+  const footerLinks = () => block('footer_links', 'core/navigation_links', {
+    links: options.links, direction: { mobile: 'column', tablet: 'row' },
+    gap_px: { mobile: 8, tablet: 24 }, density: 'compact',
   });
   const navigation: Block = kind === 'header'
     ? { ...block('header_navigation', 'core/navigation_menu', {
       aria_label: options.navigation_label ?? 'Main navigation',
       menu_label: options.menu_label ?? 'Open menu',
     }), slots: [[links('header_desktop_links', 'row')], [links('header_mobile_links', 'column')]] }
-    : block('footer_navigation', 'core/container', { tag: 'nav', layout: 'flow', aria_label: options.navigation_label ?? 'Footer navigation' }, [links('footer_links', 'row')]);
+    : block('footer_navigation', 'core/container', { tag: 'nav', layout: 'flow', aria_label: options.navigation_label ?? 'Footer navigation' }, [footerLinks()]);
   return [block(`${kind}_section`, 'core/section', {
     width: 'wide', padding_y: kind === 'header' ? 'compact' : 'auto',
   }, [block(`${kind}_layout`, 'core/container', {
     direction: kind === 'header' ? 'row' : { mobile: 'column', tablet: 'row' },
-    wrap: kind === 'header' ? 'nowrap' : 'wrap', align_main: 'space-between', align_cross: 'center', gap: 'md', width: 'full',
+    wrap: kind === 'header' ? 'nowrap' : 'wrap', align_main: 'space-between',
+    // A stacked footer lines up on the left; side by side it centres vertically.
+    align_cross: kind === 'header' ? 'center' : { mobile: 'start', tablet: 'center' }, gap: 'md', width: 'full',
   }, [block(`${kind}_logo`, 'template/site_logo', { height: kind === 'header' ? 'md' : 'sm', link_to_home: true }), navigation])])];
 }
 

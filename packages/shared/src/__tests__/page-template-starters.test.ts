@@ -6,7 +6,7 @@ const getPageTemplateStarter = (kind: Parameters<typeof makeStarter>[0]) => make
 describe('getPageTemplateStarter', () => {
   it('wraps standard starter content in one native section', () => {
     expect(makeStarter('blog')?.[0]).toMatchObject({type:'core/section',data:{width:'narrow'}});
-    expect(makeStarter('article')?.[0]).toMatchObject({type:'core/section',data:{width:'wide'}});
+    expect(makeStarter('article')?.[0]).toMatchObject({type:'core/section',data:{width:'normal'}});
   });
   it('returns a blog starter with item_title, item_image (featured_image), item_body', () => {
     const blocks = getPageTemplateStarter('blog');

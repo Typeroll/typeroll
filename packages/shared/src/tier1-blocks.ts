@@ -420,7 +420,7 @@ const iconBox: BlockType = {
     { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4', 'h5'], default: 'h3' },
     { name: 'text', type: 'richtext', label: 'Body text' },
     { name: 'link', type: 'url', label: 'Link to' },
-    { name: 'link_label', type: 'text', label: 'Link label', default: 'Learn more' },
+    { name: 'link_label', type: 'text', label: 'Link label', default: 'Learn more', ui_text: 'learn_more' },
     { name: 'layout', type: 'select', label: 'Layout', options: ['icon-top', 'icon-left', 'icon-right'], default: 'icon-top', responsive: true,
       // Token → flex-direction. The mobile baseline is handled by the
       // [style*="--layout:…"] rules below; these drive the per-breakpoint
@@ -511,7 +511,7 @@ const hero: BlockType = {
     { name: 'secondary_label', type: 'text', label: 'Secondary button label' },
     { name: 'secondary_url', type: 'url', label: 'Secondary button link' },
     { name: 'image', type: 'image', label: 'Image' },
-    { name: 'video_url', type: 'url', label: 'Video URL (optional)' },
+    { name: 'video_url', type: 'url', label: 'Video URL (optional)', media: 'video' },
     { name: 'layout', type: 'select', label: 'Layout',
       options: ['split-left', 'split-right', 'centered', 'full-image'], default: 'centered', responsive: true },
     ...focalPointFields,
@@ -520,6 +520,7 @@ const hero: BlockType = {
     { name: 'text_vertical', type: 'select', label: 'Text position', options: ['start','center','end'], default: 'center', responsive: true, responsive_css: { start:'--hero-align:start;',center:'--hero-align:center;',end:'--hero-align:end;' } },
     { name: 'text_align', type: 'select', label: 'Text alignment', options: ['start','center','end'], default: 'start', responsive: true, responsive_css: { start:'--hero-justify:start;--hero-text-align:start;',center:'--hero-justify:center;--hero-text-align:center;',end:'--hero-justify:end;--hero-text-align:end;' } },
     { name: 'height', type: 'select', label: 'Height', options: ['auto', 'half-screen', 'screen'], default: 'auto' },
+    { name: 'width', type: 'select', label: 'Content width', options: ['narrow', 'normal', 'wide'], default: 'normal', min_render_version: 14 },
     { name: 'overlay_opacity', type: 'number', label: 'Overlay opacity (0-100)', default: 0, min: 0, max: 100 },
     { name: 'background', type: 'color', label: 'Background color' },
   ],
@@ -632,6 +633,7 @@ const cta: BlockType = {
     { name: 'background', type: 'color', label: 'Background color' },
     { name: 'background_image', type: 'image', label: 'Background image' },
     { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center'], default: 'center', responsive: true },
+    { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide'], default: 'normal', min_render_version: 14 },
     { name: 'image_position', type: 'select', label: 'Image position', options: ['none', 'left', 'right', 'background'], default: 'none' },
   ],
   template: `<section data-block="cta" data-image-pos="{{image_position}}" style="--align:{{align}};--bg:{{background}};--bg-image:url({{background_image}})">
@@ -854,7 +856,7 @@ const pricingPlan: BlockType = {
         { name: 'text', type: 'text', label: 'Text' },
         { name: 'included', type: 'boolean', label: 'Included', default: true },
       ] },
-    { name: 'cta_label', type: 'text', label: 'Button label', default: 'Get started' },
+    { name: 'cta_label', type: 'text', label: 'Button label', default: 'Get started', ui_text: 'get_started' },
     { name: 'cta_href', type: 'url', label: 'Button link' },
     { name: 'highlight', type: 'boolean', label: 'Highlight this plan' },
     { name: 'badge', type: 'text', label: 'Badge (e.g. "Most popular")' },
@@ -947,7 +949,7 @@ const postCard: BlockType = {
     { name: 'download_url_field', type: 'text', label: 'Download URL field' },
     { name: 'title_link', type: 'boolean', label: 'Link the title', default: true },
     { name: 'download_behavior', type: 'select', label: 'Download link behavior', options: ['navigate', 'download'], default: 'navigate' },
-    { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF' },
+    { name: 'download_label', type: 'text', label: 'Download label', default: 'Download PDF', ui_text: 'download_pdf' },
     { name: 'show_image', type: 'boolean', label: 'Show image', default: true },
     { name: 'missing_image', type: 'select', label: 'When the image is missing', options: ['omit', 'placeholder'], default: 'omit' },
     { name: 'placeholder_icon', type: 'icon', label: 'Placeholder icon (optional)' },
@@ -1199,7 +1201,7 @@ const navigation: BlockType = {
   ],
   schema: [
     { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
-    { name: 'menu_label', type: 'text', label: 'Mobile menu label', default: 'Menu' },
+    { name: 'menu_label', type: 'text', label: 'Mobile menu label', default: 'Menu', ui_text: 'menu' },
     { name: 'links', type: 'array', label: 'Links', fields: [
       { name: 'label', type: 'text', label: 'Label', required: true },
       { name: 'href', type: 'url', label: 'Link', required: true },
@@ -1322,8 +1324,11 @@ const video: BlockType = {
   ],
   schema: [
     { name: 'source', type: 'select', label: 'Source', options: ['youtube', 'vimeo', 'url'], default: 'youtube' },
-    { name: 'video_url', type: 'url', label: 'Video URL' },
+    { name: 'video_url', type: 'url', label: 'Video URL', media: 'video', help: 'A YouTube or Vimeo address, or a video file from the media library.' },
     { name: 'poster', type: 'image', label: 'Poster image' },
+    { name: 'sources', type: 'array', label: 'Sizes and formats (video files)', min_render_version: 14,
+      help: 'The same video in several widths and formats (MP4, WebM). The browser picks the smallest that is sharp on the screen. Advanced Design fills this in.',
+      fields: [{ name: 'src', type: 'url', label: 'File', media: 'video' }, { name: 'width', type: 'number', label: 'Width (px)', min: 1, max: 7680 }, { name: 'type', type: 'select', label: 'Format', options: ['video/mp4', 'video/webm'] }] },
     { name: 'autoplay', type: 'boolean', label: 'Autoplay (muted)' },
     { name: 'loop', type: 'boolean', label: 'Loop' },
     { name: 'muted', type: 'boolean', label: 'Muted', default: true },
@@ -1620,7 +1625,7 @@ const search: BlockType = {
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
-    { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…' },
+    { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…', ui_text: 'search' },
   ],
   template: `<div data-block="search" data-placeholder="{{placeholder}}">
   <div class="block-search-mount"></div>
@@ -1684,7 +1689,7 @@ const tableOfContents: BlockType = {
     { name: 'link_color', type: 'select', label: 'Link color', options: ['theme', 'neutral'], default: 'theme' },
     { name: 'border', type: 'boolean', label: 'Border', default: true },
     { name: 'shadow', type: 'select', label: 'Shadow', options: ['none', 'subtle'], default: 'none' },
-    { name: 'title', type: 'text', label: 'Title', default: 'On this page' },
+    { name: 'title', type: 'text', label: 'Title', default: 'On this page', ui_text: 'on_this_page' },
     { name: 'levels', type: 'select', label: 'Heading levels', options: ['h2', 'h2-h3', 'h2-h4'], default: 'h2-h3' },
     { name: 'appearance', type: 'select', label: 'Appearance', options: ['card', 'plain'], default: 'card' },
     { name: 'mobile_display', type: 'select', label: 'Mobile display', options: ['visible', 'hidden'], default: 'visible' },
@@ -1913,6 +1918,11 @@ hero.render_versions = [{
 @media (prefers-reduced-motion: reduce) { [data-block="hero"] > .block-hero-video, [data-block="hero"] > .block-hero-video-toggle { display: none; } }`,
   script: HERO_VIDEO_RUNTIME,
 }];
+// From version 14 a card date reads in the page language and keeps the machine-readable date.
+postCard.render_versions = [...(postCard.render_versions ?? []), { from: 14, template: postCard.template!.replace('<time class="block-postcard-date">{{date}}</time>', '<time class="block-postcard-date" datetime="{{date_iso}}">{{date}}</time>') }];
+// From version 14 the hero and call to action name their content width, so they line up with sections.
+hero.render_versions.push({ from: 14, template: hero.render_versions[0]!.template!.replace('<section data-block="hero" ', '<section data-block="hero" data-width="{{width}}" ') });
+cta.render_versions = [{ from: 14, template: cta.template!.replace('<section data-block="cta" ', '<section data-block="cta" data-width="{{width}}" ') }];
 testimonial.render_versions = [{
   from: 7,
   template: testimonial.template!.replace('<blockquote class="block-testimonial-quote">', '{{{rating_html}}}<blockquote class="block-testimonial-quote">'),

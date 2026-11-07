@@ -1,11 +1,15 @@
 import { colorCss, tokenScale, scaleValue } from './design-tokens.js';
 import { linkTargetAttributes } from './link-attributes.js';
 export { linkTargetAttributes };
+import { platformLayer, usesCascadeLayers } from './cascade-layers.js';
+import { BLOCK_DEFAULTS_V14_CSS, BLOCK_TYPE_DEFAULTS_V14 } from './block-defaults.js';
 import { queryDerivedSource, type DerivedQuery } from './derived-source.js';
 import { prepareTabs } from './tabs.js';
 import { prepareNavigationForm } from './navigation-form.js';
 import { coerceFieldValue } from './block-field-types.js';
 import { carouselControlsHtml, carouselRegionLabel, heroVideoHtml, ratingHtml, videoPlayerHtml } from './block-media.js';
+import { prepareStoryBlock } from './story-blocks.js';
+import { backgroundMedia, effectAssets, insertAfterFirstTag, lightboxAttributes, motionAttributes, textOverMedia, type EffectContext } from './block-effects.js';
 // Block-tree → HTML renderer.
 //
 // Pure function used by both the SSG renderer (packages/site-template) and
@@ -55,7 +59,7 @@ import { renderIconHtml } from './icons.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
-import { uiText } from './ui-text.js';
+import { uiText, uiLabel, localizeDefaultLabel, formatDisplayDate } from './ui-text.js';
 import { languageSectionFor, type LanguageSection } from './language-sections.js';
 import { prepareHeadingOutline } from './heading-outline.js';
 import { comparePageValues, pageSort } from './page-options.js';
@@ -320,8 +324,14 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   if (blockType.container === 'repeater') {
     const compiled = compileResponsiveData(effectiveBlock, blockType);
     resolveFieldBindings(blockType, compiled.flatData, options.context);
+    localizeDefaultLabels(blockType, compiled.flatData, options);
     const responsiveBlock: Block = { ...effectiveBlock, data: compiled.flatData };
     let html = renderRepeater(responsiveBlock, blockType, options);
+    const effects = effectContext(options);
+    const effectAttrs = motionAttributes(blockType, compiled.flatData, effects);
+    // A gallery opens its images larger unless it says not to (render version 14).
+    if (effects.renderVersion >= 14 && block.type === 'core/gallery' && compiled.flatData.lightbox !== false) Object.assign(effectAttrs, lightboxAttributes(effects.language));
+    if (Object.keys(effectAttrs).length) html = injectAttrsIntoFirstTag(html, effectAttrs);
     // An explicit mobile baseline opts into the authored column map. Preserve
     // the one-column mobile default for scalar counts and maps without mobile.
     if (isResponsiveValue(effectiveBlock.data.cols) && effectiveBlock.data.cols.mobile != null && effectiveBlock.data.mobile_cols == null) {
@@ -342,6 +352,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
         compiled.cssVars,
         compiled.mappedCss,
         resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints),
+        options.renderVersion,
       );
     }
     html = applyVisibility(html, effectiveBlock, options);
@@ -371,6 +382,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   const compiled = compileResponsiveData(effectiveBlock, blockType);
 
   resolveFieldBindings(blockType, compiled.flatData, options.context);
+  localizeDefaultLabels(blockType, compiled.flatData, options);
 
   if (effectiveBlock.type === 'template/page_featured_image') {
     compiled.flatData.selected_page_image = options.context?.page?.[String(compiled.flatData.field ?? 'og_image')] ?? '';
@@ -381,6 +393,10 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     compiled.flatData.selected_page_date = options.context?.page?.[fieldName]
       ?? '';
     if (!String(compiled.flatData.selected_page_date).trim()) return '';
+    // A format left at the block default follows the site's date format.
+    const blockFormat = compiled.flatData.format;
+    const dateFormat = blockFormat && blockFormat !== 'MMM D, YYYY' ? blockFormat : options.context?.site?.date_format ?? blockFormat;
+    compiled.flatData.selected_page_date_text = formatDisplayDate(compiled.flatData.selected_page_date, options.context?.page?.language ?? options.context?.site?.language, dateFormat);
   }
   if (effectiveBlock.type === 'template/page_excerpt' && !String(options.context?.page?.excerpt ?? '').trim()) return '';
   if (effectiveBlock.type === 'template/page_author' && !String((options.context?.page?.author as { name?: string } | undefined)?.name ?? '').trim()) return '';
@@ -446,7 +462,11 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots, { authored: effectiveBlock.data, language: options.context?.page?.language ?? options.context?.site?.language });
   // Read only by the render version 7 templates (block-media.ts).
   if (effectiveBlock.type === 'core/video') compiled.flatData.video_html = videoPlayerHtml(compiled.flatData);
-  if (effectiveBlock.type === 'core/hero') compiled.flatData.hero_video_html = heroVideoHtml(compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
+  if (effectiveBlock.type === 'core/hero') {
+    // A site with reduced motion shows the hero image instead of its video (render version 14).
+    const still = resolveRenderVersion(options.renderVersion) >= 14 && options.context?.site?.motion === 'reduced';
+    compiled.flatData.hero_video_html = still ? '' : heroVideoHtml(compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
+  }
   if (effectiveBlock.type === 'core/testimonial') compiled.flatData.rating_html = ratingHtml(compiled.flatData.rating, options.context?.page?.language ?? options.context?.site?.language);
   if (effectiveBlock.type === 'core/navigation_form') prepareNavigationForm(compiled.flatData, effectiveBlock.id, effectiveBlock.data, effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints);
   if (effectiveBlock.type === 'core/navigation_menu') compiled.flatData.menu_mobile_override = String(!!effectiveBlock.slots?.[1]?.length);
@@ -455,6 +475,11 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   }
   if (effectiveBlock.type === 'core/post_card') {
     preparePostCardData(compiled.flatData, options.context?.item);
+    // The machine-readable date is always the card's own date, never block data.
+    compiled.flatData.date_iso = compiled.flatData.date ?? '';
+    if (resolveRenderVersion(options.renderVersion) >= 14 && compiled.flatData.date) {
+      compiled.flatData.date = formatDisplayDate(compiled.flatData.date, options.context?.page?.language ?? options.context?.site?.language, options.context?.site?.date_format);
+    }
   }
   let fieldListHtml: string | undefined;
   if (effectiveBlock.type === 'core/field_list') {
@@ -566,6 +591,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
       compiled.flatData, pageUrlResolverFromSource(options.pageSource));
     Object.assign(compiled.flatData, derived);
   }
+  const storyAttrs = prepareStoryBlock(blockType, compiled.flatData, { language: options.context?.page?.language ?? options.context?.site?.language, reduced: resolveRenderVersion(options.renderVersion) >= 14 && options.context?.site?.motion === 'reduced' });
   let html = substituteFields(template, compiled.flatData, options.context);
   const numericStyles = (blockType.schema ?? []).flatMap(field => {
     const value = numericPresentationValue(field, compiled.flatData[field.name]);
@@ -577,12 +603,18 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   // Insert prepared field rows after all template passes. Authored values and
   // row markup must never become a second Page-context template evaluation.
   if (fieldListHtml !== undefined) html = html.replace('<!--typeroll-field-list-->', () => fieldListHtml!);
+  // Render version 14: media behind the block and its entrance animation (block-effects.ts).
+  const effects = effectContext(options);
+  const background = backgroundMedia(blockType, compiled.flatData, effects);
+  html = insertAfterFirstTag(html, background.html);
 
   // Inject responsive / visibility attributes onto the outermost element.
   // Both rely on the block's id being CSS-safe (alphanumeric + _ + -);
   // sanitizeCssId() escapes anything else.
   const bid = sanitizeCssId(effectiveBlock.id);
-  const rootAttrs: Record<string, string> = {};
+  const overText = textOverMedia(blockType, compiled.flatData, effects, effectiveBlock.data ?? {});
+  if (overText.style) html = mergeAttrsIntoFirstTag(html, { style: overText.style }) ?? html;
+  const rootAttrs: Record<string, string> = { ...background.attrs, ...overText.attrs, ...motionAttributes(blockType, compiled.flatData, effects), ...storyAttrs };
   if (blockType.id === 'core/grid' && isResponsiveValue(effectiveBlock.data.cols)) rootAttrs['data-responsive-cols'] = 'true';
   if (blockType.schema.some(field => field.css_unit)) rootAttrs['data-presentation'] = encodeURIComponent(blockType.id);
   // data-bid is normally only needed when responsive overrides target it —
@@ -631,7 +663,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   // template; the style block only carries @media overrides for
   // breakpoints above mobile.
   if (compiled.hasOverrides) {
-    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints));
+    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints), options.renderVersion);
   }
 
   if (columnThreshold !== null) html += `<style data-bid="${bid}">${columnStackCss(columnThreshold, `[data-block="columns"][data-bid="${bid}"]`)}</style>`;
@@ -836,8 +868,15 @@ function renderRepeater(
     const inherited = options.context?.facet?.filters?.[0];
     const filterField = typeof data.filter_field === 'string' && data.filter_field
       ? data.filter_field : inherited?.field;
-    const filterValue = typeof data.filter_value === 'string' && data.filter_value !== undefined
+    let filterValue = typeof data.filter_value === 'string' && data.filter_value !== undefined
       ? data.filter_value : inherited?.value;
+    // From version 14 a list of ordinary pages with no filter and no chosen pages lists the
+    // current page's children, so a section index does not list Home, Contact and every other page.
+    const generic = !data.content_type || data.content_type === 'page';
+    const pageId = options.context?.page?.id;
+    const childrenOf = resolveRenderVersion(options.renderVersion) >= 14 && generic && !filterField && pageId
+      && !(Array.isArray(data.page_ids) && data.page_ids.length);
+    if (childrenOf) filterValue = String(pageId);
     items = options.pageSource({
       content_type: String(data.content_type ?? ''),
       ids: Array.isArray(data.page_ids) && data.page_ids.length ? refIds(data.page_ids) : undefined,
@@ -847,7 +886,7 @@ function renderRepeater(
       limit: perPage > 0 ? undefined : (typeof data.limit === 'number' ? data.limit : undefined),
       sort_by: typeof data.sort_by === 'string' ? data.sort_by : undefined,
       sort_order: data.sort_order === 'asc' || data.sort_order === 'desc' ? data.sort_order : undefined,
-      filter_field: filterField,
+      filter_field: childrenOf ? 'parent' : filterField,
       filter_value: filterValue,
       pinned_ids: Array.isArray(data.pinned_ids) ? (data.pinned_ids as string[]) : undefined,
     });
@@ -971,7 +1010,8 @@ function renderRepeaterItems(
     .join('');
 
   if (items.length === 0 && data.empty_state) {
-    return wrapRepeater(block, blockType, data, escapeHtml(data.empty_state), options, 0);
+    // A richtext field: from render version 14 its formatting renders (the final sanitizer pass still applies).
+    return wrapRepeater(block, blockType, data, resolveRenderVersion(options.renderVersion) >= 14 ? String(data.empty_state) : escapeHtml(data.empty_state), options, 0);
   }
 
   const groupBy = typeof data.group_by === 'string' ? data.group_by.trim() : '';
@@ -1078,10 +1118,18 @@ function wrapRepeater(
   const marked = (html: string) => Object.keys(partAttrs).length ? injectAttrsIntoFirstTag(html, partAttrs) : html;
   // Render version 7: a carousel's items scroll in a track, followed by the
   // controls its settings ask for (block-media.ts).
+  const effects = effectContext(options);
+  // Render version 14: a logo row that moves slowly sideways (block-effects.ts).
+  if (layout === 'marquee' && effects.renderVersion >= 14) {
+    const still = effects.siteMotion === 'reduced' ? ' data-static' : '';
+    return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="marquee"${still} data-label-pause="${escapeHtml(uiLabel(effects.language, 'pause_animation'))}" data-label-play="${escapeHtml(uiLabel(effects.language, 'play_animation'))}" style="${style}"><div class="tr-marquee-track">${inner}</div></div>`);
+  }
   if (layout === 'carousel' && resolveRenderVersion(options?.renderVersion) >= 7) {
     const language = options?.context?.page?.language ?? options?.context?.site?.language;
-    const controls = carouselControlsHtml(data, count, language);
-    const hooks = controls ? ` data-block-type="core/repeater" data-carousel-autoplay="${data.autoplay === true}" role="region" aria-roledescription="carousel" aria-label="${escapeHtml(carouselRegionLabel(language))}"` : '';
+    // A site with reduced motion never autoplays (render version 14).
+    const autoplay = data.autoplay === true && !(effects.renderVersion >= 14 && effects.siteMotion === 'reduced');
+    const controls = carouselControlsHtml({ ...data, autoplay }, count, language);
+    const hooks = controls ? ` data-block-type="core/repeater" data-carousel-autoplay="${autoplay}" role="region" aria-roledescription="carousel" aria-label="${escapeHtml(carouselRegionLabel(language))}"` : '';
     return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="carousel"${hooks} style="${style}"><div class="tr-carousel-track">${inner}</div>${controls}</div>`);
   }
   return marked(`<div data-block="repeater" data-presentation="${encodeURIComponent(blockType.id)}" data-bid="${bid}" data-layout="${escapeHtml(layout)}" style="${style}">${inner}</div>`);
@@ -1649,6 +1697,14 @@ function renderChoicesHtml(
  * Put the class of a selected site style (`data.style_id`) on the block's
  * semantic element: the element carrying `style_element_class`, else the root.
  */
+function effectContext(options: RenderBlocksOptions | undefined): EffectContext {
+  return {
+    renderVersion: resolveRenderVersion(options?.renderVersion),
+    siteMotion: options?.context?.site?.motion,
+    language: options?.context?.page?.language ?? options?.context?.site?.language,
+  };
+}
+
 function applySiteStyle(html: string, block: Block, blockType: BlockType): string {
   if (!blockType.schema?.some(field => field.type === 'style' && field.name === 'style_id')) return html;
   const id = block.data?.style_id;
@@ -1662,6 +1718,15 @@ function addClassToSemanticElement(html: string, blockType: BlockType, cls: stri
   if (!blockType.style_element_class) return null;
   const target = new RegExp(`(\\sclass="(?:[^"]*\\s)?${blockType.style_element_class.replace(/[^\w-]/g, '')}(?:\\s[^"]*)?)"`);
   return target.test(html) ? html.replace(target, (_m, attr: string) => `${attr} ${escapeHtml(cls)}"`) : null;
+}
+
+/** From render version 14 a label left at its English default speaks the page language. */
+function localizeDefaultLabels(blockType: BlockType, data: Record<string, unknown>, options: RenderBlocksOptions): void {
+  if (resolveRenderVersion(options.renderVersion) < 14) return;
+  const language = options.context?.page?.language ?? options.context?.site?.language;
+  for (const field of blockType.schema ?? []) {
+    if (field.ui_text) data[field.name] = localizeDefaultLabel(data[field.name], field.ui_text, language);
+  }
 }
 
 function applyStyleOverrides(html: string, block: Block, blockType: BlockType, renderVersion: number | undefined): string {
@@ -2024,6 +2089,7 @@ function renderResponsiveStyleBlock(
   cssVars: Partial<Record<Breakpoint, Record<string, string>>>,
   mappedCss: Partial<Record<Breakpoint, string>>,
   widths: BreakpointWidths = defaultBreakpointWidths,
+  renderVersion?: number,
 ): string {
   const parts: string[] = [];
   for (const bp of BREAKPOINTS_ABOVE_MOBILE) {
@@ -2055,7 +2121,7 @@ function renderResponsiveStyleBlock(
     if (inner.length) parts.push(`${mediaQuery(bp, widths)} { ${inner.join(' ')} }`);
   }
   if (parts.length === 0) return '';
-  return `<style data-bid="${bid}">${parts.join('\n')}</style>`;
+  return `<style data-bid="${bid}">${platformLayer('instance', parts.join('\n'), renderVersion)}</style>`;
 }
 
 /**
@@ -2241,6 +2307,7 @@ export function collectBlockAssets(
     // Site block types written with block scope never style outside their blocks.
     const btStyles = rawStyles && bt.css_scope === 'block' ? scopeBlockCss(rawStyles, bt.name).css : rawStyles;
     if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
+    if (resolveRenderVersion(opts?.renderVersion) >= 14 && BLOCK_TYPE_DEFAULTS_V14[id]) css.push(`/* ${id} defaults */\n${BLOCK_TYPE_DEFAULTS_V14[id]}`);
     if (output.script) js.push(`/* ${id} */\n${output.script}`);
   }
 
@@ -2249,6 +2316,13 @@ export function collectBlockAssets(
     if (partCss) css.push(`/* block parts */\n${partCss}`);
   }
 
+  const effects = effectAssets(blocks, resolveRenderVersion(opts?.renderVersion));
+  css.push(...effects.css);
+  js.push(...effects.js);
+  if (resolveRenderVersion(opts?.renderVersion) >= 14 && css.length) css.push(`/* block defaults */\n${BLOCK_DEFAULTS_V14_CSS}`);
+  // From render version 14 platform block CSS is one layer; an author's
+  // per-block CSS stays unlayered and overrides it like site CSS does.
+  if (usesCascadeLayers(opts?.renderVersion) && css.length) css.splice(0, css.length, platformLayer('blocks', css.join('\n\n'), opts?.renderVersion));
   for (const block of collectInstanceStyles(blocks)) {
     css.push(`/* instance ${sanitizeCssId(block.id)} */\n${styleElementText(block.style_overrides!.custom_css!)}`);
   }

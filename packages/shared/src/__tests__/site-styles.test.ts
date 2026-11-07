@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import { standardStylesBefore037 } from './fixtures/legacy-standard-styles.js';
 import {
   STANDARD_STYLES,
+  standardStylesFor,
   buildCoreBlockRegistry,
   contrastRatio,
   defaultSiteSettings,
@@ -12,6 +14,7 @@ import {
   resolveBreakpointWidths,
   siteStyleLibraryErrors,
   siteStylesCss,
+  newSiteStyles,
   styleContrastErrors,
   styleContrastReport,
   styleTextUse,
@@ -319,5 +322,30 @@ describe('site-wide visited links (SE-04)', () => {
     expect(validateSiteStyle({ ...link, visited: { color: '#551a8b' } }).style?.visited).toEqual({ color: '#551a8b' });
     expect(validateSiteStyle({ ...link, visited: { decoration: 'underline' } }).errors).toContain('visited supports only color');
     expect(validateSiteStyle({ ...link, role: 'heading', visited: { color: 'primary' } }).errors).toContain('visited applies to the link role only');
+  });
+});
+
+describe('standard styles per render version', () => {
+  const breakpoints = resolveBreakpointWidths();
+  it('keeps the heading spacing sites below render version 14 were created with', () => {
+    for (const version of [1, 9, 10, 13]) {
+      const styles = standardStylesFor(version);
+      expect(styles).toEqual(standardStylesBefore037(newSiteStyles()));
+      // Restored roles render exactly as the ones those sites already store.
+      expect(siteStylesCss(styles, { breakpoints, colors: defaultSiteSettings.colors, renderVersion: version }))
+        .toBe(siteStylesCss(standardStylesBefore037(newSiteStyles()), { breakpoints, colors: defaultSiteSettings.colors, renderVersion: version }));
+    }
+    expect(standardStylesFor(undefined)).toEqual(standardStylesFor(1));
+    expect(standardStylesFor(13).find(style => style.role === 'h2')?.base).toMatchObject({ space_before: '1em', space_after: '0.5em' });
+  });
+  it('uses the current standard styles from render version 14', () => {
+    expect(standardStylesFor(14)).toEqual(newSiteStyles());
+    expect(standardStylesFor(14).find(style => style.role === 'h2')?.base).toMatchObject({ space_before: '1.6em', space_after: '0.35em' });
+  });
+  it('returns copies the caller may change', () => {
+    standardStylesFor(13)[1].base!.space_before = '9em';
+    standardStylesFor(14)[1].base!.space_before = '9em';
+    expect(STANDARD_STYLES[1].base!.space_before).toBe('1.6em');
+    expect(standardStylesFor(13)[1].base!.space_before).toBe('1em');
   });
 });
