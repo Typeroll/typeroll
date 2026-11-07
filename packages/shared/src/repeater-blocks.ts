@@ -309,6 +309,7 @@ const featureGrid: BlockType = {
         { name: 'heading', type: 'text', label: 'Heading' },
         { name: 'text', type: 'richtext', label: 'Body' },
         { name: 'link', type: 'url', label: 'Link' },
+        { name: 'link_label', type: 'text', label: 'Link label', placeholder: 'Learn more' },
       ] },
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
     pixels('gap_px', 'Gap (px)', 0, 240),

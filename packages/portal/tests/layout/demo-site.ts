@@ -41,7 +41,7 @@ function home() {
     ]),
     section([
       heading('Från första skiss till inflyttning', { eyebrow: 'Så arbetar vi', subtitle: 'Ett team följer projektet hela vägen, så att idéerna överlever bygget.' }),
-      b('core/feature_grid', { item_overrides: { link_label: 'Läs mer' }, items: [
+      b('core/feature_grid', { items: [
         { icon: 'sun', heading: 'Ljusstudier', text: '<p>Vi simulerar dagsljuset rum för rum innan vi bestämmer var fönstren ska sitta.</p>', link: '/tjanster/' },
         { icon: 'home', heading: 'Bostäder', text: '<p>Villor, fritidshus och flerbostadshus med plats för vardagen.</p>', link: '/projekt/' },
         { icon: 'leaf', heading: 'Hållbart', text: '<p>Trästommar, lokala material och energi som räcker hela året.</p>', link: '/om-oss/' },
