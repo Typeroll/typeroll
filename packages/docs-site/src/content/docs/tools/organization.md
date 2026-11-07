@@ -213,17 +213,20 @@ a finished run returns `409`.
 
 ## Create a Site with its first workflow
 
-The portal's **New site** page offers three starts. All three are available
+The portal's **New site** page offers four starts. All four are available
 with an organization key:
 
-| Start                   | MCP tool                  | API route below `/api/v1`        | Body                                                          |
-| ----------------------- | ------------------------- | -------------------------------- | ------------------------------------------------------------- |
-| Blank Site              | `create_site`             | `POST /sites`                    | `name`, optional `id`, `domain`, `language`                   |
-| Migrate from WordPress  | `create_site_and_migrate` | `POST /sites/create-and-migrate` | `name`, `wp_url`, optional `helper_api_key`, `id`, `language` |
-| Plan a new site with AI | `create_site_and_plan`    | `POST /sites/create-and-plan`    | `name`, `business_description`, optional `id`, `language`     |
+| Start                   | MCP tool                  | API route below `/api/v1`        | Body                                                           |
+| ----------------------- | ------------------------- | -------------------------------- | -------------------------------------------------------------- |
+| Blank Site              | `create_site`             | `POST /sites`                    | `name`, optional `id`, `domain`, `language`                    |
+| From a template or Site | `create_site`             | `POST /sites`                    | `name`, `from`, optional `options`, `id`, `domain`, `language` |
+| Migrate from WordPress  | `create_site_and_migrate` | `POST /sites/create-and-migrate` | `name`, `wp_url`, optional `helper_api_key`, `id`, `language`  |
+| Plan a new site with AI | `create_site_and_plan`    | `POST /sites/create-and-plan`    | `name`, `business_description`, optional `id`, `language`      |
 
 These are the only accepted fields: any other field is refused with `400` and
-code `unknown_field`, naming it. `id` and `language` work as in
+code `unknown_field`, naming it. What a start from a template or another Site
+copies is described in
+[Start a site from a template or another site](../settings/#start-a-site-from-a-template-or-another-site). `id` and `language` work as in
 [`create_site`](../settings/#create_site): without `id` the Site id is the
 kebab-case name, and a taken `id` answers `409` `site_id_taken`; `language` is a
 BCP 47 tag that sets `<html lang>`, by default `en`.

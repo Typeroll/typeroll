@@ -427,12 +427,14 @@ Bootstraps a whole new site that publishes through the Organization's
 [publishing setup](../../guides/customer-publishing/). Over REST this is `POST /api/v1/sites`. It accepts these fields and
 answers `400` naming any other field:
 
-| Field      | Required | Meaning                                                                                                                                                                                                                                           |
-| ---------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`     | yes      | Display name.                                                                                                                                                                                                                                     |
-| `id`       | no       | Site id: 3–48 lowercase letters, digits and `-`, such as `lakeside-cafe`. Used exactly; `409` with code `site_id_taken` when the Organization already has it. Without it, the id is the kebab-case name, with a random suffix when that is taken. |
-| `domain`   | no       | Real hostname, such as `lakesidecafe.se`. Saved as the future website host in Publishing domains; it is not live until a verified publication switches traffic.                                                                                   |
-| `language` | no       | Content language as a BCP 47 tag, such as `sv` or `nl-BE`, checked like `update_site`'s. Sets `<html lang>` from the first build. Default `en`.                                                                                                   |
+| Field      | Required | Meaning                                                                                                                                                                                                                                                                                                                 |
+| ---------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`     | yes      | Display name.                                                                                                                                                                                                                                                                                                           |
+| `id`       | no       | Site id: 3–48 lowercase letters, digits and `-`, such as `lakeside-cafe`. Used exactly; `409` with code `site_id_taken` when the Organization already has it. Without it, the id is the kebab-case name, with a random suffix when that is taken.                                                                       |
+| `domain`   | no       | Real hostname, such as `lakesidecafe.se`. Saved as the future website host in Publishing domains; it is not live until a verified publication switches traffic.                                                                                                                                                         |
+| `language` | no       | Content language as a BCP 47 tag, such as `sv` or `nl-BE`, checked like `update_site`'s. Sets `<html lang>` from the first build. Default: the template's language, else `en`.                                                                                                                                          |
+| `from`     | no       | Start from a template instead of the blank starter: `{ "site_id": "…", "version": "…" }`, `{ "collection_entry": "…" }` or `{ "package": { "data_base64": "…" } }` / `{ "package": { "source_url": "https://…" } }`. See [Start a site from a template or another site](#start-a-site-from-a-template-or-another-site). |
+| `options`  | no       | With `from`: `{ "design": "full" \| "styles" \| "content", "fonts": false, "font_licence_confirmed": true }`. `design` defaults to `full`.                                                                                                                                                                              |
 
 ```
 Create a new site called "Lakeside Cafe" in Swedish for lakesidecafe.se.
@@ -446,9 +448,83 @@ it was issued for, which is the point of the distinction — see
 [Install the MCP Server](../../getting-started/mcp-server/).
 
 To start from a WordPress migration or an AI site plan instead of a blank Site,
-use `create_site_and_migrate` or `create_site_and_plan` — the other two options
+use `create_site_and_migrate` or `create_site_and_plan` — two more options
 on the portal's **New site** page. See
 [Organization, access and workflow tools](../organization/#create-a-site-with-its-first-workflow).
+
+### Start a site from a template or another site
+
+A new Site can start from a whole-site [package](../packages/) instead of the
+blank starter: a `.typeroll` file, a `package` entry of the
+[organization collection](../collection/), or another Site of the same
+Organization. In the portal, use **Start from a template or another site** on
+the **New site** page. With MCP, pass one of `from_site_id` (with an optional
+`from_site_version`), `from_collection_entry`, `from_package_base64` or
+`from_package_url` to `create_site`:
+
+```
+Create a new site "Harbor Bakery" as a copy of the site corner-bakery.
+```
+
+A package belongs to no Organization, so a template you bought works like
+your own. Another Site is copied as a whole-site package built for the copy:
+its media files are read and stored again in the new Site's own Media
+library, so the two Sites never share files.
+
+**Copied:**
+
+- Pages: block pages, HTML pages and the records of every Content type, with
+  their ids, addresses, status, fields and SEO settings, and the Content types.
+- The header, the footer and the other global blocks; menus with their items.
+- Styles (created with their ids, never mapped to "nearest" ones), block
+  types, block templates and Page templates.
+- Site fields with their values.
+- Media, into the new Site's library. Images a template marks as demo content
+  stay marked; the Site's [readiness report](../../guides/launch-checklist/)
+  lists them for replacement before publication.
+- With `design` `full` (the default for a new Site): the element styles,
+  colours, typography, scales, content widths and font roles. Uploaded font
+  files only with `font_licence_confirmed: true`, the creator's confirmation
+  that the font licence allows use on the new Site; `fonts: false` leaves them
+  out. `styles` takes the template's styles in the default look; `content`
+  only the content and the styles it uses.
+- From another Site, also: its settings that are content (tagline, logo,
+  icons, contact and social details, SEO defaults, language sections, Site CSS
+  and display settings), forms without their actions, and live snippets (the
+  first publication writes their live files). The time zone and render
+  version follow the source.
+
+**Never copied:** domains and domain declarations, publishing, hosting and
+build settings, API keys, shares, app installations and their settings, form
+actions (email notifications, webhooks, app endpoints) and other credentials,
+integrations, custom and tracking scripts (also those of the cookie banner),
+font service kits, the custom `robots.txt`, sitewide noindex and nofollow,
+external routes, redirects, deploy history and revisions. Each app the source
+Site uses is named in `started_from.warnings`, to install on the new Site.
+
+The new Site's language is the request's `language`, else the template's.
+A home page, header, footer and the primary and footer menus are created
+only where the template has none; `started_from.defaults` lists them.
+
+Rules:
+
+- `from.site_id` must be a Site of your own Organization that you may read; a
+  Site shared in from another Organization is refused with `404`
+  `site_source_not_found`, like a Site that does not exist.
+- `from.collection_entry` follows the collection rule: an owner,
+  administrator or builder of the Organization. Only `package` entries (whole
+  Sites) qualify; others answer `400` `package_not_a_site`, as does a package
+  of templates rather than a whole Site.
+- A package whose signature does not match its contents is refused with
+  `422` `package_signature_invalid`. Font files without the licence
+  confirmation answer `400` `font_licence_required` before anything is created.
+- If the import fails after the Site was reserved, the half-created Site is
+  removed again and the error says so (`site_create_failed`, or the import's
+  own code, with `details.site_removed`).
+
+The answer adds `started_from`: `kind` (`site`, `collection_entry` or
+`package`), `source`, the import `report` (what was created and reused),
+`defaults` and `warnings`. Show the warnings to the person who asked.
 
 ## `update_site`
 

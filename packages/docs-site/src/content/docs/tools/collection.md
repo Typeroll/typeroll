@@ -117,6 +117,18 @@ and font files are not entries; import the package into a site to use them.
 The answer is `{ entries, warnings }`. Each entry records the package, its
 publisher and whether its signature was verified.
 
+## Start a new site from a collection package
+
+A `package` entry is a whole Site to start from. The portal's **New site**
+page lists them under **Start from a template or another site**, with their
+publisher and whether it is verified; with MCP, pass the entry id to
+`create_site` as `from_collection_entry`. The same people who may use the
+collection may start a Site from it (owners, administrators and builders).
+Other kinds of entries answer `400` `package_not_a_site`: create the Site,
+then insert them. See
+[Start a site from a template or another site](../settings/#start-a-site-from-a-template-or-another-site)
+for what is copied.
+
 ## Change and remove entries
 
 `update_collection_entry` changes `name`, `description` or `category`; an empty

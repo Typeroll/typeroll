@@ -191,6 +191,27 @@ validated, and SVG files are sanitized as uploads are. Before importing:
 3. Confirm font licences only when you hold one for your website.
 4. Replace the demo images before publishing.
 
+## Start a new site from a site package
+
+A site package can be the starting point of a new Site instead of being
+imported into an existing one: **New site → Start from a template or another
+site** in the portal, or `create_site` with `from_package_base64`,
+`from_package_url` or `from_collection_entry` (a `package` entry of the
+[collection](../collection/)). Another Site of the same Organization works the
+same way with `from_site_id`.
+
+The package is imported into the new Site's empty main version with the
+creator as its administrator, so ids are kept, styles are created under their
+own ids and `design` defaults to `full`: the new Site takes the template's whole
+look. Font files need `font_licence_confirmed: true`, demo images stay marked
+for replacement, and a package with an invalid signature cannot be used. The
+default home page, header, footer and menus are added only where the package
+has none. If the import fails, the half-created Site is removed again.
+
+What is copied and what never is (domains, publishing, keys, apps and their
+credentials) is listed in
+[Start a site from a template or another site](../settings/#start-a-site-from-a-template-or-another-site).
+
 ## `export_package`
 
 Export part of the site, or the whole site, and get a signed download address

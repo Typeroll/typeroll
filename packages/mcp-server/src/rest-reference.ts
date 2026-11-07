@@ -38,6 +38,7 @@ const EXAMPLE_ARGS: Record<string, Record<string, unknown>> = {
   export_package: { selection: { kind: 'collection', block_templates: ['hero'], styles: 'used' }, meta: { id: 'acme-sections', name: 'Acme sections', version: '1.0.0' } },
   inspect_package: { source_url: 'https://example.com/acme-sections-1.0.0.typeroll', options: { design: 'content' } },
   import_package: { source_url: 'https://example.com/acme-sections-1.0.0.typeroll', options: { design: 'content' } },
+  create_site: { name: '{name}', id: '{id}', language: 'en', domain: 'example.com', from_site_id: '{from_site_id}', design: 'full', font_licence_confirmed: true },
   upload_font: { filename: 'BrandSans-Regular.woff2', data_base64: '{data_base64}', licence_confirmed: true, licence_note: 'Web licence, order 1234' },
 };
 const SITE = '{siteId}';

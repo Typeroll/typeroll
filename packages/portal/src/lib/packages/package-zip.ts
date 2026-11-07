@@ -29,7 +29,9 @@ export type PackageErrorCode =
   | 'package_download_expired' | 'package_import_partial' | 'package_options_invalid'
   // Placing blocks in a page (a collection insert, a paste).
   | 'page_not_found' | 'block_not_found' | 'collection_insert_invalid' | 'clipboard_paste_invalid' | 'clipboard_permission'
-  | 'clipboard_invalid' | 'clipboard_too_large';
+  | 'clipboard_invalid' | 'clipboard_too_large'
+  // A new site from a package or another site (new-site-source.ts, site-create.ts).
+  | 'site_source_invalid' | 'site_source_not_found' | 'package_not_a_site' | 'package_signature_invalid' | 'site_create_failed';
 
 /** A refused package or request, with an HTTP status and a stable code. */
 export class PackageError extends Error {

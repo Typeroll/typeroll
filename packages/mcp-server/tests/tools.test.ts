@@ -265,6 +265,37 @@ describe('sites tools', () => {
     expect(calls[0].body).toBe(JSON.stringify({ name: 'Acme', domain: 'acme.com' }));
   });
 
+  it('create_site starts from another site, a collection entry or a package, with the import options', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ id: 'copy', started_from: { kind: 'site', warnings: [] } }, 201));
+    const tool = find(siteTools, 'create_site');
+    await tool.handler({ name: 'Copy', from_site_id: 'client-a', from_site_version: 'redesign', design: 'styles' } as never, { client, siteId });
+    await tool.handler({ name: 'Bakery', from_collection_entry: 'bakery-1a2b', font_licence_confirmed: true } as never, { client, siteId });
+    await tool.handler({ name: 'Bought', from_package_base64: 'UEsDBA==', fonts: false } as never, { client, siteId });
+    await tool.handler({ name: 'Linked', from_package_url: 'https://example.com/site.typeroll' } as never, { client, siteId });
+    expect(calls.map(call => [call.url, JSON.parse(String(call.body))])).toEqual([
+      ['https://example.test/api/v1/sites', { name: 'Copy', from: { site_id: 'client-a', version: 'redesign' }, options: { design: 'styles' } }],
+      ['https://example.test/api/v1/sites', { name: 'Bakery', from: { collection_entry: 'bakery-1a2b' }, options: { font_licence_confirmed: true } }],
+      ['https://example.test/api/v1/sites', { name: 'Bought', from: { package: { data_base64: 'UEsDBA==' } }, options: { fonts: false } }],
+      ['https://example.test/api/v1/sites', { name: 'Linked', from: { package: { source_url: 'https://example.com/site.typeroll' } } }],
+    ]);
+  });
+
+  it('create_site refuses two template sources, and template options without a template, before calling the API', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({}, 201));
+    const tool = find(siteTools, 'create_site');
+    const both = await tool.handler({ name: 'X', from_site_id: 'a', from_collection_entry: 'b' } as never, { client, siteId });
+    expect(both.isError).toBe(true);
+    expect(both.content[0].text).toContain('at most one');
+    const stray = await tool.handler({ name: 'X', design: 'full' } as never, { client, siteId });
+    expect(stray.isError).toBe(true);
+    expect(calls).toHaveLength(0);
+  });
+
+  it('create_site teaches what a template copies and what it never does', () => {
+    const text = find(siteTools, 'create_site').description;
+    for (const needle of ['from_site_id', 'from_collection_entry', 'from_package_base64', 'Never copied', 'API keys', 'font_licence_confirmed', 'demo', 'site_create_failed', 'never mapped']) expect(text).toContain(needle);
+  });
+
   it('create_site is site-less (noSite) so the hosted transport omits site_id', () => {
     expect(find(siteTools, 'create_site').noSite).toBe(true);
   });

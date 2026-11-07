@@ -25,14 +25,14 @@ const options = (raw: unknown): unknown => {
   try { return JSON.parse(raw); } catch { throw new PackageError('options must be JSON', 400, 'package_options_invalid'); }
 };
 
-/** The `file` and `options` (JSON) fields of a multipart upload. */
-export async function packageUpload(request: Request): Promise<{ bytes: Uint8Array; options: unknown }> {
+/** The `file` (or `field`) and `options` (JSON) fields of a multipart upload. */
+export async function packageUpload(request: Request, field = 'file'): Promise<{ bytes: Uint8Array; options: unknown }> {
   const length = Number(request.headers.get('content-length') ?? '');
   if (Number.isFinite(length) && length > PACKAGE_LIMITS.zip_bytes + 1024 * 1024) throw new PackageError(`The package is larger than ${PACKAGE_LIMITS.zip_bytes / 1024 / 1024} MB`, 413, 'package_too_large');
   let form: FormData;
-  try { form = await request.formData(); } catch { throw new PackageError('Send the package as multipart/form-data with the field "file"', 400, 'package_invalid'); }
-  const file = form.get('file');
-  if (!file || typeof file === 'string') throw new PackageError('Send the package as the multipart field "file"', 400, 'package_invalid');
+  try { form = await request.formData(); } catch { throw new PackageError(`Send the package as multipart/form-data with the field "${field}"`, 400, 'package_invalid'); }
+  const file = form.get(field);
+  if (!file || typeof file === 'string') throw new PackageError(`Send the package as the multipart field "${field}"`, 400, 'package_invalid');
   if (file.size > PACKAGE_LIMITS.zip_bytes) throw new PackageError(`The package is larger than ${PACKAGE_LIMITS.zip_bytes / 1024 / 1024} MB`, 413, 'package_too_large');
   return { bytes: new Uint8Array(await file.arrayBuffer()), options: options(form.get('options')) };
 }

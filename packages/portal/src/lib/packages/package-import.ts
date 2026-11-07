@@ -179,14 +179,24 @@ function fitIds(plan: PackageImportPlan, target: { blockTemplateIds: string[]; g
 }
 
 /** Every package media id the chosen content uses, beyond the planner's block trees. */
-function mediaInUse(pkg: SitePackage, plan: PackageImportPlan): string[] {
+function mediaInUse(pkg: SitePackage, plan: PackageImportPlan, extraContent?: unknown): string[] {
   const c = pkg.contents;
   const pages = new Set(plan.pages.filter(entry => entry.action !== 'skip').map(entry => entry.from));
   const extra = [
     ...(c.pages ?? []).filter(page => pages.has(page.id)).map(page => [page.seo ?? {}, page.fields ?? {}]),
     ...(pkg.kind === 'site' ? [c.site_field_values ?? {}] : []),
+    ...(extraContent !== undefined ? [extraContent] : []),
   ];
   return [...new Set([...plan.media, ...packageMediaRefs(extra)])];
+}
+
+/**
+ * Every page a menu item may keep: each imported page (also those keeping
+ * their id, which the plan's id map leaves out) and the map's other entries
+ * (pages the caller adds itself, such as a site copy's HTML pages).
+ */
+function importedPages(pages: readonly PlannedPage[], map: ReadonlyMap<string, string>): Map<string, string> {
+  return new Map([...pages.filter(entry => entry.action !== 'skip').map(entry => [entry.from, entry.to] as const), ...map]);
 }
 
 /** Menu items with page ids through the page map; items for pages the import does not bring are left out. */
@@ -231,7 +241,11 @@ function designPatch(design: NonNullable<PackageImportPlan['design']>, settings:
  * Plan an import against the site's current state and validate everything
  * it would write. Writes nothing.
  */
-export async function preparePackageImport(ctx: ImportTargetCtx, read: PackageFiles, options: PackageImportRequest, deps: { trusted?: TrustedPackageKey[] } = {}): Promise<PreparedImport> {
+export async function preparePackageImport(ctx: ImportTargetCtx, read: PackageFiles, options: PackageImportRequest, deps: {
+  trusted?: TrustedPackageKey[];
+  /** Content the caller writes itself after the import (a site copy's settings and HTML pages): its package media are imported too. */
+  extraContent?: unknown;
+} = {}): Promise<PreparedImport> {
   const { manifest: pkg, files } = read;
   const { orgId, siteId, versionId } = ctx;
   const store = getStore();
@@ -307,7 +321,7 @@ export async function preparePackageImport(ctx: ImportTargetCtx, read: PackageFi
 
   // Media: what the content uses, reusing library files with the same bytes.
   const packageMedia = new Map(pkg.media.map(media => [media.id, media]));
-  const media: PlannedMedia[] = mediaInUse(pkg, plan).flatMap(id => {
+  const media: PlannedMedia[] = mediaInUse(pkg, plan, deps.extraContent).flatMap(id => {
     const entry = packageMedia.get(id);
     if (!entry) { errors.push(`The content uses media "${id}", which the package does not contain`); return []; }
     const problem = mediaAcceptable(entry.content_type, entry.bytes);
@@ -432,9 +446,10 @@ export async function preparePackageImport(ctx: ImportTargetCtx, read: PackageFi
   }
 
   // Menus.
+  const menuPages = importedPages(plannedPages, maps.pages);
   for (const entry of plan.menus) {
     const menu = pkg.contents.menus!.find(candidate => candidate.id === entry.from)!;
-    const { menu: valid, errors: menuErrors } = validateMenu({ ...menu, id: entry.to, locations: entry.locations, items: menuWithPages(menu.items ?? [], maps.pages) });
+    const { menu: valid, errors: menuErrors } = validateMenu({ ...menu, id: entry.to, locations: entry.locations, items: menuWithPages(menu.items ?? [], menuPages) });
     if (!valid) errors.push(...menuErrors.slice(0, 5).map(error => `menu ${entry.from}: ${error.path} ${error.message}`));
   }
 
@@ -572,9 +587,10 @@ export async function importSitePackageIntoVersion(ctx: ImportCtx, prepared: Pre
    * tree of the package the way the import rewrote its content (renamed
    * styles, block types and global blocks; media tokens to the site's
    * files), for blocks the caller places itself, such as a collection entry
-   * inserted into a page.
+   * inserted into a page. `replace` turns the package's media tokens in
+   * any other value into the site's addresses.
    */
-  onImported?: (convert: (blocks: Block[]) => Block[]) => void;
+  onImported?: (convert: (blocks: Block[]) => Block[], replace: <T>(value: T) => T) => void;
 } = {}): Promise<PackageImportReport> {
   assertImportAllowed(prepared, ctx);
   const io = deps.media ?? defaultPackageMediaIO;
@@ -697,10 +713,11 @@ export async function importSitePackageIntoVersion(ctx: ImportCtx, prepared: Pre
     // 8. Menus.
     step = 'menus';
     const menus = new Map((pkg.contents.menus ?? []).map(menu => [menu.id, menu]));
+    const menuPages = importedPages(prepared.pages, maps.pages);
     for (const entry of plan.menus) {
       const menu = menus.get(entry.from)! as Menu;
       await createMenu({ orgId, siteId, versionId }, content({
-        id: entry.to, name: menu.name, items: menuWithPages(menu.items ?? [], maps.pages),
+        id: entry.to, name: menu.name, items: menuWithPages(menu.items ?? [], menuPages),
         ...(entry.locations.length ? { locations: entry.locations } : {}), ...(menu.auto_add_pages && pkg.kind === 'site' ? { auto_add_pages: true } : {}),
       }));
       report.created.menus.push(entry.to);
@@ -755,7 +772,7 @@ export async function importSitePackageIntoVersion(ctx: ImportCtx, prepared: Pre
       typeof status === 'number' && status >= 400 && status < 600 ? status : 500, 'package_import_partial', { step, report });
   }
   await markSiteDirty(orgId, siteId, versionId);
-  deps.onImported?.(tree);
+  deps.onImported?.(tree, content);
   return finish(report);
 }
 

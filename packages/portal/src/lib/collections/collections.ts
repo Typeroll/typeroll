@@ -455,6 +455,11 @@ async function entryFiles(orgId: string, entry: CollectionEntry, deps: Collectio
   return files;
 }
 
+/** An entry's package and its files, as an import reads them (a new site starts from a `package` entry). */
+export async function collectionEntryPackage(orgId: string, entry: CollectionEntry, deps: CollectionDeps = {}): Promise<PackageFiles> {
+  return { manifest: clone(entry.package), files: await entryFiles(orgId, entry, deps) };
+}
+
 /** The package an insert imports: the entry's, adjusted for where it goes. */
 function insertPackage(entry: CollectionEntry, target: InsertTarget): { pkg: SitePackage; only?: string[]; place?: Block[] } {
   const pkg = clone(entry.package);

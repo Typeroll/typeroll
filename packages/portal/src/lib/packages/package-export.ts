@@ -87,6 +87,12 @@ export interface BuiltPackage {
   media: ClipboardMediaRef[];
   /** Clipboard packages: addresses of the site's pages the blocks link to. */
   page_links: Record<string, string>;
+  /**
+   * `options.extra`, with its media references made package tokens like the
+   * contents (and the files it uses in the package): what a site copy carries
+   * beside the package format (site-copy.ts).
+   */
+  extra?: unknown;
 }
 
 export interface PackageBuildOptions {
@@ -94,6 +100,12 @@ export interface PackageBuildOptions {
   now?: Date;
   /** `embed` (default): media files travel in the package; `reference`: content keeps its addresses. */
   mediaMode?: 'embed' | 'reference';
+  /**
+   * Content outside the package format whose media should travel too (a
+   * site copy's settings, HTML pages and forms). Returned as `extra` with
+   * the same token replacements; never written into the manifest.
+   */
+  extra?: unknown;
 }
 
 export interface ExportCtx { orgId: string; siteId: string; versionId: string }
@@ -507,7 +519,8 @@ export async function buildSitePackage(ctx: ExportCtx, selection: PackageExportS
   // Media: every library file the contents reference travels as a file and a token.
   const addressOwner = new Map<string, Media>();
   for (const media of library) if (media.id) for (const address of mediaAddresses(media)) if (!addressOwner.has(address)) addressOwner.set(address, media);
-  const found = findReferences(JSON.stringify(contents), addressOwner.keys());
+  const extraIn = options.extra === undefined ? undefined : clone(options.extra);
+  const found = findReferences(JSON.stringify(extraIn === undefined ? contents : [contents, extraIn]), addressOwner.keys());
   const referenced = new Map<string, ClipboardMediaRef>();
   if (reference) for (const address of [...found].sort()) {
     const media = addressOwner.get(address)!;
@@ -549,6 +562,7 @@ export async function buildSitePackage(ctx: ExportCtx, selection: PackageExportS
   }
   for (const id of demo) if (!byMediaId.has(id)) warnings.push(`The media file ${id} is not used by the exported content, so it is not in the package.`);
   let packaged = replaceReferences(contents, replacements) as SitePackage['contents'];
+  let extra = extraIn === undefined ? undefined : replaceReferences(extraIn, replacements);
   // A preview is a media id in the package.
   for (const template of packaged.block_templates ?? []) {
     if (!template.preview) continue;
@@ -557,11 +571,13 @@ export async function buildSitePackage(ctx: ExportCtx, selection: PackageExportS
     else { warnings.push(`The preview image of the block template "${template.name}" is not in the Media library; it is left out.`); delete template.preview; }
   }
   // Referenced media keep every address; a paste resolves the ones it may read.
-  const unresolved = reference ? [] : privateMediaReferences(packaged);
+  const unresolved = reference ? [] : [...privateMediaReferences(packaged), ...(extra === undefined ? [] : privateMediaReferences(extra))];
   if (unresolved.length) {
     warnings.push(`${unresolved.length} image or file reference${unresolved.length === 1 ? '' : 's'} point${unresolved.length === 1 ? 's' : ''} at private media that is not in this site's library; ${unresolved.length === 1 ? 'it is' : 'they are'} removed from the package.`);
     // Every private address still left belongs to no file of this library; it would not resolve anywhere else.
-    packaged = JSON.parse(JSON.stringify(packaged).replace(/(?:https?:\/\/[^"\s<>()]*?)?\/api\/sites\/[a-zA-Z0-9_%.-]+\/media\/[a-zA-Z0-9_%.-]+\/content(?:\?[^"\s<>()]*)?/g, '')) as SitePackage['contents'];
+    const strip = <T>(value: T): T => JSON.parse(JSON.stringify(value).replace(PRIVATE_MEDIA_ADDRESS, '')) as T;
+    packaged = strip(packaged);
+    if (extra !== undefined) extra = strip(extra);
   }
 
   const now = options.now ?? new Date();
@@ -582,8 +598,11 @@ export async function buildSitePackage(ctx: ExportCtx, selection: PackageExportS
   };
   const errors = sitePackageErrors(manifest);
   if (errors.length) throw new PackageError(`The site's content cannot be packaged: ${errors[0]}${errors.length > 1 ? ` (and ${errors.length - 1} more)` : ''}`, 422, 'package_invalid', { errors: errors.slice(0, 50) });
-  return { manifest, files, warnings, media: [...referenced.values()], page_links };
+  return { manifest, files, warnings, media: [...referenced.values()], page_links, ...(extra !== undefined ? { extra } : {}) };
 }
+
+/** A private media address of any site, as content stores it. */
+const PRIVATE_MEDIA_ADDRESS = /(?:https?:\/\/[^"\s<>()]*?)?\/api\/sites\/[a-zA-Z0-9_%.-]+\/media\/[a-zA-Z0-9_%.-]+\/content(?:\?[^"\s<>()]*)?/g;
 
 /** What the export form can offer: the site's templates, blocks, styles, fonts and media. */
 export async function exportableSiteContent(ctx: ExportCtx) {
