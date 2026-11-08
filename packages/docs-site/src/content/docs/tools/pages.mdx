@@ -419,6 +419,31 @@ Republish after changing a parent label so affected descendants update too.
 MCP 0.45.24 exposes the optional field; Cloud/self-hosted servers require Core
 0.2.28.
 
+## Page excerpt
+
+Every Page has a plain-text `excerpt`: the short summary that
+`template/page_excerpt` (`{{page.excerpt}}`) shows in a Page template and that
+Page cards show in listings. Set it with `create_page`, `update_page`,
+`batch_update_pages`, `POST`/`PATCH`/`PUT /api/v1/sites/{siteId}/pages`, or
+**Page settings → Excerpt** in the block editor. It is at most 1000 characters
+of plain text (markup is shown as text, not rendered); `null` clears it.
+
+```json
+{
+  "page_id": "lunch",
+  "patch": { "excerpt": "Dagens lunch och veckans meny." },
+  "save": true
+}
+```
+
+Like other content, an excerpt written with `update_page` lands in the Page's
+unsaved draft until it is saved (`save: true` or `commit_working_copy`), and it
+reaches the live site with the next publication. Page reads return `excerpt`.
+When the Page's content type defines its own `excerpt` field (for example a blog
+type with an `excerpt` textarea), that field is the excerpt: a top-level
+`excerpt` write is stored in `fields.excerpt`, and an explicit `fields.excerpt`
+in the same write wins.
+
 ## Clone a page
 
 `clone_page` creates a draft, preserving body, Content type, template, parent,

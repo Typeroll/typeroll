@@ -24,6 +24,15 @@ it('seeds a new site that can be published as it is: a published home page and l
   expect(internalLinks(defaultHeaderHtml('Fresh Site'))).toContain('/');
 });
 
+it('starts the home page in blocks, titled in the site language and headed by the site name', async () => {
+  const { siteId } = await createSite({ orgId: 'org', name: 'Ljusrum <Arkitekter>', language: 'sv' });
+  const home = await getStore().getDoc<{ title: string; content_mode: string; blocks: Array<{ type: string; data: Record<string, unknown> }>; html_content?: string }>(`${paths.pages('org', siteId)}/home`);
+  expect(home).toMatchObject({ title: 'Startsida', content_mode: 'blocks', blocks: [{ type: 'core/heading', data: { text: 'Ljusrum <Arkitekter>', level: 'h1' } }] });
+  expect(home?.html_content).toBeUndefined();
+  const english = await createSite({ orgId: 'org', name: 'Fresh Site' });
+  expect(await getStore().getDoc(`${paths.pages('org', english.siteId)}/home`)).toMatchObject({ title: 'Home', content_mode: 'blocks' });
+});
+
 it('keeps the brand and copyright in the starter header and footer', () => {
   expect(defaultHeaderHtml('Acme & Co')).toContain('Acme &amp; Co');
   expect(defaultFooterHtml('Acme', 'Tagline')).toMatch(/Tagline[\s\S]*&copy; \d{4} Acme/);

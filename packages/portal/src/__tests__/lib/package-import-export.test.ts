@@ -170,6 +170,21 @@ describe('package export', () => {
 });
 
 describe('package import', () => {
+  it('leaves no half-written media record when a file cannot be stored', async () => {
+    const before = (await getStore().listDocs<Media>(paths.media(DST_ORG, DST))).length;
+    vi.mocked(S3Client.prototype.send).mockImplementation(async (command: unknown) => {
+      const input = (command as { input: Record<string, unknown> }).input;
+      if (command instanceof PutObjectCommand) throw Object.assign(new Error('Access Denied'), { name: 'AccessDenied' });
+      if (command instanceof DeleteObjectCommand) { objects.delete(`${input.Bucket}/${input.Key}`); return {}; }
+      throw new Error('unexpected');
+    });
+    await expect(defaultPackageMediaIO.store(DST_ORG, DST, {
+      bytes: photo, sha256: sha(photo), filename: 'photo.png', contentType: 'image/png',
+      source: { package_id: 'p', package_version: '1', media_id: 'm' }, actor: 'editor@example.com',
+    })).rejects.toThrow('Access Denied');
+    expect((await getStore().listDocs<Media>(paths.media(DST_ORG, DST))).length).toBe(before);
+  });
+
   it('imports into a site of another organization: media through the private path, styles created, content rewritten', async () => {
     const { zip } = await exportHero();
     const report = await importSitePackage({ ...ctxOf(DST_ORG, DST), permission: 'write', actor: 'buyer@example.com' }, zip, { design: 'content' });

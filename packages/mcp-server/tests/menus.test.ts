@@ -51,6 +51,16 @@ describe('menu tools', () => {
     expect(calls).toEqual([{ method: 'PUT', url: `${BASE}/primary`, body: { name: 'Main menu', locations: ['primary'], items: primary.items, expected_updated_at: primary.updated_at } }]);
   });
 
+  it('update_menu passes take_locations so a new menu can take a starter menu\'s location', async () => {
+    const { client, siteId, calls } = setup(() => json({ menu: { id: 'huvudmeny' }, moved_locations: [{ location: 'primary', from_menu_id: 'primary' }] }, 201));
+    const result = await tool('update_menu').handler({ name: 'Huvudmeny', locations: ['primary'], take_locations: true, items: [] } as never, { client, siteId });
+    expect(text(result as never).moved_locations).toEqual([{ location: 'primary', from_menu_id: 'primary' }]);
+    expect(calls).toEqual([{ method: 'POST', url: BASE, body: { name: 'Huvudmeny', locations: ['primary'], items: [], take_locations: true } }]);
+    const conflict = setup(() => json({ error: 'The location "primary" is already filled by the menu "Main menu" (primary).' }, 409));
+    const refused = await tool('update_menu').handler({ name: 'Huvudmeny', locations: ['primary'], items: [] } as never, { client: conflict.client, siteId });
+    expect(text(refused as never).hint).toContain('take_locations: true');
+  });
+
   it('update_menu creates a missing menu and refuses to overwrite an existing one without expected_updated_at', async () => {
     const created = setup(req => req.method === 'GET' ? json({ error: 'Menu not found' }, 404) : json({ menu: { id: 'legal' } }, 201));
     await tool('update_menu').handler({ menu_id: 'legal', name: 'Legal', items: [] } as never, { client: created.client, siteId: 'mysite' });

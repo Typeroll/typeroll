@@ -92,6 +92,35 @@ describe('menus over the v1 API', () => {
     expect((await replace('main', { name: 'Main menu', locations: ['primary', 'mobile'], items: [] })).status).toBe(200);
   });
 
+  it('moves a taken location to a new or replaced menu with take_locations, keeping the other menu', async () => {
+    await create({ id: 'primary', name: 'Main menu', locations: ['primary', 'mobile'], auto_add_pages: true, items });
+    await create({ id: 'footer', name: 'Footer menu', locations: ['footer'], items: [] });
+    const refused = await create({ name: 'Huvudmeny', locations: ['primary'], items: [] });
+    expect((await refused.json() as { error: string }).error).toContain('take_locations: true');
+    expect((await create({ name: 'Huvudmeny', locations: ['primary'], take_locations: 'yes', items: [] })).status).toBe(400);
+    // An invalid menu takes nothing.
+    expect((await create({ name: 'Bad', locations: ['primary'], take_locations: true, items: [{ id: 'x', type: 'url' }] })).status).toBe(400);
+    expect((await (await read('primary')).json() as { menu: Menu }).menu.locations).toEqual(['primary', 'mobile']);
+
+    const created = await create({ name: 'Huvudmeny', locations: ['primary'], take_locations: true, items: [{ type: 'url', href: '/meny/', label: 'Meny' }] });
+    expect(created.status).toBe(201);
+    const body = await created.json() as { menu: Menu; moved_locations: unknown };
+    expect(body.menu).toMatchObject({ id: 'huvudmeny', locations: ['primary'] });
+    expect(body.menu).not.toHaveProperty('take_locations');
+    expect(body.moved_locations).toEqual([{ location: 'primary', from_menu_id: 'primary' }]);
+    const starter = (await (await read('primary')).json() as { menu: Menu }).menu;
+    expect(starter).toMatchObject({ locations: ['mobile'], auto_add_pages: true });
+    expect(starter.items).toHaveLength(items.length);
+    const history = await (await revisions('primary')).json() as { revisions: Array<{ note?: string }> };
+    expect(history.revisions.some((entry) => entry.note?.includes('moved to the menu huvudmeny'))).toBe(true);
+
+    const current = (await (await read('huvudmeny')).json() as { menu: Menu }).menu;
+    const replaced = await replace('huvudmeny', { name: 'Huvudmeny', locations: ['primary', 'footer'], take_locations: true, items: current.items, expected_updated_at: current.updated_at });
+    expect(replaced.status).toBe(200);
+    expect((await replaced.json() as { moved_locations: unknown }).moved_locations).toEqual([{ location: 'footer', from_menu_id: 'footer' }]);
+    expect((await (await read('footer')).json() as { menu: Menu }).menu.locations).toEqual([]);
+  });
+
   it('replaces the whole menu, checks expected_updated_at and keeps revisions', async () => {
     const { menu } = await (await create({ id: 'main', name: 'Main', items })).json() as { menu: Menu };
     const saved = await replace('main', { name: 'Main 2', items: [items[0]], expected_updated_at: menu.updated_at, created_at: 'ignored' });

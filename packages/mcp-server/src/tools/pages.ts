@@ -144,6 +144,7 @@ export const pageTools: ToolDef[] = [
       blocks: z.array(z.any()).optional().describe('Block tree — only used when content_mode="blocks". Omit to get the default heading+prose seed.'),
       status: z.enum(['draft', 'review', 'unlisted', 'published']).optional(),
       breadcrumb_label: z.string().max(200).nullable().optional().describe('Optional short breadcrumb label. Leaves Page title, SEO title and route unchanged; null/empty uses the title.'),
+      excerpt: z.string().max(1000).nullable().optional().describe('Plain-text summary (up to 1000 characters) shown by template/page_excerpt ({{page.excerpt}}) and Page cards in listings. Every content type has it; when the type defines its own excerpt field the value is stored there. Saved like other content (draft until saved); null clears it.'),
       seo_title: z.string().optional(),
       append_seo_suffix: z.boolean().optional().describe('Set false to omit the site default SEO suffix on this page.'),
       seo_description: z.string().optional(),
@@ -176,7 +177,7 @@ export const pageTools: ToolDef[] = [
   {
     name: 'update_page',
     description:
-      'Shallow-merge update on a page, including its short breadcrumb label (only the fields you pass change). BUFFER MODEL: content fields land in the page\'s unsaved DRAFT (working copy) — invisible to deploys and default previews until saved; `status`/`date_published` apply immediately. Pass save:true to commit in the same call, or commit_working_copy later after the user approves. Returns the draft view of the page. For "replace this page entirely", use replace_page. This tool does not accept content_mode; switch modes with `set_page_mode`.',
+      'Shallow-merge update on a page, including its short breadcrumb label and excerpt (only the fields you pass change). BUFFER MODEL: content fields land in the page\'s unsaved DRAFT (working copy) — invisible to deploys and default previews until saved; `status`/`date_published` apply immediately. Pass save:true to commit in the same call, or commit_working_copy later after the user approves. Returns the draft view of the page. For "replace this page entirely", use replace_page. This tool does not accept content_mode; switch modes with `set_page_mode`.',
     inputSchema: {
       page_id: z.string(),
       patch: z
@@ -197,6 +198,7 @@ export const pageTools: ToolDef[] = [
           author: z.string().optional(),
           language: z.string().optional(),
           breadcrumb_label: z.string().max(200).nullable().optional().describe('Optional short breadcrumb label. Leaves Page title, SEO title and route unchanged; null/empty uses the title.'),
+          excerpt: z.string().max(1000).nullable().optional().describe('Plain-text summary (up to 1000 characters) shown by template/page_excerpt and Page cards. Lands in the draft like other content; null clears it.'),
           seo_title: z.string().optional(),
           append_seo_suffix: z.boolean().optional().describe('Set false to use seo_title/page title verbatim without the site suffix.'),
           seo_description: z.string().optional(),

@@ -86,6 +86,8 @@ export interface BlockPart {
   decorative?: boolean;
   /** The part exists from this render version (older output has no such element). */
   min_render_version?: number;
+  /** The part exists up to this render version (newer output has no such element). */
+  max_render_version?: number;
 }
 
 export const BLOCK_PART_NAME_PATTERN = /^[a-z][a-z0-9_]{0,31}$/;
@@ -169,7 +171,7 @@ export function blockPartsProblems(parts: unknown, schema: readonly FieldDefinit
   const problems: Array<[string, string]> = [];
   if (parts.length > MAX_BLOCK_PARTS) problems.push(['/parts', `A block type declares at most ${MAX_BLOCK_PARTS} parts.`]);
   const names = new Set<string>();
-  const known = new Set(['name', 'label', 'selector', 'target', 'style_field', 'color', 'background', 'background_field', 'decorative', 'min_render_version']);
+  const known = new Set(['name', 'label', 'selector', 'target', 'style_field', 'color', 'background', 'background_field', 'decorative', 'min_render_version', 'max_render_version']);
   parts.forEach((part, index) => {
     const at = `/parts/${index}`;
     if (!isRecord(part)) { problems.push([at, 'Each part must be an object with name, label, selector and target.']); return; }
@@ -188,6 +190,8 @@ export function blockPartsProblems(parts: unknown, schema: readonly FieldDefinit
     }
     if (part.decorative !== undefined && typeof part.decorative !== 'boolean') problems.push([`${at}/decorative`, 'decorative must be true or false.']);
     if (part.min_render_version !== undefined && (!Number.isInteger(part.min_render_version) || (part.min_render_version as number) < 1)) problems.push([`${at}/min_render_version`, 'min_render_version must be a whole number from 1.']);
+    if (part.max_render_version !== undefined && (!Number.isInteger(part.max_render_version) || (part.max_render_version as number) < 1)) problems.push([`${at}/max_render_version`, 'max_render_version must be a whole number from 1.']);
+    else if (part.max_render_version !== undefined && part.min_render_version !== undefined && (part.max_render_version as number) < (part.min_render_version as number)) problems.push([`${at}/max_render_version`, 'max_render_version must not be below min_render_version.']);
   });
   return problems;
 }
@@ -204,7 +208,7 @@ export function blockPartQuery(selector: string): string {
 /** Parts of a type that exist at a render version. */
 export function blockPartsAt(type: Pick<BlockType, 'parts'>, renderVersion?: number): BlockPart[] {
   const version = resolveRenderVersion(renderVersion);
-  return (type.parts ?? []).filter(part => !part.min_render_version || part.min_render_version <= version);
+  return (type.parts ?? []).filter(part => (!part.min_render_version || part.min_render_version <= version) && (!part.max_render_version || version <= part.max_render_version));
 }
 
 /** Parts an instance chooses through `part_styles`: those without a style field of their own. */

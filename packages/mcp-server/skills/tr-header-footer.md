@@ -33,7 +33,11 @@ one-off link list, use inline `links` instead.
 ## Menus first
 
 1. `list_menus`. Make sure one menu fills `primary` and one fills `footer`;
-   create missing ones with `update_menu` (`locations: ["primary"]`).
+   create missing ones with `update_menu` (`locations: ["primary"]`). Either
+   edit the starter menus or create your own beside them: `update_menu
+   name="Huvudmeny" locations=["primary"] take_locations=true items=[...]`
+   moves the location to your menu and leaves the starter menu's items intact
+   (no delete needed; the result lists `moved_locations`).
 2. Build the link tree with `update_menu` (read it first and pass
    `expected_updated_at`) or `add_menu_item`: `type: "page"` with the
    `page_id` from `list_pages` for every Page, `type: "children"` with a

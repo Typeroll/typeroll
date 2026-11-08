@@ -3,6 +3,7 @@ import { BREAKPOINT_ORDER, resolveBreakpointWidths } from "./breakpoints.js";
 import { pixels } from "./presentation-fields.js";
 import { surfaceColor } from "./surface-presentation.js";
 import { renderIconHtml } from "./icons.js";
+import { platformLayer } from "./cascade-layers.js";
 import {
   PAGE_HANDOFF_PART_NAMES,
   PAGE_HANDOFF_STORAGE_PREFIX,
@@ -50,6 +51,10 @@ export function prepareNavigationForm(
   );
   data.navigation_id = cssId;
   const layout: string[] = [];
+  // From render version 16 the same rules sit in the instance layer and
+  // select the block by an attribute instead of its ID, so a site class can
+  // override the column widths and the placement without !important.
+  const layered: string[] = [];
   function responsiveStyle(
     selector: string,
     property: string,
@@ -63,11 +68,11 @@ export function prepareNavigationForm(
     for (const point of BREAKPOINT_ORDER) {
       const css = validate(values[point]);
       if (!css) continue;
-      const rule = `#navigation-${cssId} ${selector}{${property}:${css}}`;
-      layout.push(
-        point === "mobile"
-          ? rule
-          : `@media(min-width:${widths[point]}px){${rule}}`,
+      const at = (rule: string) =>
+        point === "mobile" ? rule : `@media(min-width:${widths[point]}px){${rule}}`;
+      layout.push(at(`#navigation-${cssId} ${selector}{${property}:${css}}`));
+      layered.push(
+        at(`[id="navigation-${cssId}"]${selector ? ` ${selector}` : ""}{${property}:${css}}`),
       );
     }
   }
@@ -160,8 +165,33 @@ export function prepareNavigationForm(
       return `<div class="navigation-field" data-navigation-field="${escape(name)}"><label for="${escape(inputId)}">${escape(field.label || name)}</label>${input}</div>`;
     })
     .join("");
+  // From render version 16 a lone field sits beside its button. That default
+  // applies only while the block's own layout settings are untouched.
+  const unset = (value: unknown): boolean =>
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    (typeof value === "object" && Object.values(value).every(unset));
+  const oneColumn = (value: unknown): boolean =>
+    value && typeof value === "object"
+      ? Object.values(value).every(oneColumn)
+      : unset(value) || String(value) === "1";
+  data.navigation_compact =
+    fields.length === 1 &&
+    oneColumn(raw.columns) &&
+    unset(raw.column_widths) &&
+    unset(raw.button_column) &&
+    unset(raw.button_row) &&
+    unset(fields[0]!.column) &&
+    unset(fields[0]!.row)
+      ? "true"
+      : "false";
   data.navigation_layout_html = layout.length
     ? `<style>${layout.join("")}</style>`
+    : "";
+  // Read only by the render version 16 template.
+  data.navigation_layout_layered_html = layered.length
+    ? `<style>${platformLayer("instance", layered.join("\n"), 16)}</style>`
     : "";
   data.destination = navigationDestination(data.destination);
   data.handoff_key = /^[a-zA-Z0-9_-]{1,64}$/.test(
@@ -541,6 +571,17 @@ export const navigationForm: BlockType = {
     { name: "button_color", type: "color", label: "Button text" },
     { name: "input_background", type: "color", label: "Input background" },
     { name: "input_color", type: "color", label: "Input text" },
+    // Render version 16: how wide the form may grow and where it sits when
+    // narrower than its column (precedents: container.max_width_px, image.align).
+    { ...pixels("max_width_px", "Maximum width (px)", 240), min_render_version: 16 },
+    {
+      name: "align",
+      type: "select",
+      label: "Alignment",
+      options: ["start", "center", "end"],
+      default: "start",
+      min_render_version: 16,
+    },
   ],
   template:
     '<div id="navigation-{{navigation_id}}" data-block="navigation_form" role="form" aria-label="{{aria_label}}" data-handoff-key="{{handoff_key}}" data-mode="{{mode}}" data-show-labels="{{show_labels}}" data-font="{{font}}" data-button-nowrap="{{button_nowrap}}" data-address-country="{{address_country}}" style="--columns:{{columns}};{{navigation_colors}}">{{{navigation_fields_html}}}{{{navigation_action_html}}}</div>{{{navigation_layout_html}}}',
@@ -561,3 +602,24 @@ export const navigationForm: BlockType = {
   origin: "core",
   created_at: "1970-01-01T00:00:00Z",
 };
+
+/**
+ * Render version 16: a lone field sits beside its button (data-compact, see
+ * block-defaults.ts), the per-instance layout is layered and selects the
+ * block by attribute, and the form takes a maximum width and an alignment.
+ */
+navigationForm.render_versions = [
+  {
+    from: 16,
+    template: navigationForm.template!
+      .replace(
+        ' data-address-country="{{address_country}}"',
+        ' data-address-country="{{address_country}}" data-compact="{{navigation_compact}}" data-align="{{align}}"',
+      )
+      .replace("{{{navigation_layout_html}}}", "{{{navigation_layout_layered_html}}}"),
+    styles: `${navigationForm.styles}
+[data-block="navigation_form"]{max-inline-size:var(--max_width_px,none)}
+[data-block="navigation_form"][data-align="center"]{margin-inline:auto}
+[data-block="navigation_form"][data-align="end"]{margin-inline-start:auto}`,
+  },
+];

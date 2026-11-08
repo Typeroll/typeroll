@@ -39,15 +39,25 @@ const toDraft = (menu: Menu): Draft => ({
   name: menu.name, locations: menu.locations ?? [], auto_add_pages: menu.auto_add_pages === true, items: menu.items ?? [],
 });
 
-/** The body of a PUT: the whole menu plus the updated_at it was read at. */
-export function menuSaveBody(draft: Draft, expectedUpdatedAt: string): Record<string, unknown> {
+/**
+ * The body of a PUT: the whole menu plus the updated_at it was read at. A
+ * chosen location another menu fills (`takenLocations`) is moved to this
+ * menu: the save sends `take_locations`, and the other menu keeps its items.
+ */
+export function menuSaveBody(draft: Draft, expectedUpdatedAt: string, takenLocations: Record<string, string> = {}): Record<string, unknown> {
   return {
     name: draft.name.trim(),
     locations: draft.locations,
     auto_add_pages: draft.auto_add_pages,
     items: draft.items,
     expected_updated_at: expectedUpdatedAt,
+    ...(draft.locations.some((location) => Object.hasOwn(takenLocations, location)) ? { take_locations: true } : {}),
   };
+}
+
+/** The label of a location another menu fills, as the location pickers show it. */
+export function takenLocationNote(menuName: string, chosen: boolean): string {
+  return chosen ? ` Used by “${menuName}”; will move to this menu when you save` : ` Used by “${menuName}”; choosing it moves it here`;
 }
 
 /** A 409 from the menu routes: someone else saved, or a location is taken. */
@@ -55,7 +65,9 @@ export function conflictKind(message: string): 'stale' | 'location' {
   return /\blocation\b/i.test(message) && !/saved by someone else/i.test(message) ? 'location' : 'stale';
 }
 
-export default function MenuEditor({ siteId, menu, pages, takenLocations, canEdit }: Props) {
+export default function MenuEditor({ siteId, menu, pages, takenLocations: initialTaken, canEdit }: Props) {
+  // Locations other menus fill; a save that moves one here drops it.
+  const [takenLocations, setTakenLocations] = useState(initialTaken);
   const menuUrl = `/api/sites/${encodeURIComponent(siteId)}/menus/${encodeURIComponent(menu.id)}`;
   const [draft, setDraft] = useState<Draft>(() => toDraft(menu));
   const [baseline, setBaseline] = useState(() => JSON.stringify(toDraft(menu)));
@@ -187,9 +199,9 @@ export default function MenuEditor({ siteId, menu, pages, takenLocations, canEdi
       const response = await fetch(menuUrl, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(menuSaveBody(draft, updatedAt)),
+        body: JSON.stringify(menuSaveBody(draft, updatedAt, takenLocations)),
       });
-      const body = await response.json().catch(() => ({})) as { menu?: Menu; error?: string; errors?: MenuValidationError[] };
+      const body = await response.json().catch(() => ({})) as { menu?: Menu; moved_locations?: Array<{ location: string; from_menu_id: string }>; error?: string; errors?: MenuValidationError[] };
       if (!response.ok) {
         const message = body.error ?? `Save failed (${response.status})`;
         setItemErrors(body.errors?.length ? errorsByItem(draft.items, body.errors) : new Map());
@@ -198,7 +210,11 @@ export default function MenuEditor({ siteId, menu, pages, takenLocations, canEdi
           const ids = [...errorsByItem(draft.items, body.errors).keys()].filter(Boolean);
           setOpen((current) => new Set([...current, ...ids]));
         }
-        setProblem(response.status === 409 ? { kind: conflictKind(message), message } : { kind: 'error', message: body.errors?.length ? 'The menu was not saved. Fix the problems marked below.' : message });
+        const taken = response.status === 409 ? /location "([^"]+)" is already filled by the menu "([^"]*)"/.exec(message) : null;
+        // Another menu took the location after this page loaded: the next save moves it.
+        if (taken) setTakenLocations((current) => ({ ...current, [taken[1]!]: taken[2]! }));
+        setProblem(taken ? { kind: 'location', message: `The location ${LOCATION_LABELS[taken[1]!] ?? taken[1]} is used by “${taken[2]}”.` }
+          : response.status === 409 ? { kind: conflictKind(message), message } : { kind: 'error', message: body.errors?.length ? 'The menu was not saved. Fix the problems marked below.' : message });
         setSaveState('error');
         return;
       }
@@ -208,8 +224,13 @@ export default function MenuEditor({ siteId, menu, pages, takenLocations, canEdi
       setBaseline(JSON.stringify(next));
       setUpdatedAt(saved.updated_at ?? '');
       setItemErrors(new Map());
+      const moved = body.moved_locations ?? [];
+      if (moved.length) {
+        const names = moved.map(({ location }) => `${LOCATION_LABELS[location] ?? location} (from “${takenLocations[location] ?? location}”)`);
+        setTakenLocations((current) => Object.fromEntries(Object.entries(current).filter(([location]) => !moved.some((entry) => entry.location === location))));
+        setAnnouncement(`Menu saved. Moved to this menu: ${names.join(', ')}.`);
+      } else setAnnouncement('Menu saved.');
       setSaveState('saved');
-      setAnnouncement('Menu saved.');
       window.setTimeout(() => setSaveState((state) => (state === 'saved' ? 'idle' : state)), 1500);
     } catch (error) {
       setProblem({ kind: 'error', message: error instanceof Error ? error.message : 'Save failed' });
@@ -325,7 +346,7 @@ export default function MenuEditor({ siteId, menu, pages, takenLocations, canEdi
               <button type="button" className="btn btn--ghost btn--sm" onClick={() => setProblem(null)}>Keep editing</button>
             </p>
           )}
-          {problem.kind === 'location' && <p className="text-sm">Untick that location here, or remove it from the other menu first.</p>}
+          {problem.kind === 'location' && <p className="text-sm">Save again to move that location to this menu (the other menu keeps its items), or untick it here.</p>}
         </div>
       )}
       {!canEdit && <p className="muted text-sm">You can view this menu. Editing needs write access to the site.</p>}
@@ -640,7 +661,7 @@ function LocationsField({ locations, takenLocations, disabled, onChange }: {
 }) {
   const base = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const [custom, setCustom] = useState('');
-  const options = [...MENU_LOCATIONS, ...locations.filter((location) => !(MENU_LOCATIONS as readonly string[]).includes(location))];
+  const options = [...new Set([...MENU_LOCATIONS, ...locations, ...Object.keys(takenLocations)])];
   const set = (location: string, on: boolean) => onChange(on ? [...locations, location] : locations.filter((value) => value !== location));
   const normalized = normalizeLocation(custom);
   function addCustom() {
@@ -658,7 +679,7 @@ function LocationsField({ locations, takenLocations, disabled, onChange }: {
             <input type="checkbox" checked={locations.includes(location)} onChange={(event) => set(location, event.target.checked)} />
             <span>
               {LOCATION_LABELS[location] ?? location} <code className="menu-editor__code">{location}</code>
-              {takenLocations[location] && <span className="menu-editor__taken">{` Filled by “${takenLocations[location]}”${locations.includes(location) ? ': saving will be refused' : ''}`}</span>}
+              {takenLocations[location] && <span className="menu-editor__taken">{takenLocationNote(takenLocations[location], locations.includes(location))}</span>}
             </span>
           </label>
         ))}

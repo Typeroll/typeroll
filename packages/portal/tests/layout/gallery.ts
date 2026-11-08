@@ -88,19 +88,27 @@ const section = (id: string, children: Block[], data: Record<string, unknown> = 
 const prose = (id: string, html: string): Block => ({ id, type: 'core/prose', data: { html } });
 
 /** Each block alone, then in the first cell of a three-column grid, then the content that ends the page. */
+/** A caption naming the case a section of a block page shows. */
+const label = (id: string, text: string): Block => ({ id: `${id}-case`, type: 'core/prose', data: { html: `<p><small><strong>Case:</strong> ${text}</small></p>` } });
+
 function blockPage(type: BlockType) {
   const slug = slugOf(type.id);
   return {
     id: `block-${slug}`, slug: `block-${slug}`, path: `/blocks/${slug}/`, title: type.name ?? type.id, status: 'published', content_mode: 'blocks',
     blocks: [
+      section('alone-case', [label('alone', 'Alone, with its sample content')]),
       section('alone', [sample(type, 'subject')]),
+      section('long-case', [label('long', 'With long text in every field')]),
       section('long', [sample(type, 'subject-long', true)]),
+      section('narrow-case', [label('narrow', 'In the first of three grid cells, beside other content')]),
       section('narrow', [{ id: 'grid', type: 'core/grid', data: { columns: 3 }, children: [
         sample(type, 'subject-narrow'), prose('cell-2', '<p>Second cell</p>'), prose('cell-3', `<p>${LONG}</p>`),
       ] }]),
+      section('narrow-long-case', [label('narrow-long', 'In a grid cell, with long text')]),
       section('narrow-long', [{ id: 'grid-long', type: 'core/grid', data: { columns: 3 }, children: [
         sample(type, 'subject-narrow-long', true), prose('cell-long-2', '<p>Second cell</p>'), prose('cell-long-3', '<p>Third cell</p>'),
       ] }]),
+      section('end-case', [label('end', 'The end of a page')]),
       section('end', [prose('end-text', '<p>The last paragraph before the footer.</p>'),
         { id: 'end-actions', type: 'core/container', data: { direction: 'row', wrap: 'wrap', gap: 'sm' }, children: [
           { id: 'end-primary', type: 'core/button', data: { label: 'Start a 30-day trial', href: '/' } },

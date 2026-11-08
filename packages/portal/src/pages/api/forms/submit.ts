@@ -689,9 +689,11 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       const custom = await store.listDocs<BlockType>(paths.blockTypes(orgId, siteId, MAIN_VERSION_ID));
       for (const bt of custom) registry.set(bt.id, bt);
     } catch { /* core-only */ }
-    // The page's render version arrives with the post (`_rv`); it only
-    // decides whether a step starting with a heading also shows its title.
-    const html = sanitizeBody(formStepBodyHtml(next, registry, resolveRenderVersion(Number(data._rv))));
+    // The page's render version arrives with the post (`_rv`): it decides
+    // whether a step starting with a heading also shows its title and, from
+    // 16, the version its blocks render at (a Yes / No answer then speaks
+    // the site's language).
+    const html = sanitizeBody(formStepBodyHtml(next, registry, resolveRenderVersion(Number(data._rv)), lang));
     // The runtime labels the button: the step's own label, else "Continue"
     // or the final label, which the page carries.
     return protocolJson({ ok: true, html, state: newState, step: next.id, submit_label: next.submit_label?.trim() || null, final: !nextStep(form, next) });

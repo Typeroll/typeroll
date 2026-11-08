@@ -1,0 +1,80 @@
+<span data-block="icon" data-background="" data-icon="" style="--size:md;--align:left;--color:;--icon-background:" data-presentation="core%2Ficon" data-size="md" data-align="left" data-icon-style="outline"></span>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+[data-presentation="core%2Ficon"]{--size_px:initial}
+
+/* core/icon */
+[data-block="icon"] { display: inline-flex; align-items: center; line-height:1; color: var(--color, currentColor); }
+[data-block="icon"][data-align="center"] { display: flex; justify-content: center; }
+[data-block="icon"][data-align="right"]  { display: flex; justify-content: flex-end; }
+[data-block="icon"][data-size="sm"] { font-size: 1rem; }
+[data-block="icon"][data-size="md"] { font-size: 1.5rem; }
+[data-block="icon"][data-size="lg"] { font-size: 2rem; }
+[data-block="icon"][data-size="xl"] { font-size: 3rem; }
+[data-block="icon"] .block-icon-link[href=""] { pointer-events: none; }
+[data-block="icon"][data-size-px] { font-size:var(--size_px); }
+[data-block="icon"] svg { width: 1em; height: 1em; }
+/* Circle and square styles put the icon on a surface: the chosen background, else a faint tint. */
+[data-block="icon"]:is([data-icon-style="circle-bg"], [data-icon-style="square-bg"]) svg { box-sizing:content-box; padding:var(--icon-padding, .5em); border-radius:var(--icon-radius, 50%); background:var(--icon-surface, rgba(0,0,0,0.05)); }
+[data-block="icon"][data-icon-style="square-bg"] { --icon-radius:.35em; }
+[data-block="icon"][data-background]:not([data-background=""]) { --icon-surface:var(--icon-background); }
+
+/* core/icon defaults */
+/* A linked icon is a touch target of at least 24 × 24 px (WCAG 2.2 AA). */
+[data-block="icon"] .block-icon-link { display:inline-flex; align-items:center; justify-content:center; min-inline-size:24px; min-block-size:24px; }
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
+:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
+}

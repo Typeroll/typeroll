@@ -218,7 +218,7 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     {fontFallbackStyle && <style set:html={fontFallbackStyle} />}
 
     {blockCss && <style set:html={blockCss} />}
-    {direction === 'rtl' && <style data-direction set:html={directionCss(direction)} />}
+    {direction === 'rtl' && <style data-direction set:html={directionCss(direction, renderVersion)} />}
     {siteStyles && <style data-site-styles set:html={platformLayer('styles', siteStyles, renderVersion)} />}
     {settings.custom_css && <style set:html={styleElementText(settings.custom_css)} />}
     {/* Page-level CSS after site CSS so a page can override the site theme. */}

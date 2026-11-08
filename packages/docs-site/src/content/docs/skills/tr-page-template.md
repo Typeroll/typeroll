@@ -24,6 +24,9 @@ default template, and an individual Page can override it.
 1. `create_page_template name="article-layout" label="Article" starter="article" status="published"`.
    Alternatively supply `blocks` instead of `starter`. Presets include article,
    blog, checklist, team, events, products, profile, landing and custom.
+   A display name in the site's language works too (`name="Artikel"`): the ID is
+   derived from it (`artikel`, with `-2` when taken) and the name becomes the
+   label. Use the returned `template.id` in the next step.
 2. `update_content_type name="articles" patch={template:"article-layout"}`.
    For a single-page override, `update_page page_id=... patch={template:"article-layout"} save=true`.
 3. Read and edit the template through `read_page_template` or block tools with
@@ -35,6 +38,9 @@ default template, and an individual Page can override it.
    `template/page_featured_image`, `template/page_breadcrumbs` and
    `template/page_navigation`. The outline block reads the rendered body headings.
 6. Use `{{page.title}}` or `{{page.custom_field}}` in template bindings.
+   `template/page_excerpt` shows the Page's `excerpt`: set it per Page with
+   `update_page page_id=... patch={excerpt:"…"} save=true` (any content type;
+   a type with its own `excerpt` field stores it there).
    A repeater's children use `{{item.title}}` for the current listed Page.
    Custom fields can be typed objects, arrays or Page references; preserve those
    structures instead of storing hand-generated list HTML.

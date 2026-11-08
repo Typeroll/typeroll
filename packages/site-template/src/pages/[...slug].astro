@@ -26,7 +26,7 @@ import { buildFormSource,
   urlFor,
 } from '../lib/content';
 import { sanitizeBody } from '../lib/sanitize';
-import { FORMS_RUNTIME_JS, FORM_SHELL_CSS,
+import { FORMS_RUNTIME_JS, formShellCss,
   queryDerivedSource,
   buildContentPageSchema,
   buildCoreBlockRegistry,
@@ -253,7 +253,7 @@ if (bodyHtml) bodyHtml = resolveAuthoredVariables(bodyHtml, { year: getBuildYear
 // AFTER sanitization on purpose: the runtime is platform code (same trust
 // class as BLOCKS_RUNTIME_CSS), and the sanitizer would strip <script>.
 if (bodyHtml && bodyHtml.includes('data-tr-form')) {
-  formsRuntimeTag = `<style>${platformLayer('blocks', FORM_SHELL_CSS, renderVersion)}</style><script>${FORMS_RUNTIME_JS}</script>`;
+  formsRuntimeTag = `<style>${platformLayer('blocks', formShellCss(renderVersion), renderVersion)}</style><script>${FORMS_RUNTIME_JS}</script>`;
   bodyHtml += formsRuntimeTag;
 }
 

@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { json, requireSiteAccess, requirePermission } from '../../../../../lib/access';
 import { vstore } from '../../../../../lib/version-store';
 import { ContentTypeError } from '../../../../../lib/content-type-service';
-import { savePageTemplate, removePageTemplate } from '../../../../../lib/page-template-service';
+import { newPageTemplateId, savePageTemplate, removePageTemplate } from '../../../../../lib/page-template-service';
 
 const handle: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -20,10 +20,13 @@ const handle: APIRoute = async ({ request, cookies, params, locals }) => {
     }
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ContentTypeError('JSON object required');
-    const create = request.method === 'POST';
-    const id = create ? body.name : new URL(request.url).searchParams.get('id');
+    if (request.method === 'POST') {
+      const { id, input } = await newPageTemplateId(ctx, body);
+      return json(await savePageTemplate(ctx, id, input, true));
+    }
+    const id = new URL(request.url).searchParams.get('id');
     if (typeof id !== 'string') throw new ContentTypeError('Template ID is required');
-    return json(await savePageTemplate(ctx, id, body, create));
+    return json(await savePageTemplate(ctx, id, body));
   } catch (error) {
     if (error instanceof ContentTypeError) return json({ error: error.message, ...(error.code ? { code: error.code } : {}) }, error.status);
     throw error;

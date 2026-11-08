@@ -242,7 +242,9 @@ footer's at `location:footer` (render version 15; raise it first with
 `tr-upgrade-rendering` if `read_site_settings` → `render.version` is lower).
 After creating the Pages, curate the menus with `add_menu_item` or
 `update_menu`: Page items by `page_id`, a `children` item for an automatic
-submenu, `url` items only for external addresses. Do not type Page URLs into
+submenu, `url` items only for external addresses. To use your own menu instead,
+create it with `locations: ["primary"]` and `take_locations: true`; the starter
+menu keeps its items without the location. Do not type Page URLs into
 inline `links`; they do not follow renames.
 
 Stage the complete tree with `update_partial partial_id="header"

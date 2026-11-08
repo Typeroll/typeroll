@@ -133,6 +133,30 @@ from revision-bound submissions. A hidden honeypot stays outside keyboard and
 assistive-technology interaction. See [Owner answers and review](../../guides/owner-review/)
 for proposal isolation and the separate publication step.
 
+From render version 16 the Yes, No and Clear answer texts follow the site's
+language (Swedish or English) and can be changed with `yes_label`, `no_label`
+and `clear_label`. The answers carry the classes `form-boolean-choice` and
+`form-boolean-text`, the button `form-boolean-clear`; the `choice_label` part
+styles the answer text.
+
+## Field layout (render version 16)
+
+Every visible field block (text, email, phone, URL, number, date, text area,
+select, radio and checkbox groups, Yes / No, toggle, slider and consent) takes
+`width`: `full` (the default), `half`, `third` or `two-thirds`. Fields next to
+each other share a row when it fits, so first and last name sit side by side;
+where the form is too narrow each takes the full row, and a field alone in its
+row fills it. Radio and checkbox groups take `direction`: `column` (one answer
+per line, the default) or `row` (answers side by side, wrapping). A form
+section heading's title and intro line carry the classes `form-section-title`
+and `form-section-description`.
+
+A `core/form` block places the form with `max_width_px` (240–2400), `align`
+(`start`, the default, `center` or `end`), `submit_align` (`start`, `center` or
+`end`, for the submit and back buttons) and `submit_width` (`auto` or `full`).
+Below render version 16 these settings change nothing, and form fields render
+as before.
+
 ## Live choices and actions supplied by installed apps
 
 Starting with Core 0.2.123 (Extension runtime 0.45.0), an enabled

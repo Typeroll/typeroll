@@ -1,6 +1,6 @@
 ---
 import type { SiteSettings } from '@typeroll/shared';
-import { renderCookieConsent } from '@typeroll/shared';
+import { renderCookieConsent, resolveRenderVersion } from '@typeroll/shared';
 import { sanitizeBody } from '../lib/sanitize';
 
 interface Props {
@@ -14,6 +14,6 @@ const consent = settings.cookie_consent;
 const bodyHtml = consent?.text
   ? sanitizeBody(consent.text, settings.iframe_allowed_hosts)
   : undefined;
-const markup = renderCookieConsent(consent, bodyHtml, language);
+const markup = renderCookieConsent(consent, bodyHtml, language, { renderVersion: resolveRenderVersion(settings.render_version) });
 ---
 {markup && <Fragment set:html={markup} />}

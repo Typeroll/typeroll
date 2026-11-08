@@ -1,4 +1,4 @@
-import { COLUMN_STACK_BELOW, COLUMN_STACK_CSS, EMPTY_OUTLINE_COLUMN_CSS } from './column-layout.js';
+import { COLUMN_STACK_BELOW, COLUMN_STACK_CSS, COLUMN_STACK_CSS_V16, EMPTY_OUTLINE_COLUMN_CSS } from './column-layout.js';
 import { pixels, articleHeadingFields, focalPointFields, typographyFields, componentBreakpointsField, groupPresentationField } from './presentation-fields.js';
 import { backgroundGradientField } from './surface-presentation.js';
 // Core block library — ships with the platform. Six general-purpose blocks
@@ -40,6 +40,9 @@ const section: BlockType = {
   icon: 'square',
   category: 'layout',
   container: true,
+  parts: [
+    { name: 'inner', label: 'Content area', selector: '> .block-section-inner', target: 'container', decorative: true, min_render_version: 16 },
+  ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
     {
@@ -143,7 +146,8 @@ const columns: BlockType = {
     pixels('right_width_px', 'Right column width (px)', 80, 640),
     pixels('left_width_px', 'Left column width (px)', 80, 640),
     { name: 'stack_below_px', type: 'number', label: 'Custom stacking threshold (px)', min: 320, max: 1600 },
-    { name: 'stack_below', type: 'select', label: 'Stack below viewport width', options: COLUMN_STACK_BELOW, option_labels: ['721 px (default)', '768 px', '1024 px', '1280 px'], default: '721' },
+    // `never` has no stacking rule, so the columns stay side by side at every width.
+    { name: 'stack_below', type: 'select', label: 'Stack below viewport width', options: [...COLUMN_STACK_BELOW, 'never'], option_labels: ['721 px (default)', '768 px', '1024 px', '1280 px', 'Never (side by side)'], default: '721' },
     { name: 'mobile_order', type: 'select', label: 'Mobile order', options: ['left-first', 'right-first'], default: 'left-first' },
     { name: 'align', type: 'select', label: 'Vertical alignment', options: ['start', 'center', 'end'], default: 'start' },
   ],
@@ -172,6 +176,10 @@ ${EMPTY_OUTLINE_COLUMN_CSS}
   origin: 'core',
   created_at: ISO_EPOCH,
 };
+// Version 16: the stacking rules come after the ratio and width rules instead
+// of using !important, so site CSS can change them.
+if (!columns.styles!.includes(COLUMN_STACK_CSS)) throw new Error('columns styles changed; update the version 16 stacking rules');
+columns.render_versions = [{ from: 16, styles: columns.styles!.replace(COLUMN_STACK_CSS, COLUMN_STACK_CSS_V16) }];
 
 const PROSE_STYLES = `
 [data-block="prose"] { min-width: 0; line-height: var(--line_height, var(--page-body-line-height, var(--body-leading-text, 1.65))); font-size: var(--font_size_px, var(--page-body-font-size, var(--body-size, clamp(1rem, 0.95rem + 0.25vw, 1.125rem)))); text-align:var(--text_align,inherit); font-weight:var(--font_weight,inherit); overflow-wrap: anywhere; }
@@ -201,6 +209,15 @@ const PROSE_STYLES = `
  */
 const PROSE_BREAK_CSS = `[data-block="prose"] :is(p, li, dt, dd, blockquote, figcaption, h1, h2, h3, h4, h5, h6) { overflow-wrap: anywhere; }
 [data-block="prose"] pre { max-width: 100%; overflow-x: auto; }`;
+
+const PROSE_TEMPLATE = `<div data-block="prose" data-w="{{max_width}}" data-font="{{font}}" style="--text_align:{{text_align}};--font_weight:{{font_weight}}{{#color}};color:{{color}}{{/color}}">{{{html}}}</div>`;
+const PROSE_TEMPLATE_V16 = PROSE_TEMPLATE
+  .replace('data-font="{{font}}"', 'data-font="{{font}}"{{#color}} data-color{{/color}}')
+  .replace('{{#color}};color:{{color}}{{/color}}', '{{#color}};--prose-color:{{color}}{{/color}}');
+/** The colour applies only when one is chosen; a box narrower than its column sits where its text aligns. */
+const PROSE_V16_CSS = `[data-block="prose"][data-color] { color:var(--prose-color); }
+[data-block="prose"]:is([data-w="narrow"],[data-w="wide"])[data-text-align="start"] { margin-inline:0 auto; }
+[data-block="prose"]:is([data-w="narrow"],[data-w="wide"])[data-text-align="end"] { margin-inline:auto 0; }`;
 
 /**
  * `prose` — a chunk of rich text. The single `html` field is sanitized at
@@ -242,7 +259,7 @@ const prose: BlockType = {
     // CSS changes: without a value the markup is unchanged on every render version.
     { name: 'color', type: 'color', label: 'Text color' },
   ],
-  template: `<div data-block="prose" data-w="{{max_width}}" data-font="{{font}}" style="--text_align:{{text_align}};--font_weight:{{font_weight}}{{#color}};color:{{color}}{{/color}}">{{{html}}}</div>`,
+  template: PROSE_TEMPLATE,
   // Fluid type via clamp() — rubriker och brödtext skalar mellan mobil
   // och desktop utan media queries. Behåller läsbarhet på små skärmar
   // utan att gå för stort på desktop.
@@ -250,7 +267,14 @@ const prose: BlockType = {
   // Version 13: long words, URLs and inline code break inside paragraphs,
   // list items and headings too, where the site reset's break-word kept
   // their full width as the block's minimum, and preformatted text scrolls.
-  render_versions: [{ from: 13, styles: `${PROSE_STYLES}\n${PROSE_BREAK_CSS}` }],
+  render_versions: [{ from: 13, styles: `${PROSE_STYLES}\n${PROSE_BREAK_CSS}` }, {
+    // Version 16: the colour is a custom property applied by the block's CSS,
+    // so site CSS can change it, and a narrow or wide box follows an explicit
+    // start or end alignment instead of always centring.
+    from: 16,
+    template: PROSE_TEMPLATE_V16,
+    styles: `${PROSE_STYLES}\n${PROSE_BREAK_CSS}\n${PROSE_V16_CSS}`,
+  }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -279,6 +303,13 @@ const HEADING_GROUP_CSS = `[data-block="heading"] .block-heading-group { margin:
  * unlike `prose`, its value is never HTML, so a bound value cannot inject
  * markup.
  */
+const TEXT_STYLES = `
+[data-block="text"] { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+[data-block="text"][data-align="start"] { text-align: start; }
+[data-block="text"][data-align="center"] { text-align: center; }
+[data-block="text"][data-align="end"] { text-align: end; }
+`.trim();
+
 const text: BlockType = {
   id: 'core/text',
   name: 'text',
@@ -294,15 +325,29 @@ const text: BlockType = {
     { name: 'color', type: 'color', label: 'Text color' },
   ],
   template: `<{{=tag}} data-block="text" class="block-text" data-align="{{align}}"{{#color}} style="color:{{color}}"{{/color}}>{{text}}</{{=tag}}>`,
-  styles: `
-[data-block="text"] { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
-[data-block="text"][data-align="start"] { text-align: start; }
-[data-block="text"][data-align="center"] { text-align: center; }
-[data-block="text"][data-align="end"] { text-align: end; }
-`.trim(),
+  styles: TEXT_STYLES,
+  // Version 16: the colour is a custom property applied by the block's CSS, so site CSS can change it.
+  render_versions: [{
+    from: 16,
+    template: `<{{=tag}} data-block="text" class="block-text" data-align="{{align}}"{{#color}} data-color style="--text-color:{{color}}"{{/color}}>{{text}}</{{=tag}}>`,
+    styles: `${TEXT_STYLES}\n[data-block="text"][data-color] { color:var(--text-color); }`,
+  }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
+
+const HEADING_TEMPLATE_V2 = `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);{{#color}}--heading-color:{{color}}{{/color}}">{{#heading_group}}<hgroup class="block-heading-group">{{/heading_group}}{{#eyebrow}}
+  <p class="block-heading-eyebrow {{eyebrow_class}}">{{eyebrow}}</p>{{/eyebrow}}
+  <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>{{#subtitle}}
+  <p class="block-heading-subtitle {{subtitle_class}}">{{subtitle}}</p>{{/subtitle}}{{#heading_group}}</hgroup>{{/heading_group}}
+</div>`;
+const HEADING_STYLES_V13 = `${headingStyles(HEADING_GROUP_CSS)}\n[data-block="heading"] :is(.block-heading-text, .block-heading-eyebrow, .block-heading-subtitle) { overflow-wrap: anywhere; }`;
+/**
+ * Version 16 alignment, for core/heading and template/page_title (both set
+ * --align on the block and carry data-level). Site title has no data-level
+ * and keeps the alignment of the text around it.
+ */
+const HEADING_ALIGN_CSS_V16 = `[data-block="heading"][data-level] { text-align:var(--align,left); }`;
 
 const heading: BlockType = {
   id: 'core/heading',
@@ -367,17 +412,19 @@ const heading: BlockType = {
   // omitted when empty and take a site style instead of fixed, faded text.
   render_versions: [{
     from: 2,
-    template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);{{#color}}--heading-color:{{color}}{{/color}}">{{#heading_group}}<hgroup class="block-heading-group">{{/heading_group}}{{#eyebrow}}
-  <p class="block-heading-eyebrow {{eyebrow_class}}">{{eyebrow}}</p>{{/eyebrow}}
-  <{{=level}}{{{heading_anchor_attr}}} class="block-heading-text">{{text}}</{{=level}}>{{#subtitle}}
-  <p class="block-heading-subtitle {{subtitle_class}}">{{subtitle}}</p>{{/subtitle}}{{#heading_group}}</hgroup>{{/heading_group}}
-</div>`,
+    template: HEADING_TEMPLATE_V2,
     styles: headingStyles(HEADING_GROUP_CSS),
   }, {
     // Version 13: the heading element breaks long words as its block does;
     // the site reset's break-word on h1–h6 kept their full width as minimum.
     from: 13,
-    styles: `${headingStyles(HEADING_GROUP_CSS)}\n[data-block="heading"] :is(.block-heading-text, .block-heading-eyebrow, .block-heading-subtitle) { overflow-wrap: anywhere; }`,
+    styles: HEADING_STYLES_V13,
+  }, {
+    // Version 16: the alignment is applied by the block's CSS from --align
+    // instead of an inline text-align, so site CSS can change it.
+    from: 16,
+    template: HEADING_TEMPLATE_V2.replace('text-align:var(--align,left);', ''),
+    styles: `${HEADING_STYLES_V13}\n${HEADING_ALIGN_CSS_V16}`,
   }],
   styles: headingStyles(`[data-block="heading"] .block-heading-eyebrow { display: block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.25rem; }
 [data-block="heading"] .block-heading-eyebrow:empty { display: none; }`),
@@ -525,6 +572,40 @@ const image: BlockType = {
   created_at: ISO_EPOCH,
 };
 
+const BUTTON_TEMPLATE = `<p data-block="button" data-variant="{{variant}}" data-size="{{size}}">
+  <a href="{{href}}" class="block-button-link" {{{button_link_attrs}}}>{{label}}</a>
+</p>`;
+const BUTTON_STYLES = `
+[data-block="button"] { margin: 1rem 0; }
+[data-block="button"] .block-button-link {
+  display: inline-block; padding: 0.75rem 1.5rem; border-radius: 0.375rem;
+  text-decoration: none; font-weight: 600; transition: opacity 0.15s;
+}
+[data-block="button"][data-size="sm"] .block-button-link { padding: 0.5rem 1rem; font-size: 0.875rem; }
+[data-block="button"][data-size="lg"] .block-button-link { padding: 1rem 2rem; font-size: 1.125rem; }
+[data-block="button"][data-variant="primary"] .block-button-link {
+  background: var(--color-primary, #111); color: var(--color-primary-fg, #fff);
+}
+[data-block="button"][data-variant="secondary"] .block-button-link {
+  background: var(--color-secondary, #f3f4f6); color: var(--color-secondary-fg, #111);
+}
+[data-block="button"][data-variant="ghost"] .block-button-link {
+  background: transparent; color: var(--color-primary, currentColor);
+  border: 1px solid currentColor;
+}
+[data-block="button"] .block-button-link:hover { opacity: 0.85; }
+[data-block="button"] .block-button-link { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
+[data-block="button"] .block-button-link:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
+`.trim();
+/** Render version 16: alignment (data-align, emitted for the select), full width and the icon. */
+const BUTTON_V16_CSS = `[data-block="button"][data-align="start"] { text-align:start; }
+[data-block="button"][data-align="center"] { text-align:center; }
+[data-block="button"][data-align="end"] { text-align:end; }
+[data-block="button"] .block-button-link:has(> .block-button-icon) { display:inline-flex; align-items:center; justify-content:center; gap:.5em; vertical-align:middle; }
+[data-block="button"] .block-button-icon { display:inline-flex; flex:none; font-size:var(--icon_size_px, 1em); }
+[data-block="button"][data-full-width="true"] .block-button-link { display:block; box-sizing:border-box; inline-size:100%; }
+[data-block="button"][data-full-width="true"] .block-button-link:has(> .block-button-icon) { display:flex; }`;
+
 /**
  * `button` — single call-to-action button. Style variant + size, optional
  * `open in new tab`.
@@ -549,35 +630,26 @@ const button: BlockType = {
     { name: 'size', type: 'select', label: 'Size', options: ['sm', 'md', 'lg'], default: 'md' },
     { name: 'new_tab', type: 'boolean', label: 'Open in new tab' },
     { name: 'link_rel', type: 'text', label: 'Link relationship (e.g. nofollow sponsored)' },
+    // Render version 16. Inherit keeps the alignment of the text around the button.
+    { name: 'align', type: 'select', label: 'Alignment', options: ['inherit', 'start', 'center', 'end'], default: 'inherit', min_render_version: 16 },
+    { name: 'full_width', type: 'boolean', label: 'Full width', default: false, min_render_version: 16 },
+    { name: 'icon', type: 'icon', label: 'Icon (after the label)', placeholder: 'arrow-right or →', min_render_version: 16 },
+    { ...pixels('icon_size_px', 'Icon size (px)', 8, 64), min_render_version: 16 },
   ],
-  template: `<p data-block="button" data-variant="{{variant}}" data-size="{{size}}">
-  <a href="{{href}}" class="block-button-link" {{{button_link_attrs}}}>{{label}}</a>
-</p>`,
-  styles: `
-[data-block="button"] { margin: 1rem 0; }
-[data-block="button"] .block-button-link {
-  display: inline-block; padding: 0.75rem 1.5rem; border-radius: 0.375rem;
-  text-decoration: none; font-weight: 600; transition: opacity 0.15s;
-}
-[data-block="button"][data-size="sm"] .block-button-link { padding: 0.5rem 1rem; font-size: 0.875rem; }
-[data-block="button"][data-size="lg"] .block-button-link { padding: 1rem 2rem; font-size: 1.125rem; }
-[data-block="button"][data-variant="primary"] .block-button-link {
-  background: var(--color-primary, #111); color: var(--color-primary-fg, #fff);
-}
-[data-block="button"][data-variant="secondary"] .block-button-link {
-  background: var(--color-secondary, #f3f4f6); color: var(--color-secondary-fg, #111);
-}
-[data-block="button"][data-variant="ghost"] .block-button-link {
-  background: transparent; color: var(--color-primary, currentColor);
-  border: 1px solid currentColor;
-}
-[data-block="button"] .block-button-link:hover { opacity: 0.85; }
-[data-block="button"] .block-button-link { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
-[data-block="button"] .block-button-link:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
-`.trim(),
+  template: BUTTON_TEMPLATE,
+  // Version 16: alignment, full width and an icon after the label (decoration: the label names the action).
+  render_versions: [{
+    from: 16,
+    template: BUTTON_TEMPLATE
+      .replace('data-size="{{size}}"', 'data-size="{{size}}" data-full-width="{{full_width}}"')
+      .replace('{{label}}</a>', '{{label}}{{#icon}}<span class="block-button-icon" aria-hidden="true">{{{icon_svg}}}</span>{{/icon}}</a>'),
+    styles: `${BUTTON_STYLES}\n${BUTTON_V16_CSS}`,
+  }],
+  styles: BUTTON_STYLES,
   origin: 'core',
   created_at: ISO_EPOCH,
 };
+
 
 /**
  * Marker block used inside PageTemplate.blocks to indicate where the
