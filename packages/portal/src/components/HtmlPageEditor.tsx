@@ -42,6 +42,8 @@ interface Props {
   lastDeployedAt: string | null;
   /** The site owner's organization allows the AI assistant here and the person may edit. */
   aiChatEnabled?: boolean;
+  /** The Page's content type defines its own `excerpt` field, which then holds the excerpt. */
+  contentTypeHasExcerpt?: boolean;
 }
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
@@ -53,7 +55,7 @@ export default function HtmlPageEditor(props: Props) {
   </PageDraftRecovery>;
 }
 
-function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, aiChatEnabled = false }: Props) {
+function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, aiChatEnabled = false, contentTypeHasExcerpt = false }: Props) {
   // Edits autosave to a server-side working copy; the canonical page only
   // changes on the deliberate Save (or a status change) in the Publish menu.
   const [draft, setDraft] = useState<Page>({ ...page, ...(workingCopy?.fields ?? {}) } as Page);
@@ -450,6 +452,12 @@ function HtmlPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl,
                 <label>Breadcrumb label</label>
                 <input maxLength={200} value={draft.breadcrumb_label ?? ''} onChange={(e) => update('breadcrumb_label', e.target.value)} placeholder={draft.title} />
               </div>
+              {!contentTypeHasExcerpt && (
+                <div className="field">
+                  <label htmlFor="html-page-excerpt">Excerpt</label>
+                  <textarea id="html-page-excerpt" rows={3} maxLength={1000} value={draft.excerpt ?? ''} onChange={(e) => update('excerpt', e.target.value)} placeholder="Short summary for templates and listings" />
+                </div>
+              )}
               <div className="field">
                 <label>SEO title</label>
                 <input value={draft.seo_title ?? ''} onChange={(e) => update('seo_title', e.target.value)} placeholder={draft.title} />

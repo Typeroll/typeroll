@@ -633,6 +633,7 @@ const tools: Anthropic.Tool[] = [
         auto_add_pages: { type: 'boolean' },
         items: { type: 'array', items: { type: 'object' }, description: 'The whole item tree.' },
         expected_updated_at: { type: 'string', description: 'The updated_at you read. Required to replace an existing menu.' },
+        take_locations: { type: 'boolean', description: 'Move a listed location another menu fills to this menu (that menu keeps its items) instead of failing.' },
       },
       required: ['menu_id', 'name', 'items'],
     },
@@ -2051,9 +2052,10 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           };
           if (existing && typeof input.expected_updated_at !== 'string')
             return { result: { error: `The menu ${menuId} exists. read_menu first and pass its updated_at as expected_updated_at.` } };
+          const takeLocations = input.take_locations === true;
           saved = existing
-            ? await replaceMenu(wcCtx(ctx), menuId, body, { updatedBy: 'chat-ai', expectedUpdatedAt: String(input.expected_updated_at) })
-            : await createMenu(wcCtx(ctx), { ...body, id: menuId });
+            ? await replaceMenu(wcCtx(ctx), menuId, body, { updatedBy: 'chat-ai', expectedUpdatedAt: String(input.expected_updated_at), takeLocations })
+            : await createMenu(wcCtx(ctx), { ...body, id: menuId }, { takeLocations, updatedBy: 'chat-ai' });
         }
         return {
           result: { ok: true, menu: saved, ...(itemId ? { item_id: itemId } : {}) },

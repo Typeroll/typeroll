@@ -730,6 +730,13 @@ export interface Page {
   html_content?: string;
 
   breadcrumb_label?: string | null;
+  /**
+   * Plain-text summary shown by `template/page_excerpt` and listing cards
+   * (`{{page.excerpt}}`). Every Page has it; when the content type defines its
+   * own `excerpt` field, that field is the excerpt and writes to this name are
+   * stored there instead (see pageExcerpt).
+   */
+  excerpt?: string | null;
   seo_title?: string;
   /** Set false to use the page SEO title verbatim, without the site suffix. */
   append_seo_suffix?: boolean;

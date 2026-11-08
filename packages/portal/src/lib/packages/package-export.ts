@@ -244,7 +244,7 @@ function withoutPageItems(items: MenuItem[], dropped: { count: number }): MenuIt
 }
 
 const SEO_KEYS = ['seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'noindex', 'nofollow',
-  'append_seo_suffix', 'breadcrumb_label', 'kind', 'schema_type', 'json_ld', 'author', 'service', 'image_sizes_default'] as const;
+  'append_seo_suffix', 'breadcrumb_label', 'excerpt', 'kind', 'schema_type', 'json_ld', 'author', 'service', 'image_sizes_default'] as const;
 
 function packagePage(page: Page): PackagePage {
   const seo = Object.fromEntries(SEO_KEYS.filter(key => page[key] !== undefined && page[key] !== null && page[key] !== '').map(key => [key, clone(page[key])]));

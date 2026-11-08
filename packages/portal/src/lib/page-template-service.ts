@@ -1,12 +1,44 @@
-import { countBlockH1s, ensureBlockIds, getPageTemplateStarter, templateMatchesContentType, type Block, type PageTemplate, type PageTemplateStarterKind } from '@typeroll/shared';
+import { countBlockH1s, ensureBlockIds, getPageTemplateStarter, slugify, templateMatchesContentType, type Block, type PageTemplate, type PageTemplateStarterKind } from '@typeroll/shared';
 import { assertStructureChange, StructureLockedError } from './structure-lock';
 import { vstore } from './version-store';
 import { blockTreeInputError } from './block-tree-input';
 import { markSiteDirty } from './auto-deploy';
 import { ContentTypeError, type ContentTypeContext } from './content-type-service';
 
+const TEMPLATE_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+export const TEMPLATE_ID_RULE = 'Template ID must be 1-64 characters: lowercase letters a-z, digits, underscores or hyphens, starting with a letter or digit (for example "article" or "case-study")';
+/** Letters NFKD does not decompose to ASCII; å, ä, ö, é and similar are handled by slugify. */
+const TRANSLITERATION: Record<string, string> = { æ: 'ae', ø: 'o', œ: 'oe', ß: 'ss', đ: 'd', ð: 'd', þ: 'th', ł: 'l', ı: 'i' };
+
+/** A valid template ID derived from a display name, e.g. "Artikel" → "artikel", "Kök & bad" → "kok-bad". */
+export function templateIdFromName(name: string): string {
+  const ascii = name.toLowerCase().replace(/[æøœßđðþłı]/g, char => TRANSLITERATION[char] ?? char);
+  return slugify(ascii).slice(0, 64).replace(/-+$/, '') || 'template';
+}
+
+/**
+ * The ID for a new template. An explicit `id`, or a `name` that already is a
+ * valid ID, is used exactly (a collision is a 409). Any other name is a display
+ * name: the ID is derived from it, suffixed -2, -3… when taken, and the name
+ * becomes the label unless one is given.
+ */
+export async function newPageTemplateId(ctx: ContentTypeContext, input: Record<string, unknown>): Promise<{ id: string; input: Record<string, unknown> }> {
+  if (input.id !== undefined) {
+    if (typeof input.id !== 'string' || !TEMPLATE_ID.test(input.id)) throw new ContentTypeError(`${TEMPLATE_ID_RULE}. Omit id to derive one from name.`);
+    return { id: input.id, input: { ...input, label: input.label ?? (typeof input.name === 'string' && input.name.trim() ? input.name.trim() : undefined) } };
+  }
+  const name = typeof input.name === 'string' ? input.name.trim() : '';
+  if (!name) throw new ContentTypeError('Template name is required');
+  if (TEMPLATE_ID.test(name)) return { id: name, input };
+  const taken = new Set((await vstore.pageTemplates(ctx.orgId, ctx.siteId, ctx.versionId)).map(template => template.id));
+  const base = templateIdFromName(name);
+  let id = base;
+  for (let n = 2; taken.has(id); n++) id = `${base.slice(0, 64 - String(n).length - 1)}-${n}`;
+  return { id, input: { ...input, label: input.label ?? name } };
+}
+
 export async function savePageTemplate(ctx: ContentTypeContext, id: string, input: Record<string, unknown>, create = false): Promise<PageTemplate> {
-  if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(id)) throw new ContentTypeError('Template ID must use lowercase letters, digits, underscores or hyphens');
+  if (!TEMPLATE_ID.test(id)) throw new ContentTypeError(TEMPLATE_ID_RULE);
   const existing = await vstore.pageTemplate(ctx.orgId, ctx.siteId, ctx.versionId, id);
   if (create && existing) throw new ContentTypeError('Template already exists', 409);
   await lockedTemplateCheck(ctx, create || !existing ? undefined : { before: existing.blocks, after: Array.isArray(input.blocks) ? input.blocks as Block[] : existing.blocks });

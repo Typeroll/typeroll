@@ -2,7 +2,7 @@ import { customCssWriteError } from './custom-css-write';
 import { paths, slugify, escapeHtml, pageAuthorityFields, ensureBlockIds, contentPagePath, DEFAULT_CONTENT_TYPE, type ContentType, type Page, type Media } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { vstore } from './version-store';
-import { pageContentType, validatePageFields, validatePagePresentation } from './page-fields';
+import { pageContentType, routePageExcerpt, validatePageFields, validatePagePresentation } from './page-fields';
 import { applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
 import { WorkingCopyError, listWorkingCopies, overlayWorkingCopy, refuseLockedStructure, type WcCtx } from './working-copy';
 import { validatePathField, makeSafePageId } from './page-paths';
@@ -14,7 +14,7 @@ import { isLivePageStatus, retireRedirectsShadowingUrl } from './redirect-hygien
 import { markSiteDirty } from './auto-deploy';
 
 const CREATE_FIELDS = ['path', 'parent', 'sort_order', 'template', 'kind', 'author', 'language',
-  'breadcrumb_label', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'append_seo_suffix',
+  'breadcrumb_label', 'excerpt', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'append_seo_suffix',
   'noindex', 'nofollow', 'alternates', 'lastmod_override', 'json_ld', 'schema_type', 'service', 'image_sizes_default',
   'custom_css', 'date_published', 'publish_at', 'unpublish_at'] as const;
 
@@ -83,6 +83,7 @@ export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteA
   if (!title) throw new WorkingCopyError('title required', 400);
   const type = await pageContentType(ctx, input);
   if (!type) throw new WorkingCopyError('Content type not found', 400);
+  input = routePageExcerpt(type, input as Record<string, unknown>) as Partial<Page>;
   if (input.fields !== undefined) {
     const error = validatePageFields(type, input.fields);
     if (error) throw new WorkingCopyError(error, 400);

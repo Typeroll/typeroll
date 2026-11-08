@@ -36,7 +36,7 @@ import { checkAlternates } from '../../../../../../lib/page-alternates';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import { pickWritable, REPLACEABLE } from '../../../../../../lib/page-writable';
 import { contentModeMismatch } from '../../../../../../lib/content-mode-warning';
-import type { Page } from '@typeroll/shared';
+import { pageExcerpt, type Page } from '@typeroll/shared';
 
 function project(p: Page, hasUnsaved: boolean): Record<string, unknown> {
   return {
@@ -56,6 +56,7 @@ function project(p: Page, hasUnsaved: boolean): Record<string, unknown> {
     author: p.author,
     language: p.language,
     breadcrumb_label: p.breadcrumb_label,
+    excerpt: pageExcerpt(p),
     seo_title: p.seo_title,
     append_seo_suffix: p.append_seo_suffix,
     seo_description: p.seo_description,

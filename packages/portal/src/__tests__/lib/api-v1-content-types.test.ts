@@ -316,6 +316,22 @@ describe('native Page templates through the public API', () => {
     expect((await detail('GET', undefined, '?version=design')).status).toBe(404);
     expect((await detail('GET')).status).toBe(200);
   });
+  it('derives a valid template ID from a display name and keeps the name as label', async () => {
+    const first = await create({ name: 'Artikel', starter: 'article' });
+    expect(first.status).toBe(200);
+    expect((await first.json()).template).toMatchObject({ id: 'artikel', label: 'Artikel' });
+    expect((await (await create({ name: 'Artikel', starter: 'article' })).json()).template).toMatchObject({ id: 'artikel-2', label: 'Artikel' });
+    expect((await (await create({ name: 'Kök & bad – Ærø', label: 'Kitchen', starter: 'custom' })).json()).template).toMatchObject({ id: 'kok-bad-aero', label: 'Kitchen' });
+    expect((await (await create({ name: 'Nyhet', id: 'news_item', starter: 'custom' })).json()).template).toMatchObject({ id: 'news_item', label: 'Nyhet' });
+    expect((await create({ id: 'news_item', starter: 'custom' })).status).toBe(409);
+    const invalid = await create({ id: 'Artikel', starter: 'custom' });
+    expect(invalid.status).toBe(400);
+    expect((await invalid.json()).error).toContain('lowercase letters a-z, digits, underscores or hyphens');
+    const { templateIdFromName } = await import('../../lib/page-template-service');
+    expect(templateIdFromName('Ångström Straße')).toBe('angstrom-strasse');
+    expect(templateIdFromName('???')).toBe('template');
+    expect(templateIdFromName('x'.repeat(100))).toHaveLength(64);
+  });
   it('rejects malformed templates and requires authentication', async () => {
     expect((await create({ name: 'article-shell', starter: 'unknown' })).status).toBe(400);
     expect((await create({ name: 'article-shell', blocks: 'bad' })).status).toBe(400);
@@ -358,4 +374,63 @@ describe('native Page templates through the public API', () => {
     expect((await read('sort_by=rank&sort_order=asc')).pages[0].title).toBe('Low');
   });
 
+});
+
+describe('Page excerpt through the public API', () => {
+  let token: string;
+  beforeEach(async () => { ({ token } = await setup()); });
+  const plainPage = (body: Record<string, unknown>) => callRoute(pagesRoute(), 'POST', `${root}/pages`, { siteId: SITE }, { headers: bearer(token), body: { title: 'Lunch', ...body } });
+  const pageWrite = (method: 'GET' | 'PATCH' | 'PUT', id: string, body?: unknown) => callRoute(pageRoute(), method, `${root}/pages/${id}`, { siteId: SITE, pageId: id }, { headers: bearer(token), body });
+  it('creates, drafts, saves and renders the excerpt of a plain Page', async () => {
+    const { savePageTemplate } = await import('../../lib/page-template-service');
+    await savePageTemplate({ orgId: ORG, siteId: SITE, versionId: 'main' }, 'summary-shell', { status: 'published', blocks: [
+      { id: 'summary', type: 'template/page_excerpt', data: {} }, { id: 'body', type: 'core/template_content_slot', data: {} },
+    ] }, true);
+    const created = await plainPage({ excerpt: 'Dagens lunch & veckans meny', template: 'summary-shell' });
+    expect(created.status).toBe(201);
+    const { page } = await created.json();
+    expect(page.excerpt).toBe('Dagens lunch & veckans meny');
+    const { vstore } = await import('../../lib/version-store');
+    expect((await vstore.page(ORG, SITE, 'main', page.id))?.excerpt).toBe('Dagens lunch & veckans meny');
+
+    const drafted = await pageWrite('PATCH', page.id, { excerpt: 'Ny sammanfattning' });
+    expect(drafted.status).toBe(200);
+    const draftBody = await drafted.json();
+    expect(draftBody.saved).toBe(false);
+    expect(draftBody.staged_fields).toContain('excerpt');
+    expect(draftBody.page.excerpt).toBe('Ny sammanfattning');
+    expect((await vstore.page(ORG, SITE, 'main', page.id))?.excerpt).toBe('Dagens lunch & veckans meny');
+    expect((await pageWrite('PATCH', page.id, { save: true, excerpt: 'Ny sammanfattning' })).status).toBe(200);
+    expect((await vstore.page(ORG, SITE, 'main', page.id))?.excerpt).toBe('Ny sammanfattning');
+
+    const { renderPreview } = await import('../../lib/render-preview');
+    expect(await renderPreview(ORG, SITE, page.id, 'main')).toContain('Ny sammanfattning');
+
+    expect((await pageWrite('PUT', page.id, { title: 'Lunch', save: true })).status).toBe(200);
+    expect((await vstore.page(ORG, SITE, 'main', page.id))?.excerpt ?? null).toBeNull();
+  });
+  it('validates the excerpt', async () => {
+    for (const excerpt of [42, 'x'.repeat(1001)]) {
+      const response = await plainPage({ excerpt });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toContain('excerpt must be plain text up to 1000 characters');
+    }
+    const { page } = await (await plainPage({})).json();
+    expect((await pageWrite('PATCH', page.id, { excerpt: ['bad'] })).status).toBe(400);
+  });
+  it('stores the excerpt in a content type’s own excerpt field', async () => {
+    await createType(token, { ...definition(), fields: [{ name: 'excerpt', label: 'Summary', type: 'textarea' }] });
+    const { page } = await (await createPage(token, { fields: {}, excerpt: 'Ingress' })).json();
+    const { vstore } = await import('../../lib/version-store');
+    const saved = await vstore.page(ORG, SITE, 'main', page.id);
+    expect(saved?.fields?.excerpt).toBe('Ingress');
+    expect(saved).not.toHaveProperty('excerpt');
+    expect(page.excerpt).toBe('Ingress');
+    await pageWrite('PATCH', page.id, { excerpt: 'Ny ingress', save: true });
+    const updated = await vstore.page(ORG, SITE, 'main', page.id);
+    expect(updated?.fields?.excerpt).toBe('Ny ingress');
+    expect(updated).not.toHaveProperty('excerpt');
+    await pageWrite('PATCH', page.id, { excerpt: 'ignored', fields: { excerpt: 'Explicit' }, save: true });
+    expect((await vstore.page(ORG, SITE, 'main', page.id))?.fields?.excerpt).toBe('Explicit');
+  });
 });

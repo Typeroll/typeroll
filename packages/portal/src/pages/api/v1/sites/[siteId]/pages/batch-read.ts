@@ -12,7 +12,7 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
-import type { Page } from '@typeroll/shared';
+import { pageExcerpt, type Page } from '@typeroll/shared';
 
 const BATCH_MAX = 200;
 
@@ -32,6 +32,7 @@ function project(p: Page): Record<string, unknown> {
     html_content: p.html_content,
     kind: p.kind,
     breadcrumb_label: p.breadcrumb_label,
+    excerpt: pageExcerpt(p),
     seo_title: p.seo_title,
     seo_description: p.seo_description,
     noindex: p.noindex,

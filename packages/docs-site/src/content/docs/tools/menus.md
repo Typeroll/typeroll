@@ -68,8 +68,17 @@ laid out in columns: a wide menu, with a heading or page per column.
 
 `locations` names the places a menu fills: `primary` (the header), `footer`
 and `mobile`, or another short lowercase name the site uses. A location shows
-one menu; a save that takes a location another menu already fills is refused
-with 409, so remove it from the other menu first.
+one menu. A save that lists a location another menu already fills is refused
+with 409 and names that menu, unless it sends `take_locations: true`: then the
+location moves to the menu you save. The other menu keeps its items and its
+other locations, its change is kept as a revision, and the response lists each
+move in `moved_locations: [{ "location": "primary", "from_menu_id": "primary" }]`.
+Nothing has to be deleted first. In the portal, **Menus → New menu** and the
+menu editor offer locations another menu uses, labelled with that menu's name;
+choosing one moves it the same way.
+
+A site can have any number of menus. A menu without a location is shown where a
+navigation block names it by id (`menu: "legal"`).
 
 ### New pages are added automatically
 
@@ -90,6 +99,20 @@ A header or footer shows them once it has a `core/navigation_links` block with
 `source: "menu"`; see [showing a menu](#showing-a-menu-in-the-header-or-footer).
 An older HTML header keeps the links written into it.
 
+You can edit these two menus, or build your own beside them. To give the header
+your own menu, create it with the location and `take_locations: true`:
+
+```
+update_menu name="Huvudmeny" locations=["primary"] take_locations=true
+  items=[{type:"page",page_id:"home"},{type:"page",page_id:"meny"}]
+```
+
+The new menu fills `primary` at once; the starter `primary` menu keeps its
+items without a location, so a header that shows `location:primary` shows your
+menu. Delete the starter menu later if you do not need it. Note that the starter
+menu has `auto_add_pages` on: turn it on in your own menu if new pages should
+still appear in the header.
+
 ## `list_menus`
 
 Lists every menu of the site (or of a `version`) with its locations, items and
@@ -107,7 +130,8 @@ Creates a menu or replaces a whole menu: `name`, `locations`,
 it, change the tree and send it back with `expected_updated_at`. If someone
 saved the menu in between, the save is refused with 409; read it again and
 reapply the change. Without `menu_id`, or with one that does not exist yet, a
-new menu is created.
+new menu is created. Add `take_locations: true` to move a listed location from
+the menu that fills it (see [locations](#locations)).
 
 ```
 "Add Services with its subpages to the main menu."
@@ -162,9 +186,9 @@ in a draft. Read it before deleting a menu or moving its location.
 | Call                            | What it does                                                                                 |
 | ------------------------------- | -------------------------------------------------------------------------------------------- |
 | `GET /menus`                    | Every menu.                                                                                  |
-| `POST /menus`                   | Creates a menu (201). Without `id`, one is derived from the name.                            |
+| `POST /menus`                   | Creates a menu (201). Without `id`, one is derived from the name. `take_locations` moves taken locations. |
 | `GET /menus/{menuId}`           | One menu (404 when unknown).                                                                 |
-| `PUT /menus/{menuId}`           | Replaces the whole menu; send `expected_updated_at` (409 when stale or a location is taken). |
+| `PUT /menus/{menuId}`           | Replaces the whole menu; send `expected_updated_at` (409 when stale, or a location is taken without `take_locations`). |
 | `DELETE /menus/{menuId}`        | Deletes the menu.                                                                            |
 | `GET /menus/{menuId}/usage`     | Where the menu is shown.                                                                     |
 | `GET /menus/{menuId}/revisions` | Earlier saves; `/{revId}` reads one and `POST /{revId}/restore` restores it.                 |
