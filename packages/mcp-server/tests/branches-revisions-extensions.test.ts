@@ -41,6 +41,7 @@ const cases: Array<[string, Record<string, unknown>, string, string, unknown?]> 
   ['set_extension_installation_status', { installation_id: 'inst/1', status: 'disabled' }, 'PATCH', '/api/v1/sites/site/extensions/inst%2F1', { status: 'disabled' }],
   ['uninstall_extension', { installation_id: 'inst-1' }, 'DELETE', '/api/v1/sites/site/extensions/inst-1'],
   ['pair_extension_issuer', { installation_id: 'inst-1' }, 'POST', '/api/v1/sites/site/extensions/inst-1/pair'],
+  ['connect_extension', { installation_id: 'inst-1' }, 'POST', '/api/v1/sites/site/extensions/inst-1/connect'],
   ['read_extension_diagnostics', { installation_id: 'inst-1' }, 'GET', '/api/v1/sites/site/extensions/inst-1/diagnostics'],
   ['launch_extension_admin_page', { installation_id: 'inst-1', page_id: 'quotes' }, 'POST', '/api/v1/sites/site/extensions/inst-1/launch', { page_id: 'quotes' }],
   ['list_developer_extensions', {}, 'GET', '/api/developer/extensions'],
@@ -72,7 +73,7 @@ describe('branch, revision and Extension tools', () => {
     for (const name of ['restore_partial_revision', 'launch_extension_admin_page']) expect(await effect(name)).toBe('write');
     for (const name of [
       'create_branch', 'reset_version', 'merge_branch', 'delete_branch', 'install_extension', 'set_extension_installation_status',
-      'uninstall_extension', 'pair_extension_issuer', 'read_extension_diagnostics',
+      'uninstall_extension', 'pair_extension_issuer', 'connect_extension', 'read_extension_diagnostics',
       'publish_extension_version',
     ]) expect(await effect(name)).toBe('admin');
   });

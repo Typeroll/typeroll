@@ -139,6 +139,7 @@ export function effectFor(name: string): ToolEffect {
     || name === 'set_extension_installation_status'
     || name === 'uninstall_extension'
     || name === 'pair_extension_issuer'
+    || name === 'connect_extension'
     || name === 'read_extension_diagnostics'
     // Branch lifecycle on main is site administration in the portal too.
     || name === 'create_branch'

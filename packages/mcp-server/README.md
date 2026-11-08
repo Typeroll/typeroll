@@ -293,11 +293,13 @@ the full reference + concrete operation recipes.
   when batching changes and deploy once afterwards. The same admin key also
   covers the rest of the portal's installation actions: `install_extension`,
   `set_extension_installation_status` (enable/disable), `uninstall_extension`,
-  `pair_extension_issuer`, `read_extension_diagnostics`, and
+  `pair_extension_issuer`, `connect_extension`, `read_extension_diagnostics`, and
   `launch_extension_admin_page` (a single-use launch grant to POST to the
   page's `launch_url`; approved native pages use `call_extension_admin`).
   Installation server credentials are rotated in the portal, so the new
-  credential is never shown to an agent.
+  credential is never shown to an agent; an Extension that declares
+  `auth.provisioning_url` gets its credential from Typeroll directly when it is
+  installed or `connect_extension` runs.
 - **Extension development** — with an organization-scoped key:
   `list_developer_extensions`, `read_developer_extension`,
   `update_developer_extension`, `save_extension_version`,

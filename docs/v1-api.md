@@ -109,7 +109,7 @@ All site routes below start with `/sites/{siteId}`.
 | Media | list/create/read/update/delete, upload URL, finalize, bulk finalize, variant generation and alt-text context under `/media` |
 | Redirects | `GET/POST /redirects`, `DELETE /redirects/{redirectId}` |
 | Forms | list/create/read/update/delete and submission routes under `/forms` |
-| Apps and Extensions | list/read/update app config; install (`POST /extensions`), read, update, enable/disable and uninstall (`DELETE /extensions/{installationId}`) Extension installations, plus `diagnostics`, `rotate-credential`, `pair`, `launch` and `admin-request` under `/extensions/{installationId}` |
+| Apps and Extensions | list/read/update app config; install (`POST /extensions`), read, update, enable/disable and uninstall (`DELETE /extensions/{installationId}`) Extension installations, plus `diagnostics`, `rotate-credential`, `pair`, `connect`, `launch` and `admin-request` under `/extensions/{installationId}` |
 | Versions | list/create/read/delete under `/versions`; `GET /versions/{versionId}/diff`, `POST /versions/{versionId}/merge` and `POST /versions/{versionId}/reset` |
 | Deploys | list/create/read under `/deploys`; deploy jobs include non-blocking `warnings[]` such as unresolved internal links |
 | Preview | signed preview-link creation under `/preview-link` |
@@ -181,6 +181,7 @@ installation credentials. Actors are recorded as `api:{keyPrefix}`.
 | Diagnostics | `GET /{installationId}/diagnostics` | Status, health, release resolution, credential metadata (no secrets), latest audit events and event deliveries. |
 | Rotate server credential | `POST /{installationId}/rotate-credential` | Refused with `403`: credentials are rotated in the portal, so a new secret never passes through an agent. |
 | Pair issuer | `POST /{installationId}/pair` | Contacts the manifest's `auth.pairing_url`; `409` when none is declared. |
+| Connect provider | `POST /{installationId}/connect` | Issues a server credential and delivers it to the manifest's `auth.provisioning_url`; the caller sees only `{ status, credential_prefix }`. `409` when none is declared, `502` when the provider refuses (the new credential is revoked). Owner organization only. Installing such an Extension does this too. |
 | Launch admin page | `POST /{installationId}/launch` | `{ page_id }`. Returns a single-use launch `code`, `launch_url` and the `form` fields to POST there before `expires_at`. The page's `minimum_permission` applies; the provider sees `api-key:{prefix}`. |
 
 Approved native admin pages are called server-side with

@@ -11,5 +11,5 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  return withApiIdentity(ctx, apiError('Extension credentials are rotated in the portal (Site settings → Extensions), so the new credential is shown only to the person rotating it and never lands in an agent conversation or log.', 403, ctx));
+  return withApiIdentity(ctx, apiError('Extension credentials are rotated in the portal (Site settings → Extensions), so the new credential is shown only to the person rotating it and never lands in an agent conversation or log. To connect an Extension whose manifest declares auth.provisioning_url, POST /api/v1/sites/{site_id}/extensions/{installation_id}/connect: Typeroll delivers a new credential to the provider directly.', 403, ctx));
 };
