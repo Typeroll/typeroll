@@ -23,7 +23,7 @@ only named leaves using stable keyed-item paths. This import saves immediately;
 the ordinary draft-writing recipe below still applies to editorial writes.
 Never interpret absent provenance in `read_page` as an unprotected value, reset
 an owner's source, or retry a 409 using editor authority. Existing API-attributed
-data requires separate review; it is not automatically downgraded.
+data requires separate review; it is not automatically downgraded. To move accepted answers to another field (a question that moved, e.g. from the company to each program), use `relocate_page_answers` with a reviewed list of moves and `dry_run: true` first: it keeps each answer's original source and protection, which an import cannot.
 
 
 > **The buffer model (draft writes).** Every content write in this recipe
