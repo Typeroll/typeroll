@@ -2610,6 +2610,23 @@ Save low-priority research/import changes to individual custom-field leaves. Req
 | `import_run_id` | body | string | no |  |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
+### `relocate_page_answers`
+
+`POST /api/v1/sites/{siteId}/pages/{page_id}/relocate-answers`
+
+Permission: `admin`
+
+One-time, reviewed move of accepted custom-field answers to other paths of the same Page (for example from a company group to one of its programs: `sales_support_answers/training` → `program_answers/@<program id>/sales_support/training`), keeping each answer's original source, author, time, evidence and protection, including protection a parent group gives it and a whole emptied group. Paths use the read_page_authority notation (keyed items as @&lt;stable id&gt;, which must exist). Never replaces a target with its own attribution (also an explicit clear or an emptied group) or a different value, and leaves a target that already has the same answer, and its attribution, untouched. The source stays in place. Refused while an unsaved draft or a pending owner review changes the affected fields. Requires base_revision from read_page_authority and a reason; send dry_run: true first. Returns a receipt per move (relocated, already_present, protected_target, conflicting_target, missing_source) without values or identities. Owner-organization site administrators only.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `page_id` | path | string | yes |  |
+| `base_revision` | body | string | yes |  |
+| `reason` | body | string | yes |  |
+| `moves` | body | object[] | yes |  |
+| `dry_run` | body | boolean | no |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
 ### `list_pages`
 
 `GET /api/v1/sites/{siteId}/pages`
