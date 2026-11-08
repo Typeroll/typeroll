@@ -105,6 +105,8 @@ choose their own template. `list_page_templates`, `read_page_template`,
 agents. Block tools address templates with `target: { kind: "template", id }`.
 
 Template bindings use `{{page.title}}`, `{{page.excerpt}}` and other Page fields.
+Every Page has a built-in `excerpt`; a type that defines its own `excerpt` field
+stores it there instead (see [Page excerpt](../pages/#page-excerpt)).
 Inside a repeater, `{{item.title}}` refers to the current listed Page.
 
 ## Listings and related content

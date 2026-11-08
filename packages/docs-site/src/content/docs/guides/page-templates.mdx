@@ -130,6 +130,15 @@ For REST, send the same definition without `version` to
 `POST /api/v1/sites/{siteId}/page-templates?version=main`. You may supply `blocks`
 instead of `starter`, but not both. Retain the returned template ID.
 
+The template ID is what Content types and Pages refer to. It has 1–64 lowercase
+letters `a`–`z`, digits, `_` or `-` and starts with a letter or digit. You do not
+have to pick one: send a display name such as `"name": "Artikel"` or
+`"name": "Kök & bad"` and Typeroll derives the ID (`artikel`, `kok-bad`),
+transliterating letters such as å, ä, ö and ø, and appends `-2`, `-3`… when the ID
+is taken. The name then becomes the `label` unless you send one. A `name` that
+already is a valid ID, or an explicit `"id"`, is used exactly; creating a template
+with an ID that already exists returns `409`.
+
 Set an existing Content type's default with `update_content_type`:
 
 ```json

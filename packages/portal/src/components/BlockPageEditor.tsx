@@ -1744,6 +1744,13 @@ function MetaPanel({
         <input id="block-breadcrumb-label" style={textInput} maxLength={200} value={draft.breadcrumb_label ?? ''} onChange={(e) => onChange('breadcrumb_label', e.target.value)} placeholder={draft.title || 'Uses the page title'} />
       </div>
 
+      {!contentType?.fields.some(field => field.name === 'excerpt') && (
+        <div style={fieldGroup}>
+          <label htmlFor="block-excerpt" style={fieldLabel}>Excerpt</label>
+          <textarea id="block-excerpt" style={{ ...textInput, minHeight: 64, resize: 'vertical' }} maxLength={1000} value={draft.excerpt ?? ''} onChange={(e) => onChange('excerpt', e.target.value)} placeholder="Short summary for templates and listings" />
+        </div>
+      )}
+
       <div style={fieldGroup}>
         <label htmlFor="block-seo-title" style={fieldLabel}>SEO title</label>
         <input id="block-seo-title"

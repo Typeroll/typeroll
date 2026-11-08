@@ -1,5 +1,5 @@
 import type { ContentType, FieldDefinition, Page } from '@typeroll/shared';
-import { DEFAULT_CONTENT_TYPE, contentPagePath, contentTypeAllowsTemplate, pageHeadingError } from '@typeroll/shared';
+import { DEFAULT_CONTENT_TYPE, PAGE_EXCERPT_MAX_LENGTH, contentPagePath, contentTypeAllowsTemplate, pageHeadingError } from '@typeroll/shared';
 import { vstore } from './version-store';
 
 export async function pageContentType(ctx: { orgId: string; siteId: string; versionId: string }, page: Pick<Page, 'content_type'>): Promise<ContentType | null> {
@@ -46,14 +46,28 @@ function validateFieldValues(definitions: FieldDefinition[], incoming: unknown, 
   return null;
 }
 
+/**
+ * A Page's excerpt lives in one place. When the content type defines its own
+ * `excerpt` field, a top-level `excerpt` write is stored in that field (an
+ * explicit `fields.excerpt` in the same write wins); otherwise it stays the
+ * built-in `Page.excerpt`.
+ */
+export function routePageExcerpt<T extends Record<string, unknown>>(type: ContentType, input: T): T {
+  if (!Object.hasOwn(input, 'excerpt') || !type.fields.some(field => field.name === 'excerpt')) return input;
+  const { excerpt, ...rest } = input;
+  const own = rest.fields && typeof rest.fields === 'object' && !Array.isArray(rest.fields) ? rest.fields as Record<string, unknown> : {};
+  return { ...rest, fields: Object.hasOwn(own, 'excerpt') ? own : { ...own, excerpt } } as unknown as T;
+}
+
 export async function pageAddress(ctx: { orgId: string; siteId: string; versionId: string }, page: Page): Promise<string | null> {
   const type = await pageContentType(ctx, page);
   return type ? contentPagePath(page, type) : null;
 }
 
 /** Reused at creation, draft writes, commit and structural type changes. */
-export async function validatePagePresentation(ctx: { orgId: string; siteId: string; versionId: string }, type: ContentType, input: { breadcrumb_label?: unknown; noindex?: unknown; nofollow?: unknown; template?: unknown; sort_order?: unknown; blocks?: Page['blocks']; content_mode?: string; html_content?: string }): Promise<string | null> {
+export async function validatePagePresentation(ctx: { orgId: string; siteId: string; versionId: string }, type: ContentType, input: { breadcrumb_label?: unknown; excerpt?: unknown; noindex?: unknown; nofollow?: unknown; template?: unknown; sort_order?: unknown; blocks?: Page['blocks']; content_mode?: string; html_content?: string }): Promise<string | null> {
   if (input.breadcrumb_label != null && (typeof input.breadcrumb_label !== 'string' || input.breadcrumb_label.length > 200)) return 'breadcrumb_label must be text up to 200 characters, or null';
+  if (input.excerpt != null && (typeof input.excerpt !== 'string' || input.excerpt.length > PAGE_EXCERPT_MAX_LENGTH)) return `excerpt must be plain text up to ${PAGE_EXCERPT_MAX_LENGTH} characters, or null`;
   for (const key of ['noindex', 'nofollow'] as const) if (input[key] != null && typeof input[key] !== 'boolean') return `${key} must be boolean`;
   if (input.sort_order != null && (typeof input.sort_order !== 'number' || !Number.isFinite(input.sort_order))) return 'Page order must be a finite number';
   if (input.template != null && typeof input.template !== 'string') return 'Template must be an ID, or null to use the content type default';

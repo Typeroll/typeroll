@@ -13,6 +13,12 @@ export const navigationMenu: BlockType = {
     pixels('close_size_px', 'Close icon size (px)', 16, 64),
     { name: 'panel_padding', type: 'select', label: 'Mobile panel inset', options: ['auto', 'none'], default: 'auto' },
     { name: 'background', type: 'color', label: 'Panel background', default: '#ffffff' },
+    // Render version 16: a visible label beside the menu symbol, the
+    // button's colour and where it sits (precedent navigation_form.show_labels).
+    { name: 'show_toggle_label', type: 'boolean', label: 'Show a label beside the menu symbol', default: false, min_render_version: 16 },
+    { name: 'toggle_label', type: 'text', label: 'Menu button label', default: 'Menu', ui_text: 'menu', min_render_version: 16 },
+    { name: 'toggle_align', type: 'select', label: 'Menu button position', options: ['start', 'center', 'end'], default: 'start', min_render_version: 16 },
+    { name: 'toggle_color', type: 'color', label: 'Menu button colour', min_render_version: 16 },
   ],
   template: `<nav data-block="navigation_menu" data-collapse="{{collapse_below}}" data-mobile-override="{{menu_mobile_override}}" data-panel-padding="{{panel_padding}}" aria-label="{{aria_label}}" style="--menu-background:{{background}}"><button type="button" class="block-menu-open" aria-label="{{menu_label}}" aria-expanded="false"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button><div class="block-menu-content">{{slot:0}}{{children}}</div><div class="block-menu-mobile">{{slot:1}}</div><dialog class="block-menu-dialog" aria-label="{{aria_label}}"><button type="button" class="block-menu-close" aria-label="{{close_label}}"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 5 14 14M19 5 5 19"/></svg></button><div class="block-menu-scroll"></div></dialog></nav>`,
   styles: `
@@ -92,6 +98,36 @@ window.TyperollBlocks.register('core/navigation_menu', el => {
   origin:'core', created_at:'1970-01-01T00:00:00Z',
 };
 
+/**
+ * Render version 16: the menu button can show a visible label after its
+ * symbol, take its own colour and sit at the start, centre or end of the
+ * block while the menu is collapsed. Parts name the button, the close
+ * button, the panel and the content.
+ */
+const NAVIGATION_MENU_V16_TEMPLATE = navigationMenu.template!
+  .replace(' data-panel-padding="{{panel_padding}}"', ' data-panel-padding="{{panel_padding}}" data-toggle-align="{{toggle_align}}"')
+  .replace('style="--menu-background:{{background}}"', 'style="--menu-background:{{background}};--menu-toggle-color:{{toggle_color}}"')
+  .replace('<path d="M3 6h18M3 12h18M3 18h18"/></svg></button>', '<path d="M3 6h18M3 12h18M3 18h18"/></svg>{{#show_toggle_label}}<span class="block-menu-open-label">{{toggle_label}}</span>{{/show_toggle_label}}</button>');
+const NAVIGATION_MENU_V16_CSS = `${navigationMenu.styles}
+[data-block="navigation_menu"] > .block-menu-open { color:var(--menu-toggle-color,inherit); }
+[data-block="navigation_menu"] > .block-menu-open:has(> .block-menu-open-label) { gap:.5em; padding-inline:.25em; font-size:inherit; }
+${['576','768','769','1024'].map(width => `@media(max-width:${Number(width)-1}px) {
+[data-block="navigation_menu"][data-collapse="${width}"][data-enhanced="true"]:is([data-toggle-align="center"],[data-toggle-align="end"]) > .block-menu-open { display:flex; inline-size:fit-content; }
+}`).join('\n')}
+[data-block="navigation_menu"][data-toggle-align="center"] > .block-menu-open { margin-inline:auto; }
+[data-block="navigation_menu"][data-toggle-align="end"] > .block-menu-open { margin-inline-start:auto; }
+`;
+
+navigationMenu.parts = [
+  { name: 'open_button', label: 'Menu button', selector: '> .block-menu-open', target: 'button', min_render_version: 16 },
+  { name: 'close_button', label: 'Close button', selector: '.block-menu-close', target: 'button', background_field: 'background', min_render_version: 16 },
+  { name: 'panel', label: 'Mobile menu panel', selector: '.block-menu-scroll', target: 'container', background_field: 'background', decorative: true, min_render_version: 16 },
+  { name: 'content', label: 'Menu content', selector: '.block-menu-content', target: 'container', decorative: true, min_render_version: 16 },
+];
+navigationMenu.render_versions = [
+  { from: 16, template: NAVIGATION_MENU_V16_TEMPLATE, styles: NAVIGATION_MENU_V16_CSS },
+];
+
 const NAVIGATION_LIST_TEMPLATE = `<ul data-block="navigation_links" data-font="{{font}}" data-density="{{density}}" style="--direction:{{direction}};--link_color:{{color}};--font_weight:{{font_weight}}">{{{navigation_links_html}}}</ul>`;
 
 /**
@@ -141,6 +177,8 @@ export const navigationLinks: BlockType = {
     { name:'submenus', type:'select', label:'Submenus', options:['auto','dropdown','accordion','expanded','none'], option_labels:['Automatic (dropdown in a row, accordion in a column)','Dropdown','Accordion','Always shown','Hidden'], default:'auto', min_render_version:15 },
     { name:'links', type:'array', label:'Links', fields:[{ name:'label', type:'text', label:'Label', required:true },{ name:'href', type:'url', label:'Link', required:true },{ name:'icon', type:'icon', label:'Icon (optional)' },{ name:'link_rel', type:'text', label:'Link relationship (e.g. nofollow sponsored)' }] },
     { name:'direction', type:'select', label:'Direction', options:['row','column'], default:'column', responsive:true },
+    // Render version 16: where a row of links sits (precedent container.align_main).
+    { name:'justify', type:'select', label:'Row alignment', options:['start','center','end','space-between'], default:'start', responsive:true, min_render_version:16 },
     { name:'font', type:'select',label:'Font',options:['inherit','body','heading'],default:'inherit' },
     pixels('icon_size_px','Link icon size (px)',8,96),pixels('icon_gap_px','Icon gap (px)',0,80),
     { name:'color', type:'color', label:'Link color' },
@@ -320,9 +358,15 @@ window.TyperollBlocks.register('core/navigation_links', el => {
 });
 `;
 
+/** Version 16: a row of links can sit at the start, centre or end, or spread out (`justify`). */
+const NAVIGATION_LINKS_V16_TEMPLATE = LABELLED_NAVIGATION_TEMPLATE.replaceAll(';--font_weight:{{font_weight}}"', ';--font_weight:{{font_weight}};--justify:{{justify}}"');
+const NAVIGATION_LINKS_V16_CSS = `${NAVIGATION_LINKS_V15_CSS}
+[data-block="navigation_links"], [data-block="navigation_links"] > .block-nav-list { justify-content:var(--justify,normal); }`;
+
 navigationLinks.render_versions = [
   { from: 11, styles: NAVIGATION_LINKS_V11_CSS },
   { from: 13, template: LABELLED_NAVIGATION_TEMPLATE, styles: NAVIGATION_LINKS_V13_CSS },
   { from: 14, template: LABELLED_NAVIGATION_TEMPLATE, styles: NAVIGATION_LINKS_V14_CSS },
   { from: 15, template: LABELLED_NAVIGATION_TEMPLATE, styles: NAVIGATION_LINKS_V15_CSS },
+  { from: 16, template: NAVIGATION_LINKS_V16_TEMPLATE, styles: NAVIGATION_LINKS_V16_CSS },
 ];

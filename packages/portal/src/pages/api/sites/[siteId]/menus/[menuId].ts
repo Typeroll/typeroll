@@ -1,13 +1,14 @@
 // GET    /api/sites/{siteId}/menus/{menuId}
 // PUT    /api/sites/{siteId}/menus/{menuId}   — replace the whole menu; send
 //        `expected_updated_at` (the updated_at you loaded) to refuse a save
-//        over someone else's
+//        over someone else's, and `take_locations: true` to move a location
+//        another menu fills to this one (the response lists `moved_locations`)
 // DELETE /api/sites/{siteId}/menus/{menuId}
 
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, json, requirePermission } from '../../../../../lib/access';
 import { vstore } from '../../../../../lib/version-store';
-import { MenuSaveError, removeMenu, replaceMenu } from '../../../../../lib/menu-write';
+import { MenuSaveError, removeMenu, replaceMenuMovingLocations, takeLocationsFlag } from '../../../../../lib/menu-write';
 import { pathParam } from '../../../../../lib/path-param';
 
 function failure(error: unknown): Response {
@@ -39,9 +40,9 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   const { expected_updated_at: expected, ...menu } = body;
   if (expected !== undefined && typeof expected !== 'string') return json({ error: 'expected_updated_at must be a string' }, 400);
   try {
-    const saved = await replaceMenu({ orgId: owner_org_id, siteId: site.id, versionId }, menuId, menu,
-      { updatedBy: session.email ?? 'unknown', expectedUpdatedAt: expected });
-    return json({ menu: saved });
+    const saved = await replaceMenuMovingLocations({ orgId: owner_org_id, siteId: site.id, versionId }, menuId, menu,
+      { updatedBy: session.email ?? 'unknown', expectedUpdatedAt: expected, takeLocations: takeLocationsFlag(menu) });
+    return json(saved);
   } catch (error) { return failure(error); }
 };
 

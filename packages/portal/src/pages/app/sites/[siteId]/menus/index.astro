@@ -16,6 +16,10 @@ const menus = (await vstore.menus(orgId, siteId, versionId))
 const taken = new Set(menus.flatMap((menu) => menu.locations ?? []));
 const freeLocations = MENU_LOCATIONS.filter((location) => !taken.has(location));
 const locationLabels: Record<string, string> = { primary: 'Primary', footer: 'Footer', mobile: 'Mobile' };
+// Locations another menu fills can be chosen too: the new menu takes them
+// over (take_locations) and that menu keeps its items.
+const heldLocations = menus.flatMap((menu) => (menu.locations ?? []).map((location) => ({ location, menuName: menu.name })))
+  .sort((a, b) => a.location.localeCompare(b.location));
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 ---
 <AppLayout title={`Menus — ${site.name}`} siteId={siteId}>
@@ -32,6 +36,9 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
       <select name="location" aria-label="Location (optional)">
         <option value="">No location yet</option>
         {freeLocations.map((location) => <option value={location}>{locationLabels[location]} location</option>)}
+        {heldLocations.length > 0 && <optgroup label="Used by another menu">
+          {heldLocations.map(({ location, menuName }) => <option value={`move:${location}`}>{`${locationLabels[location] ?? location} — used by ${menuName}; will move`}</option>)}
+        </optgroup>}
       </select>
       <button type="submit" class="btn">+ New menu</button>
     </form>}

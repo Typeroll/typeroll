@@ -19,7 +19,9 @@
 //
 // The browser reads the files from the site's own pages on another host, so
 // the public bucket gets one CORS rule per site for GET and HEAD from that
-// site's addresses. The rule is merged into the bucket's existing rules,
+// site's addresses. Portal previews never fetch them (render-preview:
+// previewLiveContent): they render live content as saved and are sandboxed
+// into an opaque origin, so the portal is not one of those addresses. The rule is merged into the bucket's existing rules,
 // refreshed when the site's addresses change (checked before every write)
 // and when the organization's media storage is prepared or connected.
 
@@ -178,8 +180,9 @@ function origin(raw: string | null | undefined): string | null {
 
 /**
  * The addresses the site's pages are served from: its verified publication
- * origins, its website hosts (current and switching), the deploy addresses
- * of its versions and the portal, whose previews show the same pages.
+ * origins, its website hosts (current and switching) and the deploy
+ * addresses of its versions. Not the portal, and never `null`: portal
+ * previews render live content themselves and fetch no live files.
  */
 export async function liveSiteOrigins(orgId: string, siteId: string): Promise<string[]> {
   const store = getStore();
@@ -191,7 +194,6 @@ export async function liveSiteOrigins(orgId: string, siteId: string): Promise<st
     ...verified, site?.domain, site?.staging_url, site?.hosting_config?.fallback_subdomain,
     domains.desired.website_host, domains.active?.website_host, domains.published?.hosts.website_host,
     ...versions.filter((version) => version.id !== MAIN_VERSION_ID).map((version) => version.deploy_url),
-    process.env.PORTAL_PUBLIC_URL,
   ];
   return [...new Set(candidates.map(origin).filter((value): value is string => Boolean(value)))].sort();
 }

@@ -47,6 +47,44 @@ async function call(route: string, method: Method, params: Record<string, string
 }
 
 describe('menu session routes', () => {
+  it('moves a taken location with take_locations, as the v1 routes do', async () => {
+    await call('index', 'POST', {}, { id: 'primary', name: 'Main menu', locations: ['primary'], items: [{ id: 'home', type: 'page', page_id: 'home' }] });
+    await call('index', 'POST', {}, { id: 'footer', name: 'Footer menu', locations: ['footer'] });
+    expect((await call('index', 'POST', {}, { name: 'Huvudmeny', locations: ['primary'] })).status).toBe(409);
+    expect((await call('index', 'POST', {}, { name: 'Huvudmeny', locations: ['primary'], take_locations: 1 })).status).toBe(400);
+    const created = await call('index', 'POST', {}, { name: 'Huvudmeny', locations: ['primary'], take_locations: true });
+    expect(created.status).toBe(201);
+    const body = await created.json() as { menu: Menu; moved_locations: unknown };
+    expect(body.menu).toMatchObject({ id: 'huvudmeny', locations: ['primary'] });
+    expect(body.moved_locations).toEqual([{ location: 'primary', from_menu_id: 'primary' }]);
+    const starter = (await (await call('[menuId]', 'GET', { menuId: 'primary' })).json() as { menu: Menu }).menu;
+    expect(starter).toMatchObject({ locations: [], items: [{ id: 'home' }] });
+
+    const replaced = await call('[menuId]', 'PUT', { menuId: 'huvudmeny' }, {
+      name: 'Huvudmeny', locations: ['primary', 'footer'], items: [], take_locations: true, expected_updated_at: body.menu.updated_at,
+    });
+    expect(replaced.status).toBe(200);
+    expect((await replaced.json() as { moved_locations: unknown }).moved_locations).toEqual([{ location: 'footer', from_menu_id: 'footer' }]);
+
+    const form = new FormData();
+    form.set('name', 'Mobil');
+    form.set('location', 'primary');
+    expect((await call('create', 'POST', {}, undefined, form)).status).toBe(409);
+    form.set('take_locations', 'true');
+    expect((await call('create', 'POST', {}, undefined, form)).headers.get('location')).toBe(`/app/sites/${SITE}/menus/mobil`);
+    expect((await (await call('[menuId]', 'GET', { menuId: 'huvudmeny' })).json() as { menu: Menu }).menu.locations).toEqual(['footer']);
+  });
+
+  it('takes over a location the New menu form offers as move:<location>', async () => {
+    await call('index', 'POST', {}, { id: 'primary', name: 'Main menu', locations: ['primary'], items: [{ id: 'home', type: 'page', page_id: 'home' }] });
+    const form = new FormData();
+    form.set('name', 'Huvudmeny');
+    form.set('location', 'move:primary');
+    expect((await call('create', 'POST', {}, undefined, form)).headers.get('location')).toBe(`/app/sites/${SITE}/menus/huvudmeny`);
+    expect((await (await call('[menuId]', 'GET', { menuId: 'huvudmeny' })).json() as { menu: Menu }).menu.locations).toEqual(['primary']);
+    expect((await (await call('[menuId]', 'GET', { menuId: 'primary' })).json() as { menu: Menu }).menu).toMatchObject({ locations: [], items: [{ id: 'home' }] });
+  });
+
   it('creates, saves, restores and deletes in the owner organization', async () => {
     const created = await call('index', 'POST', {}, { name: 'Main menu', locations: ['primary'] });
     expect(created.status).toBe(201);

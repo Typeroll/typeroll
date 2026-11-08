@@ -15,7 +15,7 @@ const MENU_MODEL =
   'Item types: `page` (page_id; links by page id, so the label and address follow renames and moves, and an unpublished or deleted page drops out with a warning; `label` overrides the title), ' +
   '`url` (href and label; an external address, a path or an #anchor), `children` (page_id; lists that page\'s published child pages automatically: with a label they form a submenu under it, without one they sit in place) ' +
   'and `heading` (label only, no link; a column title in a wide submenu). Any item may set `description` (a short line in submenus), `icon` and `link_rel`. Items with `children` get a submenu. ' +
-  'Locations: `primary` (header), `footer` and `mobile`, or another short lowercase name; one menu per location per site. ' +
+  'Locations: `primary` (header), `footer` and `mobile`, or another short lowercase name; one menu per location per site. A site can have any number of menus: a menu without locations is shown by its id (menu: "<id>"). To put your own menu in a location another menu fills (a new site\'s `primary` and `footer` menus fill those two), save it with take_locations: true: the location moves to your menu and the other menu keeps its items, so nothing has to be deleted first. ' +
   '`auto_add_pages: true` appends new top-level published pages (other than the home page) to the end automatically. ' +
   'To show a menu, use a `core/navigation_links` block with data { source: "menu", menu: "location:primary" } (or a menu id) and optionally `submenus`: auto (dropdown in a row, accordion in a column and the mobile drawer), dropdown, accordion, expanded or none. It needs render version 15 (read_site_settings → render.version; raise it with tr-upgrade-rendering).';
 
@@ -59,7 +59,7 @@ function menuFailure(error: unknown): ToolResult {
         text: JSON.stringify({
           error: error.message,
           status: 409,
-          hint: 'Either someone saved the menu after you read it (read_menu again and reapply your change with the new updated_at), or a location you set is already filled by another menu (remove it there first).',
+          hint: 'Either someone saved the menu after you read it (read_menu again and reapply your change with the new updated_at), or a location you set is already filled by another menu: send take_locations: true to move the location to this menu (the other menu keeps its items).',
         }, null, 2),
       }],
       isError: true,
@@ -98,11 +98,12 @@ function newItemId(item: Record<string, unknown>, taken: Set<string>): string {
   return id;
 }
 
-const menuBody = (menu: { name?: string; locations?: string[]; auto_add_pages?: boolean; items: unknown[] }) => ({
+const menuBody = (menu: { name?: string; locations?: string[]; auto_add_pages?: boolean; items: unknown[]; take_locations?: boolean }) => ({
   name: menu.name,
   ...(menu.locations !== undefined ? { locations: menu.locations } : {}),
   ...(menu.auto_add_pages !== undefined ? { auto_add_pages: menu.auto_add_pages } : {}),
   items: menu.items,
+  ...(menu.take_locations ? { take_locations: true } : {}),
 });
 
 export const menuTools: ToolDef[] = [
@@ -110,7 +111,7 @@ export const menuTools: ToolDef[] = [
     name: 'list_menus',
     description:
       'List the site\'s menus (WordPress-style menus with locations): each with its id, name, locations, auto_add_pages, items and updated_at. ' +
-      'Check this before building a header or footer: a new site starts with a `primary` menu (location primary, Home, auto_add_pages on) and a `footer` menu. ' + MENU_MODEL,
+      'Check this before building a header or footer: a new site starts with a `primary` menu (location primary, Home, auto_add_pages on) and a `footer` menu. Edit those, or create your own menus beside them with update_menu (take_locations: true gives yours their location). ' + MENU_MODEL,
     inputSchema: { version: versionParam },
     handler: async (args, { client, siteId }) => {
       try { return ok(await client.get(siteId, 'menus', v(args.version))); } catch (error) { return fail(error); }
@@ -129,6 +130,7 @@ export const menuTools: ToolDef[] = [
     name: 'update_menu',
     description:
       'Create a menu or replace a whole menu (name, locations, auto_add_pages and the full item tree). ' +
+      'Your own menu in the header of a new site, without deleting its starter menu: { name: "Huvudmeny", locations: ["primary"], take_locations: true, items: [...] } creates it and moves the primary location to it. ' +
       'To change an existing menu: read_menu, edit the tree, and send it back with expected_updated_at set to the updated_at you read; a save by someone else in between returns 409. Without menu_id, or with a menu_id that does not exist yet, the menu is created. ' +
       'Every save is validated as a whole and keeps the previous menu as a revision; an invalid menu returns `errors` with the path of each problem (for example items[0].href). ' +
       'Link pages with type "page" and their page_id (from list_pages), not with url items, so renames follow; use a "children" item for an automatic submenu of a page\'s child pages. ' +
@@ -137,13 +139,14 @@ export const menuTools: ToolDef[] = [
       menu_id: z.string().optional().describe('The menu to replace or create. Omit to create a menu whose id is derived from the name.'),
       name: z.string().describe('Shown in the portal, e.g. "Main menu".'),
       locations: z.array(z.string()).optional().describe('primary, footer, mobile or another short lowercase name. Omit to keep none; [] clears them.'),
+      take_locations: z.boolean().optional().describe('Move a listed location that another menu fills to this menu instead of failing with 409. The other menu keeps its items and other locations (its change is kept as a revision); the result lists moved_locations: [{ location, from_menu_id }].'),
       auto_add_pages: z.boolean().optional().describe('Append new top-level published pages automatically.'),
       items: z.array(itemShape).describe('The whole item tree, at most 3 levels deep and 200 items.'),
       expected_updated_at: z.string().optional().describe('The updated_at from read_menu or list_menus. Required to replace an existing menu.'),
       version: versionParam,
     },
     handler: async (args, { client, siteId }) => {
-      const body = menuBody(args as { name: string; locations?: string[]; auto_add_pages?: boolean; items: unknown[] });
+      const body = menuBody(args as { name: string; locations?: string[]; auto_add_pages?: boolean; items: unknown[]; take_locations?: boolean });
       try {
         if (args.menu_id && args.expected_updated_at !== undefined) {
           return ok(await client.put(siteId, `menus/${encodeURIComponent(args.menu_id)}`, { ...body, expected_updated_at: args.expected_updated_at }, v(args.version)));

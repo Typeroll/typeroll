@@ -18,7 +18,7 @@
 // See docs/plans/forms-funnels.md.
 
 import type { BlockPart } from './block-parts.js';
-import type { BlockType } from './types.js';
+import type { BlockType, FieldDefinition } from './types.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00.000Z';
 
@@ -194,6 +194,25 @@ const GROUP_CSS = `
 .form-choice input { width: 1.05rem; height: 1.05rem; accent-color: var(--form-accent-color, var(--color-primary, #1a1a2e)); }
 `.trim();
 
+/**
+ * Render version 16: a group's answers can sit in a row and wrap (precedent
+ * navigation_links.direction). The help and error lines keep their own row.
+ */
+const DIRECTION_FIELD: FieldDefinition = { name: 'direction', type: 'select', label: 'Answers', options: ['column', 'row'], option_labels: ['One per line', 'Side by side'], default: 'column', min_render_version: 16 };
+const groupDirectionCss = (name: string) => `[data-block="${name}"][data-direction="row"] { flex-flow: row wrap; column-gap: 1.25rem; }
+[data-block="${name}"][data-direction="row"] > :is(.form-field-help, .form-field-error) { flex-basis: 100%; }`;
+function withDirection(block: BlockType): BlockType {
+  return {
+    ...block,
+    schema: [...block.schema, DIRECTION_FIELD],
+    render_versions: [{
+      from: 16,
+      template: block.template!.replace(' data-field="{{name}}"', ' data-field="{{name}}" data-direction="{{direction}}"'),
+      styles: `${block.styles}\n${groupDirectionCss(block.name)}`,
+    }],
+  };
+}
+
 const formRadioGroup = choicesBlock({
   id: 'form/radio_group', name: 'form_radio_group', label: 'Radio group', icon: 'circle-check', markup: 'radio',
   template: `<fieldset data-block="form_radio_group" class="form-field" data-field="{{name}}">
@@ -206,6 +225,7 @@ const formRadioGroup = choicesBlock({
 [data-block="form_radio_group"] legend { font-weight: 600; font-size: 0.95rem; padding: 0 0 0.35rem; }
 ${GROUP_CSS}`,
 });
+const formRadioGroupV16 = withDirection(formRadioGroup);
 
 const formCheckboxGroup = choicesBlock({
   id: 'form/checkbox_group', name: 'form_checkbox_group', label: 'Checkbox group', icon: 'check', markup: 'checkbox',
@@ -218,6 +238,7 @@ const formCheckboxGroup = choicesBlock({
   styles: `[data-block="form_checkbox_group"] { border: 0; padding: 0; margin: 0 0 1.1rem; }
 [data-block="form_checkbox_group"] legend { font-weight: 600; font-size: 0.95rem; padding: 0 0 0.35rem; }`,
 });
+const formCheckboxGroupV16 = withDirection(formCheckboxGroup);
 
 const formToggle: BlockType = {
   id: 'form/toggle',
@@ -328,6 +349,11 @@ const formHeading: BlockType = {
   <h3>{{text}}</h3>
   <p>{{description}}</p>
 </div>`,
+  // Render version 16: the heading and intro line carry classes.
+  render_versions: [{ from: 16, template: `<div data-block="form_heading" class="form-section-heading">
+  <h3 class="form-section-title">{{text}}</h3>
+  <p class="form-section-description">{{description}}</p>
+</div>` }],
   styles: `
 [data-block="form_heading"] h3 { margin: 1.4rem 0 0.2rem; font-size: 1.15rem; }
 [data-block="form_heading"] p { margin: 0 0 0.8rem; color: var(--color-text-light, #6b7280); }
@@ -419,6 +445,13 @@ const formHidden: BlockType = {
   created_at: ISO_EPOCH,
 };
 
+/** form/boolean's visitor-facing texts: field, editor label, English default (also the formMessage key's English text). */
+export const BOOLEAN_LABELS = [
+  ['yes_label', 'Yes answer', 'Yes', 'yes'],
+  ['no_label', 'No answer', 'No', 'no'],
+  ['clear_label', 'Clear answer button', 'Clear answer', 'clear_answer'],
+] as const;
+
 const formBoolean: BlockType = {
   id: 'form/boolean', name: 'form_boolean', label: 'Yes / No answer', icon: 'circle-check', category: 'content', container: false,
   parts: [
@@ -426,6 +459,7 @@ const formBoolean: BlockType = {
     { name: 'choice', label: 'Answer row', selector: 'label', target: 'container' },
     { name: 'choice_mark', label: 'Answer mark', selector: 'label > input', target: 'container', decorative: true },
     { name: 'clear_button', label: 'Clear answer button', selector: 'button', target: 'button' },
+    { name: 'choice_label', label: 'Answer text', selector: '.form-boolean-text', target: 'text', min_render_version: 16 },
     HELP_PART,
     ERROR_PART,
   ],
@@ -434,6 +468,9 @@ const formBoolean: BlockType = {
     { name: 'label', type: 'text', label: 'Question', required: true },
     { name: 'required', type: 'boolean', label: 'Required', default: false },
     { name: 'help', type: 'text', label: 'Help text' },
+    // Render version 16. Left at the English default, a form speaks the
+    // site's language (formMessage, see render-form.ts).
+    ...BOOLEAN_LABELS.map(([name, label, text]): FieldDefinition => ({ name, type: 'text', label, default: text, min_render_version: 16 })),
   ],
   template: `<fieldset data-block="form_boolean" class="form-field" data-field="{{name}}">
     <legend>{{label}}</legend>
@@ -443,8 +480,45 @@ const formBoolean: BlockType = {
     <p class="form-field-help">{{help}}</p><p class="form-field-error" data-error-for="{{name}}" hidden></p>
   </fieldset>`,
   styles: `[data-block="form_boolean"]{border:0;padding:0}[data-block="form_boolean"] legend{font-weight:600}[data-block="form_boolean"] label{display:flex;gap:.65rem;align-items:center;min-height:44px}[data-block="form_boolean"] button{font:inherit;min-height:44px;align-self:start}`,
+  // Render version 16: the answers and the button carry classes and their
+  // texts come from the block (localized by the form, see render-form.ts).
+  render_versions: [{ from: 16, template: `<fieldset data-block="form_boolean" class="form-field" data-field="{{name}}">
+    <legend>{{label}}</legend>
+    <label class="form-boolean-choice"><input type="radio" name="{{name}}" value="true" data-required="{{required}}" /> <span class="form-boolean-text">{{yes_label}}</span></label>
+    <label class="form-boolean-choice"><input type="radio" name="{{name}}" value="false" data-required="{{required}}" /> <span class="form-boolean-text">{{no_label}}</span></label>
+    <button type="button" class="form-boolean-clear" data-clear-answer="{{name}}">{{clear_label}}</button>
+    <p class="form-field-help">{{help}}</p><p class="form-field-error" data-error-for="{{name}}" hidden></p>
+  </fieldset>` }],
   origin: 'core', created_at: ISO_EPOCH,
 };
+
+/**
+ * Render version 16: a field takes the full row, half, a third or two thirds
+ * of it, so short fields (first and last name) sit side by side. Fields that
+ * share a row wrap below each other where the form is too narrow for them,
+ * and a field alone in its row fills it. The layout rules are the form
+ * shell's (formShellCss in render-form.ts).
+ */
+const WIDTH_FIELD: FieldDefinition = {
+  name: 'width', type: 'select', label: 'Width', options: ['full', 'half', 'third', 'two-thirds'],
+  option_labels: ['Full row', 'Half', 'One third', 'Two thirds'], default: 'full', min_render_version: 16,
+  help: 'Fields next to each other share a row when it fits; on narrow screens each takes the full row.',
+};
+function withWidth(block: BlockType): BlockType {
+  if (!block.template?.includes('class="form-field')) return block;
+  const v16 = blockV16Template(block);
+  return {
+    ...block,
+    schema: [...block.schema, WIDTH_FIELD],
+    render_versions: [
+      ...(block.render_versions ?? []).filter(entry => entry.from !== 16),
+      { ...(block.render_versions ?? []).find(entry => entry.from === 16), from: 16, template: v16.replace(' data-field="{{name}}"', ' data-field="{{name}}" data-width="{{width}}"') },
+    ],
+  };
+}
+function blockV16Template(block: BlockType): string {
+  return block.render_versions?.find(entry => entry.from === 16)?.template ?? block.template!;
+}
 
 export const FORM_BLOCK_TYPES: BlockType[] = [
   formText,
@@ -454,9 +528,9 @@ export const FORM_BLOCK_TYPES: BlockType[] = [
   formNumber,
   formTextarea,
   formSelect,
-  formRadioGroup,
+  formRadioGroupV16,
   formBoolean,
-  formCheckboxGroup,
+  formCheckboxGroupV16,
   formToggle,
   formSlider,
   formDate,
@@ -472,7 +546,9 @@ export const FORM_BLOCK_TYPES: BlockType[] = [
     : block)
   .map((block): BlockType => block.schema.some(field => field.name === 'name') && block.id !== 'form/hidden'
     ? { ...block, schema: [...block.schema, { name: 'required_message', type: 'text', label: 'Required field message', help: 'Optional. Uses the site language default when empty.' }] }
-    : block);
+    : block)
+  .map(withWidth);
+
 
 
 /** Complete transitive field stylesheet for forms referenced by core/form. */

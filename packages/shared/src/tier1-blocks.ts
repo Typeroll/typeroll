@@ -14,7 +14,8 @@ import { tabs } from './tabs.js';
 // have no outer section / padding — so they tile cleanly inside repeaters.
 // They render fine standalone too.
 
-import type { BlockType } from './types.js';
+import type { BlockType, FieldDefinition } from './types.js';
+import { blockOutputForVersion } from './render-version.js';
 import { pixels, articleHeadingFields, focalPointFields, postCardImageSizing } from './presentation-fields.js';
 import { backgroundGradientField } from './surface-presentation.js';
 import { navigationForm } from './navigation-form.js';
@@ -22,6 +23,13 @@ import { HERO_VIDEO_RUNTIME, VIDEO_FACADE_RUNTIME } from './block-media.js';
 import { navigationMenu, navigationLinks } from './navigation-menu.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
+
+/** Column gap tokens shared with feature_row (sm 1rem … xl 4rem); `auto` keeps the block's own gap. */
+const GAP_TOKENS: Readonly<Record<string, string>> = { sm: '1rem', md: '1.5rem', lg: '2.5rem', xl: '4rem' };
+const gapTokenCss = (variable: string): Record<string, string> => ({
+  auto: `${variable}:initial;`,
+  ...Object.fromEntries(Object.entries(GAP_TOKENS).map(([token, value]) => [token, `${variable}:${value};`])),
+});
 
 // ─── Layout primitives ───────────────────────────────────────────────────
 
@@ -162,6 +170,8 @@ const container: BlockType = {
     { name: 'background_fit', type: 'select', label: 'Background fit', options: ['cover','contain'], default: 'cover', responsive: true, responsive_css: { cover:'background-size:cover;',contain:'background-size:contain;background-repeat:no-repeat;' } },
     { name: 'background_image', type: 'image', label: 'Background image' },
     { name: 'min_height', type: 'select', label: 'Minimum height', options: ['auto', 'sm', 'md', 'lg', 'screen'], default: 'auto' },
+    { name: 'text_color', type: 'color', label: 'Text color', min_render_version: 16 },
+    { name: 'icon_pairing', type: 'select', label: 'Icon beside content', options: ['auto', 'off'], option_labels: ['Automatic (an icon followed by content sits beside it)', 'Off (every block stacks)'], default: 'auto', min_render_version: 16 },
   ],
   // Convention: every `responsive: true` field is exposed as a CSS var
   // named `--{field-name}` so the @media compiler can override it cleanly.
@@ -352,6 +362,9 @@ const icon: BlockType = {
   icon: 'star',
   category: 'content',
   container: false,
+  parts: [
+    { name: 'link', label: 'Link', selector: '.block-icon-link', target: 'link' },
+  ],
   schema: [
     // The icon is the root: a style sets its size, colour or a surface behind it.
     { name: 'style_id', type: 'style', label: 'Icon style', style_target: 'container', editor_group: 'content' },
@@ -361,6 +374,8 @@ const icon: BlockType = {
     { name: 'color', type: 'color', label: 'Color' },
     { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right'], default: 'left', responsive: true },
     { name: 'link', type: 'url', label: 'Link to (optional)' },
+    { name: 'icon_style', type: 'select', label: 'Icon style', options: ['outline', 'filled', 'circle-bg', 'square-bg'], default: 'outline', min_render_version: 16 },
+    { name: 'background', type: 'color', label: 'Icon background (circle or square style)', min_render_version: 16 },
   ],
   template: `<span data-block="icon" data-icon="{{icon}}" style="--size:{{size}};--align:{{align}};--color:{{color}}"><a href="{{link}}" class="block-icon-link">{{{icon_svg}}}</a></span>`,
   // Version 4: no empty link around the icon, so an icon can sit inside a
@@ -400,6 +415,7 @@ const iconBox: BlockType = {
     { name: 'heading', label: 'Heading', selector: '.block-iconbox-heading', target: 'heading', background_field: 'background' },
     { name: 'text', label: 'Body text', selector: '.block-iconbox-text', target: 'text', background_field: 'background' },
     { name: 'link', label: 'Link', selector: '.block-iconbox-link', target: 'link', color: 'primary', background_field: 'background' },
+    { name: 'body', label: 'Text column', selector: '.block-iconbox-body', target: 'container', decorative: true },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
@@ -428,6 +444,7 @@ const iconBox: BlockType = {
       responsive_css: { 'icon-top': '--layout-dir: column;', 'icon-left': '--layout-dir: row;', 'icon-right': '--layout-dir: row-reverse;' } },
     { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center'], default: 'left', responsive: true,
       responsive_css: { 'left': '--align-text: left; --align-items: flex-start;', 'center': '--align-text: center; --align-items: center;' } },
+    { name: 'vertical_align', type: 'select', label: 'Vertical alignment (icon beside the text)', options: ['top', 'center', 'end'], default: 'top', min_render_version: 16 },
   ],
   template: `<div data-block="icon_box" data-icon-style="{{icon_style}}" data-whole-link="{{whole_card_link}}" data-shadow="{{shadow}}" style="--layout:{{layout}};--align:{{align}};--icon-color:{{icon_color}};--icon-bg:{{icon_bg}};--card-background:{{background}}">
   <div class="block-iconbox-icon" data-icon="{{icon}}">{{{icon_svg}}}</div>
@@ -496,10 +513,13 @@ const hero: BlockType = {
     { name: 'layout', label: 'Text and image columns', selector: '.block-hero-inner', target: 'container', decorative: true },
     { name: 'actions', label: 'Button row', selector: '.block-hero-actions', target: 'container', decorative: true },
     { name: 'overlay', label: 'Image overlay', selector: '.block-hero-overlay', target: 'container', decorative: true },
+    { name: 'body', label: 'Text column', selector: '.block-hero-text', target: 'container', decorative: true },
+    { name: 'media_column', label: 'Image column', selector: '.block-hero-media', target: 'container', decorative: true },
   ],
   schema: [
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
+    { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h1', 'h2'], default: 'h1', min_render_version: 16 },
     { name: 'subheading', type: 'richtext', label: 'Subheading' },
     // Server-rendered button pair. The old `buttons` array relied on a
     // client-side hydration pipeline that never shipped (empty
@@ -511,6 +531,10 @@ const hero: BlockType = {
     { name: 'secondary_label', type: 'text', label: 'Secondary button label' },
     { name: 'secondary_url', type: 'url', label: 'Secondary button link' },
     { name: 'image', type: 'image', label: 'Image' },
+    { name: 'image_alt', type: 'text', label: 'Image alt text', min_render_version: 16 },
+    { name: 'image_max', type: 'select', label: 'Image max width', options: ['sm', 'md', 'lg', 'full'], default: 'full', min_render_version: 16 },
+    { name: 'stack_order', type: 'select', label: 'Stacked order (mobile)', options: ['image-first', 'text-first'], default: 'text-first', min_render_version: 16 },
+    { name: 'gap', type: 'select', label: 'Column gap', options: ['auto', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true, responsive_css: gapTokenCss('--hero-gap'), min_render_version: 16 },
     { name: 'video_url', type: 'url', label: 'Video URL (optional)', media: 'video' },
     { name: 'layout', type: 'select', label: 'Layout',
       options: ['split-left', 'split-right', 'centered', 'full-image'], default: 'centered', responsive: true },
@@ -523,6 +547,7 @@ const hero: BlockType = {
     { name: 'width', type: 'select', label: 'Content width', options: ['narrow', 'normal', 'wide'], default: 'normal', min_render_version: 14 },
     { name: 'overlay_opacity', type: 'number', label: 'Overlay opacity (0-100)', default: 0, min: 0, max: 100 },
     { name: 'background', type: 'color', label: 'Background color' },
+    { name: 'text_color', type: 'color', label: 'Text color', min_render_version: 16 },
   ],
   template: `<section data-block="hero" data-height="{{height}}" data-aspect="{{aspect_ratio}}" style="--hero-fit:{{image_fit}};--hero-align:{{text_vertical}};--hero-justify:{{text_align}};--hero-text-align:{{text_align}};--layout:{{layout}};--bg:{{background}};--overlay:{{overlay_opacity}}%;--bg-image:url({{image}})">
   <div class="block-hero-inner">
@@ -615,11 +640,14 @@ const cta: BlockType = {
     { name: 'primary_button', label: 'Primary button', selector: '.block-btn-primary', target: 'button', color: 'primary', background: 'on_primary' },
     { name: 'secondary_button', label: 'Secondary button', selector: '.block-btn-secondary', target: 'button', color: 'on_primary', background: 'primary', background_field: 'background' },
     { name: 'actions', label: 'Button row', selector: '.block-cta-actions', target: 'container', decorative: true },
+    { name: 'inner', label: 'Content', selector: '.block-cta-inner', target: 'container', decorative: true },
+    { name: 'media', label: 'Image beside the text', selector: '.block-cta-media img', target: 'image', min_render_version: 16 },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'CTA style', style_target: 'container', editor_group: 'content' },
     { name: 'eyebrow', type: 'text', label: 'Eyebrow' },
     { name: 'heading', type: 'text', label: 'Heading' },
+    { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3'], default: 'h2', min_render_version: 16 },
     { name: 'subheading', type: 'richtext', label: 'Subheading' },
     // Server-rendered button pair. The old `buttons` array relied on a
     // client-side hydration pipeline that never shipped (empty
@@ -631,9 +659,16 @@ const cta: BlockType = {
     { name: 'secondary_label', type: 'text', label: 'Secondary button label' },
     { name: 'secondary_url', type: 'url', label: 'Secondary button link' },
     { name: 'background', type: 'color', label: 'Background color' },
+    { name: 'text_color', type: 'color', label: 'Text color', min_render_version: 16 },
     { name: 'background_image', type: 'image', label: 'Background image' },
+    { name: 'image_alt', type: 'text', label: 'Image alt text (image beside the text)', min_render_version: 16 },
+    ...(['x', 'y'] as const).map((axis): FieldDefinition => ({
+      name: `background_focal_${axis}`, label: `Background focal ${axis === 'x' ? 'horizontal' : 'vertical'} position (%)`,
+      type: 'number', min: 0, max: 100, default: 50, css_unit: 'number', min_render_version: 16,
+    })),
     { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center'], default: 'center', responsive: true },
     { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide'], default: 'normal', min_render_version: 14 },
+    // Left and right place the background image beside the text from render version 16.
     { name: 'image_position', type: 'select', label: 'Image position', options: ['none', 'left', 'right', 'background'], default: 'none' },
   ],
   template: `<section data-block="cta" data-image-pos="{{image_position}}" style="--align:{{align}};--bg:{{background}};--bg-image:url({{background_image}})">
@@ -705,6 +740,9 @@ const testimonial: BlockType = {
     { name: 'logo', type: 'image', label: 'Company logo' },
     { name: 'rating', type: 'number', label: 'Rating (0-5)', min: 0, max: 5 },
     { name: 'style', type: 'select', label: 'Style', options: ['card', 'bordered', 'minimal'], default: 'card' },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['center', 'start'], default: 'start', min_render_version: 16 },
+    { ...pixels('avatar_size_px', 'Avatar size (px)', 16, 160), min_render_version: 16 },
+    { name: 'background', type: 'color', label: 'Card background', min_render_version: 16 },
   ],
   template: `<figure data-block="testimonial" data-style="{{style}}">
   <blockquote class="block-testimonial-quote">{{{quote}}}</blockquote>
@@ -776,6 +814,10 @@ const teamMember: BlockType = {
       ] },
     { name: 'link', type: 'url', label: 'Profile link' },
     { name: 'layout', type: 'select', label: 'Layout', options: ['card', 'overlay', 'minimal'], default: 'card' },
+    { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4', 'h5'], default: 'h3', min_render_version: 16 },
+    { name: 'photo_aspect', type: 'select', label: 'Photo aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'square', min_render_version: 16 },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center'], default: 'center', min_render_version: 16 },
+    { name: 'radius', type: 'select', label: 'Photo corner radius', options: ['none', 'md', 'lg', 'xl', 'full'], option_labels: ['None', 'Medium', 'Large', 'Extra large', 'Round'], default: 'md', min_render_version: 16 },
   ],
   template: `<div data-block="team_member" data-layout="{{layout}}">
   <a href="{{link}}" class="block-team-link">
@@ -838,6 +880,7 @@ const pricingPlan: BlockType = {
     { name: 'badge', label: 'Badge', selector: '.block-pricing-badge', target: 'text', color: 'on_primary', background: 'primary' },
     { name: 'name', label: 'Plan name', selector: '.block-pricing-name', target: 'heading' },
     { name: 'price', label: 'Price', selector: '.block-pricing-price', target: 'text' },
+    { name: 'amount', label: 'Amount', selector: '.block-pricing-amount', target: 'text' },
     { name: 'period', label: 'Period', selector: '.block-pricing-period', target: 'text' },
     { name: 'description', label: 'Tagline', selector: '.block-pricing-description', target: 'text' },
     { name: 'features', label: 'Feature list', selector: '.block-pricing-features', target: 'list' },
@@ -860,6 +903,8 @@ const pricingPlan: BlockType = {
     { name: 'cta_href', type: 'url', label: 'Button link' },
     { name: 'highlight', type: 'boolean', label: 'Highlight this plan' },
     { name: 'badge', type: 'text', label: 'Badge (e.g. "Most popular")' },
+    { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4', 'h5'], default: 'h3', min_render_version: 16 },
+    { name: 'background', type: 'color', label: 'Card background', min_render_version: 16 },
   ],
   template: `<div data-block="pricing_plan" data-highlight="{{highlight}}">
   <span class="block-pricing-badge">{{badge}}</span>
@@ -928,6 +973,11 @@ const postCard: BlockType = {
     { name: 'meta', label: 'Date and author', selector: '.block-postcard-meta', target: 'text', background_field: 'background' },
     { name: 'action', label: 'Page action link', selector: '.block-postcard-action', target: 'link', background_field: 'background' },
     { name: 'download', label: 'Download link', selector: '.block-postcard-download', target: 'link', color: 'primary', background_field: 'background' },
+    { name: 'media', label: 'Image frame', selector: '.block-postcard-media', target: 'container', decorative: true },
+    { name: 'body', label: 'Text panel', selector: '.block-postcard-body', target: 'container', decorative: true },
+    { name: 'date', label: 'Date', selector: '.block-postcard-date', target: 'text', background_field: 'background' },
+    { name: 'author', label: 'Author', selector: '.block-postcard-author', target: 'text', background_field: 'background' },
+    { name: 'actions', label: 'Action row', selector: '.block-postcard-actions', target: 'container', decorative: true },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
@@ -1117,6 +1167,7 @@ const logoItem: BlockType = {
     { name: 'alt', type: 'text', label: 'Alt text' },
     { name: 'link', type: 'url', label: 'Link to' },
     { name: 'grayscale', type: 'boolean', label: 'Greyscale (hover to remove)', default: true },
+    { ...pixels('height_px', 'Logo height (px)', 16, 240), min_render_version: 16 },
   ],
   template: `<div data-block="logo_item" data-grayscale="{{grayscale}}">
   <a href="{{link}}" class="block-logo-link"><img src="{{src}}" alt="{{alt}}" loading="lazy" /></a>
@@ -1158,6 +1209,10 @@ const stepCard: BlockType = {
     { name: 'icon', type: 'icon', label: 'Icon' },
     { name: 'title', type: 'text', label: 'Title', required: true },
     { name: 'text', type: 'richtext', label: 'Description' },
+    { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4', 'h5'], default: 'h3', min_render_version: 16 },
+    { name: 'layout', type: 'select', label: 'Layout', options: ['icon-top', 'icon-left'], option_labels: ['Number and icon above the title', 'Number and icon beside the title'], default: 'icon-top', min_render_version: 16 },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center'], default: 'left', min_render_version: 16 },
+    { ...pixels('icon_size_px', 'Icon size (px)', 12, 160), min_render_version: 16 },
   ],
   template: `<div data-block="step_card">
   <div class="block-step-marker"><span class="block-step-number">{{number}}</span><span class="block-step-icon" data-icon="{{icon}}">{{{icon_svg}}}</span></div>
@@ -1198,6 +1253,7 @@ const navigation: BlockType = {
     { name: 'link', label: 'Links', selector: '.block-navigation-list a', target: 'link' },
     { name: 'current_link', label: 'Current page link', selector: '.block-navigation-list a[aria-current="page"]', target: 'link' },
     { name: 'toggle', label: 'Menu button', selector: '.block-navigation-toggle', target: 'button' },
+    { name: 'toggle_icon', label: 'Menu symbol', selector: '.block-navigation-toggle-icon', target: 'text', decorative: true, min_render_version: 16 },
   ],
   schema: [
     { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
@@ -1207,6 +1263,10 @@ const navigation: BlockType = {
       { name: 'href', type: 'url', label: 'Link', required: true },
       { name: 'link_rel', type: 'text', label: 'Link relationship (e.g. nofollow sponsored)' },
     ] },
+    { name: 'collapse_below', type: 'select', label: 'Collapse below (px)', options: ['never', '576', '768', '769', '1024'], default: '1024', min_render_version: 16 },
+    { ...pixels('toggle_size_px', 'Menu symbol size (px)', 12, 64), min_render_version: 16 },
+    { ...pixels('gap_px', 'Link gap (px)', 0, 120), min_render_version: 16 },
+    { name: 'color', type: 'color', label: 'Link color', min_render_version: 16 },
   ],
   template: `<nav data-block="navigation" aria-label="{{aria_label}}">
   <button class="block-navigation-toggle" type="button" aria-label="{{menu_label}}" aria-expanded="false"><span>{{menu_label}}</span><span aria-hidden="true">☰</span></button>
@@ -1321,6 +1381,7 @@ const video: BlockType = {
     { name: 'player', label: 'Player', selector: 'iframe, video', target: 'image', decorative: true },
     { name: 'facade', label: 'Video placeholder', selector: '.tr-video-facade', target: 'button', min_render_version: 7 },
     { name: 'facade_label', label: 'Load video label', selector: '.tr-video-facade span', target: 'button', min_render_version: 7 },
+    { name: 'caption', label: 'Caption', selector: '.block-video-caption', target: 'text', min_render_version: 16 },
   ],
   schema: [
     { name: 'source', type: 'select', label: 'Source', options: ['youtube', 'vimeo', 'url'], default: 'youtube' },
@@ -1338,6 +1399,10 @@ const video: BlockType = {
     { name: 'click_to_load', type: 'boolean', label: 'Load external player only after a click', default: false, min_render_version: 7 },
     { name: 'lazy_load', type: 'boolean', label: 'Lazy-load', default: true },
     { name: 'title', type: 'text', label: 'Accessible title', default: 'Video', min_render_version: 7 },
+    { name: 'caption', type: 'text', label: 'Caption', min_render_version: 16 },
+    { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full'], default: 'full', min_render_version: 16 },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right'], default: 'center', min_render_version: 16 },
+    { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'md', min_render_version: 16 },
   ],
   // Up to render version 6 this is a bare iframe with the authored URL, and
   // no option applies. From version 7 the renderer builds the player
@@ -1381,6 +1446,11 @@ const form: BlockType = {
   schema: [
     { name: 'form_id', type: 'text', label: 'Form id (from create_form)', required: true },
     { name: 'submit_label', type: 'text', label: 'Submit button label' },
+    // Render version 16: passed to formSource (render-form.ts formPresentationOptions).
+    { name: 'max_width_px', type: 'number', label: 'Maximum width', min: 240, max: 2400, css_unit: 'px', min_render_version: 16 },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['start', 'center', 'end'], default: 'start', min_render_version: 16 },
+    { name: 'submit_align', type: 'select', label: 'Button alignment', options: ['start', 'center', 'end'], default: 'start', min_render_version: 16 },
+    { name: 'submit_width', type: 'select', label: 'Button width', options: ['auto', 'full'], default: 'auto', min_render_version: 16 },
   ],
   // Rendered via RenderBlocksOptions.formSource (Forms 2.0): the caller
   // loads the Form doc, mints the submit token, prerenders static steps
@@ -1413,6 +1483,10 @@ const mediaCard: BlockType = {
     { name: 'text', label: 'Text', selector: '.block-mediacard-text', target: 'text', background_field: 'background' },
     { name: 'button', label: 'Button', selector: '.block-mediacard-button', target: 'button', color: 'on_primary', background: 'primary' },
     { name: 'media', label: 'Image', selector: '.block-mediacard-media img', target: 'image' },
+    { name: 'media_column', label: 'Image column', selector: '.block-mediacard-media', target: 'container', decorative: true },
+    { name: 'eyebrow', label: 'Eyebrow', selector: '.block-mediacard-eyebrow', target: 'text', background_field: 'background', min_render_version: 16 },
+    { name: 'secondary_button', label: 'Secondary button', selector: '.block-mediacard-secondary', target: 'button', color: 'primary', background_field: 'background', min_render_version: 16 },
+    { name: 'actions', label: 'Button row', selector: '.block-mediacard-actions', target: 'container', decorative: true, min_render_version: 16 },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Card style', style_target: 'container', editor_group: 'content' },
@@ -1421,13 +1495,21 @@ const mediaCard: BlockType = {
     { name: 'image_alt', type: 'text', label: 'Image alt text' },
     { name: 'image_side', type: 'select', label: 'Image side', options: ['right', 'left'], default: 'right' },
     { name: 'image_width', type: 'select', label: 'Image width', options: ['third', 'two-fifths', 'half'], default: 'two-fifths' },
+    { name: 'eyebrow', type: 'text', label: 'Eyebrow', min_render_version: 16 },
     { name: 'heading', type: 'text', label: 'Heading' },
     { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3'], default: 'h2' },
     { name: 'text', type: 'richtext', label: 'Text' },
     { name: 'button_label', type: 'text', label: 'Button label' },
     { name: 'button_url', type: 'url', label: 'Button link' },
+    { name: 'secondary_label', type: 'text', label: 'Secondary button label', min_render_version: 16 },
+    { name: 'secondary_url', type: 'url', label: 'Secondary button link', min_render_version: 16 },
+    { name: 'actions_align', type: 'select', label: 'Button alignment', options: ['start', 'center', 'end', 'stretch'], default: 'start', min_render_version: 16 },
     { name: 'background', type: 'color', label: 'Card background' },
     { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'lg' },
+    { name: 'vertical_align', type: 'select', label: 'Vertical alignment', options: ['center', 'top', 'end'], default: 'center', min_render_version: 16 },
+    { name: 'stack_order', type: 'select', label: 'Stacked order (mobile)', options: ['image-first', 'text-first'], default: 'image-first', min_render_version: 16 },
+    { name: 'gap', type: 'select', label: 'Column gap', options: ['auto', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true, responsive_css: gapTokenCss('--mc-gap'), min_render_version: 16 },
+    { ...pixels('padding_px', 'Padding (px)', 0, 120), min_render_version: 16 },
   ],
   template: `<div data-block="media_card" data-fit="{{image_fit}}" data-side="{{image_side}}" data-iw="{{image_width}}" data-radius="{{radius}}" style="--mc-bg:{{background}}">
   <div class="block-mediacard-body">
@@ -1492,6 +1574,7 @@ const featureRow: BlockType = {
     { name: 'media', label: 'Image', selector: '.block-frow-media img', target: 'image' },
     { name: 'layout', label: 'Image and text columns', selector: '.block-frow-inner', target: 'container', decorative: true },
     { name: 'actions', label: 'Button row', selector: '.block-frow-actions', target: 'container', decorative: true },
+    { name: 'body', label: 'Text column', selector: '.block-frow-body', target: 'container', decorative: true },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Row style', style_target: 'container', editor_group: 'content' },
@@ -1509,12 +1592,19 @@ const featureRow: BlockType = {
     { name: 'image_alt', type: 'text', label: 'Image alt text' },
     { name: 'image_side', type: 'select', label: 'Image side', options: ['left', 'right'], default: 'left' },
     { name: 'image_max', type: 'select', label: 'Image max width', options: ['sm', 'md', 'lg', 'full'], default: 'lg' },
-    { name: 'vertical_align', type: 'select', label: 'Vertical alignment', options: ['center', 'top'], default: 'center' },
+    { name: 'image_aspect', type: 'select', label: 'Image aspect', options: ['auto', 'landscape', 'square', 'portrait'], default: 'auto', min_render_version: 16 },
+    { name: 'image_fit', type: 'select', label: 'Image fit (with an image aspect)', options: ['cover', 'contain'], default: 'cover', min_render_version: 16 },
+    // `end` renders from render version 16.
+    { name: 'vertical_align', type: 'select', label: 'Vertical alignment', options: ['center', 'top', 'end'], default: 'center' },
+    { name: 'text_align', type: 'select', label: 'Text alignment', options: ['start', 'center', 'end'], default: 'start', responsive: true, min_render_version: 16,
+      responsive_css: { start: '--frow-text-align:start;', center: '--frow-text-align:center;', end: '--frow-text-align:end;' } },
+    { name: 'actions_align', type: 'select', label: 'Button alignment', options: ['start', 'center', 'end', 'stretch'], default: 'start', min_render_version: 16 },
     { name: 'stack_order', type: 'select', label: 'Stacked order (mobile)', options: ['image-first', 'text-first'], default: 'image-first' },
     { name: 'gap', type: 'select', label: 'Column gap', options: ['sm', 'md', 'lg', 'xl'], default: 'lg', responsive: true },
     { name: 'width', type: 'select', label: 'Width', options: ['normal', 'wide'], default: 'normal' },
     { name: 'padding_y', type: 'select', label: 'Vertical padding', options: ['none', 'sm', 'md', 'lg', 'xl'], default: 'lg', responsive: true },
     { name: 'background', type: 'color', label: 'Background color' },
+    { name: 'text_color', type: 'color', label: 'Text color', min_render_version: 16 },
   ],
   template: `<section data-block="feature_row" data-image-side="{{image_side}}" data-image-max="{{image_max}}" data-valign="{{vertical_align}}" data-stack-order="{{stack_order}}" data-width="{{width}}" style="--gap:{{gap}};--padding_y:{{padding_y}};--bg:{{background}}">
   <div class="block-frow-inner">
@@ -1605,37 +1695,13 @@ const featureRow: BlockType = {
  * /pagefind/ at visit time. In the editor preview (no index) it degrades
  * to a friendly note.
  */
-const search: BlockType = {
-  id: 'core/search',
-  name: 'search',
-  label: 'Search',
-  icon: 'search',
-  category: 'content',
-  container: false,
-  // The script mounts Pagefind's UI (its class names are Pagefind's stable
-  // markup), or a note where the index cannot load. The block's frame (its
-  // padding) takes a container style through `style_id`.
-  parts: [
-    { name: 'input', label: 'Search field', selector: '.pagefind-ui__search-input', target: 'text' },
-    { name: 'message', label: 'Result count', selector: '.pagefind-ui__message', target: 'text' },
-    { name: 'result_link', label: 'Result titles', selector: '.pagefind-ui__result-link', target: 'link' },
-    { name: 'result_excerpt', label: 'Result excerpts', selector: '.pagefind-ui__result-excerpt', target: 'text' },
-    { name: 'more_button', label: 'More results button', selector: '.pagefind-ui__button', target: 'button' },
-    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text' },
-  ],
-  schema: [
-    { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
-    { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…', ui_text: 'search' },
-  ],
-  template: `<div data-block="search" data-placeholder="{{placeholder}}">
-  <div class="block-search-mount"></div>
-</div>`,
-  styles: `
+const CORE_SEARCH_STYLES = `
 [data-block="search"] { max-width: 40rem; margin-inline: auto; padding: 1rem; }
 [data-block="search"] .block-search-note { opacity: 0.6; font-size: 0.9rem; padding: 0.5rem 0; text-align: center; }
 [data-block="search"] .pagefind-ui { --pagefind-ui-primary: var(--color-primary, #111); --pagefind-ui-text: var(--color-text, #111); }
-`.trim(),
-  script: `
+`.trim();
+
+const CORE_SEARCH_SCRIPT = `
 window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
 window.TyperollBlocks.register('core/search', (el) => {
   const mount = el.querySelector('.block-search-mount');
@@ -1660,7 +1726,74 @@ window.TyperollBlocks.register('core/search', (el) => {
   s.onerror = fail;
   document.body.appendChild(s);
 });
-`.trim(),
+`.trim();
+
+const CORE_SEARCH_SCRIPT_V16 = `
+window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
+window.TyperollBlocks.register('core/search', (el) => {
+  const mount = el.querySelector('.block-search-mount');
+  if (!mount || el.dataset.trSearchInit) return;
+  el.dataset.trSearchInit = '1';
+  // Where the index cannot load (a preview), show the field as the published page will, in the site's own words.
+  const fail = () => {
+    const input = document.createElement('input');
+    input.type = 'search'; input.className = 'block-search-preview'; input.disabled = true;
+    input.placeholder = el.dataset.placeholder || ''; input.setAttribute('aria-label', el.dataset.placeholder || '');
+    mount.replaceChildren(input);
+  };
+  const link = document.createElement('link');
+  link.rel = 'stylesheet'; link.href = '/pagefind/pagefind-ui.css';
+  document.head.appendChild(link);
+  const s = document.createElement('script');
+  s.src = '/pagefind/pagefind-ui.js';
+  s.onload = () => {
+    try {
+      new window.PagefindUI({
+        element: mount,
+        showSubResults: true,
+        showImages: false,
+        translations: el.dataset.placeholder ? { placeholder: el.dataset.placeholder } : undefined,
+      });
+    } catch (e) { fail(); }
+  };
+  s.onerror = fail;
+  document.body.appendChild(s);
+});
+`.trim();
+
+const search: BlockType = {
+  id: 'core/search',
+  name: 'search',
+  label: 'Search',
+  icon: 'search',
+  category: 'content',
+  container: false,
+  // The script mounts Pagefind's UI (its class names are Pagefind's stable
+  // markup), or a note where the index cannot load. The block's frame (its
+  // padding) takes a container style through `style_id`.
+  parts: [
+    { name: 'input', label: 'Search field', selector: '.pagefind-ui__search-input', target: 'text' },
+    { name: 'message', label: 'Result count', selector: '.pagefind-ui__message', target: 'text' },
+    { name: 'result_link', label: 'Result titles', selector: '.pagefind-ui__result-link', target: 'link' },
+    { name: 'result_excerpt', label: 'Result excerpts', selector: '.pagefind-ui__result-excerpt', target: 'text' },
+    { name: 'more_button', label: 'More results button', selector: '.pagefind-ui__button', target: 'button' },
+    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text', max_render_version: 15 },
+    { name: 'preview_input', label: 'Search field in a preview', selector: '.block-search-preview', target: 'text', min_render_version: 16 },
+  ],
+  schema: [
+    { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
+    { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…', ui_text: 'search' },
+    { ...pixels('max_width_px', 'Maximum width (px)', 160, 1600), min_render_version: 16 },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right'], default: 'center', min_render_version: 16 },
+  ],
+  template: `<div data-block="search" data-placeholder="{{placeholder}}">
+  <div class="block-search-mount"></div>
+</div>`,
+  styles: CORE_SEARCH_STYLES,
+  script: CORE_SEARCH_SCRIPT,
+  // From render version 16 a preview shows the field with the site's placeholder instead of an English note.
+  render_versions: [{ from: 16, script: CORE_SEARCH_SCRIPT_V16, styles: `${CORE_SEARCH_STYLES.replace('[data-block="search"] .block-search-note { opacity: 0.6; font-size: 0.9rem; padding: 0.5rem 0; text-align: center; }\n', '')}
+[data-block="search"] .block-search-preview { inline-size:100%; min-block-size:44px; padding:.6rem .9rem; font:inherit; color:inherit; border:1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius:.5rem; background:transparent; }` }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -1907,6 +2040,11 @@ video.render_versions = [{
 [data-block="video"] .tr-video-facade:focus-visible { outline:3px solid currentColor;outline-offset:3px; }
 [data-block="video"] video { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0.5rem; background: #000; object-fit: contain; }`,
 }];
+navigation.render_versions = [{
+  from: 16,
+  template: navigation.template!.replace('<span>{{menu_label}}</span><span aria-hidden="true">☰</span>', '<span class="block-navigation-toggle-label">{{menu_label}}</span><span class="block-navigation-toggle-icon" aria-hidden="true">☰</span>'),
+}];
+
 hero.render_versions = [{
   from: 7,
   template: hero.template!.replace('<div class="block-hero-inner">', '{{{hero_video_html}}}<div class="block-hero-inner">'),
@@ -1929,6 +2067,300 @@ testimonial.render_versions = [{
   styles: `${testimonial.styles}
 [data-block="testimonial"] .block-testimonial-rating { margin: 0 0 0.75rem; font-size: 1.125rem; line-height: 1; letter-spacing: 0.1em; color: var(--testimonial-rating-color, #b45309); }`,
 }];
+
+// ─── Render version 16 ──────────────────────────────────────────────────
+// Settings that reach CSS as data attributes (render-v16.ts emits one for
+// each select or number field the version 16 CSS reads), no !important, and
+// hooks for site CSS. Each version 16 entry derives from the output the block
+// already renders at version 16, so older versions keep theirs unchanged.
+
+/** Replace every occurrence of each search text; throws when the base output no longer contains it. */
+function edit(text: string, ...pairs: Array<[string, string]>): string {
+  let out = text;
+  for (const [search, replacement] of pairs) {
+    if (!out.includes(search)) throw new Error(`tier1 render version 16: base output lacks ${JSON.stringify(search.slice(0, 80))}`);
+    out = out.split(search).join(replacement);
+  }
+  return out;
+}
+
+/** Set a block's version 16 output, merging with a version 16 entry it already has. */
+function atVersion16(type: BlockType, change: (base: { template: string; styles: string; script: string }) => { template?: string; styles?: string; script?: string }): void {
+  const entry = change(blockOutputForVersion(type, 16));
+  const versions = type.render_versions ??= [];
+  const existing = versions.find(version => version.from === 16);
+  if (existing) Object.assign(existing, entry);
+  else versions.push({ from: 16, ...entry });
+}
+
+/** `[data-block="x"][data-gap="sm"] { --var: 1rem }` for each gap token. */
+const gapTokenRules = (block: string, variable: string) => Object.entries(GAP_TOKENS)
+  .map(([token, value]) => `[data-block="${block}"][data-gap="${token}"] { ${variable}: ${value}; }`).join('\n');
+
+/** A text colour applies only when one is chosen; the block's own headings take it too. */
+const textColorRules = (root: string, heading?: string) => `${root}[data-text-color]:not([data-text-color=""]) { color: var(--text-color); }${heading ? `
+${root}[data-text-color]:not([data-text-color=""]) ${heading} { color: inherit; }` : ''}`;
+
+atVersion16(container, ({ template, styles }) => ({
+  template: edit(template,
+    ['data-min-h="{{min_height}}"', 'data-min-h="{{min_height}}" data-text-color="{{text_color}}"'],
+    ['--background_fit:{{background_fit}};', '--background_fit:{{background_fit}};--text-color:{{text_color}};']),
+  styles: `${styles}
+/* Icon pairing off: a stacked container with an icon keeps its ordinary column layout. */
+[data-block="container"][data-column-only="true"][data-icon-pairing="off"]:has(> [data-block="icon"] + *) { display:flex; row-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); column-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); align-items:var(--align_cross, stretch); }
+/* A chosen text colour applies to everything inside, headings included. */
+:is([data-block="container"], [data-block="semantic-container"])[data-text-color]:not([data-text-color=""]) { color:var(--text-color); --color-text:var(--text-color); }`,
+}));
+
+// The stacking rules set a variable that is never written inline, so they need no !important.
+atVersion16(grid, ({ styles }) => ({
+  styles: edit(styles,
+    [`     the static inline value. Reading the variable is necessary but NOT
+     sufficient: because the baseline --cols is inline, the @media overrides
+     (both the responsive compiler's and stack_at below) must be !important
+     to win the cascade. */`, `     the static inline value. stack_at sets --stack-cols, which is never
+     inline, so it wins over --cols without !important. */`],
+    ['[data-block="grid"] { --container-gap:var(--grid-gap, 1rem);', '[data-block="grid"] { --container-gap:var(--grid-gap, 1rem); --stack-cols:initial;'],
+    ['var(--cols, 3)', 'var(--stack-cols, var(--cols, 3))'],
+    [`   !important is REQUIRED: the column count rides on an inline style=--cols:N
+   baseline, and an inline custom property outranks any stylesheet rule — so a
+   plain non-important --cols:1 here is shadowed by the inline value and the
+   grid never collapses. (Verified in-browser.) */`, `   The rule sets --stack-cols (never inline) and the columns themselves, so it
+   wins over the inline --cols and the grid defaults without !important. */`],
+    ['{ --cols: 1 !important; }', '{ --stack-cols: 1; grid-template-columns: minmax(0, 1fr); }']),
+}));
+
+atVersion16(icon, ({ template, styles }) => ({
+  template: edit(template,
+    ['<span data-block="icon" ', '<span data-block="icon" data-background="{{background}}" '],
+    ['--color:{{color}}">', '--color:{{color}};--icon-background:{{background}}">']),
+  styles: `${styles}
+/* Circle and square styles put the icon on a surface: the chosen background, else a faint tint. */
+[data-block="icon"]:is([data-icon-style="circle-bg"], [data-icon-style="square-bg"]) svg { box-sizing:content-box; padding:var(--icon-padding, .5em); border-radius:var(--icon-radius, 50%); background:var(--icon-surface, rgba(0,0,0,0.05)); }
+[data-block="icon"][data-icon-style="square-bg"] { --icon-radius:.35em; }
+[data-block="icon"][data-background]:not([data-background=""]) { --icon-surface:var(--icon-background); }`,
+}));
+
+atVersion16(iconBox, ({ styles }) => ({
+  styles: `${styles}
+/* Beside the text (icon-left, icon-right) the icon and text line up at the top, middle or bottom. */
+[data-block="icon_box"][data-vertical-align="center"] > :is(.block-iconbox-icon, .block-iconbox-body) { margin-block:auto; }
+[data-block="icon_box"][data-vertical-align="end"] > :is(.block-iconbox-icon, .block-iconbox-body) { margin-block-start:auto; }`,
+}));
+
+atVersion16(hero, ({ template, styles }) => ({
+  template: edit(template,
+    ['<section data-block="hero" ', '<section data-block="hero" data-text-color="{{text_color}}" '],
+    [';--bg-image:url({{image}})">', ';--bg-image:url({{image}});--text-color:{{text_color}}">'],
+    ['<h1 class="block-hero-heading">{{heading}}</h1>', '<{{=heading_level}} class="block-hero-heading">{{heading}}</{{=heading_level}}>'],
+    ['<img src="{{image}}" alt="" loading="eager" />', '<img src="{{image}}" alt="{{image_alt}}" loading="eager" />']),
+  styles: `${edit(styles,
+    ['grid-template-columns: 1fr 1fr; gap: 3rem;', 'grid-template-columns: 1fr 1fr; gap: var(--hero-gap, 3rem);'],
+    ['background: rgba(0,0,0,0.5);', 'background: var(--hero-overlay-color, rgba(0,0,0,0.5));'],
+    [`  [data-block="hero"] .block-hero-inner { grid-template-columns: 1fr; gap: 2rem; }
+  [data-block="hero"] .block-hero-media { order: 2 !important; }
+  [data-block="hero"] .block-hero-text  { order: 1 !important; }`, `  [data-block="hero"] .block-hero-inner { grid-template-columns: 1fr; gap: var(--hero-gap, 2rem); }
+  /* Stacked order: after the split-right column order, at the same specificity. */
+  [data-block="hero"][data-stack-order="text-first"] .block-hero-media { order: 2; }
+  [data-block="hero"][data-stack-order="text-first"] .block-hero-text  { order: 1; }
+  [data-block="hero"][data-stack-order="image-first"] .block-hero-media { order: 1; }
+  [data-block="hero"][data-stack-order="image-first"] .block-hero-text  { order: 2; }`])}
+${gapTokenRules('hero', '--hero-gap')}
+[data-block="hero"][data-image-max="sm"] .block-hero-media img { max-inline-size:min(100%, 20rem); margin-inline:auto; }
+[data-block="hero"][data-image-max="md"] .block-hero-media img { max-inline-size:min(100%, 28rem); margin-inline:auto; }
+[data-block="hero"][data-image-max="lg"] .block-hero-media img { max-inline-size:min(100%, 34rem); margin-inline:auto; }
+${textColorRules('[data-block="hero"]', '.block-hero-heading')}`,
+}));
+
+atVersion16(cta, ({ template, styles }) => ({
+  template: edit(template,
+    ['<section data-block="cta" ', '<section data-block="cta" data-text-color="{{text_color}}" '],
+    ['--bg-image:url({{background_image}})">', '--bg-image:url({{background_image}});--text-color:{{text_color}}">'],
+    ['<h2 class="block-cta-heading">{{heading}}</h2>', '<{{=heading_level}} class="block-cta-heading">{{heading}}</{{=heading_level}}>'],
+    ['  </div>\n</section>', '  </div>\n  {{#background_image}}<div class="block-cta-media"><img src="{{background_image}}" alt="{{image_alt}}" loading="lazy" decoding="async" /></div>{{/background_image}}\n</section>']),
+  styles: `${edit(styles,
+    ['background-size: cover; background-position: center; }', 'background-size: cover; background-position: calc(var(--background_focal_x, 50) * 1%) calc(var(--background_focal_y, 50) * 1%); }'])}
+/* Image position left or right puts the image beside the text; it stacks above the text when the band is narrow. */
+[data-block="cta"] > .block-cta-media { display:none; }
+[data-block="cta"]:is([data-image-pos="left"], [data-image-pos="right"]):has(> .block-cta-media) { display:flex; flex-wrap:wrap-reverse; align-items:center; gap:var(--cta-gap, clamp(1.5rem, 1rem + 3vw, 3rem)); }
+[data-block="cta"][data-image-pos="left"]:has(> .block-cta-media) { flex-direction:row-reverse; }
+[data-block="cta"]:is([data-image-pos="left"], [data-image-pos="right"]) > .block-cta-media { display:block; flex:1 1 16rem; min-width:0; }
+[data-block="cta"]:is([data-image-pos="left"], [data-image-pos="right"]):has(> .block-cta-media) > .block-cta-inner { flex:999 1 18rem; margin-inline:0; }
+[data-block="cta"] > .block-cta-media img { display:block; width:100%; height:auto; border-radius:var(--cta-image-radius, 0.5rem); }
+${textColorRules('[data-block="cta"]')}`,
+}));
+
+atVersion16(testimonial, ({ template, styles }) => ({
+  template: edit(template,
+    ['<figure data-block="testimonial" data-style="{{style}}">', '<figure data-block="testimonial" data-style="{{style}}" data-background="{{background}}" style="--testimonial-bg:{{background}}">']),
+  styles: `${edit(styles,
+    ['.block-testimonial-avatar { width: 2.5rem; height: 2.5rem;', '.block-testimonial-avatar { width: var(--avatar_size_px, 2.5rem); height: var(--avatar_size_px, 2.5rem);'])}
+[data-block="testimonial"][data-background]:not([data-background=""]) { background:var(--testimonial-bg); }
+/* Centred: the quote and the author line are centred, the avatar above the name. */
+[data-block="testimonial"][data-align="center"] { text-align:center; }
+[data-block="testimonial"][data-align="center"] .block-testimonial-cite { flex-direction:column; align-items:center; }
+[data-block="testimonial"][data-align="center"] .block-testimonial-meta { flex:none; }
+[data-block="testimonial"][data-align="center"] .block-testimonial-logo { margin-left:0; }`,
+}));
+
+atVersion16(teamMember, ({ template, styles }) => ({
+  template: edit(template,
+    ['<h3 class="block-team-name">{{name}}</h3>', '<{{=heading_level}} class="block-team-name">{{name}}</{{=heading_level}}>']),
+  styles: `${edit(styles,
+    ['aspect-ratio: 1; object-fit: cover; border-radius: 0.5rem;', 'aspect-ratio: var(--team-photo-aspect, 1); object-fit: cover; border-radius: var(--team-photo-radius, 0.5rem);'],
+    ['rgba(0,0,0,0.7)', 'var(--team-overlay-color, rgba(0,0,0,0.7))'])}
+[data-block="team_member"][data-photo-aspect="auto"] { --team-photo-aspect:auto; }
+[data-block="team_member"][data-photo-aspect="landscape"] { --team-photo-aspect:16 / 9; }
+[data-block="team_member"][data-photo-aspect="portrait"] { --team-photo-aspect:3 / 4; }
+[data-block="team_member"][data-radius="none"] { --team-photo-radius:0; }
+[data-block="team_member"][data-radius="lg"] { --team-photo-radius:1.25rem; }
+[data-block="team_member"][data-radius="xl"] { --team-photo-radius:1.75rem; }
+[data-block="team_member"][data-radius="full"] { --team-photo-radius:50%; }
+[data-block="team_member"][data-align="left"] { text-align:start; }
+[data-block="team_member"][data-align="left"] .block-team-socials { justify-content:flex-start; }
+[data-block="team_member"][data-align="left"] .block-team-link .block-team-photo { margin-inline:0; }`,
+}));
+
+atVersion16(pricingPlan, ({ template, styles }) => ({
+  template: edit(template,
+    ['<div data-block="pricing_plan" data-highlight="{{highlight}}">', '<div data-block="pricing_plan" data-highlight="{{highlight}}" data-background="{{background}}" style="--pricing-bg:{{background}}">'],
+    ['<h3 class="block-pricing-name">{{name}}</h3>', '<{{=heading_level}} class="block-pricing-name">{{name}}</{{=heading_level}}>']),
+  styles: `${edit(styles, ['border: 1px solid rgba(0,0,0,0.1);', 'border: 1px solid var(--pricing-border, rgba(0,0,0,0.1));'])}
+[data-block="pricing_plan"][data-background]:not([data-background=""]) { background:var(--pricing-bg); }`,
+}));
+
+atVersion16(logoItem, ({ styles }) => ({
+  styles: `${styles}
+[data-block="logo_item"][data-height-px] img { height:var(--height_px); max-height:none; object-fit:contain; }`,
+}));
+
+atVersion16(stepCard, ({ template, styles }) => ({
+  template: edit(template,
+    ['<h3 class="block-step-title">{{title}}</h3>', '<{{=heading_level}} class="block-step-title">{{title}}</{{=heading_level}}>']),
+  styles: `${edit(styles, ['.block-step-icon  { font-size: 1.5rem; }', '.block-step-icon  { font-size: var(--icon_size_px, 1.5rem); }'])}
+/* Marker beside the title: the number and icon sit in a column of their own, the description under the title. */
+[data-block="step_card"][data-layout="icon-left"] { display:grid; grid-template-columns:auto minmax(0, 1fr); align-items:center; column-gap:var(--step-marker-gap, 0.75rem); }
+[data-block="step_card"][data-layout="icon-left"] > .block-step-title { margin-block-start:0; }
+[data-block="step_card"][data-layout="icon-left"] > .block-step-text { grid-column:2; }
+[data-block="step_card"][data-align="center"] { text-align:center; }
+[data-block="step_card"][data-align="center"] .block-step-marker { justify-content:center; }`,
+}));
+
+const NAVIGATION_COLLAPSE_WIDTHS = ['576', '768', '769', '1024'];
+atVersion16(navigation, ({ template, styles, script }) => ({
+  template: edit(template,
+    ['<nav data-block="navigation" aria-label="{{aria_label}}">', '<nav data-block="navigation" aria-label="{{aria_label}}" data-color="{{color}}" style="--link-color:{{color}}">']),
+  styles: `${edit(styles,
+    ['gap: 0.4rem 1.25rem;', 'gap: var(--gap_px, 0.4rem 1.25rem);'],
+    [`@media (max-width: 1023px) {
+  [data-block="navigation"] .block-navigation-list { flex-direction: column; align-items: stretch; }
+  [data-block="navigation"][data-enhanced="true"] .block-navigation-toggle { display: flex; }
+  [data-block="navigation"][data-enhanced="true"] .block-navigation-list[hidden] { display: none; }
+}`, NAVIGATION_COLLAPSE_WIDTHS.map(width => `@media (max-width: ${Number(width) - 1}px) {
+  [data-block="navigation"][data-collapse-below="${width}"] .block-navigation-list { flex-direction: column; align-items: stretch; }
+  [data-block="navigation"][data-collapse-below="${width}"][data-enhanced="true"] .block-navigation-toggle { display: flex; }
+  [data-block="navigation"][data-collapse-below="${width}"][data-enhanced="true"] .block-navigation-list[hidden] { display: none; }
+}`).join('\n')])}
+[data-block="navigation"][data-color]:not([data-color=""]) :is(a, .block-navigation-toggle) { color:var(--link-color); }
+[data-block="navigation"][data-toggle-size-px] .block-navigation-toggle > .block-navigation-toggle-icon { inline-size:var(--toggle_size_px); block-size:calc(var(--toggle_size_px) * 8 / 11); }`,
+  // The menu collapses below the chosen width; "never" keeps the links in a row.
+  script: edit(script, [`const mobile = window.matchMedia('(max-width: 1023px)');`, `const below = Number(el.dataset.collapseBelow || 1024);
+  const mobile = window.matchMedia(below > 0 ? '(max-width: ' + (below - 1) + 'px)' : 'not all');`]),
+}));
+
+atVersion16(accordion, ({ template, styles }) => ({
+  template: edit(template,
+    ['<details{{#accordion_open}} open{{/accordion_open}}><summary>{{title}}</summary><div>{{{content}}}</div></details>',
+      '<details class="block-accordion-item"{{#accordion_open}} open{{/accordion_open}}><summary class="block-accordion-title">{{title}}</summary><div class="block-accordion-panel">{{{content}}}</div></details>']),
+  styles: edit(styles,
+    ['rgba(0,0,0,0.1)', 'var(--accordion-border, rgba(0,0,0,0.1))'],
+    ['rgba(0,0,0,0.05)', 'var(--accordion-divider, rgba(0,0,0,0.05))']),
+}));
+
+atVersion16(video, ({ template, styles }) => ({
+  template: edit(template,
+    ['{{{video_html}}}</div>', '<div class="block-video-frame">{{{video_html}}}</div>{{#caption}}<p class="block-video-caption">{{caption}}</p>{{/caption}}</div>']),
+  // The player keeps its aspect in a frame, so a caption can sit below it.
+  styles: `${edit(styles,
+    ['[data-block="video"] { position: relative; width: 100%; }', '[data-block="video"] { width: 100%; }\n[data-block="video"] > .block-video-frame { position: relative; }'],
+    ['[data-block="video"][style*="--aspect_ratio:16:9"] { aspect-ratio: 16/9; }', '[data-block="video"][data-aspect-ratio="16:9"] > .block-video-frame { aspect-ratio: 16/9; }'],
+    ['[data-block="video"][style*="--aspect_ratio:4:3"]  { aspect-ratio: 4/3; }', '[data-block="video"][data-aspect-ratio="4:3"] > .block-video-frame { aspect-ratio: 4/3; }'],
+    ['[data-block="video"][style*="--aspect_ratio:1:1"]  { aspect-ratio: 1/1; }', '[data-block="video"][data-aspect-ratio="1:1"] > .block-video-frame { aspect-ratio: 1/1; }'],
+    ['[data-block="video"][style*="--aspect_ratio:9:16"] { aspect-ratio: 9/16; max-width: 24rem; margin-inline: auto; }', '[data-block="video"][data-aspect-ratio="9:16"] { max-width: 24rem; margin-inline: auto; }\n[data-block="video"][data-aspect-ratio="9:16"] > .block-video-frame { aspect-ratio: 9/16; }'],
+    ['[data-block="video"]:empty { display: none; }', '[data-block="video"]:has(> .block-video-frame:empty) { display: none; }'],
+    ['border-radius: 0.5rem;', 'border-radius: var(--video-radius, 0.5rem);'],
+    ['border-radius:.5rem;', 'border-radius:var(--video-radius, .5rem);'])}
+[data-block="video"][data-width="narrow"] { max-width: 32rem; }
+[data-block="video"][data-width="normal"] { max-width: 48rem; }
+[data-block="video"][data-width="wide"] { max-width: 64rem; }
+[data-block="video"]:not([data-width="full"]) { margin-inline: auto; }
+[data-block="video"][data-align="left"] { margin-inline-start: 0; }
+[data-block="video"][data-align="right"] { margin-inline-end: 0; }
+[data-block="video"][data-radius="none"] { --video-radius: 0; }
+[data-block="video"][data-radius="lg"] { --video-radius: 1.25rem; }
+[data-block="video"][data-radius="xl"] { --video-radius: 1.75rem; }
+[data-block="video"] .block-video-caption { margin: 0; padding: 0.5rem 0; font-size: 0.875rem; opacity: 0.7; text-align: center; }`,
+}));
+
+atVersion16(mediaCard, ({ template, styles }) => ({
+  template: edit(template,
+    ['    <{{=heading_level}} class="block-mediacard-heading">', '    <span class="block-mediacard-eyebrow">{{eyebrow}}</span>\n    <{{=heading_level}} class="block-mediacard-heading">'],
+    ['    <a class="block-btn block-btn-primary block-mediacard-button" href="{{button_url}}">{{button_label}}</a>\n', `    <div class="block-mediacard-actions">
+      <a class="block-btn block-btn-primary block-mediacard-button" href="{{button_url}}">{{button_label}}</a>
+      <a class="block-btn block-btn-secondary block-mediacard-secondary" href="{{secondary_url}}">{{secondary_label}}</a>
+    </div>\n`]),
+  styles: `${edit(styles,
+    ['[data-block="media_card"] { display: flex; align-items: stretch; gap: 2.5rem;', '[data-block="media_card"] { display: flex; align-items: stretch; gap: var(--mc-gap, 2.5rem); padding: var(--padding_px, 0);'],
+    ['{ flex-direction: column-reverse; gap: 1.25rem; }', `{ flex-direction: column-reverse; gap: var(--mc-gap, 1.25rem); }
+  [data-block="media_card"][data-stack-order="text-first"] { flex-direction: column; }`])}
+${gapTokenRules('media_card', '--mc-gap')}
+/* Text first: when the card wraps (a narrow column) the text stays above the image. */
+[data-block="media_card"][data-stack-order="text-first"] { flex-wrap: wrap; }
+[data-block="media_card"][data-vertical-align="top"] .block-mediacard-body { justify-content: flex-start; }
+[data-block="media_card"][data-vertical-align="end"] .block-mediacard-body { justify-content: flex-end; }
+[data-block="media_card"] .block-mediacard-eyebrow { display: inline-block; align-self: flex-start; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
+[data-block="media_card"] .block-mediacard-eyebrow:empty { display: none; }
+[data-block="media_card"] .block-mediacard-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+[data-block="media_card"] .block-mediacard-actions:not(:has(a:not(:empty))) { display: none; }
+[data-block="media_card"] .block-btn:empty { display: none; }
+[data-block="media_card"] .block-btn-secondary { background: transparent; color: var(--color-primary, #111); box-shadow: inset 0 0 0 2px currentColor; }
+[data-block="media_card"][data-actions-align="center"] .block-mediacard-actions { justify-content: center; }
+[data-block="media_card"][data-actions-align="end"] .block-mediacard-actions { justify-content: flex-end; }
+[data-block="media_card"][data-actions-align="stretch"] .block-mediacard-actions > a { flex: 1 1 auto; text-align: center; }`,
+}));
+
+atVersion16(featureRow, ({ template, styles }) => ({
+  template: edit(template,
+    ['<section data-block="feature_row" ', '<section data-block="feature_row" data-text-color="{{text_color}}" '],
+    ['style="--gap:{{gap}};', 'style="--text-color:{{text_color}};--gap:{{gap}};']),
+  styles: `${styles}
+[data-block="feature_row"][data-valign="end"] .block-frow-inner { align-items: end; }
+/* Text alignment; unset, the text keeps the alignment it inherits. */
+[data-block="feature_row"] .block-frow-body { text-align: var(--frow-text-align); }
+[data-block="feature_row"][data-text-align="start"] { --frow-text-align: start; }
+[data-block="feature_row"][data-text-align="center"] { --frow-text-align: center; }
+[data-block="feature_row"][data-text-align="end"] { --frow-text-align: end; }
+[data-block="feature_row"][data-actions-align="center"] .block-frow-actions { justify-content: center; }
+[data-block="feature_row"][data-actions-align="end"] .block-frow-actions { justify-content: flex-end; }
+[data-block="feature_row"][data-actions-align="stretch"] .block-frow-actions > a { flex: 1 1 auto; text-align: center; }
+/* An image aspect gives every row's image the same shape, cropped (cover) or letterboxed (contain). */
+[data-block="feature_row"]:not([data-image-aspect="auto"]) .block-frow-media img { object-fit: cover; }
+[data-block="feature_row"][data-image-aspect="landscape"] .block-frow-media img { aspect-ratio: 16 / 9; }
+[data-block="feature_row"][data-image-aspect="square"] .block-frow-media img { aspect-ratio: 1; }
+[data-block="feature_row"][data-image-aspect="portrait"] .block-frow-media img { aspect-ratio: 3 / 4; }
+[data-block="feature_row"][data-image-fit="contain"] .block-frow-media img { object-fit: contain; }
+${textColorRules('[data-block="feature_row"]', '.block-frow-heading')}`,
+}));
+
+atVersion16(search, ({ styles }) => ({
+  styles: `${edit(styles, ['[data-block="search"] { max-width: 40rem;', '[data-block="search"] { max-width: var(--max_width_px, 40rem);'])}
+[data-block="search"][data-align="left"] { margin-inline-start: 0; }
+[data-block="search"][data-align="right"] { margin-inline-end: 0; }`,
+}));
+
+atVersion16(tableOfContents, ({ template }) => ({
+  template: edit(template, ['<strong>{{title}}</strong><ol>', '<strong class="block-toc-title">{{title}}</strong><ol class="block-toc-list">']),
+}));
 
 export const TIER1_BLOCK_TYPES: readonly BlockType[] = [
   // Layout

@@ -104,7 +104,7 @@ describe('part style CSS', () => {
     const pill: SiteStyle = { id: 'pill', name: 'Pill', targets: ['button'], base: { radius: '999px' } };
     const items = [{ html: '<p>A</p>', kind: 'x' }, { html: '<p>B</p>', kind: 'y' }];
     const carousel: Block = { id: 'r', type: 'core/repeater', data: { item_block: 'core/prose', layout: 'carousel', items, part_styles: { carousel_button: 'pill' } } };
-    expect(renderBlocks([carousel], { registry, renderVersion: LATEST_RENDER_VERSION })).toMatch(/^<div data-block="repeater"[^>]* data-part-carousel_button="pill">/);
+    expect(renderBlocks([carousel], { registry, renderVersion: LATEST_RENDER_VERSION })).toMatch(/^<div data-block="repeater"[^>]* data-part-carousel_button="pill"[\s>]/);
     expect(assets([carousel], [pill])).toContain(':where([data-block="repeater"][data-part-carousel_button="pill"] > .tr-carousel-controls > .tr-carousel-button)');
     const grouped: Block = { ...carousel, data: { ...carousel.data, group_by: 'kind' } };
     expect(renderBlocks([grouped], { registry, renderVersion: LATEST_RENDER_VERSION }).match(/<div data-block="repeater"[^>]* data-part-carousel_button="pill"/g)).toHaveLength(2);

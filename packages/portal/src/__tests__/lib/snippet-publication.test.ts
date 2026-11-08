@@ -50,13 +50,24 @@ describe('live snippets in the preview, the export and the publication', () => {
     expect(html).not.toContain(SNIPPET_LIVE_SCRIPT.slice(0, 60));
   });
 
-  it('names the live file and ships the script when the site has live files', async () => {
+  it('renders the snippet as saved and fetches no live file in a preview, even when the site has live files', async () => {
+    // A preview runs in an opaque origin (Origin: null), which the live files' CORS rule does not allow.
     live.base = BASE;
     const { renderPreview } = await import('../../lib/render-preview');
     const html = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, { allowScripts: true }))!;
+    expect(html).toMatch(/data-snippet="lunch"[^>]*><p>Pea soup<\/p><\/section>/);
+    expect(html).toMatch(/data-snippet="gone" data-empty="true">Nothing yet</);
+    expect(html).not.toContain('data-snippet-src');
+    expect(html).not.toContain(BASE);
+    expect(html).not.toContain('core/snippet live content');
+  });
+
+  it('names the live file in the published page when the site has live files', async () => {
+    live.base = BASE;
+    const { renderBlocks, buildCoreBlockRegistry, snippetSourceFrom, snippetFile } = await import('@typeroll/shared');
+    const html = renderBlocks(BLOCKS, { registry: buildCoreBlockRegistry(), context: { site: { live_base_url: BASE } }, snippetSource: snippetSourceFrom([snippetFile(LUNCH, 'Europe/Stockholm')]) });
     expect(html).toContain(`data-snippet-src="${BASE}/lunch.json"`);
     expect(html).toContain(`data-snippet-src="${BASE}/gone.json"`);
-    expect(html).toContain('core/snippet live content');
   });
 
   it('freezes the snippets and the live base URL with the version, and exports them without who wrote them', async () => {

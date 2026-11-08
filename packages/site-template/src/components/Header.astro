@@ -1,6 +1,6 @@
 ---
 import type { ExtensionIncludeDescriptor, Partial as PartialDoc, RenderContext, SiteSettings } from '@typeroll/shared';
-import { activeHeaderBehavior, withHeaderBehaviorAttribute } from '@typeroll/shared';
+import { activeHeaderBehavior, platformLayer, resolveRenderVersion, withHeaderBehaviorAttribute } from '@typeroll/shared';
 import { getAllPages, renderPartialHtml } from '../lib/content';
 
 interface Props {
@@ -28,13 +28,22 @@ const hasHome = (await getAllPages()).some(page => page.path === '/' || ['', 'ho
 const startsWithHeader = !!html && /^\s*(?:<!--[\s\S]*?-->\s*)*<header(?:\s|>)/i.test(html);
 // Sticky or reveal-on-scroll-up header (site setting); nothing is added when unset.
 const behavior = activeHeaderBehavior(settings.header_behavior) ?? undefined;
+// From render version 16 the default header's styles sit in the base layer,
+// so site CSS restyles it without !important. Older versions keep the scoped styles.
+const renderVersion = resolveRenderVersion(settings.render_version);
+const layered = renderVersion >= 16;
+const defaultHeaderCss = `.site-header--layered { border-bottom:1px solid var(--color-surface); background:var(--color-background); }
+.site-header--layered .site-header__inner { max-width:var(--container-wide); margin:0 auto; padding:var(--spacing-md); display:flex; align-items:center; justify-content:space-between; }
+.site-header--layered .site-header__logo { max-height:48px; width:auto; }
+.site-header--layered .site-header__title { font-family:var(--font-heading); font-weight:700; font-size:1.25rem; color:var(--color-text); }`;
 ---
 {html && startsWithHeader ? (
   <Fragment set:html={withHeaderBehaviorAttribute(html, settings.header_behavior)} />
 ) : html ? (
   <header class="site-header" data-header-behavior={behavior} set:html={html} />
 ) : (
-  <header class="site-header site-header--default" data-header-behavior={behavior}>
+  <header class:list={['site-header', 'site-header--default', layered && 'site-header--layered']} data-header-behavior={behavior}>
+    {layered && <style set:html={platformLayer('base', defaultHeaderCss, renderVersion)} />}
     <div class="site-header__inner">
       {settings.logo ? (
         <a href={hasHome ? '/' : undefined} class="site-header__logo-link">
@@ -48,11 +57,11 @@ const behavior = activeHeaderBehavior(settings.header_behavior) ?? undefined;
 )}
 
 <style>
-  .site-header--default {
+  .site-header--default:where(:not(.site-header--layered)) {
     border-bottom: 1px solid var(--color-surface);
     background: var(--color-background);
   }
-  .site-header__inner {
+  :where(.site-header--default:not(.site-header--layered)) .site-header__inner {
     max-width: var(--container-wide);
     margin: 0 auto;
     padding: var(--spacing-md);
@@ -60,8 +69,8 @@ const behavior = activeHeaderBehavior(settings.header_behavior) ?? undefined;
     align-items: center;
     justify-content: space-between;
   }
-  .site-header__logo { max-height: 48px; width: auto; }
-  .site-header__title {
+  :where(.site-header--default:not(.site-header--layered)) .site-header__logo { max-height: 48px; width: auto; }
+  :where(.site-header--default:not(.site-header--layered)) .site-header__title {
     font-family: var(--font-heading);
     font-weight: 700;
     font-size: 1.25rem;

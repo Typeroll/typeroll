@@ -143,9 +143,10 @@ describe('renderPreview — blocks mode', () => {
     }]);
     const { renderPreview } = await import('../../lib/render-preview');
     const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
-    expect(html).toContain('--cols:1');
-    expect(html).toContain('@media (min-width: 640px) { [data-bid="responsive-grid"] { --cols: 2 !important; } }');
-    expect(html).toContain('@media (min-width: 1280px) { [data-bid="responsive-grid"] { --cols: 3 !important; } }');
+    // Render version 16: the mobile value is set from the instance layer, so the overrides need no !important.
+    expect(html).toContain('[data-bid="responsive-grid"] { --cols: 1; }');
+    expect(html).toContain('@media (min-width: 640px) { [data-bid="responsive-grid"] { --cols: 2; } }');
+    expect(html).toContain('@media (min-width: 1280px) { [data-bid="responsive-grid"] { --cols: 3; } }');
   });
 
   it('renders nested children inside a section', async () => {
@@ -370,9 +371,8 @@ describe('renderPreview — blocks mode', () => {
     const { renderPreview } = await import('../../lib/render-preview');
     const html = await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID);
     expect(html).toBeTruthy();
-    // Mobile baseline rendered into the inline style — note no space
-    // after the colon (template substitution is verbatim).
-    expect(html!).toContain('--cols:1');
+    // Render version 16 sets the mobile baseline from the per-instance style.
+    expect(html!).toContain('[data-bid="gr"] { --cols: 1; }');
     // The @media overrides land in a per-instance <style> block —
     // sanitizeBody strips <style> by default; confirm via data-bid
     // attribute presence which proves the renderer chose to emit one.
@@ -390,8 +390,8 @@ describe('renderPreview — blocks mode', () => {
     expect(html).toContain('/* core/repeater */');
     expect(html).toContain('/* core/post_card */');
     expect(html).toContain('display:grid');
-    expect(html!.replace(/\s+/g, '')).toContain('--cols:2!important');
-    expect(html!.replace(/\s+/g, '')).toContain('--cols:3!important');
+    expect(html!.replace(/\s+/g, '')).toContain('--cols:2;');
+    expect(html!.replace(/\s+/g, '')).toContain('--cols:3;');
   });
 
   it('collects block header dependencies even on HTML pages', async () => {

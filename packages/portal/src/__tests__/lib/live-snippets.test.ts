@@ -135,7 +135,8 @@ describe('snippet routes', () => {
     expect(corsPuts).toBe(1);
     const { liveCorsRuleId } = await import('../../lib/publishing/live-files');
     expect(corsRules.map((rule) => rule.id)).toEqual(['typeroll-direct-uploads', liveCorsRuleId(SITE)]);
-    expect(corsRules[1]!.allowed).toEqual({ origins: ['https://portal.example.test', 'https://www.example.com'], methods: ['GET', 'HEAD'] });
+    // Only the site's own addresses: portal previews fetch no live files (and run in an opaque origin).
+    expect(corsRules[1]!.allowed).toEqual({ origins: ['https://www.example.com'], methods: ['GET', 'HEAD'] });
     // A new address of the site refreshes the rule before the next write.
     await (await store()).setDoc(paths.version(ORG, SITE, 'redesign'), { name: 'Redesign', kind: 'branch', deploy_url: 'https://redesign.example.pages.dev' });
     await call('PUT', '/notice', { name: 'Notice', kind: 'text', content: 'Closed again' });

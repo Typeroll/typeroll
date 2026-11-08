@@ -1,9 +1,10 @@
 // Saving menus: one path for the v1 API and the portal's cookie routes.
 //
 // Menus have revisions but no working copy. A save validates the whole
-// menu, refuses a location another menu already fills, snapshots the menu
-// as it was, and replaces it at the active version. It reaches the live
-// site with the next publication.
+// menu, refuses a location another menu already fills (unless the caller
+// asks to take it: `take_locations`), snapshots the menu as it was, and
+// replaces it at the active version. It reaches the live site with the next
+// publication.
 
 import { locationConflicts, validateMenu, type Menu, type MenuValidationError } from '@typeroll/shared';
 import { snapshotRevision } from './revisions';
@@ -54,18 +55,76 @@ function validated(input: Record<string, unknown>): Menu {
   return menu;
 }
 
-/** Refuses a location that another menu of the site already fills. */
-async function assertLocationsFree(ctx: MenuCtx, menu: Menu): Promise<void> {
-  if (!menu.locations?.length) return;
+/** A location this save moved from another menu, which keeps its items. */
+export interface MovedLocation { location: string; from_menu_id: string }
+
+export interface MenuSaveOptions {
+  /**
+   * Move a location another menu fills to this menu instead of refusing the
+   * save. The other menu keeps its items and its other locations; the change
+   * is kept as a revision of that menu.
+   */
+  takeLocations?: boolean;
+  updatedBy?: string;
+}
+
+/** The menus that fill one of this menu's locations, and which locations. */
+async function locationHolders(ctx: MenuCtx, menu: Menu): Promise<Array<{ holder: Menu; locations: string[] }>> {
+  if (!menu.locations?.length) return [];
   const others = (await vstore.menus(ctx.orgId, ctx.siteId, ctx.versionId)).filter((other) => other.id !== menu.id);
   const conflicts = locationConflicts([...others, menu]).filter((location) => menu.locations!.includes(location));
-  if (!conflicts.length) return;
-  const location = conflicts[0];
-  const owner = others.find((other) => other.locations?.includes(location));
-  throw new MenuSaveError(
-    `The location "${location}" is already filled by the menu "${owner?.name ?? owner?.id}" (${owner?.id}). Remove it from that menu first; a location shows one menu.`,
-    409,
-  );
+  return others.flatMap((holder) => {
+    const locations = (holder.locations ?? []).filter((location) => conflicts.includes(location));
+    return locations.length ? [{ holder, locations }] : [];
+  });
+}
+
+/**
+ * Refuses a location that another menu of the site already fills, or, with
+ * `takeLocations`, removes it from that menu. Runs after validation, so a
+ * menu that cannot be saved never takes a location.
+ */
+async function claimLocations(ctx: MenuCtx, menu: Menu, options: MenuSaveOptions): Promise<{ moved: MovedLocation[]; undo: () => Promise<void> }> {
+  const holders = await locationHolders(ctx, menu);
+  if (!holders.length) return { moved: [], undo: async () => {} };
+  if (!options.takeLocations) {
+    const { holder, locations: [location] } = holders[0];
+    throw new MenuSaveError(
+      `The location "${location}" is already filled by the menu "${holder.name}" (${holder.id}). A location shows one menu: send take_locations: true to move it to this menu (the menu "${holder.name}" keeps its items), or remove it from that menu first.`,
+      409,
+    );
+  }
+  const released: Array<{ before: Menu; after: Menu }> = [];
+  for (const { holder, locations } of holders) {
+    const after: Menu = { ...holder, locations: (holder.locations ?? []).filter((location) => !locations.includes(location)), updated_at: laterStamp(holder.updated_at) };
+    await snapshotRevision({
+      orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, kind: 'menu', resourceIds: [holder.id],
+      doc: holder as unknown as Record<string, unknown>, createdBy: options.updatedBy ?? 'system',
+      note: `Location ${locations.join(', ')} moved to the menu ${menu.id}`,
+    });
+    await write(ctx, after, holder);
+    released.push({ before: holder, after });
+  }
+  return {
+    moved: holders.flatMap(({ holder, locations }) => locations.map((location) => ({ location, from_menu_id: holder.id }))),
+    // Best effort: give the locations back when this menu's own save fails.
+    undo: async () => { for (const { before, after } of released.reverse()) await write(ctx, { ...before, updated_at: laterStamp(after.updated_at) }, after).catch(() => {}); },
+  };
+}
+
+async function saveClaiming(ctx: MenuCtx, menu: Menu, expected: Menu | null, options: MenuSaveOptions): Promise<MovedLocation[]> {
+  const claim = await claimLocations(ctx, menu, options);
+  try { await write(ctx, menu, expected); }
+  catch (error) { await claim.undo(); throw error; }
+  return claim.moved;
+}
+
+/** Reads `take_locations` from a request body: absent, or a boolean. */
+export function takeLocationsFlag(input: unknown): boolean {
+  const value = input && typeof input === 'object' ? (input as Record<string, unknown>).take_locations : undefined;
+  if (value === undefined) return false;
+  if (typeof value !== 'boolean') throw new MenuSaveError('take_locations must be true or false', 400, [{ path: 'take_locations', message: 'Use true or false' }]);
+  return value;
 }
 
 async function write(ctx: MenuCtx, menu: Menu, expected: Menu | null): Promise<void> {
@@ -85,8 +144,13 @@ function body(input: unknown): Record<string, unknown> {
  * Creates a menu. A valid `id` from the caller is kept (409 when taken);
  * without one the id is derived from the name and made unique.
  */
-export async function createMenu(ctx: MenuCtx, input: unknown): Promise<Menu> {
-  const raw = body(input);
+export async function createMenu(ctx: MenuCtx, input: unknown, options: MenuSaveOptions = {}): Promise<Menu> {
+  return (await createMenuMovingLocations(ctx, input, options)).menu;
+}
+
+/** createMenu, also reporting the locations it moved from other menus. */
+export async function createMenuMovingLocations(ctx: MenuCtx, input: unknown, options: MenuSaveOptions = {}): Promise<{ menu: Menu; moved_locations: MovedLocation[] }> {
+  const { take_locations: _take, ...raw } = body(input);
   const name = typeof raw.name === 'string' ? raw.name.trim() : '';
   let id: string;
   if (raw.id !== undefined && raw.id !== null && raw.id !== '') {
@@ -101,9 +165,8 @@ export async function createMenu(ctx: MenuCtx, input: unknown): Promise<Menu> {
   }
   const now = new Date().toISOString();
   const menu = validated({ ...raw, id, items: withItemIds(raw.items ?? []), created_at: now, updated_at: now });
-  await assertLocationsFree(ctx, menu);
-  await write(ctx, menu, null);
-  return menu;
+  const moved = await saveClaiming(ctx, menu, null, options);
+  return { menu, moved_locations: moved };
 }
 
 /**
@@ -112,9 +175,17 @@ export async function createMenu(ctx: MenuCtx, input: unknown): Promise<Menu> {
  */
 export async function replaceMenu(
   ctx: MenuCtx, menuId: string, input: unknown,
-  options: { updatedBy: string; expectedUpdatedAt?: string; note?: string },
+  options: { updatedBy: string; expectedUpdatedAt?: string; note?: string; takeLocations?: boolean },
 ): Promise<Menu> {
-  const raw = body(input);
+  return (await replaceMenuMovingLocations(ctx, menuId, input, options)).menu;
+}
+
+/** replaceMenu, also reporting the locations it moved from other menus. */
+export async function replaceMenuMovingLocations(
+  ctx: MenuCtx, menuId: string, input: unknown,
+  options: { updatedBy: string; expectedUpdatedAt?: string; note?: string; takeLocations?: boolean },
+): Promise<{ menu: Menu; moved_locations: MovedLocation[] }> {
+  const { take_locations: _take, ...raw } = body(input);
   const existing = await vstore.menu(ctx.orgId, ctx.siteId, ctx.versionId, menuId);
   if (!existing) throw new MenuSaveError('Menu not found', 404);
   if (options.expectedUpdatedAt !== undefined && options.expectedUpdatedAt !== (existing.updated_at ?? ''))
@@ -124,13 +195,14 @@ export async function replaceMenu(
     ...(existing.created_at ? { created_at: existing.created_at } : {}),
     updated_at: laterStamp(existing.updated_at),
   });
-  await assertLocationsFree(ctx, menu);
+  // Refuse a taken location before the revision snapshot, as before.
+  if (!options.takeLocations) await claimLocations(ctx, menu, options);
   await snapshotRevision({
     orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, kind: 'menu', resourceIds: [menuId],
     doc: existing as unknown as Record<string, unknown>, createdBy: options.updatedBy, ...(options.note ? { note: options.note } : {}),
   });
-  await write(ctx, menu, existing);
-  return menu;
+  const moved = await saveClaiming(ctx, menu, existing, options);
+  return { menu, moved_locations: moved };
 }
 
 /** Restores a revision's name, locations, settings and items. */

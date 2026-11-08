@@ -81,6 +81,10 @@ const repeater: BlockType = {
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'gap', type: 'select', label: 'Gap', options: ['auto', 'none', 'xs', 'sm', 'md', 'lg', 'xl'], default: 'auto', responsive: true },
     { name: 'align', type: 'select', label: 'Item alignment', options: ['start', 'center', 'end', 'stretch'], default: 'stretch', responsive: true },
+    // Render version 16. Unset keeps the version 16 default: logos centre a
+    // short last row, other grids start it at the left.
+    { name: 'last_row', type: 'select', label: 'Last row alignment', options: ['start', 'center'], min_render_version: 16 },
+    { ...pixels('logo_height_px', 'Logo height (px)', 16, 240), min_render_version: 16 },
 
     // CAROUSEL OPTIONS
     { name: 'autoplay', type: 'boolean', label: 'Autoplay (carousel)' },
@@ -238,6 +242,8 @@ const logoCloud: BlockType = {
     pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
     { name: 'layout', type: 'select', label: 'Layout', options: ['grid', 'marquee'], option_labels: ['Grid', 'Moving row'], default: 'grid', min_render_version: 14, help: 'A moving row scrolls the logos slowly sideways, pauses on hover, focus and its pause button, and stands still for visitors who prefer reduced motion.' },
+    { name: 'last_row', type: 'select', label: 'Last row alignment', options: ['start', 'center'], default: 'center', min_render_version: 16, help: 'Center puts a short last row in the middle, for example one card under a row of three.' },
+    { ...pixels('logo_height_px', 'Logo height (px)', 16, 240), min_render_version: 16 },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -279,6 +285,7 @@ const testimonials: BlockType = {
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
     pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
+    { name: 'last_row', type: 'select', label: 'Last row alignment', options: ['start', 'center'], default: 'start', min_render_version: 16, help: 'Center puts a short last row in the middle, for example one card under a row of three.' },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -316,6 +323,7 @@ const featureGrid: BlockType = {
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 1, max: 4, responsive: true },
     pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
+    { name: 'last_row', type: 'select', label: 'Last row alignment', options: ['start', 'center'], default: 'start', min_render_version: 16, help: 'Center puts a short last row in the middle, for example one card under a row of three.' },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -362,6 +370,7 @@ const pricingTable: BlockType = {
     { name: 'cols', type: 'number', label: 'Columns', default: 3, min: 2, max: 4, responsive: true },
     pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
+    { name: 'last_row', type: 'select', label: 'Last row alignment', options: ['start', 'center'], default: 'start', min_render_version: 16, help: 'Center puts a short last row in the middle, for example one card under a row of three.' },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -399,6 +408,7 @@ const teamGrid: BlockType = {
     { name: 'cols', type: 'number', label: 'Columns', default: 4, min: 2, max: 6, responsive: true },
     pixels('gap_px', 'Gap (px)', 0, 240),
     { name: 'mobile_cols', type: 'number', label: 'Mobile columns (below 768px)', min: 1, max: 6 },
+    { name: 'last_row', type: 'select', label: 'Last row alignment', options: ['start', 'center'], default: 'start', min_render_version: 16, help: 'Center puts a short last row in the middle, for example one card under a row of three.' },
   ],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -465,6 +475,21 @@ const collectionList: BlockType = {
 // with arrows, dots and autoplay controls after it (block-media.ts). The
 // block root stays the first element, so visibility and style overrides land
 // where they did.
+/**
+ * Render version 16. `last_row: center` wraps the grid's items in centred
+ * rows of equal-width items: the column count and its responsive values still
+ * set the width, each item keeps the grid's minimum width, and phones use the
+ * mobile column count. `--logo-height` is undefined unless a height is set,
+ * so the logo's own default applies.
+ */
+const REPEATER_V16_CSS = `[data-block="repeater"][data-layout="grid"][data-last-row="center"] { display:flex; flex-wrap:wrap; justify-content:center; }
+[data-block="repeater"][data-layout="grid"][data-last-row="center"] > * { flex:0 1 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3)); min-inline-size:min(100%, var(--min-item, 10rem)); }
+[data-block="repeater"][data-layout="grid"][data-last-row="center"] > :is(p,ul,ol,div:not([data-block])) { flex-basis:100%; }
+@media (max-width: 767px) {
+  [data-block="repeater"][data-layout="grid"][data-last-row="center"]:not([data-responsive-cols]) > * { flex-basis:calc((100% - (var(--mobile-cols, 1) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--mobile-cols, 1)); }
+}
+[data-block="repeater"] { --logo-height:var(--logo_height_px); }`;
+
 const CAROUSEL_V6 = `[data-block="repeater"][data-layout="carousel"] {
   display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--gap_px, var(--rep-gap));
   scrollbar-width: thin;
@@ -488,6 +513,9 @@ const CAROUSEL_V7 = `[data-block="repeater"][data-layout="carousel"] { position:
 if (!repeater.styles!.includes(CAROUSEL_V6)) throw new Error('repeater carousel styles changed; update CAROUSEL_V6');
 repeater.render_versions = [{ from: 7, styles: repeater.styles!.replace(CAROUSEL_V6, CAROUSEL_V7), script: CAROUSEL_RUNTIME }];
 repeater.render_versions.push({ from: 14, script: CAROUSEL_RUNTIME_V14 });
+// Render version 16: a grid can centre a short last row (one card under a row
+// of three), and a logo grid passes its logo height to the logos.
+repeater.render_versions.push({ from: 16, styles: `${repeater.render_versions[0]!.styles}\n${REPEATER_V16_CSS}` });
 
 export const REPEATER_BLOCK_TYPES: readonly BlockType[] = [
   repeater,

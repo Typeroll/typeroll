@@ -667,7 +667,7 @@ export async function buildFormSource(
   onRender?: (blocks: Block[]) => void,
   renderVersion?: number,
 ): Promise<(formId: string, block?: import('@typeroll/shared').FormBlockOptions) => string | undefined> {
-  const { renderFormHtml } = await import('@typeroll/shared');
+  const { renderFormHtml, formPresentationOptions } = await import('@typeroll/shared');
   type EnrichedForm = import('@typeroll/shared').Form & {
     submit_url?: string;
     submit_token?: string | null;
@@ -690,7 +690,7 @@ export async function buildFormSource(
       form,
       { submit_url: form.submit_url ?? '/api/forms/submit', submit_token: form.submit_token ?? null, turnstile_site_key: form.turnstile_site_key ?? null },
       // A core/form block's own submit label wins over the form's.
-      { registry, pow_bits: form.pow_bits ?? 0, lang, renderVersion, submit_label: block?.submit_label },
+      { registry, pow_bits: form.pow_bits ?? 0, lang, renderVersion, submit_label: block?.submit_label, ...formPresentationOptions(block) },
     );
   };
 }

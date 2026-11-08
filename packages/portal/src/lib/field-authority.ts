@@ -42,6 +42,13 @@ export interface ProvenanceEntry {
   source_url?: string;
   import_run_id?: string;
   override_reason?: string;
+  /**
+   * Set when a reviewed relocation moved this answer from another path of the
+   * same Page: where it was, and when it moved. Source, actor and time stay
+   * those of the original answer.
+   */
+  relocated_from?: string;
+  relocated_at?: string;
 }
 
 /** Server-maintained, underscore-prefixed so no schema whitelist admits it. */

@@ -148,9 +148,18 @@ Images preserve the complete subject with intrinsic height and contain; request
 cover and a ratio explicitly only when cropping is intended. Breadcrumb spacing
 uses --breadcrumbs-before / --breadcrumbs-after. Custom field-list item_html
 replaces native bullets; core/list marker none supports custom icons.
-Preview and static CSS order is defaults → blocks/instances → site → Page;
-specificity, inline CSS and !important still apply. Compare without temporary
-corrective CSS before removing any existing site rules.
+Preview and static CSS order is defaults → blocks/instances → site → Page.
+From render version 14 all platform CSS sits in cascade layers (reset, base,
+tokens, platform, instance) and site and Page CSS are unlayered, so a plain
+site rule beats any platform rule whatever its specificity; do not add
+!important or doubled selectors to win. Before 14, specificity and order
+decide. Inline values still beat stylesheets: from render version 16 the
+platform writes only custom properties inline (spacing, text colour, image
+width and responsive values move to the instance layer), settings are exposed
+as data attributes (`[data-block="grid"][data-gap="sm"]`, not
+`[style*="--gap:sm"]`), and platform media queries follow the site's
+responsive widths. hidden_on visibility keeps its !important on purpose.
+Compare without temporary corrective CSS before removing any existing site rules.
 
 
 ## Site-specific responsive widths (Core 0.2.28)

@@ -1,0 +1,125 @@
+<div data-block="media_card" data-fit="contain" data-side="right" data-iw="two-fifths" data-radius="lg" style="--mc-bg:" data-presentation="core%2Fmedia_card" data-actions-align="start" data-vertical-align="center" data-stack-order="image-first" data-gap="auto">
+  <div class="block-mediacard-body">
+    <span class="block-mediacard-eyebrow"></span>
+    <h2 class="block-mediacard-heading"></h2>
+    <div class="block-mediacard-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
+    <div class="block-mediacard-actions">
+      <a class="block-btn block-btn-primary block-mediacard-button" href=""></a>
+      <a class="block-btn block-btn-secondary block-mediacard-secondary" href=""></a>
+    </div>
+  </div>
+  <div class="block-mediacard-media"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /></div>
+</div>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+[data-presentation="core%2Fmedia_card"]{--padding_px:initial}
+
+/* core/media_card */
+[data-block="media_card"] { display: flex; align-items: stretch; gap: var(--mc-gap, 2.5rem); padding: var(--padding_px, 0); background: var(--mc-bg, transparent); overflow: hidden; }
+[data-block="media_card"][data-side="left"] { flex-direction: row-reverse; }
+[data-block="media_card"][data-radius="md"] { border-radius: 0.5rem; }
+[data-block="media_card"][data-radius="lg"] { border-radius: 1.25rem; }
+[data-block="media_card"][data-radius="xl"] { border-radius: 1.75rem; }
+[data-block="media_card"] .block-mediacard-body { flex: 1 1 0; display: flex; flex-direction: column; justify-content: center; gap: 1rem; min-width: 0; }
+[data-block="media_card"] .block-mediacard-media { flex: 0 0 40%; min-width: 0; }
+[data-block="media_card"][data-iw="third"] .block-mediacard-media { flex-basis: 33.333%; }
+[data-block="media_card"][data-iw="half"] .block-mediacard-media { flex-basis: 50%; }
+[data-block="media_card"] .block-mediacard-media img { display: block; width: 100%; height: auto; object-fit: contain; border-radius: inherit; }
+[data-block="media_card"][data-fit="cover"] .block-mediacard-media img { height:100%; object-fit:cover; }
+[data-block="media_card"] .block-mediacard-heading { margin: 0; }
+[data-block="media_card"] .block-mediacard-text { line-height: 1.65; }
+[data-block="media_card"] .block-btn { display: inline-block; padding: 0.75rem 1.75rem; border-radius: 999px; font-weight: 600; text-decoration: none; background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); }
+[data-block="media_card"] .block-mediacard-button { align-self: flex-start; }
+[data-block="media_card"] .block-mediacard-button:empty { display: none; }
+@media (max-width: 639px) {
+  [data-block="media_card"], [data-block="media_card"][data-side="left"] { flex-direction: column-reverse; gap: var(--mc-gap, 1.25rem); }
+  [data-block="media_card"][data-stack-order="text-first"] { flex-direction: column; }
+  [data-block="media_card"] .block-mediacard-media,
+  [data-block="media_card"][data-iw="third"] .block-mediacard-media,
+  [data-block="media_card"][data-iw="half"] .block-mediacard-media { flex-basis: auto; }
+  [data-block="media_card"][data-fit="cover"] .block-mediacard-media img { max-height:18rem; }
+}
+[data-block="media_card"][data-gap="sm"] { --mc-gap: 1rem; }
+[data-block="media_card"][data-gap="md"] { --mc-gap: 1.5rem; }
+[data-block="media_card"][data-gap="lg"] { --mc-gap: 2.5rem; }
+[data-block="media_card"][data-gap="xl"] { --mc-gap: 4rem; }
+/* Text first: when the card wraps (a narrow column) the text stays above the image. */
+[data-block="media_card"][data-stack-order="text-first"] { flex-wrap: wrap; }
+[data-block="media_card"][data-vertical-align="top"] .block-mediacard-body { justify-content: flex-start; }
+[data-block="media_card"][data-vertical-align="end"] .block-mediacard-body { justify-content: flex-end; }
+[data-block="media_card"] .block-mediacard-eyebrow { display: inline-block; align-self: flex-start; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
+[data-block="media_card"] .block-mediacard-eyebrow:empty { display: none; }
+[data-block="media_card"] .block-mediacard-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+[data-block="media_card"] .block-mediacard-actions:not(:has(a:not(:empty))) { display: none; }
+[data-block="media_card"] .block-btn:empty { display: none; }
+[data-block="media_card"] .block-btn-secondary { background: transparent; color: var(--color-primary, #111); box-shadow: inset 0 0 0 2px currentColor; }
+[data-block="media_card"][data-actions-align="center"] .block-mediacard-actions { justify-content: center; }
+[data-block="media_card"][data-actions-align="end"] .block-mediacard-actions { justify-content: flex-end; }
+[data-block="media_card"][data-actions-align="stretch"] .block-mediacard-actions > a { flex: 1 1 auto; text-align: center; }
+
+/* core/media_card defaults */
+/* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
+[data-block="media_card"] .block-btn { border-radius:1.6rem; }
+/* The card wraps when its text column would be narrower than 18rem, image above text, so it also
+   stacks in a narrow column or grid cell. The text column takes the free space; the image keeps its width. */
+@media (min-width: 640px) {
+  [data-block="media_card"] { flex-wrap:wrap-reverse; }
+  [data-block="media_card"] .block-mediacard-body { flex:999 1 18rem; }
+  [data-block="media_card"] .block-mediacard-media { flex-grow:1; }
+}
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
+:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
+}

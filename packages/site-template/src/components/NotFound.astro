@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
 import { buildSiteFields, getLiveBaseUrl, getAllPages, getBuildYear, getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings, urlFor } from '../lib/content';
-import { collectBlockAssets, globalBlockSourceFromPartials, notFoundText, resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage, siteContext } from '@typeroll/shared';
+import { collectBlockAssets, globalBlockSourceFromPartials, notFoundText, platformLayer, resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage, siteContext } from '@typeroll/shared';
 import type { Block, LanguageSection, Page, RenderContext } from '@typeroll/shared';
 
 interface Props {
@@ -73,6 +73,8 @@ const hasHome = (await getAllPages()).some(candidate => section
   ? sameRoute(candidate.path ?? '', homePath)
   : candidate.path === '/' || ['', 'home', 'index'].includes(candidate.slug));
 const homeHref = section ? urlFor({ slug: '', path: homePath }, settings.trailing_slash) : '/';
+// From render version 16 the 404 styles sit in the base layer, so site CSS restyles them.
+const notFoundLayered = resolveRenderVersion(settings.render_version) >= 16;
 const renderCtx: RenderContext = {
   page: page as unknown as Record<string, unknown>,
   site: { ...siteContext(settings as unknown as Record<string, unknown>, getBuildYear()), fields: siteFields.values, live_base_url: liveBaseUrl },
@@ -80,7 +82,8 @@ const renderCtx: RenderContext = {
 ---
 <BaseLayout page={page} settings={settings} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs}>
   <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
-  <main class="page-content not-found" data-tr-not-found>
+  <main class:list={['page-content', 'not-found', notFoundLayered && 'not-found--layered']} data-tr-not-found>
+    {notFoundLayered && <style set:html={platformLayer('base', '.not-found--layered { text-align:center; padding:var(--spacing-xl) var(--spacing-md); }\n.not-found--layered h1 { font-size:3rem; margin-bottom:var(--spacing-md); }', resolveRenderVersion(settings.render_version))} />}
     <h1>{t.title}</h1>
     <p>{t.body}</p>
     {hasHome && <p><a href={homeHref}>{t.back}</a></p>}
@@ -89,6 +92,6 @@ const renderCtx: RenderContext = {
 </BaseLayout>
 
 <style>
-  .not-found { text-align: center; padding: var(--spacing-xl) var(--spacing-md); }
-  .not-found h1 { font-size: 3rem; margin-bottom: var(--spacing-md); }
+  .not-found:where(:not(.not-found--layered)) { text-align: center; padding: var(--spacing-xl) var(--spacing-md); }
+  .not-found:where(:not(.not-found--layered)) h1 { font-size: 3rem; margin-bottom: var(--spacing-md); }
 </style>

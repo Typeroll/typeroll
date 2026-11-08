@@ -146,6 +146,52 @@ retired values and their provenance, but cannot address or change them. Stop
 consuming obsolete mirrors when changing a schema; do not maintain them as a
 second source of truth.
 
+### Moving accepted answers to another field
+
+When a schema moves a question, for example from a company group to each
+program, accepted answers move with `relocate_page_answers`
+(`POST /api/v1/sites/{siteId}/pages/{pageId}/relocate-answers`). It is a
+reviewed, one-time operation for site administrators of the owning
+organization, and unlike an import it keeps who gave each answer: the original
+source, author, time and evidence, including protection that a parent group
+gives the answer and the protection of a whole emptied group. Each moved entry
+records `relocated_from` and `relocated_at`.
+
+```json
+{
+  "page_id": "acme",
+  "base_revision": "<revision from read_page_authority>",
+  "reason": "Program-scoped sales support, reviewed mapping 2026-11",
+  "dry_run": true,
+  "moves": [
+    {
+      "from": "sales_support_answers/training",
+      "to": "programs/@spring-drive/sales_support/training"
+    }
+  ]
+}
+```
+
+A move names a leaf or an object group, never a whole list. The program
+(`@<stable id>`) must already exist; a move never creates one. The answer for
+each move is one of:
+
+| Outcome              | Meaning                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| `relocated`          | Moved, with the source's attribution                                                                   |
+| `already_present`    | The target has the same answer; its value and attribution are left as they are                         |
+| `protected_target`   | The target has its own attribution (an answer, an explicit clear or an emptied group); nothing changes |
+| `conflicting_target` | The target holds a different, unattributed value; nothing changes                                      |
+| `missing_source`     | No value and no attribution at the source                                                              |
+
+Run it with `dry_run: true` first; the answer is the receipt either way and
+contains paths, outcomes and kinds of source, never values, authors or
+evidence. A changed revision, an unsaved draft or a pending owner review of an
+affected field returns 409. The source stays in place: remove the old field
+from the schema only after every Page is moved, so no unresolved answer is
+lost. Each applied relocation is recorded in the Page's answer history, and a
+normal publication includes the moved answers.
+
 ```
 Create a page titled "Tjänster" at slug "tjanster" with three service sections.
 ```
@@ -372,6 +418,31 @@ For example, a hub titled “Our complete guide to moving” may have
 Republish after changing a parent label so affected descendants update too.
 MCP 0.45.24 exposes the optional field; Cloud/self-hosted servers require Core
 0.2.28.
+
+## Page excerpt
+
+Every Page has a plain-text `excerpt`: the short summary that
+`template/page_excerpt` (`{{page.excerpt}}`) shows in a Page template and that
+Page cards show in listings. Set it with `create_page`, `update_page`,
+`batch_update_pages`, `POST`/`PATCH`/`PUT /api/v1/sites/{siteId}/pages`, or
+**Page settings → Excerpt** in the block editor. It is at most 1000 characters
+of plain text (markup is shown as text, not rendered); `null` clears it.
+
+```json
+{
+  "page_id": "lunch",
+  "patch": { "excerpt": "Dagens lunch och veckans meny." },
+  "save": true
+}
+```
+
+Like other content, an excerpt written with `update_page` lands in the Page's
+unsaved draft until it is saved (`save: true` or `commit_working_copy`), and it
+reaches the live site with the next publication. Page reads return `excerpt`.
+When the Page's content type defines its own `excerpt` field (for example a blog
+type with an `excerpt` textarea), that field is the excerpt: a top-level
+`excerpt` write is stored in `fields.excerpt`, and an explicit `fields.excerpt`
+in the same write wins.
 
 ## Clone a page
 

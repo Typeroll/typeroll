@@ -8,7 +8,7 @@
 // warnings: [{ code: 'slug_adjusted', requested, slug, path, conflicting_page_id }].
 
 import type { APIRoute } from 'astro';
-import { pageSort, comparePageValues, pageContentValues, DEFAULT_CONTENT_TYPE, type Page } from '@typeroll/shared';
+import { pageSort, comparePageValues, pageContentValues, pageExcerpt, DEFAULT_CONTENT_TYPE, type Page } from '@typeroll/shared';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { createPage } from '../../../../../../lib/page-create';
@@ -53,6 +53,7 @@ function projectPage(p: Page, full = false): Record<string, unknown> {
     kind: p.kind,
     author: p.author,
     breadcrumb_label: p.breadcrumb_label,
+    excerpt: pageExcerpt(p),
     seo_title: p.seo_title,
     append_seo_suffix: p.append_seo_suffix,
     seo_description: p.seo_description,

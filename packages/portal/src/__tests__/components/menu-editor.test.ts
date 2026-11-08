@@ -8,7 +8,7 @@ import { createElement } from 'react';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { Menu } from '@typeroll/shared';
-import MenuEditor, { conflictKind, menuSaveBody, type MenuEditorPage } from '../../components/MenuEditor';
+import MenuEditor, { conflictKind, menuSaveBody, takenLocationNote, type MenuEditorPage } from '../../components/MenuEditor';
 
 const pages: MenuEditorPage[] = [
   { id: 'about', title: 'About us', path: '/about/', parent: null, status: 'published' },
@@ -45,7 +45,7 @@ describe('MenuEditor', () => {
 
   it('marks a location another menu fills and explains how to show the menu', () => {
     const html = render();
-    expect(html).toContain('Filled by “Footer links”');
+    expect(html).toContain('Used by “Footer links”; choosing it moves it here');
     expect(html).toContain('location:primary');
     expect(html).toContain('Navigation links');
   });
@@ -72,6 +72,13 @@ describe('MenuEditor', () => {
 });
 
 describe('menu save helpers', () => {
+  it('moves a chosen location another menu fills', () => {
+    const draft = { name: 'Huvudmeny', locations: ['primary', 'footer'], auto_add_pages: false, items: [] };
+    expect(menuSaveBody(draft, 'T1', { footer: 'Footer links' })).toMatchObject({ locations: ['primary', 'footer'], take_locations: true });
+    expect(menuSaveBody(draft, 'T1', { mobile: 'Mobile menu' })).not.toHaveProperty('take_locations');
+    expect(takenLocationNote('Footer links', true)).toBe(' Used by “Footer links”; will move to this menu when you save');
+  });
+
   it('sends the whole menu with the updated_at it was read at', () => {
     expect(menuSaveBody({ name: ' Main ', locations: ['primary'], auto_add_pages: true, items: [] }, 'T1')).toEqual({
       name: 'Main', locations: ['primary'], auto_add_pages: true, items: [], expected_updated_at: 'T1',

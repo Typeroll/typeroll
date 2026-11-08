@@ -31,7 +31,7 @@ export const contentGenerationWorkflow: WorkflowDef = {
 
         const html = await generateText(
           ctx,
-          `You are a writer producing a single web page for "${siteName}". Output HTML body only (no <html>/<body>, no markdown fences). Use semantic tags (h1, h2, p, ul). The site has these CSS variables you can use inline: var(--color-primary), var(--color-accent), var(--spacing-md), var(--spacing-lg). Write for ${audience} in a ${tone} tone. Be specific — no filler.`,
+          `You are a writer producing a single web page for "${siteName}". Output HTML body only (no <html>/<body>, no markdown fences, no style attributes or classes: the site's design styles it). Use semantic tags (h1, h2, p, ul). Write for ${audience} in a ${tone} tone. Be specific — no filler.`,
           `Topic: ${topic}\n\nWrite the page. Include a clear H1, scannable structure, and at least one call to action when relevant.`
         );
 
@@ -40,8 +40,9 @@ export const contentGenerationWorkflow: WorkflowDef = {
         const doc: Omit<Page, 'id'> = {
           title,
           slug,
-          content_mode: 'html',
-          html_content: stripFences(html),
+          // A block page like every other: the text is one Text block the editor can split up.
+          content_mode: 'blocks',
+          blocks: [{ id: 'body', type: 'core/prose', data: { html: stripFences(html) } }],
           status: 'draft',
           ai_generated: true,
           date_updated: new Date().toISOString(),

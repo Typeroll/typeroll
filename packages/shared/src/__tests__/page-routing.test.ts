@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { BlockType, ContentType, Page } from '../types.js';
-import { contentPagePath, pageContentValues } from '../page-content-model.js';
+import { contentPagePath, pageContentValues, pageExcerpt } from '../page-content-model.js';
 import { createPageSource } from '../page-source.js';
 import { pageNavigation } from '../page-navigation.js';
 import { pageBreadcrumbs } from '../page-breadcrumbs.js';
@@ -84,5 +84,17 @@ describe('native page navigation and breadcrumbs', () => {
     expect(pageBreadcrumbs(pages[2], pages, 'always')).toEqual([{ label: 'Guides', href: '/guides/' }, { label: 'Moving', href: '/guides/moving/', current: true }]);
     pages[0].parent = 'moving';
     expect(pageBreadcrumbs(pages[2], pages, 'always')).toHaveLength(2);
+  });
+});
+
+describe('Page excerpt', () => {
+  it('renders the built-in excerpt and prefers a content type’s own excerpt field', () => {
+    const registry = buildCoreBlockRegistry();
+    const excerpt = (values: Partial<Page>) => renderBlock({ id: 'summary', type: 'template/page_excerpt', data: {} }, { registry, context: { page: pageContentValues(page(values)) } });
+    expect(excerpt({ excerpt: 'Built-in <summary>' })).toContain('Built-in &lt;summary&gt;');
+    expect(excerpt({ excerpt: 'Built-in', fields: { excerpt: 'Own field' } })).toContain('Own field');
+    expect(excerpt({ excerpt: 'Built-in', fields: { excerpt: null } })).toContain('Built-in');
+    expect(excerpt({ excerpt: null })).toBe('');
+    expect(pageExcerpt({ fields: {} })).toBeNull();
   });
 });

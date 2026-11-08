@@ -1,5 +1,5 @@
 import type { BlockType, FieldDefinition } from './types.js';
-import { typographyFields } from './presentation-fields.js';
+import { pixels, typographyFields } from './presentation-fields.js';
 import { languageDirection, uiText } from './ui-text.js';
 import { contentLanguageTag } from './hreflang.js';
 
@@ -13,6 +13,17 @@ const cellFields: FieldDefinition[] = [
   { name: 'rowspan', type: 'number', label: 'Rows spanned', min: 1, max: 100, default: 1 },
   { name: 'width', type: 'text', label: 'Width', placeholder: '25% or 12rem' },
 ];
+
+const LIST_STYLES = `[data-block="list"] ul,[data-block="list"] ol{padding-inline-start:1.5rem;margin:1rem 0}[data-block="list"] li{margin:.35rem 0}[data-block="list"] li>p{margin:0}[data-block="list"][data-marker="none"] ul,[data-block="list"][data-marker="none"] ol,[data-block="list"][data-marker="check"] ul,[data-block="list"][data-marker="check"] ol{list-style:none;padding-inline-start:0}[data-block="list"][data-marker="check"] li{position:relative;padding-inline-start:1.5em}[data-block="list"][data-marker="check"] li::before{content:"✓";position:absolute;inset-inline-start:0}[data-block="list"] li:has(input[type="checkbox"]){list-style:none}[data-block="list"][data-marker="check"] li:has(input[type="checkbox"])::before{content:none}`;
+/**
+ * Render version 16: the space between items (each item's block margins, so
+ * it collapses to one gap), two columns that read down then across and fall
+ * back to one in a narrow column, and the text size when one is set.
+ */
+const LIST_V16_CSS = `[data-block="list"] li{margin-block:var(--gap_px,.35rem)}
+[data-block="list"][data-layout="two-column"] :is(ul,ol){columns:2 14rem;column-gap:2.5rem}
+[data-block="list"][data-layout="two-column"] li{break-inside:avoid}
+[data-block="list"][data-font-size-px]{font-size:var(--font_size_px)}`;
 
 export const ARTICLE_BLOCK_TYPES: BlockType[] = [
   {
@@ -89,12 +100,18 @@ ${['h1','h2','h3','h4','h5','h6'].map(level => `[data-block="rich_heading"][data
       { name: 'ordered', type: 'boolean', label: 'Numbered list', default: false },
       { name: 'start', type: 'number', label: 'Start number', default: 1 },
       { name: 'items', type: 'array', label: 'Items', fields: [{ name: 'html', type: 'richtext', label: 'Content' }] },
+      // Render version 16.
+      { ...pixels('gap_px', 'Space between items (px)', 0, 96), min_render_version: 16 },
+      { name: 'layout', type: 'select', label: 'Layout', options: ['stack', 'two-column'], option_labels: ['Stack', 'Two columns'], default: 'stack', min_render_version: 16 },
+      { ...pixels('font_size_px', 'Text size (px)', 12, 64), min_render_version: 16 },
     ],
     template: `<div data-block="list" data-marker="{{marker}}">{{{list_html}}}</div>`,
-    styles: `[data-block="list"] ul,[data-block="list"] ol{padding-inline-start:1.5rem;margin:1rem 0}[data-block="list"] li{margin:.35rem 0}[data-block="list"] li>p{margin:0}[data-block="list"][data-marker="none"] ul,[data-block="list"][data-marker="none"] ol,[data-block="list"][data-marker="check"] ul,[data-block="list"][data-marker="check"] ol{list-style:none;padding-inline-start:0}[data-block="list"][data-marker="check"] li{position:relative;padding-inline-start:1.5em}[data-block="list"][data-marker="check"] li::before{content:"✓";position:absolute;inset-inline-start:0}[data-block="list"] li:has(input[type="checkbox"]){list-style:none}[data-block="list"][data-marker="check"] li:has(input[type="checkbox"])::before{content:none}`,
+    render_versions: [{ from: 16, styles: `${LIST_STYLES}\n${LIST_V16_CSS}` }],
+    styles: LIST_STYLES,
     origin: 'core', created_at: '1970-01-01T00:00:00Z',
   },
 ];
+
 
 const records = (value: unknown): Record<string, unknown>[] => Array.isArray(value)
   ? value.filter((v): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v)) : [];

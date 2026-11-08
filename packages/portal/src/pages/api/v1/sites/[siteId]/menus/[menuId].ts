@@ -1,6 +1,6 @@
 // GET    /api/v1/sites/{siteId}/menus/{menuId}
 // PUT    /api/v1/sites/{siteId}/menus/{menuId}   — replace the whole menu
-//   body: { name, locations?, auto_add_pages?, items, expected_updated_at? }
+//   body: { name, locations?, auto_add_pages?, items, expected_updated_at?, take_locations? }
 // DELETE /api/v1/sites/{siteId}/menus/{menuId}
 //
 // PUT is revision checked: send the `updated_at` you read as
@@ -10,7 +10,7 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
-import { MenuSaveError, removeMenu, replaceMenu } from '../../../../../../lib/menu-write';
+import { MenuSaveError, removeMenu, replaceMenuMovingLocations, takeLocationsFlag } from '../../../../../../lib/menu-write';
 import { pathParam } from '../../../../../../lib/path-param';
 
 function failure(error: unknown, ctx: { orgId: string; siteId: string }): Response {
@@ -40,8 +40,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
   const { expected_updated_at: expected, ...menu } = body;
   if (expected !== undefined && typeof expected !== 'string') return apiError('expected_updated_at must be the updated_at string you read', 400, ctx);
   try {
-    const saved = await replaceMenu(ctx, menuId, menu, { updatedBy: `api-key:${ctx.keyPrefix}`, expectedUpdatedAt: expected });
-    return apiResponse(ctx, { menu: saved }, 200, body);
+    const saved = await replaceMenuMovingLocations(ctx, menuId, menu, { updatedBy: `api-key:${ctx.keyPrefix}`, expectedUpdatedAt: expected, takeLocations: takeLocationsFlag(menu) });
+    return apiResponse(ctx, saved, 200, body);
   } catch (error) { return failure(error, ctx); }
 };
 

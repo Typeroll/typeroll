@@ -1,6 +1,7 @@
 import type { CookieConsentLabels, CookieConsentSettings } from './types.js';
 import { buildConsentRuntime, wrapConsentScripts } from './consent-scripts.js';
 import { uiLanguage, type UiLanguage } from './ui-text.js';
+import { platformLayer } from './cascade-layers.js';
 
 /** Swedish default body text, kept for callers that predate localization. */
 export const DEFAULT_COOKIE_CONSENT_TEXT =
@@ -639,9 +640,11 @@ export function renderCookieConsent(
   consent: CookieConsentSettings | undefined,
   bodyHtml?: string,
   language?: string,
-  options: { initialChoice?: 'all' | 'necessary' } = {},
+  options: { initialChoice?: 'all' | 'necessary'; renderVersion?: number } = {},
 ): string {
   if (consent?.enabled !== true) return '';
+  // From render version 16 the banner styles sit in the base layer, so site CSS restyles them without !important.
+  const styles = (options.renderVersion ?? 1) >= 16 ? platformLayer('base', COOKIE_CONSENT_STYLES, options.renderVersion) : COOKIE_CONSENT_STYLES;
   const labels = consentLabels(consent, language);
   const body = bodyHtml || `<p>${escapeText(labels.text)}</p>`;
   const necessary = consent.scripts_necessary ?? '';
@@ -652,7 +655,7 @@ export function renderCookieConsent(
     ? `<a class="tr-consent__link" href="${escapeAttr(consent.privacy_policy_url)}" target="_blank" rel="noopener">${escapeText(labels.privacy_link)}</a>`
     : '';
 
-  return `${necessary}${optional}<style data-cookie-consent="1">${COOKIE_CONSENT_STYLES}</style>
+  return `${necessary}${optional}<style data-cookie-consent="1">${styles}</style>
 <div id="tr-consent" class="tr-consent" role="dialog" aria-modal="true" aria-labelledby="tr-consent-title" aria-describedby="tr-consent-body">
   <div class="tr-consent__backdrop" aria-hidden="true"></div>
   <div class="tr-consent__panel">

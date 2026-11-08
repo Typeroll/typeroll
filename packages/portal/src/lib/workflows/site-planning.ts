@@ -94,8 +94,8 @@ Write the page. Be specific and useful — no filler.`
           const doc: Omit<Page, 'id'> = {
             title: p.title,
             slug: p.page_type === 'home' ? 'home' : slug,
-            content_mode: 'html',
-            html_content: stripCodeFences(html),
+            content_mode: 'blocks',
+            blocks: [{ id: 'body', type: 'core/prose', data: { html: stripCodeFences(html) } }],
             status: 'review',
             ai_generated: true,
             seo_description: p.description,

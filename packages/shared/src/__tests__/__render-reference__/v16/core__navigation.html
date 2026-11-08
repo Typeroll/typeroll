@@ -1,0 +1,99 @@
+<nav data-block="navigation" aria-label="Main navigation" data-color="" style="--link-color:" data-presentation="core%2Fnavigation" data-collapse-below="1024" data-block-type="core/navigation">
+  <button class="block-navigation-toggle" type="button" aria-label="Menu" aria-expanded="false"><span class="block-navigation-toggle-label">Menu</span><span class="block-navigation-toggle-icon" aria-hidden="true">☰</span></button>
+  <ul class="block-navigation-list"></ul>
+</nav>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+[data-presentation="core%2Fnavigation"]{--toggle_size_px:initial;--gap_px:initial}
+
+/* core/navigation */
+[data-block="navigation"] { min-width: 0; }
+[data-block="navigation"] .block-navigation-list { display: flex; align-items: center; flex-wrap: wrap; gap: var(--gap_px, 0.4rem 1.25rem); margin: 0; padding: 0; list-style: none; }
+[data-block="navigation"] a { display: inline-block; color: inherit; padding-block: 0.45rem; overflow-wrap: anywhere; text-underline-offset: 0.2em; }
+[data-block="navigation"] a[aria-current="page"] { font-weight: 700; text-decoration-thickness: 0.14em; }
+[data-block="navigation"] a:focus-visible,
+[data-block="navigation"] .block-navigation-toggle:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; border-radius: 0.2rem; }
+[data-block="navigation"] .block-navigation-toggle { display: none; align-items: center; justify-content: space-between; gap: 1rem; width: 100%; padding: 0.65rem 0.8rem; font: inherit; color: inherit; background: transparent; border: 1px solid color-mix(in srgb, currentColor 22%, transparent); border-radius: 0.4rem; }
+@media (max-width: 575px) {
+  [data-block="navigation"][data-collapse-below="576"] .block-navigation-list { flex-direction: column; align-items: stretch; }
+  [data-block="navigation"][data-collapse-below="576"][data-enhanced="true"] .block-navigation-toggle { display: flex; }
+  [data-block="navigation"][data-collapse-below="576"][data-enhanced="true"] .block-navigation-list[hidden] { display: none; }
+}
+@media (max-width: 767px) {
+  [data-block="navigation"][data-collapse-below="768"] .block-navigation-list { flex-direction: column; align-items: stretch; }
+  [data-block="navigation"][data-collapse-below="768"][data-enhanced="true"] .block-navigation-toggle { display: flex; }
+  [data-block="navigation"][data-collapse-below="768"][data-enhanced="true"] .block-navigation-list[hidden] { display: none; }
+}
+@media (max-width: 768px) {
+  [data-block="navigation"][data-collapse-below="769"] .block-navigation-list { flex-direction: column; align-items: stretch; }
+  [data-block="navigation"][data-collapse-below="769"][data-enhanced="true"] .block-navigation-toggle { display: flex; }
+  [data-block="navigation"][data-collapse-below="769"][data-enhanced="true"] .block-navigation-list[hidden] { display: none; }
+}
+@media (max-width: 1023px) {
+  [data-block="navigation"][data-collapse-below="1024"] .block-navigation-list { flex-direction: column; align-items: stretch; }
+  [data-block="navigation"][data-collapse-below="1024"][data-enhanced="true"] .block-navigation-toggle { display: flex; }
+  [data-block="navigation"][data-collapse-below="1024"][data-enhanced="true"] .block-navigation-list[hidden] { display: none; }
+}
+[data-block="navigation"][data-color]:not([data-color=""]) :is(a, .block-navigation-toggle) { color:var(--link-color); }
+[data-block="navigation"][data-toggle-size-px] .block-navigation-toggle > .block-navigation-toggle-icon { inline-size:var(--toggle_size_px); block-size:calc(var(--toggle_size_px) * 8 / 11); }
+
+/* core/navigation defaults v16 */
+/* The collapsed menu is a button with a clearly visible menu symbol before its label, not a full-width field. */
+[data-block="navigation"] .block-navigation-toggle { inline-size:auto; justify-content:flex-start; flex-direction:row-reverse; gap:.6rem; min-block-size:44px; padding:.55rem .9rem; border-radius:999px; }
+[data-block="navigation"] .block-navigation-toggle-icon { font-size:0; inline-size:1.375rem; block-size:1rem; background:linear-gradient(currentColor, currentColor) top / 100% 2px no-repeat, linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat, linear-gradient(currentColor, currentColor) bottom / 100% 2px no-repeat; }
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
+:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
+}

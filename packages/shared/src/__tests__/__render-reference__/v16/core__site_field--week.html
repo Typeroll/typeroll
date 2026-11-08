@@ -1,0 +1,142 @@
+<div data-block="site_field" data-format="opening_hours_week"><table class="block-site-field-value block-site-field-hours"><caption class="block-site-field-label">Opening hours</caption><tbody data-site-field-clock="{&quot;f&quot;:&quot;opening_hours_week&quot;,&quot;z&quot;:&quot;Europe/Stockholm&quot;,&quot;d&quot;:[{&quot;day&quot;:&quot;monday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;tuesday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;wednesday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;thursday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;friday&quot;,&quot;opens&quot;:&quot;09:00&quot;,&quot;closes&quot;:&quot;17:00&quot;},{&quot;day&quot;:&quot;saturday&quot;,&quot;opens&quot;:&quot;10:00&quot;,&quot;closes&quot;:&quot;14:00&quot;},{&quot;day&quot;:&quot;sunday&quot;,&quot;closed&quot;:true}],&quot;x&quot;:[{&quot;date&quot;:&quot;2026-11-11&quot;,&quot;closed&quot;:true,&quot;note&quot;:&quot;Staff day&quot;}],&quot;w&quot;:[&quot;Monday&quot;,&quot;Tuesday&quot;,&quot;Wednesday&quot;,&quot;Thursday&quot;,&quot;Friday&quot;,&quot;Saturday&quot;,&quot;Sunday&quot;],&quot;t&quot;:{&quot;closed&quot;:&quot;Closed&quot;,&quot;open_until&quot;:&quot;Open now, until {time}&quot;,&quot;opens&quot;:&quot;Opens {day} {time}&quot;,&quot;today&quot;:&quot;today&quot;,&quot;tomorrow&quot;:&quot;tomorrow&quot;,&quot;reopens&quot;:&quot;Closed, opens again {time}&quot;}}"><tr data-day="monday" data-today="true" aria-current="date"><th>Monday</th><td>09:00–17:00</td></tr><tr data-day="tuesday"><th>Tuesday</th><td>09:00–17:00</td></tr><tr data-day="wednesday" data-exception="true"><th>Wednesday<br><strong class="block-site-field-note">Staff day</strong></th><td>Closed</td></tr><tr data-day="thursday"><th>Thursday</th><td>09:00–17:00</td></tr><tr data-day="friday"><th>Friday</th><td>09:00–17:00</td></tr><tr data-day="saturday"><th>Saturday</th><td>10:00–14:00</td></tr><tr data-day="sunday"><th>Sunday</th><td>Closed</td></tr></tbody></table></div>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/site_field */
+[data-block="site_field"] { margin: 0; }
+[data-block="site_field"] .block-site-field-hours { border-collapse: collapse; }
+[data-block="site_field"] .block-site-field-hours caption { text-align: start; }
+[data-block="site_field"] .block-site-field-hours th { text-align: start; font-weight: inherit; padding: 0.15em 1.5em 0.15em 0; }
+[data-block="site_field"] .block-site-field-hours td { padding: 0.15em 0; }
+[data-block="site_field"] .block-site-field-list { margin: 0; }
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
+:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
+}
+
+/* js */
+/* core/site_field opening hours */
+(function () {
+  var compute = function (p, now) {
+  var TIME = /^([01]?\d|2[0-3]):([0-5]\d)$/;
+  var DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+  var MAP = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  function esc(value) { return String(value).replace(/[&<>"']/g, function (c) { return MAP[c]; }); }
+  function fill(template, name, value) { return String(template).split('{' + name + '}').join(value); }
+  var parts = {};
+  new Intl.DateTimeFormat('en-GB', { timeZone: p.z, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    .formatToParts(now).forEach(function (part) { parts[part.type] = part.value; });
+  var year = Number(parts.year), month = Number(parts.month), date = Number(parts.day);
+  var minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  function valid(value) { return typeof value === 'string' && TIME.test(value) ? (value.length === 4 ? '0' + value : value) : ''; }
+  function find(list, test) { for (var i = 0; i < (list || []).length; i++) if (list[i] && test(list[i])) return list[i]; return undefined; }
+  function hours(offset) {
+    var day = new Date(Date.UTC(year, month - 1, date + offset));
+    var iso = day.toISOString().slice(0, 10), index = (day.getUTCDay() + 6) % 7;
+    var exception = find(p.x, function (entry) { return entry.date === iso; });
+    var source = exception || find(p.d, function (entry) { return entry.day === DAYS[index]; });
+    var opens = valid(source && source.opens), closes = valid(source && source.closes);
+    var breakStarts = valid(source && source.break_starts), breakEnds = valid(source && source.break_ends);
+    var hasBreak = !!(opens && closes && breakStarts && breakEnds && opens < breakStarts && breakStarts < breakEnds && breakEnds < closes);
+    return { index: index, exception: !!exception, closed: !source || source.closed === true || !opens || !closes, opens: opens, closes: closes,
+      breakStarts: hasBreak ? breakStarts : '', breakEnds: hasBreak ? breakEnds : '', note: source && typeof source.note === 'string' ? source.note.replace(/^\s+|\s+$/g, '') : '' };
+  }
+  function text(day) {
+    return day.closed ? esc(p.t.closed) : day.breakStarts ? esc(day.opens + '\u2013' + day.breakStarts + ', ' + day.breakEnds + '\u2013' + day.closes) : esc(day.opens + '\u2013' + day.closes);
+  }
+  function note(day) { return !day.note ? '' : day.exception ? '<strong class="block-site-field-note">' + esc(day.note) + '</strong>' : '<span class="block-site-field-note">' + esc(day.note) + '</span>'; }
+  function holiday(day) { return day.exception ? note(day) : ''; }
+  function withNote(day, html) { return holiday(day) ? holiday(day) + ': ' + html : html; }
+  function capital(value) { return value.charAt(0).toUpperCase() + value.slice(1); }
+  function toMinutes(value) { return Number(value.slice(0, 2)) * 60 + Number(value.slice(3)); }
+  var today = hours(0);
+  var within = !today.closed && minutes >= toMinutes(today.opens) && minutes < toMinutes(today.closes);
+  var inBreak = within && !!today.breakStarts && minutes >= toMinutes(today.breakStarts) && minutes < toMinutes(today.breakEnds);
+  var open = within && !inBreak;
+  var until = esc(fill(p.t.open_until, 'time', today.breakStarts && minutes < toMinutes(today.breakStarts) ? today.breakStarts : today.closes));
+  var reopens = esc(fill(p.t.reopens === undefined ? p.t.closed : p.t.reopens, 'time', today.breakEnds));
+  if (p.f === 'opening_hours_today') return holiday(today) ? esc(capital(String(p.t.today))) + ' \u00b7 ' + holiday(today) + ': ' + text(today) : text(today);
+  if (p.f === 'open_now') return withNote(today, open ? until : inBreak ? reopens : esc(p.t.closed));
+  if (p.f === 'next_opening') {
+    if (open) return withNote(today, until);
+    if (inBreak) return withNote(today, reopens);
+    for (var offset = 0; offset < 14; offset++) {
+      var day = offset ? hours(offset) : today;
+      if (!day.closed && (offset > 0 || minutes < toMinutes(day.opens))) {
+        var name = offset === 0 ? p.t.today : offset === 1 ? p.t.tomorrow : String(p.w[day.index] || '');
+        return fill(fill(esc(p.t.opens), 'day', esc(name) + (holiday(day) ? ' (' + holiday(day) + ')' : '')), 'time', esc(day.opens));
+      }
+    }
+    return esc(p.t.closed);
+  }
+  var rows = '';
+  for (var index = 0; index < 7; index++) {
+    var weekday = hours(index - today.index), label = String(p.w[index] || '');
+    rows += '<tr data-day="' + DAYS[index] + '"' + (index === today.index ? ' data-today="true" aria-current="date"' : '') + (weekday.exception ? ' data-exception="true"' : '')
+      + '><th>' + esc(capital(label)) + (weekday.note ? '<br>' + note(weekday) : '') + '</th><td>' + text(weekday) + '</td></tr>';
+  }
+  return rows;
+};
+  function run() {
+    var now = new Date(), nodes = document.querySelectorAll('[data-site-field-clock]');
+    for (var i = 0; i < nodes.length; i++) {
+      try {
+        var html = compute(JSON.parse(nodes[i].getAttribute('data-site-field-clock')), now);
+        if (nodes[i].innerHTML !== html) nodes[i].innerHTML = html;
+      } catch (error) { /* the built value stays */ }
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  setInterval(run, 60000);
+})();

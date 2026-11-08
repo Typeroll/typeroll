@@ -17,6 +17,7 @@ import { getStore } from '../datastore';
 import { createMediaUpload, storageClient, UPLOADABLE_MEDIA_TYPE } from '../publishing/media-storage';
 import { finalizeOrganizationMedia } from '../media/svg-media';
 import { createSafeFetch } from '../net/safe-fetch';
+import { deleteMediaObjects } from '../media-deletion';
 import { PackageError, sha256Hex } from './package-zip';
 
 /** The largest file the Media library accepts (media-storage.ts). */
@@ -89,14 +90,24 @@ export const defaultPackageMediaIO: PackageMediaIO = {
     const store = getStore();
     const record = await store.getDoc<Media>(path);
     if (!record?.storage) throw new PackageError('The media upload could not be reserved', 503, 'package_media_unavailable');
-    const r2 = await storageClient(orgId, record.storage);
     try {
-      await r2.send(new PutObjectCommand({
-        Bucket: record.storage.bucket, Key: upload.key, Body: input.bytes, ContentType: input.contentType,
-        ContentLength: input.bytes.byteLength, CacheControl: 'private, no-store',
-      }), { abortSignal: AbortSignal.timeout(TIMEOUT_MS) });
-    } finally { r2.destroy(); }
-    await finalizeOrganizationMedia(orgId, siteId, upload.mediaId, input.sha256);
+      const r2 = await storageClient(orgId, record.storage);
+      try {
+        await r2.send(new PutObjectCommand({
+          Bucket: record.storage.bucket, Key: upload.key, Body: input.bytes, ContentType: input.contentType,
+          ContentLength: input.bytes.byteLength, CacheControl: 'private, no-store',
+        }), { abortSignal: AbortSignal.timeout(TIMEOUT_MS) });
+      } finally { r2.destroy(); }
+      await finalizeOrganizationMedia(orgId, siteId, upload.mediaId, input.sha256);
+    } catch (error) {
+      // A file that never became ready leaves no half-written record behind:
+      // the import reports it as not written. The record stays only when its
+      // objects could not be removed, so the bytes are never orphaned.
+      const reserved = await store.getDoc<Media>(path).catch(() => null);
+      const removed = reserved ? await deleteMediaObjects(orgId, reserved).catch(() => ({ failed: [{}] })) : { failed: [] };
+      if (!removed.failed.length) await store.deleteDoc(path).catch(() => {});
+      throw error;
+    }
     await store.updateDoc(path, {
       ...(input.title ? { title: input.title } : {}),
       ...(input.width ? { width: input.width } : {}),

@@ -522,6 +522,15 @@ card values. Saved CMS rows do not need to be rewritten.
      ]}}
 ```
 
+From render version 16, `last_row: "center"` on a grid repeater (and on
+`core/feature_grid`, `core/team_grid`, `core/pricing_table` and a grid of
+`core/testimonials`) puts a short last row in the middle, for example one card
+under a row of three. The items keep equal widths from `cols` (and
+`mobile_cols` on phones). Unset, the last row starts at the left. A logo grid
+(`core/logo_cloud`) already centres its last row from version 16;
+`last_row: "start"` turns that off, and `logo_height_px` sets the height of
+its logos.
+
 ### Template/\* family (dynamic context)
 
 These read from the render context (`page`/`site`/`item`) rather than from authored block data. Used inside Page templates so a blog template can render every post with its own title without per-post copy.
@@ -530,6 +539,49 @@ These read from the render context (`page`/`site`/`item`) rather than from autho
 - Site-context: `template/site_logo`, `template/site_title`, `template/site_tagline`
 - Item-context: `template/page_title`, `template_content_slot`, `template/page_featured_image`
 - Conditional: `template/show_if` (renders children only if a condition is truthy)
+
+Several template blocks render with the markup of the block they stand in for,
+so they share its CSS. From render version 16 each of them also carries its own
+`data-template-block` attribute on the block element, so site CSS can tell
+them apart. (`data-template` on `<body>` is something else: the page's Page
+template id.)
+
+| Template block                 | `data-block`      | `data-template-block` (render version 16) |
+| ------------------------------ | ----------------- | ----------------------------------------- |
+| `template/page_title`          | `heading`         | `page_title`                              |
+| `template/site_title`          | `heading`         | `site_title`                              |
+| `template/page_featured_image` | `image`           | `page_featured_image`                     |
+| `template/page_excerpt`        | `prose`           | `page_excerpt`                            |
+| `template/site_tagline`        | `prose`           | `site_tagline`                            |
+| `template/page_date`           | `page-date`       | —                                         |
+| `template/page_author`         | `page-author`     | —                                         |
+| `template/page_breadcrumbs`    | `breadcrumbs`     | —                                         |
+| `template/site_logo`           | `site-logo`       | —                                         |
+| `template/page_navigation`     | `page_navigation` | —                                         |
+
+```css
+[data-block="heading"][data-template-block="site_title"] .block-heading-text {
+  letter-spacing: 0.02em;
+}
+```
+
+Render version 16 also adds settings to these blocks:
+
+- `template/site_title`: `align` (`match-parent`, the default, keeps the
+  alignment of the text around it; `left`, `center`, `right`) and
+  `link_to_home` (links the name to the home page of the page's language).
+- `template/page_excerpt` and `template/site_tagline`: `font_size_px`,
+  `text_align` (`inherit`, `start`, `center`, `end`, `justify`) and `color`, as
+  on a Text block.
+- `template/page_featured_image`: `align` (`left`, `center`, `right`),
+  `radius` (`none`, `md`, `lg`, `xl`) and `focal_x` / `focal_y`, as on an Image
+  block. Its rules apply to the featured image only (before, they also styled
+  every Image block on the page), and its `width` applies whether or not the
+  page has an Image block. The `image` part styles the image.
+- `template/site_logo`: the small height (`height: "sm"`) is 2rem instead of
+  1.5rem, so a logo with a wordmark or tagline stays readable.
+- `template/page_navigation`: the labels and titles have the classes
+  `page-navigation-label` and `page-navigation-title`.
 
 ### Site fields on pages
 

@@ -13,6 +13,13 @@ test('publication preserves breadcrumb labels separately from Page titles', () =
   assert.equal(value.pages[0].breadcrumb_label, 'Moving tips');
 });
 
+test('publication carries the built-in Page excerpt and drops a cleared one', () => {
+  const page = { content_mode: 'blocks', blocks: [], status: 'published' };
+  const value = projectStaticPublication({ site: { name: 'Example' }, settings: {}, pages: [{ ...page, id: 'lunch', slug: 'lunch', title: 'Lunch', excerpt: 'Dagens lunch i Ljusrum' }, { ...page, id: 'about', slug: 'about', title: 'About', excerpt: null }], partials: [], media: [], forms: [], extensions: [], contentTypes: [], pageTemplates: [], blockTypes: [], redirects: [] }, identity);
+  assert.equal(value.pages.find(entry => entry.id === 'lunch').excerpt, 'Dagens lunch i Ljusrum');
+  assert.equal('excerpt' in value.pages.find(entry => entry.id === 'about'), false);
+});
+
 test('dynamic Repeater rows preserve public item fields and discard private fields', () => {
   const definitions = [...CORE_BLOCK_TYPES, { id: 'custom-card', schema: [{ name: 'title', type: 'text' }, { name: 'href', type: 'url' }, { name: 'internal', type: 'text', rendered: false }] }];
   const blocks = [{ id: 'list', type: 'core/repeater', data: { source_type: 'static', item_block: 'custom-card', items: [{ title: 'Visible title', href: '/visible/', internal: 'private', unknown: 'private' }], item_overrides: { internal: 'private', title: 'Override' } } }];

@@ -32,10 +32,24 @@ export const DEFAULT_CONTENT_TYPE: ContentType = {
   fields: [], route_template: '/{slug}', created_at: '1970-01-01T00:00:00Z',
 };
 
+/** Longest Page excerpt the API accepts, in characters. */
+export const PAGE_EXCERPT_MAX_LENGTH = 1000;
+
+/**
+ * A Page's excerpt: a content type's own `excerpt` field when it holds a value,
+ * otherwise the built-in `Page.excerpt`.
+ */
+export function pageExcerpt(page: Pick<Page, 'excerpt' | 'fields'>): string | null {
+  const own = page.fields?.excerpt;
+  if (typeof own === 'string') return own;
+  return typeof page.excerpt === 'string' ? page.excerpt : null;
+}
+
 /** One rendering/query context for every page, including its type-defined fields. */
 export function pageContentValues(page: Page): Record<string, unknown> {
   const publicPage = Object.fromEntries(Object.entries(page).filter(([key]) => !key.startsWith('_')));
-  return { ...page.fields, ...publicPage, fields: page.fields ?? {}, body: page.html_content ?? '' };
+  const excerpt = pageExcerpt(page);
+  return { ...page.fields, ...publicPage, ...(excerpt !== null ? { excerpt } : {}), fields: page.fields ?? {}, body: page.html_content ?? '' };
 }
 
 /** The content type owns routing; an explicit path is a per-page override. */

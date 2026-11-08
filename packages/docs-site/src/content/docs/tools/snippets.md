@@ -72,7 +72,15 @@ Live files are served from the organization's public media bucket, next to
 the site's published images, at `<media host>/live/<id>.json` (with the
 organization's shared media host, under the site's media namespace). They are
 cached for about a minute. The bucket gets a CORS rule that lets the site's
-own addresses read them.
+own addresses read them: its domains, its publication addresses and the deploy
+addresses of its versions. No other origin is allowed.
+
+Previews do not read live files. A preview link (`get_preview_link`), the
+editor preview and `get_page_preview` render every snippet and live site field as it is saved at the
+moment the preview is opened, so they show the newest content without a
+request to the media host. Reload the preview to see a later save. (Previews
+run in an isolated, opaque origin, which the CORS rule does not and should not
+allow.) To check the live file itself, open the published page.
 
 A site needs a media host for this: the site's own media host or the
 organization's, set in **Publishing**. A site without one, or a hosted site,

@@ -35,6 +35,19 @@ export const pageTools: ToolDef[] = [
     }),
   },
   {
+    name: 'relocate_page_answers',
+    description: 'One-time, reviewed move of accepted custom-field answers to other paths of the same Page (for example from a company group to one of its programs: `sales_support_answers/training` → `program_answers/@<program id>/sales_support/training`), keeping each answer\'s original source, author, time, evidence and protection, including protection a parent group gives it and a whole emptied group. Paths use the read_page_authority notation (keyed items as @<stable id>, which must exist). Never replaces a target with its own attribution (also an explicit clear or an emptied group) or a different value, and leaves a target that already has the same answer, and its attribution, untouched. The source stays in place. Refused while an unsaved draft or a pending owner review changes the affected fields. Requires base_revision from read_page_authority and a reason; send dry_run: true first. Returns a receipt per move (relocated, already_present, protected_target, conflicting_target, missing_source) without values or identities. Owner-organization site administrators only.',
+    inputSchema: {
+      page_id: z.string(), base_revision: z.string().regex(/^[a-f0-9]{64}$/), reason: z.string().min(1).max(500),
+      moves: z.array(z.object({ from: z.string().min(1).max(1000), to: z.string().min(1).max(1000) }).strict()).min(1).max(200),
+      dry_run: z.boolean().optional(), version: versionParam,
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      const { page_id, version, ...body } = args;
+      return ok(await client.post(siteId, `pages/${encodeURIComponent(page_id)}/relocate-answers`, body, v(version)));
+    }),
+  },
+  {
     name: 'list_pages',
     description:
       'List pages on the active site. Returns id, title, slug, status, and SEO summary (no html_content by default — use read_page or batch_read_pages for body content). Supports filtering by status and forward-cursor pagination. Pass full=true to include html_content + blocks in the response.',
@@ -131,6 +144,7 @@ export const pageTools: ToolDef[] = [
       blocks: z.array(z.any()).optional().describe('Block tree — only used when content_mode="blocks". Omit to get the default heading+prose seed.'),
       status: z.enum(['draft', 'review', 'unlisted', 'published']).optional(),
       breadcrumb_label: z.string().max(200).nullable().optional().describe('Optional short breadcrumb label. Leaves Page title, SEO title and route unchanged; null/empty uses the title.'),
+      excerpt: z.string().max(1000).nullable().optional().describe('Plain-text summary (up to 1000 characters) shown by template/page_excerpt ({{page.excerpt}}) and Page cards in listings. Every content type has it; when the type defines its own excerpt field the value is stored there. Saved like other content (draft until saved); null clears it.'),
       seo_title: z.string().optional(),
       append_seo_suffix: z.boolean().optional().describe('Set false to omit the site default SEO suffix on this page.'),
       seo_description: z.string().optional(),
@@ -163,7 +177,7 @@ export const pageTools: ToolDef[] = [
   {
     name: 'update_page',
     description:
-      'Shallow-merge update on a page, including its short breadcrumb label (only the fields you pass change). BUFFER MODEL: content fields land in the page\'s unsaved DRAFT (working copy) — invisible to deploys and default previews until saved; `status`/`date_published` apply immediately. Pass save:true to commit in the same call, or commit_working_copy later after the user approves. Returns the draft view of the page. For "replace this page entirely", use replace_page. This tool does not accept content_mode; switch modes with `set_page_mode`.',
+      'Shallow-merge update on a page, including its short breadcrumb label and excerpt (only the fields you pass change). BUFFER MODEL: content fields land in the page\'s unsaved DRAFT (working copy) — invisible to deploys and default previews until saved; `status`/`date_published` apply immediately. Pass save:true to commit in the same call, or commit_working_copy later after the user approves. Returns the draft view of the page. For "replace this page entirely", use replace_page. This tool does not accept content_mode; switch modes with `set_page_mode`.',
     inputSchema: {
       page_id: z.string(),
       patch: z
@@ -184,6 +198,7 @@ export const pageTools: ToolDef[] = [
           author: z.string().optional(),
           language: z.string().optional(),
           breadcrumb_label: z.string().max(200).nullable().optional().describe('Optional short breadcrumb label. Leaves Page title, SEO title and route unchanged; null/empty uses the title.'),
+          excerpt: z.string().max(1000).nullable().optional().describe('Plain-text summary (up to 1000 characters) shown by template/page_excerpt and Page cards. Lands in the draft like other content; null clears it.'),
           seo_title: z.string().optional(),
           append_seo_suffix: z.boolean().optional().describe('Set false to use seo_title/page title verbatim without the site suffix.'),
           seo_description: z.string().optional(),

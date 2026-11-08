@@ -135,7 +135,7 @@ export async function applyContentWrite(
 
   // Publish state → saved doc, right away.
   if (Object.keys(immediate).length > 0) {
-    await applyImmediate(ctx, target, immediate, result);
+    await applyImmediate(ctx, target, immediate, result, content);
     result.applied_immediately = Object.keys(immediate);
   }
 
@@ -154,6 +154,7 @@ async function applyImmediate(
   target: WcTarget,
   immediate: Record<string, unknown>,
   result: ContentWriteResult,
+  content: Record<string, unknown> = {},
 ): Promise<void> {
   const now = new Date().toISOString();
   if (target.kind === 'page') {
@@ -180,11 +181,13 @@ async function applyImmediate(
     const existing = await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
     // Partials are create-on-write: a status write on a not-yet-committed
     // partial creates the shell doc (the content stays in the working copy).
+    // Blocks unless the write itself brings HTML, so the shell's mode matches
+    // the content that commits into it.
+    const html = typeof content.html_content === 'string';
     const defaults: Record<string, unknown> = existing ? {} : {
       name: target.id,
       kind: target.id === 'header' || target.id === 'footer' ? target.id : 'free',
-      content_mode: 'html',
-      html_content: '',
+      ...(html ? { content_mode: 'html', html_content: '' } : { content_mode: 'blocks', blocks: [] }),
     };
     await vstore.writePartial(ctx.orgId, ctx.siteId, ctx.versionId, target.id, {
       ...defaults,
