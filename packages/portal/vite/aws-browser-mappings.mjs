@@ -8,6 +8,11 @@ import path from 'node:path';
 // both and `new S3Client()` or reading a response throws on workerd. Apply the
 // "browser" file mappings of those packages, the variant workerd runs.
 export const AWS_PACKAGE = /^(@aws-sdk|@smithy|@aws-crypto)\//;
+// Browser files that need a browser global workerd lacks. The XML parser's
+// browser variant uses DOMParser; on workerd every S3 response with an XML
+// body then failed to deserialize ("DOMParser is not defined"), which broke
+// media finalization. Their Node variants are plain JavaScript and run there.
+export const KEEP_NODE_FILE = new Set(['@aws-sdk/xml-builder:./dist-es/xml-parser']);
 const packageOf = new Map();
 function owningPackage(file) {
   let dir = path.dirname(file);
@@ -34,6 +39,7 @@ export const awsBrowserMappings = {
     if (!owner || !AWS_PACKAGE.test(owner.name) || !owner.browser) return resolved;
     const relative = './' + path.relative(owner.dir, file).split(path.sep).join('/');
     for (const key of [relative, relative.replace(/\.js$/, '')]) {
+      if (KEEP_NODE_FILE.has(`${owner.name}:${key}`)) return resolved;
       const target = owner.browser[key];
       if (typeof target === 'string') {
         const mapped = path.resolve(owner.dir, target);
