@@ -61,6 +61,34 @@ const SITE_FIELDS = {
 const SNIPPETS = [{ id: 'lunch', kind: 'dated', format: 'html', updated_at: '2026-11-08T08:00:00.000Z', fallback: '<p>No lunch today.</p>',
   entries: [...['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(weekday => ({ weekday, content: '<p><strong>Today\'s lunch:</strong> pea soup with pancakes and jam, coffee included.</p>' })),
     { date: '2026-12-24', content: '<p><strong>Christmas Eve:</strong> closed.</p>' }] }];
+/**
+ * The menus from render version 15: the header's primary menu has a plain
+ * submenu and a wide one in columns with headings, the footer its own list.
+ */
+const MENUS = [
+  { id: 'primary', name: 'Primary', locations: ['primary'], items: [
+    { id: 'blocks', type: 'url', href: '/', label: 'Blocks', children: [
+      { id: 'text', type: 'page', page_id: 'text', description: 'Headings and running text' },
+      { id: 'effects', type: 'page', page_id: 'effects', description: 'Motion, media and story blocks' },
+      { id: 'variables', type: 'page', page_id: 'variables' },
+    ] },
+    { id: 'templates', type: 'url', href: '/templates/article/', label: 'Templates', children: [
+      { id: 'pages', type: 'heading', label: 'Pages', children: [
+        { id: 'article', type: 'url', href: '/templates/article/', label: 'Article', description: 'A long read with a table of contents' },
+        { id: 'landing', type: 'url', href: '/templates/landing/', label: 'Landing page' },
+      ] },
+      { id: 'more', type: 'heading', label: 'More', children: [
+        { id: 'events', type: 'url', href: '/templates/events/', label: 'Events' },
+        { id: 'team', type: 'url', href: '/templates/team/', label: 'Team' },
+      ] },
+    ] },
+    { id: 'long', type: 'url', href: '/text/', label: 'A longer navigation label' },
+  ] },
+  { id: 'footer', name: 'Footer', locations: ['footer'], items: [
+    { id: 'f-text', type: 'page', page_id: 'text' }, { id: 'f-effects', type: 'page', page_id: 'effects' }, { id: 'f-variables', type: 'page', page_id: 'variables' },
+  ] },
+];
+
 /** Blocks whose sample data would show nothing without site fields or snippets. */
 const SAMPLE_DATA: Record<string, Record<string, unknown>> = {
   'core/site_field': { field: 'opening_hours', format: 'auto' },
@@ -168,9 +196,18 @@ export function layoutGallery(renderVersion = LATEST_RENDER_VERSION) {
     section('audio-s', [{ id: 'audio', type: 'core/audio', data: { src: '/demo-media/episode.mp3', title: 'Episode 4: Building with timber', description: '<p>Twenty minutes on why we draw in wood.</p>', cover: img(2), transcript_url: '/' } }]),
     { id: 'cta-glass', type: 'core/cta', data: { heading: 'Book a first walk on your site', subheading: '<p>An hour, free, with one of our architects.</p>', primary_label: 'Book a walk', primary_url: '/', background_image: img(6), image_position: 'background', text_panel: 'dark_glass', text_panel_shape: 'slant', align: 'left', width: 'wide', motion: 'rise' } },
   ] };
+  // Authored site variables (render version 15) in text, headings and buttons.
+  const variablesPage = { id: 'variables', slug: 'variables', path: '/variables/', title: 'Site variables', status: 'published', content_mode: 'blocks', blocks: [
+    section('vars', [
+      { id: 'vars-h', type: 'core/heading', data: { text: 'Welcome to {{site.name}}', level: 'h2' } },
+      prose('vars-p', '<p>Call us on {{site.fields.phone}}. Every page shows the same number, from the site settings. © {{site.current_year}} {{site.name}}.</p>'),
+      { id: 'vars-b', type: 'core/button', data: { label: 'Call {{site.fields.phone}}', href: '/' } },
+    ]),
+  ] };
   const pages = [
     textPage,
     effectsPage,
+    variablesPage,
     { id: 'home', slug: 'home', path: '/', title: 'Layout gallery', status: 'published', content_mode: 'blocks', blocks: [prose('intro', '<p>Gallery</p>')] },
     ...types.map(blockPage), ...templatePages,
   ];
@@ -182,8 +219,9 @@ export function layoutGallery(renderVersion = LATEST_RENDER_VERSION) {
       // What a new site starts with: default theme values and standard styles.
       settings: { ...structuredClone(defaultSiteSettings), styles: newSiteStyles(), site_name: 'Layout gallery', trailing_slash: 'always', render_version: renderVersion },
       pages, pageTemplates, media: [], contentTypes: [], blockTypes: [], forms: [], siteFields: SITE_FIELDS, snippets: SNIPPETS,
+      ...(renderVersion >= 15 ? { menus: MENUS } : {}),
       partials: (['header', 'footer'] as const).map(kind => ({ id: kind, kind, status: 'published', content_mode: 'blocks',
-        blocks: getPartialCompositionStarter(kind, { links }) })),
+        blocks: getPartialCompositionStarter(kind, { links, renderVersion }) })),
     },
   };
 }

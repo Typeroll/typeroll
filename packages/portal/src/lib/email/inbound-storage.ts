@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, DeleteObjectCommand } from '../net/s3';
 import type { InboundRoute } from './inbound';
 import { DeliveryError } from './delivery';
 

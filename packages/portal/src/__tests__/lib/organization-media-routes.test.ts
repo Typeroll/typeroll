@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand } from '../../lib/net/s3';
 import type { APIRoute } from 'astro';
 import { paths, type Media, type Site } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';

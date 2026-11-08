@@ -1,8 +1,7 @@
 import { organizationUploadTtl } from '../organization-access';
 import { remoteTransfersEnabled, verifyWithTransferService, type TransferReceipt } from '../media/remote-transfer';
 import { createHash, randomUUID } from 'node:crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { S3Client, PutObjectCommand, GetObjectCommand, CopyObjectCommand, getSignedUrl } from '../net/s3';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
@@ -18,7 +17,7 @@ const MAX_BYTES = 25 * 1024 * 1024;
 function client(accountId: string, accessKeyId: string, secretAccessKey: string, bucket?: string) {
   if (!/^[a-f0-9]{32}$/.test(accountId) || !accessKeyId || !secretAccessKey) throw new ConnectionError('Media storage access is unavailable. Open Publishing to check the connection.', 503, 'media_storage_unavailable');
   return new S3Client({ region: 'auto', endpoint: r2Endpoint(accountId, bucket),
-    credentials: { accessKeyId, secretAccessKey }, forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED', maxAttempts: 2 });
+    credentials: { accessKeyId, secretAccessKey }, forcePathStyle: true, maxAttempts: 2 });
 }
 
 /** Resolve the recorded destination, including uploads granted before an organization connected R2. */

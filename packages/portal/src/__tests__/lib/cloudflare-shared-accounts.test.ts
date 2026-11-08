@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '../../lib/net/s3';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { connectionPath, disconnect, getConnection, saveConnection, sealCredentials } from '../../lib/publishing/connections';

@@ -15,7 +15,7 @@ vi.mock('../../lib/access', async (importOriginal) => ({ ...(await importOrigina
 // need the importer's licence confirmation. Demo media is flagged and listed.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '../../lib/net/s3';
 import type { APIRoute } from 'astro';
 import { createHash } from 'node:crypto';
 import { MAIN_VERSION_ID, paths, type Media, type SiteSettings, type SiteStyle } from '@typeroll/shared';

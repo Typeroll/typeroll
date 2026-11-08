@@ -14,7 +14,7 @@ vi.mock('../../lib/access', async importOriginal => ({
 }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '../../lib/net/s3';
 import type { APIRoute } from 'astro';
 import { MAIN_VERSION_ID, paths, type Media } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';

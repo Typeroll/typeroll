@@ -1,4 +1,4 @@
-import { SESv2Client, SendEmailCommand } from '@aws-sdk/client-sesv2';
+import { AwsClient } from 'aws4fetch';
 import type { EmailProvider } from '../provider';
 
 export const sesProvider: EmailProvider = {
@@ -13,19 +13,20 @@ export const sesProvider: EmailProvider = {
   async send(config, msg) {
     const region = String(config.values.region ?? '');
     if (!/^[a-z]{2}(?:-[a-z]+)+-\d$/.test(region)) return { ok: false, failure: 'rejected', error: 'Invalid SES region' };
-    const client = new SESv2Client({ region, maxAttempts: 1, credentials: {
+    const client = new AwsClient({ service: 'ses', region, retries: 0,
       accessKeyId: String(config.values.access_key_id ?? ''),
       secretAccessKey: String(config.values.secret_access_key ?? ''),
-    } });
+    });
     try {
-      const result = await client.send(new SendEmailCommand({
+      // SES v2 SendEmail over its JSON API, signed with SigV4.
+      const request = {
         FromEmailAddress: msg.from,
         Destination: { ToAddresses: [msg.to], ...(msg.cc ? { CcAddresses: msg.cc.split(',').map(s => s.trim()) } : {}),
           ...(msg.bcc ? { BccAddresses: msg.bcc.split(',').map(s => s.trim()) } : {}) },
         ...(msg.replyTo ? { ReplyToAddresses: [msg.replyTo] } : {}),
         ConfigurationSetName: String(config.values.configuration_set ?? ''),
         ...(msg.deliveryId ? { EmailTags: [{ Name: 'typeroll_delivery', Value: msg.deliveryId }] } : {}),
-        Content: { Simple: { ...(msg.calendar?{Attachments:[{FileName:msg.calendar.filename,RawContent:Buffer.from(msg.calendar.content),ContentType:'text/calendar; charset=utf-8; method=PUBLISH',ContentDisposition:'ATTACHMENT' as const}]}:{}), ...(msg.forwarded ? { Headers: [
+        Content: { Simple: { ...(msg.calendar?{Attachments:[{FileName:msg.calendar.filename,RawContent:Buffer.from(msg.calendar.content).toString('base64'),ContentType:'text/calendar; charset=utf-8; method=PUBLISH',ContentDisposition:'ATTACHMENT' as const}]}:{}), ...(msg.forwarded ? { Headers: [
           { Name: 'Auto-Submitted', Value: 'auto-generated' },
           { Name: 'X-Auto-Response-Suppress', Value: 'All' },
           { Name: 'X-Typeroll-Forwarded', Value: '1' },
@@ -33,7 +34,12 @@ export const sesProvider: EmailProvider = {
           ...(msg.text ? { Text: { Data: msg.text, Charset: 'UTF-8' } } : {}),
           ...(msg.html ? { Html: { Data: msg.html, Charset: 'UTF-8' } } : {}),
         } } },
-      }), { abortSignal: AbortSignal.timeout(15_000) });
+      };
+      const response = await client.fetch(`https://email.${region}.amazonaws.com/v2/email/outbound-emails`, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(request), signal: AbortSignal.timeout(15_000),
+      });
+      const result = await response.json().catch(() => ({})) as { MessageId?: string; __type?: string; code?: string };
+      if (!response.ok) throw Object.assign(new Error('SES error'), { name: sesErrorName(response, result) });
       return result.MessageId ? { ok: true, id: result.MessageId } : { ok: false, failure: 'unknown', error: 'SES acceptance is unknown' };
     } catch (error) {
       const name = error instanceof Error ? error.name : '';
@@ -41,6 +47,12 @@ export const sesProvider: EmailProvider = {
       const rejected = ['MessageRejected', 'BadRequestException', 'MailFromDomainNotVerifiedException', 'NotFoundException',
         'AccountSuspendedException', 'SendingPausedException', 'AccessDeniedException', 'LimitExceededException'].includes(name);
       return { ok: false, failure: rejected ? 'rejected' : 'unknown', error: rejected ? 'SES rejected the message; check the sender and configuration' : 'SES acceptance is unknown' };
-    } finally { client.destroy(); }
+    }
   },
 };
+
+/** The SES error type: `x-amzn-ErrorType` ("MessageRejected:http://…") or the body's `__type`/`code`. */
+function sesErrorName(response: Response, body: { __type?: string; code?: string }): string {
+  const raw = response.headers.get('x-amzn-errortype') ?? body.__type ?? body.code ?? `Http${response.status}`;
+  return raw.split(':')[0]!.split('#').pop()!;
+}

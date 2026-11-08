@@ -1,6 +1,5 @@
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { GetObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { GetObjectCommand, PutObjectCommand, type S3Client, getSignedUrl } from '../net/s3';
 import { ConnectionError } from '../publishing/connections';
 
 export interface TransferReceipt { protocol: 1; id: string; sha256: string; size: number; etag: string }

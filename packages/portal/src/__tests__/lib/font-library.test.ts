@@ -6,7 +6,6 @@
 // reaches the network.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
 import type { APIRoute } from 'astro';
 import { createHash } from 'node:crypto';
 import { MAIN_VERSION_ID, MAX_SITE_FONT_FILES, paths, readFontFile, type SiteFontFile } from '@typeroll/shared';
@@ -216,6 +215,8 @@ describe('font storage', () => {
 
   it('uses the organization\'s private R2 bucket once it is media ready, and the platform private bucket before', async () => {
     const objects = new Map<string, { body: Uint8Array; contentType?: string; cacheControl?: string }>();
+    // Modules are reset before each test: spy on the instance the routes load.
+    const { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } = await import('../../lib/net/s3');
     vi.spyOn(S3Client.prototype, 'send').mockImplementation((async (command: unknown) => {
       if (command instanceof PutObjectCommand) { const i = command.input; objects.set(`${i.Bucket}/${i.Key}`, { body: i.Body as Uint8Array, contentType: i.ContentType, cacheControl: i.CacheControl }); return {}; }
       if (command instanceof GetObjectCommand) {

@@ -20,7 +20,7 @@ let storedBytes = PDF_BYTES;
 const sent: string[] = [];
 const copies: Array<Record<string, unknown>> = [];
 
-vi.mock('@aws-sdk/client-s3', () => {
+vi.mock('../../lib/net/s3', () => {
   class GetObjectCommand { constructor(public input: unknown) {} }
   class CopyObjectCommand { constructor(public input: unknown) {} }
   class PutObjectCommand { constructor(public input: unknown) {} }

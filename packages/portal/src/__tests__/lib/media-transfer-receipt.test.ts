@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createHmac } from 'node:crypto';
-import { S3Client } from '@aws-sdk/client-s3';
+import { S3Client } from '../../lib/net/s3';
 import { copyWithTransferService, sourceUrlCandidates } from '../../lib/media/remote-transfer';
 vi.mock('../../lib/media/transfer-service', () => ({ customerTransferService: vi.fn(async () => ({ url: 'https://customer.example.com/transfer', secret: 'synthetic-receipt-secret' })) }));
 const sign = (text: string) => createHmac('sha256', 'synthetic-receipt-secret').update(text).digest('hex');

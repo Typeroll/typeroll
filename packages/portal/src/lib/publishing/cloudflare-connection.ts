@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '../net/s3';
 import { R2VerificationError, r2Diagnostic, type R2VerificationDiagnostic, type R2VerificationStep } from './r2-verification-error';
 import type { FullSession } from '../access';
 import { isSecretCryptoConfigured } from '../secret-crypto';

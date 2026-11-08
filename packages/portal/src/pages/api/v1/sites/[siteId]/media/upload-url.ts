@@ -80,8 +80,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     try { staging = platformSvgStaging(prefix, sanitize(filename)); } catch (error) { return connectionFailure(error); }
   }
 
-  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
-  const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+  const { S3Client, PutObjectCommand, getSignedUrl } = await import('../../../../../../lib/net/s3');
 
   const r2 = new S3Client({
     region: 'auto',
@@ -90,12 +89,6 @@ export const POST: APIRoute = async ({ request, params }) => {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
     },
-    // See sibling /api/sites/.../media/upload-url.ts for the rationale —
-    // aws-sdk v3.700+'s default checksum middleware produces presigned
-    // URLs that R2 rejects (403). Disabling it makes the URL a plain
-    // SigV4-signed PUT that the client uploads to without extra headers.
-    requestChecksumCalculation: 'WHEN_REQUIRED',
-    responseChecksumValidation: 'WHEN_REQUIRED',
   });
   const uploadTtl = await organizationUploadTtl(ctx.orgId);
   const uploadUrl = await getSignedUrl(

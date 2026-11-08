@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { S3Client } from '@aws-sdk/client-s3';
+import { S3Client } from '../../lib/net/s3';
 import { createBuildMediaGrants } from '../../lib/publishing/r2-build-grants';
 import { mediaReceiptKey } from '../../../../../scripts/fixtures/static-publication/media-receipt.mjs';
 

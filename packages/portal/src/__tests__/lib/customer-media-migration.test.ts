@@ -3,7 +3,7 @@ import { ConnectionError } from '../../lib/publishing/connections';
 vi.mock('../../lib/media/remote-transfer', () => ({ copyWithTransferService: vi.fn() }));
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { S3Client, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, CopyObjectCommand } from '../../lib/net/s3';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';

@@ -16,7 +16,7 @@
 // so an entry being saved at that moment never loses a file it is about to
 // reference.
 
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '../net/s3';
 import { getStore } from '../datastore';
 import { fontStorageDestination, sha256Hex, type FontStorage } from '../fonts/font-storage';
 import { storageClient } from '../publishing/media-storage';

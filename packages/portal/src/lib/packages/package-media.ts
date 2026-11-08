@@ -11,7 +11,7 @@
 // Reading uses the record's private storage location. A legacy public file
 // without one is fetched from its public address over HTTPS.
 
-import { GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand } from '../net/s3';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { createMediaUpload, storageClient, UPLOADABLE_MEDIA_TYPE } from '../publishing/media-storage';

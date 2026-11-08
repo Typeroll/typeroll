@@ -11,7 +11,7 @@ vi.mock('../../lib/publishing/media-migration-queue', () => ({ enqueueMediaMigra
 // lands after a nested block, and an app changes only its own entries.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '../../lib/net/s3';
 import { createHash } from 'node:crypto';
 import { MAIN_VERSION_ID, paths, type Media, type SiteSettings, type SiteStyle } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
