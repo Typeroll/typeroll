@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.17 (candidate, MCP 0.45.126)
 
 - Render versions 14–16 fixes found by comparing the Moveria sites with
   versions 11–13. Each restores the intended output, so sites on 14–16 change
