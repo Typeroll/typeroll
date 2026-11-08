@@ -146,6 +146,52 @@ retired values and their provenance, but cannot address or change them. Stop
 consuming obsolete mirrors when changing a schema; do not maintain them as a
 second source of truth.
 
+### Moving accepted answers to another field
+
+When a schema moves a question, for example from a company group to each
+program, accepted answers move with `relocate_page_answers`
+(`POST /api/v1/sites/{siteId}/pages/{pageId}/relocate-answers`). It is a
+reviewed, one-time operation for site administrators of the owning
+organization, and unlike an import it keeps who gave each answer: the original
+source, author, time and evidence, including protection that a parent group
+gives the answer and the protection of a whole emptied group. Each moved entry
+records `relocated_from` and `relocated_at`.
+
+```json
+{
+  "page_id": "acme",
+  "base_revision": "<revision from read_page_authority>",
+  "reason": "Program-scoped sales support, reviewed mapping 2026-11",
+  "dry_run": true,
+  "moves": [
+    {
+      "from": "sales_support_answers/training",
+      "to": "programs/@spring-drive/sales_support/training"
+    }
+  ]
+}
+```
+
+A move names a leaf or an object group, never a whole list. The program
+(`@<stable id>`) must already exist; a move never creates one. The answer for
+each move is one of:
+
+| Outcome              | Meaning                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------ |
+| `relocated`          | Moved, with the source's attribution                                                                   |
+| `already_present`    | The target has the same answer; its value and attribution are left as they are                         |
+| `protected_target`   | The target has its own attribution (an answer, an explicit clear or an emptied group); nothing changes |
+| `conflicting_target` | The target holds a different, unattributed value; nothing changes                                      |
+| `missing_source`     | No value and no attribution at the source                                                              |
+
+Run it with `dry_run: true` first; the answer is the receipt either way and
+contains paths, outcomes and kinds of source, never values, authors or
+evidence. A changed revision, an unsaved draft or a pending owner review of an
+affected field returns 409. The source stays in place: remove the old field
+from the schema only after every Page is moved, so no unresolved answer is
+lost. Each applied relocation is recorded in the Page's answer history, and a
+normal publication includes the moved answers.
+
 ```
 Create a page titled "Tjänster" at slug "tjanster" with three service sections.
 ```

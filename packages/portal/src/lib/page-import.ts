@@ -16,11 +16,11 @@ export class PageImportError extends Error {
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const escape = (value: string) => value.replace(/~/g, '~0').replace(/\//g, '~1');
 const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
-const revisionFor = (scope: Scope, page: Page, type: unknown, working: unknown) =>
+export const revisionFor = (scope: Scope, page: Page, type: unknown, working: unknown) =>
   answerRevision({ orgId: scope.orgId, siteId: scope.siteId, versionId: scope.versionId, page, type, working });
 
 /** Paths use the same escaped schema-leaf/keyed-item notation as provenance. */
-function segments(path: unknown): string[] {
+export function segments(path: unknown): string[] {
   if (typeof path !== 'string' || !path || path.length > 1000) throw new PageImportError('Expected a schema leaf path up to 1000 characters');
   const parts = path.split('/');
   if (parts.length > 20 || parts.some(part => !part || /~(?![01])/.test(part))) throw new PageImportError(`Invalid field path: ${path}`);
@@ -64,7 +64,7 @@ function leaf(fields: FieldDefinition[], values: Record<string, unknown>, path: 
   throw new PageImportError('Expected a leaf');
 }
 
-async function snapshot(scope: Scope, pageId: string) {
+export async function snapshot(scope: Scope, pageId: string) {
   const saved = await pageWriteSnapshot(scope.orgId, scope.siteId, scope.versionId, pageId);
   if (!saved.page) throw new PageImportError('Page not found', 404);
   const schema = await contentTypeWriteSnapshot(scope.orgId, scope.siteId, scope.versionId, saved.page.content_type ?? 'page');

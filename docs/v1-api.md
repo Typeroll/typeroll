@@ -59,7 +59,7 @@ state. Conflicts return 409; authority conflicts include `rejected_fields`.
 Rejected imports change neither saved content nor working copies. Owner nulls
 remain protected. Unchanged values retain their sources. Existing API/editor
 provenance is not reclassified. MCP exposes `read_page_authority` and
-`import_page_fields` from 0.45.74.
+`import_page_fields` from 0.45.74. `POST /pages/{pageId}/relocate-answers` (MCP `relocate_page_answers`) moves accepted answers to other paths of the same Page with their original provenance; owner-organization site administrators only, with `base_revision`, `reason` and `dry_run`.
 
 Only addressed schema leaves are validated. Unchanged stored fields without a
 current definition are preserved with their provenance, but cannot be addressed
