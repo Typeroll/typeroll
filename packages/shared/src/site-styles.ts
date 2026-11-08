@@ -45,7 +45,8 @@ export interface StyleBorder {
 }
 
 export interface StyleProps {
-  font?: 'heading' | 'body' | 'mono' | 'inherit';
+  /** A font role; display and accent fall back to heading and body before render version 15. */
+  font?: 'heading' | 'body' | 'mono' | 'display' | 'accent' | 'inherit';
   size?: string;
   weight?: number;
   line_height?: string;
@@ -130,7 +131,7 @@ function propsErrors(props: unknown, where: string): string[] {
   const check = (key: string, ok: (value: unknown) => boolean, expected: string) => {
     if (p[key] !== undefined && !ok(p[key])) errors.push(`${where}.${key} must be ${expected}`);
   };
-  check('font', v => ['heading', 'body', 'mono', 'inherit'].includes(v as string), 'heading, body, mono or inherit');
+  check('font', v => ['heading', 'body', 'mono', 'display', 'accent', 'inherit'].includes(v as string), 'heading, body, mono, display, accent or inherit');
   check('size', v => isLength(v) || !!scaleValue('type_size', v), 'a CSS length (px, rem, em, %, vw, ch) or clamp()');
   check('weight', v => Number.isInteger(v) && (v as number) >= 100 && (v as number) <= 900 && (v as number) % 100 === 0, '100–900 in steps of 100');
   check('line_height', v => typeof v === 'string' && (NUMBER.test(v) || isLength(v) || !!scaleValue('leading', v)), 'a number such as "1.5" or a length');
@@ -470,6 +471,8 @@ export function onColorWarnings(colors: SiteColors, renderVersion = 1): string[]
 
 const fontCss = (value: NonNullable<StyleProps['font']>) => value === 'inherit' ? 'inherit'
   : value === 'mono' ? "var(--font-mono, ui-monospace), monospace"
+  : value === 'display' ? "var(--font-display, var(--font-heading)), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
+  : value === 'accent' ? "var(--font-accent, var(--font-body)), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif"
   : `var(--font-${value}), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif`;
 
 function declarations(p: StyleProps): string[] {

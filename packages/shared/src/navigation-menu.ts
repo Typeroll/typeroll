@@ -127,10 +127,18 @@ export const navigationLinks: BlockType = {
     { name:'current_link', label:'Link to the current page', selector:'li > a[aria-current="page"]', target:'link' },
     { name:'icon', label:'Link icons', selector:'li > a > .block-nav-icon', target:'text', decorative:true },
     { name:'group_label', label:'Group label', selector:'> .block-nav-label', target:'text', style_field:'group_label_style_id', min_render_version:13 },
+    // Submenus of a site menu (render version 15).
+    { name:'submenu', label:'Dropdown panels', selector:'li[data-submenu="dropdown"] > .block-nav-sub', target:'container', background:'surface', decorative:true, min_render_version:15 },
+    { name:'submenu_button', label:'Submenu buttons', selector:'li > .block-nav-toggle', target:'link', min_render_version:15 },
+    { name:'submenu_heading', label:'Submenu headings', selector:'.block-nav-heading', target:'text', min_render_version:15 },
+    { name:'link_description', label:'Link descriptions', selector:'.block-nav-description', target:'text', color:'text_light', background:'surface', min_render_version:15 },
   ],
   schema:[
     { name:'group_label', type:'text', label:'Group label', placeholder:'Optional title shown above the links', min_render_version:13 },
     { name:'group_label_style_id', type:'style', label:'Group label style', style_target:'text', style_default_role:'eyebrow', min_render_version:13 },
+    { name:'source', type:'select', label:'Links from', options:['links','menu'], option_labels:['The links below','A site menu'], default:'links', min_render_version:15 },
+    { name:'menu', type:'text', label:'Menu', placeholder:'A menu id, or location:primary, location:footer or location:mobile', help:'Shown when "Links from" is a site menu. A location follows whichever menu fills it.', min_render_version:15 },
+    { name:'submenus', type:'select', label:'Submenus', options:['auto','dropdown','accordion','expanded','none'], option_labels:['Automatic (dropdown in a row, accordion in a column)','Dropdown','Accordion','Always shown','Hidden'], default:'auto', min_render_version:15 },
     { name:'links', type:'array', label:'Links', fields:[{ name:'label', type:'text', label:'Label', required:true },{ name:'href', type:'url', label:'Link', required:true },{ name:'icon', type:'icon', label:'Icon (optional)' },{ name:'link_rel', type:'text', label:'Link relationship (e.g. nofollow sponsored)' }] },
     { name:'direction', type:'select', label:'Direction', options:['row','column'], default:'column', responsive:true },
     { name:'font', type:'select',label:'Font',options:['inherit','body','heading'],default:'inherit' },
@@ -177,8 +185,144 @@ const NAVIGATION_LINKS_V13_CSS = `${itemsAnyDepth(NAVIGATION_LINKS_V11_CSS)}\n${
 // each other. A label wrapping to two lines still grows the link.
 const NAVIGATION_LINKS_V14_CSS = `${NAVIGATION_LINKS_V13_CSS}
 [data-block="navigation_links"] li > a { box-sizing:border-box; }`;
+
+/**
+ * Version 15: submenus for links from a site menu (menus.ts renders the
+ * markup). A parent item holds its link, a disclosure button and the nested
+ * list. `data-submenu` on the item says how the list opens:
+ *
+ * - dropdown: a panel under the item. Without script it opens on hover (fine
+ *   pointers) and on keyboard focus; with script ([data-enhanced] on the
+ *   block) it follows [data-open], which the script sets on click, on hover
+ *   with a short delay and closes on Escape and outside clicks. Inside the
+ *   mobile menu dialog a dropdown behaves as an accordion.
+ * - accordion: the nested list sits under the item. Without script it is
+ *   shown; with script it opens with the button.
+ * - expanded (no data-submenu): the nested list is always shown, indented.
+ *
+ * A dropdown whose items have children of their own (block-nav-sub--columns)
+ * lays them out as columns with their headings and descriptions.
+ */
+const NAVIGATION_SUBMENU_CSS = `[data-block="navigation_links"] .block-nav-parent { position:relative;display:flex;flex-wrap:wrap;align-items:center; }
+[data-block="navigation_links"] .block-nav-sub { --nav-sub-display:flex;display:var(--nav-sub-display);flex:1 0 100%;flex-direction:column;gap:0;min-width:0;margin:0;padding:0;list-style:none; }
+[data-block="navigation_links"] .block-nav-sub--columns { --nav-sub-display:grid; }
+[data-block="navigation_links"] .block-nav-parent:not([data-submenu]) > .block-nav-sub,
+[data-block="navigation_links"] li[data-submenu="accordion"] > .block-nav-sub { padding-inline-start:var(--space-md,1rem); }
+[data-block="navigation_links"] li[data-submenu="accordion"] > a { flex:1 1 auto; }
+[data-block="navigation_links"] .block-nav-heading { display:flex;align-items:center;min-height:var(--link_min_height_px,44px);box-sizing:border-box;padding-block:var(--padding_y_px,8px);font-weight:600;overflow-wrap:anywhere; }
+[data-block="navigation_links"] .block-nav-text { display:flex;flex-direction:column; }
+[data-block="navigation_links"] .block-nav-description { display:block;margin-top:.125rem;font-size:.875em;font-weight:400;line-height:1.4;color:var(--color-text-light,currentColor); }
+[data-block="navigation_links"] .block-nav-toggle { display:inline-flex;align-items:center;justify-content:center;gap:.5em;flex:none;min-width:44px;min-height:44px;box-sizing:border-box;margin:0;padding:0;border:0;border-radius:4px;background:transparent;color:var(--link_color,inherit);font:inherit;font-weight:var(--font_weight,400);line-height:var(--line_height,1.4);cursor:pointer; }
+[data-block="navigation_links"] .block-nav-toggle--label { justify-content:flex-start;min-width:0;min-height:var(--link_min_height_px,44px);padding-block:var(--padding_y_px,8px);font-size:var(--font_size_px,inherit);text-align:start; }
+[data-block="navigation_links"] .block-nav-toggle::after { content:'';flex:none;width:.4em;height:.4em;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-25%) rotate(45deg);transition:transform .15s ease; }
+[data-block="navigation_links"] [data-open] > .block-nav-toggle::after { transform:translateY(25%) rotate(-135deg); }
+[data-block="navigation_links"] .block-nav-toggle:focus-visible { outline:2px solid currentColor;outline-offset:-2px; }
+[data-block="navigation_links"] .block-nav-sr { position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0; }
+@media (hover:hover) and (pointer:fine) {
+  [data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-toggle:not(.block-nav-toggle--label) { min-width:28px; }
+  [data-block="navigation_links"] .block-nav-toggle:hover { color:var(--color-primary,currentColor); }
+}
+[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub { position:absolute;top:calc(100% + .25rem);inset-inline-start:0;translate:var(--nav-sub-shift,0px) 0;z-index:60;display:none;flex-direction:column;width:max-content;min-width:max(100%,12rem);max-width:min(36rem,calc(100vw - 2rem));box-sizing:border-box;padding:var(--space-xs,.5rem) var(--space-sm,.75rem);background:var(--color-surface,#fff);color:var(--color-text,#111);border:1px solid var(--color-border,rgb(0 0 0 / .12));border-radius:8px;box-shadow:0 12px 32px rgb(0 0 0 / .14); }
+[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub::before { content:'';position:absolute;inset:calc(-.25rem - 1px) 0 100%; }
+[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub :is(a,.block-nav-toggle) { color:inherit; }
+[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub--columns { grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:var(--space-sm,.75rem) var(--space-lg,1.5rem);width:min(48rem,calc(100vw - 2rem));padding:var(--space-sm,.75rem) var(--space-md,1rem); }
+/* Wide panels of the last two items open towards the start, so they stay on screen without script too. */
+[data-block="navigation_links"] li[data-submenu="dropdown"]:nth-last-child(-n+2) > .block-nav-sub--columns { inset-inline-start:auto;inset-inline-end:0; }
+[data-block="navigation_links"] .block-nav-sub--columns > .block-nav-parent { display:block; }
+[data-block="navigation_links"] .block-nav-sub--columns > .block-nav-parent > a { font-weight:600; }
+[data-block="navigation_links"] .block-nav-sub--columns .block-nav-parent > .block-nav-sub { padding-inline-start:0; }
+[data-block="navigation_links"]:not([data-enhanced]) li[data-submenu="dropdown"]:focus-within > .block-nav-sub,
+[data-block="navigation_links"][data-enhanced] li[data-submenu="dropdown"][data-open] > .block-nav-sub { display:var(--nav-sub-display); }
+@media (hover:hover) and (pointer:fine) {
+  [data-block="navigation_links"]:not([data-enhanced]) li[data-submenu="dropdown"]:hover > .block-nav-sub { display:var(--nav-sub-display); }
+}
+[data-block="navigation_links"]:not([data-enhanced]) li[data-submenu="accordion"] > .block-nav-toggle:not(.block-nav-toggle--label),
+[data-block="navigation_links"]:not([data-enhanced]) li[data-submenu="accordion"] > .block-nav-toggle--label::after { display:none; }
+[data-block="navigation_links"][data-enhanced] li[data-submenu="accordion"]:not([data-open]) > .block-nav-sub { display:none; }
+dialog [data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub { position:static;display:var(--nav-sub-display);grid-template-columns:minmax(0,1fr);width:auto;min-width:0;max-width:none;padding:0 0 0 var(--space-md,1rem);background:none;color:inherit;border:0;border-radius:0;box-shadow:none; }
+dialog [data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub::before { content:none; }
+dialog [data-block="navigation_links"] li[data-submenu="dropdown"] > a { flex:1 1 auto; }
+dialog [data-block="navigation_links"] .block-nav-sub--columns .block-nav-parent > .block-nav-sub { padding-inline-start:var(--space-md,1rem); }
+dialog [data-block="navigation_links"][data-enhanced] li[data-submenu="dropdown"]:not([data-open]) > .block-nav-sub { display:none; }
+@media (prefers-reduced-motion:reduce) {
+  [data-block="navigation_links"] .block-nav-toggle::after { transition:none; }
+}`;
+const NAVIGATION_LINKS_V15_CSS = `${NAVIGATION_LINKS_V14_CSS}\n${NAVIGATION_SUBMENU_CSS}`;
+
+/**
+ * The submenu runtime (render version 15). It ships only with a block that
+ * shows a site menu with submenus (collectBlockAssets), and such a block
+ * carries the runtime hook itself (data-block-type), so blocks with their own
+ * links stay without script.
+ */
+export const NAVIGATION_SUBMENU_SCRIPT = `
+window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
+window.TyperollBlocks.register('core/navigation_links', el => {
+  if (el.dataset.enhanced === 'true') return;
+  const parents = [...el.querySelectorAll('li[data-submenu]')].filter(li => li.querySelector(':scope > .block-nav-toggle'));
+  if (!parents.length) return;
+  const fine = matchMedia('(hover:hover) and (pointer:fine)');
+  // In the mobile menu dialog a dropdown opens in place, like an accordion.
+  const dropdown = li => li.dataset.submenu === 'dropdown' && !li.closest('dialog');
+  const timers = new Map();
+  const clear = li => { clearTimeout(timers.get(li)); timers.delete(li); };
+  // Keep an open panel on screen: a wide one under an item near the edge moves inwards.
+  const place = li => {
+    const panel = li.querySelector(':scope > .block-nav-sub');
+    if (!panel) return;
+    panel.style.removeProperty('--nav-sub-shift');
+    if (!dropdown(li)) return;
+    const rect = panel.getBoundingClientRect(), edge = 16, width = document.documentElement.clientWidth;
+    const shift = rect.right > width - edge ? Math.max(width - edge - rect.right, edge - rect.left) : rect.left < edge ? edge - rect.left : 0;
+    if (shift) panel.style.setProperty('--nav-sub-shift', Math.round(shift) + 'px');
+  };
+  const set = (li, open) => {
+    clear(li);
+    li.querySelector(':scope > .block-nav-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { li.setAttribute('data-open', ''); place(li); } else { li.removeAttribute('data-open'); delete li.dataset.pinned; delete li.dataset.hover; }
+  };
+  const open = li => {
+    for (const other of li.parentElement.children) if (other !== li && other.hasAttribute('data-open')) set(other, false);
+    set(li, true);
+  };
+  for (const li of parents) {
+    const button = li.querySelector(':scope > .block-nav-toggle');
+    // An accordion around the current page starts open.
+    if (li.dataset.submenu === 'accordion' && li.classList.contains('block-nav-parent--current')) set(li, true);
+    button.addEventListener('click', () => {
+      // A click on a panel the pointer just opened keeps it open.
+      if (li.hasAttribute('data-open') && li.dataset.hover === 'true') { delete li.dataset.hover; li.dataset.pinned = 'true'; return; }
+      if (li.hasAttribute('data-open')) set(li, false); else { open(li); li.dataset.pinned = 'true'; }
+    });
+    li.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || !li.hasAttribute('data-open') || !dropdown(li)) return;
+      event.preventDefault(); event.stopPropagation();
+      set(li, false); button.focus();
+    });
+    li.addEventListener('pointerenter', event => {
+      if (event.pointerType !== 'mouse' || !fine.matches || !dropdown(li)) return;
+      clear(li);
+      if (!li.hasAttribute('data-open')) timers.set(li, setTimeout(() => { open(li); li.dataset.hover = 'true'; }, 80));
+    });
+    li.addEventListener('pointerleave', event => {
+      if (event.pointerType !== 'mouse' || !dropdown(li)) return;
+      clear(li);
+      if (li.hasAttribute('data-open') && li.dataset.pinned !== 'true') timers.set(li, setTimeout(() => set(li, false), 300));
+    });
+    li.addEventListener('focusout', event => {
+      if (dropdown(li) && event.relatedTarget instanceof Node && !li.contains(event.relatedTarget)) set(li, false);
+    });
+  }
+  document.addEventListener('click', event => {
+    for (const li of parents) if (li.hasAttribute('data-open') && dropdown(li) && !li.contains(event.target)) set(li, false);
+  });
+  el.dataset.enhanced = 'true';
+});
+`;
+
 navigationLinks.render_versions = [
   { from: 11, styles: NAVIGATION_LINKS_V11_CSS },
   { from: 13, template: LABELLED_NAVIGATION_TEMPLATE, styles: NAVIGATION_LINKS_V13_CSS },
   { from: 14, template: LABELLED_NAVIGATION_TEMPLATE, styles: NAVIGATION_LINKS_V14_CSS },
+  { from: 15, template: LABELLED_NAVIGATION_TEMPLATE, styles: NAVIGATION_LINKS_V15_CSS },
 ];

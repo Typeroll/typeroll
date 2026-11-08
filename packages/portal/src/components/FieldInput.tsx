@@ -12,8 +12,9 @@ import LinkFieldInput from './LinkFieldInput';
 import MediaPicker from './MediaPicker';
 import { loadInternalPages, type InternalPageOption } from './internal-pages';
 
-import { EditedBlockTypeContext, GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './editor-context';
-export { EditedBlockTypeContext, fieldAvailable, GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './editor-context';
+import { EditedBlockTypeContext, GlobalBlocksContext, RenderVersionContext, SiteFontsContext, SiteStylesContext } from './editor-context';
+import { fontRoleChoices, isFontRoleField } from './font-picker-model';
+export { EditedBlockTypeContext, fieldAvailable, GlobalBlocksContext, RenderVersionContext, SiteFontsContext, SiteStylesContext } from './editor-context';
 
 export default function FieldInput({
   siteId, field, value, onChange, responsive, activeBp, hasOwn, triState = false, siteWidths,
@@ -47,6 +48,7 @@ export default function FieldInput({
   const globalBlocks = useContext(GlobalBlocksContext);
   const editedType = useContext(EditedBlockTypeContext);
   const renderVersion = useContext(RenderVersionContext);
+  const siteFonts = useContext(SiteFontsContext);
   switch (field.type) {
     case 'part_styles':
       // Generated for block types with parts; never a free-text value.
@@ -125,18 +127,23 @@ export default function FieldInput({
         </div>
       );
     }
-    case 'select':
+    case 'select': {
+      // A font role: name each role's family, and hide display and accent below render version 15.
+      const choices = isFontRoleField(field)
+        ? fontRoleChoices(field.options ?? [], siteFonts, renderVersion, v).map(choice => ({ value: choice.value, label: siteFonts || !field.option_labels ? choice.label : field.option_labels[(field.options ?? []).indexOf(choice.value)] ?? choice.label }))
+        : (field.options ?? []).map((opt, index) => ({ value: opt, label: field.option_labels?.[index] ?? opt }));
       return (
         <div style={fieldGroup}>
           {label}
           <select id={fieldId} aria-label={field.label} aria-required={field.required || undefined} aria-describedby={describedBy} value={v} onChange={(e) => onChange(e.target.value)} style={selectInput}>
             {!field.required && field.default == null && <option value="">{field.editor_group ? 'Default' : 'Choose…'}</option>}
-            {(field.options ?? []).map((opt, index) => (
-              <option key={opt} value={opt}>{field.option_labels?.[index] ?? opt}</option>
+            {choices.map(choice => (
+              <option key={choice.value} value={choice.value}>{choice.label}</option>
             ))}
           </select>
         </div>
       );
+    }
     case 'multiselect': {
       const selected = Array.isArray(value) ? value : [];
       return <fieldset style={{ ...fieldGroup, border: 0, padding: 0 }}>

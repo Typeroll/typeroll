@@ -11,6 +11,7 @@ import { verifyApiToken } from '../../../lib/api-keys';
 import { rateLimit } from '../../../lib/rate-limit';
 import { verifyToken } from '../../../lib/mcp-tokens';
 import { resolvePersonalSite } from '../../../lib/personal-site-access';
+import { siteDesignAccess } from '../../../lib/member-role';
 import { issueSiteContext, verifySiteContext } from '../../../lib/mcp-site-context';
 import { resolveRequestedVersion } from '../../../lib/access';
 import { listAllowedSites } from '../../../lib/api-auth';
@@ -96,7 +97,9 @@ async function handle(request: Request): Promise<Response> {
       const decoded = verifySiteContext(context, apiKey);
       if (!decoded) throw new Error('Missing, expired or invalid site_context. Confirm the site and use select_site again.');
       const selected = await resolveSelection(decoded.organizationId, decoded.siteId, decoded.version);
-      return { client: client.forOrganization(decoded.organizationId, decoded.siteId, decoded.version), siteId: decoded.siteId, permission: selected.permission };
+      return { client: client.forOrganization(decoded.organizationId, decoded.siteId, decoded.version), siteId: decoded.siteId, permission: selected.permission,
+        // A builder runs the design tools (DESIGN_TOOLS); the REST routes check again.
+        design: siteDesignAccess(selected.permission, selected.role) };
     },
   } }) : verified.siteId !== null
     ? buildServer({ client, fixedSiteId: verified.siteId, toolMode, info: serverInfo(process.env.PORTAL_PUBLIC_URL || request.url) })

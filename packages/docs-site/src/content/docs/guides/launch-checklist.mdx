@@ -41,7 +41,8 @@ The response looks like this:
 }
 ```
 
-`details` lists up to 20 affected pages or values when an item has them. The
+`details` lists up to 20 affected pages or values when an item has them, and
+`links` the portal address to fix each one, when it has one. The
 [tool reference](../../tools/deploy/#read_site_readiness) summarizes what each
 item checks.
 
@@ -170,6 +171,62 @@ each product, service or common question its own page.
 Visitors and crawlers have no way to reach them.
 
 **Fix:** link each listed page from a related page, a menu or a listing block.
+
+## Menus
+
+**Warning** when a menu item links to a page that was deleted or is not
+published (the item is left out of the published menu), or when two menus fill
+the same location.
+
+**Fix:** point the item at a published page, publish the page, or remove the
+item. Keep each location (`primary`, `footer`, `mobile` or your own) in one
+menu.
+
+## Site fields
+
+**Warning** when a site field marked required has no value. Where a template,
+block text or a `core/site_field` block shows it, visitors see nothing.
+
+**Fix:** fill in each listed field on its settings page under **Site fields**,
+or with `update_site_fields`. See [site fields](../../tools/site-fields/).
+
+## Live snippets
+
+**Warning** when the site has live snippets or live site fields but nowhere to
+serve live files: no media host, or a hosted site. They still show, but only
+change when the site is published.
+
+**Fix:** set a media host for the site or the organization in **Publishing**,
+or publish after each change. See [live snippets](../../tools/snippets/).
+
+## Demo media
+
+**Warning** when live pages, published global blocks or templates use demo
+images from an imported template [package](../../tools/packages/). The
+publication lists them too; nothing is blocked.
+
+**Fix:** replace each listed file with your own in the **Media** library, or
+keep it there to mark it as the site's own.
+
+## Placeholders
+
+**Warning** when live pages or published global blocks (the header and footer
+included) still show bracketed placeholder text, such as `[Feature name]` or
+`[Your product]`. The built-in starters and many templates mark what to
+replace that way. The report lists up to three examples per page with a link
+to edit it, and the publication lists them too; nothing is blocked. Markdown
+links and lower-case brackets such as `[note]` are not placeholders.
+
+**Fix:** replace each placeholder with the real text, or remove the block.
+
+## Time zone
+
+**Warning** when the site shows opening hours or dated snippets but has no time
+zone, which only older sites lack. Which entry is today's, and whether the
+business is open now, depend on it.
+
+**Fix:** choose the site's time zone in **Settings**, next to **Language**. It
+decides which day and hour it is at the business.
 
 ## Duplicate titles
 

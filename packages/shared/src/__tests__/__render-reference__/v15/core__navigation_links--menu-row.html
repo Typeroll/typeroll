@@ -1,0 +1,193 @@
+<ul data-block="navigation_links" data-font="inherit" data-density="comfortable" style="--direction:row;--link_color:;--font_weight:400;--line_height:1.4" data-presentation="core%2Fnavigation_links" data-block-type="core/navigation_links"><li><a href="/">Home</a></li><li class="block-nav-parent block-nav-parent--current" data-submenu="dropdown"><a href="/services/">Services</a><button type="button" class="block-nav-toggle" aria-expanded="false" aria-controls="nav-ref-services"><span class="block-nav-sr">Show submenu: Services</span></button><ul class="block-nav-sub" id="nav-ref-services"><li><a href="/services/design/" aria-current="page"><span class="block-nav-text">Design<span class="block-nav-description">Houses &amp; schools</span></span></a></li><li><a href="/advice/">Advice</a></li></ul></li><li class="block-nav-parent" data-submenu="dropdown"><button type="button" class="block-nav-toggle block-nav-toggle--label" aria-expanded="false" aria-controls="nav-ref-work">Work</button><ul class="block-nav-sub block-nav-sub--columns" id="nav-ref-work"><li class="block-nav-parent"><span class="block-nav-heading">Homes</span><ul class="block-nav-sub" id="nav-ref-homes"><li><a href="/work/villa/">Villa</a></li></ul></li><li class="block-nav-parent"><a href="/work/public/">Public</a><ul class="block-nav-sub" id="nav-ref-public"><li><a href="/work/school/">School</a></li></ul></li></ul></li></ul>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+[data-presentation="core%2Fnavigation_links"]{--icon_size_px:initial;--icon_gap_px:initial;--font_size_px:initial;--line_height:initial;--link_min_height_px:initial;--gap_px:initial;--padding_y_px:initial}
+
+/* core/navigation_links */
+[data-block="navigation_links"] { display:flex;flex-direction:var(--direction,column);flex-wrap:wrap;gap:var(--gap_px,8px);list-style:none;margin:0;padding:0; }
+[data-block="navigation_links"] li { min-width:0;max-width:100%;list-style:none;margin:0;padding:0; }
+[data-block="navigation_links"] li::marker { content:''; }
+[data-block="navigation_links"] li > a { display:flex;align-items:center;min-height:var(--link_min_height_px,44px);gap:var(--icon_gap_px,12px);color:var(--link_color,inherit);font-size:var(--font_size_px,inherit);line-height:var(--line_height,1.4);font-weight:var(--font_weight,400);padding-block:var(--padding_y_px,8px);text-decoration:none;overflow-wrap:anywhere; }
+[data-block="navigation_links"][data-font="body"] { font-family:var(--font-body,inherit); }
+[data-block="navigation_links"][data-font="heading"] { font-family:var(--font-heading,inherit); }
+[data-block="navigation_links"] .block-nav-icon { font-size:var(--icon_size_px,24px);width:1em;flex:none;line-height:1; }
+[data-block="navigation_links"] .block-nav-icon svg { width:1em;height:1em; }
+[data-block="navigation_links"] a:hover { text-decoration:underline; }
+[data-block="navigation_links"][data-density="compact"] { gap:var(--gap_px,4px); }
+[data-block="navigation_links"][data-density="compact"] li > a { min-height:var(--link_min_height_px,24px);padding-block:var(--padding_y_px,0px); }
+@media (min-width:1024px) and (hover:hover) and (pointer:fine) {
+  [data-block="navigation_links"][data-density="compact-desktop"] { gap:var(--gap_px,4px); }
+  [data-block="navigation_links"][data-density="compact-desktop"] li > a { min-height:var(--link_min_height_px,24px);padding-block:var(--padding_y_px,0px); }
+}
+[data-block="navigation_links"] a:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
+[data-block="navigation_links"]:not([data-density="compact"]) { row-gap:var(--gap_px,0px); }
+@media (min-width:1024px) and (hover:hover) and (pointer:fine) {
+  [data-block="navigation_links"][data-density="compact-desktop"] { row-gap:var(--gap_px,4px); }
+}
+[data-block="navigation_links"][data-labelled="true"] { display:block; }
+[data-block="navigation_links"] > .block-nav-list { display:flex;flex-direction:var(--direction,column);flex-wrap:wrap;gap:inherit;list-style:none;margin:0;padding:0;min-width:0; }
+[data-block="navigation_links"] > .block-nav-label { margin:0 0 var(--space-xs,.25rem);font-family:var(--font-body,inherit);font-size:.75rem;font-weight:600;line-height:1.5;letter-spacing:.08em;text-transform:uppercase;color:var(--color-text-light,currentColor);overflow-wrap:anywhere; }
+[data-block="navigation_links"][data-labelled="true"]:not(:first-child) > .block-nav-label { margin-top:var(--space-md,1.25rem); }
+[data-block="navigation_links"] li > a { box-sizing:border-box; }
+[data-block="navigation_links"] .block-nav-parent { position:relative;display:flex;flex-wrap:wrap;align-items:center; }
+[data-block="navigation_links"] .block-nav-sub { --nav-sub-display:flex;display:var(--nav-sub-display);flex:1 0 100%;flex-direction:column;gap:0;min-width:0;margin:0;padding:0;list-style:none; }
+[data-block="navigation_links"] .block-nav-sub--columns { --nav-sub-display:grid; }
+[data-block="navigation_links"] .block-nav-parent:not([data-submenu]) > .block-nav-sub,
+[data-block="navigation_links"] li[data-submenu="accordion"] > .block-nav-sub { padding-inline-start:var(--space-md,1rem); }
+[data-block="navigation_links"] li[data-submenu="accordion"] > a { flex:1 1 auto; }
+[data-block="navigation_links"] .block-nav-heading { display:flex;align-items:center;min-height:var(--link_min_height_px,44px);box-sizing:border-box;padding-block:var(--padding_y_px,8px);font-weight:600;overflow-wrap:anywhere; }
+[data-block="navigation_links"] .block-nav-text { display:flex;flex-direction:column; }
+[data-block="navigation_links"] .block-nav-description { display:block;margin-top:.125rem;font-size:.875em;font-weight:400;line-height:1.4;color:var(--color-text-light,currentColor); }
+[data-block="navigation_links"] .block-nav-toggle { display:inline-flex;align-items:center;justify-content:center;gap:.5em;flex:none;min-width:44px;min-height:44px;box-sizing:border-box;margin:0;padding:0;border:0;border-radius:4px;background:transparent;color:var(--link_color,inherit);font:inherit;font-weight:var(--font_weight,400);line-height:var(--line_height,1.4);cursor:pointer; }
+[data-block="navigation_links"] .block-nav-toggle--label { justify-content:flex-start;min-width:0;min-height:var(--link_min_height_px,44px);padding-block:var(--padding_y_px,8px);font-size:var(--font_size_px,inherit);text-align:start; }
+[data-block="navigation_links"] .block-nav-toggle::after { content:'';flex:none;width:.4em;height:.4em;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:translateY(-25%) rotate(45deg);transition:transform .15s ease; }
+[data-block="navigation_links"] [data-open] > .block-nav-toggle::after { transform:translateY(25%) rotate(-135deg); }
+[data-block="navigation_links"] .block-nav-toggle:focus-visible { outline:2px solid currentColor;outline-offset:-2px; }
+[data-block="navigation_links"] .block-nav-sr { position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0; }
+@media (hover:hover) and (pointer:fine) {
+  [data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-toggle:not(.block-nav-toggle--label) { min-width:28px; }
+  [data-block="navigation_links"] .block-nav-toggle:hover { color:var(--color-primary,currentColor); }
+}
+[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub { position:absolute;top:calc(100% + .25rem);inset-inline-start:0;translate:var(--nav-sub-shift,0px) 0;z-index:60;display:none;flex-direction:column;width:max-content;min-width:max(100%,12rem);max-width:min(36rem,calc(100vw - 2rem));box-sizing:border-box;padding:var(--space-xs,.5rem) var(--space-sm,.75rem);background:var(--color-surface,#fff);color:var(--color-text,#111);border:1px solid var(--color-border,rgb(0 0 0 / .12));border-radius:8px;box-shadow:0 12px 32px rgb(0 0 0 / .14); }
+[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub::before { content:'';position:absolute;inset:calc(-.25rem - 1px) 0 100%; }
+[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub :is(a,.block-nav-toggle) { color:inherit; }
+[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub--columns { grid-template-columns:repeat(auto-fit,minmax(11rem,1fr));gap:var(--space-sm,.75rem) var(--space-lg,1.5rem);width:min(48rem,calc(100vw - 2rem));padding:var(--space-sm,.75rem) var(--space-md,1rem); }
+/* Wide panels of the last two items open towards the start, so they stay on screen without script too. */
+[data-block="navigation_links"] li[data-submenu="dropdown"]:nth-last-child(-n+2) > .block-nav-sub--columns { inset-inline-start:auto;inset-inline-end:0; }
+[data-block="navigation_links"] .block-nav-sub--columns > .block-nav-parent { display:block; }
+[data-block="navigation_links"] .block-nav-sub--columns > .block-nav-parent > a { font-weight:600; }
+[data-block="navigation_links"] .block-nav-sub--columns .block-nav-parent > .block-nav-sub { padding-inline-start:0; }
+[data-block="navigation_links"]:not([data-enhanced]) li[data-submenu="dropdown"]:focus-within > .block-nav-sub,
+[data-block="navigation_links"][data-enhanced] li[data-submenu="dropdown"][data-open] > .block-nav-sub { display:var(--nav-sub-display); }
+@media (hover:hover) and (pointer:fine) {
+  [data-block="navigation_links"]:not([data-enhanced]) li[data-submenu="dropdown"]:hover > .block-nav-sub { display:var(--nav-sub-display); }
+}
+[data-block="navigation_links"]:not([data-enhanced]) li[data-submenu="accordion"] > .block-nav-toggle:not(.block-nav-toggle--label),
+[data-block="navigation_links"]:not([data-enhanced]) li[data-submenu="accordion"] > .block-nav-toggle--label::after { display:none; }
+[data-block="navigation_links"][data-enhanced] li[data-submenu="accordion"]:not([data-open]) > .block-nav-sub { display:none; }
+dialog [data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub { position:static;display:var(--nav-sub-display);grid-template-columns:minmax(0,1fr);width:auto;min-width:0;max-width:none;padding:0 0 0 var(--space-md,1rem);background:none;color:inherit;border:0;border-radius:0;box-shadow:none; }
+dialog [data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub::before { content:none; }
+dialog [data-block="navigation_links"] li[data-submenu="dropdown"] > a { flex:1 1 auto; }
+dialog [data-block="navigation_links"] .block-nav-sub--columns .block-nav-parent > .block-nav-sub { padding-inline-start:var(--space-md,1rem); }
+dialog [data-block="navigation_links"][data-enhanced] li[data-submenu="dropdown"]:not([data-open]) > .block-nav-sub { display:none; }
+@media (prefers-reduced-motion:reduce) {
+  [data-block="navigation_links"] .block-nav-toggle::after { transition:none; }
+}
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
+:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+/* js */
+/* core/navigation_links submenus */
+
+window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
+window.TyperollBlocks.register('core/navigation_links', el => {
+  if (el.dataset.enhanced === 'true') return;
+  const parents = [...el.querySelectorAll('li[data-submenu]')].filter(li => li.querySelector(':scope > .block-nav-toggle'));
+  if (!parents.length) return;
+  const fine = matchMedia('(hover:hover) and (pointer:fine)');
+  // In the mobile menu dialog a dropdown opens in place, like an accordion.
+  const dropdown = li => li.dataset.submenu === 'dropdown' && !li.closest('dialog');
+  const timers = new Map();
+  const clear = li => { clearTimeout(timers.get(li)); timers.delete(li); };
+  // Keep an open panel on screen: a wide one under an item near the edge moves inwards.
+  const place = li => {
+    const panel = li.querySelector(':scope > .block-nav-sub');
+    if (!panel) return;
+    panel.style.removeProperty('--nav-sub-shift');
+    if (!dropdown(li)) return;
+    const rect = panel.getBoundingClientRect(), edge = 16, width = document.documentElement.clientWidth;
+    const shift = rect.right > width - edge ? Math.max(width - edge - rect.right, edge - rect.left) : rect.left < edge ? edge - rect.left : 0;
+    if (shift) panel.style.setProperty('--nav-sub-shift', Math.round(shift) + 'px');
+  };
+  const set = (li, open) => {
+    clear(li);
+    li.querySelector(':scope > .block-nav-toggle').setAttribute('aria-expanded', open ? 'true' : 'false');
+    if (open) { li.setAttribute('data-open', ''); place(li); } else { li.removeAttribute('data-open'); delete li.dataset.pinned; delete li.dataset.hover; }
+  };
+  const open = li => {
+    for (const other of li.parentElement.children) if (other !== li && other.hasAttribute('data-open')) set(other, false);
+    set(li, true);
+  };
+  for (const li of parents) {
+    const button = li.querySelector(':scope > .block-nav-toggle');
+    // An accordion around the current page starts open.
+    if (li.dataset.submenu === 'accordion' && li.classList.contains('block-nav-parent--current')) set(li, true);
+    button.addEventListener('click', () => {
+      // A click on a panel the pointer just opened keeps it open.
+      if (li.hasAttribute('data-open') && li.dataset.hover === 'true') { delete li.dataset.hover; li.dataset.pinned = 'true'; return; }
+      if (li.hasAttribute('data-open')) set(li, false); else { open(li); li.dataset.pinned = 'true'; }
+    });
+    li.addEventListener('keydown', event => {
+      if (event.key !== 'Escape' || !li.hasAttribute('data-open') || !dropdown(li)) return;
+      event.preventDefault(); event.stopPropagation();
+      set(li, false); button.focus();
+    });
+    li.addEventListener('pointerenter', event => {
+      if (event.pointerType !== 'mouse' || !fine.matches || !dropdown(li)) return;
+      clear(li);
+      if (!li.hasAttribute('data-open')) timers.set(li, setTimeout(() => { open(li); li.dataset.hover = 'true'; }, 80));
+    });
+    li.addEventListener('pointerleave', event => {
+      if (event.pointerType !== 'mouse' || !dropdown(li)) return;
+      clear(li);
+      if (li.hasAttribute('data-open') && li.dataset.pinned !== 'true') timers.set(li, setTimeout(() => set(li, false), 300));
+    });
+    li.addEventListener('focusout', event => {
+      if (dropdown(li) && event.relatedTarget instanceof Node && !li.contains(event.relatedTarget)) set(li, false);
+    });
+  }
+  document.addEventListener('click', event => {
+    for (const li of parents) if (li.hasAttribute('data-open') && dropdown(li) && !li.contains(event.target)) set(li, false);
+  });
+  el.dataset.enhanced = 'true';
+});
+

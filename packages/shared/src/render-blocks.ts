@@ -56,6 +56,12 @@ import { surfaceColor, surfaceGradientCss } from './surface-presentation.js';
 import { columnStackCss } from './column-layout.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
+import { isMenuNavigation, renderMenuNavigation, usesMenuSubmenus, type MenuSource } from './menu-render.js';
+import { NAVIGATION_SUBMENU_SCRIPT } from './navigation-menu.js';
+import { liveBaseUrlOf, prepareSiteField, siteFieldValues, SITE_FIELD_CLOCK_SCRIPT, SITE_FIELD_LIVE_SCRIPT, usesLiveSiteField, usesSiteFieldClock, type SiteFieldClockInput } from './site-field-blocks.js';
+import { prepareSnippet, SNIPPET_LIVE_SCRIPT, usesLiveSnippet, type SnippetSource } from './snippet-blocks.js';
+import { siteTimeZone } from './site-display-settings.js';
+import type { SiteFieldGroup, SiteFields } from './site-fields.js';
 import { backlinksFor, refIds, type BacklinkIndex } from './page-refs.js';
 import { applyTrailingSlash, type TrailingSlashPolicy } from './url-policy.js';
 import { prepareArticleBlockData, safeLinkHref } from './article-blocks.js';
@@ -212,6 +218,31 @@ export interface RenderBlocksOptions {
    * alter existing pages are gated on this. Defaults to the baseline.
    */
   renderVersion?: number;
+  /**
+   * The site's menus, for `core/navigation_links` blocks with `source: "menu"`
+   * (render version 15, menu-render.ts). Without it such a block renders an
+   * empty list.
+   */
+  menuSource?: MenuSource;
+  /**
+   * The site's field definitions, for `core/site_field` blocks with an
+   * automatic format (rich text, dates, option labels, opening hours). The
+   * values themselves are read from `context.site.fields`.
+   */
+  siteFieldDefinitions?: readonly Pick<SiteFieldGroup, 'fields'>[];
+  /** The moment date-dependent site field formats are computed for (today's opening hours). Defaults to now. */
+  now?: Date;
+  /**
+   * Receives each output that depends on `now` with its input, so a render
+   * cache can recompute it later (siteFieldClockHtml) and tell when it is stale.
+   */
+  onClockOutput?: (input: SiteFieldClockInput, html: string) => void;
+  /**
+   * The site's live snippets as public files, for `core/snippet` blocks
+   * (snippet-blocks.ts). Without it such a block shows only its empty text.
+   * Where the live files are comes from `context.site.live_base_url`.
+   */
+  snippetSource?: SnippetSource;
   /** Resolves `core/global_block` references (reusable-blocks.ts). Without it they render nothing. */
   globalBlockSource?: GlobalBlockSource;
   /** Internal: global blocks being rendered, outermost first, to stop cycles. */
@@ -291,7 +322,11 @@ function sectionHomeHref(site: Record<string, unknown> | undefined, language: un
 }
 
 export function renderBlock(block: Block, options: RenderBlocksOptions): string {
-  return resolveBuildVariables(renderBlockContent(block, options), options.context?.site?.current_year);
+  const site = options.context?.site;
+  const html = renderBlockContent(block, options);
+  // Without a site context (a bare preview) only the year expands, as before.
+  if (!site) return resolveBuildVariables(html, undefined);
+  return resolveAuthoredVariables(html, { year: site.current_year, renderVersion: resolveRenderVersion(options.renderVersion), siteName: site.name, fields: site.fields as Record<string, unknown> | undefined });
 }
 
 function renderBlockContent(block: Block, options: RenderBlocksOptions): string {
@@ -452,12 +487,24 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
       compiled.flatData.group_label = String(compiled.flatData.group_label ?? '').trim();
       compiled.flatData.navigation_label_id = `nav-label-${effectiveBlock.id}`;
     }
-    compiled.flatData.navigation_links_html = renderNavigationLinks(
-      effectiveBlock.data?.links,
-      options.context?.page,
-      effectiveBlock.type === 'core/navigation_links',
-      String(options.context?.site?.url ?? ''),
-    );
+    if (isMenuNavigation(effectiveBlock) && resolveRenderVersion(options.renderVersion) >= 15) {
+      // A site menu instead of the block's own links (render version 15).
+      const page = options.context?.page;
+      const menu = renderMenuNavigation(effectiveBlock, options.menuSource, {
+        currentPath: String(page?.path ?? page?.url ?? (page?.slug ? `/${String(page.slug)}` : '/')),
+        language: page?.language ?? options.context?.site?.language,
+        pageSource: options.pageSource as Parameters<typeof renderMenuNavigation>[2]['pageSource'],
+      });
+      compiled.flatData.navigation_links_html = menu.html;
+      if (menu.submenus) compiled.flatData.navigation_submenus = 'true';
+    } else {
+      compiled.flatData.navigation_links_html = renderNavigationLinks(
+        effectiveBlock.data?.links,
+        options.context?.page,
+        effectiveBlock.type === 'core/navigation_links',
+        String(options.context?.site?.url ?? ''),
+      );
+    }
   }
   if (effectiveBlock.type === 'core/tabs') prepareTabs(compiled.flatData, effectiveBlock.id, effectiveBlock.slots, { authored: effectiveBlock.data, language: options.context?.page?.language ?? options.context?.site?.language });
   // Read only by the render version 7 templates (block-media.ts).
@@ -480,6 +527,21 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     if (resolveRenderVersion(options.renderVersion) >= 14 && compiled.flatData.date) {
       compiled.flatData.date = formatDisplayDate(compiled.flatData.date, options.context?.page?.language ?? options.context?.site?.language, options.context?.site?.date_format);
     }
+  }
+  if (effectiveBlock.type === 'core/site_field') {
+    const site = options.context?.site;
+    const prepared = prepareSiteField(compiled.flatData, {
+      values: site?.fields, definitions: options.siteFieldDefinitions,
+      language: options.context?.page?.language ?? site?.language, timeZone: siteTimeZone(site), dateFormat: site?.date_format,
+      now: options.now, onClockOutput: options.onClockOutput, pageSource: options.pageSource, liveBaseUrl: site?.live_base_url,
+    });
+    if (!prepared.html && !prepared.attrs) return '';
+    Object.assign(compiled.flatData, { site_field_html: prepared.html, site_field_format: prepared.format, site_field_empty: prepared.empty, site_field_attrs: prepared.attrs, tag: prepared.tag });
+  }
+  if (effectiveBlock.type === 'core/snippet') {
+    const prepared = prepareSnippet(compiled.flatData, { source: options.snippetSource, liveBaseUrl: options.context?.site?.live_base_url, now: options.now });
+    if (!prepared) return '';
+    Object.assign(compiled.flatData, { snippet_html: prepared.html, snippet_attrs: prepared.attrs, tag: prepared.tag });
   }
   let fieldListHtml: string | undefined;
   if (effectiveBlock.type === 'core/field_list') {
@@ -644,6 +706,9 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     // Uses the resolved type id: that's the id the script registers under
     // (aliases run the target's script).
     rootAttrs['data-block-type'] = blockType.id;
+  } else if (compiled.flatData.navigation_submenus === 'true') {
+    // The submenu runtime finds its blocks the same way (render version 15).
+    rootAttrs['data-block-type'] = 'core/navigation_links';
   }
   if (blockType.extension) {
     // Extension values are identifiers and public block props only. Dynamic
@@ -1155,9 +1220,11 @@ function wrapRepeater(
 export function siteContext(
   settings: Record<string, unknown> | null | undefined,
   year: number = new Date().getUTCFullYear(),
+  fields?: Pick<SiteFields, 'groups' | 'values'> | null,
 ): Record<string, unknown> {
   const s = settings ?? {};
-  return { ...s, name: s.site_name ?? s.name ?? '', current_year: year };
+  // Site field values only, as `{{site.fields.*}}`; definitions stay out (site-field-blocks.ts).
+  return { ...s, name: s.site_name ?? s.name ?? '', current_year: year, ...(fields ? { fields: siteFieldValues(fields) } : {}) };
 }
 
 /** Only this reserved build variable expands inside authored text/HTML.
@@ -1167,6 +1234,29 @@ export function siteContext(
 export function resolveBuildVariables(value: string, year: unknown = new Date().getUTCFullYear()): string {
   if (!Number.isInteger(year) || Number(year) < 1 || Number(year) > 9999) throw new Error('Invalid build year');
   return value.replace(/\{\{\s*site\.current_year\s*\}\}/g, String(year));
+}
+
+/** First render version that expands `{{site.name}}` and `{{site.fields.<name>}}` in authored text. */
+export const AUTHORED_SITE_VARIABLES_VERSION = 15;
+
+// Braces too, so an expanded value is never read as another variable when an enclosing block's HTML is expanded.
+const escapeVariable = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/\{/g, '&#123;').replace(/\}/g, '&#125;');
+
+/**
+ * Build variables in authored text/HTML. Every version expands
+ * `{{site.current_year}}`. From render version 15 `{{site.name}}` and
+ * `{{site.fields.<name>}}` expand too, so a template's text can name the site
+ * it is inserted into. Only text, number and true/false field values expand,
+ * escaped as text; other values and unknown names expand to nothing. Values
+ * are never evaluated again.
+ */
+export function resolveAuthoredVariables(value: string, context: { year?: unknown; renderVersion?: number; siteName?: unknown; fields?: Record<string, unknown> | null }): string {
+  const withYear = resolveBuildVariables(value, context.year ?? new Date().getUTCFullYear());
+  if ((context.renderVersion ?? 1) < AUTHORED_SITE_VARIABLES_VERSION || !withYear.includes('{{')) return withYear;
+  return withYear.replace(/\{\{\s*site\.(name|fields\.([a-z][a-z0-9_]{0,63}))\s*\}\}/g, (_, key: string, field?: string) => {
+    const raw = field ? context.fields?.[field] : context.siteName;
+    return typeof raw === 'string' || typeof raw === 'number' || typeof raw === 'boolean' ? escapeVariable(String(raw)) : '';
+  });
 }
 
 /**
@@ -2278,6 +2368,20 @@ export interface CollectAssetsOptions {
    * and each instance's `part_styles`. Without it no part CSS is emitted.
    */
   siteStyles?: { styles: readonly unknown[] | undefined; breakpoints: BreakpointWidths };
+  /**
+   * The site field values (`site.fields`), so a `core/site_field` with an
+   * automatic format ships the opening-hours script only for opening hours.
+   * Without them an automatic format counts as opening hours.
+   */
+  siteFieldValues?: unknown;
+  /**
+   * Where the site's live files are (`site.live_base_url`). With it, live
+   * snippets and live site fields ship the script that fetches them; without
+   * it they show the published content and ship nothing.
+   */
+  liveBaseUrl?: unknown;
+  /** The site's field definitions, to tell which site field blocks are live. */
+  siteFieldDefinitions?: Parameters<typeof usesLiveSiteField>[1];
 }
 
 export function collectBlockAssets(
@@ -2319,6 +2423,19 @@ export function collectBlockAssets(
   const effects = effectAssets(blocks, resolveRenderVersion(opts?.renderVersion));
   css.push(...effects.css);
   js.push(...effects.js);
+  // Submenus of a site menu need their small runtime; other link lists stay without script.
+  if (resolveRenderVersion(opts?.renderVersion) >= 15 && used.includes('core/navigation_links') && usesMenuSubmenus(blocks)) {
+    js.push(`/* core/navigation_links submenus */\n${NAVIGATION_SUBMENU_SCRIPT}`);
+  }
+  // Today's opening hours and the like refresh in the browser; other site fields need no script.
+  if (used.includes('core/site_field') && usesSiteFieldClock(blocks, opts?.siteFieldValues)) {
+    js.push(`/* core/site_field opening hours */\n${SITE_FIELD_CLOCK_SCRIPT}`);
+  }
+  // Live content fetches its files only where the site has them.
+  if (liveBaseUrlOf(opts?.liveBaseUrl)) {
+    if (used.includes('core/snippet') && usesLiveSnippet(blocks)) js.push(`/* core/snippet live content */\n${SNIPPET_LIVE_SCRIPT}`);
+    if (used.includes('core/site_field') && usesLiveSiteField(blocks, opts?.siteFieldDefinitions)) js.push(`/* core/site_field live values */\n${SITE_FIELD_LIVE_SCRIPT}`);
+  }
   if (resolveRenderVersion(opts?.renderVersion) >= 14 && css.length) css.push(`/* block defaults */\n${BLOCK_DEFAULTS_V14_CSS}`);
   // From render version 14 platform block CSS is one layer; an author's
   // per-block CSS stays unlayered and overrides it like site CSS does.

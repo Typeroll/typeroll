@@ -28,7 +28,7 @@ export const ARTICLE_BLOCK_TYPES: BlockType[] = [
       { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right', 'match-parent'], option_labels: ['Left', 'Center', 'Right', 'Inherit from container'], default: 'left', responsive: true },
       ...typographyFields,
       { name: 'font_weight', type: 'select', label: 'Weight', options: ['400', '500', '600', '700', '800'], default: '600', responsive: true },
-      { name: 'font', type: 'select', label: 'Font', options: ['heading', 'body', 'inherit'], default: 'heading' },
+      { name: 'font', type: 'select', label: 'Font', options: ['heading', 'body', 'display', 'accent', 'inherit'], default: 'heading' },
       { name: 'color', type: 'color', label: 'Text color' },
       // Unset (or inherit) keeps the site's Link style; text links elsewhere are unaffected.
       { name: 'link_decoration', type: 'select', label: 'Link underline', options: ['inherit', 'none', 'underline'], option_labels: ['Site link style', 'None', 'Underline'] },

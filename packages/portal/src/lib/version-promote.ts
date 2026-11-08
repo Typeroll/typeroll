@@ -28,7 +28,10 @@ export interface VersionDiff {
   contentTypes: ChangeSet;
   pageTemplates: ChangeSet;
   blockTypes: ChangeSet;
+  menus: ChangeSet;
   settings: 'unchanged' | 'modified';
+  /** Whether the branch overrides the site fields (definitions and values). */
+  siteFields: 'unchanged' | 'modified';
   /** Total number of changed entities across the diff. */
   totalChanges: number;
 }
@@ -100,10 +103,15 @@ export async function diffVersion(
   const blockTypes = classify(await listIds(paths.blockTypes(orgId, siteId, branchId)),
     new Set((await vstore.blockTypes(orgId, siteId, baseId)).map(type => type.id)),
     await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'block-types')));
+  const menus = classify(await listIds(paths.menus(orgId, siteId, branchId)),
+    new Set((await vstore.menus(orgId, siteId, baseId)).map(menu => menu.id)),
+    await listIds(tombstoneCollectionPath(orgId, siteId, branchId, 'menus')));
 
   // Settings (singleton)
   const branchSettings = await getStore().getDoc<SiteSettings>(paths.settings(orgId, siteId, branchId));
   const settings: 'unchanged' | 'modified' = branchSettings ? 'modified' : 'unchanged';
+  const branchSiteFields = await getStore().getDoc(paths.siteFields(orgId, siteId, branchId));
+  const siteFields: 'unchanged' | 'modified' = branchSiteFields ? 'modified' : 'unchanged';
 
   const totalChanges =
     pages.added.length + pages.modified.length + pages.deleted.length +
@@ -112,9 +120,11 @@ export async function diffVersion(
     contentTypes.added.length + contentTypes.modified.length + contentTypes.deleted.length +
     pageTemplates.added.length + pageTemplates.modified.length + pageTemplates.deleted.length +
     blockTypes.added.length + blockTypes.modified.length + blockTypes.deleted.length +
-    (settings === 'modified' ? 1 : 0);
+    menus.added.length + menus.modified.length + menus.deleted.length +
+    (settings === 'modified' ? 1 : 0) +
+    (siteFields === 'modified' ? 1 : 0);
 
-  return { pages, partials, redirects, contentTypes, pageTemplates, blockTypes, settings, totalChanges };
+  return { pages, partials, redirects, contentTypes, pageTemplates, blockTypes, menus, settings, siteFields, totalChanges };
 }
 
 /**
@@ -217,14 +227,35 @@ export async function promoteBranch(
   }
   for (const id of diff.blockTypes.deleted) await vstore.deleteBlockType(orgId, siteId, baseId, id);
 
+  // Menus
+  for (const id of [...diff.menus.added, ...diff.menus.modified, ...diff.menus.deleted]) {
+    await snapshotBase('menu', [id], paths.menu(orgId, siteId, id, baseId));
+  }
+  for (const id of [...diff.menus.added, ...diff.menus.modified]) {
+    await copy(paths.menu(orgId, siteId, id, branchId), paths.menu(orgId, siteId, id, baseId));
+  }
+  for (const id of diff.menus.deleted) await vstore.deleteMenu(orgId, siteId, baseId, id);
+
   // Reintroduced overrides must unhide a tombstoned record on the destination.
-  for (const [kind, changes] of [['pages', diff.pages], ['partials', diff.partials], ['redirects', diff.redirects], ['content_types', diff.contentTypes], ['page-templates', diff.pageTemplates], ['block-types', diff.blockTypes]] as const) {
+  for (const [kind, changes] of [['pages', diff.pages], ['partials', diff.partials], ['redirects', diff.redirects], ['content_types', diff.contentTypes], ['page-templates', diff.pageTemplates], ['block-types', diff.blockTypes], ['menus', diff.menus]] as const) {
     for (const id of [...changes.added, ...changes.modified]) await store.deleteDoc(tombstonePath(orgId, siteId, baseId, kind, id));
   }
 
   // Settings
   if (diff.settings === 'modified') {
     await copy(paths.settings(orgId, siteId, branchId), paths.settings(orgId, siteId, baseId));
+  }
+
+  // Site fields: the base's document is kept as a revision first.
+  if (diff.siteFields === 'modified') {
+    const previous = baseId === MAIN_VERSION_ID ? await vstore.siteFields(orgId, siteId, baseId) : null;
+    await snapshotBase('site_fields', ['default'], paths.siteFields(orgId, siteId, baseId));
+    await copy(paths.siteFields(orgId, siteId, branchId), paths.siteFields(orgId, siteId, baseId));
+    // Merged live fields reach the live site at once, as a save on main would.
+    if (previous) {
+      const { publishLiveSiteFields } = await import('./live-site-fields');
+      await publishLiveSiteFields({ orgId, siteId, versionId: baseId }, await vstore.siteFields(orgId, siteId, baseId), previous).catch(() => undefined);
+    }
   }
 
   return diff;
@@ -266,12 +297,16 @@ export async function resetBranch(
   );
   await deleteAll([...diff.pageTemplates.added, ...diff.pageTemplates.modified], id => paths.pageTemplate(orgId, siteId, id, branchId));
   await deleteAll([...diff.blockTypes.added, ...diff.blockTypes.modified], id => paths.blockType(orgId, siteId, id, branchId));
+  await deleteAll([...diff.menus.added, ...diff.menus.modified], id => paths.menu(orgId, siteId, id, branchId));
   if (diff.settings === 'modified') {
     await store.deleteDoc(paths.settings(orgId, siteId, branchId)).catch(() => {});
   }
+  if (diff.siteFields === 'modified') {
+    await store.deleteDoc(paths.siteFields(orgId, siteId, branchId)).catch(() => {});
+  }
 
   // Tombstones
-  for (const kind of ['pages', 'partials', 'redirects', 'content_types', 'page-templates', 'block-types']) {
+  for (const kind of ['pages', 'partials', 'redirects', 'content_types', 'page-templates', 'block-types', 'menus']) {
     for (const id of await listIds(tombstoneCollectionPath(orgId, siteId, branchId, kind))) {
       await store.deleteDoc(tombstonePath(orgId, siteId, branchId, kind, id));
     }

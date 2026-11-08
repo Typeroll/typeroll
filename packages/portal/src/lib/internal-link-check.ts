@@ -10,6 +10,8 @@ import {
 } from '@typeroll/shared';
 import type {
   Media,
+  Menu,
+  MenuItem,
   Page,
   Partial as PartialDoc,
   Redirect,
@@ -24,7 +26,8 @@ export interface BrokenInternalLink {
   from: string;
   href: string;
   resolved_path: string;
-  reason: 'missing_route' | 'broken_redirect' | 'redirect_loop' | 'invalid_url';
+  /** `missing_page`: a menu item links to a page id that does not exist. */
+  reason: 'missing_route' | 'broken_redirect' | 'redirect_loop' | 'invalid_url' | 'missing_page';
 }
 
 export interface InternalLinkReport {
@@ -55,7 +58,7 @@ export async function checkInternalLinks(args: {
   includeLinks?: boolean;
 }): Promise<InternalLinkReport> {
   const { store, orgId, siteId, versionId } = args;
-  const [pages, partials, contentTypes, templates, redirects, media, settings] = await Promise.all([
+  const [pages, partials, contentTypes, templates, redirects, media, settings, menus] = await Promise.all([
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
     vstore.contentTypes(orgId, siteId, versionId),
@@ -63,6 +66,7 @@ export async function checkInternalLinks(args: {
     vstore.redirects(orgId, siteId, versionId),
     store.listDocs<Media>(paths.media(orgId, siteId)),
     vstore.settings(orgId, siteId, versionId),
+    vstore.menus(orgId, siteId, versionId),
   ]);
   const trailingSlash = settings?.trailing_slash ?? 'always';
   const types = new Map(contentTypes.map(type => [type.id, type]));
@@ -109,6 +113,8 @@ export async function checkInternalLinks(args: {
   for (const template of templates.filter((entry) => entry.status === 'published')) {
     sources.push({ label: `template:${template.id}`, value: template.blocks, basePath: '/' });
   }
+  // Menu addresses are checked like any other href; page items below.
+  for (const menu of menus) sources.push({ label: `menu:${menu.id}`, value: urlItems(menu.items), basePath: '/' });
   const sortedRedirects = sortRedirectsForEmit(redirects);
   const broken: BrokenInternalLink[] = [];
   const unpublished: InternalLinkReport['unpublished_targets'] = [];
@@ -140,6 +146,33 @@ export async function checkInternalLinks(args: {
     }
   }
 
+  // Menu page items link by page id: a deleted page is broken, a page that is
+  // not published (menus leave out unlisted pages too) is an unpublished
+  // target, and a published page counts as a link to its path
+  // (with its children for a page-children item, and every top-level page
+  // for a menu that adds new pages automatically).
+  const byId = new Map(allPages.map(page => [page.id, page]));
+  const listed = (page: Page) => page.status === 'published';
+  for (const menu of menus) {
+    const from = `menu:${menu.id}`;
+    for (const item of pageItems(menu.items)) {
+      const id = item.page_id ?? '';
+      const page = byId.get(id);
+      checkedLinks++;
+      if (!page) { broken.push({ from, href: `page:${id}`, resolved_path: '', reason: 'missing_page' }); continue; }
+      const path = normalizeRoute(page.path!);
+      unique.add(path);
+      if (!listed(page)) { unpublished.push({ from, href: `page:${id}`, resolved_path: path, page_id: id }); continue; }
+      validLinks++;
+      if (!args.includeLinks) continue;
+      links.push({ from, path });
+      if (item.type === 'children') for (const child of allPages.filter(entry => entry.parent === id && listed(entry))) links.push({ from, path: normalizeRoute(child.path!) });
+    }
+    if (menu.auto_add_pages && args.includeLinks) {
+      for (const page of allPages.filter(entry => !entry.parent && listed(entry) && normalizeRoute(entry.path!) !== '/')) links.push({ from, path: normalizeRoute(page.path!) });
+    }
+  }
+
   return {
     checked_links: checkedLinks,
     unique_internal_links: unique.size,
@@ -153,6 +186,17 @@ export async function checkInternalLinks(args: {
     resources_scanned: sources.length,
     ...(args.includeLinks ? { links } : {}),
   };
+}
+
+function flatItems(items: MenuItem[] | undefined): MenuItem[] {
+  return (items ?? []).flatMap(item => [item, ...flatItems(item.children)]);
+}
+/** The address items of a menu, as `{ href }` values for the href scanner. */
+function urlItems(items: Menu['items']): Array<{ href: string }> {
+  return flatItems(items).filter(item => item.type === 'url' && item.href).map(item => ({ href: item.href! }));
+}
+function pageItems(items: Menu['items']): MenuItem[] {
+  return flatItems(items).filter(item => (item.type === 'page' || item.type === 'children') && item.page_id);
 }
 
 function contentOf(doc: Pick<Page | PartialDoc, 'content_mode' | 'html_content' | 'blocks'>): unknown {

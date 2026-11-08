@@ -17,13 +17,36 @@ function input(overrides: Partial<ReadinessInput> = {}, settings: Partial<SiteSe
     siteId: 'site', now: new Date('2026-11-01T12:00:00Z'),
     settings: { ...defaultSiteSettings, site_name: 'Acme', logo: '/logo.png', favicon: '/favicon.png', default_og_image: 'https://cdn.example/share.png',
       organization: { name: 'Acme', same_as: ['https://github.com/acme'] }, scripts_head: '<meta name="google-site-verification" content="x">', ...settings },
-    pages, partials: overrides.partials ?? [nav(['/about/', '/contact/', '/privacy/'])], templates: [], contentTypes: [], blockTypes: [],
+    pages, partials: overrides.partials ?? [nav(['/about/', '/contact/', '/privacy/'])], templates: [], contentTypes: [], blockTypes: [], menus: overrides.menus, siteFields: overrides.siteFields, snippets: overrides.snippets, liveFiles: overrides.liveFiles,
     media: overrides.media ?? [], apps: 'apps' in overrides ? overrides.apps! : { apps: { analytics: { enabled: true, config: {} } } } as never,
     links: overrides.links ?? { links: ['/about/', '/contact/', '/privacy/'].map(path => ({ from: 'partial:header', path })) },
     zone: overrides.zone ?? { status: 'no_host' },
   };
 }
 const byId = (report: ReturnType<typeof buildSiteReadiness>) => Object.fromEntries(report.items.map(item => [item.id, item]));
+
+describe('live content readiness', () => {
+  const fields = { groups: [{ id: 'shop', label: 'Shop', fields: [{ name: 'delivery_days', type: 'number', label: 'Delivery days', live: true },
+    { name: 'opening_hours', type: 'object', label: 'Opening hours', presentation: 'opening_hours', fields: [{ name: 'note', type: 'text', label: 'Note' }] }] }], values: {} } as never;
+  const lunch = { id: 'lunch', name: 'Lunch', kind: 'dated', entries: [] } as never;
+
+  it('warns when snippets or live fields have nowhere to be served', () => {
+    const warned = byId(buildSiteReadiness(input({ snippets: [lunch], siteFields: fields, liveFiles: { base_url: null, reason: 'The site has no media host.' } })));
+    expect(warned.live_snippets).toMatchObject({ status: 'warning', details: ['Snippet: Lunch (lunch)', 'Live site field: delivery_days'] });
+    expect(warned.live_snippets.message).toContain('only when the site is published');
+    expect(warned.live_snippets.guide).toMatch(/#live-snippets$/);
+    expect(byId(buildSiteReadiness(input({ snippets: [lunch], liveFiles: { base_url: 'https://media.example.com/live' } }))).live_snippets.status).toBe('ok');
+    expect(byId(buildSiteReadiness(input())).live_snippets).toMatchObject({ status: 'ok', message: 'The site has no live snippets.' });
+  });
+
+  it('asks an older site without a time zone to choose one when it shows opening hours or dated snippets', () => {
+    const missing = byId(buildSiteReadiness(input({ snippets: [lunch], siteFields: fields }, { time_zone: undefined })));
+    expect(missing.time_zone).toMatchObject({ status: 'warning', details: ['Site field: Opening hours (opening_hours)', 'Dated snippet: Lunch (lunch)'] });
+    expect(missing.time_zone.fix).toBe('Choose the site\'s time zone in Settings, next to Language. It decides which day and hour it is at the business.');
+    expect(byId(buildSiteReadiness(input({ snippets: [lunch] }, { time_zone: 'Europe/Oslo' }))).time_zone.status).toBe('ok');
+    expect(byId(buildSiteReadiness(input({}, { time_zone: undefined }))).time_zone.status).toBe('ok');
+  });
+});
 
 describe('site launch readiness', () => {
   it('returns every item id once, in contract order, with guide links', () => {
@@ -46,6 +69,50 @@ describe('site launch readiness', () => {
     const media = [{ id: 'm', cdn_url: 'https://cdn.example/share.png', width: 400 } as Media];
     expect(byId(buildSiteReadiness(input({ media }))).share_image.message).toContain('400 px');
     expect(shareImageProblem('https://cdn.example/share.png', [])).toBeNull();
+  });
+
+  it('warns about menu items left out of the published site and locations filled twice', () => {
+    const pages = [page('home', '/'), page('about', '/about/'), page('contact', '/contact/'), page('privacy', '/privacy/'), page('wip', '/wip/', { status: 'draft' })];
+    const menus = [
+      { id: 'main', name: 'Main', locations: ['primary'], items: [{ id: 'a', type: 'page' as const, page_id: 'about' }, { id: 'b', type: 'page' as const, page_id: 'gone' }] },
+      { id: 'other', name: 'Other', locations: ['primary'], items: [{ id: 'c', type: 'url' as const, href: '/x/', label: 'X', children: [{ id: 'd', type: 'page' as const, page_id: 'wip' }] }] },
+    ];
+    const items = byId(buildSiteReadiness(input({ pages, menus })));
+    expect(items.menus.status).toBe('warning');
+    expect(items.menus.details).toEqual([
+      'Location "primary" is filled by "Main" and "Other"',
+      '"Main": item b links to a page that no longer exists',
+      '"Other": item d links to /wip/, which is not published',
+    ]);
+    expect(byId(buildSiteReadiness(input({ pages, menus: [menus[0]!].map(menu => ({ ...menu, items: menu.items.slice(0, 1) })) }))).menus.status).toBe('ok');
+  });
+
+  it('warns about required site fields without a value', () => {
+    const siteFields = {
+      groups: [{ id: 'visit', label: 'Visit us', access: 'editor' as const, fields: [
+        { name: 'visiting_address', type: 'textarea' as const, label: 'Visiting address', required: true },
+        { name: 'staff', type: 'array' as const, label: 'Staff', required: true, fields: [{ name: 'name', type: 'text' as const, label: 'Name' }] },
+        { name: 'note', type: 'text' as const, label: 'Note' },
+      ] }],
+      values: { staff: [] },
+    };
+    const item = byId(buildSiteReadiness(input({ siteFields })));
+    expect(item.site_fields.status).toBe('warning');
+    expect(item.site_fields.details).toEqual(['Visit us: Visiting address (visiting_address)', 'Visit us: Staff (staff)']);
+    expect(item.site_fields.guide).toMatch(/#site-fields$/);
+    const filled = { ...siteFields, values: { visiting_address: 'Storgatan 1', staff: [{ name: 'Ada' }] } };
+    expect(byId(buildSiteReadiness(input({ siteFields: filled }))).site_fields.status).toBe('ok');
+    expect(byId(buildSiteReadiness(input())).site_fields).toMatchObject({ status: 'ok', message: 'The site has no site fields.' });
+  });
+
+  it('counts links from a menu only where live content shows it', () => {
+    const pages = [page('home', '/'), page('about', '/about/'), page('contact', '/contact/'), page('privacy', '/privacy/'), page('team', '/team/')];
+    const menus = [{ id: 'main', name: 'Main', locations: ['primary'], items: [{ id: 't', type: 'page' as const, page_id: 'team' }] }];
+    const links = { links: [...['/about/', '/contact/', '/privacy/'].map(path => ({ from: 'partial:header', path })), { from: 'menu:main', path: '/team/' }] };
+    expect(byId(buildSiteReadiness(input({ pages, menus, links }))).orphan_pages.details).toEqual(['/team/']);
+    const header = { ...nav(['/about/', '/contact/', '/privacy/']) };
+    header.blocks = [...header.blocks!, { id: 'menu', type: 'core/navigation_links', data: { source: 'menu', menu: 'location:primary' } }];
+    expect(byId(buildSiteReadiness(input({ pages, menus, links, partials: [header] }))).orphan_pages.status).toBe('ok');
   });
 
   it('reports orphans, duplicate titles, long descriptions and H1 problems', () => {

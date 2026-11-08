@@ -150,6 +150,26 @@ test('publishes Google font delivery only when chosen, so self-hosting is the de
     assert.equal(projectStaticPublication(value, identity).settings.fonts.delivery, undefined);
   }
 });
+test('publishes font roles, extra weights and font services, and rejects invalid ones', () => {
+  const value = input();
+  Object.assign(value.settings.fonts, { display: 'Fraunces', accent: 'Space Grotesk',
+    load: { heading: { weights: [800], italic: [700] } },
+    services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'], token: 'private-value' }, { provider: 'bunny', url: 'https://fonts.bunny.net/css?family=inter:400', families: ['Inter'] }] });
+  const fonts = projectStaticPublication(value, identity).settings.fonts;
+  assert.deepEqual(fonts, { heading: 'system-ui', body: 'system-ui', display: 'Fraunces', accent: 'Space Grotesk', size_base: 16,
+    load: { heading: { weights: [800], italic: [700] } },
+    services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'] }, { provider: 'bunny', url: 'https://fonts.bunny.net/css?family=inter:400', families: ['Inter'] }] });
+  for (const invalid of [
+    { load: { title: { weights: [400] } } }, { load: { body: { weights: [450] } } }, { load: { body: { sizes: [400] } } },
+    { services: [{ provider: 'bunny', url: 'https://evil.example/css', families: ['Inter'] }] },
+    { services: [{ provider: 'fontshare', url: 'http://api.fontshare.com/v2/css?f[]=satoshi', families: ['Satoshi'] }] },
+    { services: [{ provider: 'adobe', kit: 'ABC', families: ['x'] }] },
+    { services: [{ provider: 'adobe', kit: 'abc1234', families: ['</style>'] }] },
+  ]) {
+    const next = input(); Object.assign(next.settings.fonts, invalid);
+    assert.throws(() => projectStaticPublication(next, identity), /fonts\.(load|services)/, JSON.stringify(invalid));
+  }
+});
 test('publishes the font smoothing setting and drops unknown values', () => {
   const value = input();
   value.settings.fonts.smoothing = 'antialiased';
@@ -196,6 +216,8 @@ test('publishes explicit text colours on theme colours and drops invalid ones', 
 const NOT_PUBLISHED = {
   agent_instructions: 'guidance for agents, read live through the API; never rendered',
   extension_public_config: 'resolved into each Extension installation\'s public config (extensions/version-config.ts), which the publication carries in its runtime snapshot',
+  font_plan: 'computed from the frozen content when the publication is frozen (publishing/theme-font-freeze.ts), never projected from stored settings',
+  handover: 'the portal\'s checklist, start page and structure lock for the people who edit the site; never rendered',
 };
 const FULL_SETTINGS = {
   site_name: 'Site', tagline: 'Tagline', logo: '/logo.png', favicon: '/favicon.ico', apple_touch_icon: '/apple.png', icon_192: '/icon-192.png',
@@ -204,7 +226,8 @@ const FULL_SETTINGS = {
   colors: { primary: '#111111', secondary: '#222222', accent: '#333333', background: '#ffffff', surface: '#eeeeee', surface_hover:'#dddddd', text: '#000000', text_light: '#555555', on_primary: '#ffffff', on_secondary: '#fff', on_accent: '#111827' },
   typography: {ratio_mobile:1.2,ratio_desktop:1.25,rhythm:1.1,line_length:70},
   design_scales: { type_size:{xl:'1.5rem'}, space:{md:'1rem'}, leading:{normal:'1.5'} },
-  fonts: { heading: 'Inter', body: 'Inter', mono:'Roboto Mono', size_base: 17, smoothing: 'antialiased', delivery: 'google' },
+  fonts: { heading: 'Inter', body: 'Inter', mono:'Roboto Mono', display: 'Fraunces', accent: 'proxima-nova', size_base: 17, smoothing: 'antialiased', delivery: 'google',
+    load: { body: { weights: [300], italic: [400] } }, services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'] }] },
   contact: { email: 'hello@example.invalid', phone: '+46 0', address: 'Street 1' },
   social: { facebook: 'https://example.invalid/f', instagram: 'https://example.invalid/i', linkedin: 'https://example.invalid/l', x: 'https://example.invalid/x', youtube: 'https://example.invalid/y' },
   scripts_head: '<meta name="a">', scripts_body_end: '<meta name="b">', custom_css: 'body{}', render_version: 6,
@@ -215,7 +238,7 @@ const FULL_SETTINGS = {
   }, twitter_handle: '@site',
   default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
   organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },
-  robots_txt: 'User-agent: *', ai_crawler_policy: 'no_training', header_behavior: 'reveal_on_scroll_up', date_format: 'long', motion: 'reduced', content_widths: { narrow: 640, normal: 1120, wide: 1360 }, sitewide_noindex: true, sitewide_nofollow: true,
+  robots_txt: 'User-agent: *', ai_crawler_policy: 'no_training', header_behavior: 'reveal_on_scroll_up', date_format: 'long', time_zone: 'Europe/Oslo', motion: 'reduced', content_widths: { narrow: 640, normal: 1120, wide: 1360 }, sitewide_noindex: true, sitewide_nofollow: true,
   external_routes: [{ path: '/app', owner: 'Separate deployment' }],
   seo_review: { forbidden_markers: ['TODO'], claims: [{ phrase: 'best', guidance: 'Check' }], notes: ['Note'] },
   language_sections: [{ language: 'en', home_path: '/en/', tagline: 'English', default_meta_description: 'In English',
@@ -408,6 +431,188 @@ test('real Core blocks build portable assets and last-page removal produces an e
   }
 });
 
+
+test('menus are projected with known fields only, sorted, and unsafe addresses are refused', () => {
+  const value = input();
+  value.menus = [
+    { id: 'footer', name: 'Footer', locations: ['footer'], items: [], created_at: '2026-01-01T00:00:00Z', editor: 'private-value' },
+    { id: 'main', name: 'Main', locations: ['primary'], auto_add_pages: true, updated_at: '2026-01-02T00:00:00Z', items: [
+      { id: 'home', type: 'page', page_id: 'home', label: 'Start', note: 'private-value', children: [
+        { id: 'blog', type: 'url', href: 'https://blog.example.invalid/', label: 'Blog', description: 'News', link_rel: 'nofollow', children: [] },
+      ] },
+    ] },
+  ];
+  const publication = projectStaticPublication(value, identity);
+  assert.deepEqual(publication.menus, [
+    { id: 'footer', name: 'Footer', locations: ['footer'], items: [] },
+    { id: 'main', name: 'Main', locations: ['primary'], auto_add_pages: true, items: [
+      { id: 'home', type: 'page', page_id: 'home', label: 'Start', children: [
+        { id: 'blog', type: 'url', href: 'https://blog.example.invalid/', label: 'Blog', description: 'News', link_rel: 'nofollow' },
+      ] },
+    ] },
+  ]);
+  assert.deepEqual(projectStaticPublication(input(), identity).menus, []);
+  for (const menus of [
+    [{ id: 'main', name: 'Main', items: [{ id: 'x', type: 'url', href: 'javascript:alert(1)', label: 'X' }] }],
+    [{ id: 'main', name: 'Main', items: [{ id: 'x', type: 'script', label: 'X' }] }],
+    [{ id: 'Main!', name: 'Main', items: [] }],
+    [{ id: 'main', name: 'Main', items: [{ id: 'a', type: 'heading', label: 'A', children: [{ id: 'b', type: 'heading', label: 'B', children: [{ id: 'c', type: 'heading', label: 'C', children: [{ id: 'd', type: 'url', href: '/', label: 'D' }] }] }] }] }],
+    [{ id: 'main', name: 'Main', items: [] }, { id: 'main', name: 'Again', items: [] }],
+  ]) assert.throws(() => projectStaticPublication({ ...input(), menus }, identity), /menu|Duplicate/);
+});
+
+test('a frozen render version 15 project shows the primary menu with its submenu on every page', async (t) => {
+  const { build } = await import('esbuild');
+  const source = await build({ entryPoints: [fileURLToPath(new URL('../packages/shared/src/core-blocks.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { CORE_BLOCK_TYPES } = await import(`data:text/javascript;base64,${Buffer.from(source.outputFiles[0].text).toString('base64')}`);
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-static-menus-'));
+  t.after(() => fs.rm(tmp, { recursive: true, force: true }));
+  const value = input();
+  value.settings.render_version = 15;
+  const page = (id, slug, title, extra = {}) => ({ id, slug, title, status: 'published', content_mode: 'blocks', blocks: [{ id: `${id}-text`, type: 'core/prose', data: { html: `<p>${title}</p>` } }], ...extra });
+  value.pages = [page('home', '', 'Home'), page('services', 'services', 'Services'), page('design', 'design', 'Design & build', { parent: 'services', path: '/services/design' })];
+  value.partials = [{ id: 'header', name: 'Header', kind: 'header', status: 'published', content_mode: 'blocks', blocks: [
+    { id: 'nav', type: 'core/navigation_links', data: { source: 'menu', menu: 'location:primary', direction: 'row' } },
+  ] }];
+  value.menus = [{ id: 'main', name: 'Main', locations: ['primary'], items: [
+    { id: 'home', type: 'page', page_id: 'home' },
+    { id: 'services', type: 'page', page_id: 'services', children: [{ id: 'design', type: 'page', page_id: 'design', description: 'Houses <and> schools' }] },
+  ] }];
+  const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES });
+  const destination = path.join(tmp, 'site');
+  await createStaticPublicationProject(publication, destination);
+  await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
+  await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
+  await sealPublicationProject(destination);
+  const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: destination, env: {}, encoding: 'utf8', timeout: 120_000 });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const home = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');
+  assert.match(home, /<a href="\/" aria-current="page">Home<\/a>/);
+  assert.match(home, /<li class="block-nav-parent" data-submenu="dropdown"><a href="\/services\/">Services<\/a><button type="button" class="block-nav-toggle" aria-expanded="false" aria-controls="nav-nav-services">/);
+  assert.match(home, /Houses &lt;and&gt; schools/);
+  assert.match(home, /register\('core\/navigation_links'/);
+  // The header is rendered per route: the current page and its parent differ.
+  const design = await fs.readFile(path.join(destination, 'dist/services/design/index.html'), 'utf8');
+  assert.match(design, /<li class="block-nav-parent block-nav-parent--current" data-submenu="dropdown">/);
+  assert.match(design, /<a href="\/services\/design\/" aria-current="page">/);
+  assert.doesNotMatch(design, /<a href="\/" aria-current="page">/);
+});
+
+test('site fields travel as values of public fields with the definitions of their formats', () => {
+  const value = input();
+  value.siteFields = {
+    updated_at: '2026-11-07T00:00:00Z',
+    groups: [{ id: 'contact', label: 'Contact', access: 'admin', description: 'private-value', fields: [
+      { name: 'phone', type: 'text', label: 'Phone', help: 'private-value' },
+      { name: 'season', type: 'select', label: 'Season', options: ['summer', 'winter'], option_labels: ['Summer', 'Winter'] },
+      { name: 'note', type: 'text', label: 'Note', rendered: false },
+      { name: 'logo', type: 'image', label: 'Logo' },
+      { name: 'opening_hours', type: 'object', label: 'Hours', presentation: 'opening_hours', fields: [
+        { name: 'days', type: 'array', label: 'Week', fields: [{ name: 'day', type: 'select', label: 'Day', options: ['monday'] }, { name: 'opens', type: 'text', label: 'Opens' }, { name: 'secret', type: 'text', label: 'S', rendered: false }] },
+      ] },
+    ] }],
+    values: { phone: '090-12 34 56', season: 'winter', note: 'private-value', removed: 'private-value', logo: 'https://media.example.invalid/private.png',
+      opening_hours: { days: [{ day: 'monday', opens: '09:00', secret: 'private-value' }] } },
+  };
+  const publication = projectStaticPublication(value, identity);
+  assert.deepEqual(publication.siteFields, {
+    groups: [{ id: 'contact', fields: [
+      { name: 'phone', type: 'text' },
+      { name: 'season', type: 'select', options: ['summer', 'winter'], option_labels: ['Summer', 'Winter'] },
+      { name: 'logo', type: 'image' },
+      { name: 'opening_hours', type: 'object', presentation: 'opening_hours', fields: [
+        { name: 'days', type: 'array', fields: [{ name: 'day', type: 'select', options: ['monday'] }, { name: 'opens', type: 'text' }] },
+      ] },
+    ] }],
+    values: { phone: '090-12 34 56', season: 'winter', logo: 'https://media.example.invalid/private.png', opening_hours: { days: [{ day: 'monday', opens: '09:00' }] } },
+  });
+  assert.doesNotMatch(JSON.stringify(publication.siteFields), /private-value/);
+  // A site field image is published media.
+  assert.ok(publication.media.some(item => item.id === 'unused'));
+  // A site without site fields publishes exactly as before.
+  assert.equal('siteFields' in projectStaticPublication(input(), identity), false);
+  assert.equal('siteFields' in projectStaticPublication({ ...input(), siteFields: { groups: [], values: {} } }, identity), false);
+  for (const siteFields of [[], { groups: {} }, { groups: [{ id: 'Bad!', fields: [] }] }, { groups: [{ id: 'a', fields: [{ name: 'x', type: 'script' }] }] }, { groups: [], values: [] }]) {
+    assert.throws(() => projectStaticPublication({ ...input(), siteFields }, identity), /site field/);
+  }
+});
+
+test('site field values are not a render-cache global, but a domain rebase needs them unchanged', () => {
+  const value = input();
+  value.siteFields = { groups: [{ id: 'contact', label: 'Contact', fields: [{ name: 'phone', type: 'text', label: 'Phone' }] }], values: { phone: '1' } };
+  const before = createRenderPlan(projectStaticPublication(value, identity), { files: {} });
+  value.siteFields.values.phone = '2';
+  const after = createRenderPlan(projectStaticPublication(value, identity), { files: {} });
+  assert.equal(after.globalKey, before.globalKey);
+  assert.notEqual(after.domainKey, before.domainKey);
+});
+
+test('a frozen project shows site fields, conditions, opening hours and live snippets that refresh in the browser', async (t) => {
+  const { build } = await import('esbuild');
+  const source = await build({ entryPoints: [fileURLToPath(new URL('../packages/shared/src/core-blocks.ts', import.meta.url))], bundle: true, platform: 'node', format: 'esm', write: false });
+  const { CORE_BLOCK_TYPES } = await import(`data:text/javascript;base64,${Buffer.from(source.outputFiles[0].text).toString('base64')}`);
+  const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'tr-static-site-fields-'));
+  t.after(() => fs.rm(tmp, { recursive: true, force: true }));
+  const value = input();
+  value.settings.render_version = 15;
+  value.settings.language = 'sv';
+  const week = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, index) => index < 5 ? { day, opens: '09:00', closes: '17:00' } : { day, closed: true });
+  value.siteFields = { groups: [{ id: 'contact', label: 'Contact', fields: [
+    { name: 'phone', type: 'text', label: 'Phone', live: true }, { name: 'show_booking', type: 'boolean', label: 'Booking' },
+    { name: 'opening_hours', type: 'object', label: 'Hours', presentation: 'opening_hours', fields: [
+      { name: 'days', type: 'array', label: 'Week', fields: [{ name: 'day', type: 'select', label: 'Day', options: week.map(entry => entry.day) }, { name: 'closed', type: 'boolean', label: 'Closed' }, { name: 'opens', type: 'text', label: 'Opens' }, { name: 'closes', type: 'text', label: 'Closes' }] },
+      { name: 'exceptions', type: 'array', label: 'Exceptions', fields: [{ name: 'date', type: 'date', label: 'Date' }, { name: 'closed', type: 'boolean', label: 'Closed' }, { name: 'note', type: 'text', label: 'Note' }] },
+    ] },
+  ] }], values: { phone: '090-12 34 56 <b>', show_booking: true, opening_hours: { days: week, exceptions: [{ date: '2026-11-10', closed: true, note: 'Personaldag' }] } } };
+  value.pages = [{ id: 'home', slug: '', title: 'Home', status: 'published', content_mode: 'blocks', blocks: [
+    { id: 'phone', type: 'core/site_field', data: { field: 'phone', label: 'Telefon' } },
+    { id: 'show', type: 'core/show_if', data: { condition: 'site.fields.show_booking' }, children: [{ id: 'book', type: 'core/prose', data: { html: '<p>Boka ett besök</p>' } }] },
+    { id: 'hide', type: 'core/show_if', data: { condition: '!site.fields.show_booking' }, children: [{ id: 'nobook', type: 'core/prose', data: { html: '<p>Ingen bokning</p>' } }] },
+    { id: 'now', type: 'core/site_field', data: { field: 'opening_hours', format: 'open_now' } },
+    { id: 'lunch', type: 'core/snippet', data: { snippet: 'lunch', tag: 'section' } },
+  ] }, { id: 'about', slug: 'about', title: 'About', status: 'published', content_mode: 'blocks', blocks: [{ id: 'about-text', type: 'core/prose', data: { html: '<p>About</p>' } }] }];
+  value.partials = [{ id: 'footer', name: 'Footer', kind: 'footer', status: 'published', content_mode: 'blocks', blocks: [
+    { id: 'week', type: 'core/site_field', data: { field: 'opening_hours', label: 'Öppettider' } },
+  ] }];
+  // A dated snippet: Monday's lunch, a date that wins over its weekday, and who wrote it (never published).
+  value.snippets = [{ id: 'lunch', name: 'Lunch', kind: 'dated', format: 'html', updated_by: 'user:ada', updated_at: '2026-11-08T08:00:00.000Z',
+    entries: [{ weekday: 'monday', content: '<p>Fiskgratäng</p>' }, { weekday: 'tuesday', content: '<p>Pytt i panna</p>' }, { date: '2026-11-11', content: '<p>Ärtsoppa</p>' }], fallback: '<p>Ingen lunch</p>' }];
+  value.liveBaseUrl = 'https://media.example.invalid/live/';
+  const publication = projectStaticPublication(value, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES });
+  assert.deepEqual(publication.snippets, [{ id: 'lunch', kind: 'dated', format: 'html', updated_at: '2026-11-08T08:00:00.000Z',
+    entries: [{ weekday: 'monday', content: '<p>Fiskgratäng</p>' }, { weekday: 'tuesday', content: '<p>Pytt i panna</p>' }, { date: '2026-11-11', content: '<p>Ärtsoppa</p>' }], fallback: '<p>Ingen lunch</p>' }]);
+  assert.equal(publication.site.live_base_url, 'https://media.example.invalid/live');
+  assert.doesNotMatch(JSON.stringify(publication), /user:ada/);
+  assert.throws(() => projectStaticPublication({ ...value, liveBaseUrl: 'http://media.example.invalid/live' }, { ...identity, coreBlockTypes: CORE_BLOCK_TYPES }), /HTTPS/);
+  const destination = path.join(tmp, 'site');
+  await createStaticPublicationProject(publication, destination);
+  await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');
+  await fs.writeFile(path.join(destination, 'package-lock.json'), '{"lockfileVersion":3}');
+  await sealPublicationProject(destination);
+  // Monday 2026-11-09, 11:30 in Stockholm.
+  const result = spawnSync(process.execPath, ['scripts/build.mjs'], { cwd: destination, env: { TYPEROLL_BUILD_TIME: '2026-11-09T10:30:00Z' }, encoding: 'utf8', timeout: 120_000 });
+  assert.equal(result.status, 0, result.stderr + result.stdout);
+  const home = await fs.readFile(path.join(destination, 'dist/index.html'), 'utf8');
+  assert.match(home, /<span class="block-site-field-label">Telefon<\/span> <span class="block-site-field-value">090-12 34 56 &lt;b&gt;<\/span>/);
+  assert.match(home, /Boka ett besök/);
+  assert.doesNotMatch(home, /Ingen bokning/);
+  assert.match(home, /data-site-field-clock="[^"]+">Öppet nu, till 17:00<\/span>/);
+  // An exception's note shows in bold under its weekday.
+  assert.match(home, /<tr data-day="monday" data-today="true" aria-current="date"><th>Måndag<\/th><td>09:00–17:00<\/td><\/tr><tr data-day="tuesday" data-exception="true"><th>Tisdag<br ?\/?><strong class="block-site-field-note">Personaldag<\/strong><\/th><td>Stängt<\/td><\/tr>/);
+  assert.match(home, /core\/site_field opening hours/);
+  // A live site field names the live fields file; the page ships the script that reads it.
+  assert.match(home, /data-site-field="phone" data-site-field-src="https:\/\/media\.example\.invalid\/live\/_fields\.json"/);
+  assert.match(home, /core\/site_field live values/);
+  // The snippet shows Monday's entry as of the build and names its live file.
+  assert.match(home, /<section data-block="snippet" data-snippet="lunch" data-format="html" data-snippet-src="https:\/\/media\.example\.invalid\/live\/lunch\.json" data-updated="2026-11-08T08:00:00.000Z" data-snippet-date="2026-11-09"[^>]*><p>Fiskgratäng<\/p><\/section>/);
+  assert.match(home, /core\/snippet live content/);
+  // The footer's week ships the refresh script on a page without other site fields too.
+  const about = await fs.readFile(path.join(destination, 'dist/about/index.html'), 'utf8');
+  assert.match(about, /<caption class="block-site-field-label">Öppettider<\/caption>/);
+  assert.match(about, /core\/site_field opening hours/);
+  // A page without a live block ships no live script.
+  assert.doesNotMatch(about, /core\/snippet live content|core\/site_field live values/);
+});
 
 test('a resolved branch cannot accidentally publish its frozen source as main', () => {
   const value = { ...input(), versionId: 'design' };

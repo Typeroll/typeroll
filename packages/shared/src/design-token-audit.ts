@@ -5,7 +5,7 @@ import { onColorValue } from './site-styles.js';
 import type { Block, BlockType, FieldDefinition, SiteSettings } from './types.js';
 
 export interface DesignTokenSource {
-  kind: 'page' | 'partial' | 'template' | 'block_type';
+  kind: 'page' | 'partial' | 'template' | 'block_type' | 'block_template';
   id: string;
   blocks?: Block[];
   css?: string;
@@ -22,7 +22,30 @@ export interface DesignTokenFinding {
   message: string;
   block_id?: string;
   /** Only a direct scalar block colour can be migrated without rewriting CSS. */
-  replacement?: { target: { kind: 'page' | 'partial' | 'template'; id: string }; block_id: string; field: string; before: string; after: string };
+  replacement?: DesignTokenReplacement;
+}
+/** An exact, direct block colour replacement: `before` (a hex value) becomes the palette role `after`. */
+export interface DesignTokenReplacement { target: { kind: 'page' | 'partial' | 'template' | 'block_template'; id: string }; block_id: string; field: string; before: string; after: string }
+
+/**
+ * Apply exact replacements (DesignTokenFinding.replacement) to a block tree:
+ * each named block's field changes from `before` to `after` only while it
+ * still holds `before`. Returns a new tree; other blocks are untouched.
+ */
+export function applyDesignTokenReplacements(blocks: readonly Block[], replacements: readonly Pick<DesignTokenReplacement, 'block_id' | 'field' | 'before' | 'after'>[]): Block[] {
+  const byBlock = new Map<string, Array<Pick<DesignTokenReplacement, 'field' | 'before' | 'after'>>>();
+  for (const replacement of replacements) byBlock.set(replacement.block_id, [...(byBlock.get(replacement.block_id) ?? []), replacement]);
+  const visit = (list: readonly Block[]): Block[] => list.map(block => {
+    const changes = byBlock.get(block.id) ?? [];
+    let data = block.data;
+    for (const change of changes) if (data?.[change.field] === change.before) data = { ...data, [change.field]: change.after };
+    return {
+      ...block, data,
+      ...(block.children ? { children: visit(block.children) } : {}),
+      ...(block.slots ? { slots: block.slots.map(visit) } : {}),
+    };
+  });
+  return visit(blocks);
 }
 function rgb(value: string): number[] | null {
   const hex = value.toLowerCase();
@@ -98,7 +121,7 @@ export function auditDesignTokens(input: SiteSettings, sources: DesignTokenSourc
           const finding = add('hardcoded_color', `${source.kind}:${source.id}`, loc, scalar); finding.block_id = block.id;
           if (direct && !bp && /^#/.test(scalar) && finding.exact_matches.length === 1 && block.id && source.kind !== 'block_type') finding.replacement = { target: { kind: source.kind, id: source.id }, block_id: block.id, field: field.name, before: scalar, after: finding.exact_matches[0] };
         } else if (tokenScale(field) && (typeof scalar === 'number' || typeof scalar === 'string' && /^\d/.test(scalar))) add('hardcoded_size', `${source.kind}:${source.id}`, loc, scalar, tokenScale(field));
-        else if (/(?:^|_)(?:font|font_family)$/.test(field.name) && typeof scalar === 'string' && !['heading','body','mono','inherit'].includes(scalar)) add('hardcoded_font', `${source.kind}:${source.id}`, loc, scalar);
+        else if (/(?:^|_)(?:font|font_family)$/.test(field.name) && typeof scalar === 'string' && !['heading','body','mono','display','accent','inherit'].includes(scalar)) add('hardcoded_font', `${source.kind}:${source.id}`, loc, scalar);
       }
       if (typeof value === 'string' && field.name === 'html') htmlCss(value, `${source.kind}:${source.id}`, at);
       else if (typeof value === 'string' && ['css','inline_style'].includes(field.name)) css(value, `${source.kind}:${source.id}`, at);
@@ -125,7 +148,7 @@ export function auditDesignTokens(input: SiteSettings, sources: DesignTokenSourc
           if (typeof value !== 'string') continue;
           const path = `${prefix}.${key}`;
           if (['color','background'].includes(key) && /^(?:#|rgba?\(|hsla?\()/.test(value)) add('hardcoded_color','settings',path,value);
-          else if (key === 'font' && !['heading','body','mono','inherit'].includes(value)) add('hardcoded_font','settings',path,value);
+          else if (key === 'font' && !['heading','body','mono','display','accent','inherit'].includes(value)) add('hardcoded_font','settings',path,value);
           else if (['size','line_height','padding','space_before','space_after','gap'].includes(key) && /(?<![\w-])\d+(?:\.\d+)?(?:px|rem|em)\b|^\d+(?:\.\d+)?$/.test(value)) add('hardcoded_size','settings',path,value,key === 'size' ? 'type_size' : key === 'line_height' ? 'leading' : 'space');
         }
       };

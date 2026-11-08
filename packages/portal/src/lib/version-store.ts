@@ -20,10 +20,12 @@ import { pageAuthorityFields, pageContentValues, PAGE_BUILTIN_FIELDS, contentPag
 import type {
   BlockType,
   ContentType,
+  Menu,
   Page,
   PageTemplate,
   Partial as PartialDoc,
   Redirect,
+  SiteFields,
   SiteSettings,
   SiteVersion,
 } from '@typeroll/shared';
@@ -33,6 +35,19 @@ import { isDeepStrictEqual } from 'node:util';
 import { applyFieldAuthority, conflictResponse, readProvenance, type WriteActor } from './field-authority';
 
 export class PageWriteConflict extends Error { readonly status = 409; }
+/** A menu save lost a race or was based on an older menu. */
+export class MenuWriteConflict extends Error { readonly status = 409; }
+/** A site fields save lost a race or was based on an older document. */
+export class SiteFieldsWriteConflict extends Error { readonly status = 409; }
+
+/** The stored site fields document without storage metadata; empty when absent. */
+function siteFieldsDoc(doc: (SiteFields & { id?: string }) | null): SiteFields {
+  return {
+    groups: Array.isArray(doc?.groups) ? doc!.groups : [],
+    values: doc?.values && typeof doc.values === 'object' && !Array.isArray(doc.values) ? doc.values : {},
+    ...(typeof doc?.updated_at === 'string' ? { updated_at: doc.updated_at } : {}),
+  };
+}
 export interface PageWriteContext {
   actor: WriteActor; actorId: string; expected?: Page;
   overrideReason?: string; sourceUrl?: string; importRunId?: string;
@@ -239,6 +254,58 @@ export const vstore = {
   deletePartial: (orgId: string, siteId: string, versionId: string, partialId: string) =>
     deleteChain(orgId, siteId, versionId, 'partials', partialId,
       paths.partial(orgId, siteId, partialId, versionId)),
+
+  // Menus. No working copy: a save writes the version's menu directly and
+  // takes effect at the next publication.
+  menu: (orgId: string, siteId: string, versionId: string, menuId: string) =>
+    readChain<Menu>(orgId, siteId, versionId, 'menus', menuId,
+      (v) => paths.menu(orgId, siteId, menuId, v)),
+  menus: (orgId: string, siteId: string, versionId: string): Promise<Menu[]> =>
+    listChain<Menu>(orgId, siteId, versionId, 'menus',
+      (v) => paths.menus(orgId, siteId, v)),
+  /**
+   * Replaces the whole menu at the active version. With `expected` (the menu
+   * as the caller read it, or null for "must not exist yet") the write is
+   * compare-and-replace over the whole version chain and throws
+   * MenuWriteConflict when anything changed in between.
+   */
+  writeMenu: async (orgId: string, siteId: string, versionId: string, menu: Menu, expected?: Menu | null): Promise<void> => {
+    const store = getStore();
+    const snapshot = await guardedResource<Menu>(orgId, siteId, versionId, 'menus', menu.id, v => paths.menu(orgId, siteId, menu.id, v));
+    if (expected !== undefined && !isDeepStrictEqual(snapshot.value ?? null, expected ?? null))
+      throw new MenuWriteConflict('The menu changed. Reload it before saving.');
+    const { id: _id, ...body } = menu;
+    const guards = snapshot.guards.filter(guard => guard.path !== snapshot.destination);
+    if (!(await store.compareAndReplaceDoc(snapshot.destination, snapshot.physical as Record<string, unknown> | null, body, guards)))
+      throw new MenuWriteConflict('The menu changed. Reload it before saving.');
+    await store.deleteDoc(tombstonePath(orgId, siteId, versionId, 'menus', menu.id));
+  },
+  deleteMenu: (orgId: string, siteId: string, versionId: string, menuId: string) =>
+    deleteChain(orgId, siteId, versionId, 'menus', menuId,
+      paths.menu(orgId, siteId, menuId, versionId)),
+
+  // Site fields (singleton): settings page definitions and their values.
+  // Read through the chain like settings; empty when no version has any.
+  siteFields: async (orgId: string, siteId: string, versionId: string): Promise<SiteFields> =>
+    siteFieldsDoc(await readChain<SiteFields & { id?: string }>(orgId, siteId, versionId, 'site_fields', 'default',
+      (v) => paths.siteFields(orgId, siteId, v))),
+  /**
+   * Replaces the site fields document at the active version. With `expected`
+   * (the `updated_at` the caller read, or null for "nothing saved yet") the
+   * write is compare-and-replace over the whole version chain and throws
+   * SiteFieldsWriteConflict when anything was saved in between.
+   */
+  writeSiteFields: async (orgId: string, siteId: string, versionId: string, doc: SiteFields, expected?: string | null): Promise<void> => {
+    const store = getStore();
+    const snapshot = await guardedResource<SiteFields>(orgId, siteId, versionId, 'site_fields', 'default', v => paths.siteFields(orgId, siteId, v));
+    if (expected !== undefined && (snapshot.value?.updated_at ?? null) !== expected)
+      throw new SiteFieldsWriteConflict('The site fields changed. Reload them before saving.');
+    const guards = snapshot.guards.filter(guard => guard.path !== snapshot.destination);
+    const body = siteFieldsDoc(doc) as unknown as Record<string, unknown>;
+    if (!(await store.compareAndReplaceDoc(snapshot.destination, snapshot.physical as Record<string, unknown> | null, body, guards)))
+      throw new SiteFieldsWriteConflict('The site fields changed. Reload them before saving.');
+    await store.deleteDoc(tombstonePath(orgId, siteId, versionId, 'site_fields', 'default'));
+  },
 
   // Settings (singleton)
   settings: (orgId: string, siteId: string, versionId: string) =>

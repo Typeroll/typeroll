@@ -13,6 +13,7 @@ import {
   retireRedirectsShadowingUrl,
 } from '../../../../../lib/redirect-hygiene';
 import { paths } from '@typeroll/shared';
+import { structureLockRefusal } from '../../../../../lib/structure-lock';
 import type { Media, Page } from '@typeroll/shared';
 
 // Whitelist of fields that the editor can update. Everything else is silently
@@ -72,6 +73,13 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   // `image_sizes_default` even when this PUT only touches the body.
   const existing = await vstore.page(owner_org_id, site.id, versionId, pageId);
   if (!existing) return json({ error: 'Page not found' }, 404);
+  // A handed-over site may lock its structure: the blocks keep their ids, order
+  // and types, and the page its template and content mode.
+  const lockCtx = { orgId: owner_org_id, siteId: site.id, versionId, canDesign: guard.value.design };
+  const structural = ('template' in update && String(update.template ?? '') !== String(existing.template ?? ''))
+    || ('content_mode' in update && update.content_mode !== existing.content_mode);
+  const locked = await structureLockRefusal(lockCtx, structural ? undefined : 'blocks' in update ? { before: existing.blocks, after: update.blocks as Page['blocks'] } : { before: [], after: [] });
+  if (locked) return locked;
   const cssError = (update.custom_css ?? '') === (existing.custom_css ?? '') ? null : customCssWriteError(update.custom_css);
   if (cssError) return json({ error: cssError }, 400);
 
@@ -152,6 +160,8 @@ export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
   const { session, site, versionId, owner_org_id } = guard.value;
   const { pageId } = params;
   if (!pageId) return json({ error: 'Missing pageId' }, 400);
+  const locked = await structureLockRefusal({ orgId: owner_org_id, siteId: site.id, versionId, canDesign: guard.value.design });
+  if (locked) return locked;
 
   const existing = await vstore.page(owner_org_id, site.id, versionId, pageId);
   await vstore.deletePage(owner_org_id, site.id, versionId, pageId);

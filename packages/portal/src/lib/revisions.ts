@@ -1,6 +1,6 @@
 /**
- * Auto-snapshot helper. Every meaningful save (page / partial / collection
- * item PUT) calls snapshot() with the *pre-edit* doc; we write that snapshot
+ * Auto-snapshot helper. Every meaningful save (page / partial / menu PUT,
+ * site fields) calls snapshot() with the *pre-edit* doc; we write that snapshot
  * to the active version's revisions subcollection and trim the history so
  * each doc keeps at most CAP entries.
  *
@@ -10,7 +10,7 @@
  */
 
 import { paths } from '@typeroll/shared';
-import type { Page, Partial as PartialDoc, Revision, RevisionKind } from '@typeroll/shared';
+import type { Menu, Page, Partial as PartialDoc, Revision, RevisionKind, SiteFields } from '@typeroll/shared';
 import { getStore } from './datastore';
 
 /** How many revisions to keep per doc per branch. Oldest get pruned. */
@@ -21,7 +21,7 @@ interface SnapshotArgs {
   siteId: string;
   versionId: string;
   kind: RevisionKind;
-  /** Page id, partial id, or for collection-item: "{name}/{itemId}". */
+  /** Page id, partial id or menu id; `default` for the site fields. */
   resourceIds: string[];
   doc: Record<string, unknown>;
   createdBy: string;
@@ -32,6 +32,8 @@ function collectionPath(args: { orgId: string; siteId: string; versionId: string
   const { orgId, siteId, versionId, kind, resourceIds } = args;
   if (kind === 'page') return paths.revisions(orgId, siteId, resourceIds[0], versionId);
   if (kind === 'partial') return paths.partialRevisions(orgId, siteId, resourceIds[0], versionId);
+  if (kind === 'menu') return paths.menuRevisions(orgId, siteId, resourceIds[0], versionId);
+  if (kind === 'site_fields') return `${paths.siteFields(orgId, siteId, versionId)}/revisions`;
   throw new Error('Unknown revision kind');
 }
 
@@ -81,3 +83,5 @@ export async function getRevision(args: {
 /** Type aliases for the common cases — keep call sites tight. */
 export type PageRevision = Revision<Partial<Page>>;
 export type PartialRevision = Revision<Partial<PartialDoc>>;
+export type MenuRevision = Revision<Partial<Menu>>;
+export type SiteFieldsRevision = Revision<Partial<SiteFields>>;

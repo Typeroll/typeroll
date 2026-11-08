@@ -1,0 +1,28 @@
+---
+import AppLayout from '../../../layouts/AppLayout.astro';
+import OrganizationMembers from '../../../components/OrganizationMembers.tsx';
+import { getSession } from '../../../lib/auth';
+import { organizationMembership } from '../../../lib/organization-session';
+import { roleCanManageOrganization } from '@typeroll/shared';
+
+// The organization's members and invites. Owners and administrators change
+// roles, remove members and invite people with a role; everyone else sees
+// their own role. The members and invite APIs enforce the same rule.
+const session = await getSession(Astro.cookies);
+if (!session) return Astro.redirect('/login');
+const orgId = session.orgId;
+if (!orgId) return Astro.redirect('/onboarding');
+const membership = await organizationMembership(session.userId, orgId);
+const canManage = roleCanManageOrganization(membership?.role);
+---
+<AppLayout title="Members">
+  <div class="app-header">
+    <div>
+      <h1>Members</h1>
+      <p class="muted" style="max-width: 720px;">
+        The people in <strong>{membership?.name ?? 'your organization'}</strong> and what each may do on all its sites.
+      </p>
+    </div>
+  </div>
+  <OrganizationMembers client:load orgId={orgId} organizationName={membership?.name} currentUserId={session.userId} currentRole={membership?.role} canManage={canManage} />
+</AppLayout>

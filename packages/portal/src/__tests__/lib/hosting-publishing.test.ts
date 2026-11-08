@@ -26,7 +26,7 @@ vi.mock('../../lib/builds/state', async original => ({ ...await original<object>
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
 vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source }));
 // Publications freeze theme fonts from Google; tests never reach the network.
-vi.mock('../../lib/publishing/theme-font-freeze', () => ({ freezeThemeFonts: async () => null }));
+vi.mock('../../lib/publishing/theme-font-freeze', () => ({ freezeSiteFonts: async () => ({ plan: { render_version: 1, families: [], google_css_url: null, service_stylesheets: [] }, theme_fonts: null }) }));
 vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => ({ forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] }) }));
 
 const ORG = 'org', SITE = 'bakery';

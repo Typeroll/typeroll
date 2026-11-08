@@ -1,5 +1,7 @@
+import { STRUCTURE_LOCKED_CODE, STRUCTURE_LOCKED_MESSAGE, structureLockApplies } from './structure-lock';
 import { createPage } from './page-create';
 import { listContentTypes } from './content-type-service';
+import { DESIGN_SETTINGS_KEYS } from './site-settings-sections';
 // Anthropic client + the AI chat tool loop that powers /api/sites/[siteId]/chat.
 //
 // The chat lets the user manage the whole site by describing changes in plain
@@ -16,7 +18,7 @@ import { DESIGN_NOTES_STARTER } from './design-notes';
 import { PLAYBOOK_STARTER } from './playbook';
 import { pageLiveUrl, pagePreviewUrl } from './site-urls';
 import { checkRedirectWrite } from './redirect-write';
-import { paths, slugify } from '@typeroll/shared';
+import { paths, siteFontsErrors, slugify } from '@typeroll/shared';
 import type { Block, BlockType } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES } from '@typeroll/shared';
 import {
@@ -42,6 +44,11 @@ import { AI_NOT_ENABLED_MESSAGE, getAnthropicForSite } from './ai/organization-a
 import { snapshotRevision } from './revisions';
 import { applyContentWrite } from './content-write';
 import { chatEditLink } from './chat-action-links';
+import { createMenu, MenuSaveError, replaceMenu } from './menu-write';
+import { appendMenuItem } from './menu-items';
+import { readSiteFields, siteFieldsResponse, SiteFieldsSaveError, updateSiteFieldValues } from './site-fields-write';
+import { listSnippets, readSnippet, saveSnippet, SnippetSaveError, snippetLiveInfo } from './snippet-write';
+import type { Menu } from '@typeroll/shared';
 import {
   mergeJsonLd,
   STRUCTURED_DATA,
@@ -602,6 +609,127 @@ const tools: Anthropic.Tool[] = [
     },
   },
 
+  // Menus — the site's navigation links, shown by navigation blocks
+  {
+    name: 'list_menus',
+    description: 'List the site\'s menus with their locations (primary = header, footer, mobile), auto_add_pages, items and updated_at. The header and footer show navigation from menus when their core/navigation_links block has source "menu" (for example menu "location:primary").',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'read_menu',
+    description: 'Read one menu with its whole item tree and updated_at.',
+    input_schema: { type: 'object', properties: { menu_id: { type: 'string' } }, required: ['menu_id'] },
+  },
+  {
+    name: 'update_menu',
+    description:
+      'Replace a whole menu, or create it when menu_id is new. Items: {type:"page", page_id} links a page by id (label and address follow renames; label overrides the title), {type:"children", page_id, label?} lists that page\'s child pages as an automatic submenu, {type:"url", href, label} any other address, {type:"heading", label} a column title. Any item can have children (at most 3 levels). Locations: primary, footer, mobile; one menu per location. auto_add_pages appends new top-level pages automatically. To change an existing menu, read_menu first and pass its updated_at as expected_updated_at. Saved directly (not a draft); live at the next publication. Invalid menus come back with errors and their paths.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        menu_id: { type: 'string', description: 'The menu to replace or create, e.g. "primary".' },
+        name: { type: 'string' },
+        locations: { type: 'array', items: { type: 'string' } },
+        auto_add_pages: { type: 'boolean' },
+        items: { type: 'array', items: { type: 'object' }, description: 'The whole item tree.' },
+        expected_updated_at: { type: 'string', description: 'The updated_at you read. Required to replace an existing menu.' },
+      },
+      required: ['menu_id', 'name', 'items'],
+    },
+  },
+  {
+    name: 'add_menu_item',
+    description: 'Append one item to a menu (at the top level, or in the submenu of parent_item_id) and save it. Use {type:"page", page_id} for pages on the site. Prefer this over editing the header for "add X to the menu".',
+    input_schema: {
+      type: 'object',
+      properties: {
+        menu_id: { type: 'string' },
+        item: { type: 'object', description: 'A menu item, e.g. {"type":"page","page_id":"about"}.' },
+        parent_item_id: { type: 'string', description: 'Put the item in this item\'s submenu. Omit for the top level.' },
+      },
+      required: ['menu_id', 'item'],
+    },
+  },
+
+  // Site fields — settings pages the client fills in (opening hours, toggles)
+  {
+    name: 'read_site_fields',
+    description: 'Read the site fields: the settings pages (groups of fields such as opening hours, a "show the booking calendar" checkbox or the delivery time), their saved values, updated_at and editable_groups (the groups this person may change). Read it before update_site_fields.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'update_site_fields',
+    description:
+      'Change site field values: send only the fields to change, by name; null removes a value; an object or list is replaced whole. Opening hours: { days: [{ day: "monday", opens: "09:00", closes: "17:00" }, …, { day: "sunday", closed: true }], exceptions: [{ date: "2026-12-24", closed: true, note: "Christmas Eve" }] }. Pass the updated_at from read_site_fields as expected_updated_at. Groups with access "admin" need admin permission. You cannot add or change the fields themselves; for new fields ask a site admin. Saved directly (not a draft); live at the next publication. Invalid values come back with errors and their paths.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        values: { type: 'object', description: 'Field name → new value, e.g. {"show_booking": false}.' },
+        expected_updated_at: { type: 'string', description: 'The updated_at you read ("" when it was null).' },
+      },
+      required: ['values'],
+    },
+  },
+
+  // Live snippets — content outside the build that changes without publishing
+  {
+    name: 'read_snippet',
+    description: 'Read the site\'s live snippets: small pieces of content outside the build (today\'s lunch, a notice) that change on the live site within a minute, without publishing. With snippet_id, one snippet; without, all of them and live.base_url (null with a reason when the site cannot serve live files, so snippets only change at publication). Read it before update_snippet.',
+    input_schema: { type: 'object', properties: { snippet_id: { type: 'string', description: 'The snippet id, e.g. "lunch". Omit to list all.' } } },
+  },
+  {
+    name: 'update_snippet',
+    description:
+      'Create or replace a whole live snippet; the live site shows it within a minute, without publishing. kind "html" or "text" uses content; kind "dated" uses entries by weekday or date, e.g. { kind: "dated", entries: [{ weekday: "monday", content: "<p>Pea soup</p>" }, …, { date: "2026-12-24", content: "<p>Closed</p>" }], fallback: "<p>No lunch today</p>" } — the page shows today\'s entry, so write a whole week at once. Send every field you keep. Pass the updated_at from read_snippet as expected_updated_at ("" for a new snippet). A page shows a snippet with a core/snippet block { snippet: "<id>" }; only placing that block needs a publication. The result\'s live says whether the live file was written.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        snippet_id: { type: 'string', description: 'Lowercase letters, digits, - and _.' },
+        name: { type: 'string' },
+        kind: { type: 'string', enum: ['html', 'text', 'dated'] },
+        format: { type: 'string', enum: ['html', 'text'], description: 'dated snippets: HTML (default) or plain text entries.' },
+        content: { type: 'string' },
+        entries: { type: 'array', items: { type: 'object' }, description: 'dated snippets: [{ weekday | date, content }].' },
+        fallback: { type: 'string' },
+        expected_updated_at: { type: 'string', description: 'The updated_at you read ("" for a new snippet).' },
+      },
+      required: ['snippet_id', 'name', 'kind'],
+    },
+  },
+
+  // Fonts — a family per role; styles and blocks choose the role
+  {
+    name: 'search_fonts',
+    description: 'Search the font catalog (250 open-licence Google Fonts families with weights, italics and variable axis) and the site\'s own uploaded and font-service families. Use it before set_site_fonts to check a family exists and has the weights needed.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Part of a family name, e.g. "grotesk".' },
+        category: { type: 'string', enum: ['sans', 'serif', 'display', 'handwriting', 'mono'] },
+        variable: { type: 'boolean', description: 'Only variable families.' },
+        italic: { type: 'boolean', description: 'Only families with italics.' },
+        latin_ext: { type: 'boolean', description: 'Only families with extended Latin (Polish, Czech, Turkish…); Nordic and German letters are in every family.' },
+        limit: { type: 'number', description: 'At most this many catalog results (default 20).' },
+      },
+    },
+  },
+  {
+    name: 'set_site_fonts',
+    description:
+      'Choose the site\'s font family per role: heading, body, mono, and from render version 15 display (large headings and heroes; unset uses heading) and accent (eyebrows and quotes; unset uses body). Styles and blocks choose a role, never a family, so this restyles everything using the role. Only the roles you pass change; null clears mono, display or accent. From render version 15 the weights in use load automatically; `load` adds extra weights per role, e.g. { "heading": { "weights": [800] } }. Needs admin permission. Uploaded fonts, Adobe Fonts kits and other font services are managed in Settings → Design.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        heading: { type: 'string' },
+        body: { type: 'string' },
+        mono: { type: ['string', 'null'] },
+        display: { type: ['string', 'null'] },
+        accent: { type: ['string', 'null'] },
+        load: { type: 'object', description: 'Role → { weights?: number[], italic?: number[] } (100–900 in steps of 100).' },
+      },
+    },
+  },
+
   // Design reference — the starter design system the site MAY follow
   {
     name: 'read_design_notes',
@@ -933,6 +1061,16 @@ Three flavours, all managed via update_partial / read_partial / list_partials:
 
 When updating the header, keep the brand/logo area and the nav links structure unless the user asked you to redo them.
 
+## Menus
+
+The site's navigation links can live in **menus** (\`list_menus\`, \`read_menu\`, \`update_menu\`, \`add_menu_item\`) instead of in the header. A menu is a tree of items (at most 3 levels): \`page\` items link a page by \`page_id\` so renames follow, \`children\` items list a page's child pages as an automatic submenu, \`url\` items hold other addresses, and \`heading\` items are column titles. A menu fills locations: \`primary\` (header), \`footer\`, \`mobile\`. A header or footer shows a menu with a \`core/navigation_links\` block whose data is \`{ source: "menu", menu: "location:primary" }\` (render version 15). When the header shows a menu, change the menu (\`add_menu_item\`), not the header. Check \`read_partial\` first: an HTML header, or navigation_links with its own \`links\`, keeps its links in the header. A menu with \`auto_add_pages\` adds new top-level pages by itself. Menu saves are not drafts: they apply at once and go live with the next publication.
+
+## Site fields
+
+**Site fields** are the site's settings pages (\`read_site_fields\`, \`update_site_fields\`): values the whole site shares, such as opening hours, a visiting address, a "show the booking calendar" checkbox or the current delivery time. Pages show them through \`{{site.fields.name}}\` in templates and block text, the \`core/site_field\` block and \`core/show_if\` conditions (\`site.fields.show_booking\`). When the user asks to change something that is a site field ("we're closed on Christmas Eve", "hide the booking calendar"), change the value with \`update_site_fields\` — not the pages that show it. Opening hours exceptions go in \`exceptions\` by date. Saves apply at once and go live with the next publication.
+
+**Live snippets** (\`read_snippet\`, \`update_snippet\`) are content outside the build, such as the week's lunch or a notice: a save reaches the live site within a minute, without publishing. A dated snippet holds entries by weekday or date and the page shows today's, so write a whole week at once. Pages show one with a \`core/snippet\` block.
+
 When the user wants to embed a free block in a page, edit the page's html_content and add \`<x-include name="block-id" />\` where it should appear — don't paste the block's HTML inline, that defeats the point.
 
 # Design — mirror what's already there
@@ -966,7 +1104,7 @@ Hard rules either way:
 
 ## Site settings
 
-Settings include name, tagline, logo, favicon, apple_touch_icon (180×180 PNG for home-screen bookmarks), colors (primary/secondary/accent/background/surface/text/text_light), fonts (heading/body — Google Font family names), contact info, social links, head/body scripts, custom CSS, the SEO title suffix, and the default meta description (default_meta_description — the site-wide fallback <meta name="description"> when a page has no seo_description; the tagline is the last resort). Use update_site_settings to change any of these; it needs admin permission on the site, so for anyone else suggest asking a site admin. When the brand assets include icon files, set favicon AND apple_touch_icon as part of initial setup — don't leave them empty.
+Settings include name, tagline, logo, favicon, apple_touch_icon (180×180 PNG for home-screen bookmarks), colors (primary/secondary/accent/background/surface/text/text_light), fonts (a family per role: heading, body, mono, display, accent — find families with search_fonts and change them with set_site_fonts; styles and blocks choose the role, never a family), contact info, social links, head/body scripts, custom CSS, the SEO title suffix, and the default meta description (default_meta_description — the site-wide fallback <meta name="description"> when a page has no seo_description; the tagline is the last resort). Use update_site_settings to change any of these; it needs admin permission on the site, so for anyone else suggest asking a site admin. When the brand assets include icon files, set favicon AND apple_touch_icon as part of initial setup — don't leave them empty.
 
 When the user asks to change brand colors, fonts, or contact info — that's site settings, not a page edit.
 
@@ -1052,6 +1190,8 @@ export async function runChatTurn(args: {
   activePage?: ActivePageContext | null;
   /** The person's permission on the site; block type authoring needs admin. */
   permission: SharePermission;
+  /** Design work without admin: the person is a builder (SiteContext.design). */
+  design?: boolean;
 }): Promise<ChatResult> {
   // The Site owner's own key, only when this Site is allowed. The chat route
   // refuses earlier with ai_not_enabled; this covers a key removed mid-turn.
@@ -1112,6 +1252,7 @@ export async function runChatTurn(args: {
           version: args.version,
           portalOrigin: args.portalOrigin,
           permission: args.permission,
+          design: args.design,
         });
         if (out.action) actions.push(out.action);
         toolCalls.push({
@@ -1162,6 +1303,8 @@ export interface ToolContext {
   portalOrigin: string;
   /** The person's permission on the site; block type authoring needs admin. */
   permission: SharePermission;
+  /** Design work without admin (a builder): block types, design settings and fonts. */
+  design?: boolean;
 }
 
 function absolutePreviewUrl(ctx: ToolContext, page: Parameters<typeof pagePreviewUrl>[1]): string {
@@ -1172,9 +1315,12 @@ function absolutePreviewUrl(ctx: ToolContext, page: Parameters<typeof pagePrevie
 }
 
 /** Ctx triple for the working-copy / content-write libs. */
-function wcCtx(ctx: ToolContext): { orgId: string; siteId: string; versionId: string } {
-  return { orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId };
+function wcCtx(ctx: ToolContext): { orgId: string; siteId: string; versionId: string; canDesign: boolean } {
+  return { orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId, canDesign: ctx.permission === 'admin' || ctx.design === true };
 }
+
+/** Chat tools that add, remove, move or retype blocks or pages: refused while a handover locks the structure. */
+const STRUCTURAL_TOOLS = new Set(['create_page', 'add_block', 'move_block', 'remove_block', 'duplicate_block', 'set_page_mode', 'set_page_template']);
 
 /**
  * Compose the ChatAction payload for a block-container mutation. Page
@@ -1215,6 +1361,7 @@ interface ToolOutput {
 
 export async function runTool(name: string, input: Record<string, unknown>, ctx: ToolContext): Promise<ToolOutput> {
   const store = getStore();
+  if (STRUCTURAL_TOOLS.has(name) && await structureLockApplies(wcCtx(ctx))) return { result: { error: STRUCTURE_LOCKED_MESSAGE, code: STRUCTURE_LOCKED_CODE } };
 
   switch (name) {
     // ─── Pages ─────────────────────────────────────────────────────────────
@@ -1403,7 +1550,7 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
           action: { type: kind === 'partial' ? 'update_partial' : 'update_page', description: `Saved ${kind} ${id}.`, target: id, ...chatEditLink(ctx.siteId, kind, id) },
         };
       } catch (e) {
-        if (e instanceof WorkingCopyError) return { result: { error: e.message } };
+        if (e instanceof WorkingCopyError) return { result: { error: e.message, ...(e.code ? { code: e.code } : {}) } };
         throw e;
       }
     }
@@ -1682,8 +1829,8 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
     case 'delete_block_type': {
       // Same write path, validator and version chain as the portal and the
       // API; admin permission, as for a person in the portal.
-      if (ctx.permission !== 'admin') {
-        return { result: { error: 'Creating, changing and deleting block types needs admin permission on the site. Ask a site admin, or build the section from existing blocks.' } };
+      if (ctx.permission !== 'admin' && !ctx.design) {
+        return { result: { error: 'Creating, changing and deleting block types needs design permission on the site (an administrator or builder). Ask one, or build the section from existing blocks.' } };
       }
       const writes = await import('./block-type-write');
       const { SCRIPT_GATE_WARNING, aiScriptsEnabled } = await import('./block-script-gate');
@@ -1867,6 +2014,124 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       };
     }
 
+    // ─── Menus ─────────────────────────────────────────────────────────────
+    case 'list_menus': {
+      const menus = await vstore.menus(ctx.orgId, ctx.siteId, ctx.versionId);
+      return { result: { menus } };
+    }
+
+    case 'read_menu': {
+      const menu = await vstore.menu(ctx.orgId, ctx.siteId, ctx.versionId, String(input.menu_id ?? ''));
+      return { result: menu ? { menu } : { error: 'Menu not found' } };
+    }
+
+    case 'update_menu':
+    case 'add_menu_item': {
+      const menuId = String(input.menu_id ?? '').trim();
+      if (!menuId) return { result: { error: 'menu_id required' } };
+      try {
+        const existing = await vstore.menu(ctx.orgId, ctx.siteId, ctx.versionId, menuId);
+        let saved: Menu;
+        let itemId: string | undefined;
+        if (name === 'add_menu_item') {
+          if (!existing) return { result: { error: `No menu ${menuId}. list_menus shows the menus; update_menu creates one.` } };
+          const added = appendMenuItem(existing.items, input.item, input.parent_item_id ? String(input.parent_item_id) : undefined);
+          if ('error' in added) return { result: { error: added.error } };
+          itemId = added.id;
+          saved = await replaceMenu(wcCtx(ctx), menuId, {
+            name: existing.name, items: added.items,
+            ...(existing.locations ? { locations: existing.locations } : {}),
+            ...(existing.auto_add_pages ? { auto_add_pages: true } : {}),
+          }, { updatedBy: 'chat-ai', expectedUpdatedAt: existing.updated_at ?? '' });
+        } else {
+          const body = {
+            name: input.name, items: input.items,
+            ...(input.locations !== undefined ? { locations: input.locations } : {}),
+            ...(input.auto_add_pages !== undefined ? { auto_add_pages: input.auto_add_pages } : {}),
+          };
+          if (existing && typeof input.expected_updated_at !== 'string')
+            return { result: { error: `The menu ${menuId} exists. read_menu first and pass its updated_at as expected_updated_at.` } };
+          saved = existing
+            ? await replaceMenu(wcCtx(ctx), menuId, body, { updatedBy: 'chat-ai', expectedUpdatedAt: String(input.expected_updated_at) })
+            : await createMenu(wcCtx(ctx), { ...body, id: menuId });
+        }
+        return {
+          result: { ok: true, menu: saved, ...(itemId ? { item_id: itemId } : {}) },
+          action: {
+            type: 'update_menu',
+            description: name === 'add_menu_item' ? `Added an item to the menu ${saved.name}.` : existing ? `Updated the menu ${saved.name}.` : `Created the menu ${saved.name}.`,
+            target: menuId,
+            ...chatEditLink(ctx.siteId, 'menu', menuId),
+          },
+        };
+      } catch (error) {
+        if (error instanceof MenuSaveError) return { result: { error: error.message, ...(error.errors ? { errors: error.errors } : {}) } };
+        throw error;
+      }
+    }
+
+    // ─── Site fields ───────────────────────────────────────────────────────
+    case 'read_site_fields': {
+      return { result: siteFieldsResponse(await readSiteFields(wcCtx(ctx)), ctx.permission) };
+    }
+
+    case 'update_site_fields': {
+      try {
+        const expected = input.expected_updated_at;
+        const saved = await updateSiteFieldValues(wcCtx(ctx), input.values, {
+          permission: ctx.permission, updatedBy: 'chat-ai',
+          ...(typeof expected === 'string' ? { expectedUpdatedAt: expected } : {}),
+        });
+        const changed = input.values && typeof input.values === 'object' ? Object.keys(input.values) : [];
+        return {
+          result: { ok: true, ...siteFieldsResponse(saved, ctx.permission) },
+          action: {
+            type: 'update_site_fields',
+            description: `Updated the site field${changed.length === 1 ? '' : 's'} ${changed.join(', ')}.`,
+            target: 'site_fields',
+            ...chatEditLink(ctx.siteId, 'site_fields', ''),
+          },
+        };
+      } catch (error) {
+        if (error instanceof SiteFieldsSaveError) return { result: { error: error.message, ...(error.errors ? { errors: error.errors } : {}) } };
+        throw error;
+      }
+    }
+
+    // ─── Live snippets ─────────────────────────────────────────────────────
+    case 'read_snippet': {
+      const snippetCtx = { orgId: ctx.orgId, siteId: ctx.siteId };
+      if (typeof input.snippet_id === 'string' && input.snippet_id) {
+        const snippet = await readSnippet(snippetCtx, input.snippet_id);
+        return { result: snippet ? { snippet } : { error: `No snippet is called ${input.snippet_id}` } };
+      }
+      const [snippets, live] = await Promise.all([listSnippets(snippetCtx), snippetLiveInfo(snippetCtx)]);
+      return { result: { snippets, live } };
+    }
+
+    case 'update_snippet': {
+      try {
+        const { snippet_id: snippetId, expected_updated_at: expected, ...body } = input as Record<string, unknown>;
+        if (typeof snippetId !== 'string' || !snippetId) return { result: { error: 'snippet_id is required' } };
+        const saved = await saveSnippet({ orgId: ctx.orgId, siteId: ctx.siteId }, body, {
+          mode: 'replace', id: snippetId, permission: ctx.permission, updatedBy: 'chat-ai',
+          ...(typeof expected === 'string' ? { expectedUpdatedAt: expected } : {}),
+        });
+        return {
+          result: { ok: true, snippet: saved.snippet, live: saved.live },
+          action: {
+            type: 'update_snippet',
+            description: `${saved.created ? 'Created' : 'Updated'} the snippet ${saved.snippet.name}${saved.live.published ? '; it is live within a minute' : ''}.`,
+            target: snippetId,
+            ...chatEditLink(ctx.siteId, 'snippet', snippetId),
+          },
+        };
+      } catch (error) {
+        if (error instanceof SnippetSaveError) return { result: { error: error.message, ...(error.errors ? { errors: error.errors } : {}) } };
+        throw error;
+      }
+    }
+
     // ─── Design reference ──────────────────────────────────────────────────
     case 'read_design_notes': {
       return { result: { notes: DESIGN_NOTES_STARTER } };
@@ -1886,8 +2151,13 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       // Site settings (name, logo, brand colors, fonts, contact) are admin
       // only in the portal and the public API; the chat acts for the person
       // and must not let an editor route around that.
-      if (ctx.permission !== 'admin') {
+      if (ctx.permission !== 'admin' && !ctx.design) {
         return { result: { error: 'Changing site settings needs admin permission on the site. Ask a site admin to change them in Settings.' } };
+      }
+      // A builder changes the look (name, logo, icons, colours, fonts), not SEO or contact details.
+      if (ctx.permission !== 'admin') {
+        const notDesign = Object.keys(input).filter(key => input[key] !== undefined && !DESIGN_SETTINGS_KEYS.has(key));
+        if (notDesign.length) return { result: { error: `These settings need admin permission on the site: ${notDesign.join(', ')}. A builder changes the design settings only.` } };
       }
       // Explicit whitelist. Scripts and custom CSS are deliberately NOT
       // updatable from the chat — they're scriptable surfaces and require
@@ -1913,6 +2183,39 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
       return {
         result: { ok: true },
         action: { type: 'update_site_settings', description: 'Updated site settings.' },
+      };
+    }
+
+    // ─── Fonts ─────────────────────────────────────────────────────────────
+    case 'search_fonts': {
+      const { fontCatalogResponse } = await import('./fonts/font-library');
+      const limit = Number(input.limit);
+      return { result: await fontCatalogResponse(ctx.orgId, ctx.siteId, {
+        query: typeof input.query === 'string' ? input.query : undefined,
+        ...(typeof input.category === 'string' ? { category: input.category as 'sans' } : {}),
+        variable: input.variable === true, italic: input.italic === true, latin_ext: input.latin_ext === true,
+        limit: Number.isInteger(limit) && limit > 0 ? Math.min(limit, 100) : 20,
+      }) };
+    }
+
+    case 'set_site_fonts': {
+      if (ctx.permission !== 'admin' && !ctx.design) {
+        return { result: { error: 'Changing the site\'s fonts needs design permission on the site (an administrator or builder). Ask one to change them in Settings → Design.' } };
+      }
+      const patch: Record<string, unknown> = {};
+      for (const key of ['heading', 'body', 'mono', 'display', 'accent', 'load'] as const) if (input[key] !== undefined) patch[key] = input[key];
+      if (!Object.keys(patch).length) return { result: { error: 'Pass at least one role (heading, body, mono, display, accent) or load.' } };
+      const errors = siteFontsErrors(patch);
+      if (errors.length) return { result: { error: 'The fonts were not changed.', errors } };
+      const existing = ((await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {}) as SiteSettings;
+      const fonts: Record<string, unknown> = { ...existing.fonts, ...patch };
+      for (const [key, value] of Object.entries(fonts)) if (value === null) delete fonts[key];
+      await vstore.writeSettings(ctx.orgId, ctx.siteId, ctx.versionId, { fonts } as Partial<SiteSettings>);
+      const { fontSettingsWarnings, listSiteFonts } = await import('./fonts/font-library');
+      const warnings = fontSettingsWarnings(fonts as SiteSettings['fonts'], await listSiteFonts(ctx.orgId, ctx.siteId));
+      return {
+        result: { ok: true, fonts, ...(warnings.length ? { warnings } : {}) },
+        action: { type: 'update_site_settings', description: 'Changed the site\'s fonts.' },
       };
     }
 

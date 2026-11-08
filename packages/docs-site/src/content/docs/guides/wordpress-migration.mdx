@@ -57,6 +57,7 @@ The migration workflow imports accessible WordPress content (pages, posts and su
 - Transfers media (images) through the media API — only images actually used on imported pages
 - Maps custom post types to Typeroll content types
 - Generates URL redirects
+- Imports navigation menus as [menus](../../tools/menus/) with their theme locations (primary, footer, mobile); items that point at imported pages and categories link them by page id, other items keep their address, and nesting deeper than three levels moves up into the third
 - Imports categories and tags once as Pages with their own Content types; articles store references
 - Preserves cleaned HTML without automatic AI rewriting or HTML-to-blocks conversion
 - Leaves imported content in Review before going live
@@ -288,7 +289,7 @@ The Typeroll Helper Plugin gives the migration workflow access to:
 
 - Custom post types with `show_in_rest: false`
 - ACF fields with image references normalised
-- Navigation menus
+- Navigation menus with their theme locations and the page each item links to (helper 0.4.1 or later; without the helper, WordPress lists menus only to logged-in users)
 - Builder JSON (Elementor, Breakdance)
 - Complete canonical URL list
 - Shared taxonomy terms, archive URLs, parents, term custom fields and primary categories

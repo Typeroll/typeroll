@@ -16,6 +16,7 @@
 // a removed member's way back in for up to 30 days.
 
 import crypto from 'node:crypto';
+import { ASSIGNABLE_ROLES, type MemberRole } from '@typeroll/shared';
 import { getStore } from './datastore';
 
 const SEPARATOR = '::';
@@ -49,8 +50,14 @@ export interface OrganizationInvite {
   revoked_by?: string | null;
   /** When set, only a signed-in person with this email address can redeem it. */
   email: string | null;
-  role: 'editor';
+  /** The role the person joins with: administrator, builder or editor (never owner). */
+  role: InviteRole;
 }
+
+/** Roles an invite can give (shared ASSIGNABLE_ROLES); an owner is never invited. */
+export type InviteRole = Exclude<MemberRole, 'owner'>;
+export const DEFAULT_INVITE_ROLE: InviteRole = 'editor';
+export const isInviteRole = (value: unknown): value is InviteRole => typeof value === 'string' && (ASSIGNABLE_ROLES as readonly string[]).includes(value);
 
 export interface InviteCreator {
   id: string;
@@ -143,10 +150,10 @@ export class InviteRequestError extends Error {
   readonly status = 400;
 }
 
-/** Read the optional `max_uses` (or `maxUses`) and `email` from a request
- *  body. One use and no email binding by default. */
-export function parseInviteOptions(body: unknown): { ttlDays: number; maxUses: number; email: string | null } {
-  const input = (body && typeof body === 'object' ? body : {}) as { max_uses?: unknown; maxUses?: unknown; email?: unknown };
+/** Read the optional `max_uses` (or `maxUses`), `email` and `role` from a
+ *  request body. One use, no email binding and the editor role by default. */
+export function parseInviteOptions(body: unknown): { ttlDays: number; maxUses: number; email: string | null; role: InviteRole } {
+  const input = (body && typeof body === 'object' ? body : {}) as { max_uses?: unknown; maxUses?: unknown; email?: unknown; role?: unknown };
   const rawUses = input.max_uses ?? input.maxUses;
   let maxUses = DEFAULT_INVITE_MAX_USES;
   if (rawUses !== undefined && rawUses !== null) {
@@ -162,7 +169,12 @@ export function parseInviteOptions(body: unknown): { ttlDays: number; maxUses: n
     }
     email = input.email.trim().toLowerCase();
   }
-  return { ttlDays: parseInviteTtlDays(body), maxUses, email };
+  let role = DEFAULT_INVITE_ROLE;
+  if (input.role !== undefined && input.role !== null && input.role !== '') {
+    if (!isInviteRole(input.role)) throw new InviteRequestError(`role must be one of ${ASSIGNABLE_ROLES.join(', ')}; an owner is never invited`);
+    role = input.role;
+  }
+  return { ttlDays: parseInviteTtlDays(body), maxUses, email, role };
 }
 
 export interface CreatedInvite {
@@ -171,12 +183,13 @@ export interface CreatedInvite {
   expiresAt: string;
   maxUses: number;
   email: string | null;
+  role: InviteRole;
 }
 
 /**
  * Store an invite to `orgId` and return its link. Redeeming it at
  * /onboarding, signed in as a person, adds that person to the organization
- * as an editor. Throws when the signing secret is missing; callers check
+ * with the invite's role (an editor unless the creator chose another). Throws when the signing secret is missing; callers check
  * isFormsSigningConfigured() first to return a clear error.
  */
 export async function createInvite(args: {
@@ -185,6 +198,7 @@ export async function createInvite(args: {
   createdBy: InviteCreator;
   maxUses?: number;
   email?: string | null;
+  role?: InviteRole;
 }): Promise<CreatedInvite> {
   getSecret(); // fail before writing anything
   const inviteId = crypto.randomBytes(16).toString('base64url');
@@ -202,7 +216,7 @@ export async function createInvite(args: {
     revoked_at: null,
     revoked_by: null,
     email: args.email ?? null,
-    role: 'editor',
+    role: args.role ?? DEFAULT_INVITE_ROLE,
   };
   if (!await getStore().createDocIfMissing(invitePaths.invite(args.orgId, inviteId), record as unknown as Record<string, unknown>)) {
     throw new Error('Invite id collision');
@@ -215,6 +229,7 @@ export async function createInvite(args: {
     expiresAt,
     maxUses: record.max_uses,
     email: record.email,
+    role: record.role,
   };
 }
 
@@ -238,7 +253,7 @@ export function inviteSummary(invite: OrganizationInvite & { id: string }) {
   return {
     id: invite.id,
     state: inviteState(invite),
-    role: invite.role,
+    role: isInviteRole(invite.role) ? invite.role : DEFAULT_INVITE_ROLE,
     email: invite.email,
     created_by: invite.created_by_email ?? invite.created_by,
     created_at: invite.created_at,
@@ -276,7 +291,8 @@ export type RedeemResult =
 const INVALID: RedeemResult = { ok: false, status: 400, error: 'Invalid or expired invite token.' };
 
 /**
- * Verify a token against its record and join `person` to the organization.
+ * Verify a token against its record and join `person` to the organization,
+ * with the role the invite carries (`member.role` is replaced by it).
  *
  * One use is consumed and the membership document (`member`, stored at
  * `memberPath`) is created in the same atomic write, so a use is never
@@ -308,11 +324,13 @@ export async function redeemInvite(
     }
     const { id: _id, ...record } = current;
     void _id;
+    // An invite stored before invites carried a role joins as an editor.
+    const member = { ...join.member, role: isInviteRole(current.role) ? current.role : DEFAULT_INVITE_ROLE };
     const consumed = await store.compareAndReplaceDoc(
       path,
       current,
       { ...record, used_count: current.used_count + 1, used_by: [...current.used_by, person.userId] },
-      [{ path: join.memberPath, data: join.member, expected: null, replace: true }],
+      [{ path: join.memberPath, data: member, expected: null, replace: true }],
     );
     if (consumed) return { ok: true, orgId: verified.orgId };
     // Lost a race with another redemption, a revocation or a membership

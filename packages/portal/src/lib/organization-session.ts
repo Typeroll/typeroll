@@ -1,5 +1,5 @@
 import type { AstroCookies } from 'astro';
-import { paths, type Member, type Organization, type MemberRole } from '@typeroll/shared';
+import { isOrganizationRole, paths, type Member, type Organization, type MemberRole } from '@typeroll/shared';
 import type { Session } from './auth';
 import { getStore } from './datastore';
 import { portalCookiesSecure } from './local-e2e';
@@ -19,7 +19,7 @@ export async function organizationMembership(userId: string, orgId: string): Pro
     store.getDoc<Organization>(paths.org(orgId)),
     store.getDoc<Member>(`${paths.members(orgId)}/${userId}`),
   ]);
-  if (!org || !member || !['owner', 'admin', 'editor'].includes(member.role)) return null;
+  if (!org || !member || !isOrganizationRole(member.role)) return null;
   return { id: orgId, name: org.name, role: member.role };
 }
 

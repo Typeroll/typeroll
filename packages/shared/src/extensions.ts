@@ -53,7 +53,14 @@ export type ExtensionScope =
   | 'media:write'
   | 'deploy:request'
   | 'extension:config:read'
-  | 'page_handoff:read';
+  | 'page_handoff:read'
+  | 'site_fields:read'
+  | 'site_fields:write'
+  | 'snippets:read'
+  | 'snippets:write'
+  | 'collection:read'
+  | 'collection:write'
+  | 'site:handover';
 
 export interface ExtensionScopeDefinition {
   scope: ExtensionScope;
@@ -79,6 +86,13 @@ export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, Extension
   'media:write': { scope: 'media:write', minimum_permission: 'write', sensitive: true, description: 'Upload and change media.' },
   'deploy:request': { scope: 'deploy:request', minimum_permission: 'admin', sensitive: true, description: 'Request a site deployment.' },
   'extension:config:read': { scope: 'extension:config:read', minimum_permission: 'admin', sensitive: true, description: 'Read this installation configuration.' },
+  'site_fields:read': { scope: 'site_fields:read', minimum_permission: 'read', sensitive: false, description: 'Read the site fields: settings page definitions and their values.' },
+  'site_fields:write': { scope: 'site_fields:write', minimum_permission: 'admin', sensitive: true, description: 'Define settings pages and change any site field value, including administrator-only ones.' },
+  'snippets:read': { scope: 'snippets:read', minimum_permission: 'read', sensitive: false, description: 'Read the site\'s live snippets.' },
+  'snippets:write': { scope: 'snippets:write', minimum_permission: 'write', sensitive: true, description: 'Create, change and delete live snippets; a change shows on the live site within a minute, without a publication.' },
+  'collection:read': { scope: 'collection:read', minimum_permission: 'read', sensitive: false, description: 'List and read the entries of the organization collection the site belongs to.' },
+  'collection:write': { scope: 'collection:write', minimum_permission: 'write', sensitive: true, description: 'Add ready-made entries to the organization collection, and change or remove the entries this app added.' },
+  'site:handover': { scope: 'site:handover', minimum_permission: 'admin', sensitive: true, description: 'Read the site settings and hand the site over to a client: write its handover (checklist, start page and structure lock) and nothing else in the settings.' },
   'page_handoff:read': { scope: 'page_handoff:read', minimum_permission: 'read', sensitive: true, description: 'In the visitor\'s browser, receive the values typed into a navigation form that sent the visitor to the component\'s page, when the page author binds that form to the component.' },
 };
 

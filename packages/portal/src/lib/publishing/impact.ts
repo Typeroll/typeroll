@@ -38,10 +38,12 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
       fields: Object.fromEntries(Object.entries(content).filter(([, v]) => v !== undefined).map(([key, value]) => [key, fingerprint(value)])),
     });
   };
-  for (const [kind, values] of Object.entries({ page: publication.pages, partial: publication.partials, template: publication.pageTemplates, block_type: publication.blockTypes, redirect: publication.redirects, form: publication.forms, content_type: publication.contentTypes })) {
+  for (const [kind, values] of Object.entries({ page: publication.pages, partial: publication.partials, menu: publication.menus, template: publication.pageTemplates, block_type: publication.blockTypes, redirect: publication.redirects, form: publication.forms, content_type: publication.contentTypes })) {
     for (const value of (values ?? []) as any[]) add(kind, value);
   }
   for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', extensions: 'Extensions', runtime_dependencies: 'Runtime connections', impact_origins: 'Publication addresses' })) add('configuration', { id: key, name: title, value: publication[key] ?? null });
+  // Only a publication with site fields lists them, so earlier snapshots compare unchanged.
+  if (publication.siteFields) add('configuration', { id: 'siteFields', name: 'Site fields', value: publication.siteFields });
   const content = JSON.stringify(publication);
   for (const item of media) {
     const urls = [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map((variant: any) => variant.cdn_url)];

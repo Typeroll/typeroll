@@ -68,7 +68,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     const warnings = await treeWriteWarnings(ctx, filtered.blocks);
     return apiResponse(ctx, { ok: true, updated_at: wc.updated_at, ...(warnings.length ? { warnings } : {}) }, 200, body);
   } catch (e) {
-    if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
+    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);
     throw e;
   }
 };
@@ -86,7 +86,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const result = await commitWorkingCopy(ctx, target, `api-key:${ctx.keyPrefix}`, authority.actor, authority.overrideReason);
     return apiResponse(ctx, { ok: true, ...result }, 200, {});
   } catch (e) {
-    if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
+    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);
     throw e;
   }
 };

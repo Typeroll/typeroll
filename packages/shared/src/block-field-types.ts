@@ -54,7 +54,7 @@ function describe(value: unknown): string {
 
 function scalarProblem(field: FieldDefinition, value: unknown): string | null {
   if (value === undefined || value === null || value === '') return null;
-  if (/(?:^|_)(?:font|font_family)$/.test(field.name)) return (FONT_ROLES as readonly unknown[]).includes(value) ? null : 'heading, body, mono or inherit';
+  if (/(?:^|_)(?:font|font_family)$/.test(field.name)) return (FONT_ROLES as readonly unknown[]).includes(value) ? null : 'heading, body, mono, display, accent or inherit';
   const scale = tokenScale(field);
   if (scale && scaleValue(scale, value)) return null;
   const coerced = coerceScalar(field, value);

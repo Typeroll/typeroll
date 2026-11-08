@@ -160,13 +160,14 @@ Revoke an organization-scoped API key. Requires an organization API key. It stop
 
 Permission: `admin`
 
-Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins as an editor. The link works until expires_at (ttl_days 1–30, default 7) for max_uses people (1–50, default 1: single use); with email set, only a person signed in with that address can redeem it. Returns the invite id; list_organization_invites shows its state and revoke_organization_invite (or DELETE /api/v1/organization/invites/{id}) stops the link immediately. Send the link only to the person the user named.
+Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins with role (admin, builder or editor; default editor; never owner). The link works until expires_at (ttl_days 1–30, default 7) for max_uses people (1–50, default 1: single use); with email set, only a person signed in with that address can redeem it. Returns the invite id; list_organization_invites shows its state and revoke_organization_invite (or DELETE /api/v1/organization/invites/{id}) stops the link immediately. Send the link only to the person the user named.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `ttl_days` | body | integer | no |  |
 | `max_uses` | body | integer | no | How many people may redeem the link. Default 1 (single use). |
 | `email` | body | string | no | Bind the invite to this email address: only a person signed in with it can redeem the link. |
+| `role` | body | "admin" \| "builder" \| "editor" | no | The role the person joins with. Default editor. |
 
 ### `list_organization_invites`
 
@@ -187,6 +188,39 @@ Revoke an Organization invite by id (from create_organization_invite or list_org
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `invite_id` | path | string | yes | Invite id from create_organization_invite or list_organization_invites. |
+
+### `list_organization_members`
+
+`GET /api/v1/organization/members`
+
+Permission: `read`
+
+List the Organization's members: id, email, display_name, role and joined_at, owners first. Roles: owner (everything, including the organization itself), admin (members, publishing, domains, keys and design on every site), builder (structure, design, templates and the organization collection on every site; no members, billing or publishing connections) and editor (pages and content). Requires an organization API key, or a personal connection of an owner or administrator.
+
+### `update_organization_member_role`
+
+`PATCH /api/v1/organization/members/{member_id}`
+
+Permission: `admin`
+
+Change a member's role (owner, admin, builder or editor). Roles: owner (everything, including the organization itself), admin (members, publishing, domains, keys and design on every site), builder (structure, design, templates and the organization collection on every site; no members, billing or publishing connections) and editor (pages and content). Only an owner (a personal connection of one) makes someone an owner or changes an owner's role; the last owner cannot be demoted (409 last_owner). An organization API key acts as an administrator. Confirm with the user first.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `member_id` | path | string | yes | Member id from list_organization_members. |
+| `role` | body | "owner" \| "admin" \| "builder" \| "editor" | yes |  |
+
+### `remove_organization_member`
+
+`DELETE /api/v1/organization/members/{member_id}`
+
+Permission: `admin`
+
+Remove a member from the Organization: their access to its sites ends at once. Only an owner removes an owner, and the last owner cannot be removed (409 last_owner). Confirm with the user first.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `member_id` | path | string | yes | Member id from list_organization_members. |
 
 ### `read_organization_ai_settings`
 
@@ -638,7 +672,7 @@ Read one block template, including its block tree.
 
 Permission: `write`
 
-Save a block template: a section starter that editors and agents insert as an independent copy. Pass `from: { page_id, block_id }` to save a block from a page (its draft), or `blocks`. Prefer templates that use named styles (style_id, part_styles) over one-off values, so copies stay consistent. Templates belong to the site, not a branch.
+Save a block template: a section starter that editors and agents insert as an independent copy. Pass `from: { page_id, block_id }` to save a block from a page (its draft), or `blocks`. Prefer templates that use named styles (style_id, part_styles) over one-off values, so copies stay consistent. The answer's design_findings lists hard-coded colours and font families (not blocking) with the palette or font role to use instead; `replacement` gives the exact field change when one role matches, which update_block_template applies by sending the changed blocks. Templates belong to the site, not a branch.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -654,7 +688,7 @@ Save a block template: a section starter that editors and agents insert as an in
 
 Permission: `write`
 
-Rename a block template, change its description, or replace its blocks. Pages that already inserted it do not change.
+Rename a block template, change its description, or replace its blocks. Pages that already inserted it do not change. Answers with design_findings, as save_block_template.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -890,6 +924,143 @@ Permission: `read`
 
 Discover what the site-template renderer supports for this site. Returns a manifest of feature flags (blocks-mode, x-include, content-type routes, custom block scripts, dry-run deploys, etc.) plus template_capabilities_version + the core block type ids. Call this when you're about to do something structural (set route_template on a content type, switch a page to blocks-mode, install a custom block type) and want to feature-detect rather than guess. The manifest is platform-wide today; per-site custom templates land later.
 
+## Site: Clipboard
+
+### `copy_blocks`
+
+`POST /api/v1/sites/{siteId}/clipboard/copy`
+
+Permission: `read`
+
+Copy blocks of a page's draft (with everything inside them) to a clipboard, as Cmd/Ctrl+C does in the block editor. Returns { clipboard, count: { top, total }, warnings }: clipboard is a JSON text marked "typeroll_clipboard" that holds the blocks in page order with the styles, site block types and free global blocks they use; media stay at their addresses. Pass clipboard unchanged to paste_blocks on this or another site. A person can paste the same text in the block editor with Cmd/Ctrl+V. Writes nothing.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `page_id` | body | string | yes |  |
+| `block_ids` | body | string[] | yes | Ids of the blocks to copy (from read_page); a block inside another listed block comes with it. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `paste_blocks`
+
+`POST /api/v1/sites/{siteId}/clipboard/paste`
+
+Permission: `write`
+
+Paste blocks from copy_blocks (or text a person copied in the block editor) into a page's draft, with new block ids: after after_block_id (in that block's parent or slot when it is nested), or at position (top level, or in parent_id / slot_index); at the end by default. Returns { report, page: { id, added_ids, blocks }, mode (same_site | other_site), media: { copied, reused, left_out, kept_external }, message }; save the page to publish the change. Into another site, the styles the blocks use are created there, never mapped to "nearest" styles: one the site has with another definition is created under a new id (hero-2, "Hero (imported)") and the pasted blocks are rewritten to it; an identical one is reused. Site block types and free global blocks follow the same rule, app blocks reconnect to the app when the site has it installed, and links to the source site's pages become plain addresses. Each media file is copied into the site's Media library only when this connection may read the site it came from (an organization key reads the organization's sites, a site key only its own); a private file it cannot read is left out with a warning. Into the same site the blocks are placed as they are.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `clipboard` | body | string | yes | The clipboard text from copy_blocks, unchanged. |
+| `page_id` | body | string | yes |  |
+| `after_block_id` | body | string | no |  |
+| `position` | body | integer | no |  |
+| `parent_id` | body | string \| null | no |  |
+| `slot_index` | body | integer | no |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+## Site: Collection
+
+### `list_collection_entries`
+
+`GET /api/v1/sites/{siteId}/collection`
+
+Permission: `read`
+
+List the organization collection: { entries: [{ id, kind (section | block_template | page_template | global_block | block_type | package), name, description, category, preview_url, languages, source ({ type: site | package | builtin | app, publisher, verified, extension_id }), read_only, updated_at, summary: { block_count, top_level_types, styles, block_types, media } }] }. The collection belongs to the site's organization and is visible to its owners, administrators and builders; a client given one site through a share never sees it (404), nor does a site-scoped key. Typeroll's built-in starters are listed as read-only entries. Insert an entry with insert_from_collection.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `read_collection_entry`
+
+`GET /api/v1/sites/{siteId}/collection/{entry_id}`
+
+Permission: `read`
+
+Read one collection entry with its whole package (blocks, styles, block types, global blocks, media list).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `entry_id` | path | string | yes | Entry id from list_collection_entries. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `save_to_collection`
+
+`POST /api/v1/sites/{siteId}/collection/save`
+
+Permission: `write`
+
+Save one of this site's block templates (kind "section" or "block_template"; the template's own kind decides which), page templates, free global blocks or block types to the organization collection, with the styles, block types, global blocks and media it uses. Returns 201 { entry, warnings }. The collection belongs to the site's organization and is visible to its owners, administrators and builders; a client given one site through a share never sees it (404), nor does a site-scoped key. Typeroll's built-in starters are listed as read-only entries.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | body | "section" \| "block_template" \| "page_template" \| "global_block" \| "block_type" | yes |  |
+| `id` | body | string | yes | The site's template, global block or block type id. |
+| `name` | body | string | no |  |
+| `description` | body | string | no |  |
+| `category` | body | string | no |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `add_package_to_collection`
+
+`POST /api/v1/sites/{siteId}/collection/import`
+
+Permission: `write`
+
+Add a Typeroll package (.typeroll) to the organization collection without changing the site. A collection package becomes one entry per block template, page template, free global block and block type, each with what it depends on; a site package is kept whole as one entry of kind "package". Its menus, design, settings pages and font files are not entries. The source package, publisher and verified signature are recorded. Returns 201 { entries, warnings }.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `data_base64` | body | string | no | The .typeroll file, base64-encoded (at most 32 MB). Send this or source_url. |
+| `source_url` | body | string | no | An https:// address to download the package from (up to 200 MB). |
+
+### `insert_from_collection`
+
+`POST /api/v1/sites/{siteId}/collection/{entry_id}/insert`
+
+Permission: `write`
+
+Insert a collection entry into this site. target "library" adds the block template, page template, global block or block type (a built-in header or footer replaces the site's own; a whole package imports its content). target "page" places a section's, block template's or free global block's blocks in the page's draft: after after_block_id (in that block's parent or slot when it is nested), or at position (top level, or in parent_id / slot_index); at the end by default. Returns { report, page?: { id, added_ids, blocks } }; save the page to publish the change. Inserting is a package import: every style the entry uses is created on the site, never mapped to a "nearest" style; a differing style with the same id is created under a new id (hero-2, "Hero (imported)") and the inserted content is rewritten to it. Block types and global blocks follow the same rule; media is copied into the site's Media library.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `entry_id` | path | string | yes | Entry id from list_collection_entries. |
+| `target` | body | "library" \| "page" | no |  |
+| `page_id` | body | string | no | Required for target "page". |
+| `after_block_id` | body | string | no |  |
+| `position` | body | integer | no |  |
+| `parent_id` | body | string \| null | no |  |
+| `slot_index` | body | integer | no |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `update_collection_entry`
+
+`PATCH /api/v1/sites/{siteId}/collection/{entry_id}`
+
+Permission: `write`
+
+Change a collection entry's name, description or category (an empty description or category removes it). Built-in entries are read-only.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `entry_id` | path | string | yes | Entry id from list_collection_entries. |
+| `name` | body | string | no |  |
+| `description` | body | string | no |  |
+| `category` | body | string | no |  |
+
+### `delete_collection_entry`
+
+`DELETE /api/v1/sites/{siteId}/collection/{entry_id}`
+
+Permission: `write`
+
+Remove an entry from the organization collection, and the stored files no other entry uses. Sites it was inserted into keep their copies. Built-in entries cannot be removed. Confirm with the user first.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `entry_id` | path | string | yes | Entry id from list_collection_entries. |
+
 ## Site: Composition starters
 
 ### `get_composition_starter`
@@ -1106,7 +1277,7 @@ Status of a single deploy job. Optional top-level build_progress reports the exa
 
 Permission: `read`
 
-Read-only design audit of saved Pages, partials, page templates, custom block types, styles and custom CSS in the selected Version. Lists hardcoded colours, typography and spacing with exact paths and token suggestions. exact_replacements is a dry-run plan for unambiguous direct block hex matches; never apply ambiguous roles or CSS automatically. css_findings lists custom CSS that works against the theme (heavy !important use, fonts not in the theme, theme fonts loaded twice, a first-section background image set in CSS, rules on platform block classes), each with the Style, token or block setting that replaces it. Does not block launch. Unsaved working copies are excluded.
+Read-only design audit of saved Pages, partials, page templates, block templates, custom block types, styles and custom CSS in the selected Version. Lists hardcoded colours, typography and spacing with exact paths and token suggestions. exact_replacements is a dry-run plan for unambiguous direct block hex matches; never apply ambiguous roles or CSS automatically. css_findings lists custom CSS that works against the theme (heavy !important use, fonts not in the theme, theme fonts loaded twice, a first-section background image set in CSS, rules on platform block classes), each with the Style, token or block setting that replaces it. Does not block launch. Unsaved working copies are excluded.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -1343,6 +1514,45 @@ Issue a single-use, short-lived launch grant for one of the Extension's admin pa
 | --- | --- | --- | --- | --- |
 | `installation_id` | path | string | yes |  |
 | `page_id` | body | string | yes | Admin page id from the installation manifest. |
+
+## Site: Fonts
+
+### `search_fonts`
+
+`GET /api/v1/sites/{siteId}/fonts/catalog`
+
+Permission: `read`
+
+Search the font catalog (250 open-licence Google Fonts families with their weights, italics, variable weight axis and extended Latin support) and the site's own families: uploaded files (`library`) and font services (`services`), matching the same query. Exact names rank first, then names starting with the query. Use it before set_site_fonts to check a family exists and has the weights the design needs. Swedish, Norwegian, Danish, Finnish and German are covered by every catalog family; latin_ext adds Polish, Czech, Turkish and more. Where a family loads from, in order: the site's Fonts library (uploaded files, upload_font), a font service in fonts.services (Adobe Fonts kit, Bunny Fonts or Fontshare stylesheet, loaded from their CDN), "system" (the device's own fonts, no download), and otherwise Google Fonts. Google families are self-hosted by default (fonts.delivery "self_hosted": the files are copied into the published site, no request to Google), or loaded from the Google Fonts CDN with delivery "google".
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `query` | query | string | no | Part of a family name, e.g. "grotesk" or "Playfair". |
+| `category` | query | "sans" \| "serif" \| "display" \| "handwriting" \| "mono" \| "sans" \| "serif" \| "display" \| "handwriting" \| "mono"[] | no |  |
+| `variable` | query | boolean | no | Only variable families (one file covers every weight). |
+| `italic` | query | boolean | no | Only families with italics. |
+| `latin_ext` | query | boolean | no | Only families with the extended Latin subset. |
+| `limit` | query | integer | no | Catalog results to return (default 50). |
+
+### `upload_font`
+
+`POST /api/v1/sites/{siteId}/fonts`
+
+Permission: `admin`
+
+Add a font file to the site's Fonts library (not the media library), so a role can use its family with set_site_fonts. WOFF2, WOFF, TTF or OTF up to 10 MB, one font per file (no .ttc collections); anything but WOFF2 is converted to WOFF2 and the original kept. Family, weight and style default from the file; pass them to correct the file's names. A variable font covers a weight range ("100-900"). Upload one file per style (regular, italic) and, for static fonts, per weight. licence_confirmed must be true and means the user confirmed the font's licence allows use on this website (a webfont or web licence; most desktop licences do not include it). Ask the user before uploading; never assume it. It is stored with who confirmed it and when. Send the file as data_base64 with filename, or as source_url (https; downloaded by Typeroll). Requires admin permission. The library belongs to the site, not to a branch. Adobe Fonts cannot be uploaded (its licence does not allow self-hosting): add the kit with set_site_fonts services instead.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `filename` | body | string | no | The file name, e.g. "BrandSans-Regular.woff2". Required with data_base64. |
+| `data_base64` | body | string | no | The file bytes, base64-encoded (a data: URL prefix is allowed). |
+| `source_url` | body | string | no | An https:// URL to download the file from, instead of data_base64. |
+| `family` | body | string | no | The family name the roles use. Defaults to the name in the file. |
+| `weight` | body | integer \| string | no | 400, or a range such as "100-900" for a variable font. Defaults to the file's weight. |
+| `style` | body | "normal" \| "italic" | no | Defaults to the file's style. |
+| `category` | body | "sans" \| "serif" | no | Chooses the metric-matched fallback shown while the font loads (Arial or Times New Roman). Defaults to sans. |
+| `licence_confirmed` | body | boolean | yes | true: the user confirmed the licence allows using this font on this website. |
+| `licence_note` | body | string | no | Where the licence comes from, e.g. "Web licence, order 1234". |
 
 ## Site: Form capabilities
 
@@ -1836,6 +2046,93 @@ Delete a media item's metadata. (R2 object cleanup is a separate ops task.)
 | --- | --- | --- | --- | --- |
 | `media_id` | path | string | yes |  |
 
+## Site: Menus
+
+### `list_menus`
+
+`GET /api/v1/sites/{siteId}/menus`
+
+Permission: `read`
+
+List the site's menus (WordPress-style menus with locations): each with its id, name, locations, auto_add_pages, items and updated_at. Check this before building a header or footer: a new site starts with a `primary` menu (location primary, Home, auto_add_pages on) and a `footer` menu. A menu has an id, a name, optional `locations` and a tree of `items` at most 3 levels deep (top level, submenu, and a third level that makes a wide submenu in columns). Item types: `page` (page_id; links by page id, so the label and address follow renames and moves, and an unpublished or deleted page drops out with a warning; `label` overrides the title), `url` (href and label; an external address, a path or an #anchor), `children` (page_id; lists that page's published child pages automatically: with a label they form a submenu under it, without one they sit in place) and `heading` (label only, no link; a column title in a wide submenu). Any item may set `description` (a short line in submenus), `icon` and `link_rel`. Items with `children` get a submenu. Locations: `primary` (header), `footer` and `mobile`, or another short lowercase name; one menu per location per site. `auto_add_pages: true` appends new top-level published pages (other than the home page) to the end automatically. To show a menu, use a `core/navigation_links` block with data { source: "menu", menu: "location:primary" } (or a menu id) and optionally `submenus`: auto (dropdown in a row, accordion in a column and the mobile drawer), dropdown, accordion, expanded or none. It needs render version 15 (read_site_settings → render.version; raise it with tr-upgrade-rendering).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `read_menu`
+
+`GET /api/v1/sites/{siteId}/menus/{menu_id}`
+
+Permission: `read`
+
+Read one menu with its whole item tree and updated_at. Pass that updated_at as expected_updated_at to update_menu so a save made in between is not overwritten.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | yes |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `update_menu`
+
+`PUT /api/v1/sites/{siteId}/menus/{menu_id}`
+
+Permission: `write`
+
+Create a menu or replace a whole menu (name, locations, auto_add_pages and the full item tree). To change an existing menu: read_menu, edit the tree, and send it back with expected_updated_at set to the updated_at you read; a save by someone else in between returns 409. Without menu_id, or with a menu_id that does not exist yet, the menu is created. Every save is validated as a whole and keeps the previous menu as a revision; an invalid menu returns `errors` with the path of each problem (for example items[0].href). Link pages with type "page" and their page_id (from list_pages), not with url items, so renames follow; use a "children" item for an automatic submenu of a page's child pages. Menus are saved directly (no working copy) and reach the live site with the next publication. To add one item, add_menu_item is simpler. A menu has an id, a name, optional `locations` and a tree of `items` at most 3 levels deep (top level, submenu, and a third level that makes a wide submenu in columns). Item types: `page` (page_id; links by page id, so the label and address follow renames and moves, and an unpublished or deleted page drops out with a warning; `label` overrides the title), `url` (href and label; an external address, a path or an #anchor), `children` (page_id; lists that page's published child pages automatically: with a label they form a submenu under it, without one they sit in place) and `heading` (label only, no link; a column title in a wide submenu). Any item may set `description` (a short line in submenus), `icon` and `link_rel`. Items with `children` get a submenu. Locations: `primary` (header), `footer` and `mobile`, or another short lowercase name; one menu per location per site. `auto_add_pages: true` appends new top-level published pages (other than the home page) to the end automatically. To show a menu, use a `core/navigation_links` block with data { source: "menu", menu: "location:primary" } (or a menu id) and optionally `submenus`: auto (dropdown in a row, accordion in a column and the mobile drawer), dropdown, accordion, expanded or none. It needs render version 15 (read_site_settings → render.version; raise it with tr-upgrade-rendering).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | no | The menu to replace or create. Omit to create a menu whose id is derived from the name. |
+| `name` | body | string | yes | Shown in the portal, e.g. "Main menu". |
+| `locations` | body | string[] | no | primary, footer, mobile or another short lowercase name. Omit to keep none; [] clears them. |
+| `auto_add_pages` | body | boolean | no | Append new top-level published pages automatically. |
+| `items` | body | object[] | yes | The whole item tree, at most 3 levels deep and 200 items. |
+| `expected_updated_at` | body | string | no | The updated_at from read_menu or list_menus. Required to replace an existing menu. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `add_menu_item`
+
+`GET /api/v1/sites/{siteId}/menus/{menu_id}`
+
+Permission: `write`
+
+Append one item to a menu, at the top level or under a parent item (parent_item_id), and save it. Reads the menu and saves it with its updated_at, so a concurrent save is refused with 409 rather than lost. Example: { menu_id: "primary", item: { type: "page", page_id: "about" } } or a submenu entry { menu_id: "primary", parent_item_id: "services", item: { type: "url", href: "https://shop.example.com", label: "Shop" } }. Use type "page" with a page_id (it follows renames), "children" for the page's child pages as an automatic submenu, "url" for other addresses and "heading" for a column title. Menus are at most 3 levels deep. Returns the saved menu and the new item's id. To restructure or remove items, use read_menu and update_menu.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | yes |  |
+| `item` | query | object | yes |  |
+| `parent_item_id` | query | string | no | Put the item in this item's submenu (as its last child). Omit for the top level. |
+| `position` | query | integer | no | Index to insert at among its siblings. Default: at the end. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `delete_menu`
+
+`DELETE /api/v1/sites/{siteId}/menus/{menu_id}`
+
+Permission: `write`
+
+Delete a menu. A navigation block that shows it (by id or by its location) then renders an empty list until another menu fills the location. Check where it is shown first with find_menu_usage. Takes effect at the next publication.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | yes |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `find_menu_usage`
+
+`GET /api/v1/sites/{siteId}/menus/{menu_id}/usage`
+
+Permission: `read`
+
+Where a menu is shown: the global blocks (header, footer, others), pages and page templates whose core/navigation_links block has source "menu" and names this menu by id or by one of its locations (location:primary), saved or in a draft. Read it before deleting a menu or moving its location.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `menu_id` | path | string | yes |  |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
 ## Site: Migration preflight
 
 ### `get_migration_readiness`
@@ -2148,6 +2445,52 @@ Revoke a pending proposal and its private review link. Accepted Page content rem
 | --- | --- | --- | --- | --- |
 | `proposal_id` | body | string | yes |  |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+## Site: Packages
+
+### `export_package`
+
+`POST /api/v1/sites/{siteId}/packages/export`
+
+Permission: `write`
+
+Export part of the site, or the whole site, as a Typeroll package (.typeroll) and get a signed download address valid for one hour (download_url, filename, bytes, sha256, expires_at, warnings). A package belongs to no organization: it carries no organization or site ids, and its media files (and font files the author may pass on) travel inside it, so anyone can import it into their own site, for example a template pack bought from someone else. Media references in content become `typeroll-media:<id>` tokens and app blocks are named by their app, not the site's installation. selection.kind "collection" holds what you choose: block_templates, page_templates, global_blocks (free global blocks) and block_types as id lists or "all", styles "used" (default) or "all", design (colours, typography, scales, content widths, font roles and element styles), menus, site_fields (definitions) and demo_media (media ids to mark as demo content the buyer replaces). Global blocks, block types and styles the content uses come along by themselves; links to this site's pages become plain addresses. kind "site" holds everything (pages, header and footer, menus, site fields with values, every style and the design) and requires admin. fonts: { families, redistributable_confirmed: true } adds uploaded font files only when the user confirmed their licence allows passing them on; catalog families need no files. Requires write permission.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `selection` | body | object | yes |  |
+| `meta` | body | object | yes |  |
+| `version` | body | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `inspect_package`
+
+`POST /api/v1/sites/{siteId}/packages/inspect`
+
+Permission: `read`
+
+Read a Typeroll package and show what importing it into the site would do, without changing anything: the package (name, version, author, licence, counts), its signature (verified with the publisher when a trusted publisher signed it; unsigned or unknown otherwise), the plan (per style, block type, template, global block, menu, page and media file: create, reuse, rename or replace, with the id maps), warnings, errors that would stop the import, and needs (admin, font_licence). Styles are never mapped to the site's "nearest" styles: every style the imported content uses is created on the site. A style is reused only when the site has one with the same id and the same definition; a differing one is created under a new id (hero-2, named "Hero (imported)") and the imported content is rewritten to it. Block types, templates, global blocks, menus and pages that collide get new ids the same way. options.design: "content" (default: the blocks and the styles they use), "styles" (also the package's other class styles) or "full" (also the element styles body/h1–h6/link replacing the site's, colours, typography, scales, content widths and font roles; requires admin). Font files in the package are added to the Fonts library only with options.font_licence_confirmed: true, which means the user confirmed the font licence allows use on this site; ask the user, never assume it. options.fonts: false leaves the fonts out. Adobe Fonts, Bunny Fonts and Fontshare kits never transfer: only the family names, with a warning. Run it before import_package and show the user the plan.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `data_base64` | body | string | no | The .typeroll file, base64-encoded (at most 32 MB). Send this or source_url. |
+| `source_url` | body | string | no | An https:// address to download the package from (up to 200 MB), instead of data_base64. |
+| `options` | body | object | no |  |
+| `version` | body | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `import_package`
+
+`POST /api/v1/sites/{siteId}/packages/import`
+
+Permission: `write`
+
+Import a Typeroll package into the site: media first (into the Media library, reusing files with the same bytes; demo files are marked for replacement before publication), then fonts, block types, design and styles, global blocks, block templates (with where they came from), page templates, menus, site fields and, for a site package, pages. Returns a report of what was created, reused, renamed and replaced. Styles are never mapped to the site's "nearest" styles: every style the imported content uses is created on the site. A style is reused only when the site has one with the same id and the same definition; a differing one is created under a new id (hero-2, named "Hero (imported)") and the imported content is rewritten to it. Block types, templates, global blocks, menus and pages that collide get new ids the same way. options.design: "content" (default: the blocks and the styles they use), "styles" (also the package's other class styles) or "full" (also the element styles body/h1–h6/link replacing the site's, colours, typography, scales, content widths and font roles; requires admin). Font files in the package are added to the Fonts library only with options.font_licence_confirmed: true, which means the user confirmed the font licence allows use on this site; ask the user, never assume it. options.fonts: false leaves the fonts out. Adobe Fonts, Bunny Fonts and Fontshare kits never transfer: only the family names, with a warning. Requires write permission; admin for design "full" or when the import adds fonts or settings pages. The whole plan is checked before anything is written; a write that fails part-way answers package_import_partial with the report of what was written.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `data_base64` | body | string | no | The .typeroll file, base64-encoded (at most 32 MB). Send this or source_url. |
+| `source_url` | body | string | no | An https:// address to download the package from (up to 200 MB), instead of data_base64. |
+| `options` | body | object | yes |  |
+| `version` | body | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ## Site: Page templates
 
@@ -3254,6 +3597,7 @@ Patch site settings, including responsive breakpoints for block layouts and visi
 | `robots_txt` | body | string | no |  |
 | `ai_crawler_policy` | body | "allow_all" \| "no_training" \| "block_all" \| null | no | AI crawler preference, written as Cloudflare-compatible Content Signals in robots.txt and the Content-Signal response header. `allow_all` (default, writes nothing); `no_training` (search=yes, ai-input=yes, ai-train=no, and Disallow groups for training-only crawlers such as GPTBot, ClaudeBot and Google-Extended); `block_all` (also disallows AI search and user agents such as OAI-SearchBot, ChatGPT-User and PerplexityBot). Googlebot, Bingbot and Applebot are never blocked. An explicit group for an agent in robots_txt wins. A Cloudflare zone AI bot policy is enforced at the edge and can override this; `null` resets to the default. |
 | `header_behavior` | body | "static" \| "sticky" \| "reveal_on_scroll_up" \| null | no | Site header while scrolling. `static` (default, writes nothing) scrolls with the page; `sticky` stays at the top; `reveal_on_scroll_up` hides while scrolling down and returns as a compact header on the first scroll up, with the navigation menu toggle at every width. The compact state carries `data-header-compact` for site CSS. null clears. |
+| `time_zone` | body | string \| null | no | IANA time zone that decides which day and hour it is at the business, for "today", "open now" and dated snippets; times typed into opening hours are never converted. Every site has one: new sites get the usual zone for their language (sv → Europe/Stockholm, nb → Europe/Oslo, da → Europe/Copenhagen, fi → Europe/Helsinki, en-GB → Europe/London; otherwise Europe/Stockholm). Set it when the business is elsewhere. null resets it to the zone of its language. |
 | `date_format` | body | string \| null | no | How page and card dates read (render version 14), in the page language: `medium` (default, "12 okt. 2026"), `long` ("12 oktober 2026"), `numeric` (the language's numeric order) or `iso` ("2026-10-12"); or a pattern of YYYY, MMMM, MMM, MM, M, DD and D such as "D MMMM YYYY". A Page date block with its own format keeps it. null restores the default. |
 | `motion` | body | "full" \| "reduced" \| null | no | Motion for every visitor (render version 14). `full` (default) plays what each block asks for: entrance animations, carousel autoplay, background videos, moving logo rows and scroll films. `reduced` turns all of them off for everyone; blocks show their still image or content. Visitors whose device asks for reduced motion always get the reduced version. null resets to full. |
 | `content_widths` | body | object \| null | no | The shared content widths in px (render version 14): defaults narrow 672, normal 1040, wide 1280. Sections, containers, heroes, feature rows and calls to action use them, so blocks of the same width line up. Keep narrow ≤ normal ≤ wide; null restores the defaults. |
@@ -3279,6 +3623,27 @@ Patch site settings, including responsive breakpoints for block layouts and visi
 | `social` | body | object | no |  |
 | `cookie_consent` | body | object | no | Native consent banner configuration. Partial updates preserve omitted fields. Script fields execute in visitor browsers and are accepted under the API key authority. |
 | `language_sections` | body | object[] \| null | no | One site, several languages: each section is a language whose pages (Page.language) live under home_path. Pages in a section get its home link in breadcrumbs, a 404 page at &lt;home_path&gt;404.html, and its tagline, fallback description and banner wording. Pages in the site language keep the top-level settings. Replaces the whole list; null or [] clears it. Use template/show_if on page.language in the header and footer for per-language menus. |
+| `handover` | body | object \| null | no | Handing the site over to its editors: a checklist, the start page and an optional structure lock. Replaces the whole object (not merged); null removes it. Needs design rights (an administrator or builder). |
+
+### `set_site_fonts`
+
+`PATCH /api/v1/sites/{siteId}/settings`
+
+Permission: `admin`
+
+Choose the site's fonts. A site chooses one family per role: heading (H1–H6), body (running text), mono (code; no webfont unless set), display (large headings and heroes; unset uses the heading family) and accent (eyebrows and quotes; unset uses the body family). Display and accent take effect from render version 15. Styles and blocks choose a role, never a family, so changing a role restyles every style and block that uses it, and templates follow the site they are inserted into. From render version 15 a publication loads only the weights and italics the site uses (from its styles, block weight settings and bold or italic text), so there is nothing to list for normal use; `load` adds extra weights per role, for example for custom CSS: { body: { weights: [300], italic: [400] } }. Before version 15 every family loads 400–700. Where a family loads from, in order: the site's Fonts library (uploaded files, upload_font), a font service in fonts.services (Adobe Fonts kit, Bunny Fonts or Fontshare stylesheet, loaded from their CDN), "system" (the device's own fonts, no download), and otherwise Google Fonts. Google families are self-hosted by default (fonts.delivery "self_hosted": the files are copied into the published site, no request to Google), or loaded from the Google Fonts CDN with delivery "google". Only the keys you pass change; null clears mono, display, accent, load, delivery or services. Requires admin permission, like update_site_settings. Pass `version` to change a branch instead of main. The response warns about a family that is not in the catalog, the Fonts library or a font service. Check the result with get_preview_link before publishing.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `version` | body | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+| `heading` | body | string | no | A family name, as search_fonts lists it, or "system". |
+| `body` | body | string | no | A family name, as search_fonts lists it, or "system". |
+| `mono` | body | string \| null | no | Code and preformatted text. Without it code uses the system monospace stack; null clears. |
+| `display` | body | string \| null | no | Large headings and heroes (render version 15). null uses the heading family. |
+| `accent` | body | string \| null | no | Eyebrows and quotes (render version 15). null uses the body family. |
+| `load` | body | object \| null | no | Extra weights (and italic weights) to load per role beyond those in use, e.g. { "heading": { "weights": [800] } }. null clears. |
+| `delivery` | body | "self_hosted" \| "google" \| null | no | Google Fonts delivery: self_hosted (default, files copied into the site) or google (Google Fonts CDN). Uploaded and service fonts are unaffected. |
+| `services` | body | object \| object[] \| null | no | Font services whose stylesheet loads from their CDN; replaces the list. Adobe Fonts' licence does not allow self-hosting, so a kit always loads from Adobe (the visitor's browser contacts Adobe; mention it in the privacy policy). null clears. |
 
 ## Site: Shares
 
@@ -3330,6 +3695,102 @@ Revoke a share of this Site (admin permission on the Site). The recipient Organi
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `share_id` | path | string | yes | Share id from list_site_shares. |
+
+## Site: Site fields
+
+### `read_site_fields`
+
+`GET /api/v1/sites/{siteId}/site-fields`
+
+Permission: `read`
+
+Read the site fields: the settings pages (groups with their field definitions), the saved values, updated_at and editable_groups (the groups whose values you may change with your permission). Read this before define_site_fields or update_site_fields and pass its updated_at as expected_updated_at. Site fields are settings pages for the client: a builder defines groups of typed fields once, and the client (an editor) fills in the values without touching pages or design. A group is { id, label, description?, access: "editor" | "admin", fields }. access "editor" (the default) lets anyone who edits content change the values; "admin" only site administrators. Definitions are always site admin. Fields use the content type field model: { name, type, label, required?, help?, placeholder?, default? } with type text, textarea, richtext, boolean (a checkbox, e.g. show_booking), number (min, max), select or multiselect (options), date (2026-11-07), datetime, image, url, email, page_ref, array (a list: fields, item_label, min_items, max_items) or object (a group of fields). Lists and groups nest at most 3 levels. Field names are lowercase_with_underscores and unique across the whole site. Opening hours: an object field with presentation "opening_hours" and exactly this shape (a 7-day week plus dated exceptions such as holidays): {"name":"opening_hours","label":"Opening hours","type":"object","presentation":"opening_hours","fields":[{"name":"days","label":"Week","type":"array","min_items":7,"max_items":7,"item_label":"day","fields":[{"name":"day","label":"Day","type":"select","options":["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]},{"name":"closed","label":"Closed","type":"boolean"},{"name":"opens","label":"Opens","type":"text","placeholder":"09:00"},{"name":"closes","label":"Closes","type":"text","placeholder":"09:00"}]},{"name":"exceptions","label":"Exceptions","type":"array","max_items":60,"item_label":"date","fields":[{"name":"date","label":"Date","type":"date","required":true},{"name":"closed","label":"Closed","type":"boolean"},{"name":"opens","label":"Opens","type":"text"},{"name":"closes","label":"Closes","type":"text"},{"name":"note","label":"Note","type":"text"}]}]} Its value: { days: [{ day: "monday", opens: "09:00", closes: "17:00" }, …, { day: "sunday", closed: true }], exceptions: [{ date: "2026-12-24", closed: true, note: "Christmas Eve" }] }. Using values on the site: `{{site.fields.name}}` (and `{{#each site.fields.list}}…{{/each}}`) in page templates and block text; the `core/site_field` block shows one value with data { field: "name", format } where format is text, date, number, list, opening_hours_today, opening_hours_week, next_opening or open_now; and the `core/show_if` block shows its children only when its condition holds, e.g. { condition: "site.fields.show_booking" } around a booking calendar. Values reach the live site with the next publication, except for a top-level field defined with `live: true` (any type, but no list inside a list; opening hours qualify): its value is also published as a live file when saved, and the `core/site_field` block then shows the newest value without a publication (see list_snippets).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `define_site_fields`
+
+`PUT /api/v1/sites/{siteId}/site-fields`
+
+Permission: `admin`
+
+Replace the site's settings pages (all groups and their field definitions). Needs admin permission on the site. Send every group, including the ones you keep: a group or field left out is removed, and so is its value. Renaming a field is a removal plus an addition, so its value is lost; values that no longer fit a changed field type are dropped too (listed in dropped_values). Example: groups [{ id: "booking", label: "Booking", fields: [{ name: "show_booking", type: "boolean", label: "Show the booking calendar" }, { name: "delivery_days", type: "number", label: "Delivery days right now", min: 0 }] }, { id: "visit", label: "Visit us", fields: [{ name: "visiting_address", type: "textarea", label: "Visiting address", required: true }, &lt;opening hours field&gt; ] }]. Every save keeps the previous document as a revision; invalid definitions return `errors` with the path of each problem. Then fill in values with update_site_fields. Site fields are settings pages for the client: a builder defines groups of typed fields once, and the client (an editor) fills in the values without touching pages or design. A group is { id, label, description?, access: "editor" | "admin", fields }. access "editor" (the default) lets anyone who edits content change the values; "admin" only site administrators. Definitions are always site admin. Fields use the content type field model: { name, type, label, required?, help?, placeholder?, default? } with type text, textarea, richtext, boolean (a checkbox, e.g. show_booking), number (min, max), select or multiselect (options), date (2026-11-07), datetime, image, url, email, page_ref, array (a list: fields, item_label, min_items, max_items) or object (a group of fields). Lists and groups nest at most 3 levels. Field names are lowercase_with_underscores and unique across the whole site. Opening hours: an object field with presentation "opening_hours" and exactly this shape (a 7-day week plus dated exceptions such as holidays): {"name":"opening_hours","label":"Opening hours","type":"object","presentation":"opening_hours","fields":[{"name":"days","label":"Week","type":"array","min_items":7,"max_items":7,"item_label":"day","fields":[{"name":"day","label":"Day","type":"select","options":["monday","tuesday","wednesday","thursday","friday","saturday","sunday"]},{"name":"closed","label":"Closed","type":"boolean"},{"name":"opens","label":"Opens","type":"text","placeholder":"09:00"},{"name":"closes","label":"Closes","type":"text","placeholder":"09:00"}]},{"name":"exceptions","label":"Exceptions","type":"array","max_items":60,"item_label":"date","fields":[{"name":"date","label":"Date","type":"date","required":true},{"name":"closed","label":"Closed","type":"boolean"},{"name":"opens","label":"Opens","type":"text"},{"name":"closes","label":"Closes","type":"text"},{"name":"note","label":"Note","type":"text"}]}]} Its value: { days: [{ day: "monday", opens: "09:00", closes: "17:00" }, …, { day: "sunday", closed: true }], exceptions: [{ date: "2026-12-24", closed: true, note: "Christmas Eve" }] }. Using values on the site: `{{site.fields.name}}` (and `{{#each site.fields.list}}…{{/each}}`) in page templates and block text; the `core/site_field` block shows one value with data { field: "name", format } where format is text, date, number, list, opening_hours_today, opening_hours_week, next_opening or open_now; and the `core/show_if` block shows its children only when its condition holds, e.g. { condition: "site.fields.show_booking" } around a booking calendar. Values reach the live site with the next publication, except for a top-level field defined with `live: true` (any type, but no list inside a list; opening hours qualify): its value is also published as a live file when saved, and the `core/site_field` block then shows the newest value without a publication (see list_snippets).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `groups` | body | object[] | yes | Every settings page of the site, at most 20 with 200 fields in all. |
+| `expected_updated_at` | body | string \| null | no | The updated_at from read_site_fields ("" or null when it was null: nothing saved yet). A save made in between is refused with 409. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+### `update_site_fields`
+
+`PATCH /api/v1/sites/{siteId}/site-fields`
+
+Permission: `write`
+
+Change site field values: send only the fields to change, by name; others keep their values, and null removes one. Example: { values: { show_booking: false, delivery_days: 3, opening_hours: { days: [...7 days], exceptions: [{ date: "2026-12-24", closed: true }] } } }. An object or list value is replaced as a whole. Values in groups with access "admin" need admin permission; the rest need write. Saved directly (not a draft), with the previous values kept as a revision; live at the next publication. Invalid values return `errors` with their paths. For the field model and how values show on the site, see read_site_fields.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `values` | body | object | yes | Field name → new value; null removes the value. |
+| `expected_updated_at` | body | string \| null | no | The updated_at from read_site_fields ("" or null when it was null: nothing saved yet). A save made in between is refused with 409. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+## Site: Snippets
+
+### `list_snippets`
+
+`GET /api/v1/sites/{siteId}/snippets`
+
+Permission: `read`
+
+List the site's live snippets with their content and updated_at, and `live.base_url`: where their public files are served (null with a reason when the site has no media host, so snippets only change at publication). A live snippet is content outside the build: saving it updates the live site within about a minute, without a publication or a rebuild, so use it for content that changes often (today's lunch, a notice, the current waiting time). Snippets belong to the site (not to a branch), at most 100 per site and 64 KB each. Shape: { id, name, kind, format?, content?, entries?, fallback? }. kind "html": content is HTML, sanitized like page content when saved. kind "text": content is plain text, escaped when shown. kind "dated": entries keyed by date or weekday, and the page shows today's entry in the site's time zone (read_site_settings → time_zone), chosen in the visitor's browser: { kind: "dated", format: "html" | "text", entries: [{ weekday: "monday", content: "…" }, …, { date: "2026-12-24", content: "Closed" }], fallback: "No lunch today" }. A date entry wins over a weekday entry; fallback shows on a day without one. For "today's lunch", write the whole week once (one entry per weekday, plus dated exceptions) instead of saving every day; the file stays unchanged between writes. To show a snippet on a page, place a `core/snippet` block with data { snippet: "&lt;snippet id&gt;" } where it should appear: the page carries the value of the latest publication (for search engines and without script) and the browser then shows the newest. Placing or moving the block is a page edit that needs a publication; changing the snippet afterwards does not. A site field defined with `live: true` (define_site_fields) works the same way for a single value: the `core/site_field` block shows its newest value without publishing. Every save answers `live`: { published: true, url } when the public file was written, or { published: false, reason } when the site has no media host that can serve it (the snippet is still saved and shows at the next publication).
+
+### `read_snippet`
+
+`GET /api/v1/sites/{siteId}/snippets/{snippet_id}`
+
+Permission: `read`
+
+Read one live snippet, its updated_at (pass it to update_snippet as expected_updated_at) and live_url, the public file the live site reads. For the model, see list_snippets.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `snippet_id` | path | string | yes | The snippet id: lowercase letters, digits, - and _ (for example "lunch"). |
+
+### `update_snippet`
+
+`PUT /api/v1/sites/{siteId}/snippets/{snippet_id}`
+
+Permission: `write`
+
+Create or replace a whole live snippet; it is live within about a minute, without publishing. Send every field you keep: what is left out is removed. Pass the updated_at from read_snippet as expected_updated_at (or "" to create one that must not exist yet); a save made in between is refused with 409. Example (the week's lunch): { snippet_id: "lunch", name: "Lunch", kind: "dated", format: "html", entries: [{ weekday: "monday", content: "&lt;p&gt;Pea soup and pancakes&lt;/p&gt;" }, …], fallback: "&lt;p&gt;No lunch served today&lt;/p&gt;" }. Then show it with a `core/snippet` block { snippet: "lunch" } if no page shows it yet. A live snippet is content outside the build: saving it updates the live site within about a minute, without a publication or a rebuild, so use it for content that changes often (today's lunch, a notice, the current waiting time). Snippets belong to the site (not to a branch), at most 100 per site and 64 KB each. Shape: { id, name, kind, format?, content?, entries?, fallback? }. kind "html": content is HTML, sanitized like page content when saved. kind "text": content is plain text, escaped when shown. kind "dated": entries keyed by date or weekday, and the page shows today's entry in the site's time zone (read_site_settings → time_zone), chosen in the visitor's browser: { kind: "dated", format: "html" | "text", entries: [{ weekday: "monday", content: "…" }, …, { date: "2026-12-24", content: "Closed" }], fallback: "No lunch today" }. A date entry wins over a weekday entry; fallback shows on a day without one. For "today's lunch", write the whole week once (one entry per weekday, plus dated exceptions) instead of saving every day; the file stays unchanged between writes. To show a snippet on a page, place a `core/snippet` block with data { snippet: "&lt;snippet id&gt;" } where it should appear: the page carries the value of the latest publication (for search engines and without script) and the browser then shows the newest. Placing or moving the block is a page edit that needs a publication; changing the snippet afterwards does not. A site field defined with `live: true` (define_site_fields) works the same way for a single value: the `core/site_field` block shows its newest value without publishing. Every save answers `live`: { published: true, url } when the public file was written, or { published: false, reason } when the site has no media host that can serve it (the snippet is still saved and shows at the next publication).
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `snippet_id` | path | string | yes | The snippet id: lowercase letters, digits, - and _ (for example "lunch"). |
+| `name` | body | string | yes | The name editors see, for example "Today's lunch". |
+| `kind` | body | "html" \| "text" \| "dated" | yes |  |
+| `format` | body | "html" \| "text" | no | dated snippets: whether entries are HTML (default) or plain text. |
+| `content` | body | string | no | html and text snippets: the content. |
+| `entries` | body | object[] | no | dated snippets: entries by weekday or date, at most 400. |
+| `fallback` | body | string | no | dated snippets: shown on a day without an entry. |
+| `expected_updated_at` | body | string \| null | no | The updated_at you read; "" or null for a new snippet. |
+
+### `delete_snippet`
+
+`DELETE /api/v1/sites/{siteId}/snippets/{snippet_id}`
+
+Permission: `write`
+
+Delete a live snippet and its public file. A `core/snippet` block that still shows it keeps the value of the latest publication until the page is published again; remove the block too. Pass expected_updated_at to refuse deleting a snippet changed since you read it.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `snippet_id` | path | string | yes | The snippet id: lowercase letters, digits, - and _ (for example "lunch"). |
+| `expected_updated_at` | query | string | no | The updated_at you read. |
 
 ## Site: Styles
 
@@ -3627,7 +4088,7 @@ List accessible Sites without changing them. Use the returned IDs for site_id or
 
 Permission: `write`
 
-Create + bootstrap a NEW site in your org. Seeds default settings, a published Home page, and a published header/footer that link only to it, so it renders and can be published immediately. Requires an ORG-scoped key (a site-scoped key is bound to one existing site and can't mint new ones; you'll get a 403). Accepts exactly `name`, optional `id`, `domain` and `language`; any other field is refused. Without `id` the site id is the kebab-case `name` (with a random suffix when taken); with `id` that exact id is used, or 409 site_id_taken. `language` is the site's BCP 47 content language (e.g. "nl-BE"; default "en"), saved at creation so &lt;html lang&gt; is right from the first build. Pass `domain` to kick off the "point your DNS" flow (never written as a live domain). Returns the new site's id, language + urls — use that id as `site_id`/`TYPEROLL_SITE_ID` for follow-up calls. After creating, run list_skills → read_skill tr-new-site to bootstrap the design.
+Create + bootstrap a NEW site in your org. Blank (default): seeds default settings, a published Home page, and a published header/footer that link only to it, so it renders and can be published immediately. Requires an ORG-scoped key (a site-scoped key is bound to one existing site and can't mint new ones; you'll get a 403). Without `id` the site id is the kebab-case `name` (with a random suffix when taken); with `id` that exact id is used, or 409 site_id_taken. `language` is the site's BCP 47 content language (e.g. "nl-BE"; default: the template's language, else "en"), saved at creation so &lt;html lang&gt; is right from the first build. Pass `domain` to kick off the "point your DNS" flow (never written as a live domain). START FROM A TEMPLATE with at most one of: `from_site_id` (another site of YOUR organization, optionally `from_site_version`; sites shared in from other organizations are refused with 404), `from_collection_entry` (a `package` entry of the organization collection, see list_collection_entries), `from_package_base64` or `from_package_url` (a whole-site .typeroll package; a package belongs to no organization, so a bought one works). Copied: pages (block and HTML pages and records of every content type), header, footer and global blocks, menus, styles (created with their ids, never mapped to "nearest" ones), block types, block and page templates, site fields with values, content types, forms (without their actions) and snippets, and media into the new site's own library (demo images stay marked for replacement; readiness lists them). Never copied: domains, publishing and hosting settings, API keys, shares, app installations (listed in warnings: install them on the new site), form actions and credentials, integrations, custom/tracking scripts, robots.txt, noindex switches, redirects, deploy history and revisions. A home page, header, footer and the primary/footer menus are created only where the template has none (started_from.defaults). `design`: "full" (default for a new site: element styles, colours, typography, scales, content widths and font roles), "styles" or "content" (the default look). Font files in the template are added only with `font_licence_confirmed: true` (ask the user whether the font licence allows use on the new site; never assume it), or left out with `fonts: false`; otherwise 400 font_licence_required. A package with an invalid signature is refused (package_signature_invalid); one that is not a whole site answers package_not_a_site. If the import fails the half-created site is removed again (site_create_failed, details.site_removed). Returns the new site's id, language + urls, and with a template `started_from` { kind, source, report, defaults, warnings } — show the warnings to the user. Use the id as `site_id`/`TYPEROLL_SITE_ID` for follow-up calls. After creating a blank site, run list_skills → read_skill tr-new-site to bootstrap the design.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -3635,6 +4096,14 @@ Create + bootstrap a NEW site in your org. Seeds default settings, a published H
 | `id` | body | string | no | Optional site id: 3-48 lowercase letters, digits and "-" (e.g. "acme-studio"). Used exactly; 409 site_id_taken when the organization has it. Default: the kebab-case name. |
 | `language` | body | string | no | Optional site content language as a BCP 47 tag (e.g. "en", "sv", "nl-BE"). Default "en". Drives &lt;html lang&gt;; change it later with update_site_settings. |
 | `domain` | body | string | no | Optional real hostname e.g. "example.com". Starts DNS setup; not set live until DNS verifies. |
+| `from_site_id` | body | string | no | Start as a copy of this site of your organization. REST body: `from: { site_id }`. |
+| `from_site_version` | body | string | no | With from_site_id: copy this version (branch) of the site instead of main. REST body: `from.version`. |
+| `from_collection_entry` | body | string | no | Start from this `package` entry of the organization collection. REST body: `from: { collection_entry }`. |
+| `from_package_base64` | body | string | no | Start from a whole-site .typeroll package, base64-encoded (at most 32 MB). REST body: `from: { package: { data_base64 } }`. |
+| `from_package_url` | body | string | no | Start from a whole-site .typeroll package downloaded from this https:// address (up to 200 MB). REST body: `from: { package: { source_url } }`. |
+| `design` | body | "full" \| "styles" \| "content" | no | With a template: how much of its look to take (default "full"). REST body: `options.design`. |
+| `fonts` | body | boolean | no | With a template and design "full": take its font roles and font files (default true). REST body: `options.fonts`. |
+| `font_licence_confirmed` | body | boolean | no | true: the user confirmed the licence of the template's font files allows use on the new site. REST body: `options.font_licence_confirmed`. |
 
 ### `create_site_and_migrate`
 

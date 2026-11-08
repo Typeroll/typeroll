@@ -11,6 +11,7 @@ import { vstore } from '../../../../../../lib/version-store';
 import { snapshotRevision } from '../../../../../../lib/revisions';
 import { AUTOMATIC_CONVERSION_REFUSAL } from '../../../../../../lib/html-mode';
 import type { Page } from '@typeroll/shared';
+import { structureLockRefusal } from '../../../../../../lib/structure-lock';
 
 export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
@@ -29,6 +30,8 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     return json({ error: 'body.to must be "blocks" or "html"' }, 400);
   }
   if (body.convert) return json({ error: AUTOMATIC_CONVERSION_REFUSAL }, 400);
+  const locked = await structureLockRefusal({ orgId: owner_org_id, siteId: site.id, versionId, canDesign: guard.value.design });
+  if (locked) return locked;
 
   const page = await vstore.page(owner_org_id, site.id, versionId, pageId);
   if (!page) return json({ error: 'Not found' }, 404);

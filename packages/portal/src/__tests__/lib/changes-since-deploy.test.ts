@@ -106,6 +106,14 @@ describe('changes-since-deploy', () => {
     expect(body.changes.every((c) => c.will_deploy)).toBe(true);
   });
 
+  it('includes menus saved after the last deploy; they always ship', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.menu(ORG, SITE, 'main', MAIN_VERSION_ID), { name: 'Main', items: [], updated_at: AFTER });
+    await getStore().setDoc(paths.menu(ORG, SITE, 'old', MAIN_VERSION_ID), { name: 'Old', items: [], updated_at: BEFORE });
+    const body = await call();
+    expect(body.changes).toEqual([expect.objectContaining({ kind: 'menu', id: 'main', will_deploy: true })]);
+  });
+
   it('reports never_deployed when the version has no last_deployed_at', async () => {
     await setup(false);
     const { getStore } = await import('../../lib/datastore');

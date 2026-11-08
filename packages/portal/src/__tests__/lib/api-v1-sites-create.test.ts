@@ -113,7 +113,7 @@ describe('POST /api/v1/sites', () => {
     [{ name: 'X', language: 'nl_BE' }, 'language must be a BCP-47 tag'],
     [{ name: 'X', id: 'Has Spaces' }, 'id must be 3-48 lowercase'],
     [{ name: 'X', id: 'new' }, 'id "new" is reserved'],
-    [{ name: 'X', lang: 'nl-BE' }, 'Unknown field: lang. Accepted fields: name, id, domain, language.'],
+    [{ name: 'X', lang: 'nl-BE' }, 'Unknown field: lang. Accepted fields: name, id, domain, language, from, options.'],
     [{ name: 'X', slug: 'x', theme: 'dark' }, 'Unknown fields: slug, theme.'],
   ])('400 for %j without creating anything', async (body, message) => {
     await setup();

@@ -28,8 +28,11 @@ import {
   resolveBreakpointWidths,
   siteStylesCss,
   siteThemeCss,
+  snippetSourceFrom,
 } from '../index.js';
 import type { Block, BlockType, FieldDefinition } from '../types.js';
+import type { Menu } from '../menus.js';
+import type { RenderBlocksOptions } from '../render-blocks.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const registry = buildCoreBlockRegistry();
@@ -60,8 +63,46 @@ function sampleBlock(type: BlockType): Block {
   return block;
 }
 
+/** A site menu with a plain submenu and a wide one (columns with headings). */
+const SAMPLE_MENU: Menu = {
+  id: 'main', name: 'Main', locations: ['primary'], items: [
+    { id: 'home', type: 'url', href: '/', label: 'Home' },
+    { id: 'services', type: 'page', page_id: 'services', children: [
+      { id: 'design', type: 'page', page_id: 'design', description: 'Houses & schools' },
+      { id: 'advice', type: 'url', href: '/advice/', label: 'Advice' },
+    ] },
+    { id: 'work', type: 'heading', label: 'Work', children: [
+      { id: 'homes', type: 'heading', label: 'Homes', children: [{ id: 'villa', type: 'url', href: '/work/villa/', label: 'Villa' }] },
+      { id: 'public', type: 'url', href: '/work/public/', label: 'Public', children: [{ id: 'school', type: 'url', href: '/work/school/', label: 'School' }] },
+    ] },
+  ],
+};
+const MENU_SOURCE: RenderBlocksOptions['menuSource'] = {
+  menus: [SAMPLE_MENU],
+  pages: () => [
+    { id: 'services', title: 'Services', path: '/services/' },
+    { id: 'design', title: 'Design', path: '/services/design/', parent: 'services' },
+  ],
+};
+
+/** Site field values with opening hours, shown on a fixed Monday (2026-11-09, 11:30 in Stockholm). */
+const WEEK = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, index) => (
+  index < 5 ? { day, opens: '09:00', closes: '17:00' } : index === 5 ? { day, opens: '10:00', closes: '14:00' } : { day, closed: true }));
+const SITE_FIELDS: Partial<RenderBlocksOptions> = {
+  now: new Date('2026-11-09T10:30:00Z'),
+  context: { site: { language: 'en', fields: { phone: '+46 90-12 34 56', show_booking: true, opening_hours: { days: WEEK, exceptions: [{ date: '2026-11-11', closed: true, note: 'Staff day' }] } } } },
+};
+
+/** A dated live snippet on a site with live files, shown on the same Monday. */
+const SNIPPETS: Partial<RenderBlocksOptions> = {
+  now: new Date('2026-11-09T10:30:00Z'),
+  snippetSource: snippetSourceFrom([{ id: 'lunch', kind: 'dated', format: 'html', time_zone: 'Europe/Stockholm', updated_at: '2026-11-08T08:00:00.000Z',
+    entries: [{ weekday: 'monday', content: '<p>Pea soup</p>' }], fallback: '<p>No lunch</p>' }]),
+  context: { site: { language: 'en', live_base_url: 'https://media.example.invalid/live' } },
+};
+
 /** Extra samples for parts of a block that the default sample leaves empty. */
-const EXTRA_SAMPLES: Array<{ name: string; block: Block }> = [
+const EXTRA_SAMPLES: Array<{ name: string; block: Block; from?: number; options?: Partial<RenderBlocksOptions> }> = [
   {
     name: 'core__heading--grouped',
     block: {
@@ -74,18 +115,47 @@ const EXTRA_SAMPLES: Array<{ name: string; block: Block }> = [
     name: 'core__button--classed',
     block: { id: 'ref', type: 'core/button', data: { label: 'Sample', href: '/sample' }, style_overrides: { custom_class: 'custom-button' } },
   },
+  {
+    name: 'core__navigation_links--menu-row', from: 15, options: { menuSource: MENU_SOURCE, context: { page: { path: '/services/design/' } } },
+    block: { id: 'ref', type: 'core/navigation_links', data: { source: 'menu', menu: 'location:primary', direction: 'row' } },
+  },
+  {
+    name: 'core__navigation_links--menu-column', from: 15, options: { menuSource: MENU_SOURCE, context: { page: { path: '/' } } },
+    block: { id: 'ref', type: 'core/navigation_links', data: { source: 'menu', menu: 'main', group_label: 'Explore' } },
+  },
+  {
+    name: 'core__site_field--week', from: 15, options: SITE_FIELDS,
+    block: { id: 'ref', type: 'core/site_field', data: { field: 'opening_hours', label: 'Opening hours' } },
+  },
+  {
+    name: 'core__site_field--open-now', from: 15, options: SITE_FIELDS,
+    block: { id: 'ref', type: 'core/site_field', data: { field: 'opening_hours', format: 'open_now', tag: 'span' } },
+  },
+  {
+    name: 'core__site_field--text', from: 15, options: SITE_FIELDS,
+    block: { id: 'ref', type: 'core/site_field', data: { field: 'phone', label: 'Phone' } },
+  },
+  {
+    name: 'core__snippet--dated', from: 15, options: SNIPPETS,
+    block: { id: 'ref', type: 'core/snippet', data: { snippet: 'lunch', tag: 'section', empty_text: 'Nothing today' } },
+  },
+  {
+    name: 'core__show_if--site-field', from: 15, options: SITE_FIELDS,
+    block: { id: 'ref', type: 'core/show_if', data: { condition: 'site.fields.show_booking' }, children: [{ id: 'ref-child', type: 'core/prose', data: { html: '<p>Book a time</p>' } }] },
+  },
 ];
 
-function render(type: BlockType, renderVersion: number, sample?: Block): string {
+function render(type: BlockType, renderVersion: number, sample?: Block, options: Partial<RenderBlocksOptions> = {}): string {
   const block = sample ?? sampleBlock(type);
   let html: string;
   try {
-    html = renderBlocks([block], { registry, renderVersion });
+    html = renderBlocks([block], { ...options, registry, renderVersion });
   } catch (error) {
     html = `<!-- render error: ${(error as Error).message} -->`;
   }
-  const css = collectBlockAssets([block], registry, { renderVersion }).css;
-  return `${html}\n\n/* css */\n${css}\n`;
+  const assets = collectBlockAssets([block], registry, { renderVersion });
+  // Script is recorded only for the samples that pass options (added in version 15).
+  return `${html}\n\n/* css */\n${assets.css}\n${(options.menuSource || options.now) && assets.js ? `\n/* js */\n${assets.js}\n` : ''}`;
 }
 
 const coreTypes = [...registry.values()].sort((a, b) => a.id.localeCompare(b.id));
@@ -134,9 +204,9 @@ for (const { version } of RENDER_VERSIONS) {
       });
     }
 
-    for (const { name, block } of EXTRA_SAMPLES) {
+    for (const { name, block, options } of EXTRA_SAMPLES.filter(sample => version >= (sample.from ?? 1))) {
       it(`keeps ${name}`, async () => {
-        await expect(render(registry.get(block.type)!, version, block)).toMatchFileSnapshot(
+        await expect(render(registry.get(block.type)!, version, block, options)).toMatchFileSnapshot(
           `./__render-reference__/v${version}/${name}.html`,
         );
       });

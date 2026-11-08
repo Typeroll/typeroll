@@ -140,6 +140,9 @@ export async function prepareCloudflareMedia(session: FullSession, revision: str
   const expiry = { id: 'typeroll-expired-build-grants', enabled: true, conditions: { prefix: 'build-grants/' }, deleteObjectsTransition: { condition: { type: 'Age', maxAge: 86400 } } };
   await provider(`${root}/${bucket}/lifecycle`, { method: 'PUT', body: { rules: [...(lifecycle?.rules ?? []).filter((item: { id: string }) => item.id !== expiry.id), expiry] } });
   await saveConnection(session.orgId, 'cloudflare', authorized.revision, { cloudflare: { ...current.cloudflare, bucket, public_bucket: publicBucket } });
+  // Sites with live snippets read them from the public bucket on their own addresses.
+  try { await (await import('./live-files')).refreshOrganizationLiveCors(session.orgId, provider); }
+  catch (error) { console.warn('Live file CORS rules not refreshed', error instanceof Error ? error.message : error); }
   return { bucket, public_bucket: publicBucket };
 }
 
@@ -165,4 +168,7 @@ export async function connectCloudflareMedia(session: FullSession, input: Record
   const { requestOrganizationMediaMigration, retryMediaMigration } = await import('./media-migration');
   if (connectionSummary(current).media_ready) await retryMediaMigration(session.orgId);
   else await requestOrganizationMediaMigration(session.orgId);
+  // Live snippets saved before storage was ready reach the live site now.
+  try { await (await import('../live-content-sync')).republishOrganizationLiveFiles(session.orgId); }
+  catch (error) { console.warn('Live files not republished', error instanceof Error ? error.message : error); }
 }

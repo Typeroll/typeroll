@@ -8,6 +8,7 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../../lib/api-auth';
+import { apiStructureLockRefusal } from '../../../../../../../../lib/structure-lock';
 import { bodyShapeError } from '../../../../../../../../lib/api-body';
 import { vstore } from '../../../../../../../../lib/version-store';
 import { duplicateBlock, BlockMutationError } from '../../../../../../../../lib/block-mutations';
@@ -19,6 +20,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  const locked = await apiStructureLockRefusal(ctx);
+  if (locked) return locked;
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
   const body = await request.json().catch(() => null) as { block_id?: string; response?: string } | null;

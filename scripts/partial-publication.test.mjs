@@ -1,5 +1,5 @@
 import test from 'node:test';
-import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, recordNavigation, dependenciesMatch } from '../packages/site-template/src/lib/publication-dependencies.mjs';
+import { captureDependencies, trackedMediaLookup, trackedPageSource, trackedBacklinks, trackedMenuPages, trackedSiteFields, trackedSnippets, recordClockOutput, recordNavigation, dependenciesMatch, refreshDependencies } from '../packages/site-template/src/lib/publication-dependencies.mjs';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -181,6 +181,78 @@ test('partial output equals a clean full build after edits, deletion, noindex an
   assert.deepEqual(await output(), removedFiles);
 });
 
+
+test('a route showing a menu depends on the menu fields of pages, once, and not on their bodies', async () => {
+  let pages = [{ id: 'about', title: 'About', path: '/about/' }];
+  const menuPages = () => pages;
+  const tracked = trackedMenuPages(menuPages);
+  const { dependencies } = await captureDependencies(async () => { tracked(); tracked(); });
+  assert.deepEqual(dependencies.map(entry => entry.kind), ['menu_pages']);
+  const resolvers = { menuPages };
+  assert.ok(dependenciesMatch(dependencies, resolvers));
+  pages = [{ id: 'about', title: 'About us', path: '/about/' }];
+  assert.ok(!dependenciesMatch(dependencies, resolvers));
+  const refreshed = refreshDependencies(dependencies, resolvers, [], [], entry => entry);
+  assert.ok(dependenciesMatch(refreshed, resolvers));
+  const untracked = await captureDependencies(async () => 'no menu here');
+  assert.deepEqual(untracked.dependencies, []);
+});
+
+test('a route depends on site fields only when it reads them, once, values and definitions together', async () => {
+  let doc = { groups: [{ id: 'contact', fields: [{ name: 'phone', type: 'text' }] }], values: { phone: '1' } };
+  const values = trackedSiteFields({ ...doc.values }, () => doc);
+  const site = { name: 'Acme', fields: values };
+  const reads = await captureDependencies(async () => { const copy = { ...site }; return [copy.fields.phone, 'phone' in copy.fields, Object.keys(copy.fields)]; });
+  assert.deepEqual(reads.value, ['1', true, ['phone']]);
+  assert.deepEqual(reads.dependencies.map(entry => entry.kind), ['site_fields']);
+  // Spreading the site context does not read the values.
+  const untouched = await captureDependencies(async () => ({ ...site, current_year: 2026 }).name);
+  assert.deepEqual(untouched.dependencies, []);
+  const resolvers = { siteFields: () => doc };
+  assert.ok(dependenciesMatch(reads.dependencies, resolvers));
+  doc = { ...doc, values: { phone: '2' } };
+  assert.ok(!dependenciesMatch(reads.dependencies, resolvers));
+  doc = { groups: [{ id: 'contact', fields: [{ name: 'phone', type: 'number' }] }], values: { phone: '1' } };
+  assert.ok(!dependenciesMatch(reads.dependencies, resolvers));
+  assert.ok(dependenciesMatch(refreshDependencies(reads.dependencies, resolvers, [], [], entry => entry), resolvers));
+});
+
+test('date-dependent output is recomputed for the new build and reused while it is the same', async () => {
+  const input = { f: 'open_now', z: 'Europe/Stockholm' };
+  let output = 'Open now, until 17:00';
+  const { dependencies } = await captureDependencies(async () => recordClockOutput(input, output));
+  assert.deepEqual(dependencies.map(entry => entry.kind), ['clock']);
+  const resolvers = { clock: received => { assert.deepEqual(received, input); return output; } };
+  assert.ok(dependenciesMatch(dependencies, resolvers));
+  assert.deepEqual(refreshDependencies(dependencies, resolvers, [], [], entry => entry), dependencies);
+  output = 'Closed';
+  assert.ok(!dependenciesMatch(dependencies, resolvers));
+  // A domain rebase reuses the HTML, so it must not paper over changed output.
+  assert.throws(() => refreshDependencies(dependencies, resolvers, [], [], entry => entry), /changed/);
+});
+
+test('a route depends on each live snippet it shows, as of the build date, and on nothing else', async () => {
+  let files = { lunch: { id: 'lunch', kind: 'dated', updated_at: '1', entries: { monday: 'Fish', tuesday: 'Fish' } }, notice: { id: 'notice', kind: 'text', content: 'Hi', updated_at: '1' } };
+  let day = 'monday';
+  // Stands in for snippetReceipt: the content shown on the build date, its version and the date of a dated snippet.
+  const receipt = file => (file ? { content: file.kind === 'dated' ? file.entries[day] : file.content, updated_at: file.updated_at, ...(file.kind === 'dated' ? { date: day } : {}) } : null);
+  const source = trackedSnippets(id => files[id], receipt);
+  const reads = await captureDependencies(async () => [source('lunch'), source('lunch'), source('missing')].map(file => file?.id ?? null));
+  assert.deepEqual(reads.value, ['lunch', 'lunch', null]);
+  assert.deepEqual(reads.dependencies.map(entry => `${entry.kind}:${entry.id}`), ['snippet:lunch', 'snippet:missing']);
+  const resolvers = { snippet: id => receipt(files[id]) };
+  assert.ok(dependenciesMatch(reads.dependencies, resolvers));
+  // Another snippet changing leaves the route alone.
+  files = { ...files, notice: { ...files.notice, content: 'Hello', updated_at: '2' } };
+  assert.ok(dependenciesMatch(reads.dependencies, resolvers));
+  // A new day renders the route again (its markup names the date), as does a new entry or a new snippet.
+  day = 'tuesday';
+  assert.ok(!dependenciesMatch(reads.dependencies, resolvers));
+  day = 'monday';
+  files = { ...files, lunch: { ...files.lunch, updated_at: '2', entries: { monday: 'Soup' } } };
+  assert.ok(!dependenciesMatch(reads.dependencies, resolvers));
+  assert.throws(() => refreshDependencies(reads.dependencies, resolvers, [], [], entry => entry), /changed/);
+});
 
 test('recorded queries detect membership, ordering, empty results and only the visited pagination slice', async () => {
   const records = [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C' }];
@@ -481,6 +553,57 @@ test('a publication with frozen theme fonts renders them without network or the 
   const html = await fs.readFile(path.join(harness.destination, 'dist/one/index.html'), 'utf8');
   assert.match(html, /href="\/_typeroll\/fonts\/fonts\.css"/);
   assert.doesNotMatch(html, /fonts\.(?:googleapis|gstatic)\.com/);
+});
+
+test('a version 14 publication renders byte-identically with its frozen font plan', async t => {
+  const bytes = Buffer.from('frozen font bytes'), name = `${'f'.repeat(32)}.woff2`;
+  const legacy = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';
+  const build = async plan => {
+    const value = publication();
+    value.pages.push({ ...page('home'), path: '/' });
+    value.settings.render_version = 14;
+    if (plan) value.settings.font_plan = plan;
+    value.theme_fonts = { css_url: legacy, css: `@font-face{font-family:'Inter';src:url(/_typeroll/fonts/${name}) format('woff2')}\n`, files: [{ name, sha256: digest(bytes), data: bytes.toString('base64') }] };
+    const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+    await harness.run(true);
+    return fs.readFile(path.join(harness.destination, 'dist/one/index.html'), 'utf8');
+  };
+  const without = await build(null);
+  const withPlan = await build({ render_version: 14, families: [{ family: 'Inter', roles: ['heading', 'body'], source: 'google', weights: [400, 500, 600, 700], italic: [], category: 'sans' }], google_css_url: legacy, service_stylesheets: [] });
+  assert.equal(withPlan, without);
+});
+
+test('a version 15 publication links its uploaded fonts, Google CDN, services and the preload from the plan', async t => {
+  const value = publication();
+  value.pages.push({ ...page('home'), path: '/' });
+  const bytes = Buffer.from('uploaded font bytes'), name = `${'e'.repeat(32)}.woff2`;
+  value.settings.render_version = 15;
+  value.settings.fonts = { heading: 'Sofia Sans', body: 'Brand', accent: 'proxima-nova', delivery: 'google', size_base: 16,
+    services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'] }, { provider: 'fontshare', url: 'https://api.fontshare.com/v2/css?f[]=satoshi@400', families: ['Satoshi'] }] };
+  const fallback = { local: ['Arial', 'ArialMT'], size_adjust: 101.5, ascent: 90, descent: 22, line_gap: 0 };
+  value.settings.font_plan = { render_version: 15, families: [
+    { family: 'Sofia Sans', roles: ['heading', 'display'], source: 'google', weights: [700], italic: [], category: 'sans' },
+    { family: 'Brand', roles: ['body'], source: 'upload', weights: [400], italic: [], files: ['font-1'], fallback },
+    { family: 'proxima-nova', roles: ['accent'], source: 'service', weights: [400], italic: [] },
+  ], google_css_url: 'https://fonts.googleapis.com/css2?family=Sofia%20Sans:wght@700&display=swap',
+  service_stylesheets: ['https://use.typekit.net/abc1234.css', 'https://api.fontshare.com/v2/css?f[]=satoshi@400'], preload: `/_typeroll/fonts/${name}` };
+  value.theme_fonts = { css_url: `#library=${digest(bytes)}`, css: `@font-face{font-family:'Brand';font-style:normal;font-weight:400;font-display:swap;src:url(/_typeroll/fonts/${name}) format('woff2')}\n`,
+    files: [{ name, sha256: digest(bytes), data: bytes.toString('base64') }] };
+  const harness = await publicationBuildHarness(value); t.after(harness.cleanup);
+  await harness.run(true);
+  assert.equal((await harness.output())[`_typeroll/fonts/${name}`], digest(bytes));
+  const html = await fs.readFile(path.join(harness.destination, 'dist/one/index.html'), 'utf8');
+  assert.match(html, /<link rel="preload" as="style" href="\/_typeroll\/fonts\/fonts\.css"/);
+  assert.match(html, new RegExp(`<link rel="preload" as="font" type="font/woff2" crossorigin href="/_typeroll/fonts/${name}"`));
+  assert.match(html, /<link rel="preload" as="style" href="https:\/\/fonts\.googleapis\.com\/css2\?family=Sofia%20Sans:wght@700&amp;display=swap"/);
+  assert.match(html, /<link rel="preconnect" href="https:\/\/fonts\.gstatic\.com" crossorigin/);
+  assert.match(html, /<link rel="stylesheet" href="https:\/\/use\.typekit\.net\/abc1234\.css"/);
+  assert.match(html, /<link rel="stylesheet" href="https:\/\/api\.fontshare\.com\/v2\/css\?f\[\]=satoshi@400"/);
+  assert.match(html, /<link rel="preconnect" href="https:\/\/cdn\.fontshare\.com" crossorigin/);
+  // The uploaded family's metric-matched fallback face, in its stack.
+  assert.match(html, /font-family:'Brand fallback';src:local\('Arial'\),local\('ArialMT'\);size-adjust:101\.5%/);
+  assert.match(html, /--font-body:'Brand', 'Brand fallback', 'tr-fallback'/);
+  assert.match(html, /--font-accent:'proxima-nova'/);
 });
 
 test('build year invalidates page reuse and domain rebase caches together', () => {

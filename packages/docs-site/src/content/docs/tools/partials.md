@@ -52,9 +52,11 @@ Returns all partials with their IDs and a content preview.
 Deletes a free global block by `partial_id`, optionally on a `version`. The
 header and footer are layout blocks and cannot be deleted.
 
-## Navigation lives in the header partial
+## Navigation comes from menus
 
-The site's navigation is part of the `header` partial — not in any individual page. Ask the agent to add a navigation link when the Page belongs in the menu. Creating a Page does not itself require a new header link.
+The site's navigation is shown by the `header` and `footer` partials, not by individual pages. Its links are kept in [menus](../menus/): a `core/navigation_links` block with `source: "menu"` and `menu: "location:primary"` shows the menu in the `primary` location (render version 15). A new site's `primary` menu has `auto_add_pages` on, so once the header shows that menu, a new top-level published Page appears in it by itself. To place a Page elsewhere, in a submenu or in the footer, use `add_menu_item` or `update_menu` instead of editing the header. Turn `auto_add_pages` off to choose every link yourself.
+
+An HTML header, or a `core/navigation_links` block with its own `links`, keeps its links as written; it does not follow menus. The HTML example below is such a header.
 
 ## Typical header structure
 

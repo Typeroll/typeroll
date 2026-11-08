@@ -16,7 +16,7 @@ const handle: APIRoute = async ({ request, params }) => {
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new ContentTypeError('JSON object required');
     return apiResponse(ctx, { template: await savePageTemplate(ctx, id, body) });
-  } catch (error) { if (error instanceof ContentTypeError) return apiError(error.message, error.status); throw error; }
+  } catch (error) { if (error instanceof ContentTypeError) return apiError(error.message, error.status, ctx, error.code ? { code: error.code } : undefined); throw error; }
 };
 export const GET = handle;
 export const PATCH = handle;

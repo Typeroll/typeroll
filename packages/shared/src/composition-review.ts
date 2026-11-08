@@ -90,7 +90,7 @@ function configuredPageFields(block: Block): string[] {
       data.date_field, data.author_field, data.href_field, data.download_url_field,
     ].filter((value): value is string => typeof value === 'string' && value.length > 0);
   }
-  if (block.type === 'template/show_if' && typeof data.condition === 'string') {
+  if ((block.type === 'template/show_if' || block.type === 'core/show_if') && typeof data.condition === 'string') {
     return [...data.condition.matchAll(CONTEXT_REFERENCE)].map((match) => match[1]!);
   }
   return [];

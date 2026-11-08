@@ -35,7 +35,10 @@ import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
 import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed, findZone } from './domain-provider';
 import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
-import { freezeThemeFonts } from './theme-font-freeze';
+import { publicationMenuWarnings, publicationSiteFieldWarnings, publicationSnippetWarnings } from './content-preflight';
+import { publicationDemoMediaWarnings } from '../packages/demo-media';
+import { publicationPlaceholderWarnings } from '../placeholder-content';
+import { freezeSiteFonts } from './theme-font-freeze';
 import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMediaRedirects, publicationMediaManifest, collapseMediaHostChains } from './media-manifest';
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { mediaPreparationStatus } from '../media/preparation';
@@ -406,7 +409,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
       const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true });
       // Non-blocking findings (for example media left out of this publication) stay on the job for users and agents.
-      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen)];
+      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
       const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
@@ -432,9 +435,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       frozen.redirects = [...collapseMediaHostChains(frozen.redirects ?? [], frozen.media_host_redirects, host), ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)];
       frozen.previous_website_hosts = args.versionId === 'main'
         ? previousWebsiteHosts(savedDomains, host, prior?.site_url ? new URL(prior.site_url).hostname : undefined) : [];
-      // Theme fonts are copied now, so no build engine needs network access or Google to render them.
-      const themeFonts = await freezeThemeFonts(frozen.settings?.fonts, prior?.theme_fonts);
-      if (themeFonts) frozen.theme_fonts = themeFonts; else delete frozen.theme_fonts;
+      // Fonts are planned and copied now, so no build engine needs network access, Google or the Fonts library to render them.
+      // A domain-only republication keeps the fonts its content was frozen with.
+      if (!(job.publication_intent === 'domain_prepare' && frozen.settings?.font_plan)) {
+        const siteFonts = await freezeSiteFonts(frozen, prior?.theme_fonts, { orgId: args.orgId, siteId: args.siteId });
+        frozen.settings = { ...frozen.settings, font_plan: siteFonts.plan };
+        if (siteFonts.theme_fonts) frozen.theme_fonts = siteFonts.theme_fonts; else delete frozen.theme_fonts;
+      }
       // Content identity excludes wall-clock metadata so an unchanged publication can reuse the previous build.
       const stable = { ...frozen, published_at: undefined, publication_id: undefined,
         // An explicit domain republication gets a fresh approval/journal identity,

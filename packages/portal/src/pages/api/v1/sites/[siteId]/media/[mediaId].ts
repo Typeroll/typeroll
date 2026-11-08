@@ -1,5 +1,5 @@
 // GET    /api/v1/sites/{siteId}/media/{mediaId}
-// PATCH  /api/v1/sites/{siteId}/media/{mediaId}   alt_text, filename, public_path
+// PATCH  /api/v1/sites/{siteId}/media/{mediaId}   alt_text, filename, public_path, demo (false only)
 //        filename and public_path must end in an extension that matches the
 //        media type (lib/media/file-types.ts).
 // DELETE /api/v1/sites/{siteId}/media/{mediaId}
@@ -44,6 +44,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (!body) return apiError('Invalid JSON body');
   const update: Record<string, unknown> = {};
   for (const k of WRITABLE) if (body[k] !== undefined) update[k] = body[k];
+  // Demo content from a package: the flag can only be cleared.
+  if (body.demo !== undefined) {
+    if (body.demo !== false) return apiError('demo can only be set to false (keep the file as the site\'s own)', 400, ctx, { code: 'media_demo_invalid' });
+    update.demo = false;
+  }
   if (Object.keys(update).length === 0) return apiError('No writable fields in body');
   if (update.public_path !== undefined) {
     try { update.public_path = update.public_path === null ? null : publicMediaPath(update.public_path); }

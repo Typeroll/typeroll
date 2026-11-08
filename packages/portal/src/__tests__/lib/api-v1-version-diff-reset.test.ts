@@ -29,6 +29,8 @@ async function setup(): Promise<void> {
   await store.setDoc(paths.page(ORG, SITE, 'home', MAIN_VERSION_ID), { title: 'Home', slug: 'home', status: 'published', html_content: '<p>Main</p>' });
   await store.setDoc(paths.page(ORG, SITE, 'home', 'feature'), { title: 'Home', slug: 'home', status: 'published', html_content: '<p>Branch</p>' });
   await store.setDoc(paths.page(ORG, SITE, 'new-page', 'feature'), { title: 'New', slug: 'new-page', status: 'draft', html_content: '<p>New</p>' });
+  await store.setDoc(paths.menu(ORG, SITE, 'main-menu', MAIN_VERSION_ID), { name: 'Main', items: [] });
+  await store.setDoc(paths.menu(ORG, SITE, 'main-menu', 'feature'), { name: 'Main (branch)', items: [] });
   const { writeShare } = await import('../../lib/shares');
   await writeShare({
     id: 'share-1', site_id: SITE, owner_org_id: ORG, shared_with_org_id: PARTNER,
@@ -57,10 +59,11 @@ describe('version diff and reset over the v1 API', () => {
     for (const token of [adminToken, writeToken]) {
       const res = await diff('feature', token);
       expect(res.status).toBe(200);
-      const body = await res.json() as { version_id: string; base_version_id: string; diff: { pages: { added: string[]; modified: string[] }; totalChanges: number } };
+      const body = await res.json() as { version_id: string; base_version_id: string; diff: { pages: { added: string[]; modified: string[] }; menus: { modified: string[] }; totalChanges: number } };
       expect(body).toMatchObject({ version_id: 'feature', base_version_id: MAIN_VERSION_ID });
       expect(body.diff.pages).toMatchObject({ added: ['new-page'], modified: ['home'] });
-      expect(body.diff.totalChanges).toBe(2);
+      expect(body.diff.menus).toMatchObject({ modified: ['main-menu'] });
+      expect(body.diff.totalChanges).toBe(3);
     }
     expect((await diff(MAIN_VERSION_ID)).status).toBe(400);
     expect((await diff('missing')).status).toBe(404);
@@ -78,6 +81,7 @@ describe('version diff and reset over the v1 API', () => {
     expect(body.cleared.pages).toMatchObject({ added: ['new-page'], modified: ['home'] });
     expect(await getStore().getDoc(paths.page(ORG, SITE, 'home', 'feature'))).toBeNull();
     expect(await getStore().getDoc(paths.page(ORG, SITE, 'new-page', 'feature'))).toBeNull();
+    expect(await getStore().getDoc(paths.menu(ORG, SITE, 'main-menu', 'feature'))).toBeNull();
     expect(await getStore().getDoc(paths.version(ORG, SITE, 'feature'))).not.toBeNull();
     expect(((await (await diff('feature')).json()) as { diff: { totalChanges: number } }).diff.totalChanges).toBe(0);
 

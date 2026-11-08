@@ -47,11 +47,14 @@ import { digest } from './providers.mjs';
 import { recordPublishedMedia } from './published-media';
 import { readSnapshot, saveSnapshot, type SnapshotReference } from './publication-snapshot';
 import { resolvePublicationVersion } from './publication-version';
+import { publicationSiteFieldWarnings, publicationSnippetWarnings } from './content-preflight';
+import { publicationDemoMediaWarnings } from '../packages/demo-media';
+import { publicationPlaceholderWarnings } from '../placeholder-content';
 import { assertPublishingReady } from './readiness';
 import { publicationRuntime } from './runtime-projection';
 import { recordPublishingOrigin } from './runtime-origins';
 import { publicationSourceTree } from './source-tree';
-import { freezeThemeFonts } from './theme-font-freeze';
+import { freezeSiteFonts } from './theme-font-freeze';
 import { artifactFiles, ensureHostedPlatformHost, hostedDomains, hostedServingHost, hostedWebsiteHost, hostingSiteRef, HOSTED_MODE, isHostedSite,
   isTemporaryHostingFailure, siteHosting, siteHostingAvailable, SITE_HOSTING_UNAVAILABLE, type ArtifactFiles } from './site-hosting';
 
@@ -194,7 +197,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       if (mapped.manifest && mapped.manifest.delivery !== 'static') {
         throw new ConnectionError('Images of a hosted site are published with the site. Remove the organization media host in Publishing, then publish again.', 409, 'hosted_media_host_unsupported');
       }
-      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen)];
+      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       const impactSnapshot = await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
       // Absolute links to earlier addresses of the site are frozen as links to its canonical host.
@@ -211,8 +214,9 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       frozen.redirects = [...collapseMediaHostChains(frozen.redirects ?? [], frozen.media_host_redirects, host), ...frozen.media_host_redirects.map(({ media_path_prefix: _prefix, ...rule }: any) => rule)];
       // Earlier addresses are redirected by the hosting service, not by the site.
       frozen.previous_website_hosts = [];
-      const themeFonts = await freezeThemeFonts(frozen.settings?.fonts, prior?.theme_fonts);
-      if (themeFonts) frozen.theme_fonts = themeFonts; else delete frozen.theme_fonts;
+      const siteFonts = await freezeSiteFonts(frozen, prior?.theme_fonts, { orgId: args.orgId, siteId: args.siteId });
+      frozen.settings = { ...frozen.settings, font_plan: siteFonts.plan };
+      if (siteFonts.theme_fonts) frozen.theme_fonts = siteFonts.theme_fonts; else delete frozen.theme_fonts;
       frozen.publication_id = digest(JSON.stringify({ ...frozen, published_at: undefined, publication_id: undefined }));
       if (args.dryRun) {
         await publicationSourceTree(frozen);

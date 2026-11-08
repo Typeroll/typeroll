@@ -19,7 +19,7 @@ import { CORE_BLOCK_TYPES, TEMPLATE_CONTENT_SLOT_TYPE_ID } from '@typeroll/share
 import { Plus, GripVertical, Save, ArrowLeft } from 'lucide-react';
 import { DndContext, DragOverlay } from '@dnd-kit/core';
 import { BlockLibrary, BlockTree, BlockFieldForm, DeviceToggle, DEFAULT_BP, ICONS } from './BlockPageEditor';
-import { GlobalBlocksContext, RenderVersionContext, SiteStylesContext } from './FieldInput';
+import { GlobalBlocksContext, RenderVersionContext, SiteFontsContext, SiteStylesContext } from './FieldInput';
 import type { GlobalBlockSummary } from './editor-context';
 import { useBlockDnd } from './block-dnd';
 import type { Breakpoint } from '@typeroll/shared';
@@ -32,6 +32,8 @@ interface Props {
   template: PageTemplate;
   siteStyles?: SiteStyle[];
   renderVersion?: number;
+  /** The site's font roles, so font settings name each role's family. */
+  siteFonts?: import('@typeroll/shared').SiteSettings['fonts'];
   /**
    * What the tree belongs to. A global block (a block-mode partial, including
    * a block-mode header or footer) saves to the partial routes and has no
@@ -55,7 +57,7 @@ const findIn = findBlockIn;
 
 type UsageResponse = Partial<BlockUsage> & { auto_injected?: boolean };
 
-export default function TemplateEditor({ siteId, template, responsiveBreakpoints, siteStyles, renderVersion, kind = 'page_template', partialKind = 'free', globalBlocks = [], pendingDraft = false }: Props) {
+export default function TemplateEditor({ siteId, template, responsiveBreakpoints, siteStyles, renderVersion, siteFonts, kind = 'page_template', partialKind = 'free', globalBlocks = [], pendingDraft = false }: Props) {
   const [draftPending, setDraftPending] = useState(pendingDraft);
   const isGlobal = kind === 'global_block';
   const isLayout = isGlobal && partialKind !== 'free';
@@ -255,6 +257,7 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
   return (
     <SiteStylesContext.Provider value={siteStyles ?? []}>
     <RenderVersionContext.Provider value={renderVersion ?? null}>
+    <SiteFontsContext.Provider value={siteFonts ?? null}>
     <GlobalBlocksContext.Provider value={{ siteId, blocks: globalBlocks.filter(block => !(isGlobal && block.id === template.id)) }}>
     <div style={shell}>
       <header style={topBar}>
@@ -418,6 +421,7 @@ export default function TemplateEditor({ siteId, template, responsiveBreakpoints
       </DndContext>
     </div>
     </GlobalBlocksContext.Provider>
+    </SiteFontsContext.Provider>
     </RenderVersionContext.Provider>
     </SiteStylesContext.Provider>
   );

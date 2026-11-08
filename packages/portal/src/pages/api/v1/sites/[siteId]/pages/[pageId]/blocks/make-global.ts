@@ -4,12 +4,15 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../../lib/api-auth';
+import { apiStructureLockRefusal } from '../../../../../../../../lib/structure-lock';
 import { runReusableAction } from '../../../../../../../../lib/reusable-block-actions';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  const locked = await apiStructureLockRefusal(ctx);
+  if (locked) return locked;
   if (!params.pageId) return apiError('Missing pageId');
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;
   if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Body must be a JSON object');

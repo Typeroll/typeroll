@@ -56,7 +56,7 @@ export const reusableBlockTools: ToolDef[] = [
   {
     name: 'save_block_template',
     description:
-      'Save a block template: a section starter that editors and agents insert as an independent copy. Pass `from: { page_id, block_id }` to save a block from a page (its draft), or `blocks`. Prefer templates that use named styles (style_id, part_styles) over one-off values, so copies stay consistent. Templates belong to the site, not a branch.',
+      'Save a block template: a section starter that editors and agents insert as an independent copy. Pass `from: { page_id, block_id }` to save a block from a page (its draft), or `blocks`. Prefer templates that use named styles (style_id, part_styles) over one-off values, so copies stay consistent. The answer\'s design_findings lists hard-coded colours and font families (not blocking) with the palette or font role to use instead; `replacement` gives the exact field change when one role matches, which update_block_template applies by sending the changed blocks. Templates belong to the site, not a branch.',
     inputSchema: {
       name: z.string(),
       description: z.string().optional().describe('When to use it.'),
@@ -68,7 +68,7 @@ export const reusableBlockTools: ToolDef[] = [
   },
   {
     name: 'update_block_template',
-    description: 'Rename a block template, change its description, or replace its blocks. Pages that already inserted it do not change.',
+    description: 'Rename a block template, change its description, or replace its blocks. Pages that already inserted it do not change. Answers with design_findings, as save_block_template.',
     inputSchema: {
       template_id: z.string(),
       name: z.string().optional(),

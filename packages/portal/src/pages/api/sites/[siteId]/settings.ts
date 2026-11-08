@@ -1,22 +1,28 @@
 import type { APIRoute } from 'astro';
-import { isSiteSettingsSection, scopedSettings } from '../../../../lib/site-settings-sections';
+import { isDesignSettingsSection, isSiteSettingsSection, scopedSettings } from '../../../../lib/site-settings-sections';
 import { vstore } from '../../../../lib/version-store';
-import { requireSiteAccess, requirePermission } from '../../../../lib/access';
+import { requireSiteAccess, requirePermission, requireDesign } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { contentWidthsError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
+import { siteFontsErrors, contentWidthsError, siteTimeZone, timeZoneError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
+import { fontSettingsWarnings, listSiteFonts } from '../../../../lib/fonts/font-library';
+import { handoverWriteErrors, normalizedHandover } from '../../../../lib/site-handover-write';
 
 export const POST: APIRoute = async ({ request, cookies, params, redirect, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
-  const adminCheck = requirePermission(guard.value, 'admin');
-  if (!adminCheck.ok) return adminCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
 
   const form = await request.formData();
   const section = form.get('settings_section');
   if (section !== null && !isSiteSettingsSection(section)) return new Response('Unknown settings section.', { status: 400 });
+  // The design and general sections (colours, fonts, typography, scales,
+  // widths, logo and icons) are design work: administrators and builders.
+  // Every other section, and a save of the whole form, stays with
+  // administrators: SEO policy, publishing, integrations, scripts and access.
+  const check = section !== null && isDesignSettingsSection(section) ? requireDesign(guard.value) : requirePermission(guard.value, 'admin');
+  if (!check.ok) return check.response;
   const includesSection = (id: string) => section === null || section === id;
   const store = getStore();
   const existing =
@@ -122,6 +128,8 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
       : undefined,
     // medium is the default and is stored as an absent value.
     date_format: ['long', 'numeric', 'iso'].includes(String(form.get('date_format'))) ? String(form.get('date_format')) : undefined,
+    // Never empty: an empty or unknown value keeps the zone the site has (or the usual one for its language).
+    time_zone: (() => { const value = String(form.get('time_zone') ?? '').trim(); return value && !timeZoneError(value) ? value : siteTimeZone({ time_zone: existing.time_zone, language: form.get('language') ?? existing.language }); })(),
     content_widths,
     // full is the default and is stored as an absent value.
     motion: form.get('motion') === 'reduced' ? 'reduced' : undefined,
@@ -174,6 +182,26 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     const mono = String(form.get('fonts.mono') ?? '').trim();
     if (mono) fonts.mono = mono; else delete fonts.mono;
   }
+  // Display and accent roles (render version 15): empty uses the heading and body family.
+  for (const role of ['display', 'accent'] as const) {
+    if (!includesSection('design') || !form.has(`fonts.${role}`)) continue;
+    const family = String(form.get(`fonts.${role}`) ?? '').trim();
+    if (family) fonts[role] = family; else delete fonts[role];
+  }
+  // fonts.services (FontService[]) and fonts.load ({ role: { weights, italic } }) arrive as JSON; empty clears.
+  for (const key of ['services', 'load'] as const) {
+    if (!includesSection('design') || !form.has(`fonts.${key}`)) continue;
+    const raw = String(form.get(`fonts.${key}`) ?? '').trim();
+    if (!raw) { delete fonts[key]; continue; }
+    try { (fonts as Record<string, unknown>)[key] = JSON.parse(raw); } catch { return new Response(`fonts.${key} must be JSON.`, { status: 400 }); }
+    if (key === 'services' && Array.isArray(fonts.services) && !fonts.services.length) delete fonts.services;
+  }
+  // Validate what this save changes; a family saved before the font library keeps working.
+  const changedFonts = Object.fromEntries((['heading', 'body', 'mono', 'display', 'accent', 'load', 'services'] as const)
+    .filter(key => JSON.stringify((fonts as Record<string, unknown>)[key]) !== JSON.stringify((existing.fonts as Record<string, unknown> | undefined)?.[key]))
+    .map(key => [key, (fonts as Record<string, unknown>)[key]]));
+  const fontErrors = siteFontsErrors(changedFonts);
+  if (fontErrors.length) return new Response(fontErrors.join(' '), { status: 400 });
   if (includesSection('design') && form.has('design_scales.type_size.xs')) {
     let scales;
     try { scales = Object.fromEntries(Object.entries(TOKEN_SCALES).map(([scale, steps]) => [scale, Object.fromEntries(Object.keys(steps).flatMap(step => {
@@ -216,6 +244,32 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     await store.updateDoc(paths.site(owner_org_id, site.id), siteUpdate);
   }
 
-  if (request.headers.get('accept') === 'application/json') return Response.json({ saved: true, section });
+  if (request.headers.get('accept') === 'application/json') {
+    const warnings = includesSection('design') ? fontSettingsWarnings(fonts, await listSiteFonts(owner_org_id, site.id)) : [];
+    return Response.json({ saved: true, section, ...(warnings.length ? { warnings } : {}) });
+  }
   return redirect(`/app/sites/${site.id}/settings${section ? `?section=${section}&saved=1` : ''}`);
+};
+
+/**
+ * PATCH { handover } — the site's handover (shared/src/site-handover.ts),
+ * replaced whole; null removes it. Design rights (administrators and
+ * builders), as in the v1 settings PATCH.
+ */
+export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
+  const guard = await requireSiteAccess(cookies, params.siteId, locals);
+  if (!guard.ok) return guard.response;
+  const check = requireDesign(guard.value);
+  if (!check.ok) return check.response;
+  const { site, versionId, owner_org_id } = guard.value;
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return Response.json({ error: 'JSON object required' }, { status: 400 });
+  const other = Object.keys(body).filter(key => key !== 'handover');
+  if (other.length || body.handover === undefined) return Response.json({ error: `This route writes the handover only${other.length ? `; unknown: ${other.join(', ')}` : ''}` }, { status: 400 });
+  const ctx = { orgId: owner_org_id, siteId: site.id, versionId };
+  const errors = await handoverWriteErrors(ctx, body.handover);
+  if (errors.length) return Response.json({ error: errors.join('; '), details: { errors } }, { status: 400 });
+  const handover = normalizedHandover(body.handover);
+  await vstore.writeSettings(owner_org_id, site.id, versionId, { handover });
+  return Response.json({ saved: true, handover: handover ?? null });
 };

@@ -5,6 +5,7 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { apiStructureLockRefusal } from '../../../../../../lib/structure-lock';
 import { vstore } from '../../../../../../lib/version-store';
 import { sanitizeBody } from '../../../../../../lib/sanitize';
 import { ensureBlockIds, type Partial as PartialDoc } from '@typeroll/shared';
@@ -44,6 +45,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  const locked = await apiStructureLockRefusal(ctx);
+  if (locked) return locked;
   const body = (await request.json().catch(() => null)) as Partial<PartialDoc> | null;
   if (!body) return apiError('Invalid JSON body');
   const id = String(body.id ?? '').trim();

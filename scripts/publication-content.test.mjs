@@ -17,6 +17,15 @@ test('record files preserve branches, remove stale content and reuse every uncha
   assert.ok(Buffer.byteLength(changed['content/pages/page-0.json']) < 13000);
 });
 
+test('menus travel as their own record files', async () => {
+  const publication = { version_id: 'main', pages: [{ id: 'home', title: 'Home' }], menus: [{ id: 'main', name: 'Main', locations: ['primary'], items: [{ id: 'home', type: 'page', page_id: 'home' }] }] };
+  const files = publicationContentFiles(publication);
+  assert.ok(files['content/menus/main.json']);
+  assert.deepEqual(JSON.parse(files['publication.json']).content_files.menus, ['content/menus/main.json']);
+  const manifest = { files: Object.fromEntries(Object.entries(files).map(([name, text]) => [name, digest(text)])) };
+  assert.deepEqual(await readPublicationContent(JSON.parse(files['publication.json']), async name => files[name], manifest), publication);
+});
+
 test('content index rejects traversal, unverified paths, duplicate IDs and mismatched records', async () => {
   assert.throws(() => publicationContentFiles({ pages: [{ id: '../escape' }] }), /identity/);
   assert.throws(() => publicationContentFiles({ pages: [{ id: 'home' }, { id: 'home' }] }), /identity/);

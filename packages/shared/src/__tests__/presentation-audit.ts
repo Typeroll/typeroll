@@ -22,6 +22,7 @@ import {
   renderBlocks,
   type Block,
   type BlockType,
+  type RenderBlocksOptions,
   type RenderContext,
 } from '../index.js';
 
@@ -116,7 +117,7 @@ export interface SampleDom {
 export function sampleDom(block: Block, registry: Map<string, BlockType>, renderVersion: number): SampleDom | null {
   const window = new Window();
   const container = window.document.createElement('div');
-  container.innerHTML = renderBlocks([block], { registry, renderVersion, context: PART_SAMPLE_CONTEXTS[block.type] });
+  container.innerHTML = renderBlocks([block], { registry, renderVersion, context: PART_SAMPLE_CONTEXTS[block.type], menuSource: PART_SAMPLE_MENUS[block.type] });
   const root = container.firstElementChild as unknown as Element | null;
   if (root) PART_SAMPLE_MARKUP[block.type]?.(root);
   return root ? { root, container: container as unknown as Element } : null;
@@ -188,7 +189,8 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
     items: [{ html: '<p>One</p>' }, { html: '<p>Two</p>' }],
   },
   'core/tabs': { headline: 'Plans', labels: [{ label: 'Monthly', icon: 'star' }, { label: 'Yearly' }, { label: 'Compare', href: '/compare/', icon: 'check' }] },
-  'core/navigation_links': { group_label: 'Explore', links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/', icon: 'star' }] },
+  // The links render up to version 14; from 15 the menu (PART_SAMPLE_MENUS) with its submenus.
+  'core/navigation_links': { group_label: 'Explore', links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/', icon: 'star' }], source: 'menu', menu: 'location:primary', direction: 'row' },
   'core/rich_heading': { level: 'h2', html: 'Read <a href="/guide/">the guide</a>' },
   'core/heading': { level: 'h2', eyebrow: 'Eyebrow', text: 'Heading', subtitle: 'Subtitle' },
   'core/button': { label: 'Get started', href: '/start/' },
@@ -222,6 +224,7 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   'core/before_after': { before_image: '/media/before.jpg', after_image: '/media/after.jpg' },
   'core/announcement_bar': { text: '<p>Open on Saturdays</p>', link_url: '/hours/' },
   'core/scroll_steps': { items: [{ title: 'One', text: '<p>First.</p>', image: '/media/1.jpg' }, { title: 'Two', text: '<p>Second.</p>', image: '/media/2.jpg' }] },
+  'core/site_field': { field: 'opening_hours', label: 'Opening hours' },
   'core/svg_animation': { svg: '<svg viewBox="0 0 100 60" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 50 L50 10 L90 50 Z"/></svg>', caption: 'A roof' },
   'core/scroll_film': { frames_pattern: '/media/film/{nnn}.webp', frame_count: 3, captions: [{ text: '<p>Caption</p>', start: 0, end: 50 }] },
   'core/media_card': { image: '/media/card.jpg', heading: 'Heading', text: '<p>Text</p>', button_label: 'Start', button_url: '/start/' },
@@ -250,6 +253,23 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
 };
 
 /** Render context a block's sample needs besides its data (repeater item data, a field list's Page fields, template page and site values). */
+/** Site menus for samples that show one (render version 15). */
+export const PART_SAMPLE_MENUS: Record<string, RenderBlocksOptions['menuSource']> = {
+  'core/navigation_links': {
+    pages: () => [],
+    menus: [{ id: 'main', name: 'Main', locations: ['primary'], items: [
+      { id: 'home', type: 'url', href: '/', label: 'Home' },
+      { id: 'about', type: 'url', href: '/about/', label: 'About', icon: 'star', children: [
+        { id: 'team', type: 'url', href: '/about/team/', label: 'Team', description: 'Who we are' },
+      ] },
+      { id: 'work', type: 'heading', label: 'Work', children: [
+        { id: 'homes', type: 'heading', label: 'Homes', children: [{ id: 'villa', type: 'url', href: '/work/villa/', label: 'Villa' }] },
+        { id: 'public', type: 'url', href: '/work/public/', label: 'Public', children: [{ id: 'school', type: 'url', href: '/work/school/', label: 'School' }] },
+      ] },
+    ] }],
+  },
+};
+
 export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
   'core/post_card': { item: { pdf: '/media/notes.pdf' } },
   'core/field_list': {
@@ -267,6 +287,10 @@ export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
   'template/page_author': { page: { author: { name: 'Ada Lovelace', avatar: '/media/ada.jpg' } } },
   'template/page_breadcrumbs': { page: { breadcrumbs: [{ label: 'Blog', href: '/blog/' }, { label: 'Post', current: true }] } },
   'template/site_logo': { site: { name: 'Acme', logo: '/media/logo.svg' } },
+  // A site field with opening hours shows the week.
+  // Exceptions with a note around today, so the week shows a day with other hours whatever the date.
+  'core/site_field': { site: { fields: { opening_hours: { note: 'Lunch closed 12–13', days: [{ day: 'monday', opens: '09:00', closes: '17:00', note: 'Lunch closed' }],
+    exceptions: [-1, 0, 1].map(offset => ({ date: new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10), closed: true, note: 'Holiday' })) } } } },
 };
 
 /**

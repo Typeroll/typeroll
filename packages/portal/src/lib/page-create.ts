@@ -4,7 +4,7 @@ import { getStore } from './datastore';
 import { vstore } from './version-store';
 import { pageContentType, validatePageFields, validatePagePresentation } from './page-fields';
 import { applyFieldAuthority, conflictResponse, type WriteActor } from './field-authority';
-import { WorkingCopyError, listWorkingCopies, overlayWorkingCopy, type WcCtx } from './working-copy';
+import { WorkingCopyError, listWorkingCopies, overlayWorkingCopy, refuseLockedStructure, type WcCtx } from './working-copy';
 import { validatePathField, makeSafePageId } from './page-paths';
 import { blockTreeInputError } from './block-tree-input';
 import { checkAlternates } from './page-alternates';
@@ -78,6 +78,7 @@ function addressInUse(owner: Page, url: string | null, requested: { slug: string
  * numeric suffix, and the result then carries a `slug_adjusted` warning.
  */
 export async function createPage(ctx: WcCtx, input: Partial<Page>, actor: WriteActor, actorId: string): Promise<CreatePageResult> {
+  await refuseLockedStructure(ctx);
   const title = String(input.title ?? '').trim();
   if (!title) throw new WorkingCopyError('title required', 400);
   const type = await pageContentType(ctx, input);

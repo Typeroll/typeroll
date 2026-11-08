@@ -5,7 +5,7 @@
  * renderer; the layout contract and screenshots read it.
  */
 import {
-  LATEST_RENDER_VERSION, defaultSiteSettings, getPageTemplateStarter, getPartialCompositionStarter, newSiteStyles, type Block,
+  LATEST_RENDER_VERSION, defaultSiteSettings, getPageTemplateStarter, getPartialCompositionStarter, newSiteStyles, openingHoursField, type Block,
 } from '@typeroll/shared';
 import { demoImage } from './demo-media';
 
@@ -23,6 +23,58 @@ const LINKS = [
   { label: 'Tjänster', href: '/tjanster/' }, { label: 'Projekt', href: '/projekt/' }, { label: 'Priser', href: '/priser/' },
   { label: 'Journal', href: '/journal/' }, { label: 'Om oss', href: '/om-oss/' }, { label: 'Kontakt', href: '/kontakt/' },
 ];
+
+/**
+ * The site's menus (render version 15): the primary menu has a plain submenu
+ * and a wide one in columns with headings, so the layout checks cover the
+ * dropdowns, and the mobile menu shows them as accordions.
+ */
+const MENUS = [
+  { id: 'huvudmeny', name: 'Huvudmeny', locations: ['primary'], items: [
+    { id: 'tjanster', type: 'page', page_id: 'tjanster', children: [
+      { id: 'priser', type: 'page', page_id: 'priser', description: 'Fast pris för förstudier' },
+      { id: 'boka', type: 'page', page_id: 'kontakt', label: 'Boka ett första möte', description: 'Kostnadsfritt, en timme' },
+    ] },
+    { id: 'projekt', type: 'page', page_id: 'projekt', children: [
+      { id: 'bostader', type: 'heading', label: 'Bostäder', children: [
+        { id: 'villa', type: 'url', href: '/projekt/#villa-norrbyn', label: 'Villa Norrbyn', description: 'Ett hus för långa vintrar' },
+        { id: 'radhus', type: 'url', href: '/projekt/#radhusen', label: 'Radhusen i Ersboda' },
+      ] },
+      { id: 'offentligt', type: 'heading', label: 'Offentligt', children: [
+        { id: 'skola', type: 'url', href: '/projekt/#skolan', label: 'Skolan vid älven' },
+        { id: 'bibliotek', type: 'url', href: '/projekt/#biblioteket', label: 'Biblioteket' },
+      ] },
+    ] },
+    { id: 'journal', type: 'page', page_id: 'journal' },
+    { id: 'om-oss', type: 'page', page_id: 'om-oss' },
+    { id: 'kontakt', type: 'page', page_id: 'kontakt' },
+  ] },
+  { id: 'sidfot', name: 'Sidfot', locations: ['footer'], items: ['tjanster', 'projekt', 'priser', 'journal', 'om-oss', 'kontakt'].map(id => ({ id, type: 'page', page_id: id })) },
+];
+
+/** The studio's settings page: a booking toggle and the opening hours, with Christmas Eve closed. */
+const SITE_FIELDS = {
+  groups: [{ id: 'kontakt', label: 'Kontakt', fields: [
+    { name: 'show_booking', type: 'boolean', label: 'Visa bokning' },
+    { name: 'booking_note', type: 'text', label: 'Bokningstext' },
+    openingHoursField('opening_hours', 'Öppettider'),
+  ] }],
+  values: {
+    show_booking: true, booking_note: 'Första mötet är kostnadsfritt och tar en timme.',
+    opening_hours: {
+      days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, index) => index < 5 ? { day, opens: '08:00', closes: '17:00' } : { day, closed: true }),
+      exceptions: [{ date: '2026-12-24', closed: true, note: 'Julafton' }],
+    },
+  },
+};
+
+/** The studio café's lunch, a dated live snippet: one dish on weekdays, closed at weekends and on Christmas Eve. */
+const SNIPPETS = [{ id: 'lunch', kind: 'dated', format: 'html', updated_at: '2026-11-08T08:00:00.000Z',
+  entries: [
+    ...['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(weekday => ({ weekday,
+      content: '<p><strong>Dagens lunch i smedjan:</strong> ärtsoppa med pannkakor och sylt, kaffe ingår.</p>' })),
+    { date: '2026-12-24', content: '<p><strong>Julafton:</strong> stängt.</p>' },
+  ], fallback: '<p>Ingen lunch i dag.</p>' }];
 
 const page = (id: string, path: string, title: string, blocks: Block[], extra: Record<string, unknown> = {}) =>
   ({ id, slug: id, path, title, status: 'published', content_mode: 'blocks', blocks, ...extra });
@@ -276,6 +328,13 @@ function contact() {
           b('core/icon', { icon: 'mail', size: 'lg' }),
           b('core/text', { text: 'hej@ljusrum.example' }),
           b('core/html', { html: '<address>Ljusrum Arkitekter<br>Smedjegatan 4<br>903 26 Umeå</address>' }),
+          b('core/icon', { icon: 'clock', size: 'lg' }),
+          b('core/site_field', { field: 'opening_hours', format: 'next_opening' }),
+          b('core/site_field', { field: 'opening_hours', label: 'Öppettider' }),
+          b('core/show_if', { condition: 'site.fields.show_booking' }, [
+            b('core/site_field', { field: 'booking_note', label: 'Boka' }),
+          ]),
+          b('core/snippet', { snippet: 'lunch', tag: 'section', empty_text: 'Ingen lunch i dag.' }),
         ]),
         b('core/container', { gap: 'sm' }, [
           heading('Hitta rätt', { level: 'h3' }),
@@ -309,12 +368,13 @@ export function demoSite(renderVersion = LATEST_RENDER_VERSION) {
     publication: {
       format: 'typeroll-static-publication', format_version: 2, publication_id: 'd'.repeat(64), core_commit: 'd'.repeat(40),
       site_url: 'https://ljusrum.example.invalid', version_id: 'main', site: { name: 'Ljusrum Arkitekter' }, settings,
-      pages, media: [], contentTypes: [], blockTypes: [], forms: [], redirects: [],
+      pages, media: [], contentTypes: [], blockTypes: [], forms: [], redirects: [], siteFields: SITE_FIELDS, snippets: SNIPPETS,
+      ...(renderVersion >= 15 ? { menus: MENUS } : {}),
       pageTemplates: [{ id: 'starter-article', name: 'Artikel', status: 'published', blocks: swedishLabels(getPageTemplateStarter('article')!) }],
       partials: [
         ...(['header', 'footer'] as const).map(kind => ({ id: kind, kind, status: 'published', content_mode: 'blocks', blocks: [
           ...(kind === 'header' ? [b('core/announcement_bar', { text: '<p>Vi har öppet hus i smedjan lördag 14 november.</p>', link_label: 'Anmäl dig', link_url: '/kontakt/' })] : []),
-          ...getPartialCompositionStarter(kind, { links: LINKS }),
+          ...getPartialCompositionStarter(kind, { links: LINKS, renderVersion }),
         ] })),
         { id: 'kontaktremsa', kind: 'free', name: 'Kontaktremsa', status: 'published', content_mode: 'blocks', blocks: [
           b('core/cta', { heading: 'Hellre ett samtal?', subheading: '<p>Ring oss på 090-12 34 56.</p>', primary_label: 'Ring nu', primary_url: '/kontakt/', align: 'left' }),

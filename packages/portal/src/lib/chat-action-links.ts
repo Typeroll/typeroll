@@ -1,9 +1,9 @@
 // Portal editor links for AI chat actions. The chat tool loop knows what it
-// changed — a page, a global block, a page template or a block type — so it
-// computes the link here instead of the chat UI guessing a page URL from a
-// bare target id (which sent block types and headers to a 404).
+// changed — a page, a global block, a page template, a block type, a menu
+// or the site fields — so it computes the link here instead of the chat UI guessing a page
+// URL from a bare target id (which sent block types and headers to a 404).
 
-export type ChatEditKind = 'page' | 'partial' | 'template' | 'block_type';
+export type ChatEditKind = 'page' | 'partial' | 'template' | 'block_type' | 'menu' | 'site_fields' | 'snippet';
 
 export interface ChatEditLink {
   /** Portal-relative URL of the editor for the changed item. */
@@ -17,6 +17,9 @@ const LABELS: Record<ChatEditKind, string> = {
   partial: 'Edit global block',
   template: 'Edit template',
   block_type: 'Edit block type',
+  menu: 'Edit menu',
+  site_fields: 'Edit site fields',
+  snippet: 'Edit snippet',
 };
 
 /** The editor link for an item the chat created or changed. */
@@ -27,6 +30,9 @@ export function chatEditLink(siteId: string, kind: ChatEditKind, id: string): Ch
     kind === 'block_type' ? `${site}/blocks?type=${ref}`
     : kind === 'partial' ? `${site}/partials/${ref}`
     : kind === 'template' ? `${site}/templates/${ref}`
+    : kind === 'menu' ? `${site}/menus/${ref}`
+    : kind === 'site_fields' ? `${site}/site-fields${id ? `#${ref}` : ''}`
+    : kind === 'snippet' ? `${site}/snippets${id ? `#${ref}` : ''}`
     : `${site}/pages/${ref}`;
   return { href, link_label: LABELS[kind] };
 }

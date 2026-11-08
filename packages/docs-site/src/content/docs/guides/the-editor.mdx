@@ -138,14 +138,17 @@ already published static site.
 
 ## Keyboard shortcuts
 
-| Shortcut               | Does                                  |
-| ---------------------- | ------------------------------------- |
-| `⌘Z` / `Ctrl+Z`        | Undo                                  |
-| `⇧⌘Z` / `Ctrl+Shift+Z` | Redo                                  |
-| `⌘D` / `Ctrl+D`        | Duplicate the selected block          |
-| `Delete` / `Backspace` | Delete the selected block             |
-| `Enter`                | Commit an inline edit or a rename     |
-| `Escape`               | Cancel an inline edit, close a dialog |
+| Shortcut               | Does                                    |
+| ---------------------- | --------------------------------------- |
+| `⌘Z` / `Ctrl+Z`        | Undo                                    |
+| `⇧⌘Z` / `Ctrl+Shift+Z` | Redo                                    |
+| `⌘D` / `Ctrl+D`        | Duplicate the selected block            |
+| `⌘C` / `Ctrl+C`        | Copy the selected block                 |
+| `⌘X` / `Ctrl+X`        | Cut the selected block                  |
+| `⌘V` / `Ctrl+V`        | Paste copied blocks after the selection |
+| `Delete` / `Backspace` | Delete the selected block               |
+| `Enter`                | Commit an inline edit or a rename       |
+| `Escape`               | Cancel an inline edit, close a dialog   |
 
 Shortcuts also work when the block preview has focus. A shortcut waits for
 pending block autosaves; it never commits the Page. Text fields and inline text
@@ -159,6 +162,40 @@ to before you started typing, not one character at a time.
   Undo is cheap and safe here: it only ever rewrites your draft, never the saved
   page. See [Drafts & Saving](../../tools/drafts-and-saving/).
 </Aside>
+
+## Copy and paste blocks
+
+Select a block and press `⌘C` / `Ctrl+C` (or the copy icon on its row in the
+Structure tab) to copy it with everything inside it. Open any page, on the
+same site or another site you can edit, select a block and press `⌘V` /
+`Ctrl+V` (or the paste icon on a row): the copy goes after the selected block,
+inside the same parent or column, or at the end of the page when nothing is
+selected. `⌘X` / `Ctrl+X` copies the block and removes it. The editor confirms
+what happened, for example "Pasted 2 blocks; created the style Hero
+(imported)". Pasting changes only the page draft; save the page to publish it.
+
+- **Styles are created, not mapped.** Pasted into another site, the blocks keep
+  their look: each style they use is created on that site. A style the site
+  already has with the same definition is reused; one with the same id but
+  another definition is created under a new id (`hero-2`, "Hero (imported)")
+  and the pasted blocks use it. The site's own styles are unchanged, and
+  pasting the same blocks again reuses the imported copy.
+- **Block types and global blocks** the blocks use are created on the other site
+  the same way. App blocks show once the app is installed there.
+- **Media is copied** into the other site's Media library when you can read the
+  site the blocks came from (a file with the same bytes is reused). An image
+  from a site you cannot read is left out, and the editor says so.
+- **Links** to pages of the other site become plain addresses; point them at
+  this site's pages.
+- Within the same site the blocks are pasted as they are, with new ids.
+
+Copied blocks are a text on your clipboard that starts with
+`{"typeroll_clipboard":1`. Pasted into a document or an e-mail, you get the
+blocks' text instead where the browser supports it. Text fields and inline text
+keep their usual copy and paste; text that is not copied blocks is ignored.
+The first paste after a copy from the preview may ask for permission to read the
+clipboard. Agents copy and paste with [`copy_blocks` and
+`paste_blocks`](../../tools/packages/#copy-and-paste-blocks).
 
 ## Responsive editing
 

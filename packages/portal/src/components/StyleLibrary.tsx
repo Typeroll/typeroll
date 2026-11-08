@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { BlockType, BreakpointWidths, SiteColors, SiteStyle, StyleBreakpoint, StyleProps, StyleShadow, StyleTarget } from '@typeroll/shared';
 import {
   COLOR_TOKENS,
@@ -13,6 +13,10 @@ import {
   styleContrastReport,
   validateSiteStyle,
 } from '@typeroll/shared';
+import { describeFontValue, effectiveRoleFamilies, fontRoleChoices, previewFontStack, sampleCharacters, type SiteFonts } from './font-picker-model';
+import { useSandboxFontHead, useSiteFontFiles } from './font-preview';
+import { loadFontPreview } from './FontPicker';
+import { fontSampleText, type SiteFontFile } from '@typeroll/shared';
 
 /** A block part a style can apply to site-wide (`SiteStyle.parts`). */
 export interface BlockPartChoice {
@@ -68,6 +72,10 @@ interface Props {
   canEdit: boolean;
   /** Block parts of the site's block types (blockPartChoices). */
   blockParts?: BlockPartChoice[];
+  /** The site's font roles, so font choices name the family and the preview uses it. */
+  fonts?: SiteFonts;
+  /** The site's language, for font samples. */
+  language?: string;
 }
 
 type Tab = 'base' | StyleBreakpoint;
@@ -98,7 +106,9 @@ function emptyStyle(): SiteStyle {
   return { id: '', name: '', targets: ['text'], base: {} };
 }
 
-export default function StyleLibrary({ siteId, initialStyles, colors, breakpoints, renderVersion, baseCss, canEdit, blockParts = [] }: Props) {
+export default function StyleLibrary({ siteId, initialStyles, colors, breakpoints, renderVersion, baseCss, canEdit, blockParts = [], fonts, language }: Props) {
+  const fontFiles = useSiteFontFiles(fonts ? siteId : undefined);
+  const fontHead = useSandboxFontHead(siteId, fonts, fontFiles);
   const [styles, setStyles] = useState(initialStyles);
   const [selected, setSelected] = useState<string | null>(initialStyles[0]?.id ?? null);
   const [draft, setDraft] = useState<SiteStyle | null>(initialStyles[0] ? structuredClone(initialStyles[0]) : null);
@@ -123,8 +133,8 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
   const previewDoc = useMemo(() => {
     if (!draft?.id) return '';
     const css = siteStylesCss([draft], { breakpoints, colors, renderVersion });
-    return `<!doctype html><html><head><meta name="viewport" content="width=device-width"><style>${baseCss}</style><style>${css}</style><style>body{margin:0;padding:16px}</style></head><body><main class="page-content">${sampleMarkup(draft)}</main></body></html>`;
-  }, [draft, baseCss, breakpoints, colors, renderVersion]);
+    return `<!doctype html><html><head><meta name="viewport" content="width=device-width">${fontHead}<style>${baseCss}</style><style>${css}</style><style>body{margin:0;padding:16px}</style></head><body><main class="page-content">${sampleMarkup(draft)}</main></body></html>`;
+  }, [draft, baseCss, breakpoints, colors, renderVersion, fontHead]);
 
   const previewWidth = tab === 'base' ? 390 : breakpointPreviewWidth(tab, breakpoints);
   const props: StyleProps = draft ? (tab === 'base' ? draft.base : draft.at?.[tab] ?? {}) : {};
@@ -263,13 +273,13 @@ export default function StyleLibrary({ siteId, initialStyles, colors, breakpoint
             {tab === 'base' ? 'Values for phones and everything above, unless a larger screen overrides them.' : `Overrides from ${breakpoints[tab]}px wide and up. Empty fields keep the smaller screen's value.`}
           </p>
 
-          <PropsEditor props={props} inherited={inherited} disabled={!canEdit} onChange={setProp} />
+          <PropsEditor props={props} inherited={inherited} disabled={!canEdit} onChange={setProp} fontContext={{ siteId, fonts, language, renderVersion, files: fontFiles }} />
 
           {liveErrors.length > 0 && <ul role="alert" style={{ margin: 0, color: 'var(--color-danger)' }}>{liveErrors.map(e => <li key={e}>{e}</li>)}</ul>}
           {liveWarnings.length > 0 && <ul role="status" style={{ margin: 0 }}>{liveWarnings.map(w => <li key={w}>{w}</li>)}</ul>}
 
           <div>
-            <p className="muted text-sm" style={{ margin: '0 0 .25rem' }}>Preview at {previewWidth}px (fonts load on the site)</p>
+            <p className="muted text-sm" style={{ margin: '0 0 .25rem' }}>Preview at {previewWidth}px in the site's fonts</p>
             <div style={{ overflowX: 'auto', border: '1px solid var(--color-border)', borderRadius: 8, background: '#fff' }}>
               {previewDoc && <iframe title="Style preview" sandbox="" srcDoc={previewDoc} style={{ width: previewWidth, height: 220, border: 0, display: 'block' }} />}
             </div>
@@ -311,9 +321,43 @@ function withRemovals(before: SiteStyle | undefined, after: SiteStyle): Record<s
   };
 }
 
-function PropsEditor({ props, inherited, disabled, onChange }: {
+interface FontContext { siteId: string; fonts?: SiteFonts; language?: string; renderVersion: number; files: SiteFontFile[] | null }
+
+const STYLE_FONT_OPTIONS = ['heading', 'body', 'display', 'accent', 'mono', 'inherit'];
+
+/** The style's font choice, each role labelled with the site's family, and a sample in the chosen role's font. */
+function FontRoleField({ value, inherited, disabled, onChange, context }: {
+  value?: StyleProps['font']; inherited?: StyleProps['font']; disabled: boolean; onChange: (value: StyleProps['font'] | undefined) => void; context?: FontContext;
+}) {
+  const choices = fontRoleChoices(STYLE_FONT_OPTIONS, context?.fonts, context?.renderVersion ?? null, value);
+  const role = value ?? inherited;
+  const families = context?.fonts ? effectiveRoleFamilies(context.fonts, context.renderVersion) : null;
+  const family = role && role !== 'inherit' && families ? families[role] : undefined;
+  const text = useMemo(() => sampleCharacters(context?.language), [context?.language]);
+  useEffect(() => {
+    if (context) loadFontPreview(family, { siteId: context.siteId, uploads: context.files, services: context.fonts?.services, text });
+  }, [context, family, text]);
+  const inheritedLabel = inherited ? choices.find(choice => choice.value === inherited)?.label ?? inherited : null;
+  return (
+    <div className="field">
+      <label>Font</label>
+      <select aria-label="Font" value={value ?? ''} disabled={disabled} onChange={e => onChange((e.target.value || undefined) as StyleProps['font'])}>
+        <option value="">{inheritedLabel ? `Inherit (${inheritedLabel})` : 'Default'}</option>
+        {choices.map(choice => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+      </select>
+      {family && (
+        <span className="text-sm" style={{ fontFamily: role === 'mono' ? `${previewFontStack(family)}, ui-monospace, monospace` : previewFontStack(family, describeFontValue(family, context?.files, context?.fonts?.services).category), overflowWrap: 'anywhere' }}>
+          {fontSampleText(context?.language).heading}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function PropsEditor({ props, inherited, disabled, onChange, fontContext }: {
   props: StyleProps; inherited: StyleProps; disabled: boolean;
   onChange: <K extends keyof StyleProps>(key: K, value: StyleProps[K] | undefined) => void;
+  fontContext?: FontContext;
 }) {
   const text = (key: 'size' | 'line_height' | 'letter_spacing' | 'space_before' | 'space_after' | 'padding' | 'max_width' | 'radius' | 'gap', label: string, hint: string) => (
     <div className="field">
@@ -321,7 +365,7 @@ function PropsEditor({ props, inherited, disabled, onChange }: {
       <input aria-label={label} value={(props[key] as string) ?? ''} placeholder={(inherited[key] as string) ?? hint} disabled={disabled} onChange={e => onChange(key, e.target.value || undefined)} />
     </div>
   );
-  const select = <K extends 'font' | 'transform' | 'align' | 'decoration' | 'shadow'>(key: K, label: string, options: string[]) => (
+  const select = <K extends 'transform' | 'align' | 'decoration' | 'shadow'>(key: K, label: string, options: string[]) => (
     <div className="field">
       <label>{label}</label>
       <select aria-label={label} value={(props[key] as string) ?? ''} disabled={disabled} onChange={e => onChange(key, (e.target.value || undefined) as StyleProps[K])}>
@@ -332,7 +376,7 @@ function PropsEditor({ props, inherited, disabled, onChange }: {
   );
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '.75rem' }}>
-      {select('font', 'Font', ['heading', 'body', 'mono', 'inherit'])}
+      <FontRoleField value={props.font} inherited={inherited.font} disabled={disabled} onChange={value => onChange('font', value)} context={fontContext} />
       {text('size', 'Size', 'e.g. 1.125rem')}
       <div className="field">
         <label>Weight</label>

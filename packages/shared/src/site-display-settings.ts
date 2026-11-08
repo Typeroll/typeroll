@@ -15,6 +15,32 @@ export function dateFormatError(value: unknown): string | null {
   return /YYYY|M|D/.test(value) ? null : 'date_format pattern must contain YYYY, a month (M, MM, MMM, MMMM) or a day (D, DD)';
 }
 
+/** A valid IANA time zone name, such as Europe/Stockholm. */
+export function timeZoneError(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^[A-Za-z_]+(?:\/[A-Za-z0-9_+-]+){0,2}$/.test(value) || value.length > 64) return 'time_zone must be an IANA time zone such as Europe/Stockholm';
+  try { new Intl.DateTimeFormat('en', { timeZone: value }); return null; } catch { return `${value} is not a time zone this runtime knows`; }
+}
+
+/** The time zone a language's sites usually keep, for languages that have one. */
+const LANGUAGE_TIME_ZONES: Record<string, string> = {
+  sv: 'Europe/Stockholm', nb: 'Europe/Oslo', nn: 'Europe/Oslo', no: 'Europe/Oslo', da: 'Europe/Copenhagen',
+  fi: 'Europe/Helsinki', is: 'Atlantic/Reykjavik', 'en-gb': 'Europe/London', de: 'Europe/Berlin', nl: 'Europe/Amsterdam',
+  fr: 'Europe/Paris', es: 'Europe/Madrid', it: 'Europe/Rome', pl: 'Europe/Warsaw', et: 'Europe/Tallinn', lv: 'Europe/Riga', lt: 'Europe/Vilnius',
+};
+
+/**
+ * The time zone that decides what "today" and "open now" mean for a site: its
+ * own `time_zone` setting when set, otherwise the usual one for its language,
+ * otherwise Europe/Stockholm. Times typed into opening hours are never
+ * converted; the zone only says which day and hour it is at the business.
+ */
+export function siteTimeZone(settings: { time_zone?: unknown; language?: unknown } | undefined): string {
+  const own = settings?.time_zone;
+  if (typeof own === 'string' && !timeZoneError(own)) return own;
+  const language = String(settings?.language ?? '').toLowerCase();
+  return LANGUAGE_TIME_ZONES[language] ?? LANGUAGE_TIME_ZONES[language.split('-')[0] ?? ''] ?? 'Europe/Stockholm';
+}
+
 export interface ContentWidths { narrow?: number; normal?: number; wide?: number }
 
 /** Defaults in px (42, 65 and 80rem) and the range each width accepts. */

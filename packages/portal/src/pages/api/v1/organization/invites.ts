@@ -2,18 +2,19 @@
 //      links or tokens: id, state (active, used, expired, revoked), uses,
 //      expiry, creator and the email address an invite is bound to.
 // POST /api/v1/organization/invites — store an invite and return its signed
-//      link. Body: { ttl_days?: number, max_uses?: number, email?: string }
+//      link. Body: { ttl_days?: number, max_uses?: number, email?: string, role?: string }
 //        ttl_days  default 7, max 30
 //        max_uses  default 1 (single use), 1–50
 //        email     only a person signed in with this address can redeem it
+//        role      admin, builder or editor (default); never owner
 // Revoke with DELETE /api/v1/organization/invites/{inviteId}.
 //
 // Organization API keys only. Only organization owners and admins can create
 // one, so an organization key acts with that authority; a site-scoped key is
 // bound to one site and has no say over membership. Redeeming the link still
-// requires the invited person to sign in at /onboarding; they join as an
-// editor, never as an owner or admin, so the key never grants more than it
-// holds. Same options and stored records as POST /api/orgs/invite/generate.
+// requires the invited person to sign in at /onboarding; they join with the
+// invite's role (editor by default, or builder or admin), never as an owner,
+// so the key never grants more than it holds. Same options and stored records as POST /api/orgs/invite/generate.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireAnyApiKey } from '../../../../lib/api-auth';
@@ -44,7 +45,7 @@ export const POST: APIRoute = async ({ request }) => {
   const text = await request.text();
   let body: unknown = {};
   if (text.trim()) {
-    try { body = JSON.parse(text); } catch { return apiError('Invalid JSON body. Expected { ttl_days?, max_uses?, email? }.', 400, ctx); }
+    try { body = JSON.parse(text); } catch { return apiError('Invalid JSON body. Expected { ttl_days?, max_uses?, email?, role? }.', 400, ctx); }
   }
   let options: ReturnType<typeof parseInviteOptions>;
   try {
@@ -58,6 +59,7 @@ export const POST: APIRoute = async ({ request }) => {
     ttlDays: options.ttlDays,
     maxUses: options.maxUses,
     email: options.email,
+    role: options.role,
     createdBy: { id: `api_key:${ctx.keyPrefix}` },
   });
   const response = apiResponse(ctx, {
@@ -67,8 +69,8 @@ export const POST: APIRoute = async ({ request }) => {
     ttl_days: options.ttlDays,
     max_uses: invite.maxUses,
     email: invite.email,
-    role: 'editor',
-  }, 201, { ttl_days: options.ttlDays, max_uses: invite.maxUses, email_bound: invite.email !== null });
+    role: invite.role,
+  }, 201, { ttl_days: options.ttlDays, max_uses: invite.maxUses, email_bound: invite.email !== null, role: invite.role });
   response.headers.set('Cache-Control', 'no-store');
   return response;
 };

@@ -14,7 +14,7 @@ import { paths } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
 
 interface Change {
-  kind: 'page' | 'partial' | 'template';
+  kind: 'page' | 'partial' | 'template' | 'menu' | 'site_fields';
   id: string;
   title: string;
   date_updated: string;
@@ -84,6 +84,19 @@ export const GET: APIRoute = async ({ cookies, params, locals }) => {
       // Templates always ship — pages decide whether they're used.
       will_deploy: true,
     });
+  }
+
+  // Menus are saved directly (no draft), so every saved change ships.
+  const menus = await vstore.menus(orgId, site.id, versionId);
+  for (const menu of menus) {
+    if (!changedSince(menu.updated_at)) continue;
+    changes.push({ kind: 'menu', id: menu.id, title: menu.name || menu.id, date_updated: menu.updated_at!, will_deploy: true });
+  }
+
+  // Site fields are saved directly too: one entry for the whole document.
+  const siteFields = await vstore.siteFields(orgId, site.id, versionId);
+  if (changedSince(siteFields.updated_at)) {
+    changes.push({ kind: 'site_fields', id: 'site_fields', title: 'Site fields', date_updated: siteFields.updated_at!, will_deploy: true });
   }
 
   changes.sort((a, b) => (a.date_updated < b.date_updated ? 1 : -1));

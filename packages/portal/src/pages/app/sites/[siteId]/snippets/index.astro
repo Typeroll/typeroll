@@ -1,0 +1,14 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import SnippetList from '../../../../../components/SnippetList.tsx';
+import { loadSiteContext } from '../../../../../lib/access';
+
+// Live snippets of the site. Everyone with access sees them; editors and
+// administrators create and change them. The list loads from the snippets API.
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site } = ctx;
+---
+<AppLayout title={`Snippets — ${site.name}`} siteId={site.id}>
+  <SnippetList client:load siteId={site.id} canEdit={ctx.permission !== 'read'} />
+</AppLayout>

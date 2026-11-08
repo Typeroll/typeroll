@@ -3,7 +3,7 @@
 //
 // PATCH whitelists the editable fields and accepts everything the portal's
 // Settings form does (/api/sites/{siteId}/settings), with the same admin
-// permission. `scripts_head`, `scripts_body_end`, `custom_css` and the
+// permission; a builder may change the design keys only. `scripts_head`, `scripts_body_end`, `custom_css` and the
 // cookie-consent scripts are writable here: an authenticated API caller
 // (Bearer token) takes responsibility for what they ship, exactly as a site
 // admin does in the portal. The chat AI in lib/anthropic.ts does not expose
@@ -18,9 +18,15 @@
 // An Extension installation credential with `content:write` may change the
 // presentational settings, but never the fields that run code on or change
 // the indexing and origins of every published page: see INSTALLATION_REFUSED.
+//
+// `handover` (shared/src/site-handover.ts: checklist, start page, structure
+// lock) is replaced whole, and null removes it; it needs design rights (an
+// administrator or builder). An app installation writes it only with the
+// `site:handover` scope, which reads the settings and writes that key alone.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
+import { apiCanDesign, apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
+import { DESIGN_SETTINGS_KEYS } from '../../../../../lib/site-settings-sections';
 import { vstore } from '../../../../../lib/version-store';
 import { publicUrlsFor } from '../../../../../lib/site-public-urls';
 import { libraryProblems, libraryWarnings, readStyles } from '../../../../../lib/site-styles-store';
@@ -28,11 +34,13 @@ import { customCssWarnings, customCssWriteError } from '../../../../../lib/custo
 import { getStore } from '../../../../../lib/datastore';
 import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentionError } from '../../../../../lib/form-submissions';
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
-import { dateFormatError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, type SiteSettings } from '@typeroll/shared';
+import { fontSettingsWarnings, listSiteFonts } from '../../../../../lib/fonts/font-library';
+import { handoverWriteErrors, normalizedHandover } from '../../../../../lib/site-handover-write';
+import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, siteFontsErrors, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
-  'default_meta_description', 'language', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'content_widths', 'motion', 'image_sizes_default',
+  'default_meta_description', 'language', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'time_zone', 'content_widths', 'motion', 'image_sizes_default',
   'sitewide_noindex', 'sitewide_nofollow', 'seo_review', 'external_routes', 'render_version',
   // Social sharing + Organization JSON-LD, as in the portal Settings form.
   'default_og_image', 'twitter_handle', 'organization',
@@ -61,12 +69,18 @@ const INSTALLATION_REFUSED = new Set([
   'form_submission_retention_days',
 ]);
 const INSTALLATION_REFUSED_CONSENT = new Set(['scripts_necessary', 'scripts_optional']);
+/** Font services load a stylesheet from another company's CDN on every page. */
+const INSTALLATION_REFUSED_FONTS = new Set(['services']);
 
 function installationRefusedFields(body: Record<string, unknown>): string[] {
   const refused = Object.keys(body).filter((key) => INSTALLATION_REFUSED.has(key));
   const consent = body.cookie_consent;
   if (consent && typeof consent === 'object' && !Array.isArray(consent)) {
     for (const key of Object.keys(consent)) if (INSTALLATION_REFUSED_CONSENT.has(key)) refused.push(`cookie_consent.${key}`);
+  }
+  const fonts = body.fonts;
+  if (fonts && typeof fonts === 'object' && !Array.isArray(fonts)) {
+    for (const key of Object.keys(fonts)) if (INSTALLATION_REFUSED_FONTS.has(key)) refused.push(`fonts.${key}`);
   }
   return refused;
 }
@@ -97,15 +111,31 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // Same role as the portal Settings form, render-version and custom-CSS routes.
   // An installation credential reaches this route only with `content:write`
   // and is limited to the presentational fields below.
-  if (ctx.permission !== 'admin' && !ctx.extensionIdentity) return apiError('Insufficient permission (admin required)', 403, ctx);
+  // A builder (design without admin) changes the design keys only: colours,
+  // fonts, typography, scales, widths, logo and icons, the Site CSS and the
+  // render version (lib/site-settings-sections → DESIGN_SETTINGS_KEYS).
+  if (ctx.permission !== 'admin' && !ctx.extensionIdentity && !apiCanDesign(ctx)) return apiError('Insufficient permission (admin required)', 403, ctx);
   const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!body) return apiError('Invalid JSON body');
+  if (ctx.extensionIdentity?.scope === 'site:handover') {
+    // An app that hands sites over: the handover key and nothing else.
+    const other = Object.keys(body).filter((key) => key !== 'handover');
+    if (other.length || body.handover === undefined) return apiError(`The site:handover scope writes only the handover key${other.length ? `; refused: ${other.join(', ')}` : ''}`, 403, ctx);
+  } else if (ctx.extensionIdentity && body.handover !== undefined && !ctx.extensionIdentity.scopes.includes('site:handover')) {
+    return apiError('handover needs the site:handover scope', 403, ctx);
+  }
+  if (ctx.permission !== 'admin' && !ctx.extensionIdentity) {
+    const notDesign = Object.keys(body).filter((key) => !DESIGN_SETTINGS_KEYS.has(key) && key !== 'handover');
+    if (notDesign.length) return apiError(`These settings need admin permission on the site; a builder changes the design settings only: ${notDesign.join(', ')}`, 403, ctx);
+  }
   if (ctx.extensionIdentity) {
     const refused = installationRefusedFields(body);
     if (refused.length > 0) {
       return apiError(`These settings require a site administrator and cannot be changed with an Extension credential: ${refused.join(', ')}`, 403, ctx);
     }
   }
+  // The font plan is derived when a publication is frozen; a site never stores one.
+  if (body.font_plan !== undefined) return apiError('font_plan is computed when a publication is frozen and cannot be set. Choose families with fonts.heading, fonts.body, fonts.mono, fonts.display and fonts.accent, and extra weights with fonts.load.', 400, ctx);
   if (body.agent_instructions !== undefined && (typeof body.agent_instructions !== 'string' || body.agent_instructions.length > 12000)) return apiError('agent_instructions must be text up to 12000 characters', 400);
   for (const key of CLEARABLE_STRINGS) {
     if (body[key] === undefined) continue;
@@ -140,6 +170,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return apiError(`header_behavior must be one of: ${HEADER_BEHAVIORS.join(', ')} (or null for the default, static)`, 400);
   }
   if (body.date_format !== undefined && body.date_format !== null) { const error = dateFormatError(body.date_format); if (error) return apiError(error, 400); }
+  if (body.time_zone !== undefined && body.time_zone !== null) { const error = timeZoneError(body.time_zone); if (error) return apiError(error, 400); }
   if (body.motion !== undefined && body.motion !== null && body.motion !== 'full' && body.motion !== 'reduced') return apiError('motion must be "full" or "reduced"', 400);
   if (body.content_widths !== undefined && body.content_widths !== null) { const error = contentWidthsError(body.content_widths); if (error) return apiError(error, 400); }
   if (body.sitewide_noindex !== undefined && typeof body.sitewide_noindex !== 'boolean') {
@@ -164,6 +195,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (fonts.delivery !== undefined && fonts.delivery !== null && fonts.delivery !== 'self_hosted' && fonts.delivery !== 'google') {
       return apiError('fonts.delivery must be "self_hosted" (font files copied to the site, the default) or "google" (Google Fonts CDN), or null for the default', 400);
     }
+    // Roles, fonts.load and fonts.services. The patch replaces each key it
+    // names (null clears mono, display, accent, load and services), so the
+    // merged fonts are valid exactly when the keys sent are.
+    const fontErrors = siteFontsErrors(fonts);
+    if (fontErrors.length) return apiError(fontErrors.join('; '), 400, ctx, { details: { errors: fontErrors } });
   }
   if (body.colors !== undefined) {
     if (!body.colors || typeof body.colors !== 'object' || Array.isArray(body.colors)) return apiError('colors must be an object', 400);
@@ -206,6 +242,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     }
   }
 
+  if (body.handover !== undefined) {
+    const errors = await handoverWriteErrors(ctx, body.handover);
+    if (errors.length) return apiError(errors.join('; '), 400, ctx, { details: { errors } });
+  }
+
   const existing = ((await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? {}) as Record<string, unknown>;
   if (body.language_sections !== undefined) {
     const siteLanguage = typeof body.language === 'string' ? body.language : existing.language as string | undefined;
@@ -217,6 +258,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const unknown_keys: string[] = [];
   for (const [k, v] of Object.entries(body)) {
     if (v === undefined) continue;
+    // Replaced whole (not merged like fonts); null removes it.
+    if (k === 'handover') { update.handover = normalizedHandover(v); continue; }
     if (NESTED.has(k) && v && typeof v === 'object') {
       // For contact specifically, the `address` field accepts either a
       // string (legacy) or a PostalAddress object. We pass whatever the
@@ -227,6 +270,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && (k === 'fonts' || k === 'colors')) delete (update[k] as Record<string, unknown>)[field];
     } else if (TOP_LEVEL.has(k)) {
       // null clears an optional field; the store drops undefined values.
+      // A site always has a time zone: null resets it to the usual one for its language.
+      if (k === 'time_zone' && v === null) { update[k] = siteTimeZone({ language: body.language ?? existing.language }); continue; }
       update[k] = v === null && (CLEARABLE_STRINGS as readonly string[]).concat('organization', 'language_sections', 'ai_crawler_policy', 'header_behavior', 'date_format', 'content_widths', 'motion').includes(k) || (k === 'motion' && v === 'full') ? undefined : v;
     } else if (SITE_LEVEL.has(k)) {
       continue;
@@ -278,6 +323,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       button_text_ok: item.apca_pass,
     }));
   }
+  if (update.fonts) warnings.push(...fontSettingsWarnings(update.fonts as SiteSettings['fonts'], await listSiteFonts(ctx.orgId, ctx.siteId)));
   warnings.push(...customCssWarnings(update.custom_css).map(problem => `Custom CSS line ${problem.line}: ${problem.message}`));
   if (warnings.length) resp.warnings = warnings;
   return apiResponse(ctx, resp, 200, body);

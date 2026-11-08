@@ -1,3 +1,4 @@
+import { TemplateDesignFindings, type TemplateDesignFindingView } from './TemplateDesignFindings';
 import { decodeHTML } from 'entities';
 import PageDraftRecovery from './PageDraftRecovery';
 // Block-mode page editor.
@@ -16,7 +17,8 @@ import PageDraftRecovery from './PageDraftRecovery';
 // across containers is a Phase 2.5 polish.
 
 import { Fragment, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
-import type { Block, BlockTemplate, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType, SiteStyle } from '@typeroll/shared';
+import { groupBlockTemplates, importedFromLabel, templateKindLabel } from './block-template-model';
+import type { Block, BlockTemplate, BlockType, Page, Breakpoint, WorkingCopy, FieldDefinition, ContentType, SiteSettings, SiteStyle } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES, GLOBAL_BLOCK_TYPE_ID, resolveResponsive, isResponsiveValue, resolveBreakpointWidths, breakpointPreviewWidth, type ResponsiveBreakpoints } from '@typeroll/shared';
 import {
   DndContext, DragOverlay, useDraggable, useDroppable,
@@ -32,7 +34,7 @@ import { EDITOR_CANVAS_FRAME_SANDBOX, isEditorCanvasMessage, useEditorCanvasId }
 import {
   Monitor, Tablet, Smartphone, ChevronRight, ChevronDown,
   Trash2, Copy, GripVertical, Plus, Square, Columns, Type, Heading, Image as ImageIcon, MousePointerClick,
-  ArrowLeft, SlidersHorizontal, Undo2, Redo2,
+  ArrowLeft, SlidersHorizontal, Undo2, Redo2, ClipboardCopy, ClipboardPaste,
 } from 'lucide-react';
 import { DocStatus } from './EditorStatus';
 import PublishMenu, { PAGE_STATUS_OPTIONS } from './PublishMenu';
@@ -41,12 +43,15 @@ import TemplatePicker from './TemplatePicker';
 import PageContentTypePicker from './PageContentTypePicker';
 import './BlockPageEditor.css';
 import CustomCssEditor from './CustomCssEditor';
-import FieldInput, { EditedBlockTypeContext, fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, RenderVersionContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
+import FieldInput, { EditedBlockTypeContext, fieldAvailable, fieldGroup, fieldLabel, GlobalBlocksContext, RenderVersionContext, SiteFontsContext, SiteStylesContext, textInput, textareaInput } from './FieldInput';
 import type { GlobalBlockSummary } from './editor-context';
 import TurnIntoBlockType, { type TurnIntoBlockTypeAction } from './TurnIntoBlockType';
 import { compositionFromSelection, detachComposedInstance, propCandidates } from '../lib/block-type-builder';
 import { newBlockId, replaceBlockIn } from '../lib/block-tree-ops';
 import { loadInternalPages } from './internal-pages';
+import { CollectionLibrarySection, useEditorCollection } from './CollectionLibrarySection';
+import { templateSaveKind, type CollectionEntryView, type CollectionInsertResult } from './collection-model';
+import { copiedLine, copyBlocksToClipboard, installClipboardShortcuts, pasteClipboardText, pastedLine, readBlockClipboard } from './block-clipboard';
 
 interface Props {
   responsiveBreakpoints?: ResponsiveBreakpoints | null;
@@ -54,6 +59,8 @@ interface Props {
   siteStyles?: SiteStyle[];
   /** The site's render version; fields of newer versions are hidden. */
   renderVersion?: number;
+  /** The site's font roles, so font settings name each role's family. */
+  siteFonts?: SiteSettings['fonts'];
   /** Global blocks (free partials) a page can reference. */
   globalBlocks?: GlobalBlockSummary[];
   /** Block templates (copy-in section starters). */
@@ -69,7 +76,16 @@ interface Props {
   lastDeployedAt: string | null;
   /** Site editors and admins may create block types ("Turn into block type…"). */
   canManageBlockTypes?: boolean;
+  /**
+   * The site's handover locks its structure for this person (no design
+   * rights): text and images stay editable, but blocks cannot be added,
+   * removed, moved, duplicated, pasted or made global, and the page keeps
+   * its template and content type. The server refuses those writes too.
+   */
+  structureLocked?: boolean;
 }
+
+export const STRUCTURE_LOCKED_NOTE = "The site's structure is locked; you can edit text and images.";
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 type LeftTab = 'add' | 'structure';
@@ -120,9 +136,11 @@ export default function BlockPageEditor(props: Props) {
   </PageDraftRecovery>;
 }
 
-function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false }: Props) {
+function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl, lastDeployedAt, contentType, responsiveBreakpoints, siteStyles, renderVersion, siteFonts, globalBlocks: initialGlobalBlocks = [], blockTemplates: initialTemplates = [], canManageBlockTypes = false, structureLocked = false }: Props) {
   const [globalBlocks, setGlobalBlocks] = useState(initialGlobalBlocks);
   const [blockTemplates, setBlockTemplates] = useState(initialTemplates);
+  // The organization collection; null when this person may not use it.
+  const collection = useEditorCollection(siteId);
   // The editor edits the working-copy view of the page: canonical doc with
   // any unsaved (autosaved) fields overlaid. All edits autosave to the
   // working copy; the deliberate Save in the Publish menu promotes them.
@@ -328,6 +346,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     extraData?: Record<string, unknown>,
     name?: string,
   ): Promise<void> {
+    if (lockedNotice()) return;
     const bt = registry.get(typeId);
     const data: Record<string, unknown> = {};
     if (bt) {
@@ -349,12 +368,14 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   }
 
   async function handleRemove(blockId: string): Promise<void> {
+    if (lockedNotice()) return;
     if (!confirm('Delete this block and everything inside it?')) return;
     await callMutation({ method: 'DELETE', query: { block_id: blockId } });
     if (selectedId === blockId) setSelectedId(null);
   }
 
   async function handleDuplicate(blockId: string): Promise<void> {
+    if (lockedNotice()) return;
     const result = await callMutation({ method: 'POST', body: { duplicate_of: blockId } });
     if (result?.added_id) selectBlock(result.added_id);
   }
@@ -382,10 +403,120 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     selected?.block.children !== undefined || selected?.block.slots !== undefined ? { parent_id: selected!.block.id, position: 0 } : { parent_id: null };
 
   async function insertTemplate(templateId: string): Promise<void> {
+    if (lockedNotice()) return;
     try {
       const result = await callReusable({ action: 'insert_template', template_id: templateId, ...insertTarget() });
       if (result.added_ids?.[0]) selectBlock(result.added_ids[0]);
     } catch (e) { setError((e as Error).message); setStatus('error'); }
+  }
+
+  // A collection entry goes after the selected block, else at the end; the
+  // server writes it into the working copy, so reload the draft from there.
+  async function insertFromCollection(entry: CollectionEntryView): Promise<CollectionInsertResult> {
+    if (structureLocked) throw new Error(STRUCTURE_LOCKED_NOTE);
+    await blockWrite.current.catch(() => {});
+    await fieldFlush.current?.();
+    return enqueueWrite(async () => {
+      const result = await collection.insertIntoPage(entry.id, page.id, selectedIdRef.current);
+      const res = await fetch(`${resourceUrl}/blocks`, { headers: { accept: 'application/json' } });
+      const body = res.ok ? await res.json().catch(() => ({})) as { blocks?: Block[] } : {};
+      if (body.blocks) {
+        setDraft((d) => ({ ...d, blocks: body.blocks }));
+        setHasWc(true);
+        historyRef.current?.record(body.blocks, `collection:${entry.id}:${Date.now()}`);
+        bumpHist();
+      }
+      reloadPreview();
+      return result;
+    });
+  }
+
+  // ─── Copy and paste (block-clipboard.ts) ──────────────────────────────
+  // Copy asks the server for the clipboard of the block's current draft, so
+  // pending field edits are saved first. Paste goes after the selected block
+  // (else at the end); the server writes the working copy, so the draft is
+  // reloaded from there, as after a collection insert.
+  const [clipNotice, setClipNotice] = useState<{ text: string; error?: boolean } | null>(null);
+  const clipNoticeTimer = useRef<number | null>(null);
+  function showClipNotice(text: string, error = false): void {
+    if (clipNoticeTimer.current) window.clearTimeout(clipNoticeTimer.current);
+    setClipNotice({ text, error });
+    clipNoticeTimer.current = window.setTimeout(() => setClipNotice(null), error ? 10000 : 6000);
+  }
+
+  /** While the structure is locked: say so and refuse the action. */
+  function lockedNotice(): boolean {
+    if (!structureLocked) return false;
+    showClipNotice(STRUCTURE_LOCKED_NOTE, true);
+    return true;
+  }
+
+  async function copyBlock(blockId: string, cut = false): Promise<void> {
+    // Cutting removes the block: copy only while the structure is locked.
+    if (cut && structureLocked) cut = false;
+    try {
+      await fieldFlush.current?.();
+      await blockWrite.current.catch(() => {});
+      await editorWrites.current.catch(() => {});
+      const result = await copyBlocksToClipboard(siteId, page.id, [blockId]);
+      if (cut) {
+        await callMutation({ method: 'DELETE', query: { block_id: blockId } });
+        if (selectedIdRef.current === blockId) setSelectedId(null);
+      }
+      showClipNotice(copiedLine(result.count.top, cut));
+    } catch (e) {
+      showClipNotice((e as Error).message || 'Copying failed', true);
+    }
+  }
+
+  async function pasteText(text: string, afterBlockId: string | null = selectedIdRef.current): Promise<void> {
+    if (lockedNotice()) return;
+    await blockWrite.current.catch(() => {});
+    await fieldFlush.current?.();
+    return enqueueWrite(async () => {
+      setStatus('saving');
+      setError(null);
+      try {
+        const after = afterBlockId && findBlock(draftRef.current.blocks ?? [], afterBlockId) ? afterBlockId : null;
+        const result = await pasteClipboardText(siteId, page.id, text, after);
+        const res = await fetch(`${resourceUrl}/blocks`, { headers: { accept: 'application/json' } });
+        const body = res.ok ? await res.json().catch(() => ({})) as { blocks?: Block[] } : {};
+        const blocks = body.blocks ?? result.page.blocks;
+        setDraft((d) => ({ ...d, blocks }));
+        setHasWc(true);
+        historyRef.current?.record(blocks, `paste:${Date.now()}`);
+        bumpHist();
+        reloadPreview();
+        if (result.page.added_ids[0]) selectBlock(result.page.added_ids[0]);
+        setStatus('saved');
+        window.setTimeout(() => setStatus('idle'), 1200);
+        showClipNotice(pastedLine(result));
+      } catch (e) {
+        setStatus('idle');
+        showClipNotice((e as Error).message || 'Pasting failed', true);
+      }
+    });
+  }
+
+  /** A Paste button, or ⌘V in the canvas (quiet: other clipboard content is ignored there, as in the editor). */
+  async function pasteFromButton(afterBlockId: string | null, quiet = false): Promise<void> {
+    try {
+      const text = await readBlockClipboard();
+      if (!text) { if (!quiet) showClipNotice('The clipboard holds no copied blocks. Copy a block with ⌘C / Ctrl+C first.', true); return; }
+      await pasteText(text, afterBlockId);
+    } catch (e) {
+      showClipNotice((e as Error).message || 'Pasting failed', true);
+    }
+  }
+
+  async function saveSiteTemplate(block: Block, name: string, description: string): Promise<SavedTemplate> {
+    await fieldFlush.current?.();
+    await blockWrite.current.catch(() => {});
+    const res = await fetch(`/api/sites/${siteId}/block-templates`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, ...(description ? { description } : {}), from: { page_id: page.id, block_id: block.id } }) });
+    const body = await res.json().catch(() => ({})) as { block_template?: BlockTemplate; design_findings?: TemplateDesignFindingView[]; error?: string };
+    if (!res.ok || !body.block_template) throw new Error(body.error ?? `Could not save the template (${res.status})`);
+    setBlockTemplates(list => [...list, body.block_template!].sort((a, b) => a.name.localeCompare(b.name)));
+    return { template: body.block_template, findings: body.design_findings ?? [] };
   }
 
   function addGlobalBlock(globalBlockId: string): void {
@@ -405,13 +536,19 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       if (result.added_ids?.[0]) selectBlock(result.added_ids[0]);
     },
     async saveTemplate(name, description) {
-      await fieldFlush.current?.();
-      await blockWrite.current.catch(() => {});
-      const res = await fetch(`/api/sites/${siteId}/block-templates`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name, ...(description ? { description } : {}), from: { page_id: page.id, block_id: block.id } }) });
-      const body = await res.json().catch(() => ({})) as { block_template?: BlockTemplate; error?: string };
-      if (!res.ok || !body.block_template) throw new Error(body.error ?? `Could not save the template (${res.status})`);
-      setBlockTemplates(list => [...list, body.block_template!].sort((a, b) => a.name.localeCompare(b.name)));
+      return saveSiteTemplate(block, name, description);
     },
+    templateSaved(template) {
+      setBlockTemplates(list => list.map(item => item.id === template.id ? template : item));
+    },
+    // The collection saves existing site items, so the block becomes a site
+    // template first (the same flow as Save as template) and that is saved.
+    ...(collection.entries && block.type !== GLOBAL_BLOCK_TYPE_ID ? {
+      async saveToCollection(name: string, description: string, category: string) {
+        const { template } = await saveSiteTemplate(block, name, description);
+        await collection.save(templateSaveKind(template), template.id, { name, description, category });
+      },
+    } : {}),
     ...(canManageBlockTypes && !registry.get(block.type)?.composition?.length && block.type !== GLOBAL_BLOCK_TYPE_ID ? {
       turnIntoBlockType: {
         candidates: propCandidates(block, registry),
@@ -555,6 +692,16 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
     save: saveAll,
   });
   shortcutsRef.current = { history: applyHistory, duplicate: handleDuplicate, remove: handleRemove, save: saveAll };
+  const clipboardRef = useRef({ copy: copyBlock, paste: pasteText, pasteFromButton });
+  clipboardRef.current = { copy: copyBlock, paste: pasteText, pasteFromButton };
+
+  // Cmd/Ctrl+C, X and V for the selected block (block-clipboard.ts); text
+  // fields keep their own. Installed once, like the shortcuts below.
+  useEffect(() => installClipboardShortcuts(window, {
+    canCopy: () => Boolean(selectedIdRef.current),
+    copy: (cut) => { if (selectedIdRef.current) void clipboardRef.current.copy(selectedIdRef.current, cut); },
+    paste: (text) => { void clipboardRef.current.paste(text); },
+  }), []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -592,6 +739,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   }
 
   async function handleMove(blockId: string, targetParentId: string | null, targetSlotIndex?: number, targetPosition?: number): Promise<void> {
+    if (lockedNotice()) return;
     await callMutation({
       method: 'PUT',
       body: {
@@ -649,6 +797,11 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       const data = event.data;
       if (data.type === 'history' && (data.direction === 'undo' || data.direction === 'redo')) {
         void shortcutsRef.current.history(data.direction);
+      } else if (data.type === 'clipboard' && (data.action === 'copy' || data.action === 'cut' || data.action === 'paste')) {
+        // The canvas forwards the keys only; the clipboard is read and written here.
+        editorFocusRef.current?.focus({ preventScroll: true });
+        if (data.action === 'paste') void clipboardRef.current.pasteFromButton(selectedIdRef.current, true);
+        else if (selectedIdRef.current) void clipboardRef.current.copy(selectedIdRef.current, data.action === 'cut');
       } else if (data.type === 'geometry' && Array.isArray(data.blocks) && data.body && typeof data.body === 'object') {
         canvasGeometryRef.current = { blocks: data.blocks.slice(0, 5000), body: data.body } as CanvasGeometry;
       } else if (data.type === 'select') {
@@ -883,6 +1036,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
   return (
     <SiteStylesContext.Provider value={siteStyles ?? []}>
     <RenderVersionContext.Provider value={renderVersion ?? null}>
+    <SiteFontsContext.Provider value={siteFonts ?? null}>
     <GlobalBlocksContext.Provider value={{ siteId, blocks: globalBlocks }}>
     <div ref={editorFocusRef} tabIndex={-1} className="block-editor" data-mobile-pane={mobilePane}>
       <header className="block-editor__topbar">
@@ -900,6 +1054,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
             docUpdatedAt={draft.date_updated ?? null}
             lastDeployedAt={lastDeployedAt}
           /></div>
+          {clipNotice && <p className="block-editor__clip-notice" role={clipNotice.error ? 'alert' : 'status'} data-error={clipNotice.error ? 'true' : undefined}>{clipNotice.text}</p>}
         </div>
         <div className="block-editor__actions">
           <div style={{ display: 'flex', gap: '0.125rem' }}>
@@ -978,13 +1133,13 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
         {/* Left panel: tabs + content */}
         <aside id="block-editor-blocks" className="block-editor__blocks">
           <div style={tabBar}>
-            <button
+            {!structureLocked && <button
               type="button"
               style={tabBtn(leftTab === 'add')}
               onClick={() => setLeftTab('add')}
             >
               <Plus size={14} /> Add
-            </button>
+            </button>}
             <button
               type="button"
               style={tabBtn(leftTab === 'structure')}
@@ -994,11 +1149,12 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
             </button>
           </div>
           <div className="block-editor__block-list">
-            {leftTab === 'add' && (
+            {structureLocked && <p role="note" className="block-editor__locked-note" data-structure-locked>{STRUCTURE_LOCKED_NOTE}</p>}
+            {leftTab === 'add' && !structureLocked && (
               <BlockLibrary
                 registry={registry}
                 customTypes={customTypes}
-                reusable={{ globalBlocks, templates: blockTemplates, onAddGlobal: addGlobalBlock, onInsertTemplate: (id) => void insertTemplate(id) }}
+                reusable={{ globalBlocks, templates: blockTemplates, onAddGlobal: addGlobalBlock, onInsertTemplate: (id) => void insertTemplate(id), collection: { siteId, entries: collection.entries, onInsert: insertFromCollection } }}
                 onAdd={(typeId) => {
                   if (selected?.block.children !== undefined || selected?.block.slots !== undefined) {
                     handleAddBlock(typeId, selected.block.id, 0);
@@ -1008,13 +1164,16 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
                 }}
               />
             )}
-            {leftTab === 'structure' && (
+            {(leftTab === 'structure' || structureLocked) && (
               <BlockTree
+                locked={structureLocked}
                 blocks={draft.blocks ?? []}
                 selectedId={selectedId}
                 onSelect={selectBlock}
                 onRemove={handleRemove}
                 onDuplicate={handleDuplicate}
+                onCopy={(id) => void copyBlock(id)}
+                onPaste={(id) => void pasteFromButton(id)}
                 onRename={handleRename}
                 registry={registry}
                 dropTarget={dnd.dropTarget}
@@ -1065,7 +1224,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
               activeBp={activeBp}
               onChange={(data) => handleUpdateData(selected.block.id, data)}
               onStyleOverrides={(overrides) => handleUpdateOverrides(selected.block.id, overrides)}
-              reuse={reuseActions(selected.block)}
+              reuse={structureLocked ? undefined : reuseActions(selected.block)}
               blockTypeHref={canManageBlockTypes && registry.get(selected.block.type)?.origin === 'user' ? `/app/sites/${siteId}/blocks?type=${encodeURIComponent(selected.block.type)}` : undefined}
             />
           ) : (
@@ -1076,6 +1235,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
               hasUnsaved={hasWc || status === 'saving'}
               draft={draft}
               onChange={updateMeta}
+              structureLocked={structureLocked}
             />
           )}
         </aside>
@@ -1084,6 +1244,7 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       </DndContext>
     </div>
     </GlobalBlocksContext.Provider>
+    </SiteFontsContext.Provider>
     </RenderVersionContext.Provider>
     </SiteStylesContext.Provider>
   );
@@ -1106,6 +1267,8 @@ export function BlockLibrary({
     templates: BlockTemplate[];
     onAddGlobal: (id: string) => void;
     onInsertTemplate: (id: string) => void;
+    /** The organization collection's sections, templates and global blocks. */
+    collection?: { siteId: string; entries: CollectionEntryView[] | null; onInsert: (entry: CollectionEntryView) => Promise<CollectionInsertResult> };
   };
 }) {
   const [filter, setFilter] = useState('');
@@ -1132,18 +1295,23 @@ export function BlockLibrary({
         style={searchInput}
       />
       {reusable && (() => {
-        const templates = reusable.templates.filter(template => matches(`${template.name} ${template.description ?? ''}`));
+        const templates = reusable.templates.filter(template => matches(`${template.name} ${template.description ?? ''} ${template.category ?? ''}`));
         const globals = reusable.globalBlocks.filter(block => block.content_mode === 'blocks' && matches(block.name));
         return <>
           {templates.length > 0 && <div style={{ marginTop: '1rem' }}>
             <h4 style={catHeading}>Templates</h4>
             <p className="block-library__hint">Inserts a copy you can change on this page.</p>
-            <div className="block-library__reusable">
-              {templates.map(template => <button key={template.id} type="button" className="block-library__item" onClick={() => reusable.onInsertTemplate(template.id)} title={template.description}>
-                <strong>{template.name}</strong>{template.description && <span>{template.description}</span>}
+            {groupBlockTemplates(templates).map(group => <div key={group.category ?? ''} className="block-library__reusable">
+              {group.category && <span className="block-library__category">{group.category}</span>}
+              {group.templates.map(template => <button key={template.id} type="button" className="block-library__item" onClick={() => reusable.onInsertTemplate(template.id)} title={template.description}>
+                {template.preview && <img src={template.preview} alt="" loading="lazy" />}
+                <strong>{template.name}{templateKindLabel(template) && <em className="block-library__kind">{templateKindLabel(template)}</em>}</strong>
+                {template.description && <span>{template.description}</span>}
+                {importedFromLabel(template) && <span>{importedFromLabel(template)}</span>}
               </button>)}
-            </div>
+            </div>)}
           </div>}
+          {reusable.collection && <CollectionLibrarySection siteId={reusable.collection.siteId} entries={reusable.collection.entries} filter={filter} onInsert={reusable.collection.onInsert} headingStyle={catHeading} />}
           {globals.length > 0 && <div style={{ marginTop: '1rem' }}>
             <h4 style={catHeading}>Global blocks</h4>
             <p className="block-library__hint">Shared: the same content on every page that uses it.</p>
@@ -1224,25 +1392,34 @@ type TreeCtx = {
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
+  /** Copy the block to the clipboard (⌘C). */
+  onCopy?: (id: string) => void;
+  /** Paste copied blocks after the block (⌘V). */
+  onPaste?: (id: string) => void;
   onRename: (id: string, name: string) => void;
   registry: Map<string, BlockType>;
   /** Live drop position from the parent's drag handlers; null when idle. */
   dropTarget: DropTarget | null;
+  /** The structure is locked: no dragging, duplicating, pasting or deleting. */
+  locked?: boolean;
 };
 
 export function BlockTree({
-  blocks, selectedId, onSelect, onRemove, onDuplicate, onRename, registry, dropTarget,
+  blocks, selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry, dropTarget, locked = false,
 }: {
   blocks: Block[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
+  onCopy?: (id: string) => void;
+  onPaste?: (id: string) => void;
   onRename: (id: string, name: string) => void;
   registry: Map<string, BlockType>;
   dropTarget: DropTarget | null;
+  locked?: boolean;
 }) {
-  const ctx: TreeCtx = { selectedId, onSelect, onRemove, onDuplicate, onRename, registry, dropTarget };
+  const ctx: TreeCtx = { selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste: locked ? undefined : onPaste, onRename, registry, dropTarget, locked };
 
   // Empty page: still render the (droppable) root list so a block dragged
   // from the library has a landing zone, with a hint above it.
@@ -1332,7 +1509,7 @@ function SortableBlockNode({
   containerId: string;
   ctx: TreeCtx;
 }) {
-  const sortable = useSortable({ id: block.id, data: { containerId } });
+  const sortable = useSortable({ id: block.id, data: { containerId }, disabled: ctx.locked });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(sortable.transform),
     transition: sortable.transition,
@@ -1358,7 +1535,7 @@ function BlockNodeInner({
   ctx: TreeCtx;
   dragHandleProps?: React.HTMLAttributes<HTMLElement>;
 }) {
-  const { selectedId, onSelect, onRemove, onDuplicate, onRename, registry } = ctx;
+  const { selectedId, onSelect, onRemove, onDuplicate, onCopy, onPaste, onRename, registry, locked } = ctx;
   const [open, setOpen] = useState(true);
   const [renaming, setRenaming] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
@@ -1398,9 +1575,9 @@ function BlockNodeInner({
         style={treeRow(isSelected, depth)}
         onClick={() => onSelect(block.id)}
       >
-        <span {...dragHandleProps} style={{ ...dragHandle, touchAction: 'none' }} title="Drag to move">
+        {locked ? <span style={{ width: 12 }} /> : <span {...dragHandleProps} style={{ ...dragHandle, touchAction: 'none' }} title="Drag to move">
           <GripVertical size={12} />
-        </span>
+        </span>}
         {expandable ? (
           <button type="button" style={chevron} onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}>
             {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -1433,22 +1610,40 @@ function BlockNodeInner({
             {rowLabel}
           </button>
         )}
-        <button
+        {!locked && <button
           type="button"
           style={iconBtn}
           onClick={(e) => { e.stopPropagation(); onDuplicate(block.id); }}
           title="Duplicate (⌘D)"
         >
           <Copy size={12} />
-        </button>
-        <button
+        </button>}
+        {onCopy && <button
+          type="button"
+          style={iconBtn}
+          onClick={(e) => { e.stopPropagation(); onCopy(block.id); }}
+          title="Copy (⌘C) — paste on any page or site"
+          aria-label={`Copy ${rowLabel}`}
+        >
+          <ClipboardCopy size={12} />
+        </button>}
+        {onPaste && <button
+          type="button"
+          style={iconBtn}
+          onClick={(e) => { e.stopPropagation(); onPaste(block.id); }}
+          title="Paste after this block (⌘V)"
+          aria-label={`Paste after ${rowLabel}`}
+        >
+          <ClipboardPaste size={12} />
+        </button>}
+        {!locked && <button
           type="button"
           style={iconBtn}
           onClick={(e) => { e.stopPropagation(); onRemove(block.id); }}
           title="Delete"
         >
           <Trash2 size={12} />
-        </button>
+        </button>}
       </div>
       {open && isContainer && (
         <SortableList
@@ -1511,13 +1706,15 @@ function mergeResponsive(raw: unknown, bp: Breakpoint, value: unknown): unknown 
 // SEO, template, content mode — so block-mode pages can edit their title/SEO
 // without leaving the editor. Saves are debounced by the parent's updateMeta.
 function MetaPanel({
-  siteId, page, draft, onChange, contentType, hasUnsaved,
+  siteId, page, draft, onChange, contentType, hasUnsaved, structureLocked = false,
 }: {
   siteId: string;
   page: Page;
   draft: Page;
   contentType?: ContentType;
   hasUnsaved: boolean;
+  /** The page keeps its template and content type while the structure is locked. */
+  structureLocked?: boolean;
   onChange: <K extends keyof Page>(key: K, value: Page[K]) => void;
 }) {
   const siteStyles = useContext(SiteStylesContext);
@@ -1631,7 +1828,7 @@ function MetaPanel({
       </label>
 
       <div style={{ borderTop: '1px solid #2a2a30', paddingTop: '0.85rem' }}>
-        <PageContentTypePicker siteId={siteId} page={page} disabled={hasUnsaved} />
+        <PageContentTypePicker siteId={siteId} page={page} disabled={hasUnsaved || structureLocked} />
         {contentType ? <>
           <p>Content type: <a style={{ color: '#a5b4fc' }} href={`/app/sites/${siteId}/content-types/${contentType.name}`}>{contentType.label_singular}</a></p>
           {contentType.fields.map(field =>
@@ -1641,7 +1838,7 @@ function MetaPanel({
         <label style={fieldLabel} htmlFor="page-sort-order">Page order</label>
         <input id="page-sort-order" type="number" step="any" style={textInput} value={draft.sort_order ?? ''} onChange={e => onChange('sort_order', e.target.value === '' ? null : Number(e.target.value))} />
         <p style={{ color: '#a1a1aa', fontSize: '.85rem' }}>Lower numbers come first when sorting by page order. Empty values come last.</p>
-        <TemplatePicker siteId={siteId} pageId={page.id} currentTemplate={draft.template} contentType={page.content_type} defaultTemplate={contentType?.template} onChange={value => onChange('template', value)} />
+        {!structureLocked && <TemplatePicker siteId={siteId} pageId={page.id} currentTemplate={draft.template} contentType={page.content_type} defaultTemplate={contentType?.template} onChange={value => onChange('template', value)} />}
         <ContentModeSwitcher siteId={siteId} pageId={page.id} currentMode="blocks" />
       </div>
 
@@ -1815,7 +2012,7 @@ export function BlockFieldForm({
         })}
       </form>
       </EditedBlockTypeContext.Provider>
-      {reuse && <ReusePanel key={block.id} block={block} actions={reuse} />}
+      {reuse && <ReusePanel key={block.id} block={block} actions={reuse} siteId={siteId} />}
     </div>
   );
 }
@@ -1824,10 +2021,18 @@ function countBlocks(blocks: readonly Block[]): number {
   return blocks.reduce((sum, block) => sum + 1 + countBlocks(block.children ?? []) + (block.slots ?? []).reduce((n, slot) => n + countBlocks(slot), 0), 0);
 }
 
+/** A template saved from a block, with its design findings. */
+export interface SavedTemplate { template: BlockTemplate; findings: TemplateDesignFindingView[] }
+
 export interface ReuseActions {
   makeGlobal(name: string): Promise<void>;
   detach(): Promise<void>;
-  saveTemplate(name: string, description: string): Promise<void>;
+  /** Saves the block as a site template; answers with its hard-coded colours and fonts (design_findings). */
+  saveTemplate(name: string, description: string): Promise<SavedTemplate>;
+  /** The template changed after a "Use <token>" fix. */
+  templateSaved?(template: BlockTemplate): void;
+  /** Save as a site template and put that in the organization collection. Only when the collection is available. */
+  saveToCollection?(name: string, description: string, category: string): Promise<void>;
   /** Admins: make a block type from this block and its children (TurnIntoBlockType). */
   turnIntoBlockType?: TurnIntoBlockTypeAction;
   /** A placed composed block: replace it with the blocks it is made of. */
@@ -1838,10 +2043,13 @@ export interface ReuseActions {
  * Reuse a block: as a global block (shared, every page shows the same
  * content) or as a template (a starting point copied into pages).
  */
-function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions }) {
-  const [mode, setMode] = useState<'global' | 'template' | 'block_type' | null>(null);
+function ReusePanel({ block, actions, siteId }: { block: Block; actions: ReuseActions; siteId?: string }) {
+  const [saved, setSaved] = useState<SavedTemplate | null>(null);
+  const [mode, setMode] = useState<'global' | 'template' | 'collection' | 'block_type' | null>(null);
   const [name, setName] = useState(block.name ?? '');
   const [description, setDescription] = useState('');
+  const [category, setCategory] = useState('');
+  const categoryId = useId();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const nameId = useId();
@@ -1865,6 +2073,7 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button type="button" className="btn btn--secondary" aria-pressed={mode === 'global'} onClick={() => setMode(mode === 'global' ? null : 'global')}>Make global block…</button>
           <button type="button" className="btn btn--secondary" aria-pressed={mode === 'template'} onClick={() => setMode(mode === 'template' ? null : 'template')}>Save as template…</button>
+          {actions.saveToCollection && <button type="button" className="btn btn--secondary" aria-pressed={mode === 'collection'} onClick={() => setMode(mode === 'collection' ? null : 'collection')}>Save to collection…</button>}
           {actions.turnIntoBlockType && <button type="button" className="btn btn--secondary" aria-pressed={mode === 'block_type'} onClick={() => setMode(mode === 'block_type' ? null : 'block_type')}>Turn into block type…</button>}
         </div>
         {actions.detachComposed && <>
@@ -1875,22 +2084,30 @@ function ReusePanel({ block, actions }: { block: Block; actions: ReuseActions })
         </>}
         {mode === 'block_type' && actions.turnIntoBlockType && <TurnIntoBlockType block={block} action={actions.turnIntoBlockType}
           onDone={(label) => { setMode(null); setMessage(`Created the block type “${label}”. This block is now one, and it is in the block library.`); }} />}
-        {(mode === 'global' || mode === 'template') && <form className="block-reuse__form" onSubmit={e => {
+        {(mode === 'global' || mode === 'template' || mode === 'collection') && <form className="block-reuse__form" onSubmit={e => {
           e.preventDefault();
           if (!name.trim()) return;
           if (mode === 'global') run(() => actions.makeGlobal(name.trim()), 'Now a global block. Other pages can add it from the block library.');
-          else run(() => actions.saveTemplate(name.trim(), description.trim()), 'Saved as a template. Insert it from the block library.');
+          else if (mode === 'collection' && actions.saveToCollection) run(() => actions.saveToCollection!(name.trim(), description.trim(), category.trim()), 'Saved to the organization’s collection, and as a template on this site. Insert it into any of the organization’s sites.');
+          else run(async () => { setSaved(await actions.saveTemplate(name.trim(), description.trim())); }, 'Saved as a template. Insert it from the block library.');
         }}>
+          {mode === 'collection' && <p>Saves this block as a template on this site and a copy, with the styles it uses, in the organization’s collection.</p>}
           <label htmlFor={nameId} style={fieldLabel}>{mode === 'global' ? 'Global block name' : 'Template name'}</label>
           <input id={nameId} style={textInput} value={name} required onChange={e => setName(e.target.value)} />
-          {mode === 'template' && <>
+          {mode !== 'global' && <>
             <label htmlFor={descriptionId} style={fieldLabel}>When to use it</label>
             <input id={descriptionId} style={textInput} value={description} onChange={e => setDescription(e.target.value)} placeholder="e.g. Pricing row with three plans" />
           </>}
-          <button type="submit" className="btn" disabled={busy || !name.trim()}>{mode === 'global' ? 'Make global block' : 'Save template'}</button>
+          {mode === 'collection' && <>
+            <label htmlFor={categoryId} style={fieldLabel}>Category (optional)</label>
+            <input id={categoryId} style={textInput} value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g. Heroes or Pricing" />
+          </>}
+          <button type="submit" className="btn" disabled={busy || !name.trim()}>{mode === 'global' ? 'Make global block' : mode === 'collection' ? 'Save to collection' : 'Save template'}</button>
         </form>}
       </>}
       {message && <p role="status">{message}</p>}
+      {saved && siteId && <TemplateDesignFindings siteId={siteId} template={saved.template} findings={saved.findings}
+        onSaved={(result) => { setSaved(result); actions.templateSaved?.(result.template); setMessage(result.findings.length ? 'Template saved with the token.' : 'Template saved: it now follows the site’s design.'); }} />}
     </details>
   );
 }

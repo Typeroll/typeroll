@@ -7,8 +7,9 @@ import { BlockTemplateError, blockTemplateCopy } from './block-templates-store';
 import { loadDraftTree, saveDraftTree } from './page-draft-tree';
 import { ReusableBlockError, detachGlobalBlock, insertBlocks, makeGlobal } from './reusable-block-ops';
 import { BlockMutationError } from './block-mutations';
+import { WorkingCopyError } from './working-copy';
 
-interface Ctx { orgId: string; siteId: string; versionId: string }
+interface Ctx { orgId: string; siteId: string; versionId: string; canDesign?: boolean }
 
 export type ReusableAction = 'make_global' | 'detach' | 'insert_template';
 
@@ -38,6 +39,7 @@ export async function runReusableAction(ctx: Ctx, pageId: string, action: Reusab
     return { status: 200, body: result };
   } catch (error) {
     if (error instanceof ReusableBlockError || error instanceof BlockTemplateError) return { status: error.status, body: { error: error.message } };
+    if (error instanceof WorkingCopyError) return { status: error.status, body: error.toBody() };
     if (error instanceof BlockMutationError) return { status: error.code === 'not_found' ? 404 : 400, body: { error: error.message } };
     throw error;
   }

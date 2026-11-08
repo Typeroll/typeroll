@@ -16,7 +16,7 @@ export const POST: APIRoute = async ({ request, params, cookies, locals }) => {
     const page = await changePageContentType(ctx, params.pageId!, body, authority.actor, `api-key:${ctx.keyPrefix}`);
     return apiResponse(ctx, { page });
   } catch (error) {
-    if (error instanceof WorkingCopyError) return apiError(error.message, error.status);
+    if (error instanceof WorkingCopyError) return apiError(error.message, error.status, ctx, error);
     throw error;
   }
 };

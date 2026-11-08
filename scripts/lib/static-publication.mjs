@@ -16,7 +16,7 @@ const safeId = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/;
 const safeFieldName = /^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$/;
 const stringFields = {
   site: ['name', 'domain', 'domain_alias'],
-  settings: ['site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'scripts_head', 'scripts_body_end', 'custom_css', 'language', 'twitter_handle', 'default_seo_suffix', 'default_meta_description', 'image_sizes_default', 'default_og_image', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'motion', 'trailing_slash'],
+  settings: ['site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'scripts_head', 'scripts_body_end', 'custom_css', 'language', 'twitter_handle', 'default_seo_suffix', 'default_meta_description', 'image_sizes_default', 'default_og_image', 'robots_txt', 'ai_crawler_policy', 'header_behavior', 'date_format', 'time_zone', 'motion', 'trailing_slash'],
   page: ['id', 'content_type', 'template', 'title', 'breadcrumb_label', 'slug', 'path', 'parent', 'language', 'content_mode', 'html_content', 'custom_css', 'seo_title', 'seo_description', 'og_title', 'og_description', 'og_image', 'seo_image_alt', 'canonical_url', 'lastmod_override', 'json_ld', 'kind', 'schema_type', 'author', 'image_sizes_default', 'status', 'date_updated', 'date_published'],
   partial: ['id', 'name', 'kind', 'content_mode', 'html_content', 'status', 'date_updated'],
   media: ['id', 'filename', 'cdn_url', 'alt_text', 'title', 'caption', 'mime_type'],
@@ -82,6 +82,41 @@ function projectBooleans(value, fields) {
   return output;
 }
 
+// Mirrors siteFontsErrors (packages/shared/src/font-plan.ts): the publication
+// carries only the font keys and values the renderer understands.
+const FONT_ROLES = ['heading', 'body', 'mono', 'display', 'accent'];
+const FONT_FAMILY = /^[\p{L}\p{N}][\p{L}\p{N} _.&+-]{0,79}$/u;
+const isFontWeight = value => Number.isInteger(value) && value >= 100 && value <= 900 && value % 100 === 0;
+function projectFontLoad(value) {
+  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid public settings: fonts.load');
+  const output = {};
+  for (const [role, spec] of Object.entries(value)) {
+    if (!FONT_ROLES.includes(role) || !spec || typeof spec !== 'object' || Array.isArray(spec)) throw new Error('Invalid public settings: fonts.load');
+    output[role] = {};
+    for (const [key, list] of Object.entries(spec)) {
+      if (!['weights', 'italic'].includes(key) || !Array.isArray(list) || list.length > 9 || !list.every(isFontWeight)) throw new Error('Invalid public settings: fonts.load');
+      output[role][key] = [...list];
+    }
+  }
+  return output;
+}
+function projectFontServices(value) {
+  if (!Array.isArray(value) || value.length > 4) throw new Error('Invalid public settings: fonts.services');
+  return value.map(service => {
+    const families = service?.families;
+    if (!Array.isArray(families) || families.length > 40 || !families.every(name => typeof name === 'string' && FONT_FAMILY.test(name))) throw new Error('Invalid public settings: fonts.services');
+    if (service.provider === 'adobe') {
+      if (typeof service.kit !== 'string' || !/^[a-z0-9]{5,12}$/.test(service.kit)) throw new Error('Invalid public settings: fonts.services');
+      return { provider: 'adobe', kit: service.kit, families: [...families] };
+    }
+    const hosts = { bunny: ['fonts.bunny.net', /^\/css2?$/], fontshare: ['api.fontshare.com', /^\/v2\/css$/] };
+    let url = null;
+    try { url = hosts[service?.provider] && new URL(service.url); } catch { url = null; }
+    if (!url || url.protocol !== 'https:' || url.username || url.password || url.hostname !== hosts[service.provider][0] || !hosts[service.provider][1].test(url.pathname)) throw new Error('Invalid public settings: fonts.services');
+    return { provider: service.provider, url: service.url, families: [...families] };
+  });
+}
+
 function projectStringArray(value, label) {
   if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) throw new Error(`Invalid public string array: ${label}`);
   return [...value];
@@ -90,6 +125,105 @@ function projectStringArray(value, label) {
 function assertIdentity(doc) {
   if (!safeId.test(doc.id ?? '')) throw new Error('Invalid public document ID');
   return doc;
+}
+
+// Mirrors validateMenu (packages/shared/src/menus.ts): menus travel with the
+// publication as structured values, and only known fields reach a build.
+const MENU_ITEM_TYPES = ['page', 'url', 'children', 'heading'];
+const menuId = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+/** A site menu as the renderer reads it (render version 15); timestamps are not render input. */
+export function projectMenu(menu) {
+  if (!menu || typeof menu !== 'object' || Array.isArray(menu) || !menuId.test(menu.id ?? '')) throw new Error('Invalid publication menu');
+  const output = projectStrings(menu, ['id', 'name']);
+  if (menu.locations !== undefined) {
+    output.locations = projectStringArray(menu.locations, 'menu.locations');
+    if (output.locations.some(location => !/^[a-z][a-z0-9_-]{0,39}$/.test(location))) throw new Error('Invalid publication menu location');
+  }
+  if (menu.auto_add_pages === true) output.auto_add_pages = true;
+  let count = 0;
+  const item = (value, depth) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || !menuId.test(value.id ?? '') || !MENU_ITEM_TYPES.includes(value.type) || ++count > 200 || depth > 3) throw new Error('Invalid publication menu item');
+    const projected = projectStrings(value, ['id', 'type', 'page_id', 'href', 'label', 'description', 'icon', 'link_rel']);
+    if (projected.href !== undefined && /^\s*(javascript|data|vbscript):/i.test(projected.href)) throw new Error('Invalid publication menu address');
+    if (value.children !== undefined) {
+      if (!Array.isArray(value.children)) throw new Error('Invalid publication menu item');
+      if (value.children.length) projected.children = value.children.map(child => item(child, depth + 1));
+    }
+    return projected;
+  };
+  if (!Array.isArray(menu.items)) throw new Error('Invalid publication menu');
+  output.items = menu.items.map(entry => item(entry, 1));
+  return output;
+}
+
+// Mirrors validateSiteFieldGroups (packages/shared/src/site-fields.ts). The
+// definitions travel because they pick a site field block's format (rich
+// text, dates, option labels, opening hours); labels and private fields
+// (rendered: false) stay behind, and only values of the fields left travel.
+const SITE_FIELD_TYPES = ['text', 'textarea', 'richtext', 'boolean', 'number', 'select', 'multiselect', 'date', 'datetime', 'image', 'url', 'email', 'page_ref', 'array', 'object'];
+function projectSiteFieldDefinition(field, depth) {
+  if (!field || typeof field !== 'object' || Array.isArray(field) || !/^[a-z][a-z0-9_]{0,63}$/.test(field.name ?? '') || !SITE_FIELD_TYPES.includes(field.type) || depth > 3) throw new Error('Invalid publication site field');
+  const output = { name: field.name, type: field.type };
+  if (field.presentation === 'opening_hours') output.presentation = 'opening_hours';
+  // A live top-level field also names its live file on the page (core/site_field).
+  if (field.live === true && depth === 1) output.live = true;
+  for (const name of ['options', 'option_labels']) if (field[name] !== undefined) output[name] = projectStringArray(field[name], `site field ${name}`);
+  if (field.fields !== undefined) {
+    if (!Array.isArray(field.fields)) throw new Error('Invalid publication site field');
+    output.fields = field.fields.filter(child => child?.rendered !== false).map(child => projectSiteFieldDefinition(child, depth + 1));
+  }
+  return output;
+}
+/** The site's fields as the renderer reads them: `site.fields` values and the definitions of their formats. */
+export function projectSiteFields(input) {
+  if (input === undefined || input === null) return undefined;
+  if (typeof input !== 'object' || Array.isArray(input) || (input.groups !== undefined && !Array.isArray(input.groups))) throw new Error('Invalid publication site fields');
+  const groups = (input.groups ?? []).map(group => {
+    if (!group || typeof group !== 'object' || !/^[a-z][a-z0-9_-]{0,63}$/.test(group.id ?? '') || !Array.isArray(group.fields)) throw new Error('Invalid publication site field group');
+    return { id: group.id, fields: group.fields.filter(field => field?.rendered !== false).map(field => projectSiteFieldDefinition(field, 1)) };
+  });
+  const values = input.values ?? {};
+  if (!values || typeof values !== 'object' || Array.isArray(values)) throw new Error('Invalid publication site field values');
+  return { groups, values: projectPublicationData(values, groups.flatMap(group => group.fields)) };
+}
+
+// Mirrors validateSnippet/snippetFile (packages/shared/src/snippets.ts): the
+// public file of each snippet as of this publication. Who wrote it and its
+// name stay behind; HTML was sanitized on save and is sanitized again with the page.
+const SNIPPET_ID = /^[a-z0-9][a-z0-9_-]{0,63}$/;
+const SNIPPET_WEEKDAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+function projectSnippet(snippet) {
+  if (!snippet || typeof snippet !== 'object' || Array.isArray(snippet) || !SNIPPET_ID.test(snippet.id ?? '') || !['html', 'text', 'dated'].includes(snippet.kind)) throw new Error('Invalid publication snippet');
+  const text = (value, name) => { if (typeof value !== 'string') throw new Error(`Invalid publication snippet ${name}`); return value; };
+  const output = { id: snippet.id, kind: snippet.kind, format: snippet.kind === 'text' || snippet.format === 'text' ? 'text' : 'html' };
+  if (snippet.content !== undefined && snippet.content !== null) output.content = text(snippet.content, 'content');
+  if (snippet.kind === 'dated') {
+    if (!Array.isArray(snippet.entries ?? [])) throw new Error('Invalid publication snippet entries');
+    output.entries = (snippet.entries ?? []).map(entry => {
+      if (!entry || typeof entry !== 'object') throw new Error('Invalid publication snippet entry');
+      const projected = {};
+      if (entry.date !== undefined) { if (!/^\d{4}-\d{2}-\d{2}$/.test(entry.date)) throw new Error('Invalid publication snippet date'); projected.date = entry.date; }
+      else if (entry.weekday !== undefined) { if (!SNIPPET_WEEKDAYS.includes(entry.weekday)) throw new Error('Invalid publication snippet weekday'); projected.weekday = entry.weekday; }
+      projected.content = text(entry.content ?? '', 'content');
+      return projected;
+    });
+    if (snippet.fallback !== undefined && snippet.fallback !== null) output.fallback = text(snippet.fallback, 'fallback');
+  }
+  if (snippet.updated_at !== undefined) output.updated_at = text(snippet.updated_at, 'updated_at');
+  return output;
+}
+/** The site's live snippets as of this publication; the browser fetches newer ones. */
+export function projectSnippets(input) {
+  if (input === undefined || input === null) return [];
+  if (!Array.isArray(input)) throw new Error('Invalid publication snippets');
+  return input.map(projectSnippet).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+}
+/** Where the site's live files are: a permanent HTTPS address without a trailing slash, or undefined. */
+export function projectLiveBaseUrl(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  if (typeof value !== 'string') throw new Error('Invalid publication live base URL');
+  assertPublicUrl(value);
+  return value.replace(/\/+$/, '');
 }
 
 function assertPublicUrl(value) {
@@ -195,10 +329,12 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     const value = input.settings?.colors?.[token];
     if (typeof value === 'string' && /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(value.trim())) settings.colors[token] = value.trim();
   }
-  settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body', 'mono']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
+  settings.fonts = { ...projectStrings(input.settings?.fonts, ['heading', 'body', 'mono', 'display', 'accent']), ...projectNumbers(input.settings?.fonts, ['size_base']) };
   // A rendered setting left out of this projection is stored, previewed and never published.
   if (['auto', 'antialiased'].includes(input.settings?.fonts?.smoothing)) settings.fonts.smoothing = input.settings.fonts.smoothing;
   if (input.settings?.fonts?.delivery === 'google') settings.fonts.delivery = 'google';
+  if (input.settings?.fonts?.load != null) settings.fonts.load = projectFontLoad(input.settings.fonts.load);
+  if (input.settings?.fonts?.services != null) settings.fonts.services = projectFontServices(input.settings.fonts.services);
   // Site-specific responsive widths drive block responsive fields and styles.
   if (input.settings?.responsive_breakpoints) settings.responsive_breakpoints = projectNumbers(input.settings.responsive_breakpoints, ['tablet', 'laptop', 'desktop', 'wide']);
   if (input.settings?.content_widths) settings.content_widths = projectNumbers(input.settings.content_widths, ['narrow', 'normal', 'wide']);
@@ -246,6 +382,11 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     }
     return projected;
   });
+  if (input.menus !== undefined && !Array.isArray(input.menus)) throw new Error('Invalid publication menus');
+  const menus = (input.menus ?? []).map(projectMenu);
+  const siteFields = projectSiteFields(input.siteFields);
+  const snippets = projectSnippets(input.snippets);
+  const liveBaseUrl = projectLiveBaseUrl(input.liveBaseUrl);
   if (!Array.isArray(input.pageTemplates)) throw new Error('Invalid publication page templates');
   const referencedTemplates = new Set([...pages.map(page => page.template), ...contentTypes.flatMap(type => (type.facets ?? []).map(facet => facet.template))].filter(Boolean));
   const pageTemplates = input.pageTemplates.filter(template => referencedTemplates.has(template.id)).map(template => {
@@ -267,7 +408,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
       /[\s\x00-\x1f]/.test(result.from_path + result.to_path) || ![301, 302].includes(redirect.status_code)) throw new Error('Invalid publication redirect');
     return { ...result, status_code: redirect.status_code };
   });
-  const renderedContent = JSON.stringify({ settings, pages, partials, blockTypes, pageTemplates, contentTypes, forms });
+  const renderedContent = JSON.stringify({ settings, pages, partials, blockTypes, pageTemplates, contentTypes, forms, ...(siteFields ? { siteFields } : {}), ...(snippets.length ? { snippets } : {}) });
   const referencedMedia = input.media.filter((item) => [item.cdn_url, ...(item.variants ?? []).map((variant) => variant.cdn_url)]
     .some((url) => typeof url === 'string' && url.length > 0 && renderedContent.includes(url)));
   const media = referencedMedia.map((item) => {
@@ -279,7 +420,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     });
     return projected;
   });
-  for (const list of [pages, partials, media, blockTypes, pageTemplates, redirects, contentTypes]) {
+  for (const list of [pages, partials, menus, media, blockTypes, pageTemplates, redirects, contentTypes, snippets]) {
     list.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
     if (new Set(list.map((item) => item.id)).size !== list.length) throw new Error('Duplicate public document ID');
   }
@@ -288,8 +429,13 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     publication_id: digest(JSON.stringify({ siteUrl, coreCommit, publishedAt, versionId })),
     version_id: versionId, git_branch: gitBranch, robots_blocked: versionId !== 'main' || noindex,
     core_commit: coreCommit, published_at: publishedAt, site_url: siteUrl,
-    site: projectStrings(input.site, stringFields.site), settings, pages, partials, media, blockTypes, pageTemplates, redirects,
+    // The live base URL travels with the site: a render global, read as site.live_base_url.
+    site: { ...projectStrings(input.site, stringFields.site), ...(liveBaseUrl ? { live_base_url: liveBaseUrl } : {}) }, settings, pages, partials, menus, media, blockTypes, pageTemplates, redirects,
     contentTypes, forms,
+    // Site fields (values for {{site.fields.*}} and core/site_field); left out when the site has none.
+    ...(siteFields && (siteFields.groups.length || Object.keys(siteFields.values).length) ? { siteFields } : {}),
+    // Live snippets as of this publication (core/snippet); left out when the site has none.
+    ...(snippets.length ? { snippets } : {}),
     apps: input.publicRuntime?.apps ?? { apps: {} },
     extensions: input.publicRuntime?.extensions ?? { installations: [] },
     runtime_dependencies: input.publicRuntime?.dependencies ?? [],

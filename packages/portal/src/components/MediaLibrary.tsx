@@ -32,6 +32,7 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
   const [filter, setFilter] = useState<MediaFilter>('all');
   const [query, setQuery] = useState('');
   const shown = filterMedia(items, filter, query);
+  const demoCount = items.filter((m) => m.demo).length;
   const inputRef = useRef<HTMLInputElement>(null);
 
   const activeItem = activeId ? items.find((m) => m.id === activeId) ?? null : null;
@@ -242,6 +243,11 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
         </div>
       ) : (
         <>
+        {demoCount > 0 && (
+          <p className="media__demo-notice" role="note">
+            <span className="media__demo">Demo</span> {demoCount === 1 ? '1 file came' : `${demoCount} files came`} with a package as demo content. Replace {demoCount === 1 ? 'it' : 'them'} with your own before the site is published.
+          </p>
+        )}
         <div className="media__filters">
           <MediaKindFilter items={items} value={filter} onChange={setFilter} />
           <input type="search" className="media__search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search by name or description" aria-label="Search the media library" />
@@ -261,6 +267,7 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
               </button>
               <div className="media__meta">
                 <div className="text-sm" title={m.filename} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.filename}</div>
+                {m.demo && <span className="media__demo" title="Demo content from a package: replace it before the site is published.">Demo</span>}
                 <div className="row" style={{ gap: 4, marginTop: 4 }}>
                   <button className="btn btn--ghost btn--sm" onClick={() => copy(m.cdn_url)} title="Copy URL">📋</button>
                   {selectable ? (
@@ -291,6 +298,8 @@ export default function MediaLibrary({ siteId, initialItems, selectable, onSelec
 
       <style>{`${styles}
 .media__filters { display:flex; flex-wrap:wrap; gap:.75rem; align-items:center; margin-bottom:1rem; }
+.media__demo { display:inline-block; margin-top:3px; padding:0 .4rem; border-radius:999px; border:1px solid color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); color:var(--color-accent); font-size:.7rem; font-weight:600; line-height:1.6; }
+.media__demo-notice { margin:0 0 1rem; font-size:.9rem; }
 .media__search { flex:1; min-width:12rem; max-width:24rem; padding:.4rem .65rem; border:1px solid var(--color-border); border-radius:6px; background:#fff; color:var(--color-text); }
 ${mediaThumbStyles}`}</style>
     </div>

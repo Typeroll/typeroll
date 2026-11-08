@@ -4,19 +4,24 @@
 // link. Nothing here blocks a publication or changes content.
 
 import {
-  DEFAULT_CONTENT_TYPE, checkJsonLd, lintSiteCss, paths, resolveContentPage,
-  type Block, type BlockType, type ContentType, type CssLintFinding, type Media, type Page,
-  type AppId, type PageTemplate, type Partial as PartialDoc, type Site, type SiteApps, type SiteSettings,
+  DEFAULT_CONTENT_TYPE, checkJsonLd, findMenu, lintSiteCss, locationConflicts, paths, resolveContentPage,
+  type Block, type BlockType, type ContentType, type CssLintFinding, type Media, type Menu, type MenuItem, type Page,
+  type AppId, type PageTemplate, type Partial as PartialDoc, type Site, type SiteApps, type SiteFields, type SiteSettings, type Snippet,
+  liveSiteFieldNames,
 } from '@typeroll/shared';
 import type { ReadWriteStore } from './datastore';
 import { checkInternalLinks, type InternalLinkReport } from './internal-link-check';
+import { menuRefs } from './menu-usage';
+import { demoMediaReferenced } from './packages/demo-media';
+import { placeholderEditorHref, placeholderFindings, placeholderLine } from './placeholder-content';
+import { missingRequiredSiteFields } from './site-fields-write';
 import { vstore } from './version-store';
 import { compareZoneAiPolicy, type ZoneAiPolicyRead } from './publishing/zone-ai-policy';
 
 export const READINESS_ITEM_IDS = [
   'share_image', 'home_description', 'organization', 'same_as', 'favicon', 'analytics_consent', 'search_console',
   'privacy_page', 'contact_page', 'not_found_page',
-  'indexable_pages', 'orphan_pages', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
+  'indexable_pages', 'orphan_pages', 'menus', 'site_fields', 'live_snippets', 'demo_media', 'placeholders', 'time_zone', 'duplicate_titles', 'duplicate_descriptions', 'heading_h1', 'long_descriptions',
   'duplicate_fonts', 'custom_css_overrides',
   'ai_crawler_zone_conflict', 'structured_data',
 ] as const;
@@ -31,6 +36,8 @@ export interface ReadinessItem {
   guide: string;
   /** Affected pages or values, at most 20. */
   details?: string[];
+  /** Where to fix each detail in the portal, when it has a place (same order as details). */
+  links?: Array<{ label: string; href: string }>;
 }
 
 export interface SiteReadinessReport {
@@ -56,6 +63,14 @@ export interface ReadinessInput {
   templates: PageTemplate[];
   contentTypes: ContentType[];
   blockTypes: BlockType[];
+  /** The site's menus; absent is the same as none. */
+  menus?: Menu[];
+  /** The site fields; absent is the same as none. */
+  siteFields?: SiteFields;
+  /** The site's live snippets; absent is the same as none. */
+  snippets?: Snippet[];
+  /** Where live files are served (read only when the site has live content). */
+  liveFiles?: { base_url: string | null; reason?: string };
   media: Media[];
   apps: SiteApps | null;
   links: Pick<InternalLinkReport, 'links'>;
@@ -235,8 +250,75 @@ export function buildSiteReadiness(input: ReadinessInput): SiteReadinessReport {
   else if (indexable.length <= 1) items.push(item('indexable_pages', 'suggestion', `Only ${indexable.length} indexable page${indexable.length === 1 ? '' : 's'}. One page can rank for only a few searches.`, 'Give each product, service or question its own page.'));
   else items.push(item('indexable_pages', 'ok', `${indexable.length} pages can be indexed.`, 'None needed.'));
 
+  // menus: a menu counts as a link source where live content shows it.
+  const menus = input.menus ?? [];
+  const publishedTemplates = input.templates.filter(t => t.status === 'published');
+  const placedMenus = new Set<string>();
+  for (const tree of [...live.map(page => page.blocks), ...partials.map(partial => partial.blocks), ...publishedTemplates.map(t => t.blocks)])
+    for (const ref of menuRefs(tree)) { const menu = findMenu(menus, ref); if (menu) placedMenus.add(menu.id); }
+  const conflicts = locationConflicts(menus);
+  const pagesById = new Map(input.pages.map(page => [page.id, page]));
+  const flat = (items: MenuItem[] | undefined): MenuItem[] => (items ?? []).flatMap(entry => [entry, ...flat(entry.children)]);
+  const menuProblems = [
+    ...conflicts.map(location => `Location "${location}" is filled by ${menus.filter(menu => menu.locations?.includes(location)).map(menu => `"${menu.name}"`).join(' and ')}`),
+    ...menus.flatMap(menu => flat(menu.items).filter(entry => (entry.type === 'page' || entry.type === 'children') && entry.page_id).flatMap(entry => {
+      const target = pagesById.get(entry.page_id!);
+      if (!target) return [`"${menu.name}": item ${entry.id} links to a page that no longer exists`];
+      if (target.status !== 'published') return [`"${menu.name}": item ${entry.id} links to ${label(target)}, which is not published`];
+      return [];
+    })),
+  ];
+  items.push(menuProblems.length
+    ? item('menus', 'warning', `${menuProblems.length} menu problem${menuProblems.length === 1 ? '' : 's'}: menu items that are left out of the published site, or locations filled twice.`,
+      'Point each item at a published page or remove it, publish the page, and keep each location in one menu.', menuProblems)
+    : item('menus', 'ok', menus.length ? 'Menu items link to published pages, and each location shows one menu.' : 'The site has no menus.', 'None needed.'));
+
+  // site_fields: a required field without a value renders as nothing.
+  const missingFields = input.siteFields ? missingRequiredSiteFields(input.siteFields) : [];
+  items.push(missingFields.length
+    ? item('site_fields', 'warning', `${missingFields.length} required site field${missingFields.length === 1 ? ' has' : 's have'} no value. Where the site shows ${missingFields.length === 1 ? 'it' : 'them'}, visitors see nothing.`,
+      'Fill in each listed field on its settings page under Site fields.', missingFields.map(entry => `${entry.group.label}: ${entry.label} (${entry.name})`))
+    : item('site_fields', 'ok', input.siteFields?.groups.length ? 'Every required site field has a value.' : 'The site has no site fields.', 'None needed.'));
+
+  // live_snippets: live content on a site that cannot serve live files only changes at publication.
+  const snippets = input.snippets ?? [];
+  const liveFields = input.siteFields ? liveSiteFieldNames(input.siteFields.groups) : [];
+  const liveCount = snippets.length + liveFields.length;
+  items.push(liveCount && input.liveFiles && !input.liveFiles.base_url
+    ? item('live_snippets', 'warning', `The site has ${[snippets.length ? `${snippets.length} snippet${snippets.length === 1 ? '' : 's'}` : '', liveFields.length ? `${liveFields.length} live site field${liveFields.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' and ')}, but nowhere to serve live files, so ${liveCount === 1 ? 'it changes' : 'they change'} only when the site is published. ${input.liveFiles.reason ?? ''}`.trim(),
+      'Set a media host for the site or the organization in Publishing, or publish after each change.', [...snippets.map(snippet => `Snippet: ${snippet.name} (${snippet.id})`), ...liveFields.map(name => `Live site field: ${name}`)])
+    : item('live_snippets', 'ok', liveCount ? 'Snippets and live site fields reach the live site without a publication.' : 'The site has no live snippets.', 'None needed.'));
+
+  // demo_media: sample files from a template package that live content shows.
+  const demoShown = demoMediaReferenced(media, [live, partials, publishedTemplates, settings.default_og_image ?? '', settings.logo ?? '', settings.favicon ?? '']);
+  items.push(demoShown.length
+    ? item('demo_media', 'warning', `${demoShown.length} demo image${demoShown.length === 1 ? '' : 's'} from a template package ${demoShown.length === 1 ? 'is' : 'are'} used on live pages and will be published.`,
+      'Replace each listed file with your own in the Media library, or keep it there to mark it as the site\'s own.', demoShown.map(entry => `${entry.filename || entry.id} (${entry.id})`))
+    : item('demo_media', 'ok', media.some(entry => entry.demo) ? 'Demo images from template packages are not used on live pages.' : 'The site uses no demo images.', 'None needed.'));
+
+  // placeholders: bracketed sample text such as "[Feature name]" left on live pages and global blocks.
+  const placeholders = placeholderFindings({ pages: live, partials });
+  if (placeholders.length) {
+    const shown = placeholders.slice(0, MAX_DETAILS);
+    items.push({
+      ...item('placeholders', 'warning', `${placeholders.length} live page${placeholders.length === 1 ? '' : 's'} or global block${placeholders.length === 1 ? '' : 's'} still show${placeholders.length === 1 ? 's' : ''} placeholder text such as "${placeholders[0].examples[0]}".`,
+        'Replace each bracketed placeholder with the real text, or remove the block.', shown.map(placeholderLine)),
+      links: shown.map(entry => ({ label: entry.label, href: placeholderEditorHref(input.siteId, entry) })),
+    });
+  } else items.push(item('placeholders', 'ok', 'No placeholder text is left on live pages.', 'None needed.'));
+
+  // time_zone: opening hours and dated snippets need the business's time zone (older sites may lack it).
+  const timed = [
+    ...(input.siteFields?.groups ?? []).flatMap(group => group.fields.filter(field => field.presentation === 'opening_hours').map(field => `Site field: ${field.label} (${field.name})`)),
+    ...snippets.filter(snippet => snippet.kind === 'dated').map(snippet => `Dated snippet: ${snippet.name} (${snippet.id})`),
+  ];
+  items.push(timed.length && !input.settings.time_zone
+    ? item('time_zone', 'warning', 'The site has no time zone, but it shows opening hours or dated snippets, which depend on which day and hour it is at the business.',
+      'Choose the site\'s time zone in Settings, next to Language. It decides which day and hour it is at the business.', timed)
+    : item('time_zone', 'ok', input.settings.time_zone ? `The site's time zone is ${input.settings.time_zone}.` : 'Nothing on the site depends on the time zone.', 'None needed.'));
+
   // orphan_pages
-  const liveSources = new Set([...live.map(page => `page:${page.id}`), ...partials.map(partial => `partial:${partial.id}`), ...input.templates.filter(t => t.status === 'published').map(t => `template:${t.id}`)]);
+  const liveSources = new Set([...live.map(page => `page:${page.id}`), ...partials.map(partial => `partial:${partial.id}`), ...publishedTemplates.map(t => `template:${t.id}`), ...[...placedMenus].map(id => `menu:${id}`)]);
   const listed = new Set<string>();
   for (const page of live) listedContentTypes(page.blocks, listed);
   for (const partial of partials) listedContentTypes(partial.blocks, listed);
@@ -351,18 +433,23 @@ export async function readSiteReadiness(args: {
   readZone: () => Promise<ZoneAiPolicyRead>;
 }): Promise<SiteReadinessReport> {
   const { store, orgId, siteId, versionId } = args;
-  const [settings, pages, partials, templates, contentTypes, blockTypes, media, apps, links, zone] = await Promise.all([
+  const [settings, pages, partials, templates, contentTypes, blockTypes, menus, siteFields, media, apps, links, zone] = await Promise.all([
     vstore.settings(orgId, siteId, versionId),
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
     vstore.pageTemplates(orgId, siteId, versionId),
     vstore.contentTypes(orgId, siteId, versionId),
     vstore.blockTypes(orgId, siteId, versionId),
+    vstore.menus(orgId, siteId, versionId),
+    vstore.siteFields(orgId, siteId, versionId),
     store.listDocs<Media>(paths.media(orgId, siteId)),
     store.getDoc<SiteApps>(paths.apps(orgId, siteId)),
     checkInternalLinks({ store, orgId, siteId, versionId, site: args.site, includeLinks: true }),
     args.readZone().catch(() => ({ status: 'unavailable', host: args.site.domain ?? '' }) as ZoneAiPolicyRead),
   ]);
   if (!settings) throw new Error('Site settings not found');
-  return buildSiteReadiness({ siteId, settings, pages, partials, templates, contentTypes, blockTypes, media, apps: apps ?? null, links, zone });
+  const snippets = await store.listDocs<Snippet>(paths.snippets(orgId, siteId));
+  const liveFiles = snippets.length || liveSiteFieldNames(siteFields.groups).length
+    ? await (await import('./snippet-write')).snippetLiveInfo({ orgId, siteId }) : undefined;
+  return buildSiteReadiness({ siteId, settings, pages, partials, templates, contentTypes, blockTypes, menus, siteFields, snippets, liveFiles, media, apps: apps ?? null, links, zone });
 }

@@ -3,12 +3,15 @@ import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
 import type { SiteVersion } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { vstore } from '../version-store';
+import { publicationLiveContent } from './publication-snippets';
 
 /** Resolve branch inheritance before freezing content; this internal result is not a public export. */
 export async function resolvePublicationVersion(orgId: string, siteId: string, versionId: string) {
   const store = getStore();
   if (!store.readSnapshot) throw new Error('Publication requires a consistent datastore snapshot');
-  return store.readSnapshot(`${paths.site(orgId, siteId)}/versions`, () => resolveVersion(orgId, siteId, versionId));
+  const resolved = await store.readSnapshot(`${paths.site(orgId, siteId)}/versions`, () => resolveVersion(orgId, siteId, versionId));
+  // Live snippets live outside the versions: read after the snapshot, with where their live files are.
+  return { ...resolved, ...await publicationLiveContent(orgId, siteId) };
 }
 
 async function resolveVersion(orgId: string, siteId: string, versionId: string) {
@@ -25,16 +28,18 @@ async function resolveVersion(orgId: string, siteId: string, versionId: string) 
     if (!version || version.kind !== 'branch') throw new Error('Publication version no longer exists');
     current = version.base_version_id ?? MAIN_VERSION_ID;
   }
-  const [settings, pages, partials, blockTypes, pageTemplates, redirects, contentTypes] = await Promise.all([
+  const [settings, pages, partials, menus, siteFields, blockTypes, pageTemplates, redirects, contentTypes] = await Promise.all([
     vstore.settings(orgId, siteId, versionId),
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
+    vstore.menus(orgId, siteId, versionId),
+    vstore.siteFields(orgId, siteId, versionId),
     vstore.blockTypes(orgId, siteId, versionId),
     vstore.pageTemplates(orgId, siteId, versionId),
     vstore.redirects(orgId, siteId, versionId),
     vstore.contentTypes(orgId, siteId, versionId),
   ]);
-  const resolved = { versionId, settings, pages, partials, blockTypes, pageTemplates, redirects, contentTypes };
+  const resolved = { versionId, settings, pages, partials, menus, siteFields, blockTypes, pageTemplates, redirects, contentTypes };
   assertContentExportable(resolved);
   return resolved;
 }

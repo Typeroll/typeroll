@@ -18,7 +18,7 @@ import { organizationRequestRefusal } from './organization-access';
 // the same way they do for requireSiteAccess.
 
 import { paths, MAIN_VERSION_ID, ARCHIVED_SITE_MESSAGE, EXTENSION_SCOPE_REGISTRY, isArchivedSite } from '@typeroll/shared';
-import type { ExtensionScope, Site, SharePermission } from '@typeroll/shared';
+import type { ExtensionScope, MemberRole, Site, SharePermission } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { json, resolveRequestedVersion, unknownVersionResponse } from './access';
 import { apiKeyCreatedOutsideOwner, recordKeyUse, verifyApiToken } from './api-keys';
@@ -28,6 +28,7 @@ import { hydrateCanonicalSharedSites } from './shares';
 import { authClientAddress } from './auth-request';
 import { resolvePersonalSite } from './personal-site-access';
 import { organizationMembership } from './organization-session';
+import { siteDesignAccess } from './member-role';
 
 export interface ApiContext {
   personalUserId?: string;
@@ -61,7 +62,17 @@ export interface ApiContext {
    *  log paths. Equal to the URL pathname; doesn't include the origin. */
   path: string;
   /** Present when the caller used a scoped Extension installation credential. */
-  extensionIdentity?: { installationId: string; scopes: ExtensionScope[] };
+  extensionIdentity?: {
+    installationId: string; extensionId?: string; scopes: ExtensionScope[];
+    /** The scope this request runs under (extensionScopeForApiRequest, or an alternative such as `site:handover`). */
+    scope?: ExtensionScope;
+  };
+  /**
+   * Design work below admin: a personal connection of a builder in the
+   * owning organization (member-role.ts → siteDesignAccess). Admin permission
+   * always designs; check with apiCanDesign.
+   */
+  design?: boolean;
 }
 
 /**
@@ -169,11 +180,50 @@ const EXTENSION_ROUTE_RULES: ExtensionRouteRule[] = [
   { path: /^\/media(?:\/.*)?$/, scope: (w) => (w ? 'media:write' : 'media:read') },
   { path: new RegExp(`^/pages/${ID}/owner-fields$`), scope: () => 'content:owner' },
   { path: new RegExp(`^/containers/${ID}/${ID}/blocks(?:/.*)?$`), scope: (w) => (w ? 'content:write' : 'content:read') },
+  // Site fields have their own scopes: their values steer what the site shows
+  // (opening hours, a booking toggle) and their definitions are site admin.
+  { path: /^\/site-fields(?:\/.*)?$/, scope: (w) => (w ? 'site_fields:write' : 'site_fields:read') },
+  // Live snippets change the live site at once, without a publication.
+  { path: /^\/snippets(?:\/.*)?$/, scope: (w) => (w ? 'snippets:write' : 'snippets:read') },
+  // The Fonts library reads like settings. Adding or removing a font file
+  // records a licence confirmation, which stays with a site administrator.
+  { path: /^\/fonts(?:\/.*)?$/, scope: (w) => (w ? null : 'content:read') },
+  // The organization collection: an app lists entries and adds its own
+  // ready-made ones (an app changes only entries it added; see
+  // lib/collections). Inserting into the site stays with people.
+  { path: new RegExp(`^/collection(?:/${ID}/media/${ID})?$`), scope: (_w, m) => (m === 'GET' ? 'collection:read' : null) },
+  { path: /^\/collection\/import$/, scope: (_w, m) => (m === 'POST' ? 'collection:write' : null) },
+  { path: new RegExp(`^/collection/${ID}$`), scope: (_w, m) => (m === 'GET' ? 'collection:read' : m === 'PATCH' || m === 'DELETE' ? 'collection:write' : null) },
+  { path: /^\/collection(?:\/.*)?$/, scope: () => null },
   {
-    path: /^\/(?:pages|content-types|partials|block-types|block-templates|blocks|settings|styles)(?:\/.*)?$/,
+    path: /^\/(?:pages|content-types|partials|menus|block-types|block-templates|blocks|settings|styles)(?:\/.*)?$/,
     scope: (w) => (w ? 'content:write' : 'content:read'),
   },
 ];
+
+/**
+ * Narrower scopes that may stand in for the route's own scope, each limited
+ * further by the route: `site:handover` reads the settings and writes only
+ * their `handover` key (pages/api/v1/sites/[siteId]/settings.ts).
+ */
+const EXTENSION_ALTERNATIVE_SCOPES: Array<{ path: RegExp; scope: (method: string) => ExtensionScope | null }> = [
+  { path: /^\/settings$/, scope: (m) => (m === 'GET' || m === 'HEAD' || m === 'PATCH' ? 'site:handover' : null) },
+];
+
+/** The scope an installation credential's request runs under: the route's own, else a held alternative; null when refused. */
+export function extensionGrantedScope(pathname: string, method: string, held: readonly ExtensionScope[]): ExtensionScope | null {
+  const own = extensionScopeForApiRequest(pathname, method);
+  if (own && held.includes(own)) return own;
+  const match = SITE_API_PATH.exec(pathname);
+  const rest = (match?.[1] ?? '').replace(/\/+$/, '');
+  if (!match || !rest) return null;
+  for (const alternative of EXTENSION_ALTERNATIVE_SCOPES) {
+    if (!alternative.path.test(rest)) continue;
+    const scope = alternative.scope(method);
+    if (scope && held.includes(scope)) return scope;
+  }
+  return null;
+}
 
 export function extensionScopeForApiRequest(pathname: string, method: string): ExtensionScope | null {
   const match = SITE_API_PATH.exec(pathname);
@@ -222,8 +272,8 @@ async function requireExtensionApiCredential(
   // name the site this request was routed to, or the two could disagree.
   let pathSiteId: string | null = null;
   try { pathSiteId = decodeURIComponent(pathname.split('/')[4] ?? ''); } catch { pathSiteId = null; }
-  const requiredScope = pathSiteId === urlSiteId ? extensionScopeForApiRequest(pathname, request.method) : null;
-  if (!requiredScope || !authenticated.scopes.includes(requiredScope)) {
+  const requiredScope = pathSiteId === urlSiteId ? extensionGrantedScope(pathname, request.method, authenticated.scopes) : null;
+  if (!requiredScope) {
     return { ok: false, response: json({ error: 'Extension credential lacks the required scope' }, 403) };
   }
   const site = await getStore().getDoc<Site>(paths.site(ownerOrgId, urlSiteId));
@@ -258,7 +308,7 @@ async function requireExtensionApiCredential(
       permission: extensionPermissionForScope(requiredScope),
       request,
       path: pathname,
-      extensionIdentity: { installationId, scopes: authenticated.scopes },
+      extensionIdentity: { installationId, extensionId: authenticated.installation.extension_id, scopes: authenticated.scopes, scope: requiredScope },
     },
   };
 }
@@ -556,10 +606,37 @@ async function resolveApiKey(
       versionId,
       keyPrefix: verified.prefix,
       permission,
+      design: siteDesignAccess(permission, (resolved as { role?: MemberRole }).role),
       request,
       path: new URL(request.url).pathname,
     },
   };
+}
+
+/**
+ * Whether an API caller may do design work on the site: admin permission (an
+ * organization or site key, an admin share, an owner or administrator's
+ * personal connection), or a builder's personal connection.
+ */
+export function apiCanDesign(ctx: Pick<ApiContext, 'permission' | 'design'>): boolean {
+  return ctx.permission === 'admin' || ctx.design === true;
+}
+
+/**
+ * The organization collection over the API: an organization API key of the
+ * owning organization, a personal connection of an owner, administrator or
+ * builder there, or an app installation on one of its sites with the
+ * `collection:*` scopes (lib/collections checks what an app may change).
+ * A share never qualifies, nor does a site-scoped key: both are given one
+ * site, not the organization's collection. Refused as 404.
+ */
+export function requireApiCollection(ctx: ApiContext): GuardResult<ApiContext> {
+  const refused = { ok: false as const, response: apiError('Not found', 404, ctx, { code: 'not_found' }) };
+  if (ctx.orgId !== ctx.tokenOrgId) return refused;
+  if (ctx.extensionIdentity) return ctx.extensionIdentity.extensionId ? { ok: true, value: ctx } : refused;
+  if (!ctx.personalUserId && ctx.tokenSiteId !== null) return refused;
+  if (!apiCanDesign(ctx)) return refused;
+  return { ok: true, value: ctx };
 }
 
 /**

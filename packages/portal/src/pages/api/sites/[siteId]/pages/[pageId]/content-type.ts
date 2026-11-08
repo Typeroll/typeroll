@@ -8,15 +8,15 @@ export const POST: APIRoute = async ({ request, params, cookies, locals }) => {
   if (!guard.ok) return guard.response;
   const permission = requirePermission(guard.value, 'write');
   if (!permission.ok) return permission.response;
-  const { owner_org_id, site, versionId, session } = guard.value;
-  const ctx = { orgId: owner_org_id, siteId: site.id, versionId };
+  const { owner_org_id, site, versionId, session, design } = guard.value;
+  const ctx = { orgId: owner_org_id, siteId: site.id, versionId, canDesign: design };
   const body = await request.json().catch(() => null);
   if (!body || typeof body !== 'object' || Array.isArray(body)) return json({ error: 'JSON object required' }, 400);
   try {
     const page = await changePageContentType(ctx, params.pageId!, body, 'portal', session.userId ?? 'portal');
     return json({ page });
   } catch (error) {
-    if (error instanceof WorkingCopyError) return json({ error: error.message }, error.status);
+    if (error instanceof WorkingCopyError) return json(error.toBody(), error.status);
     throw error;
   }
 };

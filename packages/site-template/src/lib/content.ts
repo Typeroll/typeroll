@@ -1,5 +1,5 @@
-import { trackedPageSource, trackedBacklinks } from './publication-dependencies.mjs';
-import { createPageSource, DEFAULT_CONTENT_TYPE, resolveContentPage, publicContentPage, type PageSourceConfig } from '@typeroll/shared';
+import { trackedPageSource, trackedBacklinks, trackedMenuPages, trackedSiteFields, trackedSnippets } from './publication-dependencies.mjs';
+import { createPageSource, DEFAULT_CONTENT_TYPE, menuPagesFromSource, resolveContentPage, publicContentPage, siteFieldValues, liveBaseUrlOf, siteTimeZone, snippetFile, snippetReceipt, snippetSourceFrom, type MenuPage, type Snippet, type SnippetFile, type SnippetSource, type MenuSource, type PageSourceConfig, type SiteFieldGroup, type SiteFields } from '@typeroll/shared';
 // Build-time content fetching. All functions resolve the org+site IDs from
 // env vars so call sites don't need to thread them through.
 
@@ -10,6 +10,7 @@ import type {
   ContentType,
   FacetRoute,
   Media,
+  Menu,
   Page,
   PageTemplate,
   Partial as PartialDoc,
@@ -17,12 +18,17 @@ import type {
   SiteSettings,
   SiteVersion,
 } from '@typeroll/shared';
-import { defaultSiteSettings, resolveBuildVariables } from '@typeroll/shared';
+import { defaultSiteSettings, resolveAuthoredVariables } from '@typeroll/shared';
 import { getStore } from './datastore.js';
 
 // Frozen publication builds pass the year captured before media preparation.
 const publicationYear = Number(process.env.TYPEROLL_BUILD_YEAR ?? new Date().getUTCFullYear());
 export function getBuildYear(): number { return import.meta.env.PROD ? publicationYear : new Date().getUTCFullYear(); }
+// One moment per build for date-dependent site fields (today's opening hours);
+// TYPEROLL_BUILD_TIME pins it. The browser refreshes them after the build.
+const buildTime = Date.parse(process.env.TYPEROLL_BUILD_TIME ?? '');
+const buildNow = new Date(Number.isFinite(buildTime) ? buildTime : Date.now());
+export function getBuildNow(): Date { return import.meta.env.PROD ? buildNow : new Date(); }
 
 function ids() {
   const orgId = process.env.TYPEROLL_ORG_ID || 'default';
@@ -91,6 +97,13 @@ export function _resetBuildCachesForTests(): void {
   getDerived = buildMemo(loadDerived);
   getExtensionsPublic = buildMemo(loadExtensionsPublic);
   getPartials = buildMemo(loadPartials);
+  getMenus = buildMemo(loadMenus);
+  buildMenuPages = buildMemo(loadMenuPages);
+  getSiteFields = buildMemo(loadSiteFields);
+  buildSiteFields = buildMemo(loadSiteFieldContext);
+  getSnippetFiles = buildMemo(loadSnippetFiles);
+  getLiveBaseUrl = buildMemo(loadLiveBaseUrl);
+  buildSnippetSource = buildMemo(loadSnippetSource);
   getContentTypes = buildMemo(loadContentTypes);
   getPages = buildMemo(loadPages);
   getBlockTypes = buildMemo(loadBlockTypes);
@@ -199,6 +212,84 @@ async function loadPartials(): Promise<{
   return { header, footer, freeBlocks };
 }
 export let getPartials = buildMemo(loadPartials);
+
+/** The version's menus, for Navigation links blocks that show one (render version 15). */
+async function loadMenus(): Promise<Menu[]> {
+  const { orgId, siteId, versionId } = ids();
+  return getStore().listDocs<Menu>(paths.menus(orgId, siteId, versionId));
+}
+export let getMenus = buildMemo(loadMenus);
+
+/**
+ * What menus need from the published pages. Built from an untracked page
+ * source and recorded as one `menu_pages` receipt, so a route depends on the
+ * fields menus show, not on every page record.
+ */
+async function loadMenuPages(): Promise<() => MenuPage[]> {
+  const types = await getContentTypes();
+  const pages = await getPages();
+  const trailingSlash = (await getSiteSettings()).trailing_slash ?? 'always';
+  return trackedMenuPages(() => menuPagesFromSource(createPageSource(types, pages, trailingSlash)));
+}
+export let buildMenuPages = buildMemo(loadMenuPages);
+
+/** The menus every render receives; blocks without a menu never read the pages. */
+export async function buildMenuSource(): Promise<MenuSource> {
+  return { menus: await getMenus(), pages: await buildMenuPages() };
+}
+
+/** The version's site fields: definitions and values, one document. */
+async function loadSiteFields(): Promise<Pick<SiteFields, 'groups' | 'values'>> {
+  const { orgId, siteId, versionId } = ids();
+  const doc = await getStore().getDoc<SiteFields>(paths.siteFields(orgId, siteId, versionId));
+  return {
+    groups: Array.isArray(doc?.groups) ? doc.groups : [],
+    values: doc?.values && typeof doc.values === 'object' && !Array.isArray(doc.values) ? doc.values : {},
+  };
+}
+export let getSiteFields = buildMemo(loadSiteFields);
+
+/**
+ * What every render receives of the site fields: the values as `site.fields`
+ * (recorded as a dependency on the first read) and the definitions, which
+ * pick the format of a `core/site_field` block.
+ */
+async function loadSiteFieldContext(): Promise<{ values: Record<string, unknown>; definitions: SiteFieldGroup[] }> {
+  const fields = await getSiteFields();
+  return { values: trackedSiteFields(siteFieldValues(fields), () => fields), definitions: fields.groups };
+}
+export let buildSiteFields = buildMemo(loadSiteFieldContext);
+
+/**
+ * The site's live snippets as their public files, with the site's time zone.
+ * Snippets are not versioned; a publication freezes the copy it was built
+ * from, and the browser fetches the newest from the live base URL.
+ */
+async function loadSnippetFiles(): Promise<SnippetFile[]> {
+  const { orgId, siteId } = ids();
+  const zone = siteTimeZone(await getSiteSettings());
+  return (await getStore().listDocs<Snippet>(paths.snippets(orgId, siteId))).map(snippet => snippetFile(snippet, zone));
+}
+export let getSnippetFiles = buildMemo(loadSnippetFiles);
+
+/** Where the site's live files are (`site.live_base_url`), or null: blocks then show the published content only. */
+async function loadLiveBaseUrl(): Promise<string | null> {
+  const { orgId, siteId } = ids();
+  const site = await getStore().getDoc<{ live_base_url?: unknown }>(paths.site(orgId, siteId));
+  return liveBaseUrlOf(site?.live_base_url);
+}
+export let getLiveBaseUrl = buildMemo(loadLiveBaseUrl);
+
+/**
+ * The snippets every render receives. A route records each snippet it shows
+ * (the content as of the build date, its version and, for dated snippets,
+ * the date), so only pages that show a changed snippet are built again.
+ */
+async function loadSnippetSource(): Promise<SnippetSource> {
+  const lookup = snippetSourceFrom(await getSnippetFiles());
+  return trackedSnippets(lookup, (file: SnippetFile | null | undefined) => snippetReceipt(file, getBuildNow()));
+}
+export let buildSnippetSource = buildMemo(loadSnippetSource);
 
 async function loadPages(): Promise<Page[]> {
   const { orgId, siteId, versionId } = ids();
@@ -394,14 +485,19 @@ const ROUTE_VARYING_TOKEN = /\{\{\{?\s*(page|item|content_type|facet|pagination)
  *     /ort/uppsala/ while containing no {{facet.*}} anywhere. The template/*
  *     family binds context by definition.
  */
-async function isRouteVarying(partial: PartialDoc): Promise<boolean> {
+async function isRouteVarying(partial: PartialDoc, freeBlocks: PartialDoc[] = []): Promise<boolean> {
   const source = partial.content_mode === 'blocks' && partial.blocks?.length
     ? JSON.stringify(partial.blocks)
     : partial.html_content ?? '';
   if (ROUTE_VARYING_TOKEN.test(source)) return true;
   if (!(partial.content_mode === 'blocks' && partial.blocks?.length)) return false;
 
-  const { collectUsedBlockTypeIds } = await import('@typeroll/shared');
+  const { collectUsedBlockTypeIds, globalBlockSourceFromPartials, isMenuNavigation, withGlobalBlockContent } = await import('@typeroll/shared');
+  // A menu marks the current page and its parents, so its links differ per
+  // route, also inside a global block the partial places.
+  const showsMenu = (blocks: Block[]): boolean => blocks.some(block => isMenuNavigation(block)
+    || showsMenu(block.children ?? []) || (block.slots ?? []).some(showsMenu));
+  if (showsMenu(withGlobalBlockContent(partial.blocks, globalBlockSourceFromPartials(freeBlocks)))) return true;
   const registry = await getBlockRegistry();
   for (const id of collectUsedBlockTypeIds(partial.blocks)) {
     if (id.startsWith('template/')) return true;
@@ -431,8 +527,10 @@ export async function renderPartialHtml(
     iframeAllowedHosts?: string[];
   },
 ): Promise<string | null> {
-  context = { ...context, site: { ...context?.site, current_year: getBuildYear() } };
+  const siteFields = await buildSiteFields();
+  context = { ...context, site: { fields: siteFields.values, live_base_url: await getLiveBaseUrl(), ...context?.site, current_year: getBuildYear() } };
   const { expandExtensionIncludes, expandIncludes, renderBlocks } = await import('@typeroll/shared');
+  const { recordClockOutput } = await import('./publication-dependencies.mjs');
   const { sanitizeBody } = await import('./sanitize.js');
 
   // Expand HTML directives before selecting the cache key. The 404 route is
@@ -478,13 +576,23 @@ export async function renderPartialHtml(
         registry: await getBlockRegistry(),
         context,
         pageSource: await buildPageSource(),
+        menuSource: await buildMenuSource(),
+        siteFieldDefinitions: siteFields.definitions,
+        snippetSource: await buildSnippetSource(),
+        now: getBuildNow(),
+        onClockOutput: recordClockOutput,
         onMissingType: (typeId) => {
           throw new Error(`Cannot build partial with missing block type: ${typeId}`);
         },
       }), directives?.iframeAllowedHosts);
     }
     if (expandedHtml) {
-      return sanitizeBody(resolveBuildVariables(expandedHtml, getBuildYear()), directives?.iframeAllowedHosts);
+      // Authored HTML: {{site.current_year}}, and from render version 15 {{site.name}} and {{site.fields.*}} (frozen values).
+      const { resolveRenderVersion } = await import('@typeroll/shared');
+      return sanitizeBody(resolveAuthoredVariables(expandedHtml, {
+        year: getBuildYear(), renderVersion: resolveRenderVersion((await getSiteSettings()).render_version),
+        siteName: context?.site?.name, fields: context?.site?.fields as Record<string, unknown> | undefined,
+      }), directives?.iframeAllowedHosts);
     }
     return null;
   };
@@ -492,7 +600,7 @@ export async function renderPartialHtml(
   // A render-cache receipt must capture this route's actual reads, including
   // custom templates and aliases in shared partials. Reusing HTML here would
   // silently omit the later route's dependencies from its receipt.
-  if (process.env.TYPEROLL_RENDER_CACHE_WORK || !BUILD_CACHE_ENABLED || await isRouteVarying(partial)) return render();
+  if (process.env.TYPEROLL_RENDER_CACHE_WORK || !BUILD_CACHE_ENABLED || await isRouteVarying(partial, directives?.freeBlocks)) return render();
 
   const key = partial.content_mode === 'blocks' && partial.blocks?.length
     ? `blocks:${partial.id}:${JSON.stringify(partial.blocks)}`

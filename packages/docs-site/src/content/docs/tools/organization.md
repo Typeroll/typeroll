@@ -78,12 +78,13 @@ access for the recipient and its keys immediately; the record stays listed with
 ## Invite people to the Organization
 
 `create_organization_invite` (`POST /api/v1/organization/invites`, body
-`{ "ttl_days": 14, "max_uses": 3, "email": "person@example.com" }`, every field
-optional) returns the invite `id`, a signed `invite_url` and its `expires_at`.
+`{ "ttl_days": 14, "max_uses": 3, "email": "person@example.com", "role": "builder" }`,
+every field optional) returns the invite `id`, a signed `invite_url` and its `expires_at`.
 The lifetime is 1–30 days, 7 by default. `max_uses` (1–50, default 1) lets
 several people use one link, and `email` accepts only a person signed in with
-that address. The invited person opens the link, signs in and joins as an
-**editor**, the same role as a portal invite.
+that address. The invited person opens the link, signs in and joins with
+`role`: `editor` (the default), `builder` or `admin`, never `owner`. The same
+options work for a portal invite.
 
 `list_organization_invites` (`GET /api/v1/organization/invites`) lists the
 invites, newest first, with their `id`, `state` (`active`, `used`, `expired` or
@@ -104,6 +105,23 @@ lifetime), list them with `GET /api/orgs/invite` and revoke one with
 
 Invite links created before stored invites were introduced are no longer
 accepted, because they could not be revoked. Create a new invite instead.
+
+## Manage members
+
+`list_organization_members` (`GET /api/v1/organization/members`) lists the
+members with their `id`, `email`, `display_name`, `role` (`owner`, `admin`,
+`builder` or `editor`) and `joined_at`. `update_organization_member_role`
+(`PATCH /api/v1/organization/members/{member_id}`, body `{ "role": "builder" }`)
+changes a role and `remove_organization_member`
+(`DELETE /api/v1/organization/members/{member_id}`) removes a member. They need
+an organization API key, which acts as an administrator, or a personal
+connection of an owner or administrator; a site-scoped key gets `403`. Only an
+owner makes someone an owner or changes or removes an owner (`403
+owner_required`), and the last owner can be neither demoted nor removed (`409
+last_owner`). In the portal the same routes are
+`GET /api/orgs/{org_id}/members` and `PATCH` or `DELETE
+/api/orgs/{org_id}/members/{member_id}`. See
+[Teams and roles](../../guides/teams-and-roles/#roles) for what each role may do.
 
 **Self-hosting:** invites are signed with a key derived from
 `FORMS_HMAC_SECRET` and use `PORTAL_PUBLIC_URL` for the link. Without the
@@ -195,17 +213,20 @@ a finished run returns `409`.
 
 ## Create a Site with its first workflow
 
-The portal's **New site** page offers three starts. All three are available
+The portal's **New site** page offers four starts. All four are available
 with an organization key:
 
-| Start                   | MCP tool                  | API route below `/api/v1`        | Body                                                          |
-| ----------------------- | ------------------------- | -------------------------------- | ------------------------------------------------------------- |
-| Blank Site              | `create_site`             | `POST /sites`                    | `name`, optional `id`, `domain`, `language`                   |
-| Migrate from WordPress  | `create_site_and_migrate` | `POST /sites/create-and-migrate` | `name`, `wp_url`, optional `helper_api_key`, `id`, `language` |
-| Plan a new site with AI | `create_site_and_plan`    | `POST /sites/create-and-plan`    | `name`, `business_description`, optional `id`, `language`     |
+| Start                   | MCP tool                  | API route below `/api/v1`        | Body                                                           |
+| ----------------------- | ------------------------- | -------------------------------- | -------------------------------------------------------------- |
+| Blank Site              | `create_site`             | `POST /sites`                    | `name`, optional `id`, `domain`, `language`                    |
+| From a template or Site | `create_site`             | `POST /sites`                    | `name`, `from`, optional `options`, `id`, `domain`, `language` |
+| Migrate from WordPress  | `create_site_and_migrate` | `POST /sites/create-and-migrate` | `name`, `wp_url`, optional `helper_api_key`, `id`, `language`  |
+| Plan a new site with AI | `create_site_and_plan`    | `POST /sites/create-and-plan`    | `name`, `business_description`, optional `id`, `language`      |
 
 These are the only accepted fields: any other field is refused with `400` and
-code `unknown_field`, naming it. `id` and `language` work as in
+code `unknown_field`, naming it. What a start from a template or another Site
+copies is described in
+[Start a site from a template or another site](../settings/#start-a-site-from-a-template-or-another-site). `id` and `language` work as in
 [`create_site`](../settings/#create_site): without `id` the Site id is the
 kebab-case name, and a taken `id` answers `409` `site_id_taken`; `language` is a
 BCP 47 tag that sets `<html lang>`, by default `en`.

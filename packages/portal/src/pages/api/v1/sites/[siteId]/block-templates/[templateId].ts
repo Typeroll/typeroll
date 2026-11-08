@@ -5,6 +5,7 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { blockTemplateDesignFindings } from '../../../../../../lib/design-token-audit';
 import { BlockTemplateError, deleteBlockTemplate, readBlockTemplate, updateBlockTemplate } from '../../../../../../lib/block-templates-store';
 
 async function handle(run: () => Promise<Response>): Promise<Response> {
@@ -24,7 +25,10 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const body = await request.json().catch(() => null);
-  return handle(async () => apiResponse(guard.value, { block_template: await updateBlockTemplate(guard.value, String(params.templateId), body) }));
+  return handle(async () => {
+    const template = await updateBlockTemplate(guard.value, String(params.templateId), body);
+    return apiResponse(guard.value, { block_template: template, design_findings: await blockTemplateDesignFindings(guard.value, template) });
+  });
 };
 
 export const DELETE: APIRoute = async ({ request, params }) => {

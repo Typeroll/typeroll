@@ -22,7 +22,17 @@ const REPEATER_GROUP_SPACE = 'the space between two group sections, outside ever
 /** The breadcrumb separator: generated content, spaced inline. */
 const BREADCRUMB_SEPARATOR = 'the separator is each item\'s ::after, and no style property sets inline margins; the item part\'s style sets it in its advanced CSS (&:not(:last-child)::after)';
 
+/** The dropdown panel of a menu's submenu (render version 15). */
+const SUBMENU_PANEL = 'the Dropdown panels part (submenu) takes a style with its own radius and shadow; the audit matches every nested submenu list structurally, also the columns inside a panel that the part leaves alone';
+const SUBMENU_IN_DIALOG = 'in the mobile menu dialog a dropdown opens in place like an accordion, so the panel look is reset there; outside the dialog the Dropdown panels part styles it';
+
 export const UNREACHABLE_PRESENTATION: Record<string, Record<string, string>> = {
+  'core/navigation_links': {
+    '[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub { border-radius: 8px }': SUBMENU_PANEL,
+    '[data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub { box-shadow: 0 12px 32px rgb(0 0 0 / .14) }': SUBMENU_PANEL,
+    'dialog [data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub { background: none }': SUBMENU_IN_DIALOG,
+    'dialog [data-block="navigation_links"] li[data-submenu="dropdown"] > .block-nav-sub { box-shadow: none }': SUBMENU_IN_DIALOG,
+  },
   'core/hero': {
     '[data-block="hero"][style*="--layout:full-image"]:not([style*="--bg-image:url()"]) { color: white }': 'text over the full-width image; the eyebrow, heading, subheading and button parts each take a style with their own colour, and the overlay part sets how dark the image is',
     '[data-block="hero"] > .block-hero-video-toggle { border-radius: 50% }': VIDEO_CONTROL,

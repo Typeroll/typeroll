@@ -161,6 +161,18 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'The site setting motion: reduced turns off entrance animations, carousel autoplay, background and hero videos, moving rows, counting figures and scroll films for every visitor.',
     ],
   },
+  {
+    version: 15, core_version: '0.3.9', title: 'Menus with submenus and fonts in use',
+    changes: [
+      'A Navigation links block can show one of the site\'s menus (source: menu, chosen by id or by a location such as location:primary) instead of its own links. Page items take the page\'s current title and address, so renames and moves follow; unpublished or deleted pages drop out. The current page is marked with aria-current and its parent items with block-nav-parent--current. A menu that does not exist renders an empty list. Blocks with their own links render as before.',
+      'Menu items with children get a submenu with a button that opens it (aria-expanded, Escape closes). Submenus are "auto" by default: a dropdown panel under the item in a row of links, an accordion in a column and in the mobile menu. They can also always show their links (expanded) or be left out (none). A submenu whose items have children of their own is laid out in columns; headings and short descriptions show in it.',
+      'Without script a dropdown opens on hover and keyboard focus, and an accordion shows its links. The small submenu script ships only on pages with a menu-sourced Navigation links block.',
+      'Fonts load only the weights and italics the site uses (its styles, block weights and their defaults, and bold and italic rich text, plus fonts.load) instead of a fixed 400–700, and no italics unless the site has italic text. A variable family loads as one file covering the range in use. The body family\'s upright Latin file is preloaded.',
+      'A self-hosted family has its own metric-matched fallback face, measured from the copied files, so text keeps its place while the font loads.',
+      'Two more font roles: display (large headings and heroes) and accent (eyebrows and quotes), as --font-display and --font-accent. Unset, they use the heading and body families. Blocks and styles choose them like the other roles.',
+      'Authored text and HTML can use {{site.name}} and {{site.fields.<name>}} (text, number or true/false values, escaped), so a template names the site it is inserted into. Before, only {{site.current_year}} expanded and other tokens showed as written.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

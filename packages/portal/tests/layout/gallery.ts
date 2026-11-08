@@ -4,7 +4,7 @@
  * renderer. The layout contract reads its HTML at several widths.
  */
 import {
-  LATEST_RENDER_VERSION, buildCoreBlockRegistry, defaultSiteSettings, newSiteStyles, getPageTemplateStarter, getPartialCompositionStarter, sampleBlockData,
+  LATEST_RENDER_VERSION, buildCoreBlockRegistry, defaultSiteSettings, newSiteStyles, getPageTemplateStarter, getPartialCompositionStarter, openingHoursField, sampleBlockData,
   type Block, type BlockType, type PageTemplateStarterKind,
 } from '@typeroll/shared';
 import { demoImage } from './demo-media';
@@ -47,12 +47,34 @@ function withImages(value: Record<string, unknown>, fields: Fields, type: string
   return out;
 }
 
+/** Site fields the gallery's Site field and Show if blocks read: a phone number, a booking toggle and a week of opening hours. */
+const SITE_FIELDS = {
+  groups: [{ id: 'contact', label: 'Contact', fields: [
+    { name: 'phone', type: 'text', label: 'Phone' }, { name: 'show_booking', type: 'boolean', label: 'Show booking' }, openingHoursField(),
+  ] }],
+  values: { phone: '+46 90-12 34 56', show_booking: true, opening_hours: {
+    days: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day, index) => index < 5 ? { day, opens: '09:00', closes: '17:00' } : index === 5 ? { day, opens: '10:00', closes: '14:00' } : { day, closed: true }),
+    exceptions: [{ date: '2026-12-24', closed: true, note: 'Christmas Eve' }],
+  } },
+};
+/** A dated live snippet, "Today's lunch": the same dish every weekday so the page reads the same whatever day it is built. */
+const SNIPPETS = [{ id: 'lunch', kind: 'dated', format: 'html', updated_at: '2026-11-08T08:00:00.000Z', fallback: '<p>No lunch today.</p>',
+  entries: [...['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map(weekday => ({ weekday, content: '<p><strong>Today\'s lunch:</strong> pea soup with pancakes and jam, coffee included.</p>' })),
+    { date: '2026-12-24', content: '<p><strong>Christmas Eve:</strong> closed.</p>' }] }];
+/** Blocks whose sample data would show nothing without site fields or snippets. */
+const SAMPLE_DATA: Record<string, Record<string, unknown>> = {
+  'core/site_field': { field: 'opening_hours', format: 'auto' },
+  'core/show_if': { condition: 'site.fields.show_booking' },
+  'core/snippet': { snippet: 'lunch', tag: 'section' },
+};
+
 function sample(type: BlockType, id: string, long = false): Block {
   const data = withImages(sampleBlockData(type.schema), type.schema as Fields, type.id);
   // Sample data fills numbers with their minimum (a gap of 0px); a new block leaves them unset and uses its defaults.
   for (const field of type.schema ?? []) if (field.type === 'number' && field.default === undefined) delete data[field.name];
-  const block: Block = { id, type: type.id, data: long ? lengthen(data, type.schema as Fields) as Record<string, unknown> : data };
-  if (type.container === true) {
+  // Field names and conditions stay as written; labels and other text get longer.
+  const block: Block = { id, type: type.id, data: { ...(long ? lengthen(data, type.schema as Fields) as Record<string, unknown> : data), ...SAMPLE_DATA[type.id] } };
+  if (type.container === true || type.container === 'conditional') {
     block.children = [
       { id: `${id}-text`, type: 'core/prose', data: { html: '<p>A paragraph inside the block, long enough to wrap on a phone screen.</p>' } },
       { id: `${id}-button`, type: 'core/button', data: { label: 'Primary action', href: '/' } },
@@ -151,7 +173,7 @@ export function layoutGallery(renderVersion = LATEST_RENDER_VERSION) {
       site_url: 'https://gallery.example.invalid', version_id: 'main', site: { name: 'Layout gallery' },
       // What a new site starts with: default theme values and standard styles.
       settings: { ...structuredClone(defaultSiteSettings), styles: newSiteStyles(), site_name: 'Layout gallery', trailing_slash: 'always', render_version: renderVersion },
-      pages, pageTemplates, media: [], contentTypes: [], blockTypes: [], forms: [],
+      pages, pageTemplates, media: [], contentTypes: [], blockTypes: [], forms: [], siteFields: SITE_FIELDS, snippets: SNIPPETS,
       partials: (['header', 'footer'] as const).map(kind => ({ id: kind, kind, status: 'published', content_mode: 'blocks',
         blocks: getPartialCompositionStarter(kind, { links }) })),
     },

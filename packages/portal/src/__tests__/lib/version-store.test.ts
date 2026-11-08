@@ -126,6 +126,48 @@ describe('vstore chain reads', () => {
     expect(template?.blocks[0]?.type).toBe('template/content_slot');
   });
 
+  it('inherits, forks, guards and tombstones menus', async () => {
+    const { store, vstore } = await setup();
+    const { MenuWriteConflict } = await import('../../lib/version-store');
+    const main = { id: 'main-menu', name: 'Main', locations: ['primary'], items: [{ id: 'home', type: 'page' as const, page_id: 'home' }] };
+    await vstore.writeMenu(ORG, SITE, MAIN_VERSION_ID, main, null);
+    expect((await store.getDoc<{ name: string }>(paths.menu(ORG, SITE, 'main-menu', MAIN_VERSION_ID)))?.name).toBe('Main');
+    expect((await vstore.menus(ORG, SITE, BRANCH)).map((menu) => menu.id)).toEqual(['main-menu']);
+
+    const read = (await vstore.menu(ORG, SITE, BRANCH, 'main-menu'))!;
+    await vstore.writeMenu(ORG, SITE, BRANCH, { ...main, name: 'Branch' }, read);
+    expect((await vstore.menu(ORG, SITE, BRANCH, 'main-menu'))?.name).toBe('Branch');
+    expect((await vstore.menu(ORG, SITE, MAIN_VERSION_ID, 'main-menu'))?.name).toBe('Main');
+    // A save based on what the branch showed before is refused.
+    await expect(vstore.writeMenu(ORG, SITE, BRANCH, { ...main, name: 'Stale' }, read)).rejects.toBeInstanceOf(MenuWriteConflict);
+    await expect(vstore.writeMenu(ORG, SITE, MAIN_VERSION_ID, main, null)).rejects.toBeInstanceOf(MenuWriteConflict);
+
+    await vstore.deleteMenu(ORG, SITE, BRANCH, 'main-menu');
+    expect(await vstore.menu(ORG, SITE, BRANCH, 'main-menu')).toBeNull();
+    expect(await vstore.menus(ORG, SITE, BRANCH)).toEqual([]);
+    expect(await vstore.menu(ORG, SITE, MAIN_VERSION_ID, 'main-menu')).not.toBeNull();
+    // Writing again on the branch lifts the tombstone.
+    await vstore.writeMenu(ORG, SITE, BRANCH, { ...main, name: 'Again' });
+    expect((await vstore.menu(ORG, SITE, BRANCH, 'main-menu'))?.name).toBe('Again');
+  });
+
+  it('inherits, forks and guards the site fields', async () => {
+    const { store, vstore } = await setup();
+    const { SiteFieldsWriteConflict } = await import('../../lib/version-store');
+    expect(await vstore.siteFields(ORG, SITE, BRANCH)).toEqual({ groups: [], values: {} });
+    const groups = [{ id: 'booking', label: 'Booking', access: 'editor' as const, fields: [{ name: 'show_booking', type: 'boolean' as const, label: 'Show' }] }];
+    await vstore.writeSiteFields(ORG, SITE, MAIN_VERSION_ID, { groups, values: { show_booking: true }, updated_at: 'T1' }, null);
+    expect(await store.getDoc(paths.siteFields(ORG, SITE, MAIN_VERSION_ID))).toMatchObject({ values: { show_booking: true } });
+    expect(await vstore.siteFields(ORG, SITE, BRANCH)).toEqual({ groups, values: { show_booking: true }, updated_at: 'T1' });
+
+    await vstore.writeSiteFields(ORG, SITE, BRANCH, { groups, values: { show_booking: false }, updated_at: 'T2' }, 'T1');
+    expect((await vstore.siteFields(ORG, SITE, BRANCH)).values).toEqual({ show_booking: false });
+    expect((await vstore.siteFields(ORG, SITE, MAIN_VERSION_ID)).values).toEqual({ show_booking: true });
+    // A save based on what the branch showed before is refused.
+    await expect(vstore.writeSiteFields(ORG, SITE, BRANCH, { groups, values: {}, updated_at: 'T3' }, 'T1')).rejects.toBeInstanceOf(SiteFieldsWriteConflict);
+    await expect(vstore.writeSiteFields(ORG, SITE, MAIN_VERSION_ID, { groups, values: {} }, null)).rejects.toBeInstanceOf(SiteFieldsWriteConflict);
+  });
+
   // Regression: Firestore rejects doc paths with an odd number of segments.
   // Tombstone paths previously used `_tombstones/{kind}/{id}` which produces
   // 9 segments under a version doc — 500-ing every chain read on prod.

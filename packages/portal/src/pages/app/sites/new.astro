@@ -4,6 +4,11 @@ import { importStorageStatus } from '../../../lib/media/import-policy';
 import { getSession } from '../../../lib/auth';
 import { readAiSettings, settingsCoverNewSites, AI_SETTINGS_PATH } from '../../../lib/ai/organization-ai';
 import { organizationMembership } from '../../../lib/organization-session';
+import NewSiteFromTemplate from '../../../components/NewSiteFromTemplate.tsx';
+import { getStore } from '../../../lib/datastore';
+import { resolveOwnerOrgAccess, siteDesignAccess } from '../../../lib/member-role';
+import { listCollection } from '../../../lib/collections/collections';
+import { isArchivedSite, paths, type Site } from '@typeroll/shared';
 
 const session = await getSession(Astro.cookies);
 if (!session) return Astro.redirect('/login');
@@ -13,6 +18,23 @@ const importStorage = await importStorageStatus(session.orgId);
 const aiForNewSites = settingsCoverNewSites(await readAiSettings(session.orgId));
 const membership = await organizationMembership(session.userId, session.orgId);
 const canManageAi = membership?.role === 'owner' || membership?.role === 'admin';
+// A new site can start as a copy of another site of this organization, or
+// from a whole-site package of the collection (owners, administrators and
+// builders, like the collection itself) or a .typeroll file.
+const sourceSites = (await getStore().listDocs<Site>(paths.sites(session.orgId)))
+  .filter(site => site.id && !isArchivedSite(site))
+  .map(site => ({ id: site.id, name: site.name || site.id }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+const access = await resolveOwnerOrgAccess(session.orgId, session.userId);
+const sourcePackages = siteDesignAccess(access.permission, access.role)
+  ? (await listCollection(session.orgId, { previewBase: '' })).filter(entry => entry.kind === 'package').map(entry => ({
+    id: entry.id, name: entry.name,
+    ...(entry.source.publisher ? { publisher: entry.source.publisher } : {}),
+    ...(entry.source.verified ? { verified: true } : {}),
+    ...(entry.languages?.length ? { languages: entry.languages } : {}),
+    ...(typeof entry.summary.pages === 'number' ? { pages: entry.summary.pages } : {}),
+  }))
+  : undefined;
 ---
 <AppLayout title="New site">
   <div class="app-header">
@@ -67,5 +89,36 @@ const canManageAi = membership?.role === 'owner' || membership?.role === 'admin'
       </div>}
       <button type="submit" class="btn" disabled={!aiForNewSites}>Plan & generate</button>
     </form>
+
+    <div class="ns-wide">
+      <NewSiteFromTemplate client:load sites={sourceSites} packages={sourcePackages} />
+    </div>
   </div>
+
+  <style is:global>
+    .ns-wide { grid-column: 1 / -1; min-width: 0; }
+    .ns-wide .ns-card { max-width: 760px; }
+    .ns-card h2 { font-size: 1.125rem; margin: 0; }
+    .ns-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .ns-fieldset { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: .65rem .85rem; display: grid; gap: .45rem; min-width: 0; margin: 0; }
+    .ns-fieldset legend { font-weight: 600; padding: 0 .35rem; font-size: .9rem; }
+    .ns-radio, .ns-check { display: flex !important; align-items: flex-start; gap: .5rem; cursor: pointer; font-weight: 400; font-size: .9rem; }
+    .ns-radio input, .ns-check input { width: auto; margin-top: 4px; flex-shrink: 0; }
+    .ns-drop { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding: .85rem; border: 2px dashed var(--color-border); border-radius: var(--radius-md); }
+    .ns-drop:focus-within { border-color: var(--color-primary); }
+    .ns-progress { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+    .ns-progress progress { width: min(12rem, 100%); }
+    .ns-stale { opacity: .6; }
+    .ns-signature { padding: .5rem .75rem; border-radius: var(--radius-md); border: 1px solid var(--color-border); font-size: .875rem; overflow-wrap: anywhere; }
+    .ns-signature--ok { border-color: var(--color-success); background: color-mix(in srgb, var(--color-success) 8%, var(--color-surface)); }
+    .ns-signature--warn { border-color: color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); }
+    .ns-signature--danger { border-color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 7%, var(--color-surface)); color: var(--color-danger); }
+    .ns-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .2rem .85rem; margin: 0; font-size: .875rem; }
+    .ns-facts dt { color: var(--color-text-muted); }
+    .ns-facts dd { margin: 0; overflow-wrap: anywhere; }
+    .ns-warnings { padding: .5rem .75rem; border-radius: var(--radius-md); border: 1px solid color-mix(in srgb, var(--color-accent) 50%, var(--color-border)); background: color-mix(in srgb, var(--color-accent) 7%, var(--color-surface)); font-size: .875rem; }
+    .ns-warnings ul, .ns-error ul, .ns-blockers { margin: .25rem 0 0; padding-left: 1.2rem; }
+    .ns-error { color: var(--color-danger); font-size: .875rem; padding: .5rem .75rem; border: 1px solid color-mix(in srgb, var(--color-danger) 45%, var(--color-border)); border-radius: var(--radius-md); }
+    @media (max-width: 480px) { .ns-facts { grid-template-columns: minmax(0, 1fr); } .ns-facts dd { margin-bottom: .3rem; } }
+  </style>
 </AppLayout>

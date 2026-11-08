@@ -8,6 +8,7 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { apiStructureLockRefusal } from '../../../../../../lib/structure-lock';
 import { vstore } from '../../../../../../lib/version-store';
 import { applyContentWrite, type ContentWriteResult } from '../../../../../../lib/content-write';
 import {
@@ -122,7 +123,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const response = writeResponse(await draftView(ctx, partialId), result);
     return apiResponse(ctx, warnings.length ? { ...response, warnings } : response, 200, body);
   } catch (e) {
-    if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
+    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);
     throw e;
   }
 };
@@ -155,7 +156,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     const response = writeResponse(await draftView(ctx, partialId), result);
     return apiResponse(ctx, warnings.length ? { ...response, warnings } : response, 200, body);
   } catch (e) {
-    if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
+    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);
     throw e;
   }
 };
@@ -164,6 +165,8 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  const locked = await apiStructureLockRefusal(ctx);
+  if (locked) return locked;
   const partialId = pathParam(params.partialId);
   if (!partialId) return apiError('Missing partialId');
   if (partialId === 'header' || partialId === 'footer') {

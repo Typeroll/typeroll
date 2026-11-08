@@ -9,7 +9,12 @@ import type { HreflangAlternate } from './hreflang.js';
 // ─── Auth & Tenancy ──────────────────────────────────────────────────────
 
 export type Plan = 'free' | 'starter' | 'pro' | 'agency' | 'enterprise';
-export type MemberRole = 'owner' | 'admin' | 'editor';
+/**
+ * Organization roles. `builder` works on structure, design, templates and the
+ * collection across the organization's sites, without member, billing or
+ * publishing-connection rights (collections.ts).
+ */
+export type MemberRole = 'owner' | 'admin' | 'builder' | 'editor';
 
 /** Optional service-host access window; no billing or payment-provider data. */
 export interface OrganizationServiceAccess {
@@ -411,6 +416,20 @@ export interface SiteSettings {
     size_base: number;
     mono?: string;
     /**
+     * Large headings and heroes (render version 15). Unset uses the heading
+     * family. Styles and blocks choose the role, never a family.
+     */
+    display?: string;
+    /** Eyebrows and quotes (render version 15). Unset uses the body family. */
+    accent?: string;
+    /**
+     * Weights and italics to load for a role beyond those the site uses
+     * (render version 15), for example for custom CSS. See `planSiteFonts`.
+     */
+    load?: { [R in import('./font-plan.js').SiteFontRole]?: { weights?: number[]; italic?: number[] } };
+    /** Adobe Fonts kits and Bunny Fonts or Fontshare stylesheets, loaded from their CDN. */
+    services?: import('./font-plan.js').FontService[];
+    /**
      * Text rendering on `<body>`. `auto` is the browser default; `antialiased`
      * draws thinner text on macOS, which can suit light text on a dark
      * background. Unset means `auto` from render version 6 and the earlier
@@ -424,6 +443,17 @@ export interface SiteSettings {
      */
     delivery?: 'self_hosted' | 'google';
   };
+  /**
+   * The fonts a publication loads, computed when it is frozen
+   * (`planSiteFonts`). Only in a frozen publication's settings; never stored
+   * in a site's settings.
+   */
+  font_plan?: import('./font-plan.js').FontPlan;
+  /**
+   * Handing the site over to a client: checklist, structure lock and start
+   * view (site-handover.ts). Written as a whole object; null removes it.
+   */
+  handover?: import('./site-handover.js').SiteHandover;
   contact?: {
     email?: string;
     phone?: string;
@@ -522,6 +552,8 @@ export interface SiteSettings {
   header_behavior?: 'static' | 'sticky' | 'reveal_on_scroll_up';
   /** How page and card dates read (render version 14): medium (default), long, numeric, iso or a YYYY/MMM/D pattern. */
   date_format?: string;
+  /** IANA time zone for opening hours and other time-of-day content, e.g. Europe/Stockholm (the default). */
+  time_zone?: string;
   /** Motion for every visitor (render version 14): full (default) or reduced, which turns off entrance animations, autoplay, background video and moving rows. */
   motion?: 'full' | 'reduced';
   /** The shared narrow, normal and wide content widths in px (render version 14). */
@@ -823,7 +855,7 @@ export interface Page {
  * What was edited. Used to surface the right kind of restore action in the UI
  * (page editor vs partial editor).
  */
-export type RevisionKind = 'page' | 'partial';
+export type RevisionKind = 'page' | 'partial' | 'menu' | 'site_fields';
 
 /**
  * A pre-edit snapshot. The full doc body lives under `doc` so restoring is a
@@ -911,6 +943,12 @@ export interface Media {
   alt_text?: string;
   title?: string;
   caption?: string;
+  /**
+   * Demo content from a template package: listed for replacement before a
+   * publication uses it. Cleared when the file is replaced or the editor
+   * keeps it.
+   */
+  demo?: boolean;
   width?: number;
   height?: number;
   size_bytes?: number;
@@ -1113,6 +1151,14 @@ export interface FieldDefinition {
   css_unit?: 'px' | 'number';
   /** Named site scale; numeric values remain explicit overrides. */
   design_token?: import('./design-tokens.js').TokenScale;
+  /** A ready-made editor and formats for a known structure (site fields). */
+  presentation?: 'opening_hours';
+  /**
+   * Site fields: also publish the value as a live file when it is saved, so
+   * the live site shows the newest value without a publication. Top-level
+   * site fields only.
+   */
+  live?: boolean;
   min?: number;
   max?: number;
   /** For type 'choices': which control markup the renderer derives. */
@@ -2053,6 +2099,9 @@ export interface SiteShare {
 export const paths = {
   org: (orgId: string) => `organizations/${orgId}`,
   members: (orgId: string) => `organizations/${orgId}/members`,
+  /** The organization collection (`CollectionEntry`). */
+  collection: (orgId: string) => `organizations/${orgId}/collection`,
+  collectionEntry: (orgId: string, entryId: string) => `organizations/${orgId}/collection/${entryId}`,
   sites: (orgId: string) => `organizations/${orgId}/sites`,
   // The Organization's own AI key and Site access (OrganizationAiSettings).
   // One unversioned doc; the key is encrypted and never returned.
@@ -2080,6 +2129,17 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/pages/${pageId}/revisions`,
   partialRevisions: (orgId: string, siteId: string, partialId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/partials/${partialId}/revisions`,
+  /** Live snippets are not versioned: one copy per site, published on save. */
+  snippets: (orgId: string, siteId: string) => `organizations/${orgId}/sites/${siteId}/snippets`,
+  snippet: (orgId: string, siteId: string, snippetId: string) => `organizations/${orgId}/sites/${siteId}/snippets/${snippetId}`,
+  siteFields: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/site_fields/default`,
+  menus: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/menus`,
+  menu: (orgId: string, siteId: string, menuId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/menus/${menuId}`,
+  menuRevisions: (orgId: string, siteId: string, menuId: string, versionId: string = MAIN_VERSION_ID) =>
+    `organizations/${orgId}/sites/${siteId}/versions/${versionId}/menus/${menuId}/revisions`,
 
   redirects: (orgId: string, siteId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/redirects`,
@@ -2089,6 +2149,11 @@ export const paths = {
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/block_types`,
   blockType: (orgId: string, siteId: string, blockTypeId: string, versionId: string = MAIN_VERSION_ID) =>
     `organizations/${orgId}/sites/${siteId}/versions/${versionId}/block_types/${blockTypeId}`,
+  /** The site's Fonts library (uploaded font files, `SiteFontFile`). Site-wide, not versioned, like media. */
+  fonts: (orgId: string, siteId: string) =>
+    `organizations/${orgId}/sites/${siteId}/fonts`,
+  font: (orgId: string, siteId: string, fontId: string) =>
+    `organizations/${orgId}/sites/${siteId}/fonts/${fontId}`,
   /** Block templates (copy-in section starters). Site-wide, not versioned: an authoring library, not published content. */
   blockTemplates: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/block_templates`,

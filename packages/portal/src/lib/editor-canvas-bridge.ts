@@ -5,6 +5,9 @@ export const EDITOR_CANVAS_PROTOCOL_VERSION = 1;
  * owns no portal authority: it reports annotated block interactions and
  * accepts visual commands only. The parent remains the source of truth and
  * validates the iframe Window, canvas id and protocol on every message.
+ * Clipboard keys (Cmd/Ctrl+C, X, V) are forwarded as a "clipboard" action
+ * without any clipboard content: the parent reads and writes the system
+ * clipboard itself, so the canvas can never place blocks on its own.
  */
 export function editorCanvasBridgeScript(canvasId: string, interactive = true): string {
   const id = JSON.stringify(canvasId).replace(/</g, '\\u003c');
@@ -23,7 +26,7 @@ if(interactive){
 document.addEventListener("click",function(event){if(editing&&event.target instanceof Node&&editing.contains(event.target))return;if(editing)finish(false);event.preventDefault();event.stopPropagation();send("select",{ancestor_ids:idsFrom(event.target)});},true);
 document.addEventListener("dblclick",function(event){var el=event.target instanceof Element?event.target.closest("[data-edit]"):null;if(!el)return;event.preventDefault();event.stopPropagation();finish(false);editing=el;original=el.textContent||"";el.setAttribute("contenteditable","plaintext-only");if(!el.isContentEditable)el.setAttribute("contenteditable","true");el.focus();var selection=getSelection(),range=document.createRange();range.selectNodeContents(el);selection&&selection.removeAllRanges();selection&&selection.addRange(range);send("select",{ancestor_ids:idsFrom(el)});},true);
 document.addEventListener("focusout",function(event){if(editing&&event.target===editing)finish(false);},true);
-document.addEventListener("keydown",function(event){var target=event.target;var editable=target instanceof Element&&(target.closest("input,textarea,select,[contenteditable]")!==null);if(!editing&&!editable&&!event.defaultPrevented&&!event.altKey&&(event.metaKey||event.ctrlKey)){var key=event.key.toLowerCase();if(key==="z"||key==="y"){event.preventDefault();send("history",{direction:key==="y"||event.shiftKey?"redo":"undo"});return;}}if(!editing)return;if(event.key==="Escape"){event.preventDefault();finish(true);}else if(event.key==="Enter"){event.preventDefault();editing.blur();}},true);
+document.addEventListener("keydown",function(event){var target=event.target;var editable=target instanceof Element&&(target.closest("input,textarea,select,[contenteditable]")!==null);if(!editing&&!editable&&!event.defaultPrevented&&!event.altKey&&(event.metaKey||event.ctrlKey)){var key=event.key.toLowerCase();if(key==="z"||key==="y"){event.preventDefault();send("history",{direction:key==="y"||event.shiftKey?"redo":"undo"});return;}if(!event.shiftKey&&(key==="c"||key==="x"||key==="v")){var selected=getSelection();if(key!=="v"&&selected&&String(selected)!=="")return;if(key!=="v")event.preventDefault();send("clipboard",{action:key==="c"?"copy":key==="x"?"cut":"paste"});return;}}if(!editing)return;if(event.key==="Escape"){event.preventDefault();finish(true);}else if(event.key==="Enter"){event.preventDefault();editing.blur();}},true);
 document.addEventListener("mousemove",function(event){send("hover",{ancestor_ids:idsFrom(event.target)});},{passive:true});
 document.addEventListener("mouseleave",function(){send("hover",{ancestor_ids:[]});});
 }

@@ -94,7 +94,14 @@
               "forms:execute",
               "forms:intake:read",
               "page_handoff:read",
-              "forms:actions"
+              "forms:actions",
+              "site_fields:read",
+              "site_fields:write",
+              "collection:read",
+              "collection:write",
+              "site:handover",
+              "snippets:read",
+              "snippets:write"
             ]
           },
           "reason": {

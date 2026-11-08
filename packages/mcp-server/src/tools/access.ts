@@ -9,6 +9,9 @@ import { ok, withErrorBoundary, type ToolDef } from './helpers.js';
 
 const keyId = z.string().regex(/^[a-f0-9]{12}$/).describe('Key id (the 12-hex prefix) from list_api_keys / list_organization_api_keys.');
 const inviteId = z.string().regex(/^[A-Za-z0-9_-]{16,64}$/).describe('Invite id from create_organization_invite or list_organization_invites.');
+const memberId = z.string().regex(/^[A-Za-z0-9._:@-]{1,128}$/).describe('Member id from list_organization_members.');
+const ROLES =
+  'Roles: owner (everything, including the organization itself), admin (members, publishing, domains, keys and design on every site), builder (structure, design, templates and the organization collection on every site; no members, billing or publishing connections) and editor (pages and content).';
 
 export const accessTools: ToolDef[] = [
   {
@@ -73,11 +76,12 @@ export const accessTools: ToolDef[] = [
   {
     name: 'create_organization_invite',
     noSite: true,
-    description: 'Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins as an editor. The link works until expires_at (ttl_days 1–30, default 7) for max_uses people (1–50, default 1: single use); with email set, only a person signed in with that address can redeem it. Returns the invite id; list_organization_invites shows its state and revoke_organization_invite (or DELETE /api/v1/organization/invites/{id}) stops the link immediately. Send the link only to the person the user named.',
+    description: 'Create a signed invite link to the Organization (organization API key required). The invited person opens invite_url, signs in and joins with role (admin, builder or editor; default editor; never owner). The link works until expires_at (ttl_days 1–30, default 7) for max_uses people (1–50, default 1: single use); with email set, only a person signed in with that address can redeem it. Returns the invite id; list_organization_invites shows its state and revoke_organization_invite (or DELETE /api/v1/organization/invites/{id}) stops the link immediately. Send the link only to the person the user named.',
     inputSchema: {
       ttl_days: z.number().int().min(1).max(30).optional(),
       max_uses: z.number().int().min(1).max(50).optional().describe('How many people may redeem the link. Default 1 (single use).'),
       email: z.string().email().max(320).optional().describe('Bind the invite to this email address: only a person signed in with it can redeem the link.'),
+      role: z.enum(['admin', 'builder', 'editor']).optional().describe('The role the person joins with. Default editor.'),
     },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPost('organization/invites', args))),
   },
@@ -94,6 +98,27 @@ export const accessTools: ToolDef[] = [
     description: 'Revoke an Organization invite by id (from create_organization_invite or list_organization_invites). Its link stops working immediately; people who already joined keep their membership. Requires an organization API key.',
     inputSchema: { invite_id: inviteId },
     handler: withErrorBoundary(async (args, { client }) => ok(await client.rootDelete(`organization/invites/${encodeURIComponent(args.invite_id)}`))),
+  },
+  {
+    name: 'list_organization_members',
+    noSite: true,
+    description: 'List the Organization\'s members: id, email, display_name, role and joined_at, owners first. ' + ROLES + ' Requires an organization API key, or a personal connection of an owner or administrator.',
+    inputSchema: {},
+    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('organization/members'))),
+  },
+  {
+    name: 'update_organization_member_role',
+    noSite: true,
+    description: 'Change a member\'s role (owner, admin, builder or editor). ' + ROLES + ' Only an owner (a personal connection of one) makes someone an owner or changes an owner\'s role; the last owner cannot be demoted (409 last_owner). An organization API key acts as an administrator. Confirm with the user first.',
+    inputSchema: { member_id: memberId, role: z.enum(['owner', 'admin', 'builder', 'editor']) },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootPatch(`organization/members/${encodeURIComponent(args.member_id)}`, { role: args.role }))),
+  },
+  {
+    name: 'remove_organization_member',
+    noSite: true,
+    description: 'Remove a member from the Organization: their access to its sites ends at once. Only an owner removes an owner, and the last owner cannot be removed (409 last_owner). Confirm with the user first.',
+    inputSchema: { member_id: memberId },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootDelete(`organization/members/${encodeURIComponent(args.member_id)}`))),
   },
   {
     name: 'read_organization_ai_settings',

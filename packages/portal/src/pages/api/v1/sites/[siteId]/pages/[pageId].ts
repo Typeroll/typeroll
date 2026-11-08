@@ -19,6 +19,7 @@ import { pageAddress } from '../../../../../../lib/page-fields';
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { apiStructureLockRefusal } from '../../../../../../lib/structure-lock';
 import { vstore } from '../../../../../../lib/version-store';
 import { pageUrlFromDoc } from '../../../../../../lib/page-paths';
 import { removeAutoRedirectsTargeting } from '../../../../../../lib/redirect-hygiene';
@@ -168,7 +169,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {
-    if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
+    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);
     throw e;
   }
 };
@@ -214,7 +215,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {
-    if (e instanceof WorkingCopyError) return apiError(e.message, e.status);
+    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);
     throw e;
   }
 };
@@ -223,6 +224,8 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  const locked = await apiStructureLockRefusal(ctx);
+  if (locked) return locked;
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
   const existing = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId);

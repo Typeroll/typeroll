@@ -16,6 +16,9 @@ import { ownerReviewTools } from './tools/owner-review.js';
 import { pageTools } from './tools/pages.js';
 import { structuredDataTools } from './tools/structured-data.js';
 import { partialTools } from './tools/partials.js';
+import { menuTools } from './tools/menus.js';
+import { siteFieldTools } from './tools/site-fields.js';
+import { snippetTools } from './tools/snippets.js';
 import { contentTypeTools } from './tools/content-types.js';
 import { pageTemplateTools } from './tools/page-templates.js';
 import { mediaTools } from './tools/media.js';
@@ -35,12 +38,16 @@ import { blockTypeTools } from './tools/block-types.js';
 import { pageBlockTools } from './tools/page-blocks.js';
 import { workingCopyTools } from './tools/working-copy.js';
 import { settingsTools } from './tools/settings.js';
+import { fontTools } from './tools/fonts.js';
+import { packageTools } from './tools/packages.js';
 import { siteTools } from './tools/sites.js';
 import { domainTools } from './tools/domain.js';
 import { appTools } from './tools/apps.js';
 import { extensionTools, developerExtensionTools } from './tools/extensions.js';
 import { skillTools } from './tools/skills.js';
 import { accessTools } from './tools/access.js';
+import { collectionTools } from './tools/collection.js';
+import { clipboardTools } from './tools/clipboard.js';
 import { workflowTools } from './tools/workflows.js';
 import { fail, ok, type ToolDef, type ToolDeps } from './tools/helpers.js';
 import { VERSION } from './version.js';
@@ -59,6 +66,9 @@ export const ALL_TOOLS: ToolDef[] = [
   ...structuredDataTools,
   ...ownerReviewTools,
   ...partialTools,
+  ...menuTools,
+  ...siteFieldTools,
+  ...snippetTools,
   ...blockTypeTools,
   ...pageBlockTools,
   ...workingCopyTools,
@@ -68,10 +78,14 @@ export const ALL_TOOLS: ToolDef[] = [
   ...redirectTools,
   ...styleTools,
   ...reusableBlockTools,
+  ...packageTools,
+  ...collectionTools,
+  ...clipboardTools,
   ...migrationTools,
   ...formTools,
   ...emailTools,
   ...settingsTools,
+  ...fontTools,
   ...appTools,
   ...extensionTools,
   ...developerExtensionTools,
@@ -113,6 +127,11 @@ export function effectFor(name: string): ToolEffect {
     // Same role as the portal: Settings, lifecycle and media purge are
     // admin actions (the v1 routes enforce it as well).
     || name === 'update_site_settings'
+    // Fonts are settings; an upload also records a licence confirmation.
+    || name === 'set_site_fonts'
+    || name === 'upload_font'
+    // Site field definitions are site administration; values are write.
+    || name === 'define_site_fields'
     || name === 'archive_site'
     || name === 'restore_site'
     || name === 'purge_site_media'
@@ -141,6 +160,8 @@ export function effectFor(name: string): ToolEffect {
     || name === 'revoke_organization_api_key'
     || name === 'create_organization_invite'
     || name === 'revoke_organization_invite'
+    || name === 'update_organization_member_role'
+    || name === 'remove_organization_member'
     || name === 'set_organization_ai_key'
     || name === 'remove_organization_ai_key'
     || name === 'set_organization_ai_site_access'
@@ -157,7 +178,8 @@ export function effectFor(name: string): ToolEffect {
     || name === 'set_incoming_email_forwarding'
   ) return 'admin';
   // Compute an answer and write nothing, like the preview_* tools.
-  if (name === 'validate_block_type' || name.startsWith('find_')) return 'read';
+  // copy_blocks builds a clipboard from a page and writes nothing.
+  if (name === 'validate_block_type' || name === 'inspect_package' || name === 'copy_blocks' || name.startsWith('find_')) return 'read';
   if (name === 'diff_version') return 'read';
   if (
     name.startsWith('list_') ||
@@ -171,6 +193,18 @@ export function effectFor(name: string): ToolEffect {
     return 'read';
   }
   return 'write';
+}
+
+/**
+ * Admin tools a builder may also run: design work (colours, fonts, the Fonts
+ * library, site field definitions). A builder's personal connection reports
+ * `design` on its selected site; the REST routes check the same rule again.
+ */
+export const DESIGN_TOOLS: ReadonlySet<string> = new Set(['update_site_settings', 'set_site_fonts', 'upload_font', 'define_site_fields']);
+
+/** Whether a site permission (and design capability) may run a tool of this effect. */
+export function toolAllowed(name: string, effect: ToolEffect, permission: ToolEffect, design = false): boolean {
+  return PERM_RANK[permission] >= PERM_RANK[effect] || (design && permission !== 'read' && DESIGN_TOOLS.has(name));
 }
 
 export interface AllowedSite {
@@ -193,7 +227,7 @@ export interface BuildServerOptions {
   /** Stateless personal connections require an explicit organization/site/version selection. */
   selection?: {
     select(organizationId: string, siteId: string, version: string): Promise<Record<string, unknown>>;
-    resolve(context: string): Promise<{ client: TyperollClient; siteId: string; permission: ToolEffect }>;
+    resolve(context: string): Promise<{ client: TyperollClient; siteId: string; permission: ToolEffect; design?: boolean }>;
   };
 }
 
@@ -357,7 +391,7 @@ export function buildServer(options: BuildServerOptions): McpServer {
           try {
             if (needsSite) {
               const selected = await options.selection.resolve(String(rawArgs.site_context || ''));
-              if (PERM_RANK[selected.permission] < PERM_RANK[effect]) return fail(new Error(`This tool requires ${effect} permission; your access is ${selected.permission}.`));
+              if (!toolAllowed(tool.name, effect, selected.permission, selected.design)) return fail(new Error(`This tool requires ${effect} permission; your access is ${selected.permission}.`));
               delete rawArgs.site_context;
               return await tool.handler(rawArgs, { client: selected.client, siteId: selected.siteId });
             }

@@ -53,10 +53,10 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
   if (!guard.ok) return guard.response;
   const writeCheck = requirePermission(guard.value, 'write');
   if (!writeCheck.ok) return writeCheck.response;
-  const { session, site, versionId, owner_org_id } = guard.value;
+  const { session, site, versionId, owner_org_id, design } = guard.value;
   const target = parseWcTarget(params.target);
   if (!target) return json({ error: 'Bad working-copy target' }, 400);
-  const ctx: WcCtx = { orgId: owner_org_id, siteId: site.id, versionId };
+  const ctx: WcCtx = { orgId: owner_org_id, siteId: site.id, versionId, canDesign: design };
 
   const body = (await request.json().catch(() => null)) as
     | { fields?: Record<string, unknown> }
@@ -71,7 +71,7 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     const wc = await mergeWorkingCopy(ctx, target, filtered, session.email ?? undefined);
     return json({ ok: true, updated_at: wc.updated_at });
   } catch (e) {
-    if (e instanceof WorkingCopyError) return json({ error: e.message }, e.status);
+    if (e instanceof WorkingCopyError) return json(e.toBody(), e.status);
     throw e;
   }
 };
@@ -81,18 +81,18 @@ export const POST: APIRoute = async ({ cookies, params, locals }) => {
   if (!guard.ok) return guard.response;
   const writeCheck = requirePermission(guard.value, 'write');
   if (!writeCheck.ok) return writeCheck.response;
-  const { session, site, versionId, owner_org_id } = guard.value;
+  const { session, site, versionId, owner_org_id, design } = guard.value;
   const target = parseWcTarget(params.target);
   if (!target) return json({ error: 'Bad working-copy target' }, 400);
   try {
     const result = await commitWorkingCopy(
-      { orgId: owner_org_id, siteId: site.id, versionId },
+      { orgId: owner_org_id, siteId: site.id, versionId, canDesign: design },
       target,
       session.email ?? 'unknown',
     );
     return json({ ok: true, ...result });
   } catch (e) {
-    if (e instanceof WorkingCopyError) return json({ error: e.message }, e.status);
+    if (e instanceof WorkingCopyError) return json(e.toBody(), e.status);
     throw e;
   }
 };

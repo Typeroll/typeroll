@@ -1,0 +1,56 @@
+---
+import AppLayout from '../../../../../layouts/AppLayout.astro';
+import MenuEditor, { type MenuEditorPage } from '../../../../../components/MenuEditor.tsx';
+import { vstore } from '../../../../../lib/version-store';
+import { loadSiteContext } from '../../../../../lib/access';
+import { applyTrailingSlash, contentPagePath, DEFAULT_CONTENT_TYPE } from '@typeroll/shared';
+
+const ctx = await loadSiteContext(Astro);
+if ('redirect' in ctx) return Astro.redirect(ctx.redirect);
+const { site, versionId, owner_org_id: orgId } = ctx;
+const siteId = site.id;
+const menuId = Astro.params.menuId;
+if (!menuId) return Astro.redirect(`/app/sites/${siteId}/menus`);
+
+const [menu, menus, pages, settings, definitions] = await Promise.all([
+  vstore.menu(orgId, siteId, versionId, menuId),
+  vstore.menus(orgId, siteId, versionId),
+  vstore.pages(orgId, siteId, versionId),
+  vstore.settings(orgId, siteId, versionId),
+  vstore.contentTypes(orgId, siteId, versionId),
+]);
+if (!menu) return Astro.redirect(`/app/sites/${siteId}/menus`);
+
+// Routed pages as the menu sees them: page items link by id and take the
+// page's current title and address.
+const types = new Map([[DEFAULT_CONTENT_TYPE.id, DEFAULT_CONTENT_TYPE], ...definitions.map((type) => [type.id, type] as const)]);
+const trailingSlash = settings?.trailing_slash ?? 'always';
+const editorPages: MenuEditorPage[] = pages.flatMap((page) => {
+  const type = types.get(page.content_type ?? 'page');
+  const path = type ? contentPagePath(page, type) : null;
+  if (!path) return [];
+  return [{
+    id: page.id,
+    title: page.title || '(untitled)',
+    path: applyTrailingSlash(path, trailingSlash),
+    parent: page.parent ?? null,
+    sort_order: page.sort_order ?? null,
+    breadcrumb_label: page.breadcrumb_label ?? null,
+    status: page.status,
+  }];
+}).sort((a, b) => a.title.localeCompare(b.title));
+
+// Locations other menus fill, so the editor can say which menu has one.
+const takenLocations: Record<string, string> = {};
+for (const other of menus) if (other.id !== menu.id) for (const location of other.locations ?? []) takenLocations[location] = other.name;
+---
+<AppLayout title={`${menu.name} — Menus — ${site.name}`} siteId={siteId}>
+  <div class="app-header">
+    <div>
+      <a href={`/app/sites/${siteId}/menus`} class="muted text-sm">← Menus</a>
+      <h1>{menu.name}</h1>
+      <p class="muted text-sm">Menu <code style="font-family: var(--font-mono);">{menu.id}</code></p>
+    </div>
+  </div>
+  <MenuEditor client:load siteId={siteId} menu={menu} pages={editorPages} takenLocations={takenLocations} canEdit={ctx.permission !== 'read'} />
+</AppLayout>

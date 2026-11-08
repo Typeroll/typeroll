@@ -906,3 +906,121 @@ describe('chat action editor links', () => {
     expect(saved.action).toMatchObject({ type: 'update_page', href: '/app/sites/mysite/pages/about', link_label: 'Edit page' });
   });
 });
+
+describe('menu tools', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('create, read, add an item to a submenu and refuse a stale replace', async () => {
+    const { ctx, runTool } = await setup();
+    const created = await runTool('update_menu', { menu_id: 'primary', name: 'Main menu', locations: ['primary'], items: [{ id: 'home', type: 'page', page_id: 'home' }, { id: 'services', type: 'page', page_id: 'services' }] }, ctx);
+    expect(created.result).toMatchObject({ ok: true, menu: { id: 'primary', locations: ['primary'] } });
+    expect(created.action).toMatchObject({ type: 'update_menu', href: `/app/sites/${SITE}/menus/primary` });
+
+    const added = await runTool('add_menu_item', { menu_id: 'primary', parent_item_id: 'services', item: { type: 'url', href: 'https://shop.example.com', label: 'Shop' } }, ctx);
+    expect(added.result).toMatchObject({ ok: true, item_id: 'shop' });
+    const read = (await runTool('read_menu', { menu_id: 'primary' }, ctx)).result as { menu: import('@typeroll/shared').Menu };
+    expect(read.menu.items[1]!.children!.map((item) => item.id)).toEqual(['shop']);
+    expect(read.menu.locations).toEqual(['primary']);
+
+    const unchecked = await runTool('update_menu', { menu_id: 'primary', name: 'Main menu', items: [] }, ctx);
+    expect((unchecked.result as { error: string }).error).toMatch(/expected_updated_at/);
+    const stale = await runTool('update_menu', { menu_id: 'primary', name: 'Main menu', items: [], expected_updated_at: created.result && (created.result as { menu: { updated_at: string } }).menu.updated_at }, ctx);
+    expect((stale.result as { error: string }).error).toMatch(/saved by someone else/);
+
+    const listed = (await runTool('list_menus', {}, ctx)).result as { menus: Array<{ id: string }> };
+    expect(listed.menus.map((menu) => menu.id)).toEqual(['primary']);
+  });
+
+  it('returns validation errors with their paths', async () => {
+    const { ctx, runTool } = await setup();
+    const out = await runTool('update_menu', { menu_id: 'bad', name: 'Bad', items: [{ id: 'x', type: 'url' }] }, ctx);
+    expect((out.result as { errors: Array<{ path: string }> }).errors.map((e) => e.path)).toContain('items[0].href');
+  });
+
+  it('teaches the assistant to change the menu rather than the header', async () => {
+    const { PLAYBOOK_STARTER } = await import('../../lib/playbook');
+    expect(PLAYBOOK_STARTER).toContain('add_menu_item');
+    expect(PLAYBOOK_STARTER).toContain('auto_add_pages');
+  });
+});
+
+describe('site field tools', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('reads and updates values, with group access and the revision check', async () => {
+    const { ctx, runTool } = await setup();
+    const { defineSiteFields } = await import('../../lib/site-fields-write');
+    await defineSiteFields({ orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID }, [
+      { id: 'booking', label: 'Booking', fields: [{ name: 'show_booking', type: 'boolean', label: 'Show the booking calendar' }] },
+      { id: 'company', label: 'Company', access: 'admin', fields: [{ name: 'org_number', type: 'text', label: 'Organization number' }] },
+    ], { permission: 'admin', updatedBy: 'test' });
+
+    const read = (await runTool('read_site_fields', {}, ctx)).result as { updated_at: string; editable_groups: string[] };
+    expect(read.editable_groups).toEqual(['booking', 'company']);
+    const saved = await runTool('update_site_fields', { values: { show_booking: false }, expected_updated_at: read.updated_at }, ctx);
+    expect(saved.result).toMatchObject({ ok: true, values: { show_booking: false } });
+    expect(saved.action).toMatchObject({ type: 'update_site_fields', href: `/app/sites/${SITE}/site-fields`, link_label: 'Edit site fields' });
+
+    const stale = await runTool('update_site_fields', { values: { show_booking: true }, expected_updated_at: read.updated_at }, ctx);
+    expect((stale.result as { error: string }).error).toContain('saved by someone else');
+    const invalid = await runTool('update_site_fields', { values: { show_booking: 'no' } }, ctx);
+    expect((invalid.result as { errors: Array<{ path: string }> }).errors.map((e) => e.path)).toEqual(['show_booking']);
+
+    const editor = { ...ctx, permission: 'write' as const };
+    expect(((await runTool('read_site_fields', {}, editor)).result as { editable_groups: string[] }).editable_groups).toEqual(['booking']);
+    expect(((await runTool('update_site_fields', { values: { org_number: '1' } }, editor)).result as { error: string }).error).toContain('administrator');
+  });
+
+  it('teaches the assistant to change the value, not the pages that show it', async () => {
+    const { PLAYBOOK_STARTER } = await import('../../lib/playbook');
+    expect(PLAYBOOK_STARTER).toContain('update_site_fields');
+    expect(PLAYBOOK_STARTER).toContain('exceptions');
+  });
+});
+
+describe('snippet tools', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('reads and replaces a dated snippet with the revision check and an editor link', async () => {
+    const { ctx, runTool } = await setup();
+    const week = { snippet_id: 'lunch', name: 'Lunch', kind: 'dated', entries: [{ weekday: 'monday', content: '<p>Soup</p>' }], fallback: '<p>None</p>' };
+    const created = await runTool('update_snippet', { ...week, expected_updated_at: '' }, ctx);
+    expect(created.result).toMatchObject({ ok: true, snippet: { id: 'lunch', updated_by: 'chat-ai' }, live: { published: false } });
+    expect(created.action).toMatchObject({ type: 'update_snippet', target: 'lunch', href: `/app/sites/${SITE}/snippets#lunch`, link_label: 'Edit snippet' });
+    const listed = (await runTool('read_snippet', {}, ctx)).result as { snippets: Array<{ id: string }>; live: { base_url: string | null } };
+    expect(listed.snippets.map((s) => s.id)).toEqual(['lunch']);
+    expect(listed.live.base_url).toBeNull();
+    const one = (await runTool('read_snippet', { snippet_id: 'lunch' }, ctx)).result as { snippet: { updated_at: string } };
+    expect((await runTool('update_snippet', { ...week, expected_updated_at: 'stale' }, ctx)).result).toMatchObject({ error: expect.stringContaining('someone else') });
+    expect((await runTool('update_snippet', { ...week, expected_updated_at: one.snippet.updated_at }, ctx)).result).toMatchObject({ ok: true });
+    const invalid = await runTool('update_snippet', { ...week, entries: [{ weekday: 'funday', content: 'x' }] }, ctx);
+    expect((invalid.result as { errors: Array<{ path: string }> }).errors.map((e) => e.path)).toEqual(['entries[0].weekday']);
+    expect(((await runTool('update_snippet', week, { ...ctx, permission: 'read' as const })).result as { error: string }).error).toContain('write permission');
+  });
+
+  it('teaches the assistant to put changing content in a snippet', async () => {
+    const { PLAYBOOK_STARTER } = await import('../../lib/playbook');
+    expect(PLAYBOOK_STARTER).toContain('update_snippet');
+    expect(PLAYBOOK_STARTER).toContain('core/snippet');
+  });
+});
+
+describe('font tools', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  it('searches the catalog and sets roles, clearing with null and refusing invalid weights', async () => {
+    const { ctx, runTool } = await setup();
+    const found = (await runTool('search_fonts', { query: 'Fraunces' }, ctx)).result as { fonts: Array<{ family: string; source: string }> };
+    expect(found.fonts[0]).toMatchObject({ family: 'Fraunces', source: 'google' });
+    const set = await runTool('set_site_fonts', { heading: 'Fraunces', display: 'Unknown Face', load: { body: { weights: [300] } } }, ctx);
+    expect(set.result).toMatchObject({ ok: true, fonts: { heading: 'Fraunces', display: 'Unknown Face' }, warnings: [expect.stringContaining('fonts.display')] });
+    expect(set.action).toMatchObject({ type: 'update_site_settings' });
+    await runTool('set_site_fonts', { display: null }, ctx);
+    const { vstore } = await import('../../lib/version-store');
+    const fonts = (await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.fonts as Record<string, unknown>;
+    expect(fonts).toMatchObject({ heading: 'Fraunces', load: { body: { weights: [300] } } });
+    expect(fonts).not.toHaveProperty('display');
+    expect((await runTool('set_site_fonts', { load: { body: { weights: [350] } } }, ctx)).result).toMatchObject({ error: expect.any(String), errors: [expect.stringContaining('fonts.load.body')] });
+    expect(((await runTool('set_site_fonts', { heading: 'Inter' }, { ...ctx, permission: 'write' as const })).result as { error: string }).error).toContain('admin');
+  });
+});

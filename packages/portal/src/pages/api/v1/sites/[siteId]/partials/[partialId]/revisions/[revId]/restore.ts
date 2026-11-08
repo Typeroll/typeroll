@@ -62,7 +62,7 @@ export const POST: APIRoute = async ({ request, params }) => {
       sanitization_warnings: result.sanitization_warnings,
     }, 200, body);
   } catch (e) {
-    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx);
+    if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);
     throw e;
   }
 };

@@ -43,6 +43,7 @@ export async function createBlockTemplate(ctx: TemplateCtx, input: unknown): Pro
   const now = new Date().toISOString();
   const template: BlockTemplate = {
     id, name: value.name!, ...(value.description ? { description: value.description } : {}),
+    ...(value.kind ? { kind: value.kind } : {}), ...(value.category ? { category: value.category } : {}), ...(value.preview ? { preview: value.preview } : {}),
     blocks: ensureBlockIds(JSON.parse(JSON.stringify(value.blocks))), created_at: now, updated_at: now,
   };
   const { id: _id, ...doc } = template;
@@ -61,6 +62,7 @@ export async function updateBlockTemplate(ctx: TemplateCtx, id: string, input: u
     updated_at: new Date().toISOString(),
   };
   if (value.description === '') delete next.description;
+  for (const key of ['category', 'preview'] as const) if (value[key] === '') delete next[key];
   const { id: _id, ...doc } = next;
   await getStore().setDoc(paths.blockTemplate(ctx.orgId, ctx.siteId, id), doc);
   return next;

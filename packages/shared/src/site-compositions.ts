@@ -9,18 +9,28 @@ function block(id: string, type: string, data: Record<string, unknown>, children
   return { id: `starter_${id}`, type, data, ...(children ? { children } : {}) };
 }
 
-/** Reusable native header/footer trees. Consent remains a site setting. */
+/**
+ * Reusable native header/footer trees. Consent remains a site setting.
+ *
+ * From render version 15 the links come from the site's menus: the header
+ * shows the `primary` location and the footer the `footer` location, so a
+ * page added to the menu appears in both the desktop and the mobile list.
+ * Until a menu fills the location the list renders empty, and the rest of the
+ * header or footer is unchanged. Older sites get the given links.
+ */
 export function getPartialCompositionStarter(
   kind: 'header' | 'footer',
-  options: { links: NavigationLink[]; navigation_label?: string; menu_label?: string },
+  options: { links: NavigationLink[]; navigation_label?: string; menu_label?: string; renderVersion?: number },
 ): Block[] {
+  const fromMenu = (options.renderVersion ?? 1) >= 15;
+  const source = (location: string) => fromMenu ? { source: 'menu', menu: `location:${location}` } : { links: options.links };
   const links = (id: string, direction: string) => block(id, 'core/navigation_links', {
-    links: options.links, direction, gap_px: direction === 'row' ? 24 : 8,
+    ...source('primary'), direction, gap_px: direction === 'row' ? 24 : 8,
   });
   // Footer links stack one per line on phones and sit in a row from tablet up.
   // Compact 24px targets (WCAG 2.2 AA) keep the stacked list tight.
   const footerLinks = () => block('footer_links', 'core/navigation_links', {
-    links: options.links, direction: { mobile: 'column', tablet: 'row' },
+    ...source('footer'), direction: { mobile: 'column', tablet: 'row' },
     gap_px: { mobile: 8, tablet: 24 }, density: 'compact',
   });
   const navigation: Block = kind === 'header'

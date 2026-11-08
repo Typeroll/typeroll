@@ -98,6 +98,9 @@ All site routes below start with `/sites/{siteId}`.
 | Settings | `GET/PATCH /settings` |
 | Pages | `GET/POST /pages`, `GET/PATCH/PUT/DELETE /pages/{pageId}`, `POST /pages/batch-read`, `PATCH /pages/batch`, clone, mode conversion, preview and block-container routes; history under `/pages/{pageId}/revisions` (list, read, `GET …/{revId}/preview`, `POST …/{revId}/restore`) |
 | Partials | `GET/POST /partials`, `GET/PATCH/PUT/DELETE /partials/{partialId}`, `POST /partials/{partialId}/mode`, usage and block-container routes; history under `/partials/{partialId}/revisions` (list, read, `POST …/{revId}/restore`) |
+| Menus | `GET/POST /menus`, `GET/PUT/DELETE /menus/{menuId}` (PUT replaces the whole menu; send `expected_updated_at` to refuse a save over a newer one with `409`), `GET /menus/{menuId}/usage`; history under `/menus/{menuId}/revisions` (list, read, `POST …/{revId}/restore`). No working copy: a save takes effect at the next publication. A location another menu fills is refused with `409`. |
+| Site fields | `GET /site-fields` (`groups`, `values`, `updated_at`, `editable_groups`), `PUT /site-fields` `{ groups, expected_updated_at }` replaces the definitions (site admin; a removed field drops its value), `PATCH /site-fields` `{ values, expected_updated_at }` merges values (`null` removes one; groups with `access: "admin"` need site admin, others write). Stale `expected_updated_at` is `409`; invalid input is `400` with `errors: [{ path, message }]`. History under `/site-fields/revisions` (list, `POST …/{revId}/restore`, site admin). No working copy: live at the next publication. |
+| Snippets | `GET/POST /snippets` (list adds `live: { base_url, reason? }`), `GET/PUT/DELETE /snippets/{snippetId}`. A live snippet (`kind` `html`, `text` or `dated` with `entries` by `date` or `weekday`) belongs to the site, not a version. Every save is sanitized, stamped and written at once as the public file `{base_url}/{id}.json` (cached about a minute), so the live site shows it without a publication; the response's `live` is `{ published: true, url }` or `{ published: false, reason }` and the save stands either way. PUT replaces the whole snippet (creating a missing one); send `expected_updated_at` (`''` for a new one) to refuse a stale save with `409`. DELETE also removes the live file. At most 100 snippets of 64 KB. |
 | Page templates | `GET/POST /page-templates`, `GET/PATCH/DELETE /page-templates/{templateId}`. Create accepts `starter` or `blocks`. |
 | Content types | `GET/POST /content-types`, `GET/PATCH/DELETE /content-types/{name}`, `GET /content-types/{name}/completeness` |
 | Composition starters | `GET /composition-starters?kind=profile` returns one native editable tree without saving. Supports Page starters, header/footer and archive (requires `content_type`, optional `title`). |
@@ -205,8 +208,8 @@ POST /sites/{siteId}/versions/{versionId}/reset
 
 `diff` returns `{ version_id, base_version_id: "main", diff }`, where `diff`
 lists added, modified and deleted ids for `pages`, `partials`, `redirects`,
-`contentTypes`, `pageTemplates` and `blockTypes`, plus `settings` and
-`totalChanges`. It needs read access. `reset` discards every override and
+`contentTypes`, `pageTemplates`, `blockTypes` and `menus`, plus `settings`,
+`siteFields` and `totalChanges`. It needs read access. `reset` discards every override and
 tombstone on the branch and returns the cleared diff; the branch, its deploy
 address and its revision history remain. Creating, merging, resetting and deleting
 branches require admin permission on the site, matching the portal. Main can be neither diffed nor

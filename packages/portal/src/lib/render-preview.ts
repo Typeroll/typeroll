@@ -21,8 +21,9 @@ import type {
   SiteVersion,
 } from '@typeroll/shared';
 import { vstore } from './version-store';
+import { publicationLiveContent } from './publishing/publication-snippets';
 import {
-  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webFontFamilies, googleFontsCssUrl, WEBFONT_FALLBACK_CSS, webfontFallbackCss,
+  contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webfontFallbackCss, withGlobalBlockContent,
   pageRobots,
   breadcrumbJsonLd,
   applyTrailingSlash,
@@ -32,6 +33,9 @@ import {
   buildConsentEarlyPaintRuntime,
   buildCoreBlockRegistry,
   collectBlockAssets,
+  snippetFile,
+  snippetSourceFrom,
+  siteTimeZone,
   composePageWithTemplate,
   defaultSiteSettings,
   resolveRenderVersion,
@@ -63,7 +67,7 @@ import {
   publicContentPage,
   pageBreadcrumbs,
   siteContext,
-  resolveBuildVariables,
+  resolveAuthoredVariables,
   STICKY_HEADER_RUNTIME_JS,
   activeHeaderBehavior,
   withHeaderBehaviorAttribute,
@@ -75,6 +79,7 @@ import {
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
 import { sanitizeBody } from './sanitize';
+import { previewFonts, type PreviewFonts } from './fonts/preview-fonts';
 // The published page's base stylesheets, inlined by Astro at the end of <head>.
 import siteResetCss from '../../../site-template/src/styles/reset.css?raw';
 import siteGlobalCss from '../../../site-template/src/styles/global.css?raw';
@@ -214,6 +219,14 @@ export async function renderPreview(
   const contentTypes = await vstore.contentTypes(orgId, siteId, versionId);
   const previewPages = await vstore.pages(orgId, siteId, versionId);
   const pageSource = createPageSource(contentTypes, previewPages, settings.trailing_slash ?? 'always');
+  // Site menus for Navigation links blocks that show one (render version 15).
+  const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
+  // The version's site fields: values as {{site.fields.*}}, definitions for core/site_field formats.
+  const siteFields = await vstore.siteFields(orgId, siteId, versionId);
+  // Live snippets as saved now, and where the published page fetches newer ones (null: no fetching).
+  const live = await publicationLiveContent(orgId, siteId);
+  const snippetSource = snippetSourceFrom(live.snippets.map(snippet => snippetFile(snippet, siteTimeZone(settings))));
+  const siteFieldOptions = { siteFieldDefinitions: siteFields.groups, snippetSource };
   const contentType = contentTypes.find(type => type.id === (page!.content_type ?? 'page'))
     ?? ((page.content_type ?? 'page') === 'page' ? DEFAULT_CONTENT_TYPE : null);
   if (!contentType) throw new Error(`Unknown content type: ${page.content_type}`);
@@ -234,7 +247,7 @@ export async function renderPreview(
       ...pageContentValues(publicContentPage(page, contentType)),
       breadcrumbs,
     },
-    site: { ...siteContext(settings as unknown as Record<string, unknown>), url: seoBase },
+    site: { ...siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields), url: seoBase, live_base_url: live.liveBaseUrl },
     // Paginating listings render their first slice in the preview; the
     // pager appears but its /page/N/ links only exist on the deployed
     // site (route generation is the SSG's job).
@@ -257,11 +270,13 @@ export async function renderPreview(
   ];
   const formSource = await previewFormSource(orgId, siteId, blockRegistry, settings, assetBlocks);
 
+  // Authored HTML: {{site.current_year}}, and from render version 15 {{site.name}} and {{site.fields.*}}, as the build does.
+  const authored = (html: string) => resolveAuthoredVariables(html, { year: renderCtx.site?.current_year, renderVersion, siteName: renderCtx.site?.name, fields: renderCtx.site?.fields as Record<string, unknown> | undefined });
   const renderPartial = (p: typeof header): string => {
     if (!p) return '';
     if (p.content_mode === 'blocks' && p.blocks?.length) {
       return sanitizeBody(
-        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, onMissingType, renderVersion, globalBlockSource }),
+        renderBlocks(p.blocks, { registry: blockRegistry, context: renderCtx, pageSource, menuSource, ...siteFieldOptions, onMissingType, renderVersion, globalBlockSource }),
         settings.iframe_allowed_hosts,
       );
     }
@@ -269,7 +284,7 @@ export async function renderPreview(
       expandIncludes(p.html_content ?? '', freeBlocks),
       extensionSource,
     );
-    return sanitizeBody(resolveBuildVariables(expanded, renderCtx.site?.current_year), settings.iframe_allowed_hosts);
+    return sanitizeBody(authored(expanded), settings.iframe_allowed_hosts);
   };
   let bodyHtml = '';
   let blockCss = '';
@@ -285,7 +300,7 @@ export async function renderPreview(
       ),
       extensionSource,
     );
-    bodyHtml = rewriteIf(sanitizeBody(resolveBuildVariables(expanded, renderCtx.site?.current_year), settings.iframe_allowed_hosts));
+    bodyHtml = rewriteIf(sanitizeBody(authored(expanded), settings.iframe_allowed_hosts));
   } else if (page.content_mode === 'blocks') {
     const tpl = page.template ? await vstore.pageTemplate(orgId, siteId, versionId, page.template) : null;
     const templateBlocks = tpl?.blocks ?? [];
@@ -293,7 +308,7 @@ export async function renderPreview(
     renderCtx.page = { ...renderCtx.page, blocks: pageBlocks };
     // Normalize before deriving the outline so demoted headings retain TOC links.
     renderCtx.page = { ...renderCtx.page, ...pageBodyContext(normalizePageH1s(sanitizeBody(renderBlocks(pageBlocks, {
-      registry: blockRegistry, context: renderCtx, pageSource, formSource, onMissingType, renderVersion, globalBlockSource,
+      registry: blockRegistry, context: renderCtx, pageSource, menuSource, ...siteFieldOptions, formSource, onMissingType, renderVersion, globalBlockSource,
     }), settings.iframe_allowed_hosts), !countBlockH1s(templateBlocks))) };
     const effectiveBlocks = templateBlocks.length
       ? composePageWithTemplate(templateBlocks, pageBlocks) : pageBlocks;
@@ -301,6 +316,8 @@ export async function renderPreview(
       registry: blockRegistry,
       context: renderCtx,
       pageSource,
+      menuSource,
+      ...siteFieldOptions,
       formSource,
       onMissingType,
       annotate: opts.annotate,
@@ -326,6 +343,8 @@ export async function renderPreview(
     includeScripts: opts.allowScripts === true,
     renderVersion,
     globalBlockSource,
+    siteFieldValues: renderCtx.site?.fields,
+    liveBaseUrl: live.liveBaseUrl, siteFieldDefinitions: siteFields.groups,
     // Block part styles, as the published build emits them.
     siteStyles: { styles: settings.styles, breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints) },
   });
@@ -355,11 +374,20 @@ export async function renderPreview(
   const cookieConsentHtml = opts.allowScripts === true
     ? rewriteIf(renderPreviewCookieConsent(settings, page.language || settings.language, opts.consentChoice))
     : '';
+  // The fonts this page loads once published: its blocks, template, header,
+  // footer and the global blocks they place, and the text of an HTML page.
+  const fontBlocks: Block[] = [...withGlobalBlockContent(assetBlocks, globalBlockSource)];
+  for (const html of [page.content_mode === 'html' ? page.html_content : '', header?.content_mode === 'html' ? header.html_content : '', footer?.content_mode === 'html' ? footer.html_content : '']) {
+    if (html) fontBlocks.push({ id: 'text', type: 'core/prose', data: { html } } as Block);
+  }
+  if (page.fields) fontBlocks.push({ id: 'fields', type: 'core/prose', data: page.fields as Record<string, unknown> } as Block);
+  const fonts = await previewFonts(orgId, siteId, settings, fontBlocks, blockRegistry);
 
   return resolvePreviewMedia(buildHtml({
     page,
     versionId,
     settings,
+    fonts,
     headerHtml,
     footerHtml,
     bodyHtml,
@@ -447,15 +475,19 @@ export async function renderBlockTypePreview(
   const contentTypes = await vstore.contentTypes(orgId, siteId, versionId);
   const pages = await vstore.pages(orgId, siteId, versionId);
   const pageSource = createPageSource(contentTypes, pages, settings.trailing_slash ?? 'always');
+  const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
+  const siteFields = await vstore.siteFields(orgId, siteId, versionId);
+  const live = await publicationLiveContent(orgId, siteId);
   const block: Block = { id: 'block-preview', type: type.id, data: input.data };
   const onMissingType = (typeId: string) =>
     `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert">Missing block type: ${escapeHtml(typeId)}</div>`;
   const context: RenderContext = {
-    site: siteContext(settings as unknown as Record<string, unknown>),
+    site: { ...siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields), live_base_url: live.liveBaseUrl },
     page: { title: type.label, slug: 'block-preview' },
   };
   const html = sanitizeBody(
-    renderBlocks([block], { registry, context, pageSource, onMissingType, renderVersion, globalBlockSource }),
+    renderBlocks([block], { registry, context, pageSource, menuSource, siteFieldDefinitions: siteFields.groups, onMissingType, renderVersion, globalBlockSource,
+      snippetSource: snippetSourceFrom(live.snippets.map(snippet => snippetFile(snippet, siteTimeZone(settings)))) }),
     settings.iframe_allowed_hosts,
   );
   const css = collectBlockAssets([block], registry, {
@@ -466,8 +498,9 @@ export async function renderBlockTypePreview(
     id: 'block-preview', title: `${type.label} preview`, slug: 'block-preview', status: 'draft',
     content_mode: 'blocks', blocks: [block], noindex: true,
   } as unknown as Page;
+  const fonts = await previewFonts(orgId, siteId, settings, withGlobalBlockContent([block], globalBlockSource), registry);
   const document = buildHtml({
-    page, versionId, settings, headerHtml: '', footerHtml: '', bodyHtml: html, blocksBody: true,
+    page, versionId, settings, fonts, headerHtml: '', footerHtml: '', bodyHtml: html, blocksBody: true,
     blockCss: css, blockJs: '', allowScripts: false, robotsBlocked: true, banner: null,
   });
   return {
@@ -542,6 +575,8 @@ function buildHtml(args: {
   page: Page;
   versionId: string;
   settings: SiteSettings;
+  /** The site's fonts as this page loads them once published (previewFonts). */
+  fonts: PreviewFonts;
   headerHtml: string;
   footerHtml: string;
   bodyHtml: string;
@@ -569,12 +604,7 @@ function buildHtml(args: {
   const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, consentPreset, robotsBlocked, banner } = args;
   const direction = languageDirection(page.language || settings.language || 'en');
   const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
-  const f = {
-    heading: settings.fonts?.heading ?? 'Inter',
-    body: settings.fonts?.body ?? 'Inter',
-    mono: settings.fonts?.mono,
-  };
-  const fontUrl = buildFontUrl(f.heading, f.body, f.mono);
+  const { fonts } = args;
   const renderVersion = resolveRenderVersion(settings.render_version);
   const layered = usesCascadeLayers(renderVersion);
   const robots = pageRobots(page, settings, robotsBlocked);
@@ -599,7 +629,7 @@ ${settings.icon_192 ? `<link rel="icon" type="image/png" sizes="192x192" href="$
 ${layered ? `<style data-site-base-css="1">${PLATFORM_LAYER_ORDER_CSS}\n${platformLayer('reset', siteResetCss, renderVersion)}\n${platformLayer('base', siteGlobalCss, renderVersion)}</style>` : ''}
 <style>${platformLayer('tokens', siteThemeCss(settings), renderVersion)}</style>
 <style>${platformLayer('content', contentWellCss(renderVersion), renderVersion)}</style>
-${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>${
+${fonts.googleCdn ? '<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' : ''}${
       // The async-CSS pattern flips rel from preload to stylesheet in an
       // inline onload handler. The editor canvas serves `script-src 'none'`,
       // which blocks that handler — and <noscript> doesn't rescue it, since
@@ -607,10 +637,10 @@ ${fontUrl ? `<link rel="preconnect" href="https://fonts.googleapis.com"><link re
       // and the site's fonts silently never load. Non-blocking CSS is a
       // public-site optimisation with nothing to buy in an internal editor
       // frame, so there it links the stylesheet directly.
-      allowScripts
-        ? `<link rel="preload" as="style" href="${escapeAttr(fontUrl)}" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="${escapeAttr(fontUrl)}"></noscript>`
-        : `<link rel="stylesheet" href="${escapeAttr(fontUrl)}">`
-    }<style>${webfontFallbackCss(renderVersion)}</style>` : ''}
+      fonts.stylesheets.map(url => allowScripts
+        ? `<link rel="preload" as="style" href="${escapeAttr(url)}" onload="this.onload=null;this.rel='stylesheet'"><noscript><link rel="stylesheet" href="${escapeAttr(url)}"></noscript>`
+        : `<link rel="stylesheet" href="${escapeAttr(url)}">`).join('')
+    }${fonts.services.map(url => `<link rel="stylesheet" href="${escapeAttr(url)}">`).join('')}${fonts.plan.families.length ? `<style>${webfontFallbackCss(renderVersion, fonts.plan)}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
 ${direction === 'rtl' ? `<style data-direction>${directionCss(direction)}</style>` : ''}
 ${siteStyles ? `<style data-site-styles="1">${platformLayer('styles', siteStyles, renderVersion)}</style>` : ''}
@@ -679,10 +709,6 @@ function renderBanner(b: BannerArgs): string {
     <span class="tr-banner__meta">Drafts and unpublished edits visible${live}</span>
     ${editor}
   </div>`;
-}
-
-function buildFontUrl(heading: string, body: string, mono?: string): string | null {
-  return googleFontsCssUrl(webFontFamilies(heading, body, mono));
 }
 
 /**

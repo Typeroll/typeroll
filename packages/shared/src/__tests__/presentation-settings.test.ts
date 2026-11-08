@@ -269,6 +269,7 @@ describe('every core block field changes what renders', () => {
     ...Object.fromEntries(['h1_size_px', 'h2_size_px', 'h3_size_px', 'h4_size_px', 'h5_size_px', 'h6_size_px', 'heading_before_px', 'heading_after_px', 'max_width', 'font_size', 'line_height', 'paragraph_spacing', 'rhythm']
       .map(name => [`template_content_slot.${name}`, 'applied when a page is composed into its template (template-blocks tests)'])),
     ...Object.fromEntries(['title', 'fields', 'layout', 'part_styles'].map(name => [`core/field_list.${name}`, 'needs the content type field definitions (field-list.test.ts)'])),
+    ...Object.fromEntries(['source', 'menu', 'submenus'].map(name => [`core/navigation_links.${name}`, 'needs the site\'s menus (menu-navigation.test.ts)'])),
     'core/repeater.derived_source': 'needs app-computed derived data (derived-repeater.test.ts)',
     'core/repeater.field': 'needs a page with reference fields (related source)',
     'core/repeater.show_pagination': 'needs archive pagination context',
@@ -281,6 +282,9 @@ describe('every core block field changes what renders', () => {
     'template/page_author.part_styles': 'needs an author (presentation-audit PART_SAMPLE_CONTEXTS)',
     'template/site_logo.link_to_home': 'needs a site logo',
     'template/show_if.condition': 'needs page values the condition can test',
+    'core/show_if.condition': 'needs site field or page values the condition can test (site-field-blocks.test.ts)',
+    ...Object.fromEntries(['field', 'format', 'label', 'tag', 'part_styles'].map(name => [`core/site_field.${name}`, 'needs the site\'s field values (site-field-blocks.test.ts)'])),
+    ...Object.fromEntries(['snippet', 'tag', 'live'].map(name => [`core/snippet.${name}`, 'needs the site\'s snippets and live base URL (snippet-blocks.test.ts)'])),
     ...Object.fromEntries(['text', 'email', 'phone', 'url', 'number', 'textarea', 'select', 'radio_group', 'boolean', 'checkbox_group', 'toggle', 'slider', 'date', 'consent']
       .map(name => [`form/${name}.required_message`, 'the form\'s validation message for a required field (form-fields.ts, tested in form-fields.test.ts); not part of the field markup'])),
   };
