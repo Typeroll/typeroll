@@ -75,8 +75,9 @@
 [data-block="columns"] > .block-columns-col:has(> [data-block="table_of_contents"][data-empty="true"]):not(:has(> :not([data-block="table_of_contents"],style,script))) { display:none; }
 
 /* core/columns defaults */
-/* Containers and grids space their children with gap; children add no margin of their own. */
-[data-block="columns"] > [data-block] { margin-block:0; }
+/* Containers and grids space their children with gap; children add no margin of their own.
+   A list's pager is part of the list, not a child block, and keeps its distance from the items. */
+[data-block="columns"] > [data-block]:not(:where([data-block="pager"])) { margin-block:0; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -96,10 +97,11 @@
 :where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
 /* Icons keep their size in a row; the text beside them gives way. */
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
-/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
-:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
 /* Headings balance their lines, so a title does not end with one word alone. */
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+/* A size container gives its content no width to size by, so in a centring or row container a block holding one
+   would shrink to nothing. Such a block fills the container instead; its own maximum width still applies. */
+:where([data-block="container"]) > :where([data-block]):where(:has(:is([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel, .block-table-scroll, [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"])), [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"]) { inline-size:100%; }
 }

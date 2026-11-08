@@ -102,7 +102,7 @@ const repeater: BlockType = {
   template: `<div data-block="repeater" data-layout="{{layout}}"><!-- repeater items render here --></div>`,
   styles: `
 [data-block="repeater"] { --rep-gap: var(--grid-gap, 1rem); }
-[data-block="repeater"][style*="--gap:none"] { --rep-gap: 0; }
+[data-block="repeater"][style*="--gap:none"] { --rep-gap: 0px; }
 [data-block="repeater"][style*="--gap:xs"]   { --rep-gap: 0.25rem; }
 [data-block="repeater"][style*="--gap:sm"]   { --rep-gap: 0.5rem; }
 [data-block="repeater"][style*="--gap:md"]   { --rep-gap: 1rem; }

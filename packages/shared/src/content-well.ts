@@ -62,7 +62,7 @@ export const CONTENT_WELL_V14_CSS = `
 :root { --heading-flow-before:calc(var(--block-gap) * 1.75); --heading-flow-after:min(var(--block-gap), .75rem); --breadcrumbs-after:clamp(1rem, .5rem + 2vw, 2.5rem); }
 
 .block-section-inner { --heading-flow-before:calc(var(--section-child-gap,var(--block-gap)) * 1.75); --heading-flow-after:min(var(--section-child-gap,var(--block-gap)), .75rem); }
-.page-content--blocks > :nth-last-child(1 of :not(style,script)):not([data-block="section"],[data-block="hero"]) { margin-block-end:var(--page-end-space,var(--section-padding)); }
+.page-content--blocks > :nth-last-child(1 of :not(style,script)):not([data-block="section"],[data-block="hero"],[data-block="container"][data-width="full"],[data-block="semantic-container"][data-width="full"]) { margin-block-end:var(--page-end-space,var(--section-padding)); }
 ${FLOW} > ${TEXT_BLOCK} + ${HEADING_BLOCK} { margin-block-start:var(--heading-flow-before); }
 ${FLOW} > ${HEADING_BLOCK} + ${TEXT_BLOCK} { margin-block-start:var(--heading-flow-after); }
 /* Two plain sections in a row (no background or shape) are one flow: the second does not repeat the space above it. */

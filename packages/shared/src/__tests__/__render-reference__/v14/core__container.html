@@ -66,7 +66,7 @@
 [data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
 [data-block="container"][data-min-h="screen"] { min-height: 100vh; }
 :is([data-block="container"], [data-block="semantic-container"])[style*="--min_height_px:"] { min-height:var(--min_height_px); }
-[data-block="container"][style*="--gap:none"]       { --container-gap: 0; }
+[data-block="container"][style*="--gap:none"]       { --container-gap: 0px; }
 [data-block="container"][style*="--gap:xs"]         { --container-gap: 0.25rem; }
 [data-block="container"][style*="--gap:sm"]         { --container-gap: 0.5rem; }
 [data-block="container"][style*="--gap:md"]         { --container-gap: 1rem; }
@@ -89,8 +89,9 @@
 /* core/container defaults */
 /* A container without padding settings has none: it groups and lays out, the blocks around it space it. */
 :where([data-block="container"]) { --block-px:0; --block-py:0; }
-/* Containers and grids space their children with gap; children add no margin of their own. */
-:is([data-block="container"],[data-block="semantic-container"]:not([data-rhythm="article"])) > [data-block] { margin-block:0; }
+/* Containers and grids space their children with gap; children add no margin of their own.
+   A list's pager is part of the list, not a child block, and keeps its distance from the items. */
+:is([data-block="container"],[data-block="semantic-container"]:not([data-rhythm="article"])) > [data-block]:not(:where([data-block="pager"])) { margin-block:0; }
 /* A constrained container in a section, column, tab or grid cell starts where the text beside it starts and fills
    the space up to its maximum width, instead of centring and shrinking to its content. */
 :is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"]) > [data-block="container"]:is([data-width="narrow"],[data-width="normal"],[data-width="wide"]) { margin-inline:0; inline-size:100%; }
@@ -145,10 +146,11 @@
 :where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
 /* Icons keep their size in a row; the text beside them gives way. */
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
-/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
-:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
 /* Headings balance their lines, so a title does not end with one word alone. */
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+/* A size container gives its content no width to size by, so in a centring or row container a block holding one
+   would shrink to nothing. Such a block fills the container instead; its own maximum width still applies. */
+:where([data-block="container"]) > :where([data-block]):where(:has(:is([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel, .block-table-scroll, [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"])), [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"]) { inline-size:100%; }
 }

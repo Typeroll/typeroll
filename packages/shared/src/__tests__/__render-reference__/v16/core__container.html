@@ -66,7 +66,7 @@
 [data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
 [data-block="container"][data-min-h="screen"] { min-height: 100vh; }
 :is([data-block="container"], [data-block="semantic-container"])[data-min-height-px] { min-height:var(--min_height_px); }
-[data-block="container"][data-gap="none"]       { --container-gap: 0; }
+[data-block="container"][data-gap="none"]       { --container-gap: 0px; }
 [data-block="container"][data-gap="xs"]         { --container-gap: 0.25rem; }
 [data-block="container"][data-gap="sm"]         { --container-gap: 0.5rem; }
 [data-block="container"][data-gap="md"]         { --container-gap: 1rem; }
@@ -86,15 +86,16 @@
 :is([data-block="container"], [data-block="semantic-container"])[data-sticky="true"] { position:sticky; top:var(--sticky_top_px,0px); z-index:100; }
 [data-block="semantic-container"][data-gap-px] > * + * { margin-top:var(--gap_px, 0); }
 /* Icon pairing off: a stacked container with an icon keeps its ordinary column layout. */
-[data-block="container"][data-column-only="true"][data-icon-pairing="off"]:has(> [data-block="icon"] + *) { display:flex; row-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); column-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); align-items:var(--align_cross, stretch); }
+[data-block="container"][data-column-only="true"][data-icon-pairing="off"]:has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) { display:flex; row-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); column-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); align-items:var(--align_cross, stretch); }
 /* A chosen text colour applies to everything inside, headings included. */
 :is([data-block="container"], [data-block="semantic-container"])[data-text-color]:not([data-text-color=""]) { color:var(--text-color); --color-text:var(--text-color); }
 
 /* core/container defaults */
 /* A container without padding settings has none: it groups and lays out, the blocks around it space it. */
 :where([data-block="container"]) { --block-px:0; --block-py:0; }
-/* Containers and grids space their children with gap; children add no margin of their own. */
-:is([data-block="container"],[data-block="semantic-container"]:not([data-rhythm="article"])) > [data-block] { margin-block:0; }
+/* Containers and grids space their children with gap; children add no margin of their own.
+   A list's pager is part of the list, not a child block, and keeps its distance from the items. */
+:is([data-block="container"],[data-block="semantic-container"]:not([data-rhythm="article"])) > [data-block]:not(:where([data-block="pager"])) { margin-block:0; }
 /* A constrained container in a section, column, tab or grid cell starts where the text beside it starts and fills
    the space up to its maximum width, instead of centring and shrinking to its content. */
 :is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"]) > [data-block="container"]:is([data-width="narrow"],[data-width="normal"],[data-width="wide"]) { margin-inline:0; inline-size:100%; }
@@ -105,10 +106,10 @@
 
 /* core/container defaults v16 */
 /* An icon followed by content sits beside it, like a line of contact details, and the pairs are spaced apart so it is clear what belongs together. */
-[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + *) { display:grid; grid-template-columns:auto minmax(0, 1fr); column-gap:.75rem; row-gap:max(var(--gap_px, 1rem), 1.25rem); align-items:start; }
-[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + *) > * { grid-column:1 / -1; }
-[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + *) > [data-block="icon"]:has(+ *) { grid-column:1; }
-[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + *) > [data-block="icon"] + * { grid-column:2; margin-block:0; }
+[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) { display:grid; grid-template-columns:auto minmax(0, 1fr); column-gap:.75rem; row-gap:max(var(--gap_px, 1rem), 1.25rem); align-items:start; }
+[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) > * { grid-column:1 / -1; }
+[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) > [data-block="icon"]:has(+ [data-block], + style + [data-block]) { grid-column:1; }
+[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) > [data-block="icon"] + :is([data-block], style + [data-block]) { grid-column:2; margin-block:0; }
 
 [data-presentation="core%2Fprose"]{--font_size_px:initial;--line_height:initial;--paragraph_spacing_px:initial}
 
@@ -159,12 +160,13 @@
 :where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
 /* Icons keep their size in a row; the text beside them gives way. */
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
-/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
-:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
 /* Headings balance their lines, so a title does not end with one word alone. */
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+/* A size container gives its content no width to size by, so in a centring or row container a block holding one
+   would shrink to nothing. Such a block fills the container instead; its own maximum width still applies. */
+:where([data-block="container"]) > :where([data-block]):where(:has(:is([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel, .block-table-scroll, [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"])), [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"]) { inline-size:100%; }
 }
 
 @layer typeroll.instance{

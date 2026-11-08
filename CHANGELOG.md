@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- Render versions 14–16 fixes found by comparing the Moveria sites with
+  versions 11–13. Each restores the intended output, so sites on 14–16 change
+  where they were broken:
+  - A grid, container or list with gap `none` keeps its columns. The gap was
+    a unitless `0` inside `calc()`, which dropped the column rule and stacked
+    the grid (all versions; visible from 14).
+  - A block holding grid cells, columns, tab panels or another size container
+    fills its container instead of shrinking to a few pixels in a centring or
+    row container.
+  - A list grid with fewer items than columns keeps one column per item
+    instead of stretching one card across the row.
+  - A list's pager keeps its distance from the items inside a container.
+  - Button labels, step labels and table cells no longer hyphenate words that
+    fit; breadcrumb and table-of-contents links wrap with the text again.
+  - A plain section inside a container keeps padding chosen for it; only the
+    automatic padding is removed.
+  - A page that ends with a full-width container gets no extra space before
+    the footer, like a page that ends with a section.
+  - Render version 16 icon pairing pairs an icon with the next block, not
+    with the icon's own instance style element.
+
 ## 0.3.8 (candidate, MCP 0.45.121)
 
 - **Render version 14** is the default for new sites. Platform CSS is layered
@@ -725,7 +748,6 @@
 - MCP 0.45.85 exposes responsive scales and typography; updated design/migration
   recipes and starter QA check heading spacing at three widths.
 
-
 ## 0.2.113 / MCP 0.45.84 — Security follow-ups
 
 Sessions
@@ -903,7 +925,6 @@ Packages, images and release
   updates add previously unused scale/hover/mono variables and opt-in mono rules;
   existing numeric values and existing font choices retain their output.
 
-
 ## Core 0.2.103 / MCP 0.45.79 (prepared)
 
 - Complete reusable migration feedback: native responsive slot/section/hero
@@ -915,7 +936,6 @@ Packages, images and release
   redirect chains and exact Search Console access requirements.
 - Require explicit acknowledgement of unsaved content before queueing a deploy;
   expose exact-task file/attempt progress and a signed rendering-only frame URL.
-
 
 - Add version-bound migration QA helpers to the generated site workspace: unsaved-content checks, deployed URL/media checks, screenshots, card hit tests and preserved-text comparisons. Preserve edited scripts on update.
 - Correct header/footer, grid and WordPress recipes; explain when public REST is sufficient and when a helper/export is needed. Record all Ulvon migration findings with priorities and follow-up scope.
@@ -1445,7 +1465,6 @@ Everything the portal can do is now available through the authenticated API and 
   override the template or inherit it, and edit their manual order through the
   normal Save/Discard flow. Listings and neighbouring-page links share defaults.
 
-
 - Unify all content as Pages with Content types, custom fields, block bodies,
   shared Page templates, one editor, history, preview and publication flow.
 - Remove the old Collections API, tools and runtime storage model. Existing
@@ -1773,7 +1792,7 @@ migration workflow could populate it. Both limits are gone:
   as another market's coverage in a multi-domain migration — rejects are
   reported, never silent.
 - `PATCH` / `DELETE /api/v1/sites/{id}/migration-urls/{urlId}` — `excluded` is
-  the record that a URL is *meant* to 404, which is what separates "not looked
+  the record that a URL is _meant_ to 404, which is what separates "not looked
   at" from "decided".
 - MCP: `list_migration_urls`, `add_migration_urls`, `update_migration_url`,
   `delete_migration_url`.
@@ -1902,12 +1921,12 @@ value from `get_site` — non-null means the domain is verified and serving. For
 The portal now shows a domain-derived badge everywhere the old status appeared
 (dashboard site cards, site overview, site switcher):
 
-| Badge | Meaning |
-| --- | --- |
-| `live` | `domain_status` is `verified` or `live` — the site answers on its own domain |
-| `DNS pending` | a domain is set, but DNS isn't confirmed yet |
-| `DNS failed` | the DNS check failed — previously hidden |
-| `no domain` | no custom domain set; the site serves on its Typeroll subdomain |
+| Badge         | Meaning                                                                      |
+| ------------- | ---------------------------------------------------------------------------- |
+| `live`        | `domain_status` is `verified` or `live` — the site answers on its own domain |
+| `DNS pending` | a domain is set, but DNS isn't confirmed yet                                 |
+| `DNS failed`  | the DNS check failed — previously hidden                                     |
+| `no domain`   | no custom domain set; the site serves on its Typeroll subdomain              |
 
 ### Added
 

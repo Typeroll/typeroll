@@ -64,7 +64,7 @@
 
 /* core/repeater */
 [data-block="repeater"] { --rep-gap: var(--grid-gap, 1rem); }
-[data-block="repeater"][style*="--gap:none"] { --rep-gap: 0; }
+[data-block="repeater"][style*="--gap:none"] { --rep-gap: 0px; }
 [data-block="repeater"][style*="--gap:xs"]   { --rep-gap: 0.25rem; }
 [data-block="repeater"][style*="--gap:sm"]   { --rep-gap: 0.5rem; }
 [data-block="repeater"][style*="--gap:md"]   { --rep-gap: 1rem; }
@@ -131,8 +131,8 @@
 [data-block="repeater"][data-layout="grid"] > :is(p,ul,ol,div:not([data-block])) { grid-column:1 / -1; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
-/* Fewer items than columns share the row instead of leaving empty columns. */
-[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fit, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
+/* The column setting is the maximum; fewer items than columns keep one column's width (last_row centres them). */
+[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fill, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
 /* Carousels show one card and a glimpse of the next on narrow screens. */
 [data-block="repeater"][data-layout="carousel"] { container-type:inline-size; }
 @container (max-width: 560px) {
@@ -157,10 +157,11 @@
 :where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
 /* Icons keep their size in a row; the text beside them gives way. */
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
-/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
-:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
 /* Headings balance their lines, so a title does not end with one word alone. */
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+/* A size container gives its content no width to size by, so in a centring or row container a block holding one
+   would shrink to nothing. Such a block fills the container instead; its own maximum width still applies. */
+:where([data-block="container"]) > :where([data-block]):where(:has(:is([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel, .block-table-scroll, [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"])), [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"]) { inline-size:100%; }
 }

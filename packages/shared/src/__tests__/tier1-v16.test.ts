@@ -114,7 +114,7 @@ describe('tier 1 blocks at render version 16', () => {
     const tag = openingTag(html('core/container', { icon_pairing: 'off', text_color: '#ffffff' }));
     expect(tag).toContain('data-icon-pairing="off"');
     expect(tag).toContain('data-text-color="#ffffff"');
-    expect(css('core/container')).toContain('[data-block="container"][data-column-only="true"][data-icon-pairing="off"]:has(> [data-block="icon"] + *) { display:flex;');
+    expect(css('core/container')).toContain('[data-block="container"][data-column-only="true"][data-icon-pairing="off"]:has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) { display:flex;');
     expect(openingTag(html('core/container', { icon_pairing: 'off', text_color: '#ffffff' }, 15))).not.toMatch(/icon-pairing|text-color/);
   });
 
