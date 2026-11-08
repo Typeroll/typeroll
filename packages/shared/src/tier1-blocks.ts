@@ -1198,6 +1198,7 @@ const navigation: BlockType = {
     { name: 'link', label: 'Links', selector: '.block-navigation-list a', target: 'link' },
     { name: 'current_link', label: 'Current page link', selector: '.block-navigation-list a[aria-current="page"]', target: 'link' },
     { name: 'toggle', label: 'Menu button', selector: '.block-navigation-toggle', target: 'button' },
+    { name: 'toggle_icon', label: 'Menu symbol', selector: '.block-navigation-toggle-icon', target: 'text', decorative: true, min_render_version: 16 },
   ],
   schema: [
     { name: 'aria_label', type: 'text', label: 'Accessible label', default: 'Main navigation' },
@@ -1687,7 +1688,7 @@ const search: BlockType = {
     { name: 'result_link', label: 'Result titles', selector: '.pagefind-ui__result-link', target: 'link' },
     { name: 'result_excerpt', label: 'Result excerpts', selector: '.pagefind-ui__result-excerpt', target: 'text' },
     { name: 'more_button', label: 'More results button', selector: '.pagefind-ui__button', target: 'button' },
-    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text' },
+    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text', max_render_version: 15 },
     { name: 'preview_input', label: 'Search field in a preview', selector: '.block-search-preview', target: 'text', min_render_version: 16 },
   ],
   schema: [
@@ -1700,7 +1701,7 @@ const search: BlockType = {
   styles: CORE_SEARCH_STYLES,
   script: CORE_SEARCH_SCRIPT,
   // From render version 16 a preview shows the field with the site's placeholder instead of an English note.
-  render_versions: [{ from: 16, script: CORE_SEARCH_SCRIPT_V16, styles: `${CORE_SEARCH_STYLES}
+  render_versions: [{ from: 16, script: CORE_SEARCH_SCRIPT_V16, styles: `${CORE_SEARCH_STYLES.replace('[data-block="search"] .block-search-note { opacity: 0.6; font-size: 0.9rem; padding: 0.5rem 0; text-align: center; }\n', '')}
 [data-block="search"] .block-search-preview { inline-size:100%; min-block-size:44px; padding:.6rem .9rem; font:inherit; color:inherit; border:1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius:.5rem; background:transparent; }` }],
   origin: 'core',
   created_at: ISO_EPOCH,
@@ -1948,6 +1949,11 @@ video.render_versions = [{
 [data-block="video"] .tr-video-facade:focus-visible { outline:3px solid currentColor;outline-offset:3px; }
 [data-block="video"] video { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 0.5rem; background: #000; object-fit: contain; }`,
 }];
+navigation.render_versions = [{
+  from: 16,
+  template: navigation.template!.replace('<span>{{menu_label}}</span><span aria-hidden="true">☰</span>', '<span class="block-navigation-toggle-label">{{menu_label}}</span><span class="block-navigation-toggle-icon" aria-hidden="true">☰</span>'),
+}];
+
 hero.render_versions = [{
   from: 7,
   template: hero.template!.replace('<div class="block-hero-inner">', '{{{hero_video_html}}}<div class="block-hero-inner">'),

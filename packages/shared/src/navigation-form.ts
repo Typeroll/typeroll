@@ -160,6 +160,27 @@ export function prepareNavigationForm(
       return `<div class="navigation-field" data-navigation-field="${escape(name)}"><label for="${escape(inputId)}">${escape(field.label || name)}</label>${input}</div>`;
     })
     .join("");
+  // From render version 16 a lone field sits beside its button. That default
+  // applies only while the block's own layout settings are untouched.
+  const unset = (value: unknown): boolean =>
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    (typeof value === "object" && Object.values(value).every(unset));
+  const oneColumn = (value: unknown): boolean =>
+    value && typeof value === "object"
+      ? Object.values(value).every(oneColumn)
+      : unset(value) || String(value) === "1";
+  data.navigation_compact =
+    fields.length === 1 &&
+    oneColumn(raw.columns) &&
+    unset(raw.column_widths) &&
+    unset(raw.button_column) &&
+    unset(raw.button_row) &&
+    unset(fields[0]!.column) &&
+    unset(fields[0]!.row)
+      ? "true"
+      : "false";
   data.navigation_layout_html = layout.length
     ? `<style>${layout.join("")}</style>`
     : "";
@@ -561,3 +582,13 @@ export const navigationForm: BlockType = {
   origin: "core",
   created_at: "1970-01-01T00:00:00Z",
 };
+
+navigationForm.render_versions = [
+  {
+    from: 16,
+    template: navigationForm.template!.replace(
+      ' data-address-country="{{address_country}}"',
+      ' data-address-country="{{address_country}}" data-compact="{{navigation_compact}}"',
+    ),
+  },
+];

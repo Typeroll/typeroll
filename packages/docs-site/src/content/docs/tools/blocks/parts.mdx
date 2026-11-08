@@ -152,6 +152,7 @@ chosen for that kind apply.
 |                                                   | `link`              | Links                                        | link       | `part_styles`          |
 |                                                   | `current_link`      | Current page link                            | link       | `part_styles`          |
 |                                                   | `toggle`            | Menu button                                  | button     | `part_styles`          |
+|                                                   | `toggle_icon`       | Menu symbol                                  | text       | `part_styles`          |
 | Navigation inputs (`core/navigation_form`)        | `field`             | Field                                        | container  | `part_styles`          |
 |                                                   | `label`             | Labels                                       | text       | `part_styles`          |
 |                                                   | `input`             | Inputs                                       | container  | `part_styles`          |
@@ -436,6 +437,7 @@ with `create_block_type` or `update_block_type` (which replaces the list):
 | `background_field`   | A `color` field of the type that holds the background behind the part.                                                                                                               |
 | `decorative`         | `true` for a part without text of its own (an overlay, a layout row): its style is not checked for contrast.                                                                         |
 | `min_render_version` | The render version from which the element exists.                                                                                                                                    |
+| `max_render_version` | The last render version in which the element exists.                                                                                                                                 |
 
 Selectors may not contain braces, `;`, `@`, comments, pseudo-elements
 (`::before`) or state pseudo-classes such as `:hover` and `:focus`: hover comes

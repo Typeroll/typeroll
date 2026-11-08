@@ -219,15 +219,17 @@ export const BLOCK_TYPE_DEFAULTS_V16: Record<string, string> = {
 [data-block="container"][data-column-only="true"]:has(> [data-block="icon"] + *) > [data-block="icon"]:has(+ *) { grid-column:1; }
 [data-block="container"][data-column-only="true"]:has(> [data-block="icon"] + *) > [data-block="icon"] + * { grid-column:2; margin-block:0; }`,
   'core/feature_row': `/* Feature rows that follow each other inside a section or column are clearly separate rows. */
-:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] + [data-block="feature_row"] { margin-block-start:clamp(2.5rem, 1.5rem + 4vw, 5rem); }`,
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] + [data-block="feature_row"] { margin-block-start:clamp(2.5rem, 1.5rem + 4vw, 5rem); }
+/* A row without its own background inside another block keeps its edges in line with the content beside it, also when it has spacing of its own. */
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][style*="--bg:;"] { padding-inline:0; }`,
   'core/logo_item': `/* Logos wrap in centred rows: a short last row sits in the middle, and a phone fits three across. */
 [data-block="repeater"][data-layout="grid"][data-layout]:has(> [data-block="logo_item"]) { display:flex; flex-wrap:wrap; justify-content:center; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) > [data-block="logo_item"] { flex:0 1 calc((100% - (var(--cols, 6) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 6)); min-inline-size:min(100%, 5.5rem); }`,
   'core/navigation': `/* The collapsed menu is a button with a clearly visible menu symbol before its label, not a full-width field. */
 [data-block="navigation"] .block-navigation-toggle { inline-size:auto; justify-content:flex-start; flex-direction:row-reverse; gap:.6rem; min-block-size:44px; padding:.55rem .9rem; border-radius:999px; }
-[data-block="navigation"] .block-navigation-toggle > [aria-hidden="true"] { font-size:0; inline-size:1.375rem; block-size:1rem; background:linear-gradient(currentColor, currentColor) top / 100% 2px no-repeat, linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat, linear-gradient(currentColor, currentColor) bottom / 100% 2px no-repeat; }`,
-  'core/navigation_form': `/* A form with a single field is as wide as it needs to be, with its button to the right. */
-[data-block="navigation_form"]:not(:has(.navigation-field ~ .navigation-field)) { grid-template-columns:minmax(0, 1fr) auto; max-inline-size:32rem; }
-[data-block="navigation_form"]:not(:has(.navigation-field ~ .navigation-field)) .navigation-actions :is(a, button) { inline-size:auto; max-inline-size:16rem; }`,
+[data-block="navigation"] .block-navigation-toggle-icon { font-size:0; inline-size:1.375rem; block-size:1rem; background:linear-gradient(currentColor, currentColor) top / 100% 2px no-repeat, linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat, linear-gradient(currentColor, currentColor) bottom / 100% 2px no-repeat; }`,
+  'core/navigation_form': `/* A form with a single field and no layout settings of its own is as wide as it needs to be, with its button to the right. */
+[data-block="navigation_form"][data-compact="true"] { grid-template-columns:minmax(0, 1fr) auto; max-inline-size:32rem; }
+[data-block="navigation_form"][data-compact="true"] .navigation-actions :is(a, button) { inline-size:auto; max-inline-size:16rem; }`,
 };
 

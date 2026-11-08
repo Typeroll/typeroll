@@ -146,6 +146,8 @@
 /* core/feature_row defaults v16 */
 /* Feature rows that follow each other inside a section or column are clearly separate rows. */
 :is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] + [data-block="feature_row"] { margin-block-start:clamp(2.5rem, 1.5rem + 4vw, 5rem); }
+/* A row without its own background inside another block keeps its edges in line with the content beside it, also when it has spacing of its own. */
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][style*="--bg:;"] { padding-inline:0; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */

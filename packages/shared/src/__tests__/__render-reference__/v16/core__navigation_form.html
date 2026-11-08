@@ -1,4 +1,4 @@
-<div id="navigation-ref" data-block="navigation_form" role="form" aria-label="Get started" data-handoff-key="page-defaults" data-mode="navigate" data-show-labels="true" data-font="inherit" data-button-nowrap="false" data-address-country="" style="--columns:1;" data-presentation="core%2Fnavigation_form" data-block-type="core/navigation_form"></div>
+<div id="navigation-ref" data-block="navigation_form" role="form" aria-label="Get started" data-handoff-key="page-defaults" data-mode="navigate" data-show-labels="true" data-font="inherit" data-button-nowrap="false" data-address-country="" data-compact="false" style="--columns:1;" data-presentation="core%2Fnavigation_form" data-block-type="core/navigation_form"></div>
 
 /* css */
 @layer typeroll.platform{
@@ -44,9 +44,9 @@
 [data-block="navigation_form"] :focus-visible{outline:2px solid currentColor;outline-offset:3px}
 
 /* core/navigation_form defaults v16 */
-/* A form with a single field is as wide as it needs to be, with its button to the right. */
-[data-block="navigation_form"]:not(:has(.navigation-field ~ .navigation-field)) { grid-template-columns:minmax(0, 1fr) auto; max-inline-size:32rem; }
-[data-block="navigation_form"]:not(:has(.navigation-field ~ .navigation-field)) .navigation-actions :is(a, button) { inline-size:auto; max-inline-size:16rem; }
+/* A form with a single field and no layout settings of its own is as wide as it needs to be, with its button to the right. */
+[data-block="navigation_form"][data-compact="true"] { grid-template-columns:minmax(0, 1fr) auto; max-inline-size:32rem; }
+[data-block="navigation_form"][data-compact="true"] .navigation-actions :is(a, button) { inline-size:auto; max-inline-size:16rem; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
