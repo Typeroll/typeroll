@@ -55,16 +55,19 @@ export async function provisionInstallationCredential(args: {
   }
 
   const issued = await issueInstallationCredential({ installation, now: args.now });
+  // Cleanup must never hide why the connection failed.
   const fail = async (reason: string, status = 502): Promise<never> => {
-    await revokeInstallationCredential(installation, issued.id);
+    await revokeInstallationCredential(installation, issued.id).catch((error) => logFailure(installation, 'revoke', error));
     await recordExtensionAudit({
       ownerOrgId: args.ownerOrgId, siteId: args.siteId, extensionId: installation.extension_id, installationId: installation.id,
       action: 'extension.credential_provisioning_failed', actorId: args.actorId, metadata: { reason },
-    });
+    }).catch((error) => logFailure(installation, 'audit', error));
     throw new ExtensionRegistryError(`The Extension provider did not accept the connection: ${reason}`, status);
   };
 
-  const body = {
+  let body: Record<string, unknown>;
+  try {
+    body = {
     protocol_version: 1,
     issuer: extensionIssuer(),
     extension_id: installation.extension_id,
@@ -80,7 +83,11 @@ export async function provisionInstallationCredential(args: {
       credentialSha256: crypto.createHash('sha256').update(issued.credential).digest('hex'),
       now: args.now,
     }),
-  };
+    };
+  } catch (error) {
+    logFailure(installation, 'sign', error);
+    return fail(`signing the assertion failed: ${messageOf(error)}`, 500);
+  }
   let response: Response;
   try {
     response = await (args.fetchImpl ?? provisioningFetch)(url, {
@@ -89,8 +96,9 @@ export async function provisionInstallationCredential(args: {
       headers: { 'Content-Type': 'application/json', 'User-Agent': 'Typeroll-Extension-Provisioning/1.0' },
       body: JSON.stringify(body),
     });
-  } catch {
-    return fail('the provisioning endpoint is unavailable');
+  } catch (error) {
+    logFailure(installation, 'deliver', error);
+    return fail(`the provisioning endpoint is unavailable (${messageOf(error)})`);
   }
   if (response.status >= 300 && response.status < 400) return fail('redirects are not allowed');
   const answer = await response.json().catch(() => null) as Record<string, unknown> | null;
@@ -99,13 +107,25 @@ export async function provisionInstallationCredential(args: {
     return fail(said);
   }
 
-  await retireOtherInstallationCredentials({ installation, keepId: issued.id, graceSeconds: args.graceSeconds, now: args.now });
+  // The provider holds the new credential now; what follows must not turn that into a failure.
+  await retireOtherInstallationCredentials({ installation, keepId: issued.id, graceSeconds: args.graceSeconds, now: args.now })
+    .catch((error) => logFailure(installation, 'retire', error));
   await recordExtensionAudit({
     ownerOrgId: args.ownerOrgId, siteId: args.siteId, extensionId: installation.extension_id, installationId: installation.id,
     action: 'extension.credential_provisioned', actorId: args.actorId, metadata: { credential_prefix: issued.prefix, version: version.version },
-  });
-  await (await import('./events')).notifyExtensionLifecycle({ installation, eventType: 'extension.credential_rotated' });
+  }).catch((error) => logFailure(installation, 'audit', error));
+  await (await import('./events')).notifyExtensionLifecycle({ installation, eventType: 'extension.credential_rotated' })
+    .catch((error) => logFailure(installation, 'event', error));
   return { credential_prefix: issued.prefix };
+}
+
+function messageOf(error: unknown): string {
+  return (error instanceof Error ? error.message : String(error)).slice(0, 200);
+}
+
+/** One structured line per failure; never the credential, which no error message contains. */
+function logFailure(installation: ExtensionInstallation, stage: string, error: unknown): void {
+  console.error(JSON.stringify({ event: 'extension_credential_provisioning_failed', installation_id: installation.id, extension_id: installation.extension_id, stage, error: messageOf(error) }));
 }
 
 /** The same, reported instead of thrown, for flows that must not fail on it (installing). */
@@ -114,6 +134,8 @@ export async function tryProvisionInstallationCredential(args: Parameters<typeof
     const result = await provisionInstallationCredential(args);
     return { status: 'connected', ...result };
   } catch (error) {
-    return { status: 'failed', error: error instanceof ExtensionRegistryError ? error.message : 'Connecting the Extension failed' };
+    if (error instanceof ExtensionRegistryError) return { status: 'failed', error: error.message };
+    console.error(JSON.stringify({ event: 'extension_credential_provisioning_failed', installation_id: args.installationId, stage: 'unexpected', error: messageOf(error) }));
+    return { status: 'failed', error: `Connecting the Extension failed: ${messageOf(error)}` };
   }
 }
