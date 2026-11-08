@@ -130,6 +130,44 @@ your Extension id as `aud` and your developer Organization as
 `developer_org_id`; check both. Never trust keys included only in the inbound
 request body.
 
+## Receive the installation credential
+
+Declare `auth.provisioning_url` (HTTPS, on a registered origin) and Typeroll
+connects each installation itself: when it is installed, and whenever an
+administrator calls `connect_extension` or **Reconnect provider**. Typeroll
+POSTs, without following redirects:
+
+```json
+{
+  "protocol_version": 1,
+  "issuer": "https://app.typeroll.com",
+  "extension_id": "com.vendor.app",
+  "version": "1.0.0",
+  "org_id": "…",
+  "site_id": "…",
+  "installation_id": "inst_…",
+  "scopes": ["content:read"],
+  "credential": "tri_…",
+  "assertion": "<ES256 JWT>"
+}
+```
+
+Before storing anything:
+
+1. Accept only an `issuer` you already trust, and fetch its JWKS from that
+   issuer, never from the request.
+2. Verify the assertion: `token_use: "credential_provisioning"`, your Extension
+   id as `aud`, your developer Organization as `developer_org_id`, a lifetime of
+   at most 60 seconds, and `org_id`, `site_id`, `installation_id` and `version`
+   equal to the body's.
+3. Check that `credential_sha256` is the SHA-256 of `credential` (hex).
+4. Optionally read `GET /api/v1/sites/{site_id}/extensions/self` with the
+   credential to confirm it works.
+
+Then store the credential encrypted and answer `200 { "bound": true }`. Any
+other answer revokes the new credential and keeps the previous one as it was;
+after `bound: true` the previous credential works for five more minutes.
+
 ## Lifecycle webhooks
 
 Typeroll signs the exact raw body with HMAC-SHA256:

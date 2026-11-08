@@ -123,6 +123,7 @@ or an admin share) and through MCP. Paths are relative to
 | Uninstall                         | `uninstall_extension`                                         | `DELETE /{installationId}`               |
 | Diagnostics                       | `read_extension_diagnostics`                                  | `GET /{installationId}/diagnostics`      |
 | Pair the token issuer             | `pair_extension_issuer`                                       | `POST /{installationId}/pair`            |
+| Connect the provider              | `connect_extension`                                           | `POST /{installationId}/connect`         |
 | Open an admin page                | `launch_extension_admin_page`                                 | `POST /{installationId}/launch`          |
 | Call an approved native admin API | `call_extension_admin`                                        | `POST /{installationId}/admin-request`   |
 
@@ -131,10 +132,17 @@ Notes:
 - `install_extension` grants only the `granted_scopes` you pass; each must be
   requested by the manifest. Install, enable, disable and uninstall do not
   deploy. Deploy afterwards to publish the change.
-- The server credential is rotated in the portal (**Settings → Extensions**),
-  which shows the new `tri_…` credential once. It is not available through the
-  API or MCP, so a new credential never lands in an agent's conversation or a
-  log.
+- When the manifest declares `auth.provisioning_url`, installing connects the
+  provider: Typeroll issues the server credential and delivers it to the
+  provider directly, and the answer reports `credential_provisioning`
+  (`connected` or `failed` with the reason). `connect_extension` does it again,
+  for example after a failure or a scope change; the previous credential
+  works for five more minutes once the provider confirms. The caller never
+  sees the credential.
+- Without a provisioning endpoint, the server credential is rotated in the
+  portal (**Settings → Extensions**), which shows the new `tri_…` credential
+  once. Rotation is not available through the API or MCP, so a credential
+  never lands in an agent's conversation or a log.
 - `launch_extension_admin_page` returns a single-use launch code with the
   `launch_url` and the `form` fields to POST there before `expires_at`, for
   example from a browser automation tool. The provider sees the caller as

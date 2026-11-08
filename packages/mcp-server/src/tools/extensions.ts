@@ -85,7 +85,7 @@ export const extensionTools: ToolDef[] = [
   {
     name: 'install_extension',
     description:
-      'Install an Extension release on this site, as the portal\'s install action does. Pass the Extension id and a published release (developer organizations may also install their own draft or review releases on their own sites). granted_scopes must be a subset of the manifest\'s requested permissions — grant only what the user approved. config must satisfy manifest.config_schema; secret values are encrypted and never returned. Does not deploy: trigger_deploy afterwards to publish provisioned components. Admin permission required.',
+      'Install an Extension release on this site, as the portal\'s install action does. Pass the Extension id and a published release (developer organizations may also install their own draft or review releases on their own sites). granted_scopes must be a subset of the manifest\'s requested permissions — grant only what the user approved. config must satisfy manifest.config_schema; secret values are encrypted and never returned. Does not deploy: trigger_deploy afterwards to publish provisioned components. When the manifest declares auth.provisioning_url, Typeroll also connects the installation to its provider and reports `credential_provisioning` { status: "connected" | "failed", error? }; on failure, fix the cause and call connect_extension. Admin permission required.',
     inputSchema: {
       extension_id: z.string().min(1),
       version: z.string().min(1).describe('Release version to install.'),
@@ -125,6 +125,15 @@ export const extensionTools: ToolDef[] = [
     inputSchema: { installation_id: z.string().min(1) },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       return ok(await client.post(siteId, `extensions/${encodeURIComponent(args.installation_id)}/pair`));
+    }),
+  },
+  {
+    name: 'connect_extension',
+    description:
+      'Connect an installed Extension to its provider (manifest auth.provisioning_url): Typeroll issues a new installation credential and delivers it to the provider directly, so no secret passes through this conversation. install_extension already does this and reports it as `credential_provisioning`; call this to reconnect, e.g. when that failed or the granted scopes changed. Previous credentials stay valid for five minutes once the provider confirms. Returns { status: "connected", credential_prefix }. Owner-organization admin permission required.',
+    inputSchema: { installation_id: z.string().min(1) },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      return ok(await client.post(siteId, `extensions/${encodeURIComponent(args.installation_id)}/connect`));
     }),
   },
   {

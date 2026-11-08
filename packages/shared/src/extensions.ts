@@ -266,6 +266,14 @@ export interface ExtensionManifest {
   auth?: {
     /** Provider endpoint used for an explicit self-host issuer pairing. */
     pairing_url?: string;
+    /**
+     * Provider endpoint that receives the installation's service credential
+     * from Typeroll, server to server, when the Extension is installed or
+     * reconnected. The request carries a host-signed `credential_provisioning`
+     * assertion bound to the credential's SHA-256; the provider answers
+     * `{ bound: true }` once it has verified and stored it.
+     */
+    provisioning_url?: string;
   };
   config_schema?: ExtensionObjectSchema;
   frontend?: { components: ExtensionFrontendComponent[] };
@@ -979,6 +987,7 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
   if (manifest.auth !== undefined) {
     const auth = asRecord(manifest.auth, 'auth', errors);
     if (auth.pairing_url !== undefined) validatePublicHttps(auth.pairing_url, 'auth.pairing_url', errors);
+    if (auth.provisioning_url !== undefined) validatePublicHttps(auth.provisioning_url, 'auth.provisioning_url', errors);
   }
 
   if (manifest.events !== undefined) {

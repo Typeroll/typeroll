@@ -119,6 +119,11 @@
           "type": "string",
           "format": "uri",
           "pattern": "^https://"
+        },
+        "provisioning_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://"
         }
       },
       "additionalProperties": false

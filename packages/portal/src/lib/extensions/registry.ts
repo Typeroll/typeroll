@@ -75,6 +75,7 @@ function manifestExecutionOrigins(manifest: ExtensionManifest): string[] {
   if (manifest.api?.base_url) urls.push(manifest.api.base_url);
   if (manifest.events?.webhook_url) urls.push(manifest.events.webhook_url);
   if (manifest.auth?.pairing_url) urls.push(manifest.auth.pairing_url);
+  if (manifest.auth?.provisioning_url) urls.push(manifest.auth.provisioning_url);
   return [...new Set(urls.map((value) => new URL(value).origin))];
 }
 
@@ -482,7 +483,7 @@ export async function installExtension(args: {
   version: string;
   grantedScopes: ExtensionScope[];
   config?: Record<string, unknown>;
-}): Promise<ExtensionInstallation> {
+}): Promise<ExtensionInstallation & { credential_provisioning?: import('./credential-provisioning').CredentialProvisioningResult }> {
   const store = getStore();
   const extension = await store.getDoc<Extension>(paths.extension(args.developerOrgId, args.extensionId));
   if (!extension || extension.status !== 'active') throw new ExtensionRegistryError('Extension not found or unavailable', 404);
@@ -535,7 +536,14 @@ export async function installExtension(args: {
     metadata: { version: args.version, runtime: EXTENSION_RUNTIME_VERSION },
   });
   await (await import('./events')).notifyExtensionLifecycle({ installation, eventType: 'extension.installed' });
-  return installation;
+  // A provider that declares a provisioning endpoint is connected now, so an
+  // installation made through the API works without anyone copying a secret.
+  if (!version.manifest.auth?.provisioning_url) return installation;
+  const { tryProvisionInstallationCredential } = await import('./credential-provisioning');
+  const credential_provisioning = await tryProvisionInstallationCredential({
+    ownerOrgId: args.ownerOrgId, siteId: args.siteId, installationId: installation.id, actorId: args.actorId,
+  });
+  return { ...installation, credential_provisioning };
 }
 
 export async function setExtensionInstallationStatus(args: {

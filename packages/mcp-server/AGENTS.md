@@ -194,11 +194,13 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   `install_extension` (grant only the scopes the user approved),
   `set_extension_installation_status` (enable/disable), `uninstall_extension`
   (revokes the installation and its credentials; page blocks become
-  placeholders), `pair_extension_issuer`, `read_extension_diagnostics`, and
+  placeholders), `pair_extension_issuer`, `connect_extension`, `read_extension_diagnostics`, and
   `launch_extension_admin_page` (a single-use launch grant whose `form` fields
   a browser tool POSTs to `launch_url`; for approved native pages use
   `call_extension_admin`). None of them deploys. Server credentials are
-  rotated in the portal, never through MCP, so they stay out of conversations.
+  rotated in the portal, never through MCP, so they stay out of conversations;
+  an Extension with `auth.provisioning_url` is connected by Typeroll itself on
+  install, and `connect_extension` reconnects it.
 - **Extension development.** With an organization-scoped key,
   `list_developer_extensions`, `read_developer_extension`,
   `update_developer_extension`, `save_extension_version`,

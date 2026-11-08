@@ -61,11 +61,13 @@ then trigger one deploy after the final update.
 
 Every other installation action in the portal is also available to a site
 administrator API key and MCP: install, enable/disable, uninstall,
-diagnostics, issuer pairing and admin-page launch grants
+diagnostics, issuer pairing, provider connection and admin-page launch grants
 (`install_extension`, `set_extension_installation_status`,
 `uninstall_extension`, `read_extension_diagnostics`, `pair_extension_issuer`,
-`launch_extension_admin_page`). Actions that show a new secret (rotating the
-server credential) stay in the portal. The developer API the CLI uses is exposed as
+`connect_extension`, `launch_extension_admin_page`). Actions that show a new
+secret (rotating the server credential) stay in the portal; a provider that
+declares `auth.provisioning_url` receives its credential from Typeroll directly
+instead (see the backend guide). The developer API the CLI uses is exposed as
 MCP tools for organization-scoped keys (`list_developer_extensions`,
 `read_developer_extension`, `update_developer_extension`,
 `save_extension_version`, `publish_extension_version`,
@@ -228,6 +230,12 @@ Self-hosted portals publish discovery and JWKS on their own canonical
 an explicit pairing. Typeroll sends a signed, five-minute pairing assertion,
 nonce and JWKS fingerprint; the provider must fetch discovery/JWKS itself and
 echo the exact issuer, nonce and fingerprint only after verification.
+
+If `auth.provisioning_url` is declared, installing (and `connect_extension`)
+mints a server credential and POSTs it to that URL with a 60-second
+`credential_provisioning` assertion bound to the credential's SHA-256. The
+provider answers `{ bound: true }` after verifying it; otherwise the new
+credential is revoked and the previous one is left as it was.
 
 ## Service credentials and direct provider API
 

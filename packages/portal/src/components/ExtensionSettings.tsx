@@ -39,7 +39,7 @@ interface Installation {
     name: string;
     developer: { name: string };
     permissions: Array<{ scope: string; reason: string }>;
-    auth?: { pairing_url?: string };
+    auth?: { pairing_url?: string; provisioning_url?: string };
     data_handling?: { personal_data: boolean; data_location?: string };
   };
 }
@@ -135,7 +135,10 @@ export default function ExtensionSettings({ siteId }: { siteId: string }) {
     }
     formElement.reset();
     setSelectedCatalog(null);
-    setFeedback({ kind: 'success', message: 'Extension installed. You can now add its frontend blocks to your pages.' });
+    const provisioning = data.installation?.credential_provisioning as { status?: string; error?: string } | undefined;
+    setFeedback(provisioning?.status === 'failed'
+      ? { kind: 'error', message: `Extension installed, but connecting it to the provider failed: ${provisioning.error ?? 'unknown error'}. Use "Reconnect provider" once the cause is fixed.` }
+      : { kind: 'success', message: provisioning?.status === 'connected' ? 'Extension installed and connected to its provider.' : 'Extension installed. You can now add its frontend blocks to your pages.' });
     await load();
   }
 
@@ -186,6 +189,16 @@ export default function ExtensionSettings({ siteId }: { siteId: string }) {
     if (!response.ok) return setFeedback({ kind: 'error', message: data.error ?? 'Rotation failed' });
     setCredential(data.credential);
     setFeedback({ kind: 'success', message: `A new credential was created for ${extensionName(item)}.` });
+  }
+
+  async function connectProvider(item: Installation) {
+    beginAction();
+    const response = await fetch(`/api/sites/${siteId}/extensions/${item.id}/connect`, { method: 'POST' });
+    const data = await response.json();
+    setBusy(false);
+    if (!response.ok) return setFeedback({ kind: 'error', message: data.error ?? 'Connecting the provider failed' });
+    setFeedback({ kind: 'success', message: `${extensionName(item)} is connected. Typeroll delivered a new credential to the provider; the previous one stops working in five minutes.` });
+    await load();
   }
 
   async function pairIssuer(item: Installation) {
@@ -306,7 +319,7 @@ export default function ExtensionSettings({ siteId }: { siteId: string }) {
           onCopy={copy}
           onPair={pairIssuer}
           onSetStatus={setStatus}
-          onActivate={activate} onRotate={rotate}
+          onActivate={activate} onRotate={rotate} onConnect={connectProvider}
           onUninstall={uninstall}
         />)}
         {!items.length && <div className="extensions__empty">
@@ -385,7 +398,7 @@ function InstallForm({ entry, busy, onSubmit, onCancel }: {
   </form>;
 }
 
-function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetStatus, onActivate, onRotate, onUninstall }: {
+function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetStatus, onActivate, onRotate, onConnect, onUninstall }: {
   item: Installation;
   siteId: string;
   busy: boolean;
@@ -395,6 +408,7 @@ function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetS
   onSetStatus: (item: Installation, status: 'enabled' | 'disabled') => void;
   onActivate: (item: Installation, form: HTMLFormElement) => void;
   onRotate: (item: Installation) => void;
+  onConnect: (item: Installation) => void;
   onUninstall: (item: Installation) => void;
 }) {
   const paired = item.issuer_trust?.status === 'trusted';
@@ -495,7 +509,9 @@ function InstalledExtension({ item, siteId, busy, copied, onCopy, onPair, onSetS
         </section>
         <div className="extensions__management-actions">
           {item.status === 'enabled' ? <button type="button" className="btn btn--secondary" disabled={busy} onClick={() => onSetStatus(item, 'disabled')}>Disable extension</button> : item.status === 'disabled' ? <button type="button" className="btn" disabled={busy} onClick={() => onSetStatus(item, 'enabled')}>Enable extension</button> : null}
-          <button type="button" className="btn btn--secondary" disabled={busy || item.status === 'revoked'} onClick={() => onRotate(item)}>Rotate credential</button>
+          {item.manifest?.auth?.provisioning_url
+            ? <button type="button" className="btn btn--secondary" disabled={busy || item.status !== 'enabled'} onClick={() => onConnect(item)}>Reconnect provider</button>
+            : <button type="button" className="btn btn--secondary" disabled={busy || item.status === 'revoked'} onClick={() => onRotate(item)}>Rotate credential</button>}
           <a className="btn btn--secondary" href={`/api/sites/${siteId}/extensions/${item.id}/diagnostics`} target="_blank" rel="noreferrer">Open diagnostics <ExternalLink size={14} /></a>
         </div>
         <div className="extensions__danger-zone">

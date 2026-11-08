@@ -352,6 +352,43 @@ export function signIssuerPairingAssertion(args: {
   return `${header}.${payload}.${signature}`;
 }
 
+/**
+ * Proof sent with a credential the host provisions to a provider: who it is
+ * for, which release, which scopes, and the SHA-256 of the credential itself,
+ * so a captured assertion cannot carry a different credential.
+ */
+export function signCredentialProvisioningAssertion(args: {
+  installation: ExtensionInstallation;
+  version: string;
+  credentialSha256: string;
+  now?: Date;
+}): string {
+  const { privateKey, kid } = signingKey();
+  const issuedAt = Math.floor((args.now ?? new Date()).getTime() / 1000);
+  const header = b64Json({ alg: 'ES256', typ: 'JWT', kid });
+  const payload = b64Json({
+    iss: extensionIssuer(),
+    aud: args.installation.extension_id,
+    sub: args.installation.id,
+    token_use: 'credential_provisioning',
+    version: args.version,
+    org_id: args.installation.owner_org_id,
+    site_id: args.installation.site_id,
+    installation_id: args.installation.id,
+    developer_org_id: requireDeveloperOrgId(args.installation.developer_org_id),
+    scopes: args.installation.granted_scopes,
+    credential_sha256: args.credentialSha256,
+    jti: crypto.randomUUID(),
+    iat: issuedAt,
+    exp: issuedAt + 60,
+  });
+  const signature = crypto.sign('sha256', Buffer.from(`${header}.${payload}`), {
+    key: privateKey,
+    dsaEncoding: 'ieee-p1363',
+  }).toString('base64url');
+  return `${header}.${payload}.${signature}`;
+}
+
 function encodeLaunchCode(parts: string[]): string {
   return Buffer.from(parts.join('~')).toString('base64url');
 }
@@ -450,6 +487,53 @@ export async function exchangeExtensionLaunchCode(args: {
   return { access_token: signed.token, token_type: 'Bearer', expires_in: USER_TOKEN_TTL_SECONDS };
 }
 
+/**
+ * Store a new service credential for an installation without touching the
+ * others. Returns the plaintext, which exists only in this call's memory.
+ */
+export async function issueInstallationCredential(args: {
+  installation: ExtensionInstallation;
+  now?: Date;
+}): Promise<{ credential: string; prefix: string; id: string }> {
+  const { installation } = args;
+  const prefix = crypto.randomBytes(6).toString('base64url');
+  const secret = crypto.randomBytes(SERVICE_CREDENTIAL_BYTES).toString('base64url');
+  const plaintext = `tri_${prefix}_${secret}`;
+  const credential: InstallationCredential = {
+    id: `cred_${generateDocId()}`,
+    installation_id: installation.id,
+    prefix,
+    secret_hash: hash(plaintext),
+    scopes: installation.granted_scopes,
+    created_at: (args.now ?? new Date()).toISOString(),
+  };
+  const { id: _id, ...body } = credential;
+  await getStore().setDoc(paths.extensionCredential(installation.owner_org_id, installation.site_id, installation.id, credential.id), body);
+  return { credential: plaintext, prefix, id: credential.id };
+}
+
+/** Give every other live credential of the installation a grace period. */
+export async function retireOtherInstallationCredentials(args: {
+  installation: ExtensionInstallation;
+  keepId: string;
+  graceSeconds?: number;
+  now?: Date;
+}): Promise<void> {
+  const { installation } = args;
+  const store = getStore();
+  const now = args.now ?? new Date();
+  const graceUntil = new Date(now.getTime() + Math.max(0, args.graceSeconds ?? 300) * 1000).toISOString();
+  const existing = await store.listDocs<InstallationCredential>(paths.extensionCredentials(installation.owner_org_id, installation.site_id, installation.id));
+  for (const item of existing.filter((credential) => credential.id !== args.keepId && !credential.revoked_at && !credential.grace_until)) {
+    await store.updateDoc(paths.extensionCredential(installation.owner_org_id, installation.site_id, installation.id, item.id), { grace_until: graceUntil });
+  }
+}
+
+/** Revoke one credential at once, e.g. one the provider never accepted. */
+export async function revokeInstallationCredential(installation: ExtensionInstallation, credentialId: string, now = new Date()): Promise<void> {
+  await getStore().updateDoc(paths.extensionCredential(installation.owner_org_id, installation.site_id, installation.id, credentialId), { revoked_at: now.toISOString() });
+}
+
 export async function rotateInstallationCredential(args: {
   ownerOrgId: string;
   siteId: string;
@@ -461,25 +545,8 @@ export async function rotateInstallationCredential(args: {
   const store = getStore();
   const installation = await store.getDoc<ExtensionInstallation>(paths.extensionInstallation(args.ownerOrgId, args.siteId, args.installationId));
   if (!installation || installation.status === 'revoked') throw new ExtensionAuthError('Installation not found', 404);
-  const now = args.now ?? new Date();
-  const graceUntil = new Date(now.getTime() + Math.max(0, args.graceSeconds ?? 300) * 1000).toISOString();
-  const existing = await store.listDocs<InstallationCredential>(paths.extensionCredentials(args.ownerOrgId, args.siteId, args.installationId));
-  for (const item of existing.filter((credential) => !credential.revoked_at)) {
-    await store.updateDoc(paths.extensionCredential(args.ownerOrgId, args.siteId, args.installationId, item.id), { grace_until: graceUntil });
-  }
-  const prefix = crypto.randomBytes(6).toString('base64url');
-  const secret = crypto.randomBytes(SERVICE_CREDENTIAL_BYTES).toString('base64url');
-  const plaintext = `tri_${prefix}_${secret}`;
-  const credential: InstallationCredential = {
-    id: `cred_${generateDocId()}`,
-    installation_id: installation.id,
-    prefix,
-    secret_hash: hash(plaintext),
-    scopes: installation.granted_scopes,
-    created_at: now.toISOString(),
-  };
-  const { id: _id, ...body } = credential;
-  await store.setDoc(paths.extensionCredential(args.ownerOrgId, args.siteId, installation.id, credential.id), body);
+  const issued = await issueInstallationCredential({ installation: { ...installation, id: args.installationId }, now: args.now });
+  await retireOtherInstallationCredentials({ installation: { ...installation, id: args.installationId }, keepId: issued.id, graceSeconds: args.graceSeconds, now: args.now });
   await recordExtensionAudit({
     ownerOrgId: args.ownerOrgId,
     siteId: args.siteId,
@@ -490,7 +557,7 @@ export async function rotateInstallationCredential(args: {
     metadata: { grace_seconds: args.graceSeconds ?? 300 },
   });
   await (await import('./events')).notifyExtensionLifecycle({ installation, eventType: 'extension.credential_rotated' });
-  return { credential: plaintext, prefix };
+  return { credential: issued.credential, prefix: issued.prefix };
 }
 
 export async function authenticateInstallationCredential(args: {
