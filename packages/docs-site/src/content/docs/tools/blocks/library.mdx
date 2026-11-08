@@ -548,19 +548,21 @@ template id.)
 
 | Template block                 | `data-block`      | `data-template-block` (render version 16) |
 | ------------------------------ | ----------------- | ----------------------------------------- |
-| `template/page_title`          | `heading`         | `page_title`                        |
-| `template/site_title`          | `heading`         | `site_title`                        |
-| `template/page_featured_image` | `image`           | `page_featured_image`               |
-| `template/page_excerpt`        | `prose`           | `page_excerpt`                      |
-| `template/site_tagline`        | `prose`           | `site_tagline`                      |
-| `template/page_date`           | `page-date`       | —                                   |
-| `template/page_author`         | `page-author`     | —                                   |
-| `template/page_breadcrumbs`    | `breadcrumbs`     | —                                   |
-| `template/site_logo`           | `site-logo`       | —                                   |
-| `template/page_navigation`     | `page_navigation` | —                                   |
+| `template/page_title`          | `heading`         | `page_title`                              |
+| `template/site_title`          | `heading`         | `site_title`                              |
+| `template/page_featured_image` | `image`           | `page_featured_image`                     |
+| `template/page_excerpt`        | `prose`           | `page_excerpt`                            |
+| `template/site_tagline`        | `prose`           | `site_tagline`                            |
+| `template/page_date`           | `page-date`       | —                                         |
+| `template/page_author`         | `page-author`     | —                                         |
+| `template/page_breadcrumbs`    | `breadcrumbs`     | —                                         |
+| `template/site_logo`           | `site-logo`       | —                                         |
+| `template/page_navigation`     | `page_navigation` | —                                         |
 
 ```css
-[data-block="heading"][data-template-block="site_title"] .block-heading-text { letter-spacing: 0.02em; }
+[data-block="heading"][data-template-block="site_title"] .block-heading-text {
+  letter-spacing: 0.02em;
+}
 ```
 
 Render version 16 also adds settings to these blocks:

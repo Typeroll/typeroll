@@ -429,7 +429,11 @@ Page cards show in listings. Set it with `create_page`, `update_page`,
 of plain text (markup is shown as text, not rendered); `null` clears it.
 
 ```json
-{ "page_id": "lunch", "patch": { "excerpt": "Dagens lunch och veckans meny." }, "save": true }
+{
+  "page_id": "lunch",
+  "patch": { "excerpt": "Dagens lunch och veckans meny." },
+  "save": true
+}
 ```
 
 Like other content, an excerpt written with `update_page` lands in the Page's

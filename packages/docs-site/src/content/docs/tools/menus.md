@@ -183,15 +183,15 @@ in a draft. Read it before deleting a menu or moving its location.
 
 ## Over REST
 
-| Call                            | What it does                                                                                 |
-| ------------------------------- | -------------------------------------------------------------------------------------------- |
-| `GET /menus`                    | Every menu.                                                                                  |
-| `POST /menus`                   | Creates a menu (201). Without `id`, one is derived from the name. `take_locations` moves taken locations. |
-| `GET /menus/{menuId}`           | One menu (404 when unknown).                                                                 |
+| Call                            | What it does                                                                                                           |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `GET /menus`                    | Every menu.                                                                                                            |
+| `POST /menus`                   | Creates a menu (201). Without `id`, one is derived from the name. `take_locations` moves taken locations.              |
+| `GET /menus/{menuId}`           | One menu (404 when unknown).                                                                                           |
 | `PUT /menus/{menuId}`           | Replaces the whole menu; send `expected_updated_at` (409 when stale, or a location is taken without `take_locations`). |
-| `DELETE /menus/{menuId}`        | Deletes the menu.                                                                            |
-| `GET /menus/{menuId}/usage`     | Where the menu is shown.                                                                     |
-| `GET /menus/{menuId}/revisions` | Earlier saves; `/{revId}` reads one and `POST /{revId}/restore` restores it.                 |
+| `DELETE /menus/{menuId}`        | Deletes the menu.                                                                                                      |
+| `GET /menus/{menuId}/usage`     | Where the menu is shown.                                                                                               |
+| `GET /menus/{menuId}/revisions` | Earlier saves; `/{revId}` reads one and `POST /{revId}/restore` restores it.                                           |
 
 Every call accepts `?version=` for a branch.
 
