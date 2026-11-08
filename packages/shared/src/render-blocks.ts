@@ -54,6 +54,8 @@ import {
 import { postCardImageSizing } from './presentation-fields.js';
 import { surfaceColor, surfaceGradientCss } from './surface-presentation.js';
 import { columnStackCss } from './column-layout.js';
+import { formPresentationOptions } from './render-form.js';
+import { DATA_ATTRIBUTE_RENDER_VERSION, IMAGE_INSTANCE_CSS_V16, INSTANCE_RUNTIME_CSS_V16, mapMediaBreakpoints, rewriteSettingSelectors, settingDataAttributes, takeInlineCustomProperties } from './render-v16.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
 import { renderIconHtml } from './icons.js';
 import { isMenuNavigation, renderMenuNavigation, usesMenuSubmenus, type MenuSource } from './menu-render.js';
@@ -95,6 +97,11 @@ import { COMPOSITION_MAX_DEPTH, instanceTree, isComposedBlockType, walkCompositi
 export interface FormBlockOptions {
   /** The block's own submit label; it wins over the form's `submit_text`. */
   submit_label?: string;
+  /** Render version 16 placement of this form on the page (render-form.ts FormPresentationOptions). */
+  max_width_px?: unknown;
+  align?: unknown;
+  submit_align?: unknown;
+  submit_width?: unknown;
 }
 
 export interface RenderContext {
@@ -346,7 +353,9 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   if (effectiveBlock.type === 'core/form' && options.formSource) {
     const formId = String(effectiveBlock.data?.form_id ?? '');
     const label = String(effectiveBlock.data?.submit_label ?? '').trim();
-    const html = formId ? options.formSource(formId, label ? { submit_label: label } : {}) : undefined;
+    // Render version 16: the block's own width and button placement travel with it.
+    const presentation = resolveRenderVersion(options.renderVersion) >= DATA_ATTRIBUTE_RENDER_VERSION ? formPresentationOptions(effectiveBlock.data) : {};
+    const html = formId ? options.formSource(formId, { ...(label ? { submit_label: label } : {}), ...presentation }) : undefined;
     return html ?? `<!-- core/form: unknown form_id ${escapeHtml(formId)} -->`;
   }
 
@@ -382,12 +391,15 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
       html = injectAttrsIntoFirstTag(html, { 'data-block-id': block.id, 'data-block-type': block.type });
     }
     if (compiled.hasOverrides) {
+      const taken = takeResponsiveBaselines(html, compiled.cssVars, options.renderVersion);
+      html = taken.html;
       html += renderResponsiveStyleBlock(
         sanitizeCssId(effectiveBlock.id),
         compiled.cssVars,
         compiled.mappedCss,
         resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints),
         options.renderVersion,
+        taken.values,
       );
     }
     html = applyVisibility(html, effectiveBlock, options);
@@ -444,6 +456,8 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     // The logo links to the home page of the page's language section.
     compiled.flatData.site_logo_href = sectionHomeHref(site, options.context?.page?.language);
   }
+  // The site title links to the same home page when it is set to (render version 16).
+  if (effectiveBlock.type === 'template/site_title') compiled.flatData.site_title_href = sectionHomeHref(options.context?.site, options.context?.page?.language);
   if (effectiveBlock.type === 'template/page_breadcrumbs') {
     // On a site with language sections the home crumb is the home page of the
     // page's language, and the untouched default label follows that language.
@@ -598,7 +612,10 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     const positive = (v: unknown) => Number.isFinite(Number(v)) && Number(v) > 0 ? Math.round(Number(v)) : 0;
     const w = positive(d.original_width), h = positive(d.original_height);
     const maximum = positive(d.max_width) || (d.width === 'original' ? w : 0);
-    d.image_size_style = maximum ? `max-width:min(100%,${maximum}px)` : '';
+    // Render version 16 writes the maximum as a custom property, applied from the instance layer.
+    const v16Image = resolveRenderVersion(options.renderVersion) >= DATA_ATTRIBUTE_RENDER_VERSION;
+    d.image_size_style = maximum ? (v16Image ? `--image-max:min(100%,${maximum}px)` : `max-width:min(100%,${maximum}px)`) : '';
+    if (maximum && v16Image) d.image_spacing_attrs_v16 = ' data-max-width';
     // A capped image never renders wider than its maximum.
     const sizes = maximum ? ` sizes="(max-width: ${maximum}px) 100vw, ${maximum}px"` : '';
     const img = `<img src="${escapeHtml(d.src ?? '')}" alt="${escapeHtml(d.alt ?? '')}"${w ? ` width="${w}"` : ''}${h ? ` height="${h}"` : ''}${sizes} loading="lazy" decoding="async" />`;
@@ -609,7 +626,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     d.image_caption_html = d.caption_html || escapeHtml(d.caption ?? '');
     // Mark authored spacing so an unset field never overrides the surrounding flow.
     const authored = (name: string) => { const value = effectiveBlock.data?.[name]; return value !== undefined && value !== null && value !== ''; };
-    d.image_spacing_attrs = `${authored('spacing_before_px') ? ' data-spacing-before' : ''}${authored('spacing_after_px') ? ' data-spacing-after' : ''}`;
+    d.image_spacing_attrs = `${authored('spacing_before_px') ? ' data-spacing-before' : ''}${authored('spacing_after_px') ? ' data-spacing-after' : ''}${d.image_spacing_attrs_v16 ?? ''}`;
   }
   const columnThreshold = effectiveBlock.type === 'core/columns' && typeof compiled.flatData.stack_below_px === 'number' && Number.isFinite(compiled.flatData.stack_below_px)
     ? Math.min(1600, Math.max(320, Math.round(compiled.flatData.stack_below_px))) : null;
@@ -656,6 +673,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   const storyAttrs = prepareStoryBlock(blockType, compiled.flatData, { language: options.context?.page?.language ?? options.context?.site?.language, reduced: resolveRenderVersion(options.renderVersion) >= 14 && options.context?.site?.motion === 'reduced' });
   let html = substituteFields(template, compiled.flatData, options.context);
   const numericStyles = (blockType.schema ?? []).flatMap(field => {
+    if (!fieldRendersAt(field, options.renderVersion)) return [];
     const value = numericPresentationValue(field, compiled.flatData[field.name]);
     return value === undefined ? [] : [`--${field.name}:${value}`];
   });
@@ -678,7 +696,8 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   if (overText.style) html = mergeAttrsIntoFirstTag(html, { style: overText.style }) ?? html;
   const rootAttrs: Record<string, string> = { ...background.attrs, ...overText.attrs, ...motionAttributes(blockType, compiled.flatData, effects), ...storyAttrs };
   if (blockType.id === 'core/grid' && isResponsiveValue(effectiveBlock.data.cols)) rootAttrs['data-responsive-cols'] = 'true';
-  if (blockType.schema.some(field => field.css_unit)) rootAttrs['data-presentation'] = encodeURIComponent(blockType.id);
+  if (blockType.schema.some(field => field.css_unit && fieldRendersAt(field, options.renderVersion))) rootAttrs['data-presentation'] = encodeURIComponent(blockType.id);
+  Object.assign(rootAttrs, versionSettingAttributes(blockType, compiled.flatData, options.renderVersion));
   // data-bid is normally only needed when responsive overrides target it —
   // but an instance script's IIFE resolves its own element by this selector,
   // so a block carrying code in a declared script_field needs it too or its
@@ -728,10 +747,17 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   // template; the style block only carries @media overrides for
   // breakpoints above mobile.
   if (compiled.hasOverrides) {
-    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints), options.renderVersion);
+    const taken = takeResponsiveBaselines(html, compiled.cssVars, options.renderVersion);
+    html = taken.html;
+    html += renderResponsiveStyleBlock(bid, compiled.cssVars, compiled.mappedCss, resolveBreakpointWidths(effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints), options.renderVersion, taken.values);
   }
 
-  if (columnThreshold !== null) html += `<style data-bid="${bid}">${columnStackCss(columnThreshold, `[data-block="columns"][data-bid="${bid}"]`)}</style>`;
+  if (columnThreshold !== null) {
+    // Render version 16: the instance layer already beats block CSS, so the rule needs no !important.
+    const layeredColumns = resolveRenderVersion(options.renderVersion) >= DATA_ATTRIBUTE_RENDER_VERSION;
+    const stack = columnStackCss(columnThreshold, `[data-block="columns"][data-bid="${bid}"]`, !layeredColumns);
+    html += `<style data-bid="${bid}">${layeredColumns ? platformLayer('instance', stack, options.renderVersion) : stack}</style>`;
+  }
   html = applyVisibility(html, effectiveBlock, options);
   html = applySiteStyle(html, effectiveBlock, blockType);
   html = applyStyleOverrides(html, effectiveBlock, blockType, options.renderVersion);
@@ -828,6 +854,8 @@ export function columnSlotSizes(data: Record<string, unknown>, slotIndex: number
   const fixed = Number(slotIndex === 0 ? data.left_width_px : data.right_width_px);
   const [left, right] = COLUMN_RATIOS[String(data.ratio ?? '1-1')] ?? COLUMN_RATIOS['1-1']!;
   const share = Number.isFinite(fixed) && fixed > 0 ? `${Math.round(fixed)}px` : `${Math.ceil(((slotIndex === 0 ? left : right) / (left + right)) * 100)}vw`;
+  // Columns that never stack keep their share at every width.
+  if (!(Number.isFinite(custom) && custom > 0) && data.stack_below === 'never') return share;
   return `(max-width: ${threshold - 1}px) 100vw, ${share}`;
 }
 
@@ -1169,6 +1197,7 @@ function wrapRepeater(
   const gap = String(data.gap ?? 'md');
   const align = String(data.align ?? 'stretch');
   const dimensions = blockType.schema.flatMap(field => {
+    if (!fieldRendersAt(field, options?.renderVersion)) return [];
     const value = numericPresentationValue(field, data[field.name]);
     return value === undefined ? [] : [`--${field.name}:${value}`];
   }).join(';');
@@ -1180,6 +1209,7 @@ function wrapRepeater(
   // The instance's own part styles (block-parts.ts) mark every repeater root,
   // one per group; absent without a choice, so output is otherwise unchanged.
   const partAttrs = blockType.parts?.length ? partStyleAttributes(blockType, data, options?.renderVersion) : {};
+  Object.assign(partAttrs, versionSettingAttributes(blockType, data, options?.renderVersion));
   const marked = (html: string) => Object.keys(partAttrs).length ? injectAttrsIntoFirstTag(html, partAttrs) : html;
   // Render version 7: a carousel's items scroll in a track, followed by the
   // controls its settings ask for (block-media.ts).
@@ -1830,8 +1860,18 @@ function applyStyleOverrides(html: string, block: Block, blockType: BlockType, r
   }
 
   const inlineStyleParts: string[] = [];
-  if (so.spacing_before) inlineStyleParts.push(`margin-top:${cssValue(so.spacing_before)}`);
-  if (so.spacing_after) inlineStyleParts.push(`margin-bottom:${cssValue(so.spacing_after)}`);
+  // Render version 16 writes spacing as custom properties, applied from the
+  // instance layer (INSTANCE_RUNTIME_CSS_V16), so site CSS can change it.
+  const spacingVars = resolveRenderVersion(renderVersion) >= DATA_ATTRIBUTE_RENDER_VERSION;
+  const spacingAttrs: Record<string, string> = {};
+  if (so.spacing_before) {
+    inlineStyleParts.push(spacingVars ? `--space-before:${cssValue(so.spacing_before)}` : `margin-top:${cssValue(so.spacing_before)}`);
+    if (spacingVars) spacingAttrs['data-space-before'] = '';
+  }
+  if (so.spacing_after) {
+    inlineStyleParts.push(spacingVars ? `--space-after:${cssValue(so.spacing_after)}` : `margin-bottom:${cssValue(so.spacing_after)}`);
+    if (spacingVars) spacingAttrs['data-space-after'] = '';
+  }
 
   if (inlineStyleParts.length === 0 && !so.custom_class && !so.html_id) {
     return html;
@@ -1848,9 +1888,9 @@ function applyStyleOverrides(html: string, block: Block, blockType: BlockType, r
     class: so.custom_class,
     style: inlineStyleParts.length > 0 ? inlineStyleParts.join(';') : undefined,
   });
-  if (merged !== null) return merged;
+  if (merged !== null) return Object.keys(spacingAttrs).length ? injectAttrsIntoFirstTag(merged, spacingAttrs) : merged;
 
-  const attrs: string[] = [];
+  const attrs: string[] = Object.keys(spacingAttrs);
   if (so.html_id) attrs.push(`id="${escapeHtml(so.html_id)}"`);
   if (so.custom_class) attrs.push(`class="${escapeHtml(so.custom_class)}"`);
   if (inlineStyleParts.length > 0) attrs.push(`style="${escapeHtml(inlineStyleParts.join(';'))}"`);
@@ -2058,6 +2098,32 @@ function numericPresentationValue(field: FieldDefinition, raw: unknown): string 
   return `${value}${field.css_unit === 'px' ? 'px' : ''}`;
 }
 
+/** A field added in a later render version renders nothing on older sites. */
+function fieldRendersAt(field: FieldDefinition, renderVersion: number | undefined): boolean {
+  return !field.min_render_version || field.min_render_version <= resolveRenderVersion(renderVersion);
+}
+
+/**
+ * The CSS a core block type renders with at a version, as the version 16
+ * attribute and breakpoint passes see it (both apply from 16 only).
+ */
+export function blockCssForVersion(blockType: BlockType, css: string, renderVersion: number | undefined, widths?: BreakpointWidths): string {
+  if (!css || resolveRenderVersion(renderVersion) < DATA_ATTRIBUTE_RENDER_VERSION || blockType.origin !== 'core') return css;
+  return mapMediaBreakpoints(rewriteSettingSelectors(css, blockType.schema), widths);
+}
+
+/** Version 16 CSS of a type: own styles plus platform defaults, for the attribute pass. */
+function versionCssOf(blockType: BlockType, renderVersion: number | undefined): string {
+  const id = blockType.id;
+  return blockCssForVersion(blockType, [blockOutputForVersion(blockType, renderVersion).styles, BLOCK_TYPE_DEFAULTS_V14[id] ?? '', BLOCK_TYPE_DEFAULTS_V16[id] ?? ''].join('\n'), renderVersion);
+}
+
+/** Data attributes for the settings a version 16 core block's CSS reads. */
+function versionSettingAttributes(blockType: BlockType, data: Record<string, unknown>, renderVersion: number | undefined): Record<string, string> {
+  if (resolveRenderVersion(renderVersion) < DATA_ATTRIBUTE_RENDER_VERSION || blockType.origin !== 'core') return {};
+  return settingDataAttributes(blockType, data, versionCssOf(blockType, renderVersion), numericPresentationValue);
+}
+
 function compileResponsiveData(
   block: Block,
   blockType: BlockType,
@@ -2174,14 +2240,31 @@ function injectAttrsIntoFirstTag(html: string, attrs: Record<string, string>): s
  * Emit a per-instance `<style>` block carrying @media rules that override
  * CSS variables for each non-mobile breakpoint that has overrides.
  */
+/**
+ * Render version 16: the mobile values of responsive settings leave the inline
+ * style and are set from the instance layer, so the breakpoint overrides need
+ * no !important and site CSS can change them.
+ */
+function takeResponsiveBaselines(html: string, cssVars: Partial<Record<Breakpoint, Record<string, string>>>, renderVersion: number | undefined): { html: string; values?: Record<string, string> } {
+  if (resolveRenderVersion(renderVersion) < DATA_ATTRIBUTE_RENDER_VERSION) return { html };
+  const names = [...new Set(Object.values(cssVars).flatMap(vars => Object.keys(vars ?? {})))];
+  return takeInlineCustomProperties(html, names);
+}
+
 function renderResponsiveStyleBlock(
   bid: string,
   cssVars: Partial<Record<Breakpoint, Record<string, string>>>,
   mappedCss: Partial<Record<Breakpoint, string>>,
   widths: BreakpointWidths = defaultBreakpointWidths,
   renderVersion?: number,
+  baseline?: Record<string, string>,
 ): string {
   const parts: string[] = [];
+  // Without baselines in the inline style (render version 16) the overrides need no !important.
+  const important = baseline ? '' : ' !important';
+  if (baseline && Object.keys(baseline).length) {
+    parts.push(`[data-bid="${bid}"] { ${Object.entries(baseline).map(([name, value]) => `--${name}: ${value};`).join(' ')} }`);
+  }
   for (const bp of BREAKPOINTS_ABOVE_MOBILE) {
     const inner: string[] = [];
     const vars = cssVars[bp];
@@ -2195,7 +2278,7 @@ function renderResponsiveStyleBlock(
       // baseline. Verified in-browser: without it, responsive cols/gap/etc. and
       // grid stack_at are all no-ops above mobile.
       const decls = Object.entries(vars)
-        .map(([name, value]) => `--${name}: ${value} !important;`)
+        .map(([name, value]) => `--${name}: ${value}${important};`)
         .join(' ');
       inner.push(`[data-bid="${bid}"] { ${decls} }`);
     }
@@ -2286,7 +2369,7 @@ export function collectUsedBlockTypeIds(blocks: Block[], out: Set<string> = new 
 }
 
 /** Include types instantiated by aliases and repeaters, as well as authored nodes. */
-function collectBlockAssetTypeIds(blocks: Block[], registry: RenderBlocksOptions['registry']): Set<string> {
+function collectBlockAssetTypeIds(blocks: Block[], registry: RenderBlocksOptions['registry'], renderVersion?: number): Set<string> {
   const used = collectUsedBlockTypeIds(blocks);
   const activeItems = new Set<object>();
   const compositionPath = new Set<string>();
@@ -2295,6 +2378,12 @@ function collectBlockAssetTypeIds(blocks: Block[], registry: RenderBlocksOptions
     // Page titles render the heading markup even when the page body contains
     // no standalone heading block. Keep its typography in that page's bundle.
     if (expanded?.block.type === 'template/page_title') used.add('core/heading');
+    // From render version 16 the site title, excerpt and tagline also bring the
+    // heading or text CSS their markup uses, so their settings work on any page.
+    if (resolveRenderVersion(renderVersion) >= DATA_ATTRIBUTE_RENDER_VERSION) {
+      if (expanded?.block.type === 'template/site_title') used.add('core/heading');
+      if (expanded?.block.type === 'template/page_excerpt' || expanded?.block.type === 'template/site_tagline') used.add('core/prose');
+    }
     // A composed block type ships the assets of the blocks it is built from.
     if (expanded && isComposedBlockType(expanded.blockType) && !compositionPath.has(expanded.blockType.id) && compositionPath.size < COMPOSITION_MAX_DEPTH) {
       compositionPath.add(expanded.blockType.id);
@@ -2390,7 +2479,7 @@ export function collectBlockAssets(
   opts?: CollectAssetsOptions,
 ): BlockAssetBundle {
   blocks = withGlobalBlockContent(blocks, opts?.globalBlockSource);
-  const ids = [...collectBlockAssetTypeIds(blocks, registry)].sort();
+  const ids = [...collectBlockAssetTypeIds(blocks, registry, opts?.renderVersion)].sort();
   const css: string[] = [];
   const js: string[] = [];
   const used: string[] = [];
@@ -2404,15 +2493,17 @@ export function collectBlockAssets(
     const bt = getRegistryEntry(registry, id);
     if (!bt) continue;
     used.push(id);
-    const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name));
+    const numericFields = bt.schema.filter(field => field.css_unit && /^[a-z][a-z0-9_]*$/.test(field.name) && fieldRendersAt(field, opts?.renderVersion));
     if (numericFields.length) css.push(`[data-presentation="${encodeURIComponent(bt.id)}"]{${numericFields.map(field => `--${field.name}:${/^(?:h[1-6]_size_px|heading_(?:before|after)_px)$/.test(field.name) ? 'inherit' : 'initial'}`).join(';')}}`);
     const output = blockOutputForVersion(bt, opts?.renderVersion);
     const rawStyles = output.styles;
     // Site block types written with block scope never style outside their blocks.
     const btStyles = rawStyles && bt.css_scope === 'block' ? scopeBlockCss(rawStyles, bt.name).css : rawStyles;
-    if (btStyles) css.push(`/* ${id} */\n${styleElementText(btStyles)}`);
-    if (resolveRenderVersion(opts?.renderVersion) >= 14 && BLOCK_TYPE_DEFAULTS_V14[id]) css.push(`/* ${id} defaults */\n${BLOCK_TYPE_DEFAULTS_V14[id]}`);
-    if (resolveRenderVersion(opts?.renderVersion) >= 16 && BLOCK_TYPE_DEFAULTS_V16[id]) css.push(`/* ${id} defaults v16 */\n${BLOCK_TYPE_DEFAULTS_V16[id]}`);
+    // Render version 16: settings are read from data attributes and media queries follow the site's breakpoints.
+    const versioned = (text: string) => blockCssForVersion(bt, text, opts?.renderVersion, opts?.siteStyles?.breakpoints);
+    if (btStyles) css.push(`/* ${id} */\n${styleElementText(versioned(btStyles))}`);
+    if (resolveRenderVersion(opts?.renderVersion) >= 14 && BLOCK_TYPE_DEFAULTS_V14[id]) css.push(`/* ${id} defaults */\n${versioned(BLOCK_TYPE_DEFAULTS_V14[id])}`);
+    if (resolveRenderVersion(opts?.renderVersion) >= 16 && BLOCK_TYPE_DEFAULTS_V16[id]) css.push(`/* ${id} defaults v16 */\n${versioned(BLOCK_TYPE_DEFAULTS_V16[id])}`);
     if (output.script) js.push(`/* ${id} */\n${output.script}`);
   }
 
@@ -2441,6 +2532,8 @@ export function collectBlockAssets(
   // From render version 14 platform block CSS is one layer; an author's
   // per-block CSS stays unlayered and overrides it like site CSS does.
   if (usesCascadeLayers(opts?.renderVersion) && css.length) css.splice(0, css.length, platformLayer('blocks', css.join('\n\n'), opts?.renderVersion));
+  // Render version 16: authored spacing and image widths apply from the instance layer instead of inline styles.
+  if (resolveRenderVersion(opts?.renderVersion) >= DATA_ATTRIBUTE_RENDER_VERSION && css.length) css.push(platformLayer('instance', used.includes('core/image') ? `${INSTANCE_RUNTIME_CSS_V16}\n${IMAGE_INSTANCE_CSS_V16}` : INSTANCE_RUNTIME_CSS_V16, opts?.renderVersion));
   for (const block of collectInstanceStyles(blocks)) {
     css.push(`/* instance ${sanitizeCssId(block.id)} */\n${styleElementText(block.style_overrides!.custom_css!)}`);
   }
@@ -2614,5 +2707,7 @@ function applyVisibility(html: string, block: Block, options: RenderBlocksOption
     const upper = next ? ` and (width < ${widths[next]}px)` : '';
     return `@media (min-width: ${widths[bp]}px)${upper} { [data-bid="${bid}"] { display:none !important; } }`;
   }).join('');
-  return injectAttrsIntoFirstTag(html, { 'data-bid': bid }) + `<style data-bid="${bid}">${css}</style>`;
+  // Render version 16 keeps the rule in the instance layer, where its !important still wins over site CSS.
+  const layered = resolveRenderVersion(options.renderVersion) >= DATA_ATTRIBUTE_RENDER_VERSION ? platformLayer('instance', css, options.renderVersion) : css;
+  return injectAttrsIntoFirstTag(html, { 'data-bid': bid }) + `<style data-bid="${bid}">${layered}</style>`;
 }

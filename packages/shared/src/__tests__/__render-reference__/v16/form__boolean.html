@@ -1,8 +1,8 @@
-<fieldset data-block="form_boolean" class="form-field" data-field="Sample name">
+<fieldset data-block="form_boolean" class="form-field" data-field="Sample name" data-width="full">
     <legend>Sample label</legend>
-    <label><input type="radio" name="Sample name" value="true" data-required="false" /> Yes</label>
-    <label><input type="radio" name="Sample name" value="false" data-required="false" /> No</label>
-    <button type="button" data-clear-answer="Sample name">Clear answer</button>
+    <label class="form-boolean-choice"><input type="radio" name="Sample name" value="true" data-required="false" /> <span class="form-boolean-text">Yes</span></label>
+    <label class="form-boolean-choice"><input type="radio" name="Sample name" value="false" data-required="false" /> <span class="form-boolean-text">No</span></label>
+    <button type="button" class="form-boolean-clear" data-clear-answer="Sample name">Clear answer</button>
     <p class="form-field-help"></p><p class="form-field-error" data-error-for="Sample name" hidden></p>
   </fieldset>
 
@@ -59,4 +59,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

@@ -1,4 +1,4 @@
-<div data-block="form_slider" class="form-field" data-field="Sample name" data-unit="">
+<div data-block="form_slider" class="form-field" data-field="Sample name" data-width="full" data-unit="">
   <label for="ff-Sample name">Sample label <output class="form-slider-value" for="ff-Sample name"></output></label>
   <input type="range" id="ff-Sample name" name="Sample name" min="0" max="100" step="1" />
   <p class="form-field-help"></p>
@@ -59,4 +59,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

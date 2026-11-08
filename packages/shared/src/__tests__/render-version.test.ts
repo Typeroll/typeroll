@@ -7,7 +7,7 @@ describe('render version 16', () => {
     const audio = buildCoreBlockRegistry().get('core/audio')!;
     expect(blockOutputForVersion(audio, 15).styles).toContain('align-items:center;');
     expect(blockOutputForVersion(audio, 16).styles).toContain('align-items:start;');
-    expect(blockOutputForVersion(audio, 16).styles).not.toContain('align-items:center;');
+    expect(blockOutputForVersion(audio, 16).styles).not.toContain('gap:1rem 1.25rem; align-items:center;');
   });
 
   it('puts a lone form field beside its button only while the form keeps its default layout', async () => {

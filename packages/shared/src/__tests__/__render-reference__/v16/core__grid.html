@@ -1,4 +1,4 @@
-<div data-block="grid" data-stack-at="sm" data-last-row="start" style="--cols:3;--gap:auto;--align:stretch" data-presentation="core%2Fgrid"><div data-block="prose" data-w="normal" data-font="inherit" style="--text_align:inherit;--font_weight:inherit" data-presentation="core%2Fprose"><p>Child</p></div></div>
+<div data-block="grid" data-stack-at="sm" data-last-row="start" style="--cols:3;--gap:auto;--align:stretch" data-presentation="core%2Fgrid" data-gap="auto"><div data-block="prose" data-w="normal" data-font="inherit" style="--text_align:inherit;--font_weight:inherit" data-presentation="core%2Fprose" data-text-align="inherit"><p>Child</p></div></div>
 
 /* css */
 @layer typeroll.platform{
@@ -29,16 +29,14 @@
 [data-presentation="core%2Fgrid"]{--gap_px:initial}
 
 /* core/grid */
-[data-block="grid"] { --container-gap:var(--grid-gap, 1rem);
+[data-block="grid"] { --container-gap:var(--grid-gap, 1rem); --stack-cols:initial;
   display: grid;
   /* Read --cols DIRECTLY (not a substring-mapped --block-cols): the
      responsive @media compiler overrides --cols per breakpoint, and an
      attribute-substring selector can't see those computed overrides — only
-     the static inline value. Reading the variable is necessary but NOT
-     sufficient: because the baseline --cols is inline, the @media overrides
-     (both the responsive compiler's and stack_at below) must be !important
-     to win the cascade. */
-  grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+     the static inline value. stack_at sets --stack-cols, which is never
+     inline, so it wins over --cols without !important. */
+  grid-template-columns: repeat(var(--stack-cols, var(--cols, 3)), minmax(0, 1fr));
   gap: var(--gap_px, var(--container-gap,var(--block-gap,1rem)));
   align-items: var(--align, stretch);
 }
@@ -51,34 +49,32 @@
   justify-content: center;
 }
 [data-block="grid"][data-last-row="center"] > * {
-  flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--container-gap,var(--grid-gap,1rem)))) / var(--cols, 3));
+  flex: 0 0 calc((100% - (var(--stack-cols, var(--cols, 3)) - 1) * var(--gap_px, var(--container-gap,var(--grid-gap,1rem)))) / var(--stack-cols, var(--cols, 3)));
   min-width: 0;
   /* grid tracks equalized row heights; in flex that job belongs to the
      line's align stretch — a child height:100% (the grid-ism) breaks it */
   height: auto;
 }
-[data-block="grid"][style*="--gap:none"] { --container-gap: 0; }
-[data-block="grid"][style*="--gap:xs"]   { --container-gap: 0.25rem; }
-[data-block="grid"][style*="--gap:sm"]   { --container-gap: 0.5rem; }
-[data-block="grid"][style*="--gap:md"]   { --container-gap: 1rem; }
-[data-block="grid"][style*="--gap:lg"]   { --container-gap: 2rem; }
-[data-block="grid"][style*="--gap:xl"]   { --container-gap: 3rem; }
+[data-block="grid"][data-gap="none"] { --container-gap: 0; }
+[data-block="grid"][data-gap="xs"]   { --container-gap: 0.25rem; }
+[data-block="grid"][data-gap="sm"]   { --container-gap: 0.5rem; }
+[data-block="grid"][data-gap="md"]   { --container-gap: 1rem; }
+[data-block="grid"][data-gap="lg"]   { --container-gap: 2rem; }
+[data-block="grid"][data-gap="xl"]   { --container-gap: 3rem; }
 /* stack_at — collapse to one column below a width. Only for grids WITHOUT
    per-instance responsive cols (:not([data-responsive-cols="true"])); when the author set
    responsive cols, those @media overrides own the column count instead.
-   !important is REQUIRED: the column count rides on an inline style=--cols:N
-   baseline, and an inline custom property outranks any stylesheet rule — so a
-   plain non-important --cols:1 here is shadowed by the inline value and the
-   grid never collapses. (Verified in-browser.) */
+   The rule sets --stack-cols (never inline) and the columns themselves, so it
+   wins over the inline --cols and the grid defaults without !important. */
 @media (max-width: 720px) {
   [data-block="grid"][data-stack-at="sm"]:not([data-responsive-cols="true"]),
-  [data-block="grid"]:not([data-stack-at]):not([data-bid]) { --cols: 1 !important; }
+  [data-block="grid"]:not([data-stack-at]):not([data-bid]) { --stack-cols: 1; grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 900px) {
-  [data-block="grid"][data-stack-at="md"]:not([data-responsive-cols="true"]) { --cols: 1 !important; }
+  [data-block="grid"][data-stack-at="md"]:not([data-responsive-cols="true"]) { --stack-cols: 1; grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 1000px) {
-  [data-block="grid"][data-stack-at="lg"]:not([data-responsive-cols="true"]) { --cols: 1 !important; }
+  [data-block="grid"][data-stack-at="lg"]:not([data-responsive-cols="true"]) { --stack-cols: 1; grid-template-columns: minmax(0, 1fr); }
 }
 
 /* core/grid defaults */
@@ -110,6 +106,9 @@
 [data-block="prose"] th, [data-block="prose"] td { padding: 0.5rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
 [data-block="prose"] :is(p, li, dt, dd, blockquote, figcaption, h1, h2, h3, h4, h5, h6) { overflow-wrap: anywhere; }
 [data-block="prose"] pre { max-width: 100%; overflow-x: auto; }
+[data-block="prose"][data-color] { color:var(--prose-color); }
+[data-block="prose"]:is([data-w="narrow"],[data-w="wide"])[data-text-align="start"] { margin-inline:0 auto; }
+[data-block="prose"]:is([data-w="narrow"],[data-w="wide"])[data-text-align="end"] { margin-inline:auto 0; }
 
 /* core/prose defaults */
 /* Text blocks: the first and last element sit flush with the block, so spacing comes from the layout. */
@@ -140,4 +139,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

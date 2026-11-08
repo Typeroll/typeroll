@@ -1,4 +1,4 @@
-<div data-block="icon_box" data-icon-style="outline" data-whole-link="false" data-shadow="none" style="--layout:icon-top;--align:left;--icon-color:;--icon-bg:;--card-background:" data-presentation="core%2Ficon_box">
+<div data-block="icon_box" data-icon-style="outline" data-whole-link="false" data-shadow="none" style="--layout:icon-top;--align:left;--icon-color:;--icon-bg:;--card-background:" data-presentation="core%2Ficon_box" data-layout="icon-top" data-align="left" data-vertical-align="top">
   <div class="block-iconbox-icon" data-icon=""></div>
   <div class="block-iconbox-body">
     <h3 class="block-iconbox-heading"></h3>
@@ -42,10 +42,10 @@
   text-align: var(--align-text, left);
   align-items: var(--align-items, flex-start);
 }
-[data-block="icon_box"][style*="--layout:icon-top"]   { --layout-dir: column; }
-[data-block="icon_box"][style*="--layout:icon-left"]  { --layout-dir: row; }
-[data-block="icon_box"][style*="--layout:icon-right"] { --layout-dir: row-reverse; }
-[data-block="icon_box"][style*="--align:center"]      { --align-text: center; --align-items: center; }
+[data-block="icon_box"][data-layout="icon-top"]   { --layout-dir: column; }
+[data-block="icon_box"][data-layout="icon-left"]  { --layout-dir: row; }
+[data-block="icon_box"][data-layout="icon-right"] { --layout-dir: row-reverse; }
+[data-block="icon_box"][data-align="center"]      { --align-text: center; --align-items: center; }
 [data-block="icon_box"] .block-iconbox-icon {
   flex: 0 0 auto; width: var(--icon_size_px, 3rem); height: var(--icon_size_px, 3rem); display: flex; align-items: center; justify-content: center;
   color: var(--icon-color, var(--color-primary, currentColor));
@@ -64,6 +64,9 @@
 [data-block="icon_box"] .block-iconbox-heading a::after { content:""; position:absolute; inset:0; border-radius:inherit; }
 [data-block="icon_box"] .block-iconbox-heading a:focus-visible::after { outline:2px solid currentColor; outline-offset:3px; }
 [data-block="icon_box"] .block-iconbox-text a { position:relative; z-index:1; }
+/* Beside the text (icon-left, icon-right) the icon and text line up at the top, middle or bottom. */
+[data-block="icon_box"][data-vertical-align="center"] > :is(.block-iconbox-icon, .block-iconbox-body) { margin-block:auto; }
+[data-block="icon_box"][data-vertical-align="end"] > :is(.block-iconbox-icon, .block-iconbox-body) { margin-block-start:auto; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -89,4 +92,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

@@ -1,6 +1,6 @@
-<section data-block="section" data-width="normal" data-pad="auto" data-divtop="none" data-divbot="none" style="--block-bg:;--block-fg:;--padding_x:auto;" data-presentation="core%2Fsection">
+<section data-block="section" data-width="normal" data-pad="auto" data-divtop="none" data-divbot="none" style="--block-bg:;--block-fg:;--padding_x:auto;" data-presentation="core%2Fsection" data-padding-x="auto">
   <span class="block-section-shape block-section-shape--top" aria-hidden="true"></span>
-  <div class="block-section-inner"><div data-block="prose" data-w="normal" data-font="inherit" style="--text_align:inherit;--font_weight:inherit" data-presentation="core%2Fprose"><p>Child</p></div></div>
+  <div class="block-section-inner"><div data-block="prose" data-w="normal" data-font="inherit" style="--text_align:inherit;--font_weight:inherit" data-presentation="core%2Fprose" data-text-align="inherit"><p>Child</p></div></div>
   <span class="block-section-shape block-section-shape--bot" aria-hidden="true"></span>
 </section>
 
@@ -52,6 +52,9 @@
 [data-block="prose"] th, [data-block="prose"] td { padding: 0.5rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
 [data-block="prose"] :is(p, li, dt, dd, blockquote, figcaption, h1, h2, h3, h4, h5, h6) { overflow-wrap: anywhere; }
 [data-block="prose"] pre { max-width: 100%; overflow-x: auto; }
+[data-block="prose"][data-color] { color:var(--prose-color); }
+[data-block="prose"]:is([data-w="narrow"],[data-w="wide"])[data-text-align="start"] { margin-inline:0 auto; }
+[data-block="prose"]:is([data-w="narrow"],[data-w="wide"])[data-text-align="end"] { margin-inline:auto 0; }
 
 /* core/prose defaults */
 /* Text blocks: the first and last element sit flush with the block, so spacing comes from the layout. */
@@ -64,11 +67,11 @@
 [data-block="section"] { position: relative; padding: var(--section-padding, 3rem) var(--content-gutter, 1.25rem); background: var(--block-bg, transparent); color: var(--block-fg, inherit); }
 [data-block="section"] { --surface-gradient:initial;background-image:var(--surface-gradient,none); }
 [data-block="section"][style*="--padding_x:"] { padding-inline:var(--section-px, var(--content-gutter,1.25rem)); }
-[data-block="section"][style*="--padding_x:auto"] { --section-px:var(--content-gutter,1.25rem); }
-[data-block="section"][style*="--padding_x:none"] { --section-px:0px; }
-[data-block="section"][style*="--padding_x:sm"] { --section-px:1rem; }
-[data-block="section"][style*="--padding_x:md"] { --section-px:2rem; }
-[data-block="section"][style*="--padding_x:lg"] { --section-px:3rem; }
+[data-block="section"][data-padding-x="auto"] { --section-px:var(--content-gutter,1.25rem); }
+[data-block="section"][data-padding-x="none"] { --section-px:0px; }
+[data-block="section"][data-padding-x="sm"] { --section-px:1rem; }
+[data-block="section"][data-padding-x="md"] { --section-px:2rem; }
+[data-block="section"][data-padding-x="lg"] { --section-px:3rem; }
 [data-block="section"][data-pad="compact"] { padding-block:var(--header-padding,1rem); }
 [data-block="section"][data-pad="none"] { padding-top: 0; padding-bottom: 0; }
 [data-block="section"][data-pad="sm"] { padding-top: 2rem; padding-bottom: 2rem; }
@@ -131,4 +134,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

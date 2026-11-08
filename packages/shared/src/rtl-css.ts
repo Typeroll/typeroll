@@ -1,3 +1,4 @@
+import { platformLayer } from './cascade-layers.js';
 // Right-to-left mirror of the platform's built-in layout.
 //
 // Block and template CSS uses physical sides (margin-left, left: …) and is
@@ -33,7 +34,11 @@ export const RTL_CSS = `
 [dir="rtl"] .tr-consent__manage { left: auto; right: 1rem; }
 `.trim();
 
-/** The mirror stylesheet for a page, empty for left-to-right languages. */
-export function directionCss(direction: 'rtl' | 'ltr'): string {
-  return direction === 'rtl' ? RTL_CSS : '';
+/**
+ * The mirror stylesheet for a page, empty for left-to-right languages. From
+ * render version 16 it sits in the platform layer, so site CSS beats it.
+ */
+export function directionCss(direction: 'rtl' | 'ltr', renderVersion?: number): string {
+  if (direction !== 'rtl') return '';
+  return (renderVersion ?? 1) >= 16 ? platformLayer('blocks', RTL_CSS, renderVersion) : RTL_CSS;
 }

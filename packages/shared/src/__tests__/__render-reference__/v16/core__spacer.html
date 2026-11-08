@@ -1,4 +1,4 @@
-<div data-block="spacer" aria-hidden="true" style="--height:md"></div>
+<div data-block="spacer" aria-hidden="true" style="--height:md" data-height="md"></div>
 
 /* css */
 @layer typeroll.platform{
@@ -28,12 +28,12 @@
 
 /* core/spacer */
 [data-block="spacer"]                          { height: 1rem; }
-[data-block="spacer"][style*="--height:xs"]    { height: 0.5rem; }
-[data-block="spacer"][style*="--height:sm"]    { height: 1rem; }
-[data-block="spacer"][style*="--height:md"]    { height: 2rem; }
-[data-block="spacer"][style*="--height:lg"]    { height: 4rem; }
-[data-block="spacer"][style*="--height:xl"]    { height: 6rem; }
-[data-block="spacer"][style*="--height:2xl"]   { height: 8rem; }
+[data-block="spacer"][data-height="xs"]    { height: 0.5rem; }
+[data-block="spacer"][data-height="sm"]    { height: 1rem; }
+[data-block="spacer"][data-height="md"]    { height: 2rem; }
+[data-block="spacer"][data-height="lg"]    { height: 4rem; }
+[data-block="spacer"][data-height="xl"]    { height: 6rem; }
+[data-block="spacer"][data-height="2xl"]   { height: 8rem; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -59,4 +59,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

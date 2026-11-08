@@ -189,6 +189,8 @@ export type FormMessageKey =
   // Form shell
   | 'submit' | 'continue' | 'back' | 'progress' | 'thanks' | 'fail'
   | 'preview_notice' | 'preview_redirect'
+  // Yes / No answer (form/boolean, render version 16)
+  | 'yes' | 'no' | 'clear_answer'
   // Forms runtime, remote-backed forms (prefill and session)
   | 'loading' | 'link_expired' | 'retry_hour' | 'retry_hours' | 'work_email' | 'work_email_limit' | 'or'
   // Submit endpoint
@@ -206,6 +208,9 @@ const FORM_MESSAGES: Record<FormMessageKey, { en: string; sv: string }> = {
   fail: { en: 'Something went wrong — please try again.', sv: 'Något gick fel — försök igen.' },
   preview_notice: { en: 'Preview – nothing is sent', sv: 'Förhandsvisning – inget skickas' },
   preview_redirect: { en: 'Preview – would redirect to', sv: 'Förhandsvisning – skulle skicka vidare till' },
+  yes: { en: 'Yes', sv: 'Ja' },
+  no: { en: 'No', sv: 'Nej' },
+  clear_answer: { en: 'Clear answer', sv: 'Rensa svaret' },
   loading: {
     en: 'Wait for the form to load before submitting. If loading failed, reload this page.',
     sv: 'Vänta tills formuläret har laddats innan du skickar. Ladda om sidan om det inte laddas.',

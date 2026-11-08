@@ -1,4 +1,4 @@
-<ul data-block="navigation_links" data-font="inherit" data-density="comfortable" style="--direction:column;--link_color:;--font_weight:400;--line_height:1.4" data-presentation="core%2Fnavigation_links"></ul>
+<ul data-block="navigation_links" data-font="inherit" data-density="comfortable" style="--direction:column;--link_color:;--font_weight:400;--justify:start;--line_height:1.4" data-presentation="core%2Fnavigation_links"></ul>
 
 /* css */
 @layer typeroll.platform{
@@ -40,13 +40,13 @@
 [data-block="navigation_links"] a:hover { text-decoration:underline; }
 [data-block="navigation_links"][data-density="compact"] { gap:var(--gap_px,4px); }
 [data-block="navigation_links"][data-density="compact"] li > a { min-height:var(--link_min_height_px,24px);padding-block:var(--padding_y_px,0px); }
-@media (min-width:1024px) and (hover:hover) and (pointer:fine) {
+@media (min-width: 1024px) and (hover:hover) and (pointer:fine) {
   [data-block="navigation_links"][data-density="compact-desktop"] { gap:var(--gap_px,4px); }
   [data-block="navigation_links"][data-density="compact-desktop"] li > a { min-height:var(--link_min_height_px,24px);padding-block:var(--padding_y_px,0px); }
 }
 [data-block="navigation_links"] a:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
 [data-block="navigation_links"]:not([data-density="compact"]) { row-gap:var(--gap_px,0px); }
-@media (min-width:1024px) and (hover:hover) and (pointer:fine) {
+@media (min-width: 1024px) and (hover:hover) and (pointer:fine) {
   [data-block="navigation_links"][data-density="compact-desktop"] { row-gap:var(--gap_px,4px); }
 }
 [data-block="navigation_links"][data-labelled="true"] { display:block; }
@@ -98,6 +98,7 @@ dialog [data-block="navigation_links"][data-enhanced] li[data-submenu="dropdown"
 @media (prefers-reduced-motion:reduce) {
   [data-block="navigation_links"] .block-nav-toggle::after { transition:none; }
 }
+[data-block="navigation_links"], [data-block="navigation_links"] > .block-nav-list { justify-content:var(--justify,normal); }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -123,4 +124,9 @@ dialog [data-block="navigation_links"][data-enhanced] li[data-submenu="dropdown"
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

@@ -31,10 +31,10 @@
 /* template/site_logo */
 [data-block="site-logo"] { display:inline-flex;align-items:center;min-width:0;max-width:100%;font-weight:600;overflow-wrap:anywhere;text-decoration:none;color:inherit; }
 [data-block="site-logo"]:focus-visible { outline:2px solid currentColor;outline-offset:3px; }
-[data-block="site-logo"][data-size="sm"] img { height: 1.5rem; }
+[data-block="site-logo"][data-size="sm"] img { height: 2rem; }
 [data-block="site-logo"][data-size="md"] img { height: 2.5rem; }
 [data-block="site-logo"][data-size="lg"] img { height: 4rem; }
-[data-block="site-logo"][style*="--height_px:"] img { height:var(--height_px, 40px); }
+[data-block="site-logo"][data-height-px] img { height:var(--height_px, 40px); }
 [data-block="site-logo"] img { width:auto; max-width:100%; object-fit:contain; margin:0; border-radius:0; }
 [data-block="site-logo"] img[src=""] { display: none; }
 
@@ -62,4 +62,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

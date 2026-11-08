@@ -64,26 +64,36 @@ From render version 14 every platform stylesheet is emitted inside named
 layers, declared first in `<head>`:
 
 ```css
-@layer typeroll.reset, typeroll.base, typeroll.tokens, typeroll.blocks,
-       typeroll.styles, typeroll.instance;
+@layer typeroll.reset, typeroll.base, typeroll.tokens, typeroll.platform,
+       typeroll.instance;
 ```
 
 | Layer | Contents |
 | --- | --- |
 | `typeroll.reset` | `reset.css` |
-| `typeroll.base` | `global.css` elements and utilities, header and footer component CSS, the content well |
+| `typeroll.base` | `global.css` elements and utilities; from version 16 also the default header, footer and 404 styles and the cookie banner |
 | `typeroll.tokens` | theme values, design scales and the spacing scale |
-| `typeroll.blocks` | `BLOCKS_RUNTIME_CSS` and each block type's styles, core and custom |
-| `typeroll.styles` | the site's named styles and element roles |
-| `typeroll.instance` | per-instance field values and responsive overrides |
+| `typeroll.platform` | the content well, `BLOCKS_RUNTIME_CSS`, each block type's styles (core and custom), block defaults, the site's named styles and element roles, and from version 16 the right-to-left mirror |
+| `typeroll.instance` | per-instance field values and responsive overrides; from version 16 also authored spacing, image widths, column stacking widths, navigation form layout and custom-breakpoint visibility |
+
+**As built.** Block CSS and named styles share one layer (`typeroll.platform`,
+`LAYER_OF` in `cascade-layers.ts`) in the order and with the specificity they
+had before layers, so their relationship did not change when layers arrived.
+Named styles therefore keep their `:not(#\#)` specificity boost to beat block
+defaults inside that layer. This only matters between platform rules: site
+CSS is unlayered and beats both without a boost.
 
 Site CSS and page CSS stay unlayered. Unlayered normal declarations beat
 every layer, so a site rule wins regardless of specificity or position.
 Inside the platform, the layer order replaces today's tricks:
 
-- Styles beat block defaults by layer, so the `:not(#\#)` boost goes.
-- Instance values beat styles by layer, so responsive overrides lose their
-  `!important`.
+- Instance values beat styles by layer. From render version 16 the mobile
+  baseline of a responsive value is set from the instance layer instead of
+  the inline style, so the breakpoint overrides lose their `!important`.
+- From version 16 nothing but custom properties is written inline, block
+  settings reach CSS as data attributes (`[data-gap="sm"]` instead of
+  `[style*="--gap:sm"]`), and platform media queries map their literal widths
+  to the site's `responsive_breakpoints` (render-v16.ts).
 - Hoisted reset and global CSS can no longer win by appearing last.
 
 The few platform rules that must hold over site CSS keep `!important`:

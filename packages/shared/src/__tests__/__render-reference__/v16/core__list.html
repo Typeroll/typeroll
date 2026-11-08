@@ -1,4 +1,4 @@
-<div data-block="list" data-marker="auto"><ul></ul></div>
+<div data-block="list" data-marker="auto" data-presentation="core%2Flist" data-layout="stack"><ul></ul></div>
 
 /* css */
 @layer typeroll.platform{
@@ -26,8 +26,14 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
+[data-presentation="core%2Flist"]{--gap_px:initial;--font_size_px:initial}
+
 /* core/list */
 [data-block="list"] ul,[data-block="list"] ol{padding-inline-start:1.5rem;margin:1rem 0}[data-block="list"] li{margin:.35rem 0}[data-block="list"] li>p{margin:0}[data-block="list"][data-marker="none"] ul,[data-block="list"][data-marker="none"] ol,[data-block="list"][data-marker="check"] ul,[data-block="list"][data-marker="check"] ol{list-style:none;padding-inline-start:0}[data-block="list"][data-marker="check"] li{position:relative;padding-inline-start:1.5em}[data-block="list"][data-marker="check"] li::before{content:"✓";position:absolute;inset-inline-start:0}[data-block="list"] li:has(input[type="checkbox"]){list-style:none}[data-block="list"][data-marker="check"] li:has(input[type="checkbox"])::before{content:none}
+[data-block="list"] li{margin-block:var(--gap_px,.35rem)}
+[data-block="list"][data-layout="two-column"] :is(ul,ol){columns:2 14rem;column-gap:2.5rem}
+[data-block="list"][data-layout="two-column"] li{break-inside:avoid}
+[data-block="list"][data-font-size-px]{font-size:var(--font_size_px)}
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -53,4 +59,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

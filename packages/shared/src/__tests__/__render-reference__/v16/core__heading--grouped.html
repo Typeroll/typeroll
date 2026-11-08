@@ -1,4 +1,4 @@
-<div data-block="heading" data-level="h2" data-size="auto" data-font-weight="" style="--align:left;text-align:var(--align,left);" data-presentation="core%2Fheading" id="sample-anchor"><hgroup class="block-heading-group">
+<div data-block="heading" data-level="h2" data-size="auto" data-font-weight="" style="--align:left;" data-presentation="core%2Fheading" id="sample-anchor"><hgroup class="block-heading-group">
   <p class="block-heading-eyebrow tr-role-eyebrow">Sample eyebrow</p>
   <h2 class="block-heading-text custom-heading">Sample heading</h2>
   <p class="block-heading-subtitle s-lead">Sample subtitle</p></hgroup>
@@ -84,9 +84,10 @@
 [data-block="heading"][data-size="auto"][data-level="h4"] { --heading-fs: var(--type-h4, 1rem); }
 [data-block="heading"][data-size="auto"][data-level="h5"] { --heading-fs: var(--type-h5, 1rem); }
 [data-block="heading"][data-size="auto"][data-level="h6"] { --heading-fs: var(--type-h6, .875rem); }
-[data-block="heading"][style*="--font_size_px:"] .block-heading-text { font-size:var(--font_size_px, var(--heading-fs)); }
-[data-block="heading"][data-level][style*="--line_height:"] .block-heading-text { line-height:var(--line_height,1.2); }
+[data-block="heading"][data-font-size-px] .block-heading-text { font-size:var(--font_size_px, var(--heading-fs)); }
+[data-block="heading"][data-level][data-line-height] .block-heading-text { line-height:var(--line_height,1.2); }
 [data-block="heading"] :is(.block-heading-text, .block-heading-eyebrow, .block-heading-subtitle) { overflow-wrap: anywhere; }
+[data-block="heading"][data-level] { text-align:var(--align,left); }
 
 /* core/heading defaults */
 /* The heading sits right under its eyebrow wherever the block is placed. */
@@ -118,4 +119,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

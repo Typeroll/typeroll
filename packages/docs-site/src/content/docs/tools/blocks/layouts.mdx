@@ -76,6 +76,21 @@ Escape, link activation or desktop transition, and restores focus on dismissal.
 Without JavaScript, the appropriate menu content remains available in the page.
 The simpler `core/navigation` remains available for flat inline/disclosure menus.
 
+From render version 16 the menu button can show a visible label after its
+symbol: set `show_toggle_label: true`. The label is `toggle_label` (default
+"Menu", in the site's language while left at that default); the button keeps
+its accessible name from `menu_label`. `toggle_color` colours the button
+(default: the surrounding text colour) and `toggle_align` (`start`, the
+default, `center` or `end`) places it within the block while the menu is
+collapsed. The parts `open_button`, `close_button`, `panel` (the mobile panel,
+`.block-menu-scroll`) and `content` (`.block-menu-content`) take named styles
+or site CSS.
+
+From render version 16, `core/navigation_links.justify` places a row of links:
+`start` (the default), `center`, `end` or `space-between`. It is responsive, so
+a header row can centre its links on phones and push them to the end on wider
+screens without a wrapping container.
+
 ```json
 {
   "id": "main-menu",
@@ -309,6 +324,43 @@ content well, including centered flex layouts. Authored font sizes stay unchange
 a long word can break across lines instead of widening the page. Check the saved
 preview and republished output at your smallest supported viewport.
 
+### Text, button, list and story block settings (render version 16)
+
+Render version 16 adds settings that used to need site CSS, and writes colours
+and alignment as custom properties applied by block CSS, so a site's own CSS
+can change them without `!important`.
+
+- `core/text` and `core/prose`: `color` is written as `--text-color` /
+  `--prose-color` and applied only when set. A `narrow` or `wide` Text block
+  with an explicit `text_align: "start"` (or `"end"`) sits at the start (or
+  end) of its column instead of in the middle, so it lines up under a
+  left-aligned heading; the default keeps it centred.
+- `core/heading` and `template/page_title`: the alignment is applied from
+  `--align` by the heading CSS instead of an inline `text-align`.
+- `core/button`: `align` (`inherit`, the default, `start`, `center`, `end`),
+  `full_width` (boolean), `icon` (shown after the label, hidden from screen
+  readers) and `icon_size_px`.
+- `core/columns`: `stack_below: "never"` keeps the two columns side by side at
+  every width. The stacking rules no longer use `!important`.
+- `core/list`: `gap_px` (space between items), `layout` (`stack` or
+  `two-column`, which reads down then across and falls back to one column in a
+  narrow space) and `font_size_px`.
+- `core/stats`: `value_color` colours the figures.
+- `core/timeline` and `core/scroll_steps`: `heading_level` (`h2`–`h5`, default
+  `h3`) for the item headings.
+- `core/audio`: `cover_align` (`top`, the default, or `center`), `cover_size`
+  (`sm`, `md`, `lg`), `cover_position` (`side` or `top`) and `appearance`
+  (`card` or `plain`, without the card background and padding).
+- `core/before_after`: `width` (`narrow`, `normal`, `wide`, `full`, the default)
+  and `align` (`left`, `center`, `right`).
+- `core/announcement_bar`: `background` and `text_color` replace the tone's
+  colours when set.
+- New parts: `core/section.inner`, `core/timeline.item` and `image`,
+  `core/before_after.before`, `after` and `handle`,
+  `core/announcement_bar.inner` and `close`, `core/scroll_steps.step`,
+  `core/svg_animation.toggle` and `core/audio.body`, `player` and `transcript`
+  (see [block parts](../parts/)).
+
 ### Long words on small screens (render version 13)
 
 From render version 13, a container that is a column at every breakpoint
@@ -437,6 +489,11 @@ for the later submission, with its own consent, validation and provider setup.
 
 Use native `text`, `number` or `select` fields. Select options have `value`
 and `label`. Labels are accessible even with `show_labels: false`.
+From render version 16, `max_width_px` caps the form's width and `align`
+(`start`, the default, `center` or `end`) places a narrower form in its
+column. The per-instance layout (`column_widths`, field and button placement)
+is emitted in the instance cascade layer and selects the block by attribute,
+so a site class overrides it without `!important`.
 `gap_px`, `input_height_px`, `font_size_px`, `radius_px` and input/button
 colors control presentation. `font` selects `inherit`, `body` or `heading`.
 Use `line_height`, `input_padding_x_px`, `input_padding_y_px`,

@@ -1,4 +1,4 @@
-<nav data-block="page_navigation" aria-label="Item navigation"><a class="page-navigation-previous" data-empty="true" rel="prev" href=""><small>Previous</small><span></span></a><a class="page-navigation-next" data-empty="true" rel="next" href=""><small>Next</small><span></span></a></nav>
+<nav data-block="page_navigation" aria-label="Item navigation"><a class="page-navigation-previous" data-empty="true" rel="prev" href=""><small class="page-navigation-label">Previous</small><span class="page-navigation-title"></span></a><a class="page-navigation-next" data-empty="true" rel="next" href=""><small class="page-navigation-label">Next</small><span class="page-navigation-title"></span></a></nav>
 
 /* css */
 @layer typeroll.platform{
@@ -32,7 +32,7 @@
 [data-block="page_navigation"] a[data-empty="true"] { display: none; }
 [data-block="page_navigation"] .page-navigation-next { margin-left: auto; text-align: right; }
 [data-block="page_navigation"] a:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
-@media (max-width: 540px) { [data-block="page_navigation"] { flex-direction: column; } [data-block="page_navigation"] .page-navigation-next { margin-left: 0; } }
+@media (max-width: 639px) { [data-block="page_navigation"] { flex-direction: column; } [data-block="page_navigation"] .page-navigation-next { margin-left: 0; } }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -58,4 +58,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

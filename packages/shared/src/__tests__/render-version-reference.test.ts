@@ -20,7 +20,7 @@ import {
   collectBlockAssets,
   BLOCKS_RUNTIME_CSS,
   contentWellCss,
-  FORM_SHELL_CSS,
+  formShellCss,
   WEBFONT_FALLBACK_CSS,
   RENDER_VERSIONS,
   defaultSiteSettings,
@@ -182,7 +182,7 @@ for (const { version } of RENDER_VERSIONS) {
       const css = [
         ['BLOCKS_RUNTIME_CSS', BLOCKS_RUNTIME_CSS],
         ['CONTENT_WELL_CSS', contentWellCss(version)],
-        ['FORM_SHELL_CSS', FORM_SHELL_CSS],
+        ['FORM_SHELL_CSS', formShellCss(version)],
         ['WEBFONT_FALLBACK_CSS', WEBFONT_FALLBACK_CSS],
         // Head CSS that depends on the render version (font smoothing from v6).
         ['siteThemeCss (default settings)', siteThemeCss({ ...defaultSiteSettings, render_version: version })],

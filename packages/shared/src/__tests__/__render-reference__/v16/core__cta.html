@@ -1,4 +1,4 @@
-<section data-block="cta" data-width="normal" data-image-pos="none" style="--align:center;--bg:;--bg-image:url()">
+<section data-block="cta" data-text-color="" data-width="normal" data-image-pos="none" style="--align:center;--bg:;--bg-image:url();--text-color:;--background_focal_x:50;--background_focal_y:50" data-presentation="core%2Fcta" data-align="center">
   <div class="block-cta-inner">
     <span class="block-cta-eyebrow"></span>
     <h2 class="block-cta-heading"></h2>
@@ -8,6 +8,7 @@
       <a class="block-btn block-btn-secondary" href=""></a>
     </div>
   </div>
+  
 </section>
 
 /* css */
@@ -36,24 +37,34 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
+[data-presentation="core%2Fcta"]{--background_focal_x:initial;--background_focal_y:initial}
+
 /* core/cta */
 [data-block="cta"] {
   padding: 4rem 1.5rem; background: var(--bg, var(--color-primary, #111));
   color: var(--color-primary-fg, white); text-align: var(--align, center);
 }
-[data-block="cta"][data-image-pos="background"] { background-image: var(--bg-image); background-size: cover; background-position: center; }
+[data-block="cta"][data-image-pos="background"] { background-image: var(--bg-image); background-size: cover; background-position: calc(var(--background_focal_x, 50) * 1%) calc(var(--background_focal_y, 50) * 1%); }
 [data-block="cta"] .block-cta-inner { max-width: 48rem; margin-inline: auto; }
-[data-block="cta"][style*="--align:left"] .block-cta-inner { margin-inline: 0; max-width: 65rem; }
+[data-block="cta"][data-align="left"] .block-cta-inner { margin-inline: 0; max-width: 65rem; }
 [data-block="cta"] .block-cta-eyebrow { display: inline-block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.5rem; }
 [data-block="cta"] .block-cta-eyebrow:empty { display: none; }
 [data-block="cta"] .block-cta-heading { font-size: clamp(1.5rem, 0.875rem + 2.5vw, 2.5rem); margin: 0 0 1rem; font-weight: 700; line-height: 1.2; }
 [data-block="cta"] .block-cta-sub     { margin-bottom: 1.5rem; opacity: 0.85; }
 [data-block="cta"] .block-cta-actions { display: flex; gap: 0.75rem; justify-content: var(--align-actions, center); flex-wrap: wrap; }
-[data-block="cta"][style*="--align:left"] .block-cta-actions { justify-content: flex-start; }
+[data-block="cta"][data-align="left"] .block-cta-actions { justify-content: flex-start; }
 [data-block="cta"] .block-btn { display: inline-block; padding: 0.75rem 1.75rem; border-radius: 999px; font-weight: 600; text-decoration: none; }
 [data-block="cta"] .block-btn-primary { background: var(--color-primary-fg, #fff); color: var(--color-primary, #111); }
 [data-block="cta"] .block-btn-secondary { background: transparent; color: inherit; box-shadow: inset 0 0 0 2px currentColor; }
 [data-block="cta"] .block-btn:empty { display: none; }
+/* Image position left or right puts the image beside the text; it stacks above the text when the band is narrow. */
+[data-block="cta"] > .block-cta-media { display:none; }
+[data-block="cta"]:is([data-image-pos="left"], [data-image-pos="right"]):has(> .block-cta-media) { display:flex; flex-wrap:wrap-reverse; align-items:center; gap:var(--cta-gap, clamp(1.5rem, 1rem + 3vw, 3rem)); }
+[data-block="cta"][data-image-pos="left"]:has(> .block-cta-media) { flex-direction:row-reverse; }
+[data-block="cta"]:is([data-image-pos="left"], [data-image-pos="right"]) > .block-cta-media { display:block; flex:1 1 16rem; min-width:0; }
+[data-block="cta"]:is([data-image-pos="left"], [data-image-pos="right"]):has(> .block-cta-media) > .block-cta-inner { flex:999 1 18rem; margin-inline:0; }
+[data-block="cta"] > .block-cta-media img { display:block; width:100%; height:auto; border-radius:var(--cta-image-radius, 0.5rem); }
+[data-block="cta"][data-text-color]:not([data-text-color=""]) { color: var(--text-color); }
 
 /* core/cta defaults */
 /* Without a chosen background a call to action uses the theme's primary colour, so its text stays readable. */
@@ -68,7 +79,7 @@
 [data-block="cta"] { container-type:inline-size; }
 [data-block="cta"] .block-cta-heading { font-size:clamp(1.25rem, .75rem + 3.5cqi, 2.5rem); }
 /* Left-aligned text uses the full width of the band, so it lines up with sections of the same width. */
-[data-block="cta"][style*="--align:left"] .block-cta-inner { max-width:none; }
+[data-block="cta"][data-align="left"] .block-cta-inner { max-width:none; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -94,4 +105,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

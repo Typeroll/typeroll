@@ -49,6 +49,7 @@ const stats: BlockType = {
     { name: 'align', type: 'select', label: 'Alignment', options: ['center', 'start'], default: 'center' },
     { name: 'style', type: 'select', label: 'Look', options: ['plain', 'cards', 'divided'], option_labels: ['Plain', 'Cards', 'Line above'], default: 'plain' },
     { name: 'count_up', type: 'boolean', label: 'Count up when scrolled into view', default: true, help: 'Numbers count up from zero once. The final figure is in the page for search engines and visitors without script.' },
+    { name: 'value_color', type: 'color', label: 'Figure color', min_render_version: 16 },
   ],
   template: `<div data-block="stats" data-style="{{style}}" data-align="{{align}}" data-count-up="{{count_up}}" style="--cols:{{cols}}"><dl class="block-stats-list">{{#each items}}<div class="block-stats-item"><dt class="block-stats-label">{{label}}</dt><dd class="block-stats-value">{{value}}</dd>{{#description}}<dd class="block-stats-text">{{description}}</dd>{{/description}}</div>{{/each}}</dl></div>`,
   styles: `
@@ -121,6 +122,8 @@ const timeline: BlockType = {
     { name: 'title', label: 'Title', selector: '.block-timeline-title', target: 'heading' },
     { name: 'text', label: 'Text', selector: '.block-timeline-text', target: 'text' },
     { name: 'marker', label: 'Marker', selector: '.block-timeline-marker', target: 'container', decorative: true },
+    { name: 'item', label: 'Event', selector: '.block-timeline-item', target: 'container', decorative: true, min_render_version: 16 },
+    { name: 'image', label: 'Image', selector: '.block-timeline-image', target: 'image', min_render_version: 16 },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
@@ -132,6 +135,7 @@ const timeline: BlockType = {
       { name: 'image_alt', type: 'text', label: 'Image description' },
     ] },
     { name: 'layout', type: 'select', label: 'Layout', options: ['line', 'alternate'], option_labels: ['One line', 'Alternating sides on wide screens'], default: 'line' },
+    { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4', 'h5'], default: 'h3', min_render_version: 16 },
   ],
   template: `<div data-block="timeline" data-layout="{{layout}}"><ol class="block-timeline-list">{{#each items}}<li class="block-timeline-item"><span class="block-timeline-marker" aria-hidden="true"></span><div class="block-timeline-body">{{#date}}<p class="block-timeline-date">{{date}}</p>{{/date}}{{#title}}<h3 class="block-timeline-title">{{title}}</h3>{{/title}}{{#image}}<img class="block-timeline-image" src="{{image}}" alt="{{image_alt}}" loading="lazy" decoding="async" />{{/image}}<div class="block-timeline-text">{{{text}}}</div></div></li>{{/each}}</ol></div>`,
   styles: `
@@ -172,6 +176,13 @@ const AUDIO_STYLES = `
 @container (max-width: 26rem) { [data-block="audio"] { grid-template-columns:1fr; } }
 `.trim();
 
+/** Render version 16 audio settings; the defaults (top, md, side, card) keep the version 16 look. */
+const AUDIO_V16_CSS = `[data-block="audio"][data-cover-align="center"] { align-items:center; }
+[data-block="audio"][data-cover-size="sm"] .block-audio-cover { inline-size:clamp(3.5rem, 15cqi, 6rem); }
+[data-block="audio"][data-cover-size="lg"] .block-audio-cover { inline-size:clamp(6rem, 30cqi, 12rem); }
+[data-block="audio"][data-cover-position="top"] { grid-template-columns:1fr; }
+[data-block="audio"][data-appearance="plain"] { padding:0; border-radius:0; background:none; }`;
+
 const audio: BlockType = {
   id: 'core/audio',
   name: 'audio',
@@ -183,6 +194,9 @@ const audio: BlockType = {
     { name: 'title', label: 'Title', selector: '.block-audio-title', target: 'heading' },
     { name: 'text', label: 'Description', selector: '.block-audio-text', target: 'text' },
     { name: 'cover', label: 'Cover', selector: '.block-audio-cover', target: 'image' },
+    { name: 'body', label: 'Text and player', selector: '.block-audio-body', target: 'container', decorative: true, min_render_version: 16 },
+    { name: 'player', label: 'Player', selector: '.block-audio-player', target: 'container', decorative: true, min_render_version: 16 },
+    { name: 'transcript', label: 'Transcript link', selector: '.block-audio-transcript', target: 'link', min_render_version: 16 },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
@@ -192,12 +206,18 @@ const audio: BlockType = {
     { name: 'cover', type: 'image', label: 'Cover image' },
     { name: 'transcript_url', type: 'url', label: 'Transcript link' },
     { name: 'transcript_label', type: 'text', label: 'Transcript link text', default: 'Transcript', ui_text: 'transcript' },
+    // Render version 16.
+    { name: 'cover_align', type: 'select', label: 'Cover alignment beside the text', options: ['top', 'center'], option_labels: ['Top', 'Center'], default: 'top', min_render_version: 16 },
+    { name: 'cover_size', type: 'select', label: 'Cover size', options: ['sm', 'md', 'lg'], default: 'md', min_render_version: 16 },
+    { name: 'cover_position', type: 'select', label: 'Cover position', options: ['side', 'top'], option_labels: ['Beside the text', 'Above the text'], default: 'side', min_render_version: 16 },
+    { name: 'appearance', type: 'select', label: 'Appearance', options: ['card', 'plain'], option_labels: ['Card', 'Plain'], default: 'card', min_render_version: 16 },
   ],
   template: `<figure data-block="audio">{{#cover}}<img class="block-audio-cover" src="{{cover}}" alt="" loading="lazy" decoding="async" />{{/cover}}<div class="block-audio-body">{{#title}}<figcaption class="block-audio-title">{{title}}</figcaption>{{/title}}<div class="block-audio-text">{{{description}}}</div><audio class="block-audio-player" controls preload="metadata" src="{{src}}" aria-label="{{title}}"></audio>{{#transcript_url}}<a class="block-audio-transcript" href="{{transcript_url}}">{{transcript_label}}</a>{{/transcript_url}}</div></figure>`,
   styles: AUDIO_STYLES,
   // From render version 16 the cover lines up with the top of the text
-  // instead of its middle, like an image beside text everywhere else.
-  render_versions: [{ from: 16, styles: AUDIO_STYLES.replace('align-items:center;', 'align-items:start;') }],
+  // instead of its middle, like an image beside text everywhere else, and
+  // its alignment, size and position and the card look are settings.
+  render_versions: [{ from: 16, styles: `${AUDIO_STYLES.replace('align-items:center;', 'align-items:start;')}\n${AUDIO_V16_CSS}` }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -211,6 +231,9 @@ const beforeAfter: BlockType = {
   container: false,
   parts: [
     { name: 'label', label: 'Before and after labels', selector: '.block-ba-label', target: 'text', decorative: true },
+    { name: 'before', label: 'Before image', selector: '.block-ba-before', target: 'image', min_render_version: 16 },
+    { name: 'after', label: 'After image', selector: '.block-ba-after', target: 'image', min_render_version: 16 },
+    { name: 'handle', label: 'Divider handle', selector: '.block-ba-handle', target: 'container', decorative: true, min_render_version: 16 },
   ],
   schema: [
     { name: 'before_image', type: 'image', label: 'Before image', required: true },
@@ -221,6 +244,9 @@ const beforeAfter: BlockType = {
     { name: 'after_label', type: 'text', label: 'After label', default: 'After', ui_text: 'after' },
     { name: 'start', type: 'number', label: 'Divider start position (%)', default: 50, min: 0, max: 100 },
     { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio', options: ['auto', '16:9', '4:3', '1:1', '3:4'], default: 'auto' },
+    // Render version 16. Full fills the column, as before.
+    { name: 'width', type: 'select', label: 'Width', options: ['narrow', 'normal', 'wide', 'full'], default: 'full', min_render_version: 16 },
+    { name: 'align', type: 'select', label: 'Alignment', options: ['left', 'center', 'right'], default: 'center', min_render_version: 16 },
   ],
   template: `<figure data-block="before_after" data-aspect="{{aspect_ratio}}" style="--ba-position:{{start}}%"><div class="block-ba-stage"><div class="block-ba-pane block-ba-after"><img src="{{after_image}}" alt="{{after_alt}}" loading="lazy" decoding="async" /><span class="block-ba-label">{{after_label}}</span></div><div class="block-ba-pane block-ba-before"><img src="{{before_image}}" alt="{{before_alt}}" loading="lazy" decoding="async" /><span class="block-ba-label">{{before_label}}</span></div><input class="block-ba-range" type="range" min="0" max="100" step="1" value="{{start}}" aria-label="{{before_label}} / {{after_label}}" hidden /><span class="block-ba-handle" aria-hidden="true"></span></div></figure>`,
   styles: `
@@ -272,6 +298,8 @@ const announcementBar: BlockType = {
   parts: [
     { name: 'text', label: 'Text', selector: '.block-announcement-text', target: 'text' },
     { name: 'link', label: 'Link', selector: '.block-announcement-link', target: 'text' },
+    { name: 'inner', label: 'Message row', selector: '.block-announcement-inner', target: 'container', decorative: true, min_render_version: 16 },
+    { name: 'close', label: 'Close button', selector: '.block-announcement-close', target: 'button', min_render_version: 16 },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
@@ -281,6 +309,9 @@ const announcementBar: BlockType = {
     { name: 'tone', type: 'select', label: 'Colors', options: ['primary', 'neutral', 'dark'], option_labels: ['Primary color', 'Surface', 'Dark'], default: 'primary' },
     { name: 'align', type: 'select', label: 'Alignment', options: ['center', 'start'], default: 'center' },
     { name: 'dismissible', type: 'boolean', label: 'Visitors can close it', default: true, help: 'A closed message stays closed in that browser until its text or link changes.' },
+    // Render version 16: colours that replace the tone's when set.
+    { name: 'background', type: 'color', label: 'Background color', min_render_version: 16 },
+    { name: 'text_color', type: 'color', label: 'Text color', min_render_version: 16 },
   ],
   template: `<aside data-block="announcement_bar" data-tone="{{tone}}" data-align="{{align}}" aria-label="{{announcement_label}}"><div class="block-announcement-inner"><div class="block-announcement-text">{{{text}}}</div>{{#link_url}}<a class="block-announcement-link" href="{{link_url}}">{{link_label}}</a>{{/link_url}}</div>{{#dismissible}}<button type="button" class="block-announcement-close" aria-label="{{close_label}}" hidden>${CLOSE_ICON}</button>{{/dismissible}}</aside>`,
   styles: `
@@ -325,6 +356,7 @@ const scrollSteps: BlockType = {
     { name: 'title', label: 'Step title', selector: '.block-steps-title', target: 'heading' },
     { name: 'text', label: 'Step text', selector: '.block-steps-text', target: 'text' },
     { name: 'media', label: 'Picture', selector: '.block-steps-media', target: 'container', decorative: true },
+    { name: 'step', label: 'Step', selector: '.block-steps-step', target: 'container', decorative: true, min_render_version: 16 },
   ],
   schema: [
     { name: 'style_id', type: 'style', label: 'Style', style_target: 'container', editor_group: 'content' },
@@ -337,6 +369,7 @@ const scrollSteps: BlockType = {
     { name: 'media_side', type: 'select', label: 'Picture side on wide screens', options: ['end', 'start'], option_labels: ['After the text', 'Before the text'], default: 'end' },
     { name: 'media_aspect', type: 'select', label: 'Picture shape', options: ['4:3', '1:1', '3:4', '16:9'], default: '4:3' },
     { name: 'media_fit', type: 'select', label: 'Picture fit', options: ['cover', 'contain'], default: 'cover' },
+    { name: 'heading_level', type: 'select', label: 'Heading level', options: ['h2', 'h3', 'h4', 'h5'], default: 'h3', min_render_version: 16 },
   ],
   template: `<div data-block="scroll_steps" data-side="{{media_side}}" data-aspect="{{media_aspect}}" data-fit="{{media_fit}}"><div class="block-steps-layout"><div class="block-steps-media" aria-hidden="true">{{#each items}}{{#image}}<img class="block-steps-frame" src="{{image}}" alt="" loading="lazy" decoding="async" data-step="{{@index}}" />{{/image}}{{/each}}</div><ol class="block-steps-list">{{#each items}}<li class="block-steps-step" data-step="{{@index}}">{{#image}}<img class="block-steps-step-media" src="{{image}}" alt="{{image_alt}}" loading="lazy" decoding="async" />{{/image}}<div class="block-steps-step-body">{{#title}}<h3 class="block-steps-title">{{title}}</h3>{{/title}}<div class="block-steps-text">{{{text}}}</div></div></li>{{/each}}</ol></div></div>`,
   styles: `
@@ -590,6 +623,8 @@ const svgAnimation: BlockType = {
   parts: [
     { name: 'caption', label: 'Caption', selector: '.block-svg-caption', target: 'text' },
     { name: 'stage', label: 'Drawing', selector: '.block-svg-stage', target: 'container', decorative: true },
+    // Added by the script for a looping drawing.
+    { name: 'toggle', label: 'Pause and play button', selector: '.block-svg-toggle', target: 'button', min_render_version: 16 },
   ],
   schema: [
     { name: 'svg', type: 'textarea', label: 'SVG markup', required: true,
@@ -719,6 +754,51 @@ window.TyperollBlocks.register('core/svg_animation', function (el) {
   created_at: ISO_EPOCH,
 };
 
+// ─── Render version 16 ─────────────────────────────────────────────────
+
+/** Replace one exact piece of a template or stylesheet, failing loudly if the source changed. */
+function swap(source: string, from: string, to: string): string {
+  if (!source.includes(from)) throw new Error(`story blocks: version 16 source changed (${from.slice(0, 60)})`);
+  return source.replace(from, to);
+}
+
+// Key figures: a chosen figure colour, applied only when set.
+stats.render_versions = [{
+  from: 16,
+  template: swap(stats.template!, ' style="--cols:{{cols}}">', '{{#value_color}} data-value-color{{/value_color}} style="--cols:{{cols}}{{#value_color}};--stats-value-color:{{value_color}}{{/value_color}}">'),
+  styles: `${stats.styles}\n[data-block="stats"][data-value-color] .block-stats-value { color:var(--stats-value-color); }`,
+}];
+
+// Timeline and scroll steps: the item heading level is a setting (h3 by default).
+timeline.render_versions = [{
+  from: 16,
+  template: swap(timeline.template!, '<h3 class="block-timeline-title">{{title}}</h3>', '<{{=heading_level}} class="block-timeline-title">{{title}}</{{=heading_level}}>'),
+}];
+scrollSteps.render_versions = [{
+  from: 16,
+  template: swap(scrollSteps.template!, '<h3 class="block-steps-title">{{title}}</h3>', '<{{=heading_level}} class="block-steps-title">{{title}}</{{=heading_level}}>'),
+}];
+
+// Before and after: a width and an alignment, like an image. Full keeps filling the column.
+beforeAfter.render_versions = [{
+  from: 16,
+  styles: `${beforeAfter.styles}
+[data-block="before_after"][data-width="narrow"] { max-inline-size:32rem; }
+[data-block="before_after"][data-width="normal"] { max-inline-size:48rem; }
+[data-block="before_after"][data-width="wide"] { max-inline-size:64rem; }
+[data-block="before_after"][data-align="center"] { margin-inline:auto; }
+[data-block="before_after"][data-align="right"] { margin-inline:auto 0; }`,
+}];
+
+// Announcement bar: background and text colours that replace the tone's when set.
+announcementBar.render_versions = [{
+  from: 16,
+  template: swap(announcementBar.template!, 'data-align="{{align}}"', 'data-align="{{align}}"{{#background}} data-background{{/background}}{{#text_color}} data-text-color{{/text_color}}{{#announcement_colors}} style="{{announcement_colors}}"{{/announcement_colors}}'),
+  styles: `${announcementBar.styles}
+[data-block="announcement_bar"][data-background] { background:var(--announcement-bg); }
+[data-block="announcement_bar"][data-text-color] { color:var(--announcement-fg); }`,
+}];
+
 export const STORY_BLOCK_TYPES: BlockType[] = [stats, timeline, audio, beforeAfter, announcementBar, scrollSteps, scrollFilm, svgAnimation];
 
 const STORY_BLOCK_IDS = new Set(STORY_BLOCK_TYPES.map(type => type.id));
@@ -773,6 +853,9 @@ export function prepareStoryBlock(blockType: BlockType, data: Record<string, unk
   if (type === 'core/announcement_bar') {
     data.announcement_label = uiLabel(options.language, 'announcement');
     data.close_label = uiLabel(options.language, 'close');
+    // Render version 16: the chosen colours, as custom properties (empty without a choice).
+    const background = String(data.background ?? '').trim(), textColor = String(data.text_color ?? '').trim();
+    data.announcement_colors = `${background ? `--announcement-bg:${background};` : ''}${textColor ? `--announcement-fg:${textColor};` : ''}`;
     return { 'data-dismiss-key': shortHash(`${String(data.text ?? '')}\u0000${String(data.link_url ?? '')}`) };
   }
   if (type === 'core/scroll_film') {

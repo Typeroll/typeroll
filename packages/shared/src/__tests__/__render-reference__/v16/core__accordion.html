@@ -28,10 +28,10 @@
 
 /* core/accordion */
 [data-block="accordion"] { display: flex; flex-direction: column; }
-[data-block="accordion"][data-style="bordered"]  { border: 1px solid rgba(0,0,0,0.1); border-radius: 0.5rem; }
+[data-block="accordion"][data-style="bordered"]  { border: 1px solid var(--accordion-border, rgba(0,0,0,0.1)); border-radius: 0.5rem; }
 [data-block="accordion"][data-style="separated"] { gap: 0.5rem; }
-[data-block="accordion"][data-style="separated"] details { border: 1px solid rgba(0,0,0,0.1); border-radius: 0.5rem; }
-[data-block="accordion"] details { padding: 1rem 1.25rem; border-bottom: 1px solid rgba(0,0,0,0.05); }
+[data-block="accordion"][data-style="separated"] details { border: 1px solid var(--accordion-border, rgba(0,0,0,0.1)); border-radius: 0.5rem; }
+[data-block="accordion"] details { padding: 1rem 1.25rem; border-bottom: 1px solid var(--accordion-divider, rgba(0,0,0,0.05)); }
 [data-block="accordion"] details:last-child { border-bottom: none; }
 [data-block="accordion"] summary { cursor: pointer; font-weight: 600; list-style: none; display: flex; justify-content: space-between; align-items: center; }
 [data-block="accordion"] summary::-webkit-details-marker { display: none; }
@@ -70,4 +70,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

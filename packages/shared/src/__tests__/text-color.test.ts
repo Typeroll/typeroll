@@ -29,12 +29,19 @@ describe('text colour on core/prose and core/text', () => {
   });
 
   it('renders a palette token as its CSS variable on the block element', () => {
-    expect(openingTag(render(prose({ color: 'on_secondary' }))))
+    expect(openingTag(render(prose({ color: 'on_secondary' }), 15)))
       .toContain('style="--text_align:inherit;--font_weight:inherit;color:var(--color-on-secondary)"');
-    expect(openingTag(render(text({ tag: 'span', color: 'on_secondary' }))))
+    expect(openingTag(render(text({ tag: 'span', color: 'on_secondary' }), 15)))
       .toBe('<span data-block="text" class="block-text" data-align="inherit" style="color:var(--color-on-secondary)">');
-    expect(openingTag(render(prose({ color: '#123456' })))).toContain(';color:#123456"');
-    expect(openingTag(render(text({ color: 'var(--color-primary)' })))).toContain('style="color:var(--color-primary)"');
+    expect(openingTag(render(prose({ color: '#123456' }), 15))).toContain(';color:#123456"');
+    expect(openingTag(render(text({ color: 'var(--color-primary)' }), 15))).toContain('style="color:var(--color-primary)"');
+  });
+
+  it('writes the colour as a custom property from render version 16, applied by the block CSS', () => {
+    expect(openingTag(render(prose({ color: 'on_secondary' }), 16)))
+      .toContain('data-color style="--text_align:inherit;--font_weight:inherit;--prose-color:var(--color-on-secondary)"');
+    expect(openingTag(render(text({ tag: 'span', color: 'on_secondary' }), 16)))
+      .toBe('<span data-block="text" class="block-text" data-align="inherit" data-color style="--text-color:var(--color-on-secondary)">');
   });
 
   it('renders a non-heading label with colour, size and weight using native fields only', () => {
@@ -57,7 +64,7 @@ describe('text colour on core/prose and core/text', () => {
         expect(plain).not.toContain('color:');
       }
     }
-    // Block CSS does not change: the colour lives on the element only.
+    // Block CSS does not change: the colour is set on the element (applied by a rule that is always there).
     const css = (blocks: Block[]) => collectBlockAssets(blocks, registry, { renderVersion: LATEST_RENDER_VERSION }).css;
     expect(css([prose({ color: 'on_secondary' }), text({ color: 'on_secondary' })])).toBe(css([prose({}), text({})]));
   });
@@ -75,7 +82,7 @@ describe('text colour on core/prose and core/text', () => {
     const html = renderBlock(text({ color: '{{props.tone}}' }), {
       registry, renderVersion: LATEST_RENDER_VERSION, context: { props: { tone: 'on_secondary' } } as never,
     });
-    expect(openingTag(html)).toContain('style="color:var(--color-on-secondary)"');
+    expect(openingTag(html)).toContain('style="--text-color:var(--color-on-secondary)"');
   });
 
   it('is linted like core/heading colours by lint_design_tokens', () => {

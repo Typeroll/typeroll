@@ -8,8 +8,8 @@
 // single dynamic steps via renderBlocks directly.
 
 import { renderBlocks, escapeHtml, type RenderBlocksOptions } from './render-blocks.js';
-import type { Form, FormField, FormStep } from './types.js';
-import { FORM_BLOCKS_CSS } from './form-blocks.js';
+import type { Block, Form, FormField, FormStep } from './types.js';
+import { BOOLEAN_LABELS, FORM_BLOCKS_CSS } from './form-blocks.js';
 import { collectStepFields, defaultErrorMessage, formMessage, formStepPath, isCheckboxGroupField, nextStep, showsStepTitle, type FieldError, type FormMessageKey } from './form-fields.js';
 import { resolveRenderVersion } from './render-version.js';
 
@@ -120,7 +120,42 @@ export function safeFormRedirectUrl(value: unknown): string {
   }
 }
 
-export interface RenderFormOptions {
+/**
+ * Where a form sits and how its submit button looks (render version 16).
+ * These are core/form block settings: the block passes them to formSource
+ * beside its submit label, and the caller hands them on here. Unknown or
+ * default values add nothing to the markup.
+ */
+export interface FormPresentationOptions {
+  /** Maximum width of the form in px (240–2400). */
+  max_width_px?: unknown;
+  /** Where a form narrower than its column sits: start (default), center or end. */
+  align?: unknown;
+  /** Where the submit (and back) button sits: start (default), center or end. */
+  submit_align?: unknown;
+  /** auto (default, as wide as its label) or full (the whole row). */
+  submit_width?: unknown;
+}
+
+/** The presentation settings among a core/form block's options (formSource's second argument). */
+export function formPresentationOptions(block: unknown): FormPresentationOptions {
+  if (!block || typeof block !== 'object') return {};
+  const { max_width_px, align, submit_align, submit_width } = block as Record<string, unknown>;
+  return { max_width_px, align, submit_align, submit_width };
+}
+
+/** The validated presentation attributes of a form's root, from render version 16. */
+function formPresentationAttrs(opts: FormPresentationOptions): string {
+  const pick = (value: unknown, allowed: readonly string[]) => typeof value === 'string' && allowed.includes(value) ? value : '';
+  const align = pick(opts.align, ['center', 'end']);
+  const submitAlign = pick(opts.submit_align, ['center', 'end']);
+  const submitWidth = pick(opts.submit_width, ['full']);
+  const max = typeof opts.max_width_px === 'number' ? opts.max_width_px : typeof opts.max_width_px === 'string' && opts.max_width_px.trim() ? Number(opts.max_width_px) : NaN;
+  const maxWidth = Number.isFinite(max) && max >= 240 && max <= 2400 ? Math.round(max) : 0;
+  return `${align ? ` data-align="${align}"` : ''}${submitAlign ? ` data-submit-align="${submitAlign}"` : ''}${submitWidth ? ` data-submit-width="${submitWidth}"` : ''}${maxWidth ? ` style="--form-max-width:${maxWidth}px"` : ''}`;
+}
+
+export interface RenderFormOptions extends FormPresentationOptions {
   registry: RenderBlocksOptions['registry'];
   /** Proof-of-work difficulty in leading zero bits. 0 disables. */
   pow_bits?: number;
@@ -171,7 +206,7 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
       // preview has no forms service; their blocks render the same either
       // way (no submitted values reach them), so it prerenders them.
       if (step.render === 'dynamic' && !preview) return '';
-      return `<div data-form-step="${escapeHtml(step.id)}"${perStepLabels ? ` data-submit-label="${escapeHtml(labelFor(step))}"` : ''}${i === 0 ? '' : ' hidden'}>${formStepBodyHtml(step, opts.registry, renderVersion)}</div>`;
+      return `<div data-form-step="${escapeHtml(step.id)}"${perStepLabels ? ` data-submit-label="${escapeHtml(labelFor(step))}"` : ''}${i === 0 ? '' : ' hidden'}>${formStepBodyHtml(step, opts.registry, renderVersion, lang)}</div>`;
     })
     .join('\n');
 
@@ -227,7 +262,13 @@ export function renderFormHtml(form: Form, embed: FormEmbed, opts: RenderFormOpt
   // Turnstile renders into this container on the first step only; previews never post.
   const turnstileKey = !preview && embed.turnstile_site_key && /^[0-9A-Za-z_-]{10,128}$/.test(embed.turnstile_site_key) ? embed.turnstile_site_key : '';
   const turnstileHtml = turnstileKey ? `<div class="form-turnstile" data-tr-turnstile="${escapeHtml(turnstileKey)}"></div>\n` : '';
-  return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam} data-tr-context-params="${escapeHtml(JSON.stringify(form.target?.context_params ?? []))}">
+  // Render version 16: the form's own width and alignment, and the buttons
+  // in a row of their own that the submit settings align.
+  const v16 = renderVersion >= 16;
+  const presentation = v16 ? formPresentationAttrs(opts) : '';
+  const submitHtml = `<button type="submit" class="form-submit">${escapeHtml(labelFor(steps[0]!))}</button>`;
+  const actionsHtml = v16 ? `<div class="form-actions">${backHtml}${submitHtml}</div>` : `${backHtml}${submitHtml}`;
+  return `<div data-tr-form="${escapeHtml(form.id)}"${hydrate}${sessionParam} data-tr-context-params="${escapeHtml(JSON.stringify(form.target?.context_params ?? []))}"${presentation}>
 ${styles}<form data-tr-form-el${!preview && form.option_sources?.length ? ' data-live-options="true"' : ''} method="POST" action="${escapeHtml(embed.submit_url)}" data-pow-bits="${preview ? 0 : (opts.pow_bits ?? 0)}" data-msg-fail="${escapeHtml(failMsg)}" data-msg-done="${escapeHtml(doneMsg)}"${remoteMsgAttrs}${redirect ? ` data-redirect="${escapeHtml(redirect)}"` : ''}${labelAttrs}${versionAttr}${previewAttrs}>
 ${previewHtml}<input type="hidden" name="_token" value="${escapeHtml(preview ? '' : (embed.submit_token ?? ''))}" />
 <input type="hidden" name="_state" value="" />
@@ -236,7 +277,7 @@ ${previewHtml}<input type="hidden" name="_token" value="${escapeHtml(preview ? '
 <p class="form-toplevel-error form-field-error" hidden tabindex="-1"></p>
 ${progressHtml}${stepHtml}
 <div data-form-dynamic-step hidden></div>
-${turnstileHtml}${backHtml}<button type="submit" class="form-submit">${escapeHtml(labelFor(steps[0]!))}</button>
+${turnstileHtml}${actionsHtml}
 </form>
 </div>`;
 }
@@ -245,9 +286,32 @@ ${turnstileHtml}${backHtml}<button type="submit" class="form-submit">${escapeHtm
  * A step's title and blocks, as the static shell and the submit endpoint
  * (for dynamic steps) both render them.
  */
-export function formStepBodyHtml(step: FormStep, registry: RenderBlocksOptions['registry'], renderVersion: number): string {
+export function formStepBodyHtml(step: FormStep, registry: RenderBlocksOptions['registry'], renderVersion: number, lang?: string): string {
   const title = showsStepTitle(step, renderVersion) ? `<h3 class="form-step-title">${escapeHtml(step.title!)}</h3>` : '';
-  return `${title}${renderBlocks(step.blocks ?? [], { registry })}`;
+  // Before render version 16 the step's blocks render at the baseline
+  // version, exactly as they always have. From 16 they render at the site's
+  // version (layered CSS, versioned markup) and a Yes / No answer speaks the
+  // site's language.
+  if (renderVersion < 16) return `${title}${renderBlocks(step.blocks ?? [], { registry })}`;
+  return `${title}${renderBlocks(localizeFormBlocks(step.blocks ?? [], lang), { registry, renderVersion })}`;
+}
+
+/** form/boolean texts left empty or at their English default, in the site's language. */
+function localizeFormBlocks(blocks: Block[], lang: string | undefined): Block[] {
+  return blocks.map((block) => {
+    let next = block;
+    if (block.type === 'form/boolean') {
+      const data: Record<string, unknown> = { ...(block.data ?? {}) };
+      for (const [name, , english, key] of BOOLEAN_LABELS) {
+        const value = data[name];
+        if (value === undefined || value === null || (typeof value === 'string' && (!value.trim() || value === english))) data[name] = formMessage(key, lang);
+      }
+      next = { ...block, data };
+    }
+    if (block.children) next = { ...next, children: localizeFormBlocks(block.children, lang) };
+    if (block.slots) next = { ...next, slots: block.slots.map((slot) => localizeFormBlocks(slot, lang)) };
+    return next;
+  });
 }
 
 /** Shell styles shipped once per bundle (rides with the runtime include). */
@@ -281,3 +345,30 @@ ${FORM_BLOCKS_CSS}
 }
 [data-tr-form] .form-done { padding: 1rem 0; font-weight: 600; }
 `.trim();
+
+/**
+ * Render version 16 additions to the shell: the form's maximum width and
+ * alignment, the button row's alignment and a full-width submit button
+ * (core/form settings, see FormPresentationOptions), and field widths: a
+ * step whose fields do not all take the full row lays them out in wrapping
+ * rows. Without such settings nothing changes.
+ */
+const FORM_SHELL_V16_CSS = `
+[data-tr-form] { max-inline-size: var(--form-max-width, none); }
+[data-tr-form][data-align="center"] { margin-inline: auto; }
+[data-tr-form][data-align="end"] { margin-inline-start: auto; }
+[data-tr-form][data-submit-align="center"] .form-actions { text-align: center; }
+[data-tr-form][data-submit-align="end"] .form-actions { text-align: end; }
+[data-tr-form][data-submit-width="full"] .form-submit { display: block; inline-size: 100%; }
+[data-tr-form] :is([data-form-step], [data-form-dynamic-step]):has(> .form-field[data-width]:not([data-width="full"])) { --form-column-gap: 1rem; display: flex; flex-wrap: wrap; align-items: flex-start; column-gap: var(--form-column-gap); }
+[data-tr-form] :where(:is([data-form-step], [data-form-dynamic-step]):has(> .form-field[data-width]:not([data-width="full"]))) > * { flex: 1 1 100%; min-inline-size: 0; }
+[data-tr-form] :is([data-form-step], [data-form-dynamic-step]) > .form-field:is([data-width="half"], [data-width="third"], [data-width="two-thirds"]) { min-inline-size: min(100%, 12rem); }
+[data-tr-form] :is([data-form-step], [data-form-dynamic-step]) > .form-field[data-width="half"] { flex-basis: calc(50% - var(--form-column-gap) / 2); }
+[data-tr-form] :is([data-form-step], [data-form-dynamic-step]) > .form-field[data-width="third"] { flex-basis: calc(100% / 3 - var(--form-column-gap) * 2 / 3); }
+[data-tr-form] :is([data-form-step], [data-form-dynamic-step]) > .form-field[data-width="two-thirds"] { flex-basis: calc(200% / 3 - var(--form-column-gap) / 3); }
+`.trim();
+
+/** The shell styles for a render version: FORM_SHELL_CSS before 16, with the version 16 additions from it. */
+export function formShellCss(renderVersion: number | undefined): string {
+  return resolveRenderVersion(renderVersion) >= 16 ? `${FORM_SHELL_CSS}\n${FORM_SHELL_V16_CSS}` : FORM_SHELL_CSS;
+}

@@ -1,4 +1,4 @@
-<nav data-block="navigation_menu" data-collapse="1024" data-mobile-override="false" data-panel-padding="auto" aria-label="Main navigation" style="--menu-background:#ffffff" data-presentation="core%2Fnavigation_menu" data-block-type="core/navigation_menu"><button type="button" class="block-menu-open" aria-label="Open menu" aria-expanded="false"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button><div class="block-menu-content"></div><div class="block-menu-mobile"></div><dialog class="block-menu-dialog" aria-label="Main navigation"><button type="button" class="block-menu-close" aria-label="Close menu"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 5 14 14M19 5 5 19"/></svg></button><div class="block-menu-scroll"></div></dialog></nav>
+<nav data-block="navigation_menu" data-collapse="1024" data-mobile-override="false" data-panel-padding="auto" data-toggle-align="start" aria-label="Main navigation" style="--menu-background:#ffffff;--menu-toggle-color:" data-presentation="core%2Fnavigation_menu" data-block-type="core/navigation_menu"><button type="button" class="block-menu-open" aria-label="Open menu" aria-expanded="false"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button><div class="block-menu-content"></div><div class="block-menu-mobile"></div><dialog class="block-menu-dialog" aria-label="Main navigation"><button type="button" class="block-menu-close" aria-label="Close menu"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m5 5 14 14M19 5 5 19"/></svg></button><div class="block-menu-scroll"></div></dialog></nav>
 
 /* css */
 @layer typeroll.platform{
@@ -67,6 +67,23 @@
 [data-block="navigation_menu"][data-collapse="1024"][data-enhanced="true"] > :is(.block-menu-content,.block-menu-mobile) { display:none; }
 }
 
+[data-block="navigation_menu"] > .block-menu-open { color:var(--menu-toggle-color,inherit); }
+[data-block="navigation_menu"] > .block-menu-open:has(> .block-menu-open-label) { gap:.5em; padding-inline:.25em; font-size:inherit; }
+@media(max-width:575px) {
+[data-block="navigation_menu"][data-collapse="576"][data-enhanced="true"]:is([data-toggle-align="center"],[data-toggle-align="end"]) > .block-menu-open { display:flex; inline-size:fit-content; }
+}
+@media(max-width:767px) {
+[data-block="navigation_menu"][data-collapse="768"][data-enhanced="true"]:is([data-toggle-align="center"],[data-toggle-align="end"]) > .block-menu-open { display:flex; inline-size:fit-content; }
+}
+@media(max-width:768px) {
+[data-block="navigation_menu"][data-collapse="769"][data-enhanced="true"]:is([data-toggle-align="center"],[data-toggle-align="end"]) > .block-menu-open { display:flex; inline-size:fit-content; }
+}
+@media(max-width:1023px) {
+[data-block="navigation_menu"][data-collapse="1024"][data-enhanced="true"]:is([data-toggle-align="center"],[data-toggle-align="end"]) > .block-menu-open { display:flex; inline-size:fit-content; }
+}
+[data-block="navigation_menu"][data-toggle-align="center"] > .block-menu-open { margin-inline:auto; }
+[data-block="navigation_menu"][data-toggle-align="end"] > .block-menu-open { margin-inline-start:auto; }
+
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -92,4 +109,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

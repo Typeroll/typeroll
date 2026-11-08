@@ -252,10 +252,14 @@ describe('every core block field changes what renders', () => {
     ...Object.fromEntries(['section', 'container', 'cta'].flatMap(type => ['background_overlay', 'background_video_phones'].map(name => [`core/${type}.${name}`, { background_video: '/bg.mp4' }]))),
     'core/section.background_video_phones': { background_video: '/bg.mp4' },
     'core/audio.transcript_label': { transcript_url: '/transcript/' },
+    'core/timeline.heading_level': { items: [{ title: 'Event' }] },
+    'core/scroll_steps.heading_level': { items: [{ title: 'Step' }] },
     ...Object.fromEntries(['section', 'hero', 'cta'].flatMap(type => [[`core/${type}.overlay_side`, { overlay_style: 'gradient', background_image: '/bg.jpg' }], [`core/${type}.text_panel_shape`, { text_panel: 'dark_glass' }]])),
     'core/container.overlay_side': { overlay_style: 'gradient', background_video: '/bg.mp4' },
     'core/scroll_film.frames_phone': { frames: [{ src: '/d1.webp' }, { src: '/d2.webp' }] },
     'core/announcement_bar.link_label': { link_url: '/more/' },
+    'core/cta.image_alt': { background_image: '/bg.jpg', image_position: 'left' },
+    'core/navigation_menu.toggle_label': { show_toggle_label: true },
     ...Object.fromEntries(['frames_pattern', 'frame_count', 'frame_first', 'frames_pattern_phone'].map(name => [`core/scroll_film.${name}`, { frames_pattern: '/f/{nnn}.webp', frame_count: 3, frames_pattern_phone: '/p/{nnn}.webp' }])),
     ...Object.fromEntries(['link_rel', 'new_tab'].map(name => [`core/image.${name}`, { link: '/linked-image/' }])),
     ...Object.fromEntries(['mobile_src_below', 'mobile_src_below_px'].map(name => [`core/image.${name}`, { mobile_src: '/mobile.png' }])),
@@ -307,7 +311,7 @@ describe('every core block field changes what renders', () => {
   });
   const pageSource = (config: Record<string, unknown>) => config.filter_value === 'nothing-matches' ? []
     : [1, 2, 3].map(n => ({ id: `p${n}`, title: `Listed ${n} ${JSON.stringify(config)}`, url: `/p${n}/`, excerpt: 'Excerpt' }));
-  const formSource = (id: string, block?: { submit_label?: string }) => `<form data-form="${id}" data-label="${block?.submit_label ?? ''}"></form>`;
+  const formSource = (id: string, block?: object) => `<form data-form="${id}" data-options="${encodeURIComponent(JSON.stringify(block ?? {}))}"></form>`;
   const once = (block: Block, context?: Record<string, unknown>) => {
     try {
       return renderBlocks([block], { registry, renderVersion: LATEST, context: context as never, pageSource, formSource })

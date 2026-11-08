@@ -1,4 +1,4 @@
-<div data-block="repeater" data-presentation="core%2Frepeater" data-bid="ref" data-layout="grid" style="--cols:3;--mobile-cols:1;--gap:lg;--align:stretch;"></div>
+<div data-block="repeater" data-presentation="core%2Frepeater" data-bid="ref" data-layout="grid" style="--cols:3;--mobile-cols:1;--gap:lg;--align:stretch;" data-gap="lg" data-last-row="start"></div>
 
 /* css */
 @layer typeroll.platform{
@@ -37,10 +37,10 @@
   text-align: var(--align-text, left);
   align-items: var(--align-items, flex-start);
 }
-[data-block="icon_box"][style*="--layout:icon-top"]   { --layout-dir: column; }
-[data-block="icon_box"][style*="--layout:icon-left"]  { --layout-dir: row; }
-[data-block="icon_box"][style*="--layout:icon-right"] { --layout-dir: row-reverse; }
-[data-block="icon_box"][style*="--align:center"]      { --align-text: center; --align-items: center; }
+[data-block="icon_box"][data-layout="icon-top"]   { --layout-dir: column; }
+[data-block="icon_box"][data-layout="icon-left"]  { --layout-dir: row; }
+[data-block="icon_box"][data-layout="icon-right"] { --layout-dir: row-reverse; }
+[data-block="icon_box"][data-align="center"]      { --align-text: center; --align-items: center; }
 [data-block="icon_box"] .block-iconbox-icon {
   flex: 0 0 auto; width: var(--icon_size_px, 3rem); height: var(--icon_size_px, 3rem); display: flex; align-items: center; justify-content: center;
   color: var(--icon-color, var(--color-primary, currentColor));
@@ -59,17 +59,20 @@
 [data-block="icon_box"] .block-iconbox-heading a::after { content:""; position:absolute; inset:0; border-radius:inherit; }
 [data-block="icon_box"] .block-iconbox-heading a:focus-visible::after { outline:2px solid currentColor; outline-offset:3px; }
 [data-block="icon_box"] .block-iconbox-text a { position:relative; z-index:1; }
+/* Beside the text (icon-left, icon-right) the icon and text line up at the top, middle or bottom. */
+[data-block="icon_box"][data-vertical-align="center"] > :is(.block-iconbox-icon, .block-iconbox-body) { margin-block:auto; }
+[data-block="icon_box"][data-vertical-align="end"] > :is(.block-iconbox-icon, .block-iconbox-body) { margin-block-start:auto; }
 
-[data-presentation="core%2Frepeater"]{--gap_px:initial}
+[data-presentation="core%2Frepeater"]{--gap_px:initial;--logo_height_px:initial}
 
 /* core/repeater */
 [data-block="repeater"] { --rep-gap: var(--grid-gap, 1rem); }
-[data-block="repeater"][style*="--gap:none"] { --rep-gap: 0; }
-[data-block="repeater"][style*="--gap:xs"]   { --rep-gap: 0.25rem; }
-[data-block="repeater"][style*="--gap:sm"]   { --rep-gap: 0.5rem; }
-[data-block="repeater"][style*="--gap:md"]   { --rep-gap: 1rem; }
-[data-block="repeater"][style*="--gap:lg"]   { --rep-gap: 2rem; }
-[data-block="repeater"][style*="--gap:xl"]   { --rep-gap: 3rem; }
+[data-block="repeater"][data-gap="none"] { --rep-gap: 0; }
+[data-block="repeater"][data-gap="xs"]   { --rep-gap: 0.25rem; }
+[data-block="repeater"][data-gap="sm"]   { --rep-gap: 0.5rem; }
+[data-block="repeater"][data-gap="md"]   { --rep-gap: 1rem; }
+[data-block="repeater"][data-gap="lg"]   { --rep-gap: 2rem; }
+[data-block="repeater"][data-gap="xl"]   { --rep-gap: 3rem; }
 
 [data-block="repeater"][data-layout="grid"] {
   /* Read --cols directly so the responsive @media compiler's per-breakpoint
@@ -117,11 +120,18 @@
 .tr-repeater-group + .tr-repeater-group { margin-top: 2rem; }
 .tr-repeater-group-title { margin: 0 0 0.75rem; }
 
-@media (max-width: 767px) {
+@media (max-width: 639px) {
   /* The mobile count is independent of desktop/tablet column defaults. */
   [data-block="repeater"][data-layout="grid"]:not([data-responsive-cols]) { grid-template-columns: repeat(var(--mobile-cols, 1), minmax(0, 1fr)); }
   [data-block="repeater"][data-layout="masonry"]:not([data-responsive-cols]) { column-count: var(--mobile-cols, 1); }
 }
+[data-block="repeater"][data-layout="grid"][data-last-row="center"] { display:flex; flex-wrap:wrap; justify-content:center; }
+[data-block="repeater"][data-layout="grid"][data-last-row="center"] > * { flex:0 1 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3)); min-inline-size:min(100%, var(--min-item, 10rem)); }
+[data-block="repeater"][data-layout="grid"][data-last-row="center"] > :is(p,ul,ol,div:not([data-block])) { flex-basis:100%; }
+@media (max-width: 639px) {
+  [data-block="repeater"][data-layout="grid"][data-last-row="center"]:not([data-responsive-cols]) > * { flex-basis:calc((100% - (var(--mobile-cols, 1) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--mobile-cols, 1)); }
+}
+[data-block="repeater"] { --logo-height:var(--logo_height_px); }
 
 /* core/repeater defaults */
 /* Grids of repeated items: the column setting is the maximum, and each item keeps a minimum
@@ -163,4 +173,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

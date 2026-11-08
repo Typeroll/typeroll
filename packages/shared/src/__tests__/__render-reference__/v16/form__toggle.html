@@ -1,4 +1,4 @@
-<div data-block="form_toggle" class="form-field form-field--inline" data-field="Sample name">
+<div data-block="form_toggle" class="form-field form-field--inline" data-field="Sample name" data-width="full">
   <label class="form-toggle">
     <input type="checkbox" id="ff-Sample name" name="Sample name" value="yes" />
     <span class="form-toggle-track" aria-hidden="true"></span>
@@ -73,4 +73,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

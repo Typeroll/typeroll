@@ -19,9 +19,10 @@ import type {
   SiteSettings,
   Site,
   SiteVersion,
+  Snippet,
 } from '@typeroll/shared';
 import { vstore } from './version-store';
-import { publicationLiveContent } from './publishing/publication-snippets';
+import { siteSnippets } from './publishing/publication-snippets';
 import {
   contentWellCss, siteThemeCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, webfontFallbackCss, withGlobalBlockContent,
   pageRobots,
@@ -223,8 +224,8 @@ export async function renderPreview(
   const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
   // The version's site fields: values as {{site.fields.*}}, definitions for core/site_field formats.
   const siteFields = await vstore.siteFields(orgId, siteId, versionId);
-  // Live snippets as saved now, and where the published page fetches newer ones (null: no fetching).
-  const live = await publicationLiveContent(orgId, siteId);
+  // Live snippets as saved now. The preview never names their live files: see previewLiveContent.
+  const live = await previewLiveContent(orgId, siteId);
   const snippetSource = snippetSourceFrom(live.snippets.map(snippet => snippetFile(snippet, siteTimeZone(settings))));
   const siteFieldOptions = { siteFieldDefinitions: siteFields.groups, snippetSource };
   const contentType = contentTypes.find(type => type.id === (page!.content_type ?? 'page'))
@@ -334,8 +335,9 @@ export async function renderPreview(
 
   bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
   if (bodyHtml.includes('data-tr-form')) {
-    const { FORMS_RUNTIME_JS, FORM_SHELL_CSS } = await import('@typeroll/shared');
-    bodyHtml += `<style>${platformLayer('blocks', FORM_SHELL_CSS, resolveRenderVersion(settings.render_version))}</style><script>${FORMS_RUNTIME_JS}</script>`;
+    const { FORMS_RUNTIME_JS, formShellCss } = await import('@typeroll/shared');
+    const formsVersion = resolveRenderVersion(settings.render_version);
+    bodyHtml += `<style>${platformLayer('blocks', formShellCss(formsVersion), formsVersion)}</style><script>${FORMS_RUNTIME_JS}</script>`;
   }
   const headerHtml = rewriteIf(renderPartial(header));
   const footerHtml = rewriteIf(renderPartial(footer));
@@ -457,6 +459,20 @@ export interface BlockTypePreview {
  * page links and the sanitizer. The builder, the page editor and the API all
  * use this, so a preview matches the published site.
  */
+/**
+ * Live content for a preview: the snippets as saved now, without a live base
+ * URL. A preview renders live snippets and live site fields as they are saved
+ * at the moment it is requested, which is what their live files hold, so the
+ * browser has nothing newer to fetch. It also could not: preview responses
+ * are sandboxed into an opaque origin (lib/preview-headers), so a fetch from
+ * them is sent with `Origin: null`, and the live files' CORS rule allows only
+ * the site's own addresses (live-files: liveSiteOrigins). Without the base
+ * URL the blocks carry no live file address and the page ships no live script.
+ */
+export async function previewLiveContent(orgId: string, siteId: string): Promise<{ snippets: Snippet[]; liveBaseUrl: null }> {
+  return { snippets: await siteSnippets(orgId, siteId), liveBaseUrl: null };
+}
+
 export async function renderBlockTypePreview(
   orgId: string,
   siteId: string,
@@ -477,7 +493,7 @@ export async function renderBlockTypePreview(
   const pageSource = createPageSource(contentTypes, pages, settings.trailing_slash ?? 'always');
   const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
   const siteFields = await vstore.siteFields(orgId, siteId, versionId);
-  const live = await publicationLiveContent(orgId, siteId);
+  const live = await previewLiveContent(orgId, siteId);
   const block: Block = { id: 'block-preview', type: type.id, data: input.data };
   const onMissingType = (typeId: string) =>
     `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert">Missing block type: ${escapeHtml(typeId)}</div>`;
@@ -642,7 +658,7 @@ ${fonts.googleCdn ? '<link rel="preconnect" href="https://fonts.googleapis.com">
         : `<link rel="stylesheet" href="${escapeAttr(url)}">`).join('')
     }${fonts.services.map(url => `<link rel="stylesheet" href="${escapeAttr(url)}">`).join('')}${fonts.plan.families.length ? `<style>${webfontFallbackCss(renderVersion, fonts.plan)}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
-${direction === 'rtl' ? `<style data-direction>${directionCss(direction)}</style>` : ''}
+${direction === 'rtl' ? `<style data-direction>${directionCss(direction, renderVersion)}</style>` : ''}
 ${siteStyles ? `<style data-site-styles="1">${platformLayer('styles', siteStyles, renderVersion)}</style>` : ''}
 ${settings.custom_css ? `<style data-site-css="1">${styleElementText(settings.custom_css)}</style>` : ''}
 ${page.custom_css ? `<style data-page-css="1">${styleElementText(page.custom_css)}</style>` : ''}
@@ -692,7 +708,7 @@ ${cookieConsentHtml ?? ''}
 function renderPreviewCookieConsent(settings: SiteSettings, language?: string, initialChoice?: 'all' | 'necessary'): string {
   const text = settings.cookie_consent?.text;
   const bodyHtml = text ? sanitizeBody(text, settings.iframe_allowed_hosts) : undefined;
-  return renderCookieConsent(settings.cookie_consent, bodyHtml, language, { initialChoice });
+  return renderCookieConsent(settings.cookie_consent, bodyHtml, language, { initialChoice, renderVersion: resolveRenderVersion(settings.render_version) });
 }
 
 function renderBanner(b: BannerArgs): string {
@@ -738,7 +754,7 @@ async function resolvePreviewMedia(html: string, orgId: string, siteId: string, 
 }
 
 async function previewFormSource(orgId: string, siteId: string, blockRegistry: ReturnType<typeof buildCoreBlockRegistry>, settings: SiteSettings, assetBlocks: Block[]) {
-    const { renderFormHtml } = await import('@typeroll/shared');
+    const { renderFormHtml, formPresentationOptions } = await import('@typeroll/shared');
     const { formSubmitUrl } = await import('./forms-signing');
     const { resolveAppFormEndpoint } = await import('./apps/form-endpoint');
     type F = import('@typeroll/shared').Form;
@@ -763,6 +779,8 @@ async function previewFormSource(orgId: string, siteId: string, blockRegistry: R
       // minted, and even a no-JS post goes to the core endpoint, which
       // refuses the preview marker — never to an app's endpoint.
       return renderFormHtml(form, { submit_url: formSubmitUrl(), submit_token: null, preview: true }, {
+        // The core/form block's width, alignment and submit button settings (render version 16).
+        ...formPresentationOptions(block),
         registry: blockRegistry,
         lang: (settings as { language?: string }).language,
         renderVersion: resolveRenderVersion(settings.render_version),

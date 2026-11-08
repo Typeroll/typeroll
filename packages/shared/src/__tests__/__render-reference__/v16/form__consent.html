@@ -1,4 +1,4 @@
-<div data-block="form_consent" class="form-field form-field--inline" data-field="consent">
+<div data-block="form_consent" class="form-field form-field--inline" data-field="consent" data-width="full">
   <label class="form-choice">
     <input type="checkbox" id="ff-consent" name="consent" value="yes" data-required="true" />
     <span class="form-consent-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></span>
@@ -62,4 +62,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

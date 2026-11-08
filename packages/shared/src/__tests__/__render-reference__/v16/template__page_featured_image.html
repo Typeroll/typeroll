@@ -26,14 +26,26 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
-/* template/page_featured_image */
-[data-block="image"] img { display:block; width:100%; height:auto; object-fit:contain; }
-[data-block="image"][data-fit="cover"] img { object-fit:cover; }
-[data-block="image"][data-aspect="16:9"] img { aspect-ratio:16/9; }
-[data-block="image"][data-aspect="4:3"] img { aspect-ratio:4/3; }
-[data-block="image"][data-aspect="1:1"] img { aspect-ratio:1; }
-[data-block="image"][data-aspect="3:1"] img { aspect-ratio:3/1; }
+[data-presentation="template%2Fpage_featured_image"]{--focal_x:initial;--focal_y:initial}
 
+/* template/page_featured_image */
+[data-template-block="page_featured_image"] img { display:block; width:100%; height:auto; object-fit:contain; }
+[data-template-block="page_featured_image"][data-fit="cover"] img { object-fit:cover; }
+[data-template-block="page_featured_image"][data-aspect="16:9"] img { aspect-ratio:16/9; }
+[data-template-block="page_featured_image"][data-aspect="4:3"] img { aspect-ratio:4/3; }
+[data-template-block="page_featured_image"][data-aspect="1:1"] img { aspect-ratio:1; }
+[data-template-block="page_featured_image"][data-aspect="3:1"] img { aspect-ratio:3/1; }
+
+[data-template-block="page_featured_image"] { margin:0 auto; width:100%; max-width:64rem; }
+[data-template-block="page_featured_image"][data-w="narrow"] { max-width:32rem; }
+[data-template-block="page_featured_image"][data-w="normal"] { max-width:48rem; }
+[data-template-block="page_featured_image"][data-w="full"] { max-width:none; }
+[data-template-block="page_featured_image"][data-align="left"] { margin-inline-start:0; }
+[data-template-block="page_featured_image"][data-align="right"] { margin-inline-end:0; }
+[data-template-block="page_featured_image"] img { object-position:calc(var(--focal_x, 50) * 1%) calc(var(--focal_y, 50) * 1%); }
+[data-template-block="page_featured_image"][data-radius="md"] img { border-radius:.5rem; }
+[data-template-block="page_featured_image"][data-radius="lg"] img { border-radius:1.25rem; }
+[data-template-block="page_featured_image"][data-radius="xl"] img { border-radius:1.75rem; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -59,4 +71,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

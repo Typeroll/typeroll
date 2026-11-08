@@ -1,4 +1,4 @@
-<div data-block="form" data-form-id="Sample form_id">[form: Sample form_id]</div>
+<div data-block="form" data-form-id="Sample form_id" data-presentation="core%2Fform">[form: Sample form_id]</div>
 
 /* css */
 @layer typeroll.platform{
@@ -26,6 +26,8 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
+[data-presentation="core%2Fform"]{--max_width_px:initial}
+
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
@@ -50,4 +52,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

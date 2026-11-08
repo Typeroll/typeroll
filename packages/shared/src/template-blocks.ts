@@ -11,12 +11,22 @@
 // title") which is much clearer.
 
 import type { BlockType } from './types.js';
-import { pixels, typographyFields } from './presentation-fields.js';
+import { focalPointFields, pixels, typographyFields } from './presentation-fields.js';
 
 const ISO_EPOCH = '1970-01-01T00:00:00Z';
 
 // ─── Page-context blocks ────────────────────────────────────────────────
 
+const PAGE_TITLE_TEMPLATE = `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);{{#color}}--heading-color:{{color}}{{/color}}">
+  <{{=level}} class="block-heading-text">{{page.title}}</{{=level}}>
+</div>`;
+
+/**
+ * Template blocks render with the markup of the block they stand in for
+ * (`data-block="heading"`, `"image"` or `"prose"`), so they share its CSS.
+ * From render version 16 each also carries `data-template-block="<type name>"`, so
+ * site CSS and the block's own rules can tell it apart.
+ */
 const pageTitle: BlockType = {
   id: 'template/page_title',
   name: 'page_title',
@@ -36,12 +46,29 @@ const pageTitle: BlockType = {
     { name: 'font_weight', type: 'select', label: 'Font weight', options: ['400', '500', '600', '700', '800'] },
     { name: 'fallback_text', type: 'text', label: 'Fallback (when no page)', default: 'Page title' },
   ],
-  template: `<div data-block="heading" data-level="{{level}}" data-size="{{size}}" data-font-weight="{{font_weight}}" style="--align:{{align}};text-align:var(--align,left);{{#color}}--heading-color:{{color}}{{/color}}">
-  <{{=level}} class="block-heading-text">{{page.title}}</{{=level}}>
-</div>`,
+  template: PAGE_TITLE_TEMPLATE,
+  // Version 16: its own data-template-block name, and the alignment applied by the
+  // heading CSS from --align instead of an inline text-align.
+  render_versions: [{
+    from: 16,
+    template: PAGE_TITLE_TEMPLATE
+      .replace('<div data-block="heading" ', '<div data-block="heading" data-template-block="page_title" ')
+      .replace('text-align:var(--align,left);', ''),
+  }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
+
+const FEATURED_IMAGE_TEMPLATE = `<figure data-block="image" data-w="{{width}}" data-fit="{{fit}}" data-aspect="{{aspect_ratio}}">
+  <img src="{{selected_page_image}}" alt="{{page.title}}" loading="lazy" decoding="async" />
+</figure>`;
+const FEATURED_IMAGE_STYLES = `[data-block="image"] img { display:block; width:100%; height:auto; object-fit:contain; }
+[data-block="image"][data-fit="cover"] img { object-fit:cover; }
+[data-block="image"][data-aspect="16:9"] img { aspect-ratio:16/9; }
+[data-block="image"][data-aspect="4:3"] img { aspect-ratio:4/3; }
+[data-block="image"][data-aspect="1:1"] img { aspect-ratio:1; }
+[data-block="image"][data-aspect="3:1"] img { aspect-ratio:3/1; }
+`;
 
 const pageFeaturedImage: BlockType = {
   id: 'template/page_featured_image',
@@ -50,6 +77,9 @@ const pageFeaturedImage: BlockType = {
   icon: 'image',
   category: 'media',
   container: false,
+  parts: [
+    { name: 'image', label: 'Image', selector: 'img', target: 'image', min_render_version: 16 },
+  ],
   schema: [
     { name: 'fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
     { name: 'field', type: 'text', label: 'Image field', default: 'og_image' },
@@ -57,20 +87,44 @@ const pageFeaturedImage: BlockType = {
       options: ['narrow', 'normal', 'wide', 'full'], default: 'wide' },
     { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio',
       options: ['auto', '16:9', '4:3', '1:1', '3:1'], default: 'auto' },
+    // Render version 16, like core/image.
+    { name: 'align', type: 'select', label: 'Image alignment', options: ['left', 'center', 'right'], default: 'center', min_render_version: 16 },
+    { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'none', min_render_version: 16 },
+    ...focalPointFields.map(field => ({ ...field, min_render_version: 16 })),
   ],
-  template: `<figure data-block="image" data-w="{{width}}" data-fit="{{fit}}" data-aspect="{{aspect_ratio}}">
-  <img src="{{selected_page_image}}" alt="{{page.title}}" loading="lazy" decoding="async" />
-</figure>`,
-  styles: `[data-block="image"] img { display:block; width:100%; height:auto; object-fit:contain; }
-[data-block="image"][data-fit="cover"] img { object-fit:cover; }
-[data-block="image"][data-aspect="16:9"] img { aspect-ratio:16/9; }
-[data-block="image"][data-aspect="4:3"] img { aspect-ratio:4/3; }
-[data-block="image"][data-aspect="1:1"] img { aspect-ratio:1; }
-[data-block="image"][data-aspect="3:1"] img { aspect-ratio:3/1; }
-`,
+  template: FEATURED_IMAGE_TEMPLATE,
+  styles: FEATURED_IMAGE_STYLES,
+  // Version 16: its rules reach only the featured image (they used to style
+  // every Image block on the page), it keeps its width setting whether or not
+  // the page has an Image block, and it takes an alignment, a corner radius
+  // and a focal point.
+  render_versions: [{
+    from: 16,
+    template: FEATURED_IMAGE_TEMPLATE.replace('<figure data-block="image" ', '<figure data-block="image" data-template-block="page_featured_image" '),
+    styles: `${FEATURED_IMAGE_STYLES.replaceAll('[data-block="image"]', '[data-template-block="page_featured_image"]')}
+[data-template-block="page_featured_image"] { margin:0 auto; width:100%; max-width:64rem; }
+[data-template-block="page_featured_image"][data-w="narrow"] { max-width:32rem; }
+[data-template-block="page_featured_image"][data-w="normal"] { max-width:48rem; }
+[data-template-block="page_featured_image"][data-w="full"] { max-width:none; }
+[data-template-block="page_featured_image"][data-align="left"] { margin-inline-start:0; }
+[data-template-block="page_featured_image"][data-align="right"] { margin-inline-end:0; }
+[data-template-block="page_featured_image"] img { object-position:calc(var(--focal_x, 50) * 1%) calc(var(--focal_y, 50) * 1%); }
+[data-template-block="page_featured_image"][data-radius="md"] img { border-radius:.5rem; }
+[data-template-block="page_featured_image"][data-radius="lg"] img { border-radius:1.25rem; }
+[data-template-block="page_featured_image"][data-radius="xl"] img { border-radius:1.75rem; }`,
+  }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
+
+/**
+ * Version 16 markup of the page excerpt and site tagline: prose markup, whose
+ * CSS reads the size, alignment and colour (core/prose ships with them from
+ * render version 16), with its own data-template-block name.
+ */
+function templateTextV16(name: string, value: string): string {
+  return `<p data-block="prose" data-template-block="${name}" data-w="{{max_width}}" data-text-align="{{text_align}}"{{#color}} data-color{{/color}} style="--text_align:{{text_align}}{{#color}};--prose-color:{{color}}{{/color}}">${value}</p>`;
+}
 
 const pageExcerpt: BlockType = {
   id: 'template/page_excerpt',
@@ -81,8 +135,13 @@ const pageExcerpt: BlockType = {
   container: false,
   schema: [
     { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
+    // Render version 16, like core/prose (whose CSS the block uses).
+    { ...pixels('font_size_px', 'Text size (px)', 12, 160), min_render_version: 16 },
+    { name: 'text_align', type: 'select', label: 'Text alignment', options: ['inherit', 'start', 'center', 'end', 'justify'], default: 'inherit', responsive: true, min_render_version: 16 },
+    { name: 'color', type: 'color', label: 'Text color', min_render_version: 16 },
   ],
   template: `<p data-block="prose" data-w="{{max_width}}">{{page.excerpt}}</p>`,
+  render_versions: [{ from: 16, template: templateTextV16('page_excerpt', '{{page.excerpt}}') }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -218,9 +277,15 @@ const siteLogo: BlockType = {
 [data-block="site-logo"] img { width:auto; max-width:100%; object-fit:contain; margin:0; border-radius:0; }
 [data-block="site-logo"] img[src=""] { display: none; }
 `.trim(),
+  // Version 16: the small height is 2rem instead of 1.5rem. At 1.5rem (24px) a
+  // logo with a wordmark or tagline, as in the starter footer, could not be read.
+  render_versions: [{ from: 16, styles: '' }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
+
+siteLogo.render_versions![0]!.styles = siteLogo.styles!.replace('[data-block="site-logo"][data-size="sm"] img { height: 1.5rem; }', '[data-block="site-logo"][data-size="sm"] img { height: 2rem; }');
+if (siteLogo.render_versions![0]!.styles === siteLogo.styles) throw new Error('site_logo styles changed; update the version 16 small height');
 
 const siteTitle: BlockType = {
   id: 'template/site_title',
@@ -233,8 +298,22 @@ const siteTitle: BlockType = {
     { name: 'level', type: 'select', label: 'Level', options: ['h1', 'h2', 'h3', 'span'], default: 'h1' },
     { name: 'size', type: 'select', label: 'Visual size',
       options: ['sm', 'md', 'lg', 'xl', '2xl'], default: 'lg', responsive: true },
+    // Render version 16. The default keeps the alignment of the text around it.
+    { name: 'align', type: 'select', label: 'Alignment', options: ['match-parent', 'left', 'center', 'right'], option_labels: ['Inherit from container', 'Left', 'Center', 'Right'], default: 'match-parent', min_render_version: 16 },
+    { name: 'link_to_home', type: 'boolean', label: 'Link to home', default: false, min_render_version: 16 },
   ],
   template: `<div data-block="heading" data-size="{{size}}"><{{=level}} class="block-heading-text">{{site.name}}</{{=level}}></div>`,
+  // Version 16: its own data-template-block name, an alignment and a link to the
+  // home page (of the page's language section; "/" without one).
+  render_versions: [{
+    from: 16,
+    template: `<div data-block="heading" data-template-block="site_title" data-size="{{size}}"><{{=level}} class="block-heading-text">{{#link_to_home}}<a class="block-site-title-link" href="{{site_title_href}}{{^site_title_href}}/{{/site_title_href}}">{{site.name}}</a>{{/link_to_home}}{{^link_to_home}}{{site.name}}{{/link_to_home}}</{{=level}}></div>`,
+    styles: `[data-template-block="site_title"][data-align="left"] { text-align:left; }
+[data-template-block="site_title"][data-align="center"] { text-align:center; }
+[data-template-block="site_title"][data-align="right"] { text-align:right; }
+[data-template-block="site_title"] .block-site-title-link { color:inherit; text-decoration:inherit; }
+[data-template-block="site_title"] .block-site-title-link:focus-visible { outline:2px solid currentColor; outline-offset:3px; }`,
+  }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -248,8 +327,13 @@ const siteTagline: BlockType = {
   container: false,
   schema: [
     { name: 'max_width', type: 'select', label: 'Max width', options: ['narrow', 'normal', 'wide'], default: 'normal' },
+    // Render version 16, like core/prose (whose CSS the block uses).
+    { ...pixels('font_size_px', 'Text size (px)', 12, 160), min_render_version: 16 },
+    { name: 'text_align', type: 'select', label: 'Text alignment', options: ['inherit', 'start', 'center', 'end', 'justify'], default: 'inherit', responsive: true, min_render_version: 16 },
+    { name: 'color', type: 'color', label: 'Text color', min_render_version: 16 },
   ],
   template: `<p data-block="prose" data-w="{{max_width}}">{{site.tagline}}</p>`,
+  render_versions: [{ from: 16, template: templateTextV16('site_tagline', '{{site.tagline}}') }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
@@ -270,6 +354,8 @@ const showIf: BlockType = {
   origin: 'core',
   created_at: ISO_EPOCH,
 };
+
+const PAGE_NAVIGATION_TEMPLATE = `<nav data-block="page_navigation" aria-label="{{aria_label}}"><a class="page-navigation-previous" data-empty="{{previous_empty}}" rel="prev" href="{{previous_url}}"><small>{{previous_label}}</small><span>{{previous_title}}</span></a><a class="page-navigation-next" data-empty="{{next_empty}}" rel="next" href="{{next_url}}"><small>{{next_label}}</small><span>{{next_title}}</span></a></nav>`;
 
 const pageNavigation: BlockType = {
   id: 'template/page_navigation',
@@ -295,7 +381,12 @@ const pageNavigation: BlockType = {
     { name: 'next_url_field', type: 'text', label: 'Next URL field (optional)' },
     { name: 'next_title_field', type: 'text', label: 'Next title field (optional)' },
   ],
-  template: `<nav data-block="page_navigation" aria-label="{{aria_label}}"><a class="page-navigation-previous" data-empty="{{previous_empty}}" rel="prev" href="{{previous_url}}"><small>{{previous_label}}</small><span>{{previous_title}}</span></a><a class="page-navigation-next" data-empty="{{next_empty}}" rel="next" href="{{next_url}}"><small>{{next_label}}</small><span>{{next_title}}</span></a></nav>`,
+  template: PAGE_NAVIGATION_TEMPLATE,
+  // Version 16: the labels and titles have classes site CSS can select.
+  render_versions: [{
+    from: 16,
+    template: PAGE_NAVIGATION_TEMPLATE.replaceAll('<small>', '<small class="page-navigation-label">').replaceAll('<span>', '<span class="page-navigation-title">'),
+  }],
   styles: `
 [data-block="page_navigation"] { display: flex; justify-content: space-between; align-items: stretch; gap: 1rem; margin-block: 2rem; }
 [data-block="page_navigation"] a { display: flex; flex: 1 1 0; min-width: 0; flex-direction: column; padding: 0.85rem 1rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 0.5rem; overflow-wrap: anywhere; text-decoration: none; }

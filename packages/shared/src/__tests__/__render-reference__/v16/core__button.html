@@ -1,4 +1,4 @@
-<p data-block="button" data-variant="primary" data-size="md">
+<p data-block="button" data-variant="primary" data-size="md" data-full-width="false" data-presentation="core%2Fbutton" data-align="inherit">
   <a href="/sample" class="block-button-link" >Learn more</a>
 </p>
 
@@ -28,6 +28,8 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
+[data-presentation="core%2Fbutton"]{--icon_size_px:initial}
+
 /* core/button */
 [data-block="button"] { margin: 1rem 0; }
 [data-block="button"] .block-button-link {
@@ -49,6 +51,13 @@
 [data-block="button"] .block-button-link:hover { opacity: 0.85; }
 [data-block="button"] .block-button-link { max-width: 100%; overflow-wrap: anywhere; text-align: center; }
 [data-block="button"] .block-button-link:focus-visible { outline: 2px solid var(--color-primary, currentColor); outline-offset: 3px; }
+[data-block="button"][data-align="start"] { text-align:start; }
+[data-block="button"][data-align="center"] { text-align:center; }
+[data-block="button"][data-align="end"] { text-align:end; }
+[data-block="button"] .block-button-link:has(> .block-button-icon) { display:inline-flex; align-items:center; justify-content:center; gap:.5em; vertical-align:middle; }
+[data-block="button"] .block-button-icon { display:inline-flex; flex:none; font-size:var(--icon_size_px, 1em); }
+[data-block="button"][data-full-width="true"] .block-button-link { display:block; box-sizing:border-box; inline-size:100%; }
+[data-block="button"][data-full-width="true"] .block-button-link:has(> .block-button-icon) { display:flex; }
 
 /* core/button defaults */
 [data-block="button"] { hyphens:auto; }
@@ -77,4 +86,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

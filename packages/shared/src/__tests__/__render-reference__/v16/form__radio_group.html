@@ -1,4 +1,4 @@
-<fieldset data-block="form_radio_group" class="form-field" data-field="Sample name">
+<fieldset data-block="form_radio_group" class="form-field" data-field="Sample name" data-width="full" data-direction="column">
   <legend>Sample label</legend>
   
   <p class="form-field-help"></p>
@@ -36,6 +36,8 @@
 [data-block="form_radio_group"] legend { font-weight: 600; font-size: 0.95rem; padding: 0 0 0.35rem; }
 .form-choice { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; }
 .form-choice input { width: 1.05rem; height: 1.05rem; accent-color: var(--form-accent-color, var(--color-primary, #1a1a2e)); }
+[data-block="form_radio_group"][data-direction="row"] { flex-flow: row wrap; column-gap: 1.25rem; }
+[data-block="form_radio_group"][data-direction="row"] > :is(.form-field-help, .form-field-error) { flex-basis: 100%; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -61,4 +63,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

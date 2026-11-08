@@ -1,4 +1,4 @@
-<figure data-block="before_after" data-aspect="auto" style="--ba-position:50%" data-block-type="core/before_after"><div class="block-ba-stage"><div class="block-ba-pane block-ba-after"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /><span class="block-ba-label">After</span></div><div class="block-ba-pane block-ba-before"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /><span class="block-ba-label">Before</span></div><input class="block-ba-range" type="range" min="0" max="100" step="1" value="50" aria-label="Before / After" hidden /><span class="block-ba-handle" aria-hidden="true"></span></div></figure>
+<figure data-block="before_after" data-aspect="auto" style="--ba-position:50%" data-width="full" data-align="center" data-block-type="core/before_after"><div class="block-ba-stage"><div class="block-ba-pane block-ba-after"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /><span class="block-ba-label">After</span></div><div class="block-ba-pane block-ba-before"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /><span class="block-ba-label">Before</span></div><input class="block-ba-range" type="range" min="0" max="100" step="1" value="50" aria-label="Before / After" hidden /><span class="block-ba-handle" aria-hidden="true"></span></div></figure>
 
 /* css */
 @layer typeroll.platform{
@@ -50,6 +50,11 @@
 [data-block="before_after"][data-enhanced] .block-ba-handle { display:block; position:absolute; z-index:1; inset-block:0; inset-inline-start:var(--ba-position, 50%); inline-size:3px; translate:-50% 0; background:var(--ba-handle-color); box-shadow:var(--ba-handle-shadow, 0 0 0 1px rgb(0 0 0 / .2)); pointer-events:none; }
 [data-block="before_after"][data-enhanced] .block-ba-handle::after { content:""; position:absolute; inset-block-start:50%; inset-inline-start:50%; inline-size:2.5rem; block-size:2.5rem; translate:-50% -50%; border-radius:var(--ba-knob-radius, 50%); background:var(--ba-handle-color) center/1.25rem no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23111' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m9 18-6-6 6-6M15 6l6 6-6 6'/%3E%3C/svg%3E"); box-shadow:var(--ba-knob-shadow, 0 2px 8px rgb(0 0 0 / .3)); }
 [data-block="before_after"] .block-ba-range:focus-visible + .block-ba-handle::after { outline:3px solid var(--color-primary, #111); outline-offset:2px; }
+[data-block="before_after"][data-width="narrow"] { max-inline-size:32rem; }
+[data-block="before_after"][data-width="normal"] { max-inline-size:48rem; }
+[data-block="before_after"][data-width="wide"] { max-inline-size:64rem; }
+[data-block="before_after"][data-align="center"] { margin-inline:auto; }
+[data-block="before_after"][data-align="right"] { margin-inline:auto 0; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -75,4 +80,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

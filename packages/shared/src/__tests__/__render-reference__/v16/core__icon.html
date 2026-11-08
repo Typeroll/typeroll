@@ -1,4 +1,4 @@
-<span data-block="icon" data-icon="" style="--size:md;--align:left;--color:" data-presentation="core%2Ficon"></span>
+<span data-block="icon" data-background="" data-icon="" style="--size:md;--align:left;--color:;--icon-background:" data-presentation="core%2Ficon" data-size="md" data-align="left" data-icon-style="outline"></span>
 
 /* css */
 @layer typeroll.platform{
@@ -30,15 +30,19 @@
 
 /* core/icon */
 [data-block="icon"] { display: inline-flex; align-items: center; line-height:1; color: var(--color, currentColor); }
-[data-block="icon"][style*="--align:center"] { display: flex; justify-content: center; }
-[data-block="icon"][style*="--align:right"]  { display: flex; justify-content: flex-end; }
-[data-block="icon"][style*="--size:sm"] { font-size: 1rem; }
-[data-block="icon"][style*="--size:md"] { font-size: 1.5rem; }
-[data-block="icon"][style*="--size:lg"] { font-size: 2rem; }
-[data-block="icon"][style*="--size:xl"] { font-size: 3rem; }
+[data-block="icon"][data-align="center"] { display: flex; justify-content: center; }
+[data-block="icon"][data-align="right"]  { display: flex; justify-content: flex-end; }
+[data-block="icon"][data-size="sm"] { font-size: 1rem; }
+[data-block="icon"][data-size="md"] { font-size: 1.5rem; }
+[data-block="icon"][data-size="lg"] { font-size: 2rem; }
+[data-block="icon"][data-size="xl"] { font-size: 3rem; }
 [data-block="icon"] .block-icon-link[href=""] { pointer-events: none; }
-[data-block="icon"][style*="--size_px:"] { font-size:var(--size_px); }
+[data-block="icon"][data-size-px] { font-size:var(--size_px); }
 [data-block="icon"] svg { width: 1em; height: 1em; }
+/* Circle and square styles put the icon on a surface: the chosen background, else a faint tint. */
+[data-block="icon"]:is([data-icon-style="circle-bg"], [data-icon-style="square-bg"]) svg { box-sizing:content-box; padding:var(--icon-padding, .5em); border-radius:var(--icon-radius, 50%); background:var(--icon-surface, rgba(0,0,0,0.05)); }
+[data-block="icon"][data-icon-style="square-bg"] { --icon-radius:.35em; }
+[data-block="icon"][data-background]:not([data-background=""]) { --icon-surface:var(--icon-background); }
 
 /* core/icon defaults */
 /* A linked icon is a touch target of at least 24 × 24 px (WCAG 2.2 AA). */
@@ -68,4 +72,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

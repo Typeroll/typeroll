@@ -31,6 +31,7 @@
 [data-block="text"][data-align="start"] { text-align: start; }
 [data-block="text"][data-align="center"] { text-align: center; }
 [data-block="text"][data-align="end"] { text-align: end; }
+[data-block="text"][data-color] { color:var(--text-color); }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -56,4 +57,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

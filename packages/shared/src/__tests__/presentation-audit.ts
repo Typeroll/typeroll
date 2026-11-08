@@ -227,7 +227,7 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   'core/site_field': { field: 'opening_hours', label: 'Opening hours' },
   'core/svg_animation': { svg: '<svg viewBox="0 0 100 60" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 50 L50 10 L90 50 Z"/></svg>', caption: 'A roof' },
   'core/scroll_film': { frames_pattern: '/media/film/{nnn}.webp', frame_count: 3, captions: [{ text: '<p>Caption</p>', start: 0, end: 50 }] },
-  'core/media_card': { image: '/media/card.jpg', heading: 'Heading', text: '<p>Text</p>', button_label: 'Start', button_url: '/start/' },
+  'core/media_card': { image: '/media/card.jpg', eyebrow: 'Eyebrow', heading: 'Heading', text: '<p>Text</p>', button_label: 'Start', button_url: '/start/', secondary_label: 'More', secondary_url: '/more/' },
   'core/feature_row': {
     eyebrow: 'Eyebrow', heading: 'Heading', text: '<p>Text</p>', image: '/media/feature.jpg',
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
@@ -239,12 +239,14 @@ export const PART_SAMPLES: Record<string, Record<string, unknown>> = {
   'form/help': { body: '<p>See <a href="/help/">the guide</a></p>' },
   'core/field_list': { title: 'Facts', fields: [{ field: 'city' }, { field: 'website' }, { field: 'tags' }] },
   'core/navigation_form': { destination: '/quote/', button_icon: '→', fields: [{ name: 'address', label: 'Address' }] },
+  // The image renders beside the text (image_position left or right) from render version 16.
   'core/cta': {
-    eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>',
+    eyebrow: 'Eyebrow', heading: 'Heading', subheading: '<p>Subheading</p>', background_image: '/media/cta.jpg',
     primary_label: 'Start', primary_url: '/start/', secondary_label: 'More', secondary_url: '/more/',
   },
   // A file plays in <video>; PART_SAMPLE_MARKUP adds the embed player.
-  'core/video': { source: 'youtube', video_url: 'https://youtu.be/dQw4w9WgXcQ', click_to_load: true },
+  'core/video': { source: 'youtube', video_url: 'https://youtu.be/dQw4w9WgXcQ', click_to_load: true, caption: 'Caption' },
+  'core/icon': { icon: 'star', link: '/more/' },
   // Without a page, the link to / is the current page's.
   'core/navigation': { links: [{ label: 'Home', href: '/' }, { label: 'About', href: '/about/' }] },
   'core/accordion': {
@@ -287,6 +289,7 @@ export const PART_SAMPLE_CONTEXTS: Record<string, RenderContext> = {
   'template/page_author': { page: { author: { name: 'Ada Lovelace', avatar: '/media/ada.jpg' } } },
   'template/page_breadcrumbs': { page: { breadcrumbs: [{ label: 'Blog', href: '/blog/' }, { label: 'Post', current: true }] } },
   'template/site_logo': { site: { name: 'Acme', logo: '/media/logo.svg' } },
+  'template/page_featured_image': { page: { title: 'About', og_image: '/media/hero.jpg' } },
   // A site field with opening hours shows the week.
   // Exceptions with a note around today, so the week shows a day with other hours whatever the date.
   'core/site_field': { site: { fields: { opening_hours: { note: 'Lunch closed 12–13', days: [{ day: 'monday', opens: '09:00', closes: '17:00', note: 'Lunch closed' }],
@@ -307,6 +310,8 @@ export const PART_SAMPLE_MARKUP: Record<string, (root: Element) => void> = {
     + '<div class="pagefind-ui__drawer"><div class="pagefind-ui__results-area"><p class="pagefind-ui__message">1 result for guide</p><ol class="pagefind-ui__results"><li class="pagefind-ui__result"><div class="pagefind-ui__result-inner">'
     + '<p class="pagefind-ui__result-title"><a class="pagefind-ui__result-link" href="/guide/">Guide</a></p><p class="pagefind-ui__result-excerpt">The <mark>guide</mark></p></div></li></ol>'
     + '<button type="button" class="pagefind-ui__button">Load more results</button></div></div></form></div>'),
+  // The script adds a pause and play button to a looping drawing.
+  'core/svg_animation': root => root.querySelector('.block-svg-stage')?.insertAdjacentHTML('beforeend', '<button type="button" class="block-svg-toggle" aria-label="Pause">❚❚</button>'),
   // The sample plays a file (<video>); YouTube and Vimeo play in an iframe.
   'core/video': root => { if (!root.querySelector('video')) root.insertAdjacentHTML('beforeend', '<video src="/media/sample.mp4"></video>'); if (!root.querySelector('iframe')) root.insertAdjacentHTML('beforeend', '<iframe src="https://www.youtube-nocookie.com/embed/sample" title="Video"></iframe>'); },
 };

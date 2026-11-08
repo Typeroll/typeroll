@@ -1,4 +1,4 @@
-<div data-block="step_card">
+<div data-block="step_card" data-presentation="core%2Fstep_card" data-layout="icon-top" data-align="left">
   <div class="block-step-marker"><span class="block-step-number"></span><span class="block-step-icon" data-icon=""></span></div>
   <h3 class="block-step-title">Sample title</h3>
   <div class="block-step-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
@@ -30,6 +30,8 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
+[data-presentation="core%2Fstep_card"]{--icon_size_px:initial}
+
 /* core/step_card */
 [data-block="step_card"] { display: flex; flex-direction: column; gap: 0.5rem; }
 [data-block="step_card"] .block-step-marker { display: flex; align-items: center; gap: 0.5rem; }
@@ -40,9 +42,15 @@
   font-weight: 700; font-size: 1.125rem;
 }
 [data-block="step_card"] .block-step-number:empty { display: none; }
-[data-block="step_card"] .block-step-icon  { font-size: 1.5rem; }
+[data-block="step_card"] .block-step-icon  { font-size: var(--icon_size_px, 1.5rem); }
 [data-block="step_card"] .block-step-title { margin: 0.5rem 0 0; font-size: 1.125rem; font-weight: 600; line-height: 1.3; }
 [data-block="step_card"] .block-step-text  { line-height: 1.5; opacity: 0.85; }
+/* Marker beside the title: the number and icon sit in a column of their own, the description under the title. */
+[data-block="step_card"][data-layout="icon-left"] { display:grid; grid-template-columns:auto minmax(0, 1fr); align-items:center; column-gap:var(--step-marker-gap, 0.75rem); }
+[data-block="step_card"][data-layout="icon-left"] > .block-step-title { margin-block-start:0; }
+[data-block="step_card"][data-layout="icon-left"] > .block-step-text { grid-column:2; }
+[data-block="step_card"][data-align="center"] { text-align:center; }
+[data-block="step_card"][data-align="center"] .block-step-marker { justify-content:center; }
 
 /* core/step_card defaults */
 /* The step marker is a circle for a number and grows with a label: wider first, then taller, wrapping between words. */
@@ -75,4 +83,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

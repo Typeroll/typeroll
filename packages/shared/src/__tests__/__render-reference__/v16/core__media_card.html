@@ -1,8 +1,12 @@
-<div data-block="media_card" data-fit="contain" data-side="right" data-iw="two-fifths" data-radius="lg" style="--mc-bg:">
+<div data-block="media_card" data-fit="contain" data-side="right" data-iw="two-fifths" data-radius="lg" style="--mc-bg:" data-presentation="core%2Fmedia_card" data-actions-align="start" data-vertical-align="center" data-stack-order="image-first" data-gap="auto">
   <div class="block-mediacard-body">
+    <span class="block-mediacard-eyebrow"></span>
     <h2 class="block-mediacard-heading"></h2>
     <div class="block-mediacard-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
-    <a class="block-btn block-btn-primary block-mediacard-button" href=""></a>
+    <div class="block-mediacard-actions">
+      <a class="block-btn block-btn-primary block-mediacard-button" href=""></a>
+      <a class="block-btn block-btn-secondary block-mediacard-secondary" href=""></a>
+    </div>
   </div>
   <div class="block-mediacard-media"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /></div>
 </div>
@@ -33,8 +37,10 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
+[data-presentation="core%2Fmedia_card"]{--padding_px:initial}
+
 /* core/media_card */
-[data-block="media_card"] { display: flex; align-items: stretch; gap: 2.5rem; background: var(--mc-bg, transparent); overflow: hidden; }
+[data-block="media_card"] { display: flex; align-items: stretch; gap: var(--mc-gap, 2.5rem); padding: var(--padding_px, 0); background: var(--mc-bg, transparent); overflow: hidden; }
 [data-block="media_card"][data-side="left"] { flex-direction: row-reverse; }
 [data-block="media_card"][data-radius="md"] { border-radius: 0.5rem; }
 [data-block="media_card"][data-radius="lg"] { border-radius: 1.25rem; }
@@ -50,20 +56,38 @@
 [data-block="media_card"] .block-btn { display: inline-block; padding: 0.75rem 1.75rem; border-radius: 999px; font-weight: 600; text-decoration: none; background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); }
 [data-block="media_card"] .block-mediacard-button { align-self: flex-start; }
 [data-block="media_card"] .block-mediacard-button:empty { display: none; }
-@media (max-width: 720px) {
-  [data-block="media_card"], [data-block="media_card"][data-side="left"] { flex-direction: column-reverse; gap: 1.25rem; }
+@media (max-width: 639px) {
+  [data-block="media_card"], [data-block="media_card"][data-side="left"] { flex-direction: column-reverse; gap: var(--mc-gap, 1.25rem); }
+  [data-block="media_card"][data-stack-order="text-first"] { flex-direction: column; }
   [data-block="media_card"] .block-mediacard-media,
   [data-block="media_card"][data-iw="third"] .block-mediacard-media,
   [data-block="media_card"][data-iw="half"] .block-mediacard-media { flex-basis: auto; }
   [data-block="media_card"][data-fit="cover"] .block-mediacard-media img { max-height:18rem; }
 }
+[data-block="media_card"][data-gap="sm"] { --mc-gap: 1rem; }
+[data-block="media_card"][data-gap="md"] { --mc-gap: 1.5rem; }
+[data-block="media_card"][data-gap="lg"] { --mc-gap: 2.5rem; }
+[data-block="media_card"][data-gap="xl"] { --mc-gap: 4rem; }
+/* Text first: when the card wraps (a narrow column) the text stays above the image. */
+[data-block="media_card"][data-stack-order="text-first"] { flex-wrap: wrap; }
+[data-block="media_card"][data-vertical-align="top"] .block-mediacard-body { justify-content: flex-start; }
+[data-block="media_card"][data-vertical-align="end"] .block-mediacard-body { justify-content: flex-end; }
+[data-block="media_card"] .block-mediacard-eyebrow { display: inline-block; align-self: flex-start; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; }
+[data-block="media_card"] .block-mediacard-eyebrow:empty { display: none; }
+[data-block="media_card"] .block-mediacard-actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
+[data-block="media_card"] .block-mediacard-actions:not(:has(a:not(:empty))) { display: none; }
+[data-block="media_card"] .block-btn:empty { display: none; }
+[data-block="media_card"] .block-btn-secondary { background: transparent; color: var(--color-primary, #111); box-shadow: inset 0 0 0 2px currentColor; }
+[data-block="media_card"][data-actions-align="center"] .block-mediacard-actions { justify-content: center; }
+[data-block="media_card"][data-actions-align="end"] .block-mediacard-actions { justify-content: flex-end; }
+[data-block="media_card"][data-actions-align="stretch"] .block-mediacard-actions > a { flex: 1 1 auto; text-align: center; }
 
 /* core/media_card defaults */
 /* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
 [data-block="media_card"] .block-btn { border-radius:1.6rem; }
 /* The card wraps when its text column would be narrower than 18rem, image above text, so it also
    stacks in a narrow column or grid cell. The text column takes the free space; the image keeps its width. */
-@media (min-width: 721px) {
+@media (min-width: 640px) {
   [data-block="media_card"] { flex-wrap:wrap-reverse; }
   [data-block="media_card"] .block-mediacard-body { flex:999 1 18rem; }
   [data-block="media_card"] .block-mediacard-media { flex-grow:1; }
@@ -93,4 +117,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

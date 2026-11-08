@@ -1,4 +1,4 @@
-<div data-block="search" data-placeholder="Search…" data-block-type="core/search">
+<div data-block="search" data-placeholder="Search…" data-presentation="core%2Fsearch" data-align="center" data-block-type="core/search">
   <div class="block-search-mount"></div>
 </div>
 
@@ -28,10 +28,14 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
+[data-presentation="core%2Fsearch"]{--max_width_px:initial}
+
 /* core/search */
-[data-block="search"] { max-width: 40rem; margin-inline: auto; padding: 1rem; }
+[data-block="search"] { max-width: var(--max_width_px, 40rem); margin-inline: auto; padding: 1rem; }
 [data-block="search"] .pagefind-ui { --pagefind-ui-primary: var(--color-primary, #111); --pagefind-ui-text: var(--color-text, #111); }
 [data-block="search"] .block-search-preview { inline-size:100%; min-block-size:44px; padding:.6rem .9rem; font:inherit; color:inherit; border:1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius:.5rem; background:transparent; }
+[data-block="search"][data-align="left"] { margin-inline-start: 0; }
+[data-block="search"][data-align="right"] { margin-inline-end: 0; }
 
 /* core/search defaults */
 /* In a column or a grid cell the search field starts where the content beside it starts. */
@@ -61,4 +65,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

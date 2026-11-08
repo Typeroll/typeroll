@@ -1,4 +1,4 @@
-<div id="navigation-ref" data-block="navigation_form" role="form" aria-label="Get started" data-handoff-key="page-defaults" data-mode="navigate" data-show-labels="true" data-font="inherit" data-button-nowrap="false" data-address-country="" data-compact="false" style="--columns:1;" data-presentation="core%2Fnavigation_form" data-block-type="core/navigation_form"></div>
+<div id="navigation-ref" data-block="navigation_form" role="form" aria-label="Get started" data-handoff-key="page-defaults" data-mode="navigate" data-show-labels="true" data-font="inherit" data-button-nowrap="false" data-address-country="" data-compact="false" data-align="start" style="--columns:1;" data-presentation="core%2Fnavigation_form" data-block-type="core/navigation_form"></div>
 
 /* css */
 @layer typeroll.platform{
@@ -26,7 +26,7 @@
 .tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
 .tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
 
-[data-presentation="core%2Fnavigation_form"]{--button_padding_x_px:initial;--button_padding_y_px:initial;--line_height:initial;--button_icon_size_px:initial;--button_icon_gap_px:initial;--button_font_weight:initial;--input_padding_x_px:initial;--input_padding_y_px:initial;--input_border_width_px:initial;--gap_px:initial;--input_height_px:initial;--font_size_px:initial;--radius_px:initial}
+[data-presentation="core%2Fnavigation_form"]{--button_padding_x_px:initial;--button_padding_y_px:initial;--line_height:initial;--button_icon_size_px:initial;--button_icon_gap_px:initial;--button_font_weight:initial;--input_padding_x_px:initial;--input_padding_y_px:initial;--input_border_width_px:initial;--gap_px:initial;--input_height_px:initial;--font_size_px:initial;--radius_px:initial;--max_width_px:initial}
 
 /* core/navigation_form */
 [data-block="navigation_form"]{--tr-field-min-height:var(--input_height_px,44px);--tr-field-padding-y:var(--input_padding_y_px,10px);--tr-field-padding-x:var(--input_padding_x_px,12px);--tr-field-border-width:var(--input_border_width_px,1px);--tr-field-border-color:var(--navigation-input-border,#bbc1c9);--tr-field-radius:var(--radius_px,6px);--tr-field-background:var(--navigation-input-bg,#fff);--tr-field-color:var(--navigation-input-color,#20242a)}
@@ -42,10 +42,13 @@
 [data-block="navigation_form"][data-button-nowrap="true"] .navigation-actions>*{white-space:nowrap}
 [data-block="navigation_form"] [hidden]{display:none!important}
 [data-block="navigation_form"] :focus-visible{outline:2px solid currentColor;outline-offset:3px}
+[data-block="navigation_form"]{max-inline-size:var(--max_width_px,none)}
+[data-block="navigation_form"][data-align="center"]{margin-inline:auto}
+[data-block="navigation_form"][data-align="end"]{margin-inline-start:auto}
 
 /* core/navigation_form defaults v16 */
 /* A form with a single field and no layout settings of its own is as wide as it needs to be, with its button to the right. */
-[data-block="navigation_form"][data-compact="true"] { grid-template-columns:minmax(0, 1fr) auto; max-inline-size:32rem; }
+[data-block="navigation_form"][data-compact="true"] { grid-template-columns:minmax(0, 1fr) auto; max-inline-size:var(--max_width_px, 32rem); }
 [data-block="navigation_form"][data-compact="true"] .navigation-actions :is(a, button) { inline-size:auto; max-inline-size:16rem; }
 
 /* block defaults */
@@ -72,4 +75,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

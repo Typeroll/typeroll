@@ -40,6 +40,8 @@
 [data-block="announcement_bar"] .block-announcement-close:hover { background:var(--announcement-close-hover, rgb(127 127 127 / .2)); }
 [data-block="announcement_bar"] .block-announcement-close:focus-visible { outline:2px solid currentColor; outline-offset:1px; }
 [data-block="announcement_bar"] .block-announcement-close[hidden] { display:none; }
+[data-block="announcement_bar"][data-background] { background:var(--announcement-bg); }
+[data-block="announcement_bar"][data-text-color] { color:var(--announcement-fg); }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -65,4 +67,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

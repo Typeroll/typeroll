@@ -1,4 +1,4 @@
-<div data-block="prose" data-w="normal" data-font="inherit" style="--text_align:inherit;--font_weight:inherit" data-presentation="core%2Fprose"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
+<div data-block="prose" data-w="normal" data-font="inherit" style="--text_align:inherit;--font_weight:inherit" data-presentation="core%2Fprose" data-text-align="inherit"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
 
 /* css */
 @layer typeroll.platform{
@@ -48,6 +48,9 @@
 [data-block="prose"] th, [data-block="prose"] td { padding: 0.5rem; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); }
 [data-block="prose"] :is(p, li, dt, dd, blockquote, figcaption, h1, h2, h3, h4, h5, h6) { overflow-wrap: anywhere; }
 [data-block="prose"] pre { max-width: 100%; overflow-x: auto; }
+[data-block="prose"][data-color] { color:var(--prose-color); }
+[data-block="prose"]:is([data-w="narrow"],[data-w="wide"])[data-text-align="start"] { margin-inline:0 auto; }
+[data-block="prose"]:is([data-w="narrow"],[data-w="wide"])[data-text-align="end"] { margin-inline:auto 0; }
 
 /* core/prose defaults */
 /* Text blocks: the first and last element sit flush with the block, so spacing comes from the layout. */
@@ -78,4 +81,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }

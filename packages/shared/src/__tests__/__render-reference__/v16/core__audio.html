@@ -1,4 +1,4 @@
-<figure data-block="audio"><div class="block-audio-body"><div class="block-audio-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div><audio class="block-audio-player" controls preload="metadata" src="/sample" aria-label=""></audio></div></figure>
+<figure data-block="audio" data-cover-align="top" data-cover-size="md" data-cover-position="side" data-appearance="card"><div class="block-audio-body"><div class="block-audio-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div><audio class="block-audio-player" controls preload="metadata" src="/sample" aria-label=""></audio></div></figure>
 
 /* css */
 @layer typeroll.platform{
@@ -37,6 +37,11 @@
 [data-block="audio"] .block-audio-player { inline-size:100%; }
 [data-block="audio"] .block-audio-transcript { justify-self:start; font-size:var(--audio-link-size, .9375rem); }
 @container (max-width: 26rem) { [data-block="audio"] { grid-template-columns:1fr; } }
+[data-block="audio"][data-cover-align="center"] { align-items:center; }
+[data-block="audio"][data-cover-size="sm"] .block-audio-cover { inline-size:clamp(3.5rem, 15cqi, 6rem); }
+[data-block="audio"][data-cover-size="lg"] .block-audio-cover { inline-size:clamp(6rem, 30cqi, 12rem); }
+[data-block="audio"][data-cover-position="top"] { grid-template-columns:1fr; }
+[data-block="audio"][data-appearance="plain"] { padding:0; border-radius:0; background:none; }
 
 /* block defaults */
 /* A word longer than its column wraps instead of widening the page. */
@@ -62,4 +67,9 @@
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
 }
