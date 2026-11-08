@@ -1,7 +1,6 @@
 import { defineConfig } from 'astro/config';
 import cloudflare from '@astrojs/cloudflare';
 import react from '@astrojs/react';
-import { awsBrowserMappings } from './vite/aws-browser-mappings.mjs';
 
 
 // Portal is SSR by default and runs as a Cloudflare Worker (src/worker.ts,
@@ -14,7 +13,6 @@ export default defineConfig({
   // goes to KV.
   session: false,
   integrations: [react()],
-  vite: { plugins: [awsBrowserMappings] },
   server: { port: 4321, host: true },
   // CSRF protection lives in src/middleware.ts now, not Astro's built-in
   // checkOrigin. The built-in unconditionally rejected bearer-authed API

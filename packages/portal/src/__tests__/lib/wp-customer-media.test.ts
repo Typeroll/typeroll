@@ -2,7 +2,7 @@ vi.mock('../../lib/media/remote-transfer', () => ({ remoteTransfersEnabled: vi.f
 import { copyWithTransferService } from '../../lib/media/remote-transfer';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand } from '../../lib/net/s3';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';

@@ -33,7 +33,7 @@
 // "call after upload" and "backfill the library" — see the
 // `/media/{mediaId}/finalize` endpoint and the bulk variant.
 
-import type { S3Client } from '@aws-sdk/client-s3';
+import type { S3Client } from './net/s3';
 import { r2Endpoint } from './r2-endpoint';
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
@@ -137,7 +137,7 @@ export async function finalizeMedia(
 
   // Integrity first — never bless corrupted bytes with immutable cache
   // headers. One GetObject per finalize call (finalize is once per upload).
-  const { S3Client, CopyObjectCommand, GetObjectCommand } = await import('@aws-sdk/client-s3');
+  const { S3Client, CopyObjectCommand, GetObjectCommand } = await import('./net/s3');
   const r2 = new S3Client({
     region: 'auto',
     endpoint: r2Endpoint(config.accountId, config.bucket),
@@ -145,10 +145,6 @@ export async function finalizeMedia(
       accessKeyId: config.accessKeyId,
       secretAccessKey: config.secretAccessKey,
     },
-    // Same v3.700+ checksum-middleware quirk as upload-url.ts — CopyObject
-    // with the default middleware also produces requests R2 rejects.
-    requestChecksumCalculation: 'WHEN_REQUIRED',
-    responseChecksumValidation: 'WHEN_REQUIRED',
   });
   const svg = await import('./media/svg-media');
   if (svg.requiresSvgSanitization(media)) {
@@ -203,7 +199,7 @@ async function finalizePlatformSvg(
   expectedSha256?: string,
 ): Promise<FinalizeResult & { svg_sanitized: true; source_sha256: string; removed: string[] }> {
   const svg = await import('./media/svg-media');
-  const { CopyObjectCommand, DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+  const { CopyObjectCommand, DeleteObjectCommand } = await import('./net/s3');
   const staged = media.svg_staging_key ?? null;
   const stagingBucket = process.env.R2_PRIVATE_BUCKET;
   if (staged && !stagingBucket) throw new Error(`SVG ${mediaId} is staged in private storage, but R2_PRIVATE_BUCKET is not configured.`);
@@ -222,7 +218,7 @@ async function finalizePlatformSvg(
     if (!staged && (code === 'media_svg_invalid' || code === 'media_svg_truncated')) {
       // A public object the sanitizer refused. Quarantine it as a download only
       // when browsers could run it, so a harmless legacy logo keeps working.
-      const { GetObjectCommand } = await import('@aws-sdk/client-s3');
+      const { GetObjectCommand } = await import('./net/s3');
       const object = await r2.send(new GetObjectCommand({ Bucket: config.bucket, Key: media.r2_key }));
       const raw = Buffer.from(await (object.Body as { transformToByteArray(): Promise<Uint8Array> }).transformToByteArray());
       const quarantined = svgLooksScriptable(raw);

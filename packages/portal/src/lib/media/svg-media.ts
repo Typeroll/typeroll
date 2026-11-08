@@ -12,7 +12,7 @@
 //     finalizeMedia() publishes only sanitized bytes (lib/media-finalize.ts).
 
 import { createHash, randomUUID } from 'node:crypto';
-import { GetObjectCommand, PutObjectCommand, type S3Client } from '@aws-sdk/client-s3';
+import { GetObjectCommand, PutObjectCommand, type S3Client } from '../net/s3';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { ConnectionError } from '../publishing/connections';

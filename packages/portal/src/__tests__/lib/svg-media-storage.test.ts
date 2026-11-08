@@ -5,7 +5,7 @@ vi.mock('../../lib/media/remote-transfer', () => ({ remoteTransfersEnabled: vi.f
 vi.mock('../../lib/publishing/media-migration-queue', () => ({ enqueueMediaMigration: vi.fn(async () => {}) }));
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, PutObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '../../lib/net/s3';
 import { MAIN_VERSION_ID, paths, type Media } from '@typeroll/shared';
 import type { APIRoute } from 'astro';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';

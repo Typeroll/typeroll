@@ -24,7 +24,7 @@
 // and when the organization's media storage is prepared or connected.
 
 import { createHash } from 'node:crypto';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from '../net/s3';
 import { MAIN_VERSION_ID, paths, usesCustomerPublishing, type Site, type SiteVersion } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';
@@ -99,7 +99,7 @@ function r2Client(orgId: string, connection: Connection, bucket: string): S3Clie
   if (!credentials.access_key_id || !credentials.secret_access_key || !/^[a-f0-9]{32}$/.test(connection.cloudflare.account_id)) return null;
   return new S3Client({ region: 'auto', endpoint: r2Endpoint(connection.cloudflare.account_id, bucket),
     credentials: { accessKeyId: credentials.access_key_id, secretAccessKey: credentials.secret_access_key },
-    forcePathStyle: true, requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED', maxAttempts: 2 });
+    forcePathStyle: true, maxAttempts: 2 });
 }
 
 function errorText(error: unknown): string {

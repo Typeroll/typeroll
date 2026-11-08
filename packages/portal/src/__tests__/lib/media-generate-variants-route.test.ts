@@ -9,7 +9,7 @@ vi.mock('../../lib/api-auth', async (load) => ({
   ...await load<object>(),
   requireApiKey: async (request: Request) => ({ ok: true, value: { orgId: 'org', siteId: 'site', permission: 'admin', keyPrefix: 'k', request, path: new URL(request.url).pathname } }),
 }));
-vi.mock('@aws-sdk/client-s3', () => { throw new Error('storage must not be used'); });
+vi.mock('../../lib/net/s3', () => { throw new Error('storage must not be used'); });
 
 const { POST } = await import('../../pages/api/v1/sites/[siteId]/media/[mediaId]/generate-variants');
 const call = (mediaId: string) => POST({ request: new Request('https://portal.test/', { method: 'POST' }), params: { siteId: 'site', mediaId } } as never) as Promise<Response>;

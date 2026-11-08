@@ -25,7 +25,7 @@
 // same object again.
 
 import { createHash } from 'node:crypto';
-import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '../net/s3';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { getConnection } from '../publishing/connections';

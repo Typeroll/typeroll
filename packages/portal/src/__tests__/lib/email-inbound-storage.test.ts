@@ -1,7 +1,7 @@
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ send: vi.fn(), options: vi.fn(), destroy: vi.fn() }));
-vi.mock('@aws-sdk/client-s3', () => ({
+vi.mock('../../lib/net/s3', () => ({
   S3Client: class { constructor(options: unknown) { mocks.options(options); } send = mocks.send; destroy = mocks.destroy; },
   GetObjectCommand: class { constructor(public input: unknown) {} },
   DeleteObjectCommand: class { constructor(public input: unknown) {} },

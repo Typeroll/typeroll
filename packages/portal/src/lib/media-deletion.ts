@@ -105,13 +105,13 @@ export interface MediaDeletionResult {
 
 /** Delete one object, resolving the client for wherever it lives. */
 async function deleteObject(orgId: string, object: MediaObject): Promise<void> {
-  const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+  const { DeleteObjectCommand } = await import('./net/s3');
   if (object.location) {
     const client = await storageClient(orgId, object.location);
     await client.send(new DeleteObjectCommand({ Bucket: object.location.bucket, Key: object.key }));
     return;
   }
-  const { S3Client } = await import('@aws-sdk/client-s3');
+  const { S3Client } = await import('./net/s3');
   const accountId = process.env.R2_ACCOUNT_ID;
   const bucket = process.env.R2_BUCKET;
   if (!accountId || !bucket || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) {

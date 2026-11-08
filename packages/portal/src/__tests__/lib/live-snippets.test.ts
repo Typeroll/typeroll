@@ -6,7 +6,7 @@
 // the network.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DeleteObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, PutObjectCommand, S3Client } from '../../lib/net/s3';
 import type { APIRoute } from 'astro';
 import { MAIN_VERSION_ID, MAX_SNIPPETS, paths, type Site } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';

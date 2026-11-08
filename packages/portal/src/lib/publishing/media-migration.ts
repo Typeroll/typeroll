@@ -1,8 +1,7 @@
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { getSignedUrl, S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '../net/s3';
 import { r2Endpoint } from '../r2-endpoint';
 import { copyWithTransferService } from '../media/remote-transfer';
 import { createHash, randomUUID } from 'node:crypto';
-import { S3Client, GetObjectCommand, CopyObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { paths, type Media, type Site } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { siteMediaPrefix } from '../media-keys';

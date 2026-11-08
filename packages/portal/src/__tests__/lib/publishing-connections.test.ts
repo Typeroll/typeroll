@@ -15,7 +15,7 @@ import { POST, DELETE } from '../../pages/api/orgs/publishing/[provider]';
 import { GET as CALLBACK } from '../../pages/api/orgs/publishing/github/callback';
 import { GET as CLOUDFLARE_CALLBACK } from '../../pages/api/orgs/publishing/cloudflare/callback';
 import { createE2ESessionCookie } from '../../lib/e2e-auth';
-import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '../../lib/net/s3';
 
 const session = { userId: 'dev-user', email: 'dev@typeroll.local', orgId: 'default' };
 const accountId = 'a'.repeat(32);

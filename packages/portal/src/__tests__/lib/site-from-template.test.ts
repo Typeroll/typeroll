@@ -22,7 +22,7 @@ vi.mock('../../lib/api-auth', async (importOriginal) => ({ ...(await importOrigi
 // import removes the half-created site.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client } from '../../lib/net/s3';
 import type { APIContext } from 'astro';
 import { createHash } from 'node:crypto';
 import { MAIN_VERSION_ID, paths, type Media, type Page, type SiteSettings, type SiteStyle } from '@typeroll/shared';

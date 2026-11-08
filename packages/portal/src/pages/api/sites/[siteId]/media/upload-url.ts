@@ -81,8 +81,7 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
     try { staging = platformSvgStaging(prefix, sanitize(filename)); } catch (error) { return connectionFailure(error); }
   }
 
-  const { S3Client, PutObjectCommand } = await import('@aws-sdk/client-s3');
-  const { getSignedUrl } = await import('@aws-sdk/s3-request-presigner');
+  const { S3Client, PutObjectCommand, getSignedUrl } = await import('../../../../../lib/net/s3');
 
   const r2 = new S3Client({
     region: 'auto',
@@ -91,18 +90,6 @@ export const POST: APIRoute = async ({ request, cookies, params, locals }) => {
       accessKeyId: process.env.R2_ACCESS_KEY_ID!,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
     },
-    // R2 doesn't require checksums. aws-sdk v3.700+ defaults to
-    // `WHEN_SUPPORTED` which adds an `x-amz-checksum-crc32` query param to
-    // presigned URLs (and a matching header expectation on upload) — but
-    // it does NOT add the checksum header to SignedHeaders. The result: a
-    // naive PUT that includes `x-amz-checksum-crc32` as a header gets 403
-    // for SigV4 mismatch, and a naive PUT that omits it gets 400 for
-    // "checksum required but missing". Switching to `WHEN_REQUIRED`
-    // disables the middleware entirely for R2, so the presigned URL is a
-    // plain PUT with just host + content-type signed. The client uploads
-    // with no checksum header and it works.
-    requestChecksumCalculation: 'WHEN_REQUIRED',
-    responseChecksumValidation: 'WHEN_REQUIRED',
   });
 
   const uploadUrl = await getSignedUrl(

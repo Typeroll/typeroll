@@ -3,7 +3,7 @@ vi.mock('../../lib/media/remote-transfer', () => ({ remoteTransfersEnabled: vi.f
 // outlive its fixture and run against the following test's datastore spy.
 vi.mock('../../lib/publishing/media-migration-queue', () => ({ enqueueMediaMigration: vi.fn(async () => {}) }));
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { S3Client, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, CopyObjectCommand } from '../../lib/net/s3';
 import { paths, type Media } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';

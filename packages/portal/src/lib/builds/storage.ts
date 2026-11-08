@@ -1,5 +1,4 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { S3Client, GetObjectCommand, PutObjectCommand, getSignedUrl } from '../net/s3';
 import { getConnection, openCredentials, ConnectionError } from '../publishing/connections';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { assertPrivateOriginalBucket } from '../publishing/cloudflare-connection';
@@ -23,8 +22,7 @@ export async function buildStorage<T>(org: string, work: (storage: {
   const credentials = openCredentials<CloudflareCredentials>(org, 'cloudflare', connection.encrypted_credentials);
   const account = connection.cloudflare.account_id, bucket = connection.cloudflare.bucket;
   const client = new S3Client({ region: 'auto', endpoint: `https://${account}.r2.cloudflarestorage.com`, forcePathStyle: true,
-    credentials: { accessKeyId: credentials.access_key_id, secretAccessKey: credentials.secret_access_key },
-    requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED' });
+    credentials: { accessKeyId: credentials.access_key_id, secretAccessKey: credentials.secret_access_key } });
   const keyFor = (key: string) => {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org) || !key.startsWith(`builds/${org}/`) || key.split('/').some(p => !/^[a-zA-Z0-9_.-]+$/.test(p) || p === '.' || p === '..')) throw new Error('Invalid private build object scope');
     return key;
