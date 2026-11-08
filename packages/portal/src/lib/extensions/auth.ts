@@ -43,7 +43,12 @@ function b64Json(value: unknown): string {
 
 let ephemeralKeyPair: { privateKey: crypto.KeyObject; publicKey: crypto.KeyObject } | null = null;
 
-function signingKey(): { privateKey: crypto.KeyObject; publicKey: crypto.KeyObject; kid: string } {
+/**
+ * The signing key as PEM strings. Workers' `node:crypto` refuses a KeyObject
+ * as `options.key` when a `dsaEncoding` is given, which is what every ES256
+ * JWT here needs, so sign and verify always pass the key as PEM.
+ */
+function signingKey(): { privateKey: string; publicKey: string; publicJwk: crypto.JsonWebKey; kid: string } {
   const configured = process.env.EXTENSION_SIGNING_PRIVATE_JWK;
   let privateKey: crypto.KeyObject;
   if (configured) {
@@ -61,7 +66,13 @@ function signingKey(): { privateKey: crypto.KeyObject; publicKey: crypto.KeyObje
   const publicKey = crypto.createPublicKey(privateKey);
   const publicJwk = publicKey.export({ format: 'jwk' });
   const kid = hash(JSON.stringify({ crv: publicJwk.crv, kty: publicJwk.kty, x: publicJwk.x, y: publicJwk.y })).slice(0, 16);
-  return { privateKey, publicKey, kid };
+  return {
+    privateKey: privateKey.export({ format: 'pem', type: 'pkcs8' }) as string,
+    publicKey: publicKey.export({ format: 'pem', type: 'spki' }) as string,
+    // Only the public members, named explicitly: never a private `d`.
+    publicJwk: { kty: publicJwk.kty, crv: publicJwk.crv, x: publicJwk.x, y: publicJwk.y },
+    kid,
+  };
 }
 
 export function extensionIssuer(): string {
@@ -79,8 +90,7 @@ export function extensionIssuer(): string {
 }
 
 export function extensionJwks(): { keys: crypto.JsonWebKey[] } {
-  const { publicKey, kid } = signingKey();
-  const jwk = publicKey.export({ format: 'jwk' });
+  const { publicJwk: jwk, kid } = signingKey();
   let previous: crypto.JsonWebKey[] = [];
   if (process.env.EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS) {
     try {
