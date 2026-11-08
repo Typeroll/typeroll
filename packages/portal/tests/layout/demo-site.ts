@@ -327,6 +327,7 @@ function contact() {
           b('core/text', { text: '090-12 34 56, vardagar 8–17' }),
           b('core/icon', { icon: 'mail', size: 'lg' }),
           b('core/text', { text: 'hej@ljusrum.example' }),
+          b('core/icon', { icon: 'map-pin', size: 'lg' }),
           b('core/html', { html: '<address>Ljusrum Arkitekter<br>Smedjegatan 4<br>903 26 Umeå</address>' }),
           b('core/icon', { icon: 'clock', size: 'lg' }),
           b('core/site_field', { field: 'opening_hours', format: 'next_opening' }),

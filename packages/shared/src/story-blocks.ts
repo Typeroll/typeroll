@@ -159,6 +159,19 @@ const timeline: BlockType = {
   created_at: ISO_EPOCH,
 };
 
+const AUDIO_STYLES = `
+[data-block="audio"] { container-type:inline-size; display:grid; grid-template-columns:auto 1fr; gap:1rem 1.25rem; align-items:center; margin:0; padding:1.25rem; border-radius:.75rem; background:var(--color-surface, #f8fafc); }
+[data-block="audio"]:not(:has(.block-audio-cover)) { grid-template-columns:1fr; }
+[data-block="audio"] .block-audio-cover { inline-size:clamp(4.5rem, 20cqi, 8rem); aspect-ratio:1; object-fit:cover; border-radius:.5rem; }
+[data-block="audio"] .block-audio-body { display:grid; gap:var(--audio-gap, .5rem); min-width:0; }
+[data-block="audio"] .block-audio-title { text-align:start; font-weight:700; font-size:1.125rem; line-height:1.3; }
+[data-block="audio"] .block-audio-text:empty { display:none; }
+[data-block="audio"] .block-audio-text > * { margin:0; }
+[data-block="audio"] .block-audio-player { inline-size:100%; }
+[data-block="audio"] .block-audio-transcript { justify-self:start; font-size:var(--audio-link-size, .9375rem); }
+@container (max-width: 26rem) { [data-block="audio"] { grid-template-columns:1fr; } }
+`.trim();
+
 const audio: BlockType = {
   id: 'core/audio',
   name: 'audio',
@@ -181,18 +194,10 @@ const audio: BlockType = {
     { name: 'transcript_label', type: 'text', label: 'Transcript link text', default: 'Transcript', ui_text: 'transcript' },
   ],
   template: `<figure data-block="audio">{{#cover}}<img class="block-audio-cover" src="{{cover}}" alt="" loading="lazy" decoding="async" />{{/cover}}<div class="block-audio-body">{{#title}}<figcaption class="block-audio-title">{{title}}</figcaption>{{/title}}<div class="block-audio-text">{{{description}}}</div><audio class="block-audio-player" controls preload="metadata" src="{{src}}" aria-label="{{title}}"></audio>{{#transcript_url}}<a class="block-audio-transcript" href="{{transcript_url}}">{{transcript_label}}</a>{{/transcript_url}}</div></figure>`,
-  styles: `
-[data-block="audio"] { container-type:inline-size; display:grid; grid-template-columns:auto 1fr; gap:1rem 1.25rem; align-items:center; margin:0; padding:1.25rem; border-radius:.75rem; background:var(--color-surface, #f8fafc); }
-[data-block="audio"]:not(:has(.block-audio-cover)) { grid-template-columns:1fr; }
-[data-block="audio"] .block-audio-cover { inline-size:clamp(4.5rem, 20cqi, 8rem); aspect-ratio:1; object-fit:cover; border-radius:.5rem; }
-[data-block="audio"] .block-audio-body { display:grid; gap:var(--audio-gap, .5rem); min-width:0; }
-[data-block="audio"] .block-audio-title { text-align:start; font-weight:700; font-size:1.125rem; line-height:1.3; }
-[data-block="audio"] .block-audio-text:empty { display:none; }
-[data-block="audio"] .block-audio-text > * { margin:0; }
-[data-block="audio"] .block-audio-player { inline-size:100%; }
-[data-block="audio"] .block-audio-transcript { justify-self:start; font-size:var(--audio-link-size, .9375rem); }
-@container (max-width: 26rem) { [data-block="audio"] { grid-template-columns:1fr; } }
-`.trim(),
+  styles: AUDIO_STYLES,
+  // From render version 16 the cover lines up with the top of the text
+  // instead of its middle, like an image beside text everywhere else.
+  render_versions: [{ from: 16, styles: AUDIO_STYLES.replace('align-items:center;', 'align-items:start;') }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };

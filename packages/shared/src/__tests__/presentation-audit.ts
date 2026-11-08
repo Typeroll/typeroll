@@ -302,7 +302,7 @@ export const PART_SAMPLE_MARKUP: Record<string, (root: Element) => void> = {
   // The script marks the link of the heading in view.
   'core/table_of_contents': root => root.querySelector('a')?.setAttribute('aria-current', 'location'),
   // The script mounts Pagefind's search UI, or the note where the index cannot load (the editor preview).
-  'core/search': root => root.querySelector('.block-search-mount')?.insertAdjacentHTML('beforeend', '<p class="block-search-note">Search is available on the published site.</p>'
+  'core/search': root => root.querySelector('.block-search-mount')?.insertAdjacentHTML('beforeend', '<p class="block-search-note">Search is available on the published site.</p><input class="block-search-preview" type="search" placeholder="Search…" disabled>'
     + '<div class="pagefind-ui"><form class="pagefind-ui__form" role="search"><input class="pagefind-ui__search-input" type="text" placeholder="Search…"><button class="pagefind-ui__search-clear">Clear</button>'
     + '<div class="pagefind-ui__drawer"><div class="pagefind-ui__results-area"><p class="pagefind-ui__message">1 result for guide</p><ol class="pagefind-ui__results"><li class="pagefind-ui__result"><div class="pagefind-ui__result-inner">'
     + '<p class="pagefind-ui__result-title"><a class="pagefind-ui__result-link" href="/guide/">Guide</a></p><p class="pagefind-ui__result-excerpt">The <mark>guide</mark></p></div></li></ol>'

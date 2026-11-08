@@ -173,6 +173,18 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Authored text and HTML can use {{site.name}} and {{site.fields.<name>}} (text, number or true/false values, escaped), so a template names the site it is inserted into. Before, only {{site.current_year}} expanded and other tokens showed as written.',
     ],
   },
+  {
+    version: 16, core_version: '0.3.14', title: 'Clearer groups and compact controls',
+    changes: [
+      'An Audio block\'s cover image lines up with the top of its title instead of the middle of the text beside it.',
+      'In a stacked container, an Icon followed by content sits beside it (a line of contact details), and the pairs are spaced apart so it is clear what belongs together.',
+      'Feature rows that follow each other inside a section, column, tab or container have clearly more space between them.',
+      'A grid of logos wraps in centred rows: a short last row sits in the middle, and a phone fits three logos across.',
+      'The collapsed Navigation menu is a button with a clearly visible menu symbol before its label, instead of a full-width field with a small symbol.',
+      'A Navigation form with a single field is at most 32rem wide, with its button to the right of the field.',
+      'Where search cannot run (a preview), the Search block shows its field with the site\'s placeholder instead of an English note.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

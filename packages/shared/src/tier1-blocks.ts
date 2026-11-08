@@ -1605,37 +1605,13 @@ const featureRow: BlockType = {
  * /pagefind/ at visit time. In the editor preview (no index) it degrades
  * to a friendly note.
  */
-const search: BlockType = {
-  id: 'core/search',
-  name: 'search',
-  label: 'Search',
-  icon: 'search',
-  category: 'content',
-  container: false,
-  // The script mounts Pagefind's UI (its class names are Pagefind's stable
-  // markup), or a note where the index cannot load. The block's frame (its
-  // padding) takes a container style through `style_id`.
-  parts: [
-    { name: 'input', label: 'Search field', selector: '.pagefind-ui__search-input', target: 'text' },
-    { name: 'message', label: 'Result count', selector: '.pagefind-ui__message', target: 'text' },
-    { name: 'result_link', label: 'Result titles', selector: '.pagefind-ui__result-link', target: 'link' },
-    { name: 'result_excerpt', label: 'Result excerpts', selector: '.pagefind-ui__result-excerpt', target: 'text' },
-    { name: 'more_button', label: 'More results button', selector: '.pagefind-ui__button', target: 'button' },
-    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text' },
-  ],
-  schema: [
-    { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
-    { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…', ui_text: 'search' },
-  ],
-  template: `<div data-block="search" data-placeholder="{{placeholder}}">
-  <div class="block-search-mount"></div>
-</div>`,
-  styles: `
+const CORE_SEARCH_STYLES = `
 [data-block="search"] { max-width: 40rem; margin-inline: auto; padding: 1rem; }
 [data-block="search"] .block-search-note { opacity: 0.6; font-size: 0.9rem; padding: 0.5rem 0; text-align: center; }
 [data-block="search"] .pagefind-ui { --pagefind-ui-primary: var(--color-primary, #111); --pagefind-ui-text: var(--color-text, #111); }
-`.trim(),
-  script: `
+`.trim();
+
+const CORE_SEARCH_SCRIPT = `
 window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
 window.TyperollBlocks.register('core/search', (el) => {
   const mount = el.querySelector('.block-search-mount');
@@ -1660,7 +1636,72 @@ window.TyperollBlocks.register('core/search', (el) => {
   s.onerror = fail;
   document.body.appendChild(s);
 });
-`.trim(),
+`.trim();
+
+const CORE_SEARCH_SCRIPT_V16 = `
+window.TyperollBlocks = window.TyperollBlocks || { register(){}, init(){} };
+window.TyperollBlocks.register('core/search', (el) => {
+  const mount = el.querySelector('.block-search-mount');
+  if (!mount || el.dataset.trSearchInit) return;
+  el.dataset.trSearchInit = '1';
+  // Where the index cannot load (a preview), show the field as the published page will, in the site's own words.
+  const fail = () => {
+    const input = document.createElement('input');
+    input.type = 'search'; input.className = 'block-search-preview'; input.disabled = true;
+    input.placeholder = el.dataset.placeholder || ''; input.setAttribute('aria-label', el.dataset.placeholder || '');
+    mount.replaceChildren(input);
+  };
+  const link = document.createElement('link');
+  link.rel = 'stylesheet'; link.href = '/pagefind/pagefind-ui.css';
+  document.head.appendChild(link);
+  const s = document.createElement('script');
+  s.src = '/pagefind/pagefind-ui.js';
+  s.onload = () => {
+    try {
+      new window.PagefindUI({
+        element: mount,
+        showSubResults: true,
+        showImages: false,
+        translations: el.dataset.placeholder ? { placeholder: el.dataset.placeholder } : undefined,
+      });
+    } catch (e) { fail(); }
+  };
+  s.onerror = fail;
+  document.body.appendChild(s);
+});
+`.trim();
+
+const search: BlockType = {
+  id: 'core/search',
+  name: 'search',
+  label: 'Search',
+  icon: 'search',
+  category: 'content',
+  container: false,
+  // The script mounts Pagefind's UI (its class names are Pagefind's stable
+  // markup), or a note where the index cannot load. The block's frame (its
+  // padding) takes a container style through `style_id`.
+  parts: [
+    { name: 'input', label: 'Search field', selector: '.pagefind-ui__search-input', target: 'text' },
+    { name: 'message', label: 'Result count', selector: '.pagefind-ui__message', target: 'text' },
+    { name: 'result_link', label: 'Result titles', selector: '.pagefind-ui__result-link', target: 'link' },
+    { name: 'result_excerpt', label: 'Result excerpts', selector: '.pagefind-ui__result-excerpt', target: 'text' },
+    { name: 'more_button', label: 'More results button', selector: '.pagefind-ui__button', target: 'button' },
+    { name: 'note', label: 'Unavailable note', selector: '.block-search-note', target: 'text' },
+    { name: 'preview_input', label: 'Search field in a preview', selector: '.block-search-preview', target: 'text', min_render_version: 16 },
+  ],
+  schema: [
+    { name: 'style_id', type: 'style', label: 'Search style', style_target: 'container', editor_group: 'content' },
+    { name: 'placeholder', type: 'text', label: 'Placeholder', default: 'Search…', ui_text: 'search' },
+  ],
+  template: `<div data-block="search" data-placeholder="{{placeholder}}">
+  <div class="block-search-mount"></div>
+</div>`,
+  styles: CORE_SEARCH_STYLES,
+  script: CORE_SEARCH_SCRIPT,
+  // From render version 16 a preview shows the field with the site's placeholder instead of an English note.
+  render_versions: [{ from: 16, script: CORE_SEARCH_SCRIPT_V16, styles: `${CORE_SEARCH_STYLES}
+[data-block="search"] .block-search-preview { inline-size:100%; min-block-size:44px; padding:.6rem .9rem; font:inherit; color:inherit; border:1px solid color-mix(in srgb, currentColor 25%, transparent); border-radius:.5rem; background:transparent; }` }],
   origin: 'core',
   created_at: ISO_EPOCH,
 };
