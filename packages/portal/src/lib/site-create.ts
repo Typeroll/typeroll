@@ -14,7 +14,7 @@
 
 import { randomBytes } from 'node:crypto';
 import {
-  defaultSiteSettings, getPartialCompositionStarter, LATEST_RENDER_VERSION, MAIN_VERSION_ID, newSiteStyles, paths, siteTimeZone, slugify, STYLE_ELEMENT_ROLES,
+  defaultSiteSettings, getPartialCompositionStarter, LATEST_RENDER_VERSION, MAIN_VERSION_ID, newSiteStyles, paths, siteTimeZone, slugify, STYLE_ELEMENT_ROLES, uiText,
 } from '@typeroll/shared';
 import type { Block, Menu, Page, PackageDesignMode, Site, SitePackage, SiteSettings, SiteStyle } from '@typeroll/shared';
 import { getStore, generateDocId } from './datastore';
@@ -153,7 +153,7 @@ export async function createSite(input: CreateSiteInput): Promise<CreateSiteResu
 
   // Default home page in HTML mode. Published, so the first publication of a
   // new site has a home page for its header, footer and 404 page to link to.
-  await seedHomePage(input.orgId, siteId, name);
+  await seedHomePage(input.orgId, siteId, name, input.language);
 
   // Seed a published header + footer so the site renders from day one. New
   // sites start at the latest render version, where the starter navigation
@@ -187,14 +187,20 @@ async function seedMenu(orgId: string, siteId: string, menu: Menu): Promise<void
   await getStore().setDoc(paths.menu(orgId, siteId, id), { ...body, created_at: now, updated_at: now });
 }
 
-/** The default home page: HTML, published, so the first publication has a page for its header, footer and 404 page to link to. */
-async function seedHomePage(orgId: string, siteId: string, name: string): Promise<void> {
+/**
+ * The default home page, published so the first publication has a page for
+ * its header, footer and 404 page to link to. Blocks, like every other page a
+ * site starts with, so sections and templates can be added to it at once; its
+ * title is the site language's word for home and its heading the site's name,
+ * so nothing on it needs translating.
+ */
+async function seedHomePage(orgId: string, siteId: string, name: string, language: string | undefined): Promise<void> {
   await getStore().setDoc(`${paths.pages(orgId, siteId)}/home`, {
-    title: 'Home',
+    title: uiText(language ?? defaultSiteSettings.language, 'home'),
     slug: 'home',
-    content_mode: 'html',
+    content_mode: 'blocks',
     status: 'published',
-    html_content: `<h1>Welcome to ${escapeHtml(name)}</h1><p>Your new site is ready to edit.</p>`,
+    blocks: [{ id: 'title', type: 'core/heading', data: { text: name, level: 'h1' } }],
     date_updated: new Date().toISOString(),
   });
 }
@@ -321,7 +327,7 @@ async function createSiteFromSource(input: CreateSiteInput, from: NonNullable<Cr
       media: input.media, onImported: (rewrite, tokens) => { convert = rewrite; replace = tokens; },
     });
     if (copy) await applySiteCopy(ctx, copy, { convert, replace, pageTemplates: prepared.pageTemplateMap, actor });
-    defaults = await seedMissingDefaults(ctx, name, renderVersion);
+    defaults = await seedMissingDefaults(ctx, name, renderVersion, language);
   } catch (error) {
     const removed = await discardNewSite(orgId, siteId).catch((cleanup) => {
       console.error(`[create-site] could not remove the half-created site ${siteId}:`, cleanup);
@@ -406,13 +412,13 @@ async function applySiteCopy(ctx: { orgId: string; siteId: string; versionId: st
 }
 
 /** A home page, header, footer and the primary and footer menus, each only where the new site has none. */
-async function seedMissingDefaults(ctx: { orgId: string; siteId: string; versionId: string }, name: string, renderVersion: number): Promise<string[]> {
+async function seedMissingDefaults(ctx: { orgId: string; siteId: string; versionId: string }, name: string, renderVersion: number, language: string | undefined): Promise<string[]> {
   const { orgId, siteId, versionId } = ctx;
   const [pages, partials, menus] = await Promise.all([vstore.pages(orgId, siteId, versionId), vstore.partials(orgId, siteId, versionId), vstore.menus(orgId, siteId, versionId)]);
   const seeded: string[] = [];
   let homeId: string | null = pages.find(isHomePage)?.id ?? null;
   if (!homeId && !pages.some(page => page.id === 'home')) {
-    await seedHomePage(orgId, siteId, name);
+    await seedHomePage(orgId, siteId, name, language);
     homeId = 'home';
     seeded.push('home page');
   }
