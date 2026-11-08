@@ -119,7 +119,7 @@ describe('Extension credential provisioning', () => {
 
     const second = provider();
     const result = await provisionInstallationCredential({ ownerOrgId: OWNER_ORG, siteId: SITE, installationId: installed.id, actorId: 'api:key', fetchImpl: second.fetchImpl as typeof fetch, graceSeconds: 0 });
-    expect(result.credential_prefix).toBe(second.received[0]!.credential.split('_')[1]);
+    expect(result.credential_prefix).toBe(second.received[0]!.credential.slice(4, 12));
     await expect(authenticate(second.received[0]!.credential)).resolves.toBeTruthy();
     await expect(authenticate(old)).rejects.toMatchObject({ status: 401 });
   });
