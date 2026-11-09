@@ -16,6 +16,7 @@ import { publicMediaPath } from '../../../../../../lib/publishing/domain-config'
 import { connectionFailure } from '../../../../../../lib/publishing/http';
 import { assertMediaNameUpdate } from '../../../../../../lib/media/file-types';
 import type { Media } from '@typeroll/shared';
+import { importStatus, type ImportingMedia } from '../../../../../../lib/media/import-retry';
 
 const WRITABLE: Array<keyof Media> = ['alt_text', 'filename', 'public_path'];
 
@@ -27,7 +28,8 @@ export const GET: APIRoute = async ({ request, params }) => {
   if (!mediaId) return apiError('Missing mediaId');
   const doc = await getStore().getDoc<Media>(`${paths.media(ctx.orgId, ctx.siteId)}/${mediaId}`);
   if (!doc) return apiError('Not found', 404);
-  return apiResponse(ctx, { media: doc });
+  // An import from a URL reports whether its copy is done, still being retried, or set aside.
+  return apiResponse(ctx, { media: doc, import: importStatus(doc as ImportingMedia) });
 };
 
 export const PATCH: APIRoute = async ({ request, params }) => {

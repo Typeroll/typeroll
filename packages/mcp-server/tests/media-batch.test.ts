@@ -8,15 +8,19 @@ it('delegates URL imports to customer storage without downloading bytes in MCP',
   const post = vi.fn(async (_site: string, path: string, body: any) => {
     expect(path).toBe('media/import');
     if (body.source_url.includes('broken')) throw new Error('Source unavailable');
-    return { media_id: body.source_url, finalize_error: null };
+    if (body.source_url.includes('busy')) return { media_id: body.source_url, finalize: null, finalize_error: null, import: { state: 'pending', error_code: 'media_source_temporarily_unavailable', retry: { automatic: true } } };
+    return { media_id: body.source_url, finalize_error: null, import: { state: 'complete' } };
   });
   const tool = mediaTools.find(item => item.name === 'upload_media_batch_from_urls')!;
-  const items = ['first', 'broken', 'third'].map(name => ({ source_url: `https://source.example.com/${name}.jpg` }));
+  const items = ['first', 'broken', 'third', 'busy'].map(name => ({ source_url: `https://source.example.com/${name}.jpg` }));
   const result = await tool.handler({ items } as never, { client: { post } as unknown as TyperollClient, siteId: 'site' });
   const payload = JSON.parse(result.content[0]!.text);
-  expect(payload).toMatchObject({ succeeded: 2, failed: 1 });
+  // A pending import has its record and is retried automatically: it is not a failure, but it is reported.
+  expect(payload).toMatchObject({ succeeded: 3, failed: 1, pending: 1 });
+  expect(payload.results[3]).toMatchObject({ ok: true, pending: true, import: { state: 'pending' } });
+  expect(payload.results[0]).toMatchObject({ ok: true, pending: false });
   expect(payload.results.map((entry: any) => entry.source_url)).toEqual(items.map(item => item.source_url));
-  expect(post).toHaveBeenCalledTimes(3);
+  expect(post).toHaveBeenCalledTimes(4);
   expect(fetch).not.toHaveBeenCalled();
 });
 
