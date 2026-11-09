@@ -94,6 +94,18 @@ under `job`, so read the status from `job.status`, not the top level:
 }
 ```
 
+### Queued builds
+
+While the build or verification step waits for a runner, `build_progress.queue`
+says why: `waiting_for_provider` (the provider has not started a runner yet;
+`provider_status` is its own status, such as `queued`) or
+`waiting_for_other_builds` (other builds in the Organization go first). Its
+`message` is also the job's `phase`. A queued build is normal: keep polling the
+same job and do not trigger another deploy. The step's working time starts when
+a runner claims it; only a step no runner claims within 6 hours (`expires_at`)
+fails, with `build_queue_timeout`. See
+[A queued build that does not start](../../guides/customer-publishing/#a-queued-build-that-does-not-start).
+
 ### Partial rendering
 
 From Core 0.2.15, generated publication builds can reuse unchanged HTML. The

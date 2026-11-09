@@ -31,6 +31,40 @@
     status.
   - `upload_media_batch_from_urls` marks pending results `pending: true` and
     counts them in `pending`.
+- A build that waits in the build provider's queue no longer fails the
+  publication after 15 minutes (found on staging, where a static verification
+  step waited behind the Organization's background media preparation and
+  failed with `build_queue_timeout` when Cloudflare started it 15 minutes
+  later):
+  - A queued step does not expire while its provider build is pending. A
+    provider build that stopped before anyone claimed the step is dispatched
+    again, as before, within the existing attempt limit. Only a step that no
+    runner claims within 6 hours (`QUEUED_BUILD_LIMIT_MS`, replacing
+    `BUILD_QUEUE_WAIT_MS`) fails, with `build_queue_timeout` and a message
+    saying the provider never started a runner for it.
+  - A step's working time starts when a runner claims it: the claim moves the
+    stored deadline by the time the step waited, so a long queue no longer
+    shortens the build or a media window. The claim response keeps its shape;
+    engines read only `deadline`, so older engines work unchanged.
+  - The publication rechecks its own queued step (after 15 seconds, then
+    every minute) until a runner claims it: it reads the step's provider
+    build, records `provider_status`, starts a stopped one again and sets the
+    job's phase, for example "waiting for Cloudflare to start the verification
+    build (queued 6 min; this organization's background media preparation is
+    running on the same build account)" or "waiting for 1 other build in this
+    organization". The working phase returns once the step is claimed. A
+    queued build or verification step no longer counts toward the 45-minute
+    publication observation limit.
+  - `build_progress.queue` in the deploy status (`get_deploy_status`) and
+    `queue` on queued jobs in `GET /api/v1/publishing/builds`
+    (`read_organization_build_engine`) report `state`
+    (`waiting_for_provider` or `waiting_for_other_builds`), `message`,
+    `queued_at`, `queued_for_seconds`, `provider`, `provider_status`,
+    `provider_status_at`, `ahead`, `ahead_kinds`, `running_kinds` and
+    `expires_at`. `build_progress.deadline` is null while the step is queued.
+    The Publish menu and Publishing → Builds show the message.
+  - `trigger_deploy`, `get_deploy_status` and `read_organization_build_engine`
+    tell agents that a queued build is normal and must not be retriggered.
 
 ## 0.3.18 (candidate, MCP 0.45.127)
 
