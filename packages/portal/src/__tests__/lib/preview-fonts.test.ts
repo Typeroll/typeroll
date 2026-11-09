@@ -56,7 +56,8 @@ describe('preview font route', () => {
     expect(css.headers.get('access-control-allow-origin')).toBe('*');
     expect(css.headers.get('content-type')).toBe('text/css; charset=utf-8');
     const text = await css.text();
-    expect(text).toContain('url(g/s/inter/v1/latin.woff2)');
+    const latin = `g/h/${crypto.createHash('sha256').update('https://fonts.gstatic.com/s/inter/v1/latin.woff2').digest('hex').slice(0, 32)}`;
+    expect(text).toContain(`url(${latin})`);
     expect(text).toContain(`font-family:'Brand';font-style:normal;font-weight:400;font-display:swap;src:url(${sha.slice(0, 32)}.woff2) format('woff2')`);
     expect(text).not.toContain('gstatic');
 
@@ -65,14 +66,19 @@ describe('preview font route', () => {
     expect(uploaded.headers.get('content-type')).toBe('font/woff2');
     expect(new Uint8Array(await uploaded.arrayBuffer())).toEqual(bytes);
 
-    const proxied = await servePreviewFont(token, 'g/s/inter/v1/latin.woff2', fetch as any);
+    const proxied = await servePreviewFont(token, latin, fetch as any);
     expect(proxied.headers.get('access-control-allow-origin')).toBe('*');
     expect(await proxied.text()).toBe('google font bytes');
     // Google is asked once per URL; the rest comes from the cache.
     await servePreviewFont(token, 'fonts.css', fetch as any);
-    await servePreviewFont(token, 'g/s/inter/v1/latin.woff2', fetch as any);
+    await servePreviewFont(token, latin, fetch as any);
     expect(fetch).toHaveBeenCalledTimes(2);
+    // Stylesheets cached before files were named by hash still load.
+    expect((await servePreviewFont(token, 'g/s/inter/v1/latin.woff2', fetch as any)).status).toBe(200);
 
+    // A newer file version of a family the stylesheet names: another portal
+    // instance's cached stylesheet may name it.
+    expect((await servePreviewFont(token, 'g/s/inter/v2/latin.woff2', fetch as any)).status).toBe(200);
     // Only files the token and its stylesheet name.
     expect((await servePreviewFont(token, 'g/s/other/v1/x.woff2', fetch as any)).status).toBe(404);
     expect((await servePreviewFont(token, `${'0'.repeat(32)}.woff2`, fetch as any)).status).toBe(404);
@@ -93,6 +99,22 @@ async function seedSite(settings: Partial<SiteSettings>, page: Partial<Page> = {
 
 describe('renderPreview fonts', () => {
   const render = async () => (await import('../../lib/render-preview')).renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, {});
+
+  it('serves l/font?kit= files and refetches a stylesheet another instance saw', async () => {
+    const token = signPreviewFontToken({ orgId: ORG, siteId: SITE, googleCssUrl })!;
+    const kit = 'https://fonts.gstatic.com/l/font?kit=abcDEF&skey=0123&v=v20';
+    let css = googleCss;
+    const fetch = vi.fn(async (url: any) => new Response(String(url).includes('googleapis') ? css : new Uint8Array([0x77, 0x4f, 0x46, 0x32, 9])));
+    expect(await (await servePreviewFont(token, 'fonts.css', fetch as any)).text()).not.toContain('kit=');
+    // Google now answers with a kit URL; this instance still caches the old stylesheet.
+    css = `@font-face { font-family: 'Inter'; src: url(${kit}) format('woff2'); }`;
+    const name = `g/h/${crypto.createHash('sha256').update(kit).digest('hex').slice(0, 32)}`;
+    const file = await servePreviewFont(token, name, fetch as any);
+    expect(file.status).toBe(200);
+    expect(file.headers.get('content-type')).toBe('font/woff2');
+    expect(fetch.mock.calls.map(([url]) => String(url))).toContain(kit);
+    expect((await servePreviewFont(token, `g/h/${'0'.repeat(32)}`, fetch as any)).status).toBe(404);
+  });
 
   it('loads self-hosted and uploaded fonts through the signed route, never from Google', async () => {
     await seedSite({ render_version: 15, fonts: { heading: 'Inter', body: 'Brand', size_base: 16 } }, { html_content: '<p>Some <em>emphasis</em></p>' });

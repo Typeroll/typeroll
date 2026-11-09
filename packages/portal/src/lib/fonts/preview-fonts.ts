@@ -154,6 +154,12 @@ const headers = (contentType: string, maxAge: number) => ({
 });
 const notFound = () => new Response('Not found', { status: 404, headers: { 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' } });
 const FONT_TYPES: Record<string, string> = { woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf' };
+const fileKey = (url: string) => crypto.createHash('sha256').update(url).digest('hex').slice(0, 32);
+/** From the file's signature, since an l/font?kit=… URL has no extension. */
+const fontType = (bytes: Uint8Array) => {
+  const tag = String.fromCharCode(...bytes.slice(0, 4));
+  return tag === 'wOF2' ? 'font/woff2' : tag === 'wOFF' ? 'font/woff' : tag === 'OTTO' ? 'font/otf' : 'font/ttf';
+};
 
 /** Serve one path below /api/preview-fonts/<token>/. */
 export async function servePreviewFont(token: string, file: string, fetchImpl: typeof fetch = defaultFetch()): Promise<Response> {
@@ -167,7 +173,8 @@ export async function servePreviewFont(token: string, file: string, fetchImpl: t
       if (ticket.g) {
         let css = googleCss.get(ticket.g);
         if (css === undefined) { css = await fetchGoogleFontsCss(ticket.g, fetchImpl); googleCss.set(ticket.g, css); }
-        const local = new Map(googleFontFileUrls(css).map(url => [url, `g/${new URL(url).pathname.slice(1)}`]));
+        // By a hash of the full URL: Google sometimes names files as l/font?kit=…, whose query a path would lose.
+        const local = new Map(googleFontFileUrls(css).map(url => [url, `g/h/${fileKey(url)}`]));
         parts.push(rewriteGoogleFontCss(css, local));
       }
       // Family names match case-insensitively, as the planner matched the role's family to the files.
@@ -180,6 +187,20 @@ export async function servePreviewFont(token: string, file: string, fetchImpl: t
       if (!font) return notFound();
       return new Response(new Uint8Array(await readSiteFontBytes(ticket.o, ticket.s, font, 'file')), { status: 200, headers: headers('font/woff2', 24 * 60 * 60) });
     }
+    const hashed = /^g\/h\/([a-f0-9]{32})$/.exec(file);
+    if (ticket.g && hashed) {
+      // Only files the signed stylesheet names. Portal instances cache the
+      // stylesheet separately and Google's answer can change between fetches,
+      // so a name this instance does not know refetches the stylesheet once.
+      const find = (css: string) => googleFontFileUrls(css).find(url => fileKey(url) === hashed[1]);
+      let css = googleCss.get(ticket.g);
+      let url = css === undefined ? undefined : find(css);
+      if (!url) { css = await fetchGoogleFontsCss(ticket.g, fetchImpl); googleCss.set(ticket.g, css); url = find(css); }
+      if (!url) return notFound();
+      let bytes = googleFiles.get(url);
+      if (!bytes) { bytes = await fetchPublicAsset(url, MAX_FONT_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT }); googleFiles.set(url, bytes); }
+      return new Response(new Uint8Array(bytes), { status: 200, headers: headers(fontType(bytes), 24 * 60 * 60) });
+    }
     if (ticket.g && file.startsWith('g/')) {
       const path = file.slice(2);
       const match = GOOGLE_FILE_PATH.exec(path);
@@ -188,7 +209,13 @@ export async function servePreviewFont(token: string, file: string, fetchImpl: t
       // Only files the signed stylesheet names.
       let css = googleCss.get(ticket.g);
       if (css === undefined) { css = await fetchGoogleFontsCss(ticket.g, fetchImpl); googleCss.set(ticket.g, css); }
-      if (!googleFontFileUrls(css).includes(url)) return notFound();
+      // Files of a family the signed stylesheet names. Not the exact URL: portal
+      // instances cache the stylesheet separately, and Google moves a family to a
+      // new file version (s/<family>/v21/...) between fetches, so the browser may
+      // ask one instance for a file another instance's stylesheet named.
+      const family = (candidate: string) => /^https:\/\/fonts\.gstatic\.com\/s\/([a-z0-9]+)\//.exec(candidate)?.[1];
+      const families = new Set(googleFontFileUrls(css).map(family).filter(Boolean));
+      if (!families.has(family(url))) return notFound();
       let bytes = googleFiles.get(url);
       if (!bytes) { bytes = await fetchPublicAsset(url, MAX_FONT_BYTES, fetchImpl, { 'User-Agent': BROWSER_USER_AGENT }); googleFiles.set(url, bytes); }
       return new Response(new Uint8Array(bytes), { status: 200, headers: headers(FONT_TYPES[match[1]], 24 * 60 * 60) });
