@@ -133,6 +133,19 @@ describe('previewDerivation', () => {
     expect(await previewDerivation(ORG, SITE, MAIN_VERSION_ID, { contentRevision: false })).toMatchObject({ status: 'none', content_revision: '', data_digest: null });
     expect((await previewDerivation(ORG, SITE, MAIN_VERSION_ID)).content_revision).toMatch(/^[a-f0-9]{32}$/);
   });
+
+  it('keeps previews working when the publication runtime is refused, and says so only to deriving apps', async () => {
+    await seed();
+    vi.stubEnv('FORMS_PUBLIC_URL', 'http://localhost:4321');
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(`${paths.forms(ORG, SITE)}/contact`, { name: 'Contact', steps: [], created_at: new Date().toISOString() });
+    const { previewDerivation } = await import('../../lib/publishing/preview-derivation');
+    expect(await previewDerivation(ORG, SITE, MAIN_VERSION_ID)).toMatchObject({ status: 'none' });
+    state.providers = [provider([])];
+    const refused = await previewDerivation(ORG, SITE, MAIN_VERSION_ID);
+    expect(refused).toMatchObject({ status: 'failed', error: { provider: 'publication' } });
+    expect(refused.error!.message).toContain('must use HTTPS');
+  });
 });
 
 describe('preview links and the preview route', () => {

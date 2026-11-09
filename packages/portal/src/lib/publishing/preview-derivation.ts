@@ -21,6 +21,7 @@ import { getStore } from '../datastore';
 import { projectStaticPublication } from '../../../../../scripts/lib/static-publication.mjs';
 import { resolvePublicationVersion } from './publication-version';
 import { publicationRuntime } from './runtime-projection';
+import { buildExtensionRuntimeSnapshot } from '../extensions/runtime-snapshot';
 import { DerivationError, runBuildDerivations, stableDigest, type DerivationOutcome, type DerivationProvider } from './build-derivation';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 
@@ -110,25 +111,36 @@ export async function previewDerivation(
   { contentRevision: wantRevision = true }: { contentRevision?: boolean } = {},
 ): Promise<PreviewDerivation> {
   const store = getStore();
-  const runtime = await publicationRuntime(orgId, siteId, versionId);
   const failed = (error: DerivationError, revision: string, config: string, apps: DerivationApp[]): PreviewDerivation => ({
     status: 'failed', content_revision: revision, config_digest: config, apps, data_digest: null, receipts: [], cache_keys: {}, skipped: [],
     error: { message: error.message, ...(error.provider ? { provider: error.provider } : {}) },
     computed_at: new Date().toISOString(), derived: {}, data: null, reused: false,
   });
-  const configDigest = publicationConfigDigest(runtime);
+  const none = (): PreviewDerivation => ({ status: 'none', content_revision: '', config_digest: '', apps: [], data_digest: null, receipts: [], cache_keys: {}, skipped: [],
+    computed_at: new Date().toISOString(), derived: {}, data: null, reused: false });
+  // The apps alone decide whether there is anything to derive, so a page view
+  // does not depend on the rest of the publication runtime (forms, analytics).
+  const extensions = await buildExtensionRuntimeSnapshot(orgId, siteId, { reconcileBlocks: false, strict: true, versionId });
   let providers: DerivationProvider[];
   try {
-    providers = await derivationProvidersFor(orgId, siteId, runtime.extensions);
+    providers = await derivationProvidersFor(orgId, siteId, extensions);
   } catch (error) {
     if (!(error instanceof DerivationError)) throw error;
-    return failed(error, '', configDigest, []);
+    return failed(error, '', '', []);
   }
   // A page view on a site without deriving apps needs no frozen content at all.
-  if (!providers.length && !wantRevision) {
-    return { status: 'none', content_revision: '', config_digest: configDigest, apps: [], data_digest: null, receipts: [], cache_keys: {}, skipped: [],
-      computed_at: new Date().toISOString(), derived: {}, data: null, reused: false };
+  if (!providers.length && !wantRevision) return none();
+  let runtime: Awaited<ReturnType<typeof publicationRuntime>>;
+  try {
+    runtime = await publicationRuntime(orgId, siteId, versionId);
+  } catch (error) {
+    // A publication would refuse this runtime too (for example a form endpoint
+    // that is not public HTTPS). Without deriving apps the preview is unaffected.
+    if (!providers.length) return none();
+    const message = error instanceof Error ? error.message : String(error);
+    return failed(new DerivationError(`The publication runtime cannot be resolved: ${message}`, 'publication'), '', '', derivationApps(providers, extensions));
   }
+  const configDigest = publicationConfigDigest(runtime);
   const [resolved, site] = await Promise.all([
     resolvePublicationVersion(orgId, siteId, versionId),
     store.getDoc<Site>(paths.site(orgId, siteId)),
