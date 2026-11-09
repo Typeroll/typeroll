@@ -511,12 +511,12 @@ answers with an error.
 `POST /api/v1/sites/{siteId}/preview-link` (MCP `get_preview_link`) reports what
 the link shows:
 
-| Field | Meaning |
-| --- | --- |
-| `render_version` | The render version the link uses (`site_render_version` is the site's own) |
-| `content_revision` | Digest of the frozen public content; equal to the publication's `content_digest` for the same content |
-| `apps` | Installed app releases (`installation_id`, `extension_id`, `version`) |
-| `derivation` | `status` (`none`, `succeeded`, `failed`), `data_digest` (sha256 of the dataset), `receipts`, `cache_keys`, `skipped`, `config_digest`, `error` |
+| Field              | Meaning                                                                                                                                        |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| `render_version`   | The render version the link uses (`site_render_version` is the site's own)                                                                     |
+| `content_revision` | Digest of the frozen public content; equal to the publication's `content_digest` for the same content                                          |
+| `apps`             | Installed app releases (`installation_id`, `extension_id`, `version`)                                                                          |
+| `derivation`       | `status` (`none`, `succeeded`, `failed`), `data_digest` (sha256 of the dataset), `receipts`, `cache_keys`, `skipped`, `config_digest`, `error` |
 
 To compare render versions on identical content, mint one link with
 `render_version` and one without, and check that `content_revision` and
