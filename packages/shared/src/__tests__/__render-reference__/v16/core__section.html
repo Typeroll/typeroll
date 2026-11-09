@@ -103,8 +103,10 @@
 /* A shape divider fills the space between sections; it never covers the content of the block next to it. */
 [data-block="section"]:is([data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"]) { margin-block-start:clamp(34px, 6vw, 80px); }
 [data-block="section"]:is([data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"]) { margin-block-end:clamp(34px, 6vw, 80px); }
-/* A section inside a column, grid cell, tab or container groups content; without its own background it adds no padding. */
-:is(.block-columns-col, [data-block="grid"], .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="section"][style*="--block-bg:;"]:not([style*="--surface"]) { padding:0; }
+/* A section inside a column, grid cell, tab or container groups content; without its own background it adds no padding
+   unless its padding is chosen. */
+:is(.block-columns-col, [data-block="grid"], .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="section"]:is([data-pad="auto"],:not([data-pad]))[style*="--block-bg:;"]:not([style*="--surface"]) { padding-block:0; }
+:is(.block-columns-col, [data-block="grid"], .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="section"]:is([data-padding-x="auto"],:not([style*="--padding_x:"]))[style*="--block-bg:;"]:not([style*="--surface"]) { padding-inline:0; }
 /* Content widths come from the shared narrow, normal and wide widths. */
 [data-block="section"] > .block-section-inner { max-width:var(--max_width_px, var(--content-normal, 65rem)); }
 [data-block="section"][data-width="narrow"] > .block-section-inner { max-width:var(--max_width_px, var(--content-narrow, 42rem)); }
@@ -128,12 +130,13 @@
 :where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
 /* Icons keep their size in a row; the text beside them gives way. */
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
-/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
-:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
 /* Headings balance their lines, so a title does not end with one word alone. */
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+/* A size container gives its content no width to size by, so in a centring or row container a block holding one
+   would shrink to nothing. Such a block fills the container instead; its own maximum width still applies. */
+:where([data-block="container"]) > :where([data-block]):where(:has(:is([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel, .block-table-scroll, [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"])), [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"]) { inline-size:100%; }
 }
 
 @layer typeroll.instance{

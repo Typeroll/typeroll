@@ -92,7 +92,7 @@ ${[1,2,3,4,5,6].map(level => `:is([data-block="container"], [data-block="semanti
 [data-block="container"][data-min-h="lg"]     { min-height: 70vh; }
 [data-block="container"][data-min-h="screen"] { min-height: 100vh; }
 :is([data-block="container"], [data-block="semantic-container"])[style*="--min_height_px:"] { min-height:var(--min_height_px); }
-[data-block="container"][style*="--gap:none"]       { --container-gap: 0; }
+[data-block="container"][style*="--gap:none"]       { --container-gap: 0px; }
 [data-block="container"][style*="--gap:xs"]         { --container-gap: 0.25rem; }
 [data-block="container"][style*="--gap:sm"]         { --container-gap: 0.5rem; }
 [data-block="container"][style*="--gap:md"]         { --container-gap: 1rem; }
@@ -251,7 +251,7 @@ const grid: BlockType = {
      line's align stretch — a child height:100% (the grid-ism) breaks it */
   height: auto;
 }
-[data-block="grid"][style*="--gap:none"] { --container-gap: 0; }
+[data-block="grid"][style*="--gap:none"] { --container-gap: 0px; }
 [data-block="grid"][style*="--gap:xs"]   { --container-gap: 0.25rem; }
 [data-block="grid"][style*="--gap:sm"]   { --container-gap: 0.5rem; }
 [data-block="grid"][style*="--gap:md"]   { --container-gap: 1rem; }
@@ -2107,7 +2107,7 @@ atVersion16(container, ({ template, styles }) => ({
     ['--background_fit:{{background_fit}};', '--background_fit:{{background_fit}};--text-color:{{text_color}};']),
   styles: `${styles}
 /* Icon pairing off: a stacked container with an icon keeps its ordinary column layout. */
-[data-block="container"][data-column-only="true"][data-icon-pairing="off"]:has(> [data-block="icon"] + *) { display:flex; row-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); column-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); align-items:var(--align_cross, stretch); }
+[data-block="container"][data-column-only="true"][data-icon-pairing="off"]:has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) { display:flex; row-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); column-gap:var(--gap_px, var(--container-gap,var(--block-gap,1rem))); align-items:var(--align_cross, stretch); }
 /* A chosen text colour applies to everything inside, headings included. */
 :is([data-block="container"], [data-block="semantic-container"])[data-text-color]:not([data-text-color=""]) { color:var(--text-color); --color-text:var(--text-color); }`,
 }));

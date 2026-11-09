@@ -5,6 +5,12 @@
  * are emitted only for the block types a page uses.
  * See docs/plans/responsive-defaults-and-cascade.md.
  */
+/** Blocks that are size containers themselves (container-type: inline-size). */
+const SIZE_CONTAINER_BLOCKS = ['repeater"][data-layout="carousel', 'hero', 'feature_row', 'cta', 'stats', 'timeline', 'audio', 'scroll_steps']
+  .map(type => `[data-block="${type}"]`).join(', ');
+/** Any element that is a size container: those blocks, cells, columns, tab panels and table scrollers. */
+const SIZE_CONTAINERS = `:is([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel, .block-table-scroll, ${SIZE_CONTAINER_BLOCKS})`;
+
 export const BLOCK_DEFAULTS_V14_CSS = `
 /* A word longer than its column wraps instead of widening the page. */
 :where([data-block]) { overflow-wrap:anywhere; }
@@ -23,24 +29,28 @@ export const BLOCK_DEFAULTS_V14_CSS = `
 :where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
 /* Icons keep their size in a row; the text beside them gives way. */
 :where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
-/* Button labels hyphenate a word that does not fit rather than breaking it at an arbitrary letter. */
-:where(.block-btn, .block-pricing-cta, button) { hyphens:auto; }
 /* Headings balance their lines, so a title does not end with one word alone. */
 :where(h1,h2,h3,h4) { text-wrap:balance; }
 /* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
 :where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+/* A size container gives its content no width to size by, so in a centring or row container a block holding one
+   would shrink to nothing. Such a block fills the container instead; its own maximum width still applies. */
+:where([data-block="container"]) > :where([data-block]):where(:has(${SIZE_CONTAINERS}), ${SIZE_CONTAINER_BLOCKS}) { inline-size:100%; }
 `.trim();
 
-const CONTAINER_CHILDREN = (selector: string) => `/* Containers and grids space their children with gap; children add no margin of their own. */
-${selector} > [data-block] { margin-block:0; }`;
+const CONTAINER_CHILDREN = (selector: string) => `/* Containers and grids space their children with gap; children add no margin of their own.
+   A list's pager is part of the list, not a child block, and keeps its distance from the items. */
+${selector} > [data-block]:not(:where([data-block="pager"])) { margin-block:0; }`;
 
 /** Per block type, keyed by type id. */
 export const BLOCK_TYPE_DEFAULTS_V14: Readonly<Record<string, string>> = {
   'core/section': `/* A shape divider fills the space between sections; it never covers the content of the block next to it. */
 [data-block="section"]:is([data-divtop="wave"],[data-divtop="curve"],[data-divtop="tilt"]) { margin-block-start:clamp(34px, 6vw, 80px); }
 [data-block="section"]:is([data-divbot="wave"],[data-divbot="curve"],[data-divbot="tilt"]) { margin-block-end:clamp(34px, 6vw, 80px); }
-/* A section inside a column, grid cell, tab or container groups content; without its own background it adds no padding. */
-:is(.block-columns-col, [data-block="grid"], .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="section"][style*="--block-bg:;"]:not([style*="--surface"]) { padding:0; }
+/* A section inside a column, grid cell, tab or container groups content; without its own background it adds no padding
+   unless its padding is chosen. */
+:is(.block-columns-col, [data-block="grid"], .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="section"]:is([data-pad="auto"],:not([data-pad]))[style*="--block-bg:;"]:not([style*="--surface"]) { padding-block:0; }
+:is(.block-columns-col, [data-block="grid"], .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="section"]:is([style*="--padding_x:auto"],:not([style*="--padding_x:"]))[style*="--block-bg:;"]:not([style*="--surface"]) { padding-inline:0; }
 /* Content widths come from the shared narrow, normal and wide widths. */
 [data-block="section"] > .block-section-inner { max-width:var(--max_width_px, var(--content-normal, 65rem)); }
 [data-block="section"][data-width="narrow"] > .block-section-inner { max-width:var(--max_width_px, var(--content-narrow, 42rem)); }
@@ -70,8 +80,8 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
 [data-block="repeater"][data-layout="grid"] > :is(p,ul,ol,div:not([data-block])) { grid-column:1 / -1; }
 [data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
 [data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
-/* Fewer items than columns share the row instead of leaving empty columns. */
-[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fit, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
+/* The column setting is the maximum; fewer items than columns keep one column's width (last_row centres them). */
+[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fill, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
 /* Carousels show one card and a glimpse of the next on narrow screens. */
 [data-block="repeater"][data-layout="carousel"] { container-type:inline-size; }
 @container (max-width: 560px) {
@@ -145,7 +155,7 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
 [data-block="post_card"] .block-postcard-media img { max-block-size:min(26rem, 70vh); object-fit:cover; }
 [data-block="post_card"] .block-postcard-title > a { display:inline-block; min-block-size:24px; }`,
   'core/table_of_contents': `/* Links in the outline are touch targets of at least 24px. */
-[data-block="table_of_contents"] a { display:inline-block; padding-block:.15rem; }
+[data-block="table_of_contents"] a { padding-block:.15rem; }
 /* An outline with no headings to list takes no space. */
 [data-block="table_of_contents"][data-empty="true"] { display:none; }
 /* A nested level is a plain list, so its numbers do not look like they continue the level above. */
@@ -157,7 +167,7 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
 /* Social links are touch targets of at least 24px. */
 [data-block="team_member"] .block-team-socials a { display:inline-flex; align-items:center; min-block-size:24px; }`,
   'template/page_breadcrumbs': `/* Breadcrumb links are touch targets of at least 24px. */
-[data-block="breadcrumbs"] a { display:inline-block; padding-block:.25rem; }`,
+[data-block="breadcrumbs"] a { padding-block:.25rem; }`,
   'core/cta': `/* Without a chosen background a call to action uses the theme's primary colour, so its text stays readable. */
 [data-block="cta"][style*="--bg:;"], [data-block="cta"]:not([style*="--bg:"]) { background-color:var(--color-primary,#111); }
 /* Headings take the block's text colour, which is chosen for its background. */
@@ -178,18 +188,17 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
 /* A single plan on its own keeps the width of a plan card instead of stretching across the page. */
 :is(.page-content--blocks, .block-section-inner, .block-tabs-panel, [data-block="container"]) > [data-block="pricing_plan"] { max-inline-size:26rem; }`,
   'core/table': `/* Table cells keep words whole (hyphenating a long one); a table wider than its column scrolls. */
-[data-block="table"] :is(th,td) { overflow-wrap:normal; hyphens:auto; }
+[data-block="table"] :is(th,td) { overflow-wrap:normal; }
 /* The caption wraps to the visible width and stays in view while a wide table scrolls. */
 [data-block="table"] .block-table-scroll { container-type:inline-size; }
 [data-block="table"] .block-table-scroll > table > caption { position:sticky; inset-inline-start:0; max-inline-size:100cqi; text-align:start; }`,
   'core/search': `/* In a column or a grid cell the search field starts where the content beside it starts. */
 :is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="container"], [data-block="grid"]) > [data-block="search"] { margin-inline:0; padding-inline:0; }`,
   'core/step_card': `/* The step marker is a circle for a number and grows with a label: wider first, then taller, wrapping between words. */
-[data-block="step_card"] .block-step-number { display:inline-block; box-sizing:border-box; inline-size:auto; block-size:auto; min-inline-size:2.5rem; max-inline-size:min(100%, 18rem); padding:.3rem .65rem; line-height:1.9rem; border-radius:1.25rem; text-align:center; overflow-wrap:break-word; hyphens:auto; }
+[data-block="step_card"] .block-step-number { display:inline-block; box-sizing:border-box; inline-size:auto; block-size:auto; min-inline-size:2.5rem; max-inline-size:min(100%, 18rem); padding:.3rem .65rem; line-height:1.9rem; border-radius:1.25rem; text-align:center; overflow-wrap:break-word; }
 /* A label that wraps stays a compact badge at text size, with its icon on the first line. */
 [data-block="step_card"] .block-step-number { font-size:1rem; }
 [data-block="step_card"] .block-step-marker { align-items:flex-start; }`,
-  'core/button': `[data-block="button"] { hyphens:auto; }`,
   'core/heading': `/* The heading sits right under its eyebrow wherever the block is placed. */
 [data-block="heading"] .block-heading-eyebrow + .block-heading-text:not(#\\#) { margin-block-start:0; }
 /* A heading in a narrow column or grid cell scales down with it, so it keeps whole words on a line. */
@@ -214,10 +223,10 @@ ${CONTAINER_CHILDREN(':is([data-block="container"],[data-block="semantic-contain
  */
 export const BLOCK_TYPE_DEFAULTS_V16: Record<string, string> = {
   'core/container': `/* An icon followed by content sits beside it, like a line of contact details, and the pairs are spaced apart so it is clear what belongs together. */
-[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + *) { display:grid; grid-template-columns:auto minmax(0, 1fr); column-gap:.75rem; row-gap:max(var(--gap_px, 1rem), 1.25rem); align-items:start; }
-[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + *) > * { grid-column:1 / -1; }
-[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + *) > [data-block="icon"]:has(+ *) { grid-column:1; }
-[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + *) > [data-block="icon"] + * { grid-column:2; margin-block:0; }`,
+[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) { display:grid; grid-template-columns:auto minmax(0, 1fr); column-gap:.75rem; row-gap:max(var(--gap_px, 1rem), 1.25rem); align-items:start; }
+[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) > * { grid-column:1 / -1; }
+[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) > [data-block="icon"]:has(+ [data-block], + style + [data-block]) { grid-column:1; }
+[data-block="container"][data-column-only="true"]:not([data-icon-pairing="off"]):has(> [data-block="icon"] + [data-block], > [data-block="icon"] + style + [data-block]) > [data-block="icon"] + :is([data-block], style + [data-block]) { grid-column:2; margin-block:0; }`,
   'core/feature_row': `/* Feature rows that follow each other inside a section or column are clearly separate rows. */
 :is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] + [data-block="feature_row"] { margin-block-start:clamp(2.5rem, 1.5rem + 4vw, 5rem); }
 /* A row without its own background inside another block keeps its edges in line with the content beside it, also when it has spacing of its own. */
