@@ -193,5 +193,9 @@ describe('font CSS', () => {
     expect(fontFallbackFacesCss(plan)).toBe("@font-face{font-family:'Lato fallback';src:local('Arial'),local('ArialMT');size-adjust:97.4%;ascent-override:102.6%;descent-override:22.15%;line-gap-override:0%}");
     expect(webfontFallbackCss(15, plan)).toBe(webfontFallbackCss(14) + fontFallbackFacesCss(plan));
     expect(webfontFallbackCss(14, plan)).toBe(webfontFallbackCss(14));
+    // Unlayered: from 14 it must declare faces only, or it would beat every layered font rule.
+    expect(webfontFallbackCss(14)).not.toMatch(/(^|})\s*(body|h[1-6])\b/);
+    expect(webfontFallbackCss(14).match(/@font-face/g)).toHaveLength(2);
+    expect(webfontFallbackCss(13)).toContain('h1,h2,h3,h4,h5,h6{font-family:var(--font-heading)');
   });
 });

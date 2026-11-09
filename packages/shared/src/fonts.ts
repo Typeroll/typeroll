@@ -122,6 +122,8 @@ export function rewriteGoogleFontCss(css: string, localPaths: Map<string, string
   }).join('\n');
 }
 
+const WEBFONT_FALLBACK_FACE = "@font-face{font-family:'tr-fallback';src:local('Arial');size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}";
+
 /**
  * CLS guard used while a webfont loads: a size-adjusted Arial stands in with
  * Inter-like metrics. Published pages and preview emit the same rule.
@@ -132,8 +134,11 @@ export function rewriteGoogleFontCss(css: string, localPaths: Map<string, string
  */
 export function webfontFallbackCss(renderVersion: number, plan?: FontPlan | null): string {
   if (renderVersion >= FONT_PLAN_RENDER_VERSION && plan) return `${webfontFallbackCss(14)}${fontFallbackFacesCss(plan)}`;
+  // From 14 only the faces: every --font-* already ends in 'tr-fallback' (siteThemeCss),
+  // and this style is not in a cascade layer, so a body or h1–h6 rule here would
+  // override every layered font rule, such as a card title set to the body font.
   return renderVersion >= 14
-    ? `${WEBFONT_FALLBACK_CSS}@font-face{font-family:'tr-fallback';src:local('Arial Bold'),local('Arial-BoldMT');font-weight:600 900;size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}`
+    ? `${WEBFONT_FALLBACK_FACE}@font-face{font-family:'tr-fallback';src:local('Arial Bold'),local('Arial-BoldMT');font-weight:600 900;size-adjust:107%;ascent-override:90%;descent-override:22%;line-gap-override:0%}`
     : WEBFONT_FALLBACK_CSS;
 }
 
