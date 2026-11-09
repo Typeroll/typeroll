@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.19 (candidate, MCP 0.45.128)
 
 - Media imports from a URL no longer lose files to passing transfer failures
   (found on moveria-de, where about 38% of 3–5 MB PNG imports answered 503
