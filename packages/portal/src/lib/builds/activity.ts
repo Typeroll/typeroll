@@ -6,6 +6,7 @@ import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from './queue'
 import { buildInputPath, readEngineConfiguration, engineConfigurationPath, type BuildInput, type EngineConfiguration } from './state';
 import { githubBuildClient, githubBuildRoot, readGithubDispatch } from './github';
 import { enginePath } from './cloudflare';
+import { describeBuildQueue } from './queue-state';
 
 /** How long after its build a publication may still be uploading or verifying. */
 const FINISHING_WINDOW_MS = 2 * 60 * 60_000;
@@ -45,18 +46,19 @@ export async function buildActivity(org: string, now = Date.now()) {
   const seen = new Set<string>();
   const unique = finishing.filter(({ task }) => !seen.has(task.identity.job_id) && !!seen.add(task.identity.job_id));
   const awaiting = unique.filter(entry => entry.phase === AWAITING_APPROVAL_PHASE);
-  const entries = [
-    ...await Promise.all(active.map(async task => ({ task, input: await store.getDoc<BuildInput>(buildInputPath(org, task.id)), phase: null as string | null }))),
-    ...unique.filter(entry => entry.phase !== AWAITING_APPROVAL_PHASE),
-  ];
+  const queued = await Promise.all(active.map(async task => ({ task, input: await store.getDoc<BuildInput>(buildInputPath(org, task.id)), phase: null as string | null })));
+  const queueEntries = queued.map(({ task, input }) => ({ id: task.id, task, input }));
+  const entries = [...queued, ...unique.filter(entry => entry.phase !== AWAITING_APPROVAL_PHASE)];
   const siteName = async (siteId: string) => (await store.getDoc<{ name: string }>(paths.site(org, siteId)))?.name ?? siteId;
   const awaitingApproval = await Promise.all(awaiting.map(async ({ task }) => ({ key: task.id, job_id: task.identity.job_id, site_id: task.identity.site_id,
     site_name: await siteName(task.identity.site_id), version_id: task.identity.version_id, status: 'awaiting_approval' as const, phase: AWAITING_APPROVAL_PHASE })));
   const jobs = await Promise.all(entries.map(async ({ task, input, phase }) => {
     const site = input?.kind !== 'qualification' ? await store.getDoc<{ name: string }>(paths.site(org, task.identity.site_id)) : null;
     const status: 'queued' | 'running' | 'publishing' = task.status === 'completed' ? 'publishing' : task.status as 'queued' | 'running';
+    // Why a queued step has not started: the provider has not started a runner yet, or other steps go first.
+    const queue = describeBuildQueue({ id: task.id, task, input }, queueEntries, now);
     return { key: task.id, job_id: task.identity.job_id, site_id: task.identity.site_id, site_name: input?.kind === 'qualification' ? 'Build verification' : site?.name ?? task.identity.site_id,
-      kind: input?.kind, version_id: task.identity.version_id, status, phase, provider: input?.provider ?? 'cloudflare', attempt: task.attempt,
+      kind: input?.kind, version_id: task.identity.version_id, status, phase: queue?.message ?? phase, queue, provider: input?.provider ?? 'cloudflare', attempt: task.attempt,
       // `attempt` also counts planned media windows; split it so a window never reads as a restart (SE-07).
       ...buildAttemptParts(task), static_verification: input?.kind === 'static_verification' && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total ?? 0 } : null, media_preparation: input?.kind !== 'static_verification' && task.media_total && status !== 'publishing' ? { completed: task.media_cursor ?? 0, total: task.media_total } : null };
   }));

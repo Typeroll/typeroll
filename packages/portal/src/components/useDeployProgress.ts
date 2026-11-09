@@ -4,7 +4,9 @@ import type { DeployJob } from '@typeroll/shared';
 
 export interface DeployProgress {
   cache_recovery?: CacheRecovery;
-  build_progress?: { status: string; attempt: number; media_continuations?: number; retries?: number; step: string; completed: number; total: number } | null;
+  build_progress?: { status: string; attempt: number; media_continuations?: number; retries?: number; step: string; completed: number; total: number;
+    /** Why a queued step has not started yet (see lib/builds/queue-state.ts). */
+    queue?: { state: 'waiting_for_provider' | 'waiting_for_other_builds'; message: string; queued_for_seconds: number; provider: 'cloudflare' | 'github' } | null } | null;
   render_report?: DeployJob['render_report'];
   seo_report?: DeployJob['seo_report'];
   id?: string;
@@ -76,3 +78,6 @@ export function useDeployProgress(siteId: string, onFailure: (message: string) =
   }, [siteId, jobId, watchRevision]);
   return { job, setJob, watch: selectJob };
 }
+
+/** A queue state's message as a sentence. */
+export const queueSentence = (message: string) => `${message.charAt(0).toUpperCase()}${message.slice(1)}.`;

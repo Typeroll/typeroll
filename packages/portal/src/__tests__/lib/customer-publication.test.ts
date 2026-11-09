@@ -328,6 +328,22 @@ it('terminates expired provider observation instead of leaving a job running aft
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', failure: { code: 'publication_observation_timeout' } });
 });
 
+it('keeps waiting for a static verification step that is still queued at the provider instead of timing out observation', async () => {
+  const build = 'd'.repeat(64), verification = 'e'.repeat(64), now = Date.now();
+  await getStore().updateDoc(jobPath, { status: 'running', phase: 'verifying static output on the organization build engine', started_at: new Date(now - 2 * 60 * 60_000).toISOString(), git_publication: { build_task_key: build, verification_task_key: verification } });
+  await getStore().setDoc(`organizations/org/build_tasks/${build}`, { status: 'completed', created_at: now - 2 * 60 * 60_000, completed_at: now - 70 * 60_000, deadline: now - 60 * 60_000 });
+  // Queued for 50 minutes behind other builds in the provider account; its own working time has not started.
+  await getStore().setDoc(`organizations/org/build_tasks/${verification}`, { status: 'queued', attempt: 0, lease_until: 0, created_at: now - 50 * 60_000, queued_at: now - 50 * 60_000, deadline: now - 5 * 60_000,
+    identity: { org_id: 'org', site_id: 'site', job_id: 'job', version_id: 'main' } });
+  await getStore().setDoc(`organizations/org/build_inputs/${verification}`, { kind: 'static_verification', provider: 'cloudflare', provider_status: 'queued', source_key: 'source', storage_account_id: 'a'.repeat(32) });
+  mocks.built.mockResolvedValue(null);
+  expect(await executeCustomerPublication(args)).toBe('waiting');
+  expect(mocks.built).toHaveBeenCalledWith('org', verification);
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'running',
+    phase: 'waiting for Cloudflare to start the verification build (queued 50 min; Cloudflare starts it when this account has build capacity)',
+    build_wait: { key: verification, resume_phase: 'verifying static output on the organization build engine' } });
+});
+
 it('preserves the build failure after long media preparation instead of reporting a verification timeout', async () => {
   const key = 'd'.repeat(64);
   await getStore().updateDoc(jobPath, { started_at: new Date(Date.now() - 70 * 60_000).toISOString(), git_publication: { build_task_key: key } });

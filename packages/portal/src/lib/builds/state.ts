@@ -35,7 +35,9 @@ export interface BuildInput {
   validation_source_sha256?: string;
   validation_configuration_sha256?: string; provider?: BuildProvider; dispatch_nonce?: string; source_key: string; kind: 'qualification' | 'publication' | 'media_preparation' | 'static_verification';
   /** False when the publication is not hosted on Pages (hosted sites): the engine returns the whole site. */
-  direct_upload?: boolean; dispatch_id?: string; dispatch_uncertain?: boolean; dispatch_started_at?: number; dispatch_attempt?: number; dispatch_lease_until?: number; storage_account_id: string }
+  direct_upload?: boolean; dispatch_id?: string; dispatch_uncertain?: boolean; dispatch_started_at?: number; dispatch_attempt?: number; dispatch_lease_until?: number; storage_account_id: string;
+  /** The provider's status of the current dispatch, as the coordinator last read it (Cloudflare: queued, initializing, running, stopped; GitHub: queued, in_progress, completed…). */
+  provider_status?: string | null; provider_status_at?: number | null }
 export async function readEngineConfiguration(org: string, provider: BuildProvider = 'cloudflare') { return getStore().getDoc<EngineConfiguration>(engineConfigurationPath(org, provider)); }
 export async function authorizeEngine(org: string, token: string, revision: string) {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(org)) throw new ConnectionError('Build engine authentication failed.', 401);
