@@ -30,7 +30,15 @@ describe('collectFontUsage', () => {
     expect(result.heading.weights).toEqual([600, 800]);
     expect(result.body).toEqual({ weights: [400, 500, 700], italic: [400, 700] });
     expect(result.accent).toEqual({ weights: [500, 600], italic: [500, 600] });
-    expect(result.display.weights).toEqual([300]);
+    // 300 only on desktop: other widths draw the display text at the regular weight.
+    expect(result.display.weights).toEqual([300, 400]);
+  });
+
+  it('keeps the regular weight for text set in another role\'s font', () => {
+    // Tab labels in the heading font inherit 400; without it they draw at the nearest planned weight.
+    const blocks: Block[] = [{ id: 't', type: 'core/tabs', data: { font: 'heading' } }];
+    const styles = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(role => ({ id: role, name: role, role, targets: [], base: { weight: 500 } })) as SiteStyle[];
+    expect(collectFontUsage({ blocks, styles, blockTypes: registry }).heading.weights).toEqual([400, 500]);
   });
 
   it('counts headings inside rich text and blocks in slots', () => {
