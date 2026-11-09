@@ -5,8 +5,40 @@ import { ConnectionError } from '../publishing/connections';
 export interface TransferReceipt { protocol: 1; id: string; sha256: string; size: number; etag: string }
 import { customerTransferService } from './transfer-service';
 import { withoutRedirects } from '../net/no-redirect.mjs';
+import { remoteMediaTransfers } from './transfer';
 export { remoteTransfersEnabled } from './transfer-service';
 const sign = (secret: string, body: string) => createHmac('sha256', secret).update(body).digest('hex');
+/** A receipt is small; an error body is read only this far (a Cloudflare error page is HTML of several KB). */
+const BODY_LIMIT = 2048;
+/** Worker error codes and what they mean. Each keeps its own code, so a caller can tell a busy source from a refused one. */
+const TRANSFER_ERRORS: Record<string, string> = {
+  media_source_unavailable: 'The original file could not be downloaded. Check that it is still accessible on the source site.',
+  media_source_temporarily_unavailable: 'The source site did not deliver the file just now (a server error or rate limit). The file was not copied.',
+  media_transfer_interrupted: 'The media transfer was interrupted before the file was stored.',
+  media_transfer_timeout: 'The media transfer timed out before the file was stored.',
+  media_transfer_busy: 'The media transfer service is busy with another large file.',
+  media_integrity_failed: 'The copied file does not match the original. Its references have not been changed.',
+  media_file_too_large: 'The original file exceeds the 25 MB upload limit.',
+  media_source_invalid: 'The source must be a publicly accessible website URL.',
+  media_destination_unavailable: 'The destination storage rejected the file. Check Media storage in Publishing.',
+};
+/** Reads at most `limit` bytes; `overflow` says whether the body was longer. */
+async function readLimited(response: Response, limit: number): Promise<{ text: string; overflow: boolean }> {
+  const reader = response.body?.getReader(); const chunks: Uint8Array[] = []; let size = 0, overflow = false;
+  if (!reader) return { text: '', overflow };
+  try {
+    for (;;) {
+      const chunk = await reader.read(); if (chunk.done) break;
+      if (size + chunk.value.length > limit) { chunks.push(chunk.value.subarray(0, limit - size)); size = limit; overflow = true; break; }
+      size += chunk.value.length; chunks.push(chunk.value);
+    }
+  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  return { text: Buffer.concat(chunks).toString('utf8'), overflow };
+}
+const workerCode = (text: string): string | null => {
+  try { const code = (JSON.parse(text) as { error?: unknown }).error; return typeof code === 'string' && /^[a-z0-9_]{1,64}$/.test(code) ? code : null; } catch { return null; }
+};
+const retryable = (status: number) => status === 429 || status >= 500;
 /** A receipt is accepted only from the authenticated service and for this exact, fresh request. */
 async function requestTransfer(orgId: string, input: Record<string, unknown>, fetchImpl = fetch): Promise<TransferReceipt> {
   const service = await customerTransferService(orgId);
@@ -14,8 +46,8 @@ async function requestTransfer(orgId: string, input: Record<string, unknown>, fe
   // Host only: enough to compare sources without logging file names or signed URLs.
   let sourceHost: string | undefined;
   try { sourceHost = new URL(String(input.source_url)).host; } catch { /* no source */ }
-  const retrying = (attempt: number, reason: string) =>
-    console.info(JSON.stringify({ event: 'media_transfer_retry', operation: input.operation, source_host: sourceHost, attempt: attempt + 1, reason, elapsed_ms: Date.now() - started }));
+  const log = (event: string, fields: Record<string, unknown>) =>
+    console.info(JSON.stringify({ event, operation: input.operation, source_host: sourceHost, ...fields, elapsed_ms: Date.now() - started }));
   for (let attempt = 0; ; attempt++) {
     const job = { ...input, protocol: 1, id: randomUUID(), expires_at: Date.now() + 90000 }, body = JSON.stringify(job);
     let response: Response;
@@ -23,33 +55,35 @@ async function requestTransfer(orgId: string, input: Record<string, unknown>, fe
       response = await withoutRedirects(fetchImpl)(service.url, { method: 'POST', redirect: 'manual', signal: AbortSignal.timeout(90000),
         headers: { 'Content-Type': 'application/json', 'x-typeroll-signature': sign(service.secret, body) }, body });
     } catch {
-      if (attempt < 2) { retrying(attempt, 'network'); await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }
-      throw new ConnectionError('The media transfer was interrupted. Retry the migration; completed files will be kept.', 503, 'media_transfer_interrupted');
+      if (attempt < 2) { log('media_transfer_retry', { attempt: attempt + 1, reason: 'network' }); await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }
+      log('media_transfer_failed', { attempts: attempt + 1, reason: 'network', code: 'media_transfer_interrupted' });
+      throw new ConnectionError('The connection to the media transfer service was interrupted.', 503, 'media_transfer_interrupted', { upstream_status: null, worker_code: null });
     }
-    const reader = response.body?.getReader(); const chunks: Uint8Array[] = []; let size = 0;
-    if (!reader) throw new ConnectionError('Media transfer returned no receipt.', 503, 'media_transfer_unavailable');
-    try { for (;;) { const chunk = await reader.read(); if (chunk.done) break; size += chunk.value.length; if (size > 2048) throw new ConnectionError('Media transfer returned an invalid receipt.', 503, 'media_transfer_unavailable'); chunks.push(chunk.value); } }
-    finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
-    const text = Buffer.concat(chunks).toString('utf8');
+    // Errors first: a 5xx error page from Cloudflare (1101, 1102, 1015) is HTML
+    // larger than a receipt and must be retried like any other 5xx.
     if (!response.ok) {
-      if ((response.status === 429 || response.status >= 500) && attempt < 2) { retrying(attempt, `http_${response.status}`); await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }
-      let code: string; try { code = JSON.parse(text).error; } catch { code = 'media_transfer_unavailable'; }
-      const descriptions: Record<string, string> = {
-        media_source_unavailable: 'The original file could not be downloaded. Check that it is still accessible on the source site and retry.',
-        media_integrity_failed: 'The copied file does not match the original. Its references have not been changed. Retry the migration.',
-        media_file_too_large: 'The original file exceeds the 25 MB upload limit.',
-        media_source_invalid: 'The source must be a publicly accessible website URL.',
-        media_destination_unavailable: 'The destination rejected the file. Check Media storage in Publishing and retry.',
-      };
-      throw new ConnectionError(descriptions[code] ?? 'Media transfer could not finish. Retry the migration; completed files will be kept.', response.status >= 500 ? 503 : 422,
-        descriptions[code] ? code : 'media_transfer_unavailable');
+      const { text } = await readLimited(response, BODY_LIMIT);
+      const code = workerCode(text), status = response.status;
+      const reason = `http_${status}${code ? `:${code}` : ''}`;
+      if (retryable(status)) {
+        // The customer's Worker or its source is overloaded: run fewer copies at once for a while.
+        remoteMediaTransfers.congested();
+        if (attempt < 2) { log('media_transfer_retry', { attempt: attempt + 1, reason, upstream_status: status, worker_code: code }); await new Promise(resolve => setTimeout(resolve, 1000 * 2 ** attempt)); continue; }
+      }
+      const known = code && TRANSFER_ERRORS[code] ? code : null;
+      const failureCode = known ?? 'media_transfer_unavailable';
+      log('media_transfer_failed', { attempts: attempt + 1, reason, upstream_status: status, worker_code: code, code: failureCode });
+      throw new ConnectionError(known ? TRANSFER_ERRORS[known] : `The media transfer service answered HTTP ${status}. The file was not copied.`,
+        retryable(status) ? 503 : 422, failureCode, { upstream_status: status, worker_code: code });
     }
+    const { text, overflow } = await readLimited(response, BODY_LIMIT);
+    if (overflow || !text) throw new ConnectionError('Media transfer returned an invalid receipt.', 503, 'media_transfer_unavailable', { upstream_status: response.status, worker_code: null });
     const supplied = response.headers.get('x-typeroll-signature');
     if (!supplied || !/^[a-f0-9]{64}$/.test(supplied) || !timingSafeEqual(Buffer.from(supplied, 'hex'), Buffer.from(sign(service.secret, text), 'hex'))) throw new ConnectionError('Media transfer receipt could not be authenticated.', 503, 'media_transfer_unavailable');
     const receipt = JSON.parse(text) as TransferReceipt;
     if (receipt.protocol !== 1 || receipt.id !== job.id || !/^[a-f0-9]{64}$/.test(receipt.sha256) || !Number.isSafeInteger(receipt.size) || receipt.size < 1 || receipt.size > 25 * 1024 * 1024 ||
         !/^"[^"\r\n]{1,200}"$/.test(receipt.etag) || (input.expected_sha256 && input.expected_sha256 !== receipt.sha256) || (input.expected_size !== undefined && input.expected_size !== receipt.size)) throw new ConnectionError('The copied file does not match its transfer request.', 422, 'media_integrity_failed');
-    console.info(JSON.stringify({ event: 'media_transfer_receipt', operation: input.operation, transferred_bytes: receipt.size, portal_file_bytes: 0, source_host: sourceHost, attempts: attempt + 1, duration_ms: Date.now() - started }));
+    log('media_transfer_receipt', { transferred_bytes: receipt.size, portal_file_bytes: 0, attempts: attempt + 1, duration_ms: Date.now() - started });
     return receipt;
   }
 }
