@@ -19,6 +19,17 @@
 - Publications and dry runs record `derivation_receipt` on the deploy job, so a
   derivation can be verified with `trigger_deploy` `dry_run: true` without
   publishing or activating another app release.
+- Render versions 14–16 fix found by comparing the Moveria sites: the webfont
+  fallback stylesheet sits outside the cascade layers, so its `body` and
+  `h1`–`h6` font rules overrode every layered font rule. A card title set to
+  the body font rendered in the heading font. From 14 the stylesheet declares
+  only the fallback faces; `--font-*` already carry the fallback.
+- Font plans include the regular weight for text set in another role's font
+  (for example tab labels in the heading font), which drew at the nearest
+  planned weight and looked bolder.
+- Preview fonts: Google font files are served by a hash of their full URL, so
+  `l/font?kit=…` files load, and a file another portal instance's stylesheet
+  named refetches the stylesheet once instead of answering 404.
 
 ## 0.3.17 (candidate, MCP 0.45.126)
 
