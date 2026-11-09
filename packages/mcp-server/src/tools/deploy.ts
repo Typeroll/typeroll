@@ -20,7 +20,7 @@ export const deployTools: ToolDef[] = [
       environment: z.enum(['production', 'staging']).optional(),
       confirm_live_domains: z.boolean().optional().describe('Required (true) for a real deploy of a cut-over site: acknowledges that the deploy publishes to the live domains named by get_publication_impact or the live_domain_confirmation_required error. Only after the site owner approved this production release. Not needed for dry_run or sites that are not cut over.'),
       allow_unsaved: z.boolean().optional().describe('Explicitly publish saved content while leaving the reported unsaved Pages/partials untouched. Only after owner confirmation.'),
-      dry_run: z.boolean().optional().describe('Validate without publishing. Checks the frozen source only, including image links without an accessible name (publication_validation_failed).'),
+      dry_run: z.boolean().optional().describe('Validate without publishing. Checks the frozen source only, including image links without an accessible name (publication_validation_failed). Also runs every app derivation on the frozen content with the installed app releases and records job.derivation_receipt (content_revision, apps, data_digest, receipts, cache_keys) — read it with get_deploy_status. A required app that fails fails the dry run with its reason.'),
       version: versionParam,
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {

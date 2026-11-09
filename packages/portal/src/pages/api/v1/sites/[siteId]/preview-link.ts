@@ -11,7 +11,9 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../lib/api-auth';
 import { vstore } from '../../../../../lib/version-store';
 import { signPreviewTicket, isPreviewSigningConfigured } from '../../../../../lib/preview-signing';
-import { contentPagePath, DEFAULT_CONTENT_TYPE, isRenderVersion, LATEST_RENDER_VERSION } from '@typeroll/shared';
+import { contentPagePath, DEFAULT_CONTENT_TYPE, isRenderVersion, LATEST_RENDER_VERSION, resolveRenderVersion } from '@typeroll/shared';
+import { previewDerivation, receiptOf } from '../../../../../lib/publishing/preview-derivation';
+import { publicationRuntime } from '../../../../../lib/publishing/runtime-projection';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -47,6 +49,16 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
   if (!targetSlug || targetSlug === 'home') targetSlug = '';
 
+  // What this link shows, so two links can be compared: the accepted content
+  // revision, the render version, the app releases, and the receipt of the
+  // derivation the next publication would run on that content. A failed
+  // derivation is reported here and shown in the preview, never hidden.
+  const [derivation, runtime, settings] = await Promise.all([
+    previewDerivation(ctx.orgId, ctx.siteId, ctx.versionId),
+    publicationRuntime(ctx.orgId, ctx.siteId, ctx.versionId),
+    vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId),
+  ]);
+
   const { token, expiresAt } = signPreviewTicket({
     orgId: ctx.orgId,
     siteId: ctx.siteId,
@@ -54,6 +66,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     ttlSeconds: body.ttl_seconds,
     includeWorkingCopies: body.include_working_copy === true,
     renderVersion: body.render_version,
+    contentRevision: derivation.content_revision,
   });
 
   // Astro's Node adapter on Cloud Run drops X-Forwarded-Host and reports
@@ -72,6 +85,10 @@ export const POST: APIRoute = async ({ request, params }) => {
     expires_at: expiresAt,
     version_id: ctx.versionId,
     include_working_copy: body.include_working_copy === true,
-    ...(body.render_version !== undefined ? { render_version: body.render_version } : {}),
+    render_version: body.render_version ?? resolveRenderVersion(settings?.render_version),
+    site_render_version: resolveRenderVersion(settings?.render_version),
+    content_revision: derivation.content_revision,
+    apps: runtime.extensions.installations.map(({ installation_id, extension_id, version }) => ({ installation_id, extension_id, version })),
+    derivation: receiptOf(derivation),
   }, 200, body);
 };

@@ -42,6 +42,10 @@ export interface PreviewTicket {
   /** Render with this platform render version instead of the site's own
    *  (previewing an upgrade). Signed, so a link can't be retargeted. */
   rv?: number;
+  /** Content revision (publication content digest) when the link was made.
+   *  A preview whose content has changed since says so, so two links can be
+   *  compared only when they show the same revision. */
+  cr?: string;
   id?: string;
 }
 
@@ -68,6 +72,7 @@ export function signPreviewTicket(args: {
   ttlSeconds?: number;
   includeWorkingCopies?: boolean;
   renderVersion?: number;
+  contentRevision?: string;
 }): { token: string; expiresAt: string } {
   const ttl = Math.max(60, Math.min(MAX_TTL_SECONDS, args.ttlSeconds ?? DEFAULT_TTL_SECONDS));
   const ticket: PreviewTicket = {
@@ -78,6 +83,7 @@ export function signPreviewTicket(args: {
     exp: Math.floor(Date.now() / 1000) + ttl,
     ...(args.includeWorkingCopies ? { wc: true } : {}),
     ...(args.renderVersion !== undefined ? { rv: args.renderVersion } : {}),
+    ...(args.contentRevision ? { cr: args.contentRevision } : {}),
   };
   const payload = Buffer.from(JSON.stringify(ticket), 'utf8').toString('base64url');
   const sig = crypto.createHmac('sha256', getSecret()).update(payload).digest('base64url');

@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.18 (candidate, MCP 0.45.127)
+
+- Previews derive app data the way the next publication would. Core freezes
+  the version's saved, published content with the publication projection
+  (no drafts, working copies, pending proposals or private fields), calls the
+  same app release with the same signed request and validates the result.
+  Derived listings, counts and `{{site.derived_data_url}}` datasets for
+  browser filters now work in preview. Results are reused only for identical
+  frozen content, public app configuration and releases. A failed derivation
+  shows a notice on every preview page instead of empty lists.
+- `get_preview_link` reports what a link shows: `render_version`,
+  `site_render_version`, `content_revision`, installed `apps` and the
+  `derivation` receipt (`status`, `data_digest`, `receipts`, `cache_keys`,
+  `skipped`, `error`). Links sign their content revision, and a preview page
+  whose content changed afterwards says so, so render versions can be compared
+  on identical content.
+- Publications and dry runs record `derivation_receipt` on the deploy job, so a
+  derivation can be verified with `trigger_deploy` `dry_run: true` without
+  publishing or activating another app release.
+- Render versions 14–16 fix found by comparing the Moveria sites: the webfont
+  fallback stylesheet sits outside the cascade layers, so its `body` and
+  `h1`–`h6` font rules overrode every layered font rule. A card title set to
+  the body font rendered in the heading font. From 14 the stylesheet declares
+  only the fallback faces; `--font-*` already carry the fallback.
+- Font plans include the regular weight for text set in another role's font
+  (for example tab labels in the heading font), which drew at the nearest
+  planned weight and looked bolder.
+- Preview fonts: Google font files are served by a hash of their full URL, so
+  `l/font?kit=…` files load, and a file another portal instance's stylesheet
+  named refetches the stylesheet once instead of answering 404.
+
 ## 0.3.17 (candidate, MCP 0.45.126)
 
 - Render versions 14–16 fixes found by comparing the Moveria sites with

@@ -306,6 +306,10 @@ export function collectFontUsage(input: FontUsageInput): FontUsage {
     for (const [key, value] of Object.entries(data)) if (WEIGHT_KEY.test(key)) weightValues(value, weights);
     for (const override of Object.values(block.responsive ?? {})) for (const [key, value] of Object.entries(override?.data_overrides ?? {})) if (WEIGHT_KEY.test(key)) weightValues(value, weights);
     for (const weight of weights) add(role, weight);
+    // Text in another role's font keeps the inherited regular weight, for
+    // example tab labels set in the heading font. Without 400 the browser
+    // draws them with the nearest planned weight, which looks bolder.
+    if (role !== 'body' && !/heading/.test(block.type)) add(role, 400);
     if (isSiteFontRole(data.title_font)) add(data.title_font, 600);
     scanText(data, role);
     for (const child of block.children ?? []) visit(child, depth + 1);

@@ -808,6 +808,15 @@ it('stops a dry run on an image link without an accessible name, as the build wo
   expect(job.error).toContain('Image link has no accessible name: /partner');
 });
 
+it('records the derivation receipt on a dry run, so it can be verified without publishing', async () => {
+  const store = getStore();
+  await executeCustomerPublication({ ...args, dryRun: true });
+  const job = await store.getDoc<any>(jobPath);
+  expect(job).toMatchObject({ status: 'succeeded', dry_run: true, derivation_receipt: { status: 'none', apps: [], data_digest: null, receipts: [] } });
+  expect(job.derivation_receipt.content_revision).toMatch(/^[a-f0-9]{32}$/);
+  expect(job.derivation_receipt).not.toHaveProperty('data');
+});
+
 it('freezes the theme fonts into the publication and stops before building when they cannot be copied', async () => {
   const store = getStore();
   const frozenFonts = { css_url: 'https://fonts.googleapis.com/css2?family=Inter', css: '@font-face{}', files: [{ name: `${'a'.repeat(32)}.woff2`, sha256: 'b'.repeat(64), data: 'AA==' }] };

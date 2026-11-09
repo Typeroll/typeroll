@@ -45,6 +45,7 @@ import { mediaPreparationStatus } from '../media/preparation';
 import { publicationRuntime } from './runtime-projection';
 import { DerivationError, runBuildDerivations } from './build-derivation';
 import { indexableSettings } from './launch-robots';
+import { derivationApps, derivationReceipt } from './preview-derivation';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { preparePublicMediaDelivery, verifyPublicMediaDelivery, type MediaDeliveryResult } from './media-domain';
 import { checkLiveMedia } from './media-serving';
@@ -383,15 +384,17 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         });
         // Project first: private fields, provenance and drafts must not reach a provider.
         const content = { version_id: resolved.versionId, pages: frozen.pages, content_types: frozen.contentTypes };
+        const providers = await derivationProvidersFor(args.orgId, args.siteId, publicRuntime.extensions);
+        const contentDigest = publicationContentDigest(content), configDigest = publicationConfigDigest(publicRuntime);
         const derivation = await runBuildDerivations(
           {
             org_id: args.orgId, site_id: args.siteId, version_id: resolved.versionId,
-            content_digest: publicationContentDigest(content), content,
-            config_digest: publicationConfigDigest(publicRuntime),
-            provider_version: '',
+            content_digest: contentDigest, content, config_digest: configDigest, provider_version: '',
           },
-          await derivationProvidersFor(args.orgId, args.siteId, publicRuntime.extensions),
+          providers,
         );
+        // The receipt goes on the job, dry runs included, so a derivation can be verified without publishing.
+        await store.updateDoc(jobPath, { derivation_receipt: derivationReceipt(contentDigest, configDigest, derivationApps(providers, publicRuntime.extensions), derivation) });
         frozen.authored_noindex = resolved.settings?.sitewide_noindex === true;
         if (derivation.sources.length > 0) {
           frozen.derived = Object.fromEntries(derivation.sources.map(source => [source.id, source.records]));

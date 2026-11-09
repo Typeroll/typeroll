@@ -9,13 +9,13 @@
     "source": "github",
     "subfolder": "packages/mcp-server"
   },
-  "version": "0.45.126",
+  "version": "0.45.127",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "@typeroll/mcp-server",
-      "version": "0.45.126",
+      "version": "0.45.127",
       "transport": {
         "type": "stdio"
       },
