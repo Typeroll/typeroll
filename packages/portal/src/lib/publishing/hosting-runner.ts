@@ -36,6 +36,7 @@ import { readEngineConfiguration, type BuildProvider } from '../builds/state';
 import { schedulePublication, waitForBuild, waitForPublicationCondition } from '../scheduling/continuation';
 import { DerivationError, runBuildDerivations } from './build-derivation';
 import { ConnectionError } from './connections';
+import { derivationApps, derivationReceipt } from './preview-derivation';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { getOrganizationDomains, getSiteDomains } from './domain-config';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
@@ -182,10 +183,14 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
         siteUrl: `https://${host}`, coreCommit: process.env.TYPEROLL_SOURCE_SHA ?? '', publishedAt: contentCutoff, noindex: false, coreBlockTypes: CORE_BLOCK_TYPES,
       });
       const content = { version_id: resolved.versionId, pages: frozen.pages, content_types: frozen.contentTypes };
+      const providers = await derivationProvidersFor(args.orgId, args.siteId, publicRuntime.extensions);
+      const contentDigest = publicationContentDigest(content), configDigest = publicationConfigDigest(publicRuntime);
       const derivation = await runBuildDerivations({
         org_id: args.orgId, site_id: args.siteId, version_id: resolved.versionId,
-        content_digest: publicationContentDigest(content), content, config_digest: publicationConfigDigest(publicRuntime), provider_version: '',
-      }, await derivationProvidersFor(args.orgId, args.siteId, publicRuntime.extensions));
+        content_digest: contentDigest, content, config_digest: configDigest, provider_version: '',
+      }, providers);
+      // The receipt goes on the job, dry runs included, so a derivation can be verified without publishing.
+      await store.updateDoc(jobPath, { derivation_receipt: derivationReceipt(contentDigest, configDigest, derivationApps(providers, publicRuntime.extensions), derivation) });
       frozen.authored_noindex = resolved.settings?.sitewide_noindex === true;
       if (derivation.sources.length > 0) frozen.derived = Object.fromEntries(derivation.sources.map(source => [source.id, source.records]));
       if (derivation.receipts.length > 0 || derivation.skipped.length > 0) {

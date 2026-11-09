@@ -1970,6 +1970,19 @@ export interface DeployJob {
   warnings?: string[];
   /** True when the build deliberately skipped its hosting upload. */
   dry_run?: boolean;
+  /** What app derivation consulted and produced for this publication (dry runs too), without the data. */
+  derivation_receipt?: {
+    status: 'none' | 'succeeded' | 'failed';
+    content_revision: string;
+    config_digest: string;
+    apps: Array<{ installation_id: string; extension_id: string; version: string }>;
+    data_digest: string | null;
+    receipts: Array<{ kind: string; id: string; count: number }>;
+    cache_keys: Record<string, string>;
+    skipped: Array<{ provider: string; reason: string }>;
+    error?: { message: string; provider?: string };
+    computed_at: string;
+  };
   /** Public URLs this publication serves when admitted: live domains first, then the temporary address. */
   targets?: string[];
   /** True when the publication reaches a live custom domain (the site is cut over). */

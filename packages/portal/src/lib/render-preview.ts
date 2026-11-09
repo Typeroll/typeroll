@@ -76,6 +76,7 @@ import {
   HEADER_BEHAVIOR_RUNTIME_JS,
   pageIdentityAttributes,
   type FormBlockOptions,
+  queryDerivedSource,
 } from '@typeroll/shared';
 import { getStore } from './datastore';
 import { paths } from '@typeroll/shared';
@@ -150,6 +151,10 @@ export interface PreviewOptions {
   /** Render with this platform render version instead of the site's own,
    *  to preview an upgrade before saving it. */
   renderVersion?: number;
+  /** App-derived data for this version, computed as its next publication
+   *  would (lib/publishing/preview-derivation). `dataUrl` serves the dataset
+   *  as {{site.derived_data_url}}. Absent: derived listings render empty. */
+  derived?: { sources: Record<string, Array<Record<string, unknown>>>; dataUrl: string };
 }
 
 export async function renderPreview(
@@ -248,7 +253,13 @@ export async function renderPreview(
       ...pageContentValues(publicContentPage(page, contentType)),
       breadcrumbs,
     },
-    site: { ...siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields), url: seoBase, live_base_url: live.liveBaseUrl },
+    site: { ...siteContext(settings as unknown as Record<string, unknown>, undefined, siteFields), url: seoBase, live_base_url: live.liveBaseUrl,
+      ...(opts.derived ? { derived_data_url: opts.derived.dataUrl } : {}) },
+    // Derived data, as the build's [...slug].astro provides it.
+    ...(opts.derived ? {
+      derived: opts.derived.sources,
+      derivedSource: (query: Parameters<typeof queryDerivedSource>[1]) => queryDerivedSource(opts.derived!.sources, query),
+    } : {}),
     // Paginating listings render their first slice in the preview; the
     // pager appears but its /page/N/ links only exist on the deployed
     // site (route generation is the SSG's job).

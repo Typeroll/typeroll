@@ -493,8 +493,43 @@ The address contains the dataset's content hash, and it is shipped in the same
 static artifact as the HTML. Do not hardcode the hash or fetch live CMS records
 from a public filter. The dataset contains **public output only**. Changing it
 invalidates pages that reference its URL, while unrelated pages retain their
-render cache. Preview does not run external derivations: this URL and derived
-output are publication features; verify them in a test publication.
+render cache.
+
+### Derivation in preview and dry runs
+
+Preview links run the same derivation the next publication would: Core freezes
+the version's saved, published content with the publication's projection
+(published pages and public fields only, never drafts, working copies or
+pending proposals), calls the same app release with the same signed request,
+and validates the result the same way. Derived listings render from it, and
+`{{site.derived_data_url}}` points at the dataset served for that preview, so
+browser filters work. A result is reused only for identical input: frozen
+content, public app configuration and app releases. A failed derivation shows a
+notice on every preview page instead of empty listings, and the dataset URL
+answers with an error.
+
+`POST /api/v1/sites/{siteId}/preview-link` (MCP `get_preview_link`) reports what
+the link shows:
+
+| Field | Meaning |
+| --- | --- |
+| `render_version` | The render version the link uses (`site_render_version` is the site's own) |
+| `content_revision` | Digest of the frozen public content; equal to the publication's `content_digest` for the same content |
+| `apps` | Installed app releases (`installation_id`, `extension_id`, `version`) |
+| `derivation` | `status` (`none`, `succeeded`, `failed`), `data_digest` (sha256 of the dataset), `receipts`, `cache_keys`, `skipped`, `config_digest`, `error` |
+
+To compare render versions on identical content, mint one link with
+`render_version` and one without, and check that `content_revision` and
+`derivation.data_digest` match. The link signs its content revision; a preview
+page whose content changed after the link was minted says so.
+
+To verify a derivation without previewing or publishing, run a deploy with
+`dry_run: true`. It freezes the content, runs every derivation with the
+installed releases and records the same receipt as `job.derivation_receipt`
+(read it with `get_deploy_status`); a required provider that fails fails the dry
+run with its reason. Real publications record the receipt too. Neither path
+activates another app release: derivation always uses the release the site
+resolves to.
 
 The provider owns its domain rules; the project owns its field map, taxonomy
 and presentation. Approval and publication remain separate actions. Freeform
