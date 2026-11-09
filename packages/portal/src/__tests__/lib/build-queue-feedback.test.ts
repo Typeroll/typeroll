@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
-import { expireQueuedBuild, queuedBuildExpired, BUILD_QUEUE_WAIT_MS, type BuildTask } from '../../lib/builds/queue';
+import { expireQueuedBuild, queuedBuildExpired, QUEUED_BUILD_LIMIT_MS, type BuildTask } from '../../lib/builds/queue';
 import { refreshBuildFailure } from '../../lib/builds/failure-status';
 import { publicationBuildProgress } from '../../lib/builds/public-progress';
 import { createProviderClient, githubFailureHint } from '../../lib/publishing/providers.mjs';
@@ -9,8 +9,8 @@ import { paths } from '@typeroll/shared';
 const key = 'a'.repeat(64), taskPath=`organizations/org/build_tasks/${key}`, jobPath=paths.deploy('org','site','job');
 beforeEach(async()=>{makeTmpFixtures();await resetDatastore();});
 afterEach(()=>vi.restoreAllMocks());
-it('expires an unclaimed media step on status read and exposes the real waiting state',async()=>{
-  const task={status:'queued',attempt:0,queued_at:Date.now()-BUILD_QUEUE_WAIT_MS-1,deadline:Date.now()+3600000,media_total:249,media_cursor:0,identity:{org_id:'org',site_id:'site',job_id:'job',version_id:'main'}};
+it('expires an unclaimed media step at the queue cap on status read and exposes the real waiting state',async()=>{
+  const task={status:'queued',attempt:0,queued_at:Date.now()-QUEUED_BUILD_LIMIT_MS-1,deadline:Date.now()+3600000,media_total:249,media_cursor:0,identity:{org_id:'org',site_id:'site',job_id:'job',version_id:'main'}};
   await getStore().setDoc(taskPath,task);
   await getStore().setDoc(jobPath,{status:'running',version_id:'main',git_publication:{build_task_key:key}});
   const job=(await getStore().getDoc<any>(jobPath))!;
@@ -31,11 +31,12 @@ it('measures a continuation from its checkpoint, not the age of the entire media
   expect(queuedBuildExpired({status:'queued',created_at:1,queued_at:Date.now(),deadline:Date.now()+3600000} as BuildTask)).toBe(false);
   expect(queuedBuildExpired({status:'running',created_at:1,deadline:1} as BuildTask)).toBe(false);
 });
-it('keeps background image preparation queued behind a long publication until its deadline',async()=>{
-  const now=Date.now(), waited={status:'queued',created_at:1,queued_at:now-BUILD_QUEUE_WAIT_MS-1,deadline:now+3600000} as BuildTask;
-  expect(queuedBuildExpired(waited,now)).toBe(true);
+it('keeps interactive and background steps queued until the queue cap, whatever their working deadline',async()=>{
+  const now=Date.now(), waited={status:'queued',created_at:1,queued_at:now-16*60_000,deadline:now-60_000} as BuildTask;
+  expect(queuedBuildExpired(waited,now)).toBe(false);
   expect(queuedBuildExpired({...waited,background:true},now)).toBe(false);
-  expect(queuedBuildExpired({...waited,background:true,deadline:now},now)).toBe(true);
+  expect(queuedBuildExpired({...waited,queued_at:now-QUEUED_BUILD_LIMIT_MS},now)).toBe(true);
+  expect(queuedBuildExpired({...waited,background:true,queued_at:now-QUEUED_BUILD_LIMIT_MS},now)).toBe(true);
   const {OrganizationBuildQueue}=await import('../../lib/builds/queue');
   const {BUILD_PROTOCOL,BUILD_RUNTIME}=await import('../../lib/builds/contract.mjs');
   const identity={protocol:BUILD_PROTOCOL,org_id:'org',site_id:'site',version_id:'main',job_id:'media-request',publication_id:'c'.repeat(64),commit:'a'.repeat(40),branch:'main',node_version:BUILD_RUNTIME,source_sha256:'b'.repeat(64)};

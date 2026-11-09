@@ -60,7 +60,7 @@ it('rejects incompatible workers, swapped attempt tokens, cancellation and expir
   await expect(queue.heartbeat('org', claim.key, claim.lease_id, 'wrong')).rejects.toMatchObject({ code: 'build_lease_lost' });
   await queue.cancel('org', claim.key);
   await expect(queue.authorize('org', claim.key, claim.lease_id, claim.token)).rejects.toMatchObject({ code: 'build_lease_lost' });
-  await queue.enqueue(identity('site-b'), 'engine-1'); now += 46 * 60_000;
+  await queue.enqueue(identity('site-b'), 'engine-1'); now += 6 * 60 * 60_000;
   expect(await queue.claim('org', 'engine-1', 1)).toBeNull();
   expect(await getStore().getDoc(`${buildTasksPath('org')}/${buildTaskKey(identity('site-b'))}`)).toMatchObject({ status: 'failed', error_code: 'build_queue_timeout' });
 });

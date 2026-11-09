@@ -60,6 +60,18 @@ describe('organization publishing through the MCP transport', () => {
     } finally { await s.close(); }
   });
 
+  it('tells agents that a queued build is normal and must not be retriggered', async () => {
+    const s = await session();
+    try {
+      const { tools } = await s.client.listTools();
+      const describe = (name: string) => tools.find(t => t.name === name)?.description ?? '';
+      for (const term of ['build_progress.queue', 'waiting_for_provider', 'waiting_for_other_builds', 'provider_status', 'do not retrigger', 'build_queue_timeout', 'deadline is null'])
+        expect(describe('get_deploy_status')).toContain(term);
+      for (const term of ['build_progress.queue', 'do not trigger it again']) expect(describe('trigger_deploy')).toContain(term);
+      for (const term of ['waiting_for_provider', 'waiting_for_other_builds', 'do not retrigger']) expect(describe('read_organization_build_engine')).toContain(term);
+    } finally { await s.close(); }
+  });
+
   it('diagnoses the GitHub connection without a site and re-checks only when asked', async () => {
     const s = await session();
     try {

@@ -59,7 +59,7 @@ import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { redactFailureText } from './http';
 import { prepareEngineForBuild, engineUpdateRetryAllowed, type EngineUpdateRecord } from '../builds/auto-update';
 import type { BuildDiagnostic } from '../builds/diagnostics.mjs';
-import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
+import { OrganizationBuildQueue, buildTasksPath, buildDeadline, type BuildTask } from '../builds/queue';
 import { finalizeDirectUpload } from '../builds/upload';
 import { claimCloudflareResource, generatedCloudflareNames } from './cloudflare-account-claims';
 import { prepareStaticProject, saveStaticChecks, verifyStaticBatch, saveCustomerVerification, verifyCustomerCandidate, type CustomerVerification } from '../builds/publication';
@@ -291,8 +291,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     if (job.verification_retry) await assertVerificationRetry(args.orgId, args.siteId, job, true);
     const buildTask = job.git_publication?.build_task_key
       ? await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${job.git_publication.build_task_key}`) : null;
-    const observationStart = Math.max(Date.parse(job.observation_started_at ?? job.started_at), buildTask?.completed_at ?? 0);
-    const preparingBuild = buildTask && ['queued', 'running'].includes(buildTask.status) && buildTask.deadline > Date.now();
+    const verificationKey = job.git_publication?.verification_task_key;
+    const verifying = verificationKey ? await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${verificationKey}`) : null;
+    // Build steps, including the static verification on the build engine, have their
+    // own deadlines; a step waiting for a provider runner is not observation time.
+    const observationStart = Math.max(Date.parse(job.observation_started_at ?? job.started_at), buildTask?.completed_at ?? 0, verifying?.completed_at ?? 0);
+    const preparingBuild = [buildTask, verifying].some(task => task && ['queued', 'running'].includes(task.status) && buildDeadline(task) > Date.now());
     // Preserve the build's actual failure instead of masking it with the later
     // public-verification timeout after a long media preparation phase.
     if (buildTask && ['failed', 'cancelled'].includes(buildTask.status)) await completedBuild(args.orgId, job.git_publication!.build_task_key!);
@@ -312,9 +316,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         return await waitForBuild(jobPath, args.orgId, job.git_publication!.build_task_key!);
       }
     }
-    const verificationKey = job.git_publication?.verification_task_key;
     if (verificationKey) {
-      const verifying = await store.getDoc<BuildTask>(`${buildTasksPath(args.orgId)}/${verificationKey}`);
       if (verifying && ['queued', 'running'].includes(verifying.status)) {
         if (verifying.lease_until <= Date.now()) await completedBuild(args.orgId, verificationKey);
         return await waitForBuild(jobPath, args.orgId, verificationKey);

@@ -11,6 +11,7 @@ import { storageClient } from './media-storage';
 import { mediaTransfers, transferReservation, transferPath } from '../media/transfer';
 import { replacePublicationReferences } from './media-manifest';
 import { requiresSvgSanitization, sanitizeSvgObject, SvgRejectedError, SVG_MEDIA_TYPE, type SvgSanitizedMarker } from '../media/svg-media';
+import { importRetryPending, permanentImportFailure, scheduleImportRetry, type ImportingMedia } from '../media/import-retry';
 
 const hash = (input: string | Uint8Array) => createHash('sha256').update(input).digest('hex');
 // Each Site migrates its own library. The Organization document only holds
@@ -18,8 +19,8 @@ const hash = (input: string | Uint8Array) => createHash('sha256').update(input).
 // pass over every Site, which is how an old queued request is recognized.
 const organizationPath = (orgId: string) => `publishing_media_migrations/${hash(orgId)}`;
 const sitePath = (orgId: string, siteId: string) => `publishing_media_migrations/${hash(`${orgId}\0${siteId}`)}`;
-type MigratingMedia = Media & { source_url?: string; import_pending?: boolean; migration_failed?: boolean; migration_error?: FileError & { at: string } | null };
-/** Automatic attempts per file before the migration skips it until someone retries. */
+type MigratingMedia = ImportingMedia;
+/** Automatic attempts per stored file before the migration skips it until someone retries. Pending imports follow IMPORT_RETRY_DELAYS_MS instead. */
 const FILE_ATTEMPTS = 3;
 const fileError = (error: unknown): FileError => error instanceof ConnectionError
   ? { code: error.code ?? 'media_transfer_unavailable', message: error.message }
@@ -29,7 +30,11 @@ const fileError = (error: unknown): FileError => error instanceof ConnectionErro
 const permanentFileError = (error: unknown) => error instanceof ConnectionError && error.status < 500;
 interface Cursor { site: string; media: string; phase: 'copying' | 'references' | 'next_site'; reference?: string }
 interface FileError { code: string; message: string }
-interface Migration { scope?: 'organization' | 'site'; site_id?: string; failed_files?: number; pass_failed?: number; pass_fresh?: number; pass_file_error?: FileError | null; fan_out?: boolean; fan_out_cursor?: string | null; pass_file_failed?: boolean; pass_request_id?: string; cursor?: Cursor | null; pass_copied?: number; pass_bytes?: number; pass_pending?: number; retry_at?: number; failures?: number; org_id: string; state: 'queued' | 'running' | 'complete' | 'failed'; copied_files: number; copied_bytes: number; pending_files: number; lease_id: string | null; lease_until: number; error?: string | null; request_id?: string; updated_at?: string }
+interface Migration { pass_deferred?: number; pass_retry_at?: number | null; scope?: 'organization' | 'site'; site_id?: string; failed_files?: number; pass_failed?: number; pass_fresh?: number; pass_file_error?: FileError | null; fan_out?: boolean; fan_out_cursor?: string | null; pass_file_failed?: boolean; pass_request_id?: string; cursor?: Cursor | null; pass_copied?: number; pass_bytes?: number; pass_pending?: number; retry_at?: number; failures?: number; org_id: string; state: 'queued' | 'running' | 'complete' | 'failed'; copied_files: number; copied_bytes: number; pending_files: number; lease_id: string | null; lease_until: number; error?: string | null; request_id?: string; updated_at?: string }
+const skippedError = (count: number) => count
+  ? `${count} ${count === 1 ? 'file' : 'files'} could not be copied and ${count === 1 ? 'was' : 'were'} skipped. Fix or delete ${count === 1 ? 'it' : 'them'}, then retry media migration.` : null;
+/** A file already in organization storage needs nothing more, whatever an earlier pass recorded. */
+const storedInOrganization = (media: MigratingMedia) => media.storage?.provider === 'organization_r2' && media.storage.state === 'ready';
 const NEW_JOB = { state: 'queued', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 } as const;
 
 /** Zero counters also describe an unscanned job. Check the Site's records before declaring it empty. */
@@ -103,7 +108,16 @@ async function releaseFailedFiles(orgId: string, siteId: string, destination: { 
   const store = getStore();
   for (const media of await store.listDocs<MigratingMedia>(paths.media(orgId, siteId), { filters: [{ field: 'migration_failed', op: '==', value: true }] })) {
     await store.setDoc(transferPath(paths.site(orgId, siteId), `storage:${destination.account_id}:${destination.bucket}:${media.id}`), { state: 'queued', attempts: 0, lease_until: 0 });
-    await store.updateDoc(`${paths.media(orgId, siteId)}/${media.id}`, { migration_failed: false, migration_error: null });
+    await store.updateDoc(`${paths.media(orgId, siteId)}/${media.id}`, { migration_failed: false, migration_error: null,
+      ...(media.import_pending ? { import_failures: 0, import_retry_at: null } : {}) });
+  }
+}
+
+/** A retry from Publishing tries pending imports now instead of at their planned time; their failures still count. */
+async function releaseWaitingImports(orgId: string, siteId: string) {
+  const store = getStore();
+  for (const media of await store.listDocs<MigratingMedia>(paths.media(orgId, siteId), { filters: [{ field: 'import_pending', op: '==', value: true }] })) {
+    if (media.import_retry_at) await store.updateDoc(`${paths.media(orgId, siteId)}/${media.id}`, { import_retry_at: null });
   }
 }
 
@@ -132,6 +146,7 @@ export async function retryMediaMigration(orgId: string) {
         await enqueueMediaMigration(orgId);
       }
     } else if (['queued', 'running'].includes(job.state) && job.lease_until <= now) {
+      if (siteId && (job.retry_at ?? 0) > now) await releaseWaitingImports(orgId, siteId);
       await store.compareAndUpdateDoc<Migration>(siteId ? sitePath(orgId, siteId) : organizationPath(orgId),
         current => current.request_id === job.request_id && current.lease_until <= Date.now(), { retry_at: 0 });
       await enqueueMediaMigration(orgId, 0, siteId);
@@ -149,18 +164,24 @@ type Status = { state: Migration['state']; copied_files: number; copied_bytes: n
 export async function mediaMigrationStatus(orgId: string): Promise<Status | null> {
   const store = getStore();
   const listed = await store.listDocs<Migration>('publishing_media_migrations', { filters: [{ field: 'org_id', op: '==', value: orgId }] });
-  const jobs = await Promise.all(listed.map(async job => job.site_id && job.state !== 'complete' ? await completeEmptySite(orgId, job.site_id, job) ?? job : job));
+  const jobs = (await Promise.all(listed.map(async job => job.site_id && job.state !== 'complete' ? await completeEmptySite(orgId, job.site_id, job) ?? job : job))).map(job => ({ ...job }));
   if (!jobs.length) return null;
+  // A file copied after a pass set it aside (an import retried by hand) is
+  // stored: it is neither skipped nor failed, even before the next pass clears its flag.
+  const failed_media = (await Promise.all(jobs.filter(job => job.scope === 'site' && job.site_id && (job.failed_files ?? 0) > 0).map(async job => {
+    const flagged = await store.listDocs<MigratingMedia>(paths.media(orgId, job.site_id!), { filters: [{ field: 'migration_failed', op: '==', value: true }], limit: 50 });
+    const failing = flagged.filter(media => !storedInOrganization(media));
+    job.failed_files = flagged.length < 50 ? failing.length : Math.max(failing.length, job.failed_files! - (flagged.length - failing.length));
+    if (job.state === 'complete') job.error = skippedError(job.failed_files);
+    return failing.map(media => ({ site_id: job.site_id!, media_id: media.id, filename: media.filename, source_url: media.source_url ?? null,
+      code: media.migration_error?.code ?? 'media_transfer_unavailable', message: media.migration_error?.message ?? '', at: media.migration_error?.at ?? '' }));
+  }))).flat().sort((a, b) => a.site_id.localeCompare(b.site_id)).slice(0, 100);
   const has = (state: Migration['state']) => jobs.some(job => job.state === state);
   const failed = jobs.find(job => job.state === 'failed' && job.error) ?? jobs.find(job => job.error);
   const state = has('running') ? 'running' : has('queued') ? 'queued' : has('failed') ? 'failed' : 'complete';
   const sites = jobs.filter(job => job.scope === 'site' && job.site_id).map(job => ({ site_id: job.site_id!, state: job.state, copied_files: job.copied_files ?? 0,
     pending_files: job.pending_files ?? 0, failed_files: job.failed_files ?? 0, error: job.error ?? null, updated_at: job.updated_at ?? null }))
     .sort((a, b) => a.site_id.localeCompare(b.site_id));
-  const failed_media = (await Promise.all(sites.filter(site => site.failed_files > 0).map(async site =>
-    (await store.listDocs<MigratingMedia>(paths.media(orgId, site.site_id), { filters: [{ field: 'migration_failed', op: '==', value: true }], limit: 50 }))
-      .map(media => ({ site_id: site.site_id, media_id: media.id, filename: media.filename, source_url: media.source_url ?? null,
-        code: media.migration_error?.code ?? 'media_transfer_unavailable', message: media.migration_error?.message ?? '', at: media.migration_error?.at ?? '' }))))).flat().slice(0, 100);
   const stateJob = (failed && state === 'failed' ? failed : null) ?? jobs.filter(job => job.state === state).sort((a, b) => String(b.updated_at ?? '').localeCompare(String(a.updated_at ?? '')))[0];
   return {
     state,
@@ -230,12 +251,17 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
   let pending = cursor ? acquired.pass_pending ?? 0 : 0;
   let failedFiles = cursor ? acquired.pass_failed ?? 0 : 0;
   let freshCopies = cursor ? acquired.pass_fresh ?? 0 : 0;
+  // Pending imports waiting for a planned retry: counted in `pending`, and the
+  // earliest time decides when the next pass runs.
+  let deferred = cursor ? acquired.pass_deferred ?? 0 : 0;
+  let deferredUntil = cursor ? acquired.pass_retry_at ?? null : null;
+  const deferImport = (at: number) => { pending++; deferred++; deferredUntil = Math.min(deferredUntil ?? at, at); };
   let processed = 0;
   // A pass resumed in a later task keeps the first file's real error.
   const resumedError = acquired.cursor && acquired.pass_file_failed
     ? acquired.pass_file_error ?? { code: 'media_transfer_interrupted', message: 'The transfer was interrupted.' } : null;
   let fileFailure: unknown = resumedError ? new ConnectionError(resumedError.message, 503, resumedError.code) : undefined;
-  const counters = () => ({ pass_copied: copied, pass_bytes: copiedBytes, pass_pending: pending, pass_failed: failedFiles, pass_fresh: freshCopies, pass_file_failed: Boolean(fileFailure),
+  const counters = () => ({ pass_copied: copied, pass_bytes: copiedBytes, pass_pending: pending, pass_failed: failedFiles, pass_fresh: freshCopies, pass_deferred: deferred, pass_retry_at: deferredUntil, pass_file_failed: Boolean(fileFailure),
     pass_file_error: fileFailure ? fileError(fileFailure) : null,
     copied_files: Math.max(acquired.copied_files, copied), copied_bytes: Math.max(acquired.copied_bytes, copiedBytes) });
   const checkpoint = async (next: Cursor) => {
@@ -270,8 +296,16 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
               const results = await Promise.allSettled(group.map(originalMedia => { const transfer = async (): Promise<{ media: MigratingMedia; copied: boolean; skipped?: boolean }> => {
                 let media = originalMedia;
                 let copiedNow = false;
-                // A file that failed every attempt waits for a retry from Publishing.
-                if (media.migration_failed) return { media, copied: false, skipped: true };
+                if (media.migration_failed) {
+                  // A file that failed every attempt waits for a retry from Publishing,
+                  // unless it was copied since (an import retried by hand).
+                  if (!storedInOrganization(media)) return { media, copied: false, skipped: true };
+                  await store.updateDoc(`${paths.media(orgId, site.id)}/${media.id}`, { migration_failed: false, migration_error: null });
+                  media = { ...media, migration_failed: false, migration_error: null };
+                }
+                // A pending import waits for its planned retry; the pass is scheduled for then.
+                const waitUntil = media.import_pending && media.source_url && media.storage?.state !== 'ready' ? importRetryPending(media) : null;
+                if (waitUntil !== null) { deferImport(waitUntil); return { media, copied: false }; }
                 const recordPath = transferPath(paths.site(orgId, site.id), `storage:${destination.account_id}:${destination.bucket}:${media.id}`);
                 await store.createDocIfMissing(recordPath, { state: 'queued', attempts: 0, lease_until: 0 });
                 const record = await store.getDoc<{ attempts: number }>(recordPath);
@@ -285,7 +319,7 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
                 media = (await store.getDoc<MigratingMedia>(`${paths.media(orgId, site.id)}/${media.id}`))!;
                 if (media.storage?.state === 'ready') {
                   copiedNow = true;
-                  await store.updateDoc(`${paths.media(orgId, site.id)}/${media.id}`, { import_pending: false, import_error: null });
+                  await store.updateDoc(`${paths.media(orgId, site.id)}/${media.id}`, { import_pending: false, import_error: null, import_error_code: null, import_failures: 0, import_retry_at: null });
                   media.import_pending = false;
                 }
               }
@@ -344,9 +378,17 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
                 } catch (error) {
                   const failure = fileError(error);
                   await store.updateDoc(recordPath, { state: 'failed', lease_until: 0, error_code: failure.code });
+                  // A pending import that failed for a passing reason is tried
+                  // again later (1, 5, 15, 30 and 60 minutes), not three times in
+                  // a row against a source that is busy right now.
+                  const retryingImport = Boolean(originalMedia.import_pending && originalMedia.source_url) && !permanentImportFailure(error);
+                  if (retryingImport) {
+                    const retryAt = await scheduleImportRetry(store, `${paths.media(orgId, site.id)}/${media.id}`, error);
+                    if (retryAt !== null) { deferImport(retryAt); return { media, copied: false }; }
+                  }
                   // A refused source, or one that failed every attempt, is set
                   // aside with its reason so the rest of the Site can finish.
-                  if (permanentFileError(error) || (record?.attempts ?? 0) + 1 >= FILE_ATTEMPTS) {
+                  if (retryingImport || permanentFileError(error) || (record?.attempts ?? 0) + 1 >= FILE_ATTEMPTS) {
                     await store.updateDoc(`${paths.media(orgId, site.id)}/${media.id}`,
                       { migration_failed: true, migration_error: { ...failure, at: new Date().toISOString() } });
                     return { media, copied: false, skipped: true };
@@ -405,15 +447,17 @@ export async function runMediaMigrationBatch(orgId: string, siteId: string, maxF
       }
     } finally { target.destroy(); }
     if (fileFailure) {
-      await store.compareAndUpdateDoc<Migration>(path, value => value.lease_id === lease, { cursor: null, ...counters(), pending_files: pending });
+      await store.compareAndUpdateDoc<Migration>(path, value => value.lease_id === lease, { cursor: null, ...counters(), pass_deferred: 0, pass_retry_at: null, pending_files: pending });
       throw fileFailure;
     }
     const completed = await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease && current.request_id === passRequest,
       // Files that cannot be fetched are set aside with their reason (failed_media);
       // they do not leave the migration failed (FI-10).
+      // Pending imports waiting for a planned retry keep the job queued until
+      // then; the chain delivers the next pass at retry_at.
       { state: pending ? 'queued' : 'complete', pending_files: pending, failed_files: failedFiles, ...counters(), cursor: null,
-        lease_id: null, lease_until: 0, failures: 0, retry_at: pending ? Date.now() + 5_000 : 0, updated_at: new Date().toISOString(),
-        error: failedFiles ? `${failedFiles} ${failedFiles === 1 ? 'file' : 'files'} could not be copied and ${failedFiles === 1 ? 'was' : 'were'} skipped. Fix or delete ${failedFiles === 1 ? 'it' : 'them'}, then retry media migration.` : null });
+        lease_id: null, lease_until: 0, failures: 0, retry_at: pending > deferred ? Date.now() + 5_000 : pending ? Math.max(Date.now() + 5_000, deferredUntil ?? 0) : 0,
+        updated_at: new Date().toISOString(), error: skippedError(failedFiles) });
     // A late upload or site opt-in may sort before the saved cursor. Finish this
     // pass, then rescan once for the new request without losing copy progress.
     if (!completed) await store.compareAndUpdateDoc<Migration>(path, current => current.lease_id === lease,

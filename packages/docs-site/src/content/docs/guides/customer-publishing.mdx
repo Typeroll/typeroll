@@ -587,7 +587,13 @@ or choosing retry restarts only sites whose migration stopped.
 
 A file whose source cannot be fetched, for example an image on a host that no
 longer exists, does not hold back the rest of its site. After three attempts, or
-at once when the source refuses it, the file is set aside with its reason. The
+at once when the source refuses it, the file is set aside with its reason. A
+file still being imported from a URL whose copy failed for a passing reason (a
+busy source, an interrupted transfer) is instead retried after 1, 5, 15, 30 and
+60 minutes; the site's job stays `queued` with the file in `pending_files` until
+then, and the file is set aside only after the last retry. A file that is
+copied after it was set aside, for example by importing it again, is no longer
+counted in `failed_files`. The
 site's job then ends `complete`, with `failed_files` and an `error` naming how many
 files need attention. `read_organization_media_migration` (or
 `GET /publishing/media-migration`) then lists it under `failed_media` with its
@@ -1166,16 +1172,41 @@ live artifact.
 
 ### A queued build that does not start
 
-Core 0.2.114 distinguishes `waiting_for_runner` from `preparing_media` in
-build progress. An unclaimed step expires after 15 minutes, including a
-media continuation waiting for its next runner; completed media is retained.
-The deadline is enforced when the runner claims it or its status is inspected.
-Expiration revokes the task; it does not schedule a duplicate build or imply
-that Cloudflare cancelled its underlying process. A healthy active lease is
-not timed out because the overall media job is old. Check Publishing → Builds,
-then retry after the terminal error. A new publication does not automatically
-replace an active one. GitHub 422 errors include a safe classified reason
-when available, never the raw provider response.
+The build provider (Cloudflare Workers Builds or GitHub Actions in the
+Organization's own account) limits how many builds run at the same time. A
+build or verification step can therefore wait in the provider's queue, for
+example while the Organization's background media preparation uses the build
+capacity. Waiting is normal and does not fail the publication. The step's
+working time starts when a runner claims it, so a long queue does not shorten
+the build.
+
+While a step is queued, `build_progress.queue` in the deploy status (and
+`queue` on each queued job in `GET /api/v1/publishing/builds`) says why:
+
+- `waiting_for_provider`: nothing in the Organization is ahead, and the
+  provider has not started a runner yet. `provider_status` is the provider's
+  own status of the build Typeroll started, for example `queued` or
+  `initializing`. `running_kinds` lists the Organization's other builds that
+  run on the same account, such as `media_preparation`.
+- `waiting_for_other_builds`: other builds in the Organization go first;
+  `ahead` counts them. Publications go before background media preparation.
+
+The deploy job's phase says the same in words, for example "waiting for
+Cloudflare to start the verification build (queued 6 min; this organization's
+background media preparation is running on the same build account)". Typeroll
+does not know who else uses the provider account and does not claim to.
+
+The publication rechecks its own step while it waits. If the provider stopped
+the build before a runner claimed the step, Typeroll starts it again, up to
+the existing attempt limit. Only a step that no runner claims within 6 hours
+fails, with `build_queue_timeout`: the provider never started a runner for it.
+Completed media is retained and the live site is unchanged. Earlier Core
+releases failed an unclaimed step after 15 minutes.
+
+Wait for a queued build instead of publishing again: a new publication does
+not replace an active one and waits behind it. Retry after a terminal error.
+GitHub 422 errors include a safe classified reason when available, never the
+raw provider response.
 
 ### Publication status on the site overview
 

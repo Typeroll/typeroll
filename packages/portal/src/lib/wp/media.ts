@@ -4,7 +4,9 @@ import { importStorageStatus, requireImportStorage } from '../media/import-polic
 import { paths, type Media } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { createMediaUpload, finalizeTransferredMedia, storageClient } from '../publishing/media-storage';
-import { durableTransfer, remoteMediaTransfers } from '../media/transfer';
+import { durableTransfer, remoteMediaTransfers, transferPath } from '../media/transfer';
+import { MediaImportPendingError, permanentImportFailure, scheduleImportRetry, type ImportingMedia } from '../media/import-retry';
+import { DeleteObjectCommand } from '../net/s3';
 import { requiresSvgSanitization, sanitizeTransferredSvg, SvgRejectedError, SVG_MEDIA_TYPE } from '../media/svg-media';
 import { ConnectionError } from '../publishing/connections';
 import { allowedMediaExtensions, withMediaExtension } from '../media/file-types';
@@ -109,44 +111,67 @@ export class WPMediaTransfer {
   }
 
   private async copyPrivate(oldUrl: string, filename: string, contentType: string, altText: string, width?: number, height?: number): Promise<UploadedMedia> {
-    const candidates = await this.store.listDocs<Media & { source_url?: string; import_pending?: boolean }>(paths.media(this.orgId, this.siteId),
+    const candidates = await this.store.listDocs<ImportingMedia>(paths.media(this.orgId, this.siteId),
       { filters: [{ field: 'source_url', op: '==', value: oldUrl }], limit: 10 });
     const existing = candidates.find(item => item.storage?.state === 'ready');
     if (existing) return { oldUrl, cdnUrl: existing.cdn_url, altText: existing.alt_text ?? altText,
       width: existing.width, height: existing.height, contentType: existing.mime_type ?? contentType, mediaId: existing.id };
-    const rejected = candidates.find(item => (item as { import_rejected?: boolean }).import_rejected);
-    if (rejected) throw new ConnectionError((rejected as { import_error?: string }).import_error ?? 'The source SVG was rejected.', 400, 'media_svg_invalid');
-    {
-      const pending = candidates.find(item => item.import_pending && item.storage?.state === 'uploading');
-      const upload = pending ? { mediaId: pending.id, key: pending.storage!.key, cdnUrl: pending.cdn_url } : await createMediaUpload(this.orgId, this.siteId, { filename, contentType, altText, actor: 'wordpress-import' });
-      const mediaPath = `${paths.media(this.orgId, this.siteId)}/${upload.mediaId}`;
-      await this.store.updateDoc(mediaPath, { source_url: oldUrl, source_aliases: [oldUrl], import_pending: true });
-      const media = await this.store.getDoc<Media>(mediaPath);
-      const r2 = await storageClient(this.orgId, media!.storage!);
-      try {
-        let receipt = await copyWithTransferService({ orgId: this.orgId, sourceUrl: oldUrl, client: r2, bucket: media!.storage!.bucket, key: upload.key, contentType });
-        // SVG is stored only in sanitized form; freezing then pins the sanitized version.
-        const svg = requiresSvgSanitization({ mime_type: contentType, filename: media!.filename });
-        if (svg) receipt = await sanitizeTransferredSvg(this.orgId, this.siteId, upload.mediaId, r2, { bucket: media!.storage!.bucket, key: upload.key }, receipt);
-        await finalizeTransferredMedia(this.orgId, this.siteId, upload.mediaId, receipt);
-        await this.store.updateDoc(mediaPath, { import_pending: false, import_error: null, ...(width === undefined ? {} : { width }), ...(height === undefined ? {} : { height }) });
-        return { oldUrl, cdnUrl: upload.cdnUrl, altText, width, height, contentType: svg ? SVG_MEDIA_TYPE : contentType, mediaId: upload.mediaId };
-      } catch (error) {
-        // A source that is not a usable SVG cannot succeed on retry: record why and stop retrying it.
-        if (error instanceof SvgRejectedError) await this.store.updateDoc(mediaPath, { import_pending: false, import_rejected: true, import_error: error.message });
-        else if ((await this.store.getDoc<Media>(mediaPath))?.storage?.state !== 'ready') {
-          await this.store.updateDoc(mediaPath, { import_pending: true, import_error: 'The source file has not been copied yet. Retry media migration from Publishing.' });
-          // A transient failure queues this Site's migration, so the pending
-          // copy is retried even if the caller gives up; a rejected source (4xx)
-          // would only fail again. No other Site is read or rebuilt.
-          if (this.options.queueMigrationOnFailure !== false && (!(error instanceof ConnectionError) || error.status >= 500)) {
-            const { requestMediaMigration } = await import('../publishing/media-migration');
-            await requestMediaMigration(this.orgId, this.siteId).catch(() => {});
+    const rejected = candidates.find(item => item.import_rejected);
+    if (rejected) throw new ConnectionError(rejected.import_error ?? 'The source SVG was rejected.', 400, 'media_svg_invalid');
+    const pending = candidates.find(item => item.import_pending && item.storage?.state === 'uploading');
+    const upload = pending ? { mediaId: pending.id, key: pending.storage!.key, cdnUrl: pending.cdn_url } : await createMediaUpload(this.orgId, this.siteId, { filename, contentType, altText, actor: 'wordpress-import' });
+    const mediaPath = `${paths.media(this.orgId, this.siteId)}/${upload.mediaId}`;
+    await this.store.updateDoc(mediaPath, { source_url: oldUrl, source_aliases: [oldUrl], import_pending: true });
+    const media = await this.store.getDoc<Media>(mediaPath);
+    const r2 = await storageClient(this.orgId, media!.storage!);
+    try {
+      let receipt = await copyWithTransferService({ orgId: this.orgId, sourceUrl: oldUrl, client: r2, bucket: media!.storage!.bucket, key: upload.key, contentType });
+      // SVG is stored only in sanitized form; freezing then pins the sanitized version.
+      const svg = requiresSvgSanitization({ mime_type: contentType, filename: media!.filename });
+      if (svg) receipt = await sanitizeTransferredSvg(this.orgId, this.siteId, upload.mediaId, r2, { bucket: media!.storage!.bucket, key: upload.key }, receipt);
+      await finalizeTransferredMedia(this.orgId, this.siteId, upload.mediaId, receipt);
+      // A copy that succeeds clears every earlier failure, including a file an
+      // earlier migration pass had set aside, so it is not reported as skipped.
+      await this.store.updateDoc(mediaPath, { import_pending: false, import_error: null, import_error_code: null, import_failures: 0, import_retry_at: null,
+        migration_failed: false, migration_error: null, ...(width === undefined ? {} : { width }), ...(height === undefined ? {} : { height }) });
+      await this.resetFileTransfer(upload.mediaId);
+      return { oldUrl, cdnUrl: upload.cdnUrl, altText, width, height, contentType: svg ? SVG_MEDIA_TYPE : contentType, mediaId: upload.mediaId };
+    } catch (error) {
+      // A source that is not a usable SVG cannot succeed on retry: record why and stop retrying it.
+      if (error instanceof SvgRejectedError) await this.store.updateDoc(mediaPath, { import_pending: false, import_rejected: true, import_error: error.message, import_error_code: 'media_svg_invalid' });
+      else if ((await this.store.getDoc<Media>(mediaPath))?.storage?.state !== 'ready') {
+        if (permanentImportFailure(error)) {
+          // A refused source (4xx) would only fail again. A record made for
+          // this call is removed with anything the Worker stored; a pending
+          // record from an earlier import is left as it was.
+          if (!pending) {
+            await this.store.deleteDoc(mediaPath);
+            await r2.send(new DeleteObjectCommand({ Bucket: media!.storage!.bucket, Key: upload.key }), { abortSignal: AbortSignal.timeout(20_000) }).catch(() => {});
           }
+          throw error;
         }
-        throw error;
-      } finally { r2.destroy(); }
-    }
+        // A passing failure keeps the record pending. The Site's migration is
+        // the one retrying it: an import someone requested now starts the
+        // retry schedule and queues that migration, so the copy is retried
+        // even if the caller gives up. The migration itself records its own
+        // attempts. No other Site is read or rebuilt.
+        if (this.options.queueMigrationOnFailure === false) throw error;
+        const retryAt = await scheduleImportRetry(this.store, mediaPath, error, { restart: true });
+        await this.resetFileTransfer(upload.mediaId);
+        const { requestMediaMigration } = await import('../publishing/media-migration');
+        await requestMediaMigration(this.orgId, this.siteId).catch(() => {});
+        throw new MediaImportPendingError(upload.mediaId, error, retryAt);
+      }
+      throw error;
+    } finally { r2.destroy(); }
+  }
+
+  /** The migration's attempt record for this file starts over, so an old failure does not count against it. */
+  private async resetFileTransfer(mediaId: string) {
+    const media = await this.store.getDoc<Media>(`${paths.media(this.orgId, this.siteId)}/${mediaId}`);
+    if (media?.storage?.provider !== 'organization_r2') return;
+    const recordPath = transferPath(paths.site(this.orgId, this.siteId), `storage:${media.storage.account_id}:${media.storage.bucket}:${mediaId}`);
+    await this.store.compareAndUpdateDoc<{ state: string }>(recordPath, record => record.state === 'failed', { state: 'queued', attempts: 0, lease_until: 0, error_code: null }).catch(() => {});
   }
 }
 

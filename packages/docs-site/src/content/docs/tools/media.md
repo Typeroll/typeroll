@@ -204,6 +204,55 @@ organization API key. Only write access may import; the authenticated site’s
 owning organization determines the destination. For extensionless source URLs,
 provide `filename` and `content_type`. Completed imports are reused on retry.
 
+A successful import answers HTTP 200 with `media_id`, `cdn_url`, `filename`,
+`content_type`, `size_bytes`, `finalize` and `import.state` `complete`. When
+the media record exists but the copy fails for a passing reason, the import
+answers **HTTP 202** instead of 503:
+
+```json
+{
+  "media_id": "…",
+  "cdn_url": "https://…/api/sites/{siteId}/media/{media_id}/content",
+  "filename": "photo.jpg",
+  "content_type": "image/jpeg",
+  "size_bytes": null,
+  "finalize": null,
+  "finalize_error": null,
+  "import": {
+    "state": "pending",
+    "error_code": "media_source_temporarily_unavailable",
+    "message": "…",
+    "retry": {
+      "automatic": true,
+      "next_attempt_at": "2026-11-09T12:01:00.000Z",
+      "failed_attempts": 1
+    },
+    "details": {
+      "upstream_status": 503,
+      "worker_code": "media_source_temporarily_unavailable"
+    }
+  }
+}
+```
+
+Passing reasons are a busy or rate-limited source
+(`media_source_temporarily_unavailable`), an interrupted or timed-out transfer
+(`media_transfer_interrupted`, `media_transfer_timeout`), a busy transfer Worker
+(`media_transfer_busy`), destination storage answering 5xx
+(`media_destination_unavailable`) and any other 5xx or 429 from the transfer
+Worker (`media_transfer_unavailable`, with the HTTP status in
+`details.upstream_status`). The site's media migration retries the copy after 1,
+5, 15, 30 and 60 minutes; after the last attempt the file is set aside and
+listed under `failed_media` (see
+[Media migration](/docs/guides/customer-publishing/#media-migration-and-independent-builds)). Do not import the file
+again: poll `GET /api/v1/sites/{siteId}/media/{media_id}` (`read_media`) until
+`import.state` is `complete` before referencing it in published content. An
+import of the same `source_url` while it is pending reuses the record and tries
+the copy at once.
+
+A refused source or file (HTTP 4xx, for example `media_source_unavailable` or
+`media_integrity_failed`) remains an error and leaves no new media record.
+
 For many files, send up to four import requests at a time; Typeroll copies up to
 four files from one source host at once. A source path with characters such as
 `ä` is tried as written and in both Unicode forms (NFC and NFD), so send the URL
@@ -230,8 +279,12 @@ the original, writes it to storage and reads it back to verify its checksum. The
 rate therefore depends mostly on file size and on how fast the source host
 answers. Web-sized images from a fast CDN typically import at 40–50 files a
 minute; large originals, slow hosts or hosts that throttle automated requests
-are slower. Network errors, 429 and 5xx answers are retried up to twice inside
-one call, so a call that succeeds may still have waited. Image preparation runs
+are slower. Network errors, 429 and 5xx answers, including Cloudflare error
+pages, are retried up to twice inside one call, so a call that succeeds may
+still have waited. Such answers also lower the number of copies the portal runs
+at once for a while. A call that still fails answers HTTP 202 with a pending
+import, as described above; `upload_media_batch_from_urls` marks those results
+`pending: true` and counts them in `pending`. Image preparation runs
 afterwards as its own job and is not part of this rate.
 
 ## `upload_media_from_base64`
@@ -258,6 +311,12 @@ Returns this site’s media assets with stable media URLs, filenames and sizes. 
 
 Reads one media item's metadata by `media_id`. Use it to check a single file,
 for example its alt text or variants, without listing the whole library.
+
+For a file imported from a URL, `import` reports its copy: `state` (`pending`,
+`complete` or `failed`), `error_code`, `message` and `retry` with `automatic`,
+`next_attempt_at` and `failed_attempts`. It is `null` for files uploaded
+directly. A `failed` import was set aside after its automatic retries or
+refused; import it again or retry media migration in Publishing.
 
 ## `upload_media_inline`
 

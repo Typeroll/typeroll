@@ -18,7 +18,7 @@ export interface BuildTask {
   media_cursor?: number;
   media_batches?: number;
   media_checkpoint_attempt?: number;
-  /** Background work nobody waits on. It stays queued until its deadline instead of the interactive queue limit. */
+  /** Background work nobody waits on. Claims take interactive work first. */
   background?: boolean;
   lease_id: string | null;
   lease_until: number;
@@ -37,12 +37,29 @@ export const buildTaskKey = (identity: BuildIdentity) => sha256(`${identity.site
 export function equalToken(token: string, expected: string | null) {
   return typeof token === 'string' && token.length <= 512 && expected !== null && /^[a-f0-9]{64}$/.test(expected) && timingSafeEqual(Buffer.from(sha256(token), 'hex'), Buffer.from(expected, 'hex'));
 }
-export const BUILD_QUEUE_WAIT_MS = 15 * 60_000;
+/**
+ * The longest a step may wait in the queue before a runner claims it. Waiting
+ * for the provider to start a runner is normal (the provider limits concurrent
+ * builds per account), so queue time does not count against the step's
+ * working time. This cap only keeps a lost provider build from holding a
+ * publication forever.
+ */
+export const QUEUED_BUILD_LIMIT_MS = 6 * 60 * 60_000;
+const queuedSince = (task: Pick<BuildTask, 'queued_at' | 'created_at'>) => task.queued_at ?? task.created_at;
+/** When a queued step reaches the queue cap. */
+export const queuedBuildExpiresAt = (task: Pick<BuildTask, 'queued_at' | 'created_at'>) => queuedSince(task) + QUEUED_BUILD_LIMIT_MS;
 export function queuedBuildExpired(task: BuildTask, now = Date.now()): boolean {
-  // The queue limit gives a person waiting on a publication a clear failure.
-  // Background image preparation waits behind a long publication instead.
-  const queuedAt = task.queued_at ?? task.created_at;
-  return task.status === 'queued' && Number.isFinite(queuedAt) && now >= (task.background ? task.deadline : Math.min(task.deadline, queuedAt + BUILD_QUEUE_WAIT_MS));
+  return task.status === 'queued' && Number.isFinite(queuedSince(task)) && now >= queuedBuildExpiresAt(task);
+}
+/**
+ * The step's working deadline. A queued step keeps the working time it had
+ * left when it was queued: claiming it now would move the stored deadline by
+ * the time it waited. A running step uses the deadline it was claimed with.
+ */
+export function buildDeadline(task: Pick<BuildTask, 'status' | 'deadline' | 'queued_at' | 'created_at'>, now = Date.now()): number {
+  if (task.status !== 'queued') return task.deadline;
+  const since = queuedSince(task);
+  return Number.isFinite(since) ? task.deadline + Math.max(0, now - since) : task.deadline;
 }
 /** Revoke an unclaimed task, never start a replacement or interrupt a live lease. */
 export async function expireQueuedBuild(store: ReadWriteStore, org: string, key: string, now = Date.now()) {
@@ -98,16 +115,20 @@ export class OrganizationBuildQueue {
       if (!['queued', 'running'].includes(task.status) || task.engine_revision !== engineRevision || task.lease_until > this.clock() || (expected && task.provider_dispatch_id === expected.dispatch_id)) continue;
       const path = `${buildTasksPath(org)}/${task.id}`;
       if (queuedBuildExpired(task, this.clock())) { await expireQueuedBuild(this.store, org, task.id, this.clock()); continue; }
-      if (task.status === 'running' || task.deadline <= this.clock() || task.attempt >= buildAttemptLimit(task)) {
+      if (task.status === 'running' || buildDeadline(task, this.clock()) <= this.clock() || task.attempt >= buildAttemptLimit(task)) {
         await this.store.compareAndUpdateDoc<BuildTask>(path, current => ['queued', 'running'].includes(current.status) && current.lease_until <= this.clock(),
           { status: 'failed', token_hash: null, error_code: task.status === 'running' ? 'build_connection_lost' : 'build_timeout', completed_at: this.clock() });
         continue;
       }
-      const token = randomBytes(32).toString('base64url'), lease = randomUUID(), now = this.clock();
+      // The working time starts now: time spent waiting for a runner is added
+      // to the stored deadline, so a long provider queue never eats build time.
+      // Engines read only `deadline` from this response, so older ones work unchanged.
+      const token = randomBytes(32).toString('base64url'), lease = randomUUID(), now = this.clock(), deadline = buildDeadline(task, now);
       const won = await this.store.compareAndUpdateDoc<BuildTask>(path, current => current.engine_revision === engineRevision &&
-        current.status === 'queued' && !queuedBuildExpired(current, now) && current.lease_until <= now && current.deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
-        { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1, ...(expected ? { provider_dispatch_id: expected.dispatch_id } : {}) });
-      if (won) return { key: task.id, identity: task.identity, lease_id: lease, token, expires_at: now + LEASE_MS, deadline: task.deadline, media_cursor: task.media_cursor ?? 0, media_total: task.media_total ?? 0 };
+        current.status === 'queued' && !queuedBuildExpired(current, now) && current.lease_until <= now && current.deadline === task.deadline && queuedSince(current) === queuedSince(task) &&
+        deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
+        { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1, deadline, ...(expected ? { provider_dispatch_id: expected.dispatch_id } : {}) });
+      if (won) return { key: task.id, identity: task.identity, lease_id: lease, token, expires_at: now + LEASE_MS, deadline, media_cursor: task.media_cursor ?? 0, media_total: task.media_total ?? 0 };
     }
     return null;
   }

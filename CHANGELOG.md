@@ -1,5 +1,71 @@
 # Changelog
 
+## 0.3.19 (candidate, MCP 0.45.128)
+
+- Media imports from a URL no longer lose files to passing transfer failures
+  (found on moveria-de, where about 38% of 3–5 MB PNG imports answered 503
+  `media_transfer_unavailable` but left an uncopied record behind):
+  - `POST media/import` answers **202** once the media record exists and the
+    copy failed for a passing reason, with `media_id`, `finalize: null` and
+    `import: { state: 'pending', error_code, message, retry: { automatic: true,
+    next_attempt_at, failed_attempts }, details }`. Successful imports report
+    `import.state` `complete`. `GET media/{id}` (`read_media`) returns the same
+    `import` state, so agents poll instead of importing again.
+  - A refused source or file (4xx) is still an error and no longer leaves a
+    new, empty media record behind; a pending record from an earlier import is
+    kept as it was.
+  - The Site's media migration retries a pending import after 1, 5, 15, 30 and
+    60 minutes instead of three times in a row, and sets it aside only after
+    the last attempt. The job stays `queued` until the next planned attempt.
+  - Transfer Worker answers keep their own codes
+    (`media_source_temporarily_unavailable`, `media_transfer_interrupted`,
+    `media_transfer_timeout`, `media_transfer_busy`) instead of collapsing into
+    `media_transfer_unavailable`, with the upstream HTTP status and Worker code
+    in `details` and in the retry and failure logs. Error messages no longer
+    tell an import to "retry the migration".
+  - A Cloudflare 5xx error page (larger than a receipt) is retried like any
+    other 5xx instead of failing at once as an invalid receipt, and 5xx/429
+    answers lower the number of concurrent remote copies for a while.
+  - A successful copy clears earlier `migration_failed` flags, and files already
+    in organization storage are no longer counted as skipped in the migration
+    status.
+  - `upload_media_batch_from_urls` marks pending results `pending: true` and
+    counts them in `pending`.
+- A build that waits in the build provider's queue no longer fails the
+  publication after 15 minutes (found on staging, where a static verification
+  step waited behind the Organization's background media preparation and
+  failed with `build_queue_timeout` when Cloudflare started it 15 minutes
+  later):
+  - A queued step does not expire while its provider build is pending. A
+    provider build that stopped before anyone claimed the step is dispatched
+    again, as before, within the existing attempt limit. Only a step that no
+    runner claims within 6 hours (`QUEUED_BUILD_LIMIT_MS`, replacing
+    `BUILD_QUEUE_WAIT_MS`) fails, with `build_queue_timeout` and a message
+    saying the provider never started a runner for it.
+  - A step's working time starts when a runner claims it: the claim moves the
+    stored deadline by the time the step waited, so a long queue no longer
+    shortens the build or a media window. The claim response keeps its shape;
+    engines read only `deadline`, so older engines work unchanged.
+  - The publication rechecks its own queued step (after 15 seconds, then
+    every minute) until a runner claims it: it reads the step's provider
+    build, records `provider_status`, starts a stopped one again and sets the
+    job's phase, for example "waiting for Cloudflare to start the verification
+    build (queued 6 min; this organization's background media preparation is
+    running on the same build account)" or "waiting for 1 other build in this
+    organization". The working phase returns once the step is claimed. A
+    queued build or verification step no longer counts toward the 45-minute
+    publication observation limit.
+  - `build_progress.queue` in the deploy status (`get_deploy_status`) and
+    `queue` on queued jobs in `GET /api/v1/publishing/builds`
+    (`read_organization_build_engine`) report `state`
+    (`waiting_for_provider` or `waiting_for_other_builds`), `message`,
+    `queued_at`, `queued_for_seconds`, `provider`, `provider_status`,
+    `provider_status_at`, `ahead`, `ahead_kinds`, `running_kinds` and
+    `expires_at`. `build_progress.deadline` is null while the step is queued.
+    The Publish menu and Publishing → Builds show the message.
+  - `trigger_deploy`, `get_deploy_status` and `read_organization_build_engine`
+    tell agents that a queued build is normal and must not be retriggered.
+
 ## 0.3.18 (candidate, MCP 0.45.127)
 
 - Previews derive app data the way the next publication would. Core freezes

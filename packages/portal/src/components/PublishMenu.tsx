@@ -19,7 +19,7 @@ import { PublishingRequirements } from './PublishingRequirements';
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { isPendingDeploy } from './EditorStatus';
-import { useDeployProgress } from './useDeployProgress';
+import { useDeployProgress, queueSentence } from './useDeployProgress';
 import type { PublicationImpact } from '../lib/publishing/impact';
 import { liveDomainConfirmMessage, postDeploy } from './liveDomainConfirmation';
 
@@ -406,7 +406,8 @@ export default function PublishMenu({
               </div>)}
             </details>}
             {job?.render_report && <p role="status" className="pmenu__hint">{job.render_report.rendered} pages rebuilt · {job.render_report.reused} reused</p>}
-            {job?.build_progress && <p className="pmenu__hint" role="status">{job.build_progress.step.replaceAll('_', ' ')} — {(job.build_progress.media_continuations ?? 0) > 0 ? `part ${job.build_progress.media_continuations! + 1}${job.build_progress.retries ? `, ${job.build_progress.retries} retried` : ''}` : `attempt ${job.build_progress.attempt}`}{job.build_progress.total > 0 ? ` · ${job.build_progress.completed}/${job.build_progress.total} files` : ''}</p>}
+            {job?.build_progress?.queue && <p className="pmenu__hint" role="status">{queueSentence(job.build_progress.queue.message)} The build starts automatically; there is no need to publish again.</p>}
+            {job?.build_progress && !job.build_progress.queue && <p className="pmenu__hint" role="status">{job.build_progress.step.replaceAll('_', ' ')} — {(job.build_progress.media_continuations ?? 0) > 0 ? `part ${job.build_progress.media_continuations! + 1}${job.build_progress.retries ? `, ${job.build_progress.retries} retried` : ''}` : `attempt ${job.build_progress.attempt}`}{job.build_progress.total > 0 ? ` · ${job.build_progress.completed}/${job.build_progress.total} files` : ''}</p>}
             {job?.phase === 'distributing' && <p className="pmenu__hint" role="status">Distributing… Your site is being made publicly available. The link will appear automatically when ready.</p>}
             {changesLoading && <p className="pmenu__hint">Checking what changed…</p>}
             {changesError && <p role="alert" className="pmenu__hint pmenu__hint--error">{changesError}</p>}

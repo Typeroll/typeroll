@@ -7,6 +7,7 @@ import { githubBuildClient, readGithubDispatch } from './github';
 import { dispatchPendingBuild } from './jobs';
 import { ConnectionError } from '../publishing/connections';
 import { buildFailureMessage } from './failure-message';
+import { recordProviderStatus } from './queue-state';
 
 export { buildFailureMessage } from './failure-message';
 
@@ -44,7 +45,7 @@ export async function refreshBuildFailure(org: string, site: string, job: Deploy
               { status: 'failed', token_hash: null, error_code: 'build_result_missing', completed_at: now });
             task = await store.getDoc<BuildTask>(taskPath);
           }
-        } else if (input.dispatch_id && (await (await cloudflareClient(org))(`/accounts/${engine.account_id}/builds/builds/${input.dispatch_id}`))?.status === 'stopped') {
+        } else if (input.dispatch_id && await cloudflareBuildStatus(org, key, engine.account_id, input) === 'stopped') {
           // A shared Cloudflare runner claims the oldest eligible task in the
           // organization, and Cloudflare may stop a queued build when another
           // one starts. A stopped dispatch beside a still-unclaimed task means
@@ -73,4 +74,11 @@ export async function refreshBuildFailure(org: string, site: string, job: Deploy
   await store.compareAndUpdateDoc<any>(paths.deploy(org, site, job.id), current => ['queued', 'running'].includes(current.status) &&
     (current.git_publication?.verification_task_key ?? current.git_publication?.build_task_key) === key, patch);
   return (await store.getDoc<DeployJob>(paths.deploy(org, site, job.id))) ?? job;
+}
+
+/** Read the dispatched Cloudflare build and keep its status for queue reporting. */
+async function cloudflareBuildStatus(org: string, key: string, account: string, input: BuildInput) {
+  const status = (await (await cloudflareClient(org))(`/accounts/${account}/builds/builds/${input.dispatch_id}`))?.status;
+  await recordProviderStatus(org, key, input, status);
+  return status;
 }

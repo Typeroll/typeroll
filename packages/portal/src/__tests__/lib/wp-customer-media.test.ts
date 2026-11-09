@@ -1,8 +1,15 @@
 vi.mock('../../lib/media/remote-transfer', () => ({ remoteTransfersEnabled: vi.fn(async () => true), copyWithTransferService: vi.fn() }));
+const guard = vi.hoisted(() => ({ orgId: 'org', siteId: 'site', permission: 'write' }));
+vi.mock('../../lib/api-auth', () => ({
+  requireApiKey: vi.fn(async () => ({ ok: true, value: guard })),
+  apiError: (error: string, status = 400) => Response.json({ error }, { status }),
+  apiResponse: (_ctx: unknown, data: unknown, status = 200) => Response.json(data, { status }),
+}));
 import { copyWithTransferService } from '../../lib/media/remote-transfer';
 import { createHash } from 'node:crypto';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { S3Client, GetObjectCommand } from '../../lib/net/s3';
+import { S3Client, GetObjectCommand, DeleteObjectCommand } from '../../lib/net/s3';
+import { transferPath } from '../../lib/media/transfer';
 import { paths, type Media } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -79,7 +86,7 @@ it('retains pending identity after transfer failure and retries without duplicat
   await connect();
   vi.mocked(copyWithTransferService).mockRejectedValueOnce(new Error('Source unavailable'));
   const transfer = () => new WPMediaTransfer('org', 'site', getStore());
-  await expect(transfer().ensureUrl(url)).rejects.toThrow('Source unavailable');
+  await expect(transfer().ensureUrl(url)).rejects.toMatchObject({ status: 503, code: 'media_transfer_interrupted', original: expect.objectContaining({ message: 'Source unavailable' }) });
   const pending = await getStore().listDocs<Media>(paths.media('org', 'site'));
   expect(pending).toHaveLength(1);
   expect(pending[0]).toMatchObject({ import_pending: true, storage: { state: 'uploading' } });
@@ -108,4 +115,76 @@ it('queues the site media migration only after a transient import failure', asyn
   vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('Interrupted', 503, 'media_transfer_interrupted'));
   await expect(new WPMediaTransfer('org', 'site', getStore(), { queueMigrationOnFailure: false }).ensureUrl('https://wordpress.example.com/uploads/again.png')).rejects.toThrow('Interrupted');
   expect(await requestId()).toBe(afterFailure);
+});
+
+const importRequest = (body: Record<string, unknown>) => ({ request: new Request('https://cms.example.com/api/v1/sites/site/media/import', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), params: { siteId: 'site' } } as never);
+const readMedia = async (mediaId: string) => {
+  const { GET } = await import('../../pages/api/v1/sites/[siteId]/media/[mediaId]');
+  return (await GET({ request: new Request(`https://cms.example.com/api/v1/sites/site/media/${mediaId}`), params: { siteId: 'site', mediaId } } as never)).json();
+};
+
+it('answers 202 with the pending media after a transient copy failure and queues the site migration', async () => {
+  await connect();
+  const { POST } = await import('../../pages/api/v1/sites/[siteId]/media/import');
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('The source site did not deliver the file just now.', 503, 'media_source_temporarily_unavailable',
+    { upstream_status: 503, worker_code: 'media_source_temporarily_unavailable' }));
+  const before = Date.now();
+  const response = await POST(importRequest({ source_url: url, alt_text: 'Photo' }));
+  expect(response.status).toBe(202);
+  const body = await response.json();
+  const [record] = await getStore().listDocs<Media & Record<string, any>>(paths.media('org', 'site'));
+  expect(body).toMatchObject({ media_id: record.id, cdn_url: record.cdn_url, filename: 'photo.png', content_type: 'image/png', finalize: null,
+    import: { state: 'pending', error_code: 'media_source_temporarily_unavailable', retry: { automatic: true, failed_attempts: 1 },
+      details: { upstream_status: 503, worker_code: 'media_source_temporarily_unavailable' } } });
+  expect(body.import.message).toContain(`GET media/${record.id}`);
+  expect(Date.parse(body.import.retry.next_attempt_at)).toBeGreaterThanOrEqual(before + 60_000);
+  expect(record).toMatchObject({ import_pending: true, import_error_code: 'media_source_temporarily_unavailable', import_failures: 1, storage: { state: 'uploading' } });
+  expect(await getStore().listDocs('publishing_media_migrations')).toHaveLength(1);
+  // An agent polls the record instead of importing again.
+  expect(await readMedia(record.id)).toMatchObject({ media: { id: record.id }, import: { state: 'pending', error_code: 'media_source_temporarily_unavailable', retry: { automatic: true } } });
+  // The same import retried later reuses the record and completes it.
+  const retried = await POST(importRequest({ source_url: url, alt_text: 'Photo' }));
+  expect(retried.status).toBe(200);
+  expect(await retried.json()).toMatchObject({ media_id: record.id, import: { state: 'complete' } });
+  expect(await readMedia(record.id)).toMatchObject({ import: { state: 'complete', error_code: null } });
+});
+
+it('leaves no new media record after a permanent copy failure', async () => {
+  await connect();
+  const { POST } = await import('../../pages/api/v1/sites/[siteId]/media/import');
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('The original file could not be downloaded.', 422, 'media_source_unavailable', { upstream_status: 422, worker_code: 'media_source_unavailable' }));
+  const response = await POST(importRequest({ source_url: url }));
+  expect(response.status).toBe(422);
+  expect(await response.json()).toMatchObject({ code: 'media_source_unavailable' });
+  expect(await getStore().listDocs(paths.media('org', 'site'))).toHaveLength(0);
+  expect(vi.mocked(S3Client.prototype.send).mock.calls.some(([command]) => command instanceof DeleteObjectCommand)).toBe(true);
+  expect(await getStore().listDocs('publishing_media_migrations')).toHaveLength(0);
+});
+
+it('keeps an existing pending record as it was after a permanent failure of a re-import', async () => {
+  await connect();
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('Interrupted', 503, 'media_transfer_interrupted'));
+  await expect(new WPMediaTransfer('org', 'site', getStore()).importUrl(url)).rejects.toMatchObject({ code: 'media_transfer_interrupted' });
+  const [pending] = await getStore().listDocs<Media>(paths.media('org', 'site'));
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('Gone', 422, 'media_source_unavailable'));
+  await expect(new WPMediaTransfer('org', 'site', getStore()).importUrl(url)).rejects.toMatchObject({ status: 422, code: 'media_source_unavailable' });
+  expect(await getStore().listDocs(paths.media('org', 'site'))).toEqual([pending]);
+});
+
+it('clears a set-aside migration failure when a re-import copies the file', async () => {
+  await connect();
+  vi.mocked(copyWithTransferService).mockRejectedValueOnce(new ConnectionError('Interrupted', 503, 'media_transfer_interrupted'));
+  await expect(new WPMediaTransfer('org', 'site', getStore()).importUrl(url)).rejects.toMatchObject({ code: 'media_transfer_interrupted' });
+  const [pending] = await getStore().listDocs<Media>(paths.media('org', 'site'));
+  const mediaPath = `${paths.media('org', 'site')}/${pending.id}`;
+  // An earlier migration pass set the file aside after its retries.
+  await getStore().updateDoc(mediaPath, { migration_failed: true, migration_error: { code: 'media_transfer_interrupted', message: 'Interrupted', at: new Date().toISOString() } });
+  const recordPath = transferPath(paths.site('org', 'site'), `storage:${'a'.repeat(32)}:org-private:${pending.id}`);
+  await getStore().setDoc(recordPath, { state: 'failed', attempts: 3, lease_until: 0, error_code: 'media_transfer_interrupted' });
+  const result = await new WPMediaTransfer('org', 'site', getStore()).importUrl(url);
+  expect(result.mediaId).toBe(pending.id);
+  expect(await getStore().getDoc(mediaPath)).toMatchObject({ storage: { state: 'ready' }, import_pending: false, import_error: null, import_error_code: null,
+    import_failures: 0, import_retry_at: null, migration_failed: false, migration_error: null });
+  expect(await getStore().getDoc(recordPath)).toMatchObject({ state: 'queued', attempts: 0 });
 });

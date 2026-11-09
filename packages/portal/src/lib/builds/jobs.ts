@@ -9,9 +9,10 @@ import { dispatchCloudflareBuild } from './cloudflare';
 import { dispatchGithubBuild, githubBuildClient, readGithubDispatch } from './github';
 import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256, type BuildIdentity } from './contract.mjs';
 import { inspectArtifact } from './artifact-stream';
-import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, queuedBuildExpired, expireQueuedBuild, type BuildTask } from './queue';
+import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, buildDeadline, queuedBuildExpired, expireQueuedBuild, type BuildTask } from './queue';
 import { readEngineConfiguration, buildInputPath, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
+import { recordProviderStatus } from './queue-state';
 
 export async function enqueueBuild(config: EngineConfiguration, identity: Omit<BuildIdentity, 'source_sha256' | 'protocol' | 'node_version'>, files: Record<string, string>, kind: BuildInput['kind'] = 'publication', options: { requeueFailed?: boolean; directUpload?: boolean } = {}) {
   if (kind === 'publication' && !files['packages/site-template/src/lib/publication-validation.mjs'])
@@ -37,7 +38,7 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
     ...(options.directUpload === false ? { direct_upload: false } : {}) } satisfies BuildInput);
   if (options.requeueFailed && ['failed', 'cancelled'].includes(queued.task.status)) {
     // The same frozen build, retried once on an updated engine: a fresh dispatch, not the failed one's.
-    await getStore().updateDoc(buildInputPath(identity.org_id, queued.key), { dispatch_id: null, dispatch_uncertain: false, dispatch_attempt: 0, dispatch_lease_until: 0, dispatch_nonce: null, storage_account_id: config.account_id });
+    await getStore().updateDoc(buildInputPath(identity.org_id, queued.key), { dispatch_id: null, dispatch_uncertain: false, dispatch_attempt: 0, dispatch_lease_until: 0, dispatch_nonce: null, provider_status: null, provider_status_at: null, storage_account_id: config.account_id });
     queued.task = (await new OrganizationBuildQueue().requeue(identity.org_id, queued.key, config.revision))!;
   }
   try { await dispatchPendingBuild(identity.org_id, queued.key, config); }
@@ -51,7 +52,7 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
   const task = await store.getDoc<BuildTask>(`${buildTasksPath(org)}/${key}`);
   const input = await store.getDoc<BuildInput>(inputPath);
   if (!task || !input || !['queued', 'running'].includes(task.status) || task.lease_until > Date.now()) return;
-  if (task.deadline <= Date.now() || task.attempt >= buildAttemptLimit(task)) throw new ConnectionError('The shared build timed out. Retry the publication.', 409, 'shared_build_timeout');
+  if (buildDeadline(task) <= Date.now() || task.attempt >= buildAttemptLimit(task)) throw new ConnectionError('The shared build timed out. Retry the publication.', 409, 'shared_build_timeout');
   if (config.provider === 'github') return dispatchPendingGithubBuild(org, key, config, task, input);
   const client = await cloudflareClient(org);
   if (input.dispatch_uncertain) {
@@ -68,6 +69,9 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
   }
   if (input.dispatch_id) {
     const providerBuild = await client(`/accounts/${config.account_id}/builds/builds/${input.dispatch_id}`);
+    await recordProviderStatus(org, key, input, providerBuild?.status);
+    // Queued, initializing or running: the provider has the build and starts a
+    // runner when the account has build capacity. Waiting is not a failure.
     if (providerBuild.status !== 'stopped') return;
     // A runner can claim another queued job in the same organization. A stopped dispatch
     // is not proof this task ran; only its attempt lease establishes ownership.
@@ -75,7 +79,7 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
   const now = Date.now();
   const won = await store.compareAndUpdateDoc<BuildInput>(inputPath, current =>
     (current.dispatch_lease_until ?? 0) <= now && current.dispatch_id === input.dispatch_id && !current.dispatch_uncertain,
-    { dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: (input.dispatch_attempt ?? 0) + 1 });
+    { dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: (input.dispatch_attempt ?? 0) + 1, provider_status: null, provider_status_at: null });
   if (!won) return;
   if ((input.dispatch_attempt ?? 0) >= buildAttemptLimit(task)) throw new ConnectionError('Cloudflare could not start the shared runner. Open Publishing → Builds and check the build project.', 502, 'shared_runner_start_failed');
   // Keep the lease after an uncertain provider response. Do not immediately submit a duplicate.
@@ -128,13 +132,14 @@ async function dispatchPendingGithubBuild(org: string, key: string, config: Engi
         { dispatch_id: String(run.id), dispatch_uncertain: false });
       return;
     }
+    await recordProviderStatus(org, key, input, run.status);
     if (run.status !== 'completed') return;
     if (task.provider_dispatch_id === String(run.id) && task.lease_until > Date.now()) return;
   }
   const now = Date.now(), nonce = randomUUID();
   if ((input.dispatch_attempt ?? 0) >= buildAttemptLimit(task)) throw new ConnectionError('GitHub could not finish this build after three attempts. Check Publishing → Builds and retry the publication.', 502, 'github_build_attempts_exhausted');
   const won = await store.compareAndUpdateDoc<BuildInput>(path, value => (value.dispatch_lease_until ?? 0) <= now && value.dispatch_id === input.dispatch_id && !value.dispatch_uncertain,
-    { dispatch_id: '', dispatch_nonce: nonce, dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: (input.dispatch_attempt ?? 0) + 1 });
+    { dispatch_id: '', dispatch_nonce: nonce, dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: (input.dispatch_attempt ?? 0) + 1, provider_status: null, provider_status_at: null });
   if (!won) return;
   try {
     const id = await dispatchGithubBuild(client, config, key, nonce);
