@@ -24,7 +24,7 @@ const UNSAFE = [
   { pattern: /<\/style/i, message: '"</style" would end the stylesheet early. Remove it.' },
   { pattern: /expression\s*\(/i, message: 'CSS expression() is not allowed.' },
   { pattern: /javascript\s*:/i, message: 'javascript: URLs are not allowed in CSS.' },
-  { pattern: /-moz-binding|behavior\s*:/i, message: 'Script bindings (-moz-binding, behavior) are not allowed.' },
+  { pattern: /-moz-binding|(?<![\w-])behavior\s*:/i, message: 'Script bindings (-moz-binding, behavior) are not allowed.' },
 ];
 
 /** Problems in a custom stylesheet, in source order. Empty for valid CSS without warnings. */

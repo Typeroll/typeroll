@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Site and page custom CSS accept `scroll-behavior` and `overscroll-behavior`.
+  The check for the old Internet Explorer `behavior:` property also matched
+  them, so `html{scroll-behavior:smooth}` was refused.
+
 ## 0.3.19 (candidate, MCP 0.45.128)
 
 - Media imports from a URL no longer lose files to passing transfer failures

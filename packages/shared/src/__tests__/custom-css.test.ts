@@ -22,6 +22,12 @@ describe('checkCustomCss', () => {
     expect(codes('.a { background: url(javascript:alert(1)) }')).toContain('error:unsafe:1');
     expect(codes('.a { width: expression(alert(1)) }')).toContain('error:unsafe:1');
     expect(codes('.a { }</style><script>alert(1)</script>')).toContain('error:unsafe:1');
+    expect(codes('.a { behavior: url(x.htc) }')).toContain('error:unsafe:1');
+    expect(codes('.a{color:red;behavior:url(x.htc)}')).toContain('error:unsafe:1');
+  });
+
+  it('accepts scroll-behavior and overscroll-behavior', () => {
+    expect(codes('html { scroll-behavior: smooth }\n.a{overscroll-behavior:contain}')).toEqual([]);
   });
 
   it('warns about selectors that target platform markup and @import', () => {
