@@ -527,3 +527,66 @@ it('hands a failed organization-wide request from before site jobs to every site
   expect(await store.getDoc<any>(legacy)).toMatchObject({ scope: 'organization', state: 'complete' });
   expect((await store.listDocs<any>('publishing_media_migrations')).filter(job => job.scope === 'site').map(job => job.site_id)).toEqual(['site']);
 });
+
+const pendingImport = (id: string, extra: Record<string, unknown> = {}) => ({ filename: `${id}.png`, mime_type: 'image/png', cdn_url: `https://cms.example.com/api/sites/site/media/${id}/content`,
+  r2_key: `private/abcdefghij/uploads/${id}/${id}.png`, source_url: `https://source.example.com/${id}.png`, source_aliases: [`https://source.example.com/${id}.png`], import_pending: true,
+  storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: `private/abcdefghij/uploads/${id}/${id}.png`, state: 'uploading', generation: 'connected' }, ...extra });
+
+it('retries a pending import after 1, 5, 15, 30 and 60 minutes instead of setting it aside after three quick attempts', async () => {
+  const store = getStore(), mediaPath = `${paths.media('org', 'site')}/imported`;
+  await store.setDoc(mediaPath, pendingImport('imported'));
+  vi.spyOn(S3Client.prototype, 'send').mockImplementation(async () => goodBody());
+  vi.mocked(copyWithTransferService).mockRejectedValue(new ConnectionError('The source site did not deliver the file just now.', 503, 'media_source_temporarily_unavailable'));
+  await requestMediaMigration('org', 'site');
+  const job = async () => (await store.listDocs<any>('publishing_media_migrations'))[0];
+  for (const [index, minutes] of [1, 5, 15, 30, 60].entries()) {
+    const started = Date.now();
+    const delay = await executeMediaMigration('org', 'site');
+    expect(copyWithTransferService).toHaveBeenCalledTimes(index + 1);
+    const media = await store.getDoc<any>(mediaPath);
+    expect(media).toMatchObject({ import_pending: true, import_failures: index + 1, import_error_code: 'media_source_temporarily_unavailable' });
+    expect(media.migration_failed).toBeFalsy();
+    const retryAt = Date.parse(media.import_retry_at);
+    expect(retryAt).toBeGreaterThanOrEqual(started + minutes * 60_000);
+    // The job waits for the planned retry; the chain delivers the next pass then.
+    expect(await job()).toMatchObject({ state: 'queued', retry_at: retryAt, pending_files: 1 });
+    expect(delay).toBeGreaterThan(minutes * 60_000 - 1_000);
+    expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued', pending_files: 1, failed_files: 0, failed_media: [] });
+    // A delivery before the planned time does not try the copy again.
+    await store.updateDoc(`publishing_media_migrations/${(await job()).id}`, { retry_at: 0 });
+    await runMediaMigrationBatch('org', 'site');
+    expect(copyWithTransferService).toHaveBeenCalledTimes(index + 1);
+    // Time passes until the planned retry.
+    await store.updateDoc(mediaPath, { import_retry_at: new Date(Date.now() - 1).toISOString() });
+    await store.updateDoc(`publishing_media_migrations/${(await job()).id}`, { retry_at: 0 });
+  }
+  // The last planned retry fails too: only now is the file set aside.
+  expect(await executeMediaMigration('org', 'site')).toBeNull();
+  expect(copyWithTransferService).toHaveBeenCalledTimes(6);
+  expect(await store.getDoc<any>(mediaPath)).toMatchObject({ migration_failed: true, migration_error: { code: 'media_source_temporarily_unavailable' } });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', failed_files: 1, failed_media: [{ media_id: 'imported', code: 'media_source_temporarily_unavailable' }] });
+  // A retry from Publishing starts the schedule again.
+  vi.mocked(copyWithTransferService).mockResolvedValue({ protocol: 1, id: '00000000-0000-0000-0000-000000000000', sha256: sha, size: 3, etag: '"verified"' });
+  await retryMediaMigration('org');
+  expect(await store.getDoc<any>(mediaPath)).toMatchObject({ migration_failed: false, import_failures: 0, import_retry_at: null });
+  await runMediaMigrationBatch('org', 'site');
+  expect(await store.getDoc<any>(mediaPath)).toMatchObject({ import_pending: false, storage: { state: 'ready' } });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', failed_files: 0, error: null });
+});
+
+it('does not report a stored file with a stale set-aside flag as skipped', async () => {
+  const store = getStore(), mediaPath = `${paths.media('org', 'site')}/imported`;
+  await store.setDoc(mediaPath, pendingImport('imported', { import_pending: false, sha256: sha, size_bytes: 3,
+    storage: { provider: 'organization_r2', account_id: 'a'.repeat(32), bucket: 'customer-private', key: 'private/abcdefghij/originals/x/imported.png', state: 'ready', generation: 'connected' },
+    migration_failed: true, migration_error: { code: 'media_transfer_unavailable', message: 'Media transfer could not finish.', at: '2026-11-08T00:00:00.000Z' } }));
+  await requestMediaMigration('org', 'site');
+  const [job] = await store.listDocs<any>('publishing_media_migrations');
+  await store.updateDoc(`publishing_media_migrations/${job.id}`, { state: 'complete', failed_files: 1, pending_files: 0,
+    error: '1 file could not be copied and was skipped. Fix or delete it, then retry media migration.' });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', failed_files: 0, error: null, failed_media: [], sites: [{ site_id: 'site', failed_files: 0, error: null }] });
+  // The next pass clears the flag and counts the file as stored.
+  await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
+  expect(copyWithTransferService).not.toHaveBeenCalled();
+  expect(await store.getDoc<any>(mediaPath)).toMatchObject({ migration_failed: false, migration_error: null });
+  expect(await store.getDoc<any>(`publishing_media_migrations/${job.id}`)).toMatchObject({ state: 'complete', failed_files: 0, error: null });
+});
