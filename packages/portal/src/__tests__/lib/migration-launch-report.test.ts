@@ -100,6 +100,27 @@ describe('migration launch report', () => {
     expect(report.seo_parity.status).toBe('current');
   });
 
+  it('warns about missing #fragments without blocking launch, and still blocks on missing pages', async () => {
+    const site = await seedReadyEvidence();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.setDoc(paths.page(ORG, SITE, 'home'), {
+      id: 'home', title: 'Home', slug: '', status: 'published', content_mode: 'html',
+      html_content: '<a href="#gone-1">a</a><a href="#gone-2">b</a><h2 id="here">Here</h2><a href="#here">c</a>',
+    } satisfies Page);
+    const report = await buildMigrationLaunchReport({ store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site });
+    expect(report.launch_ready).toBe(true);
+    expect(report.issues).toEqual([]);
+    expect(report.warnings).toEqual([expect.objectContaining({ id: 'broken_fragment_links', detail: expect.stringMatching(/^2 link/) })]);
+    expect(report.internal_links.broken.map(entry => entry.reason)).toEqual(['missing_fragment', 'missing_fragment']);
+
+    await store.updateDoc(paths.page(ORG, SITE, 'home'), { html_content: '<a href="#gone-1">a</a><a href="/missing">b</a>' });
+    const blocked = await buildMigrationLaunchReport({ store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site });
+    expect(blocked.launch_ready).toBe(false);
+    expect(blocked.issues).toEqual([{ id: 'broken_internal_links', detail: '1 internal link(s) are broken.' }]);
+    expect(blocked.warnings.map(warning => warning.id)).toEqual(['broken_fragment_links']);
+  });
+
   it('blocks launch on copied source-platform scripts and tracking without consent', async () => {
     const site = await seedReadyEvidence();
     const { getStore } = await import('../../lib/datastore');

@@ -2189,7 +2189,7 @@ Record the reviewed SEO/content parity evidence used by the launch report. This 
 
 Permission: `read`
 
-Return the launch decision report with separate inventory, exclusion-reason, internal-link, deployed URL parity, deploy freshness, reviewed SEO/content parity, migration fidelity and script requirements. scripts lists copied source-platform scripts (WordPress plugins, theme, jQuery, page builders, cookie plugins), tracking code outside the consent gate, and analytics/advertising integrations without the cookie banner; each blocks launch. launch_ready is false when any evidence is absent, incomplete, failed, targets an old origin, or predates the latest hosted deploy. Use this final gate instead of treating zero unhandled URLs as launch readiness.
+Return the launch decision report with separate inventory, exclusion-reason, internal-link, deployed URL parity, deploy freshness, reviewed SEO/content parity, migration fidelity and script requirements. scripts lists copied source-platform scripts (WordPress plugins, theme, jQuery, page builders, cookie plugins), tracking code outside the consent gate, and analytics/advertising integrations without the cookie banner; each blocks launch. warnings lists findings that do not block launch, such as broken_fragment_links (links whose #fragment is missing on the target Page). launch_ready is false when any evidence is absent, incomplete, failed, targets an old origin, or predates the latest hosted deploy. Use this final gate instead of treating zero unhandled URLs as launch readiness.
 
 ## Site: Migration urls
 

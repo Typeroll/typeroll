@@ -42,6 +42,8 @@ export interface MigrationLaunchReport {
   version_id: string;
   launch_ready: boolean;
   issues: Array<{ id: string; detail: string }>;
+  /** Findings to fix that do not block launch, such as `broken_fragment_links`. */
+  warnings: Array<{ id: string; detail: string }>;
   redirect_warnings: RedirectWarning[];
   inventory: {
     summary: Awaited<ReturnType<typeof analyzeCoverage>>['summary'];
@@ -97,7 +99,12 @@ export async function buildMigrationLaunchReport(args: {
   if (summary.matched_draft > 0) issues.push({ id: 'inventory_matched_draft', detail: `${summary.matched_draft} inventory URL(s) match unpublished Pages; publish them before launch.` });
   const draftSources = new Set(internalLinks.draft_sources ?? []);
   const unpublishedLiveTargets = internalLinks.unpublished_targets?.filter(entry => !draftSources.has(entry.from)) ?? [];
-  const brokenLiveLinks = internalLinks.broken.filter(entry => !draftSources.has(entry.from));
+  const liveBroken = internalLinks.broken.filter(entry => !draftSources.has(entry.from));
+  // A missing #fragment still lands on the right Page: a warning, not a blocker.
+  const brokenLiveLinks = liveBroken.filter(entry => entry.reason !== 'missing_fragment');
+  const brokenFragments = liveBroken.length - brokenLiveLinks.length;
+  const warnings: MigrationLaunchReport['warnings'] = [];
+  if (brokenFragments) warnings.push({ id: 'broken_fragment_links', detail: `${brokenFragments} link(s) point to a #fragment that does not exist on the target Page; the Page opens at the top.` });
   if (unpublishedLiveTargets.length) issues.push({ id: 'unpublished_internal_targets', detail: `${unpublishedLiveTargets.length} link(s) target unpublished Pages.` });
   if (summary.unhandled > 0) issues.push({ id: 'inventory_unhandled', detail: `${summary.unhandled} inventory URL(s) are unhandled.` });
   if (exclusionsWithoutReason > 0) {
@@ -168,6 +175,7 @@ export async function buildMigrationLaunchReport(args: {
     launch_ready: issues.length === 0,
     redirect_warnings: chainWarnings,
     issues,
+    warnings,
     inventory: { summary, exclusions_without_reason: exclusionsWithoutReason },
     internal_links: internalLinks,
     deployment: {

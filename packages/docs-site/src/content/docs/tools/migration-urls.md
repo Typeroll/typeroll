@@ -257,6 +257,8 @@ as Typeroll renders it: heading ids (including the generated ones and
 `anchor_id`), a block's `html_id`, and ids in HTML content. `#` and `#top`
 always resolve. A missing target is a `broken` entry with reason
 `missing_fragment`, the `fragment` and the target Page in `resolved_path`.
+The migration launch report lists these as the non-blocking warning
+`broken_fragment_links` in `warnings`; only other broken links block launch.
 WordPress tables of contents often point at heading ids or `<a name>` anchors
 that the import did not keep; publishing removes `name` anchors, so give the
 heading an `id` (or `anchor_id`) or update the link. Problems confined to unpublished source pages do
