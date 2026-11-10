@@ -51,6 +51,11 @@ comparison first.
    version note names. Version 2 moves a heading's or button's custom class
    onto the `<h2>` or link, so `.my-class .block-heading-text` stops
    matching; propose the rewrite (`.my-class`) or a named style.
+   Version 16 wraps a form's buttons in `.form-actions`, so CSS that placed
+   the button in the form grid targets `form > .form-actions`. Version 17
+   loads weights written in CSS: propose removing `fonts.load` entries that
+   only existed for them, and element rules that were scoped only to keep
+   them off the cookie banner.
 
 7. **Ask before upgrading.** Never upgrade on your own. If the user wants to
    keep a specific old look, solve it with a site style or page CSS first and
