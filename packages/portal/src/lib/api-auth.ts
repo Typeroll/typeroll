@@ -679,6 +679,30 @@ export async function requireApiSiteLifecycleChange(ctx: ApiContext): Promise<Gu
   return { ok: true, value: ctx };
 }
 
+export const OWNER_AUTHORITY_REQUIRED = 'owner_authority_required';
+
+/**
+ * Owner authority over the site: a personal connection (an MCP connection or
+ * a personal API token) of a person who is, right now, an owner of the
+ * organization that owns the site. Checked against the live Member document
+ * whether or not the organization enforces roles, because owner is the one
+ * role every organization has.
+ *
+ * Organization and site API keys are refused: they carry no person, and an
+ * administrator can mint them. So are cross-organization shares and Extension
+ * installation credentials, however privileged.
+ */
+export async function requireApiOwnerAuthority(ctx: ApiContext, action: string): Promise<GuardResult<ApiContext>> {
+  const refuse = (message: string) => ({ ok: false as const, response: apiError(message, 403, ctx, { code: OWNER_AUTHORITY_REQUIRED }) });
+  if (!isApiSiteOwner(ctx)) return refuse(`Only an owner of the organization that owns this site can ${action}.`);
+  if (!ctx.personalUserId) {
+    return refuse(`Only an organization owner can ${action}, through their own MCP connection or personal API token. Organization and site API keys cannot.`);
+  }
+  const membership = await organizationMembership(ctx.personalUserId, ctx.orgId);
+  if (membership?.role !== 'owner') return refuse(`Only an owner of the organization that owns this site can ${action}.`);
+  return { ok: true, value: ctx };
+}
+
 /**
  * Build a JSON response with the audit log fired off for writes. Use this
  * instead of `json()` in /api/v1 handlers so the audit happens at the same

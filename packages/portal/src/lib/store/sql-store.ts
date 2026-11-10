@@ -20,6 +20,8 @@ export interface StoreTransport {
   deleteTree(path: string): Promise<number>;
   sequence(): Promise<number>;
   changedSince(seq: number, root: string): Promise<boolean>;
+  /** Every document path after `after`, in path order (the engine's `paths`). Optional for test transports. */
+  paths?(after?: string, limit?: number): Promise<string[]>;
 }
 
 /** Conflicts beyond this are a hot document, not ordinary contention. */
@@ -116,6 +118,22 @@ export class SqlStore implements ReadWriteStore {
     });
   }
 
+  async listTree(root: string, opts: { after?: string; limit?: number } = {}): Promise<string[]> {
+    if (!this.transport.paths) throw new Error('This store cannot list a document tree');
+    // Paths beneath `root` are exactly those starting with `root/`, and they
+    // are contiguous in path order: start just after the prefix and stop at
+    // the first path outside it.
+    const prefix = `${root}/`;
+    const limit = Math.max(1, Math.min(5000, Math.floor(opts.limit ?? 1000)));
+    const after = opts.after && opts.after > prefix ? opts.after : prefix;
+    const out: string[] = [];
+    for (const item of await this.transport.paths(after, limit)) {
+      if (!item.startsWith(prefix)) break;
+      out.push(item);
+    }
+    return out;
+  }
+
   async deleteTree(path: string): Promise<void> {
     await this.transport.deleteTree(path);
   }
@@ -191,6 +209,7 @@ export function localTransport(engine: import('./sql-engine').SqlDocumentEngine)
     deleteTree: async path => engine.deleteTree(path),
     sequence: async () => engine.sequence(),
     changedSince: async (seq, root) => engine.changedSince(seq, root),
+    paths: async (after, limit) => engine.paths(after, limit),
   };
 }
 

@@ -348,11 +348,10 @@ export interface Site {
    * Absence means active, so no existing site needs a migration and no read
    * path has to know about this field to keep working.
    *
-   * Archiving is reversible and is deliberately the only lifecycle step the
-   * portal can perform. Destroying a site touches R2 objects shared at the
-   * organization level, a customer Git repository, a Cloudflare Pages project
-   * and private app databases, none of which the portal owns; that belongs to
-   * the operator, and it requires this field to be set first.
+   * Archiving is reversible. Permanent deletion is a separate, owner-only step
+   * that requires this field to be set first (lib/site-deletion.ts): it removes
+   * the site's documents and leaves resources in the customer's own accounts
+   * (Git repository, hosting project, DNS) untouched and listed.
    */
   lifecycle?: {
     status: 'archived';
@@ -362,6 +361,19 @@ export interface Site {
     archived_by: string;
     /** Free text shown in the portal, so a future reader knows why it was retired. */
     reason?: string;
+    /**
+     * Set when a confirmed permanent deletion has started and not finished.
+     * `digest` is the inventory the owner confirmed: repeating the deletion
+     * with it continues where an interrupted run stopped. Restoring is refused
+     * while this is set.
+     */
+    deletion?: {
+      status: 'in_progress';
+      started_at: string;
+      started_by: string;
+      audit_id: string;
+      digest: string;
+    };
   };
 }
 
@@ -2286,6 +2298,10 @@ export const paths = {
   // Write-audit trail for the public API. Reads are not logged.
   apiAudit: (orgId: string, siteId: string) =>
     `organizations/${orgId}/sites/${siteId}/api_audit`,
+  // Audit records of permanent site deletions. Kept on the organization, not
+  // the site, so the record of a deletion outlives the site it deleted.
+  siteDeletions: (orgId: string) => `organizations/${orgId}/site_deletions`,
+  siteDeletion: (orgId: string, auditId: string) => `organizations/${orgId}/site_deletions/${auditId}`,
 
   // ─── Per-org ──────────────────────────────────────────────────────────
   workflows: (orgId: string) => `organizations/${orgId}/workflows`,

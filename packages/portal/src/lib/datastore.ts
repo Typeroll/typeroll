@@ -62,6 +62,13 @@ export interface ReadWriteStore {
    * tombstones, revisions, and chat history don't leak as orphans.
    */
   deleteTree(path: string): Promise<void>;
+  /**
+   * Document paths strictly beneath `root` (not `root` itself), in byte order,
+   * after `after` and at most `limit` of them (default 1000). A page shorter
+   * than `limit` is the last one. Optional: a store that cannot enumerate a
+   * tree leaves it out, and callers that need it refuse rather than guess.
+   */
+  listTree?(root: string, opts?: { after?: string; limit?: number }): Promise<string[]>;
   /** startAfterId opts into document-ID ordering; an empty string starts the first page. */
   listDocs<T = unknown>(
     collectionPath: string,
@@ -231,6 +238,20 @@ class FixtureStore implements ReadWriteStore {
     // side by side in this layout).
     if (fs.existsSync(docPath)) await fs.promises.unlink(docPath);
     if (fs.existsSync(dirPath)) await fs.promises.rm(dirPath, { recursive: true, force: true });
+  }
+
+  async listTree(root: string, opts: { after?: string; limit?: number } = {}): Promise<string[]> {
+    const found: string[] = [];
+    const walk = async (directory: string, prefix: string) => {
+      if (!fs.existsSync(directory)) return;
+      for (const entry of await fs.promises.readdir(directory, { withFileTypes: true })) {
+        if (entry.isDirectory()) await walk(path.join(directory, entry.name), `${prefix}/${entry.name}`);
+        else if (entry.isFile() && entry.name.endsWith('.json')) found.push(`${prefix}/${entry.name.slice(0, -5)}`);
+      }
+    };
+    await walk(this.resolve(root).dirPath, root);
+    const after = opts.after ?? '';
+    return found.filter(item => item > after).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).slice(0, opts.limit ?? 1000);
   }
 
   async listDocs<T>(
