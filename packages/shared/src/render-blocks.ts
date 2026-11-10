@@ -9,6 +9,7 @@ import { prepareNavigationForm } from './navigation-form.js';
 import { coerceFieldValue } from './block-field-types.js';
 import { carouselControlsHtml, carouselRegionLabel, heroVideoHtml, ratingHtml, videoPlayerHtml } from './block-media.js';
 import { prepareStoryBlock } from './story-blocks.js';
+import { CONSENT_EMBED_CSS, consentEmbedHtml, consentEmbedScript, isConsentGatedEmbed } from './consent-embed.js';
 import { backgroundMedia, effectAssets, insertAfterFirstTag, lightboxAttributes, motionAttributes, textOverMedia, type EffectContext } from './block-effects.js';
 // Block-tree → HTML renderer.
 //
@@ -541,6 +542,17 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     const still = resolveRenderVersion(options.renderVersion) >= 14 && options.context?.site?.motion === 'reduced';
     compiled.flatData.hero_video_html = still ? '' : heroVideoHtml(compiled.flatData, options.context?.page?.language ?? options.context?.site?.language);
   }
+  // An embed that waits for cookie consent keeps its html inert (consent-embed.ts).
+  const consentGated = blockType.id === 'core/embed' && compiled.flatData.consent === 'optional';
+  if (consentGated) {
+    const site = options.context?.site;
+    const consent = site?.cookie_consent as { labels?: unknown } | undefined;
+    compiled.flatData.html = consentEmbedHtml(String(compiled.flatData.html ?? ''), {
+      placeholder: compiled.flatData.consent_placeholder,
+      language: options.context?.page?.language ?? site?.language,
+      consentLabels: consent?.labels,
+    });
+  }
   if (effectiveBlock.type === 'core/testimonial') compiled.flatData.rating_html = ratingHtml(compiled.flatData.rating, options.context?.page?.language ?? options.context?.site?.language);
   if (effectiveBlock.type === 'core/navigation_form') prepareNavigationForm(compiled.flatData, effectiveBlock.id, effectiveBlock.data, effectiveBlock.data?.responsive_breakpoints ?? options.context?.site?.responsive_breakpoints);
   if (effectiveBlock.type === 'core/navigation_menu') compiled.flatData.menu_mobile_override = String(!!effectiveBlock.slots?.[1]?.length);
@@ -709,6 +721,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   if (overText.style) html = mergeAttrsIntoFirstTag(html, { style: overText.style }) ?? html;
   const rootAttrs: Record<string, string> = { ...background.attrs, ...overText.attrs, ...motionAttributes(blockType, compiled.flatData, effects), ...storyAttrs };
   if (blockType.id === 'core/grid' && isResponsiveValue(effectiveBlock.data.cols)) rootAttrs['data-responsive-cols'] = 'true';
+  if (consentGated) rootAttrs['data-tr-consent-embed'] = 'optional';
   if (blockType.schema.some(field => field.css_unit && fieldRendersAt(field, options.renderVersion))) rootAttrs['data-presentation'] = encodeURIComponent(blockType.id);
   Object.assign(rootAttrs, versionSettingAttributes(blockType, compiled.flatData, options.renderVersion));
   // data-bid is normally only needed when responsive overrides target it —
@@ -2537,6 +2550,8 @@ export function collectBlockAssets(
   if (resolveRenderVersion(opts?.renderVersion) >= 15 && used.includes('core/navigation_links') && usesMenuSubmenus(blocks)) {
     js.push(`/* core/navigation_links submenus */\n${NAVIGATION_SUBMENU_SCRIPT}`);
   }
+  // The placeholder of an embed that waits for cookie consent; other embeds ship no CSS.
+  if (used.includes('core/embed') && usesConsentGatedEmbed(blocks)) css.push(`/* core/embed consent */\n${CONSENT_EMBED_CSS}`);
   // Today's opening hours and the like refresh in the browser; other site fields need no script.
   if (used.includes('core/site_field') && usesSiteFieldClock(blocks, opts?.siteFieldValues)) {
     js.push(`/* core/site_field opening hours */\n${SITE_FIELD_CLOCK_SCRIPT}`);
@@ -2569,7 +2584,10 @@ export function collectBlockAssets(
   // portal's own origin next to the session cookie. See render-preview.ts.
   if (opts?.includeScripts !== false) {
     for (const { block, code } of collectInstanceScripts(blocks, registry)) {
-      js.push(instanceScriptIife(sanitizeCssId(block.id), code));
+      const bid = sanitizeCssId(block.id);
+      const bt = getRegistryEntry(registry, block.type);
+      // A consent-gated embed's code waits for the consent runtime (consent-embed.ts).
+      js.push(bt?.id === 'core/embed' && isConsentGatedEmbed('core/embed', block.data) ? consentEmbedScript(bid, neutraliseScriptClose(code)) : instanceScriptIife(bid, code));
     }
   } else {
     js.length = 0;
@@ -2612,6 +2630,17 @@ function collectInstanceScripts(
   return out;
 }
 
+function neutraliseScriptClose(code: string): string {
+  return code.replace(/<\/script/gi, '<\\/script');
+}
+
+/** True when the tree holds a core/embed that waits for cookie consent. */
+function usesConsentGatedEmbed(blocks: Block[]): boolean {
+  return blocks.some(block => isConsentGatedEmbed(block.type, block.data)
+    || (block.children ? usesConsentGatedEmbed(block.children) : false)
+    || (block.slots ?? []).some(slot => usesConsentGatedEmbed(slot)));
+}
+
 /**
  * Wrap one instance's code so it runs scoped to its own element.
  *
@@ -2625,7 +2654,7 @@ function collectInstanceScripts(
  * same way SEOHead escapes JSON-LD.
  */
 function instanceScriptIife(bid: string, code: string): string {
-  const safe = code.replace(/<\/script/gi, '<\\/script');
+  const safe = neutraliseScriptClose(code);
   return `/* instance ${bid} */\n(function(){var el=document.querySelector('[data-bid="${bid}"]');if(!el)return;\n${safe}\n})();`;
 }
 

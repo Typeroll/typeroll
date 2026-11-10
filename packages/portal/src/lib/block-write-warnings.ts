@@ -14,6 +14,8 @@ import {
   blockBehaviorWarnings,
   blockTreeWarnings,
   buildCoreBlockRegistry,
+  consentEmbedBlockWarnings,
+  consentEmbedTreeWarnings,
   defaultSiteSettings,
   partStyleIssues,
   partsTypeOf,
@@ -28,6 +30,7 @@ import {
   unknownItemFields,
   unknownRouteOverrideFields,
   invalidSelectValues,
+  isConsentGatedEmbed,
   type Block,
   type BlockTreeWarning,
   type BlockType,
@@ -84,8 +87,26 @@ export async function singleBlockWriteWarnings(
     // The block after the write holds the route overrides as written.
     warnings.push(...routeOverrideTypeWarnings({ id: blockId, type: found.block.type, data: found.block.data, route_overrides: found.block.route_overrides }, registry ?? await siteBlockRegistry(ctx), blockId));
   }
-  if (found) warnings.push(...blockBehaviorWarnings({ ...found.block, data: { ...found.block.data, ...write.data } }, blockId));
+  if (found) {
+    const after = { ...found.block, data: { ...found.block.data, ...write.data } };
+    warnings.push(...blockBehaviorWarnings(after, blockId));
+    // Only when this write turned the gate on, so unrelated edits do not repeat it.
+    if (data && Object.hasOwn(data, 'consent') && isConsentGatedEmbed(after.type, after.data)) {
+      warnings.push(...consentEmbedBlockWarnings(after, await cookieBannerEnabled(ctx), blockId));
+    }
+  }
   return warnings;
+}
+
+/** Whether the site's cookie banner is on; consent-gated embeds need it. */
+async function cookieBannerEnabled(ctx: Ctx): Promise<boolean> {
+  try {
+    const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);
+    return settings?.cookie_consent?.enabled === true;
+  } catch {
+    // Unknown settings: no warning rather than a false one.
+    return true;
+  }
 }
 
 /**
@@ -190,21 +211,21 @@ export async function treeWriteWarnings(
   if (blocks === undefined) return [];
   const types = registry ?? await siteBlockRegistry(ctx);
   const warnings = blockTreeWarnings(blocks, 'blocks', types);
-  { // Global part styles also need the actual containing surface checked.
-    const site = await partStyleSite(ctx);
-    warnings.push(...treePartStyleIssues(blocks, types, site.styles, { contrast: site }).map(partStyleWarning));
-  }
+  const site = await partStyleSite(ctx);
+  // Global part styles also need the actual containing surface checked.
+  warnings.push(...treePartStyleIssues(blocks, types, site.styles, { contrast: site }).map(partStyleWarning));
+  warnings.push(...consentEmbedTreeWarnings(blocks, site.cookieBanner));
   return warnings;
 }
 
 // ─── Block part styles ───────────────────────────────────────────────────
 
-/** The site's styles, palette and render version, for part style checks. */
-async function partStyleSite(ctx: Ctx): Promise<{ styles: SiteStyle[]; colors: SiteColors; renderVersion: number }> {
+/** The site's styles, palette and render version, for part style checks, and whether its cookie banner is on. */
+async function partStyleSite(ctx: Ctx): Promise<{ styles: SiteStyle[]; colors: SiteColors; renderVersion: number; cookieBanner: boolean }> {
   const settings = (await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId)) ?? defaultSiteSettings;
   const styles = (Array.isArray(settings.styles) ? settings.styles : []).flatMap(value => validateSiteStyle(value).style ?? []);
   const colors = { ...defaultSiteSettings.colors, ...((settings.colors && typeof settings.colors === 'object') ? settings.colors : {}) } as SiteColors;
-  return { styles, colors, renderVersion: resolveRenderVersion(settings.render_version) };
+  return { styles, colors, renderVersion: resolveRenderVersion(settings.render_version), cookieBanner: settings.cookie_consent?.enabled === true };
 }
 
 function partStyleWarning(issue: PartStyleIssue): BlockTreeWarning {

@@ -399,6 +399,18 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
     write. Scope guide: one placement → `core/embed`; a reusable
     widget → `create_block_type` with `script`; a site-wide tag →
     `settings.scripts_head` / `scripts_body_end`.
+    **Consent:** a widget that sets cookies or tracks visitors (an energy
+    comparer, a booking or map widget) gets `consent: "optional"`. Its
+    `html` (iframes and images included) and `js` then stay off until the
+    visitor accepts all cookies in the site's cookie banner; until then a
+    placeholder with a button that opens the banner shows
+    (`consent_placeholder` replaces its built-in sentence, which follows the
+    page language). On a later visit with stored consent it loads at once;
+    "necessary only" and "decline" keep it off. It needs
+    `settings.cookie_consent.enabled: true` — the write returns a
+    `consent_embed_without_banner` warning otherwise. Leave `consent`
+    `"none"` (the default) for a vendor snippet that asks for consent
+    itself, so the visitor is not asked twice.
   - **Forms 2.0** (template_capabilities_version ≥ 0.18.0): forms can
     carry `steps[]` — each step is a Block[] tree mixing `form/*` field
     blocks (text/email/phone/number, textarea, select/radio_group/

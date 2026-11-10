@@ -36,6 +36,7 @@ export * from './page-refs.js';
 export * from './taxonomy.js';
 export * from './consent-scripts.js';
 export * from './cookie-consent.js';
+export * from './consent-embed.js';
 export * from './robots-sitemap.js';
 export * from './schema-generators.js';
 export * from './schema-dates.js';

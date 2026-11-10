@@ -21,7 +21,9 @@
 // buildConsentRuntime() is the inline browser script CookieConsent.astro
 // ships; its activate() mirrors the wrapper: scripts are recreated as
 // real script elements (inline body via .text, external via the copied
-// src attribute), templates are replaced by their content. Both halves
+// src attribute), templates are replaced by their content. It then
+// finishes consent-gated core/embed blocks (consent-embed.ts): their
+// placeholder is removed and their js started. Both halves
 // live in this file so they can't drift apart, and so they're unit-
 // testable outside Astro.
 
@@ -90,7 +92,9 @@ export function buildConsentRuntime(reloadAfterConsent: boolean, initialChoice?:
       var COOKIE='tr_consent',DAYS=365,RELOAD=${reloadAfterConsent ? 'true' : 'false'},memory=${memory};
       function read(){try{var m=document.cookie.match(/(?:^|;\\s*)tr_consent=([^;]+)/);return m?decodeURIComponent(m[1]):memory}catch(_){return memory}}
       function write(v){memory=v;try{var d=new Date();d.setTime(d.getTime()+DAYS*864e5);var sec=location.protocol==='https:'?'; Secure':'';document.cookie=COOKIE+'='+encodeURIComponent(v)+'; expires='+d.toUTCString()+'; path=/; SameSite=Lax'+sec}catch(_){}}
-      function activate(){var ns=document.querySelectorAll('script[type="text/plain"][data-tr-consent="optional"],template[data-tr-consent="optional"]');for(var i=0;i<ns.length;i++){var n=ns[i];if(n.tagName==='TEMPLATE'){n.parentNode.replaceChild(n.content.cloneNode(true),n);continue}var s=document.createElement('script');for(var j=0;j<n.attributes.length;j++){var a=n.attributes[j];if(a.name==='type'||a.name==='data-tr-consent')continue;s.setAttribute(a.name,a.value)}s.text=n.textContent||'';n.parentNode.replaceChild(s,n)}}
+      function activate(){var ns=document.querySelectorAll('script[type="text/plain"][data-tr-consent="optional"],template[data-tr-consent="optional"]');for(var i=0;i<ns.length;i++){var n=ns[i];if(n.tagName==='TEMPLATE'){n.parentNode.replaceChild(n.content.cloneNode(true),n);continue}var s=document.createElement('script');for(var j=0;j<n.attributes.length;j++){var a=n.attributes[j];if(a.name==='type'||a.name==='data-tr-consent')continue;s.setAttribute(a.name,a.value)}s.text=n.textContent||'';n.parentNode.replaceChild(s,n)}
+        /* Gated core/embed blocks (consent-embed.ts): drop the placeholder, mark the block active and start its js. */
+        var es=document.querySelectorAll('[data-tr-consent-embed="optional"]');for(var k=0;k<es.length;k++){var e=es[k];for(var c=e.firstElementChild;c;){var x=c.nextElementSibling;if(c.hasAttribute('data-tr-consent-placeholder'))e.removeChild(c);c=x}e.setAttribute('data-tr-consent-embed','active');try{e.dispatchEvent(new CustomEvent('typeroll:consent-embed'))}catch(_){}}}
       function set(choice){write(choice);document.documentElement.classList.remove('tr-consent-needed');document.dispatchEvent(new CustomEvent('typeroll:consent',{detail:{choice:choice}}));if(RELOAD){location.reload();return}if(choice==='all')activate()}
       var cur=read();
       if(cur==='all'){if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',activate);else activate()}

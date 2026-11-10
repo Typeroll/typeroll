@@ -524,6 +524,15 @@ export function cookieConsentDefaultText(language: unknown): string {
   return CONSENT_STRINGS[cookieConsentLanguage(language)].text;
 }
 
+/**
+ * The banner's settings label (`manage`) in the page language, or the site's
+ * own `labels.manage` when it set one.
+ */
+export function cookieConsentManageLabel(language: unknown, labels?: unknown): string {
+  const custom = labels && typeof labels === 'object' ? (labels as CookieConsentLabels).manage : undefined;
+  return typeof custom === 'string' && custom.trim() ? custom.trim() : CONSENT_STRINGS[cookieConsentLanguage(language)].manage;
+}
+
 export const COOKIE_CONSENT_LABEL_KEYS = [
   'title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button',
 ] as const;
