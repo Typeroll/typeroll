@@ -11,6 +11,17 @@
 - `typography.line_length: "none"`: prose fills its column.
 - `route_overrides` on a block: settings per route kind (home, item, page,
   facet), for example a shared header section that is primary on the home page.
+- Block writes refuse a new or changed select value outside its options with
+  400 `invalid_field_value` (block, field, allowed values); a legacy value that
+  is already stored stays editable and keeps its warning. Found on moveria-nl,
+  where `level: 2` was saved and rendered as a `<div>`.
+- A write that changes a published heading's generated id returns a
+  `heading_anchor_changed` warning with the old and new id and how to keep it.
+- `check_internal_links` checks `#fragment` and `/path#fragment` against the
+  ids the target Page renders (`missing_fragment`); the migration launch report
+  lists them as a non-blocking warning.
+- Article JSON-LD `articleBody` (and FAQ answers) are plain text without
+  `<style>`, `<script>` or markup.
 
 ## 0.3.20 (candidate, MCP 0.45.129)
 
