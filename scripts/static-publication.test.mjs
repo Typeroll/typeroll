@@ -233,7 +233,7 @@ const FULL_SETTINGS = {
   scripts_head: '<meta name="a">', scripts_body_end: '<meta name="b">', custom_css: 'body{}', render_version: 6,
   styles: [], language: 'sv',
   cookie_consent: {
-    enabled: true, text: 'Consent', privacy_policy_url: '/privacy', scripts_necessary: '<meta name="n">', scripts_optional: '<meta name="o">', reload_after_consent: true,
+    enabled: true, text: 'Consent', privacy_policy_url: '/privacy', scripts_necessary: '<meta name="n">', scripts_optional: '<meta name="o">', reload_after_consent: true, manage_button: 'none',
     labels: { title: 'Cookies', reject: 'Reject', necessary: 'Necessary', accept_all: 'All', privacy_link: 'Privacy', manage: 'Manage', manage_button: 'Settings' },
   }, twitter_handle: '@site',
   default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
@@ -288,6 +288,13 @@ test('every cookie banner setting and label is published', () => {
     assert.deepEqual(fields.filter(field => source[field] === undefined), [], `add these ${name} fields to FULL_SETTINGS`);
     assert.deepEqual(fields.filter(field => output?.[field] === undefined), [], `the publication drops these ${name} fields`);
   }
+});
+
+test('publication keeps a valid cookie reopen button choice and rejects others', () => {
+  const value = input(); value.settings.cookie_consent = { enabled: true, manage_button: 'none' };
+  assert.equal(projectStaticPublication(value, identity).settings.cookie_consent.manage_button, 'none');
+  value.settings.cookie_consent.manage_button = 'sticky';
+  assert.throws(() => projectStaticPublication(value, identity), /cookie_consent\.manage_button/);
 });
 
 test('publication rejects unsafe document paths and expiring credential-bearing media URLs', () => {

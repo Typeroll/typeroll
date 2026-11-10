@@ -298,6 +298,11 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
     ...projectStrings(input.settings.cookie_consent, ['text', 'privacy_policy_url', 'scripts_necessary', 'scripts_optional']),
     ...projectBooleans(input.settings.cookie_consent, ['enabled', 'reload_after_consent']),
   };
+  const manageButton = input.settings?.cookie_consent?.manage_button;
+  if (manageButton !== undefined && manageButton !== null) {
+    if (manageButton !== 'floating' && manageButton !== 'none') throw new Error('Invalid public settings: cookie_consent.manage_button');
+    settings.cookie_consent.manage_button = manageButton;
+  }
   // Saved banner wording; without it every non-Swedish, non-German page falls back to English.
   if (input.settings?.cookie_consent?.labels) settings.cookie_consent.labels = projectStrings(input.settings.cookie_consent.labels, ['title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button']);
   if (input.settings?.organization) {
