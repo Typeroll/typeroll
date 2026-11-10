@@ -1434,6 +1434,68 @@ it('finishes legacy previous-host redirects through normal publication after pub
   expect(mocks.push).toHaveBeenCalledTimes(pushes);
 });
 
+it('makes the www counterpart of the live website host redirect on a normal publication, without a rebuild or DNS change', async () => {
+  // As on autopilot.se: the apex is a custom domain of the same Pages project and serves the site directly.
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  const rules: any[] = [];
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/rulesets')) {
+      if (!options?.method) return { id: 'ruleset', rules: structuredClone(rules) };
+      rules.push({ ...(options.body.rules?.[0] ?? options.body), id: `rule-${rules.length}` });
+      return {};
+    }
+    return provider(route, options);
+  });
+  redirectProbe.mockImplementation(async (...probe: unknown[]) => probe[0] === 'example.com' && !rules.some(item => item.expression.includes('"example.com"'))
+    ? { ok: false, status: 200, location: null } : { ok: true, status: 301, location: null });
+  await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'succeeded' });
+  expect(rules).toEqual([expect.objectContaining({ ref: expect.stringMatching(/^typeroll_previous_t_/), expression: 'http.host in {"example.com"}',
+    action_parameters: { from_value: { target_url: { expression: 'concat("https://www.example.com", http.request.uri.path)' }, status_code: 301, preserve_query_string: true } } })]);
+  expect((await getSiteDomains('org', 'site')).implicit_redirects).toMatchObject([{ host: 'example.com', target_host: 'www.example.com', source: 'default', status: 'verified' }]);
+  expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/dns_records') && options?.method)).toBe(false);
+  // Later publications write nothing; once verified, an unchanged publication stays unchanged.
+  let unchanged = false;
+  for (let i = 0; i < 3 && !unchanged; i++) {
+    const next = { ...args, jobId: `again-${i}` };
+    await getStore().setDoc(paths.deploy('org', 'site', next.jobId), { version_id: 'main', status: 'queued', environment: 'production', started_at: new Date().toISOString() });
+    await executeCustomerPublication(next);
+    unchanged = (await getStore().getDoc<any>(paths.deploy('org', 'site', next.jobId))).phase === 'unchanged';
+  }
+  expect(unchanged).toBe(true);
+  expect(rules).toHaveLength(1);
+});
+
+it('finishes the www redirect of an unchanged publication and never fails it when the counterpart serves something else', async () => {
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/dns_records') && !options?.method && route.includes('name=example.com')) return [{ id: 'dns', name: 'example.com', type: 'A', content: '203.0.113.7', proxied: false }];
+    if (route.includes('/rulesets')) { if (options?.method) throw new Error('No rule may be written'); return { id: 'ruleset', rules: [] }; }
+    return provider(route, options);
+  });
+  redirectProbe.mockImplementation(async (...probe: unknown[]) => probe[0] === 'example.com' ? { ok: false, status: 200, location: null } : { ok: true, status: 301, location: null });
+  await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'succeeded' });
+  const [warning] = (await getSiteDomains('org', 'site')).implicit_redirects!;
+  expect(warning).toMatchObject({ host: 'example.com', status: 'warning', issue: { code: 'www_redirect_host_in_use' } });
+  // Each later publication checks once and succeeds; an unchanged one finishes without rebuilding.
+  let unchanged = false;
+  for (let i = 0; i < 3 && !unchanged; i++) {
+    const pushes = mocks.push.mock.calls.length, checks = redirectProbe.mock.calls.length;
+    const next = { ...args, jobId: `again-${i}` };
+    await getStore().setDoc(paths.deploy('org', 'site', next.jobId), { version_id: 'main', status: 'queued', environment: 'production', started_at: new Date().toISOString() });
+    await executeCustomerPublication(next);
+    expect((await getStore().getDoc<any>(paths.deploy('org', 'site', next.jobId))).status).toBe('succeeded');
+    expect(redirectProbe.mock.calls.slice(checks).filter(call => (call as unknown[])[0] === 'example.com')).toHaveLength(1);
+    unchanged = mocks.push.mock.calls.length === pushes;
+  }
+  expect(unchanged).toBe(true);
+});
+
 it('records the actual replaced origins even if future settings change during the provider request', async () => {
   const store=getStore();
   await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});

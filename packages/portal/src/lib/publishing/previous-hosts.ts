@@ -55,7 +55,7 @@ export function previousRuleHosts(expression: unknown): string[] | null {
 }
 
 /** An enabled 301 to `target` that keeps the path and query string. */
-function redirectsTo(rule: any, target: string) {
+export function redirectsTo(rule: any, target: string) {
   const value = rule?.action_parameters?.from_value;
   return rule?.action === 'redirect' && rule.enabled !== false && normalize(value?.target_url?.expression) === normalize(targetExpression(target)) &&
     value?.status_code === 301 && value?.preserve_query_string === true;
@@ -66,7 +66,7 @@ export function isPreviousRuleFor(rule: any, host: string, target: string) {
   return typeof rule?.ref === 'string' && rule.ref.startsWith(PREVIOUS_RULE_PREFIX) && redirectsTo(rule, target) && !!previousRuleHosts(rule.expression)?.includes(host);
 }
 
-function previousRuleBody(ref: string, hosts: string[], target: string) {
+export function previousRuleBody(ref: string, hosts: string[], target: string) {
   return { ref, description: 'Typeroll previous website address', expression: previousRuleExpression(hosts), action: 'redirect', enabled: true,
     action_parameters: { from_value: { target_url: { expression: targetExpression(target) }, status_code: 301, preserve_query_string: true } } };
 }
@@ -106,7 +106,7 @@ export async function readPreviousRedirect(provider: Provider, zoneId: string, h
 }
 
 /** Whether adding this host needs a new rule in a zone that has no room for it. */
-function quotaExceeded(state: PreviousRedirectState, plan?: string) {
+export function quotaExceeded(state: PreviousRedirectState, plan?: string) {
   const limit = plan ? SINGLE_REDIRECT_RULE_LIMITS[plan] : undefined;
   return state.status === 'required' && !state.primary && !!limit && state.rule_count >= limit ? limit : null;
 }
@@ -117,17 +117,17 @@ function quotaIssue(host: string, target: string, zone: string, count: number, l
     remedy: quotaRemedy(host, target, zone) };
 }
 
-const quotaRemedy = (host: string, target: string, zone: string) =>
+export const quotaRemedy = (host: string, target: string, zone: string) =>
   `Free a rule in Cloudflare → ${zone} → Rules → Redirect Rules, or upgrade the plan of ${zone}, then run repair_previous_host_redirects. Alternatively create a Bulk Redirect in Cloudflare → Bulk Redirects: source URL ${host}/, target URL https://${target}/, status 301 with preserve query string, subpath matching and preserve path suffix; Typeroll verifies the public 301.`;
 
-async function permissionIssue(org: string, group: string, host: string, zone: string | null): Promise<PreviousHostIssue> {
+export async function permissionIssue(org: string, group: string, host: string, zone: string | null): Promise<PreviousHostIssue> {
   const step = await redirectAccessStep(org, group);
   return { code: 'redirect_permission_missing',
     message: `The connected Cloudflare authorization cannot read or create redirect rules${zone ? ` in ${zone}` : ''}, so ${host} answers with noindex instead of a 301.`,
     remedy: `${step ?? 'Give the connection Zone → Single Redirect → Edit (OAuth scopes dynamic-redirect.read and dynamic-redirect.write).'} Then run repair_previous_host_redirects.` };
 }
 
-const conflictIssue = (host: string, zone: string): PreviousHostIssue => ({ code: 'redirect_rule_conflict',
+export const conflictIssue = (host: string, zone: string): PreviousHostIssue => ({ code: 'redirect_rule_conflict',
   message: `A Typeroll redirect rule in ${zone} already answers for ${host} with a different target or is disabled. Typeroll does not override it.`,
   remedy: `Review the rules named typeroll_previous_* in Cloudflare → ${zone} → Rules → Redirect Rules, delete the outdated one, then run repair_previous_host_redirects.` });
 
@@ -279,7 +279,7 @@ export async function retirePreviousHosts(org: string, site: string, group: stri
  * only older Typeroll rules for the same target may be deleted once the merged rule is confirmed.
  * DNS and other rules are never changed. Actual traffic switches use the full rollback journal above.
  */
-function retirementRuleProvider(provider: Provider, jobPath: string, publication: string, prepared: RedirectPreparation): Provider {
+export function retirementRuleProvider(provider: Provider, jobPath: string, publication: string, prepared: Pick<RedirectPreparation, 'zone_id' | 'hostname' | 'target_host' | 'dns_fingerprint'>): Provider {
   const base = `/zones/${prepared.zone_id}/rulesets`;
   return async (route, options) => {
     if (!options?.method) return provider(route, options);
@@ -331,7 +331,8 @@ export async function readPreviousHosts(config: DomainConfiguration, fetchImpl?:
 /**
  * Re-create missing previous-host redirects of a live site without a build or a DNS change. Idempotent:
  * an existing rule is reused, so a second run writes nothing. Hosts that still cannot redirect keep
- * their noindex fallback and report a specific issue.
+ * their noindex fallback and report a specific issue. The implicit www redirect is checked and
+ * created the same way (`implicit_redirects`); `repaired` and `remaining` list previous hosts only.
  */
 export async function repairPreviousHostRedirects(org: string, site: string, fetchImpl?: typeof fetch) {
   const store = getStore();
@@ -360,10 +361,15 @@ export async function repairPreviousHostRedirects(org: string, site: string, fet
         issue: preparations.find(item => item.host === host)?.issue ?? null, next_action: 'repair_previous_host_redirects' });
     }
   }
+  // The www counterpart of the website host is repaired the same way: only its redirect rule, never DNS.
+  const { maintainImplicitRedirects } = await import('./www-redirect');
+  const implicit_redirects = config.active?.website_host === target ? await maintainImplicitRedirects({ org, site, group, publicationId: publication.publication_id, target,
+    dnsMode: 'automatic', project: publication.project, config, hosts: { ...(config.published.hosts ?? config.desired), website_host: target }, jobPath, fetchImpl,
+    exclude: [...new Set([...hosts, ...previousHostSummary(config).map(item => item.host)])] }) : config.implicit_redirects ?? [];
   const saved = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(org, site),
-    current => current.revision === config.revision && current.published?.publication_id === config.published!.publication_id, { previous_hosts });
+    current => current.revision === config.revision && current.published?.publication_id === config.published!.publication_id, { previous_hosts, implicit_redirects });
   if (!saved) throw new ConnectionError('Domain settings changed during the repair. Check again; repeating the repair is safe.', 409, 'domain_revision_conflict');
-  return { action: 'repair_previous_host_redirects', previous_hosts,
+  return { action: 'repair_previous_host_redirects', previous_hosts, implicit_redirects,
     repaired: previous_hosts.filter(item => item.mode === 'redirect').map(item => item.host),
     remaining: previous_hosts.filter(item => item.mode !== 'redirect').map(item => ({ host: item.host, issue: item.issue ?? null, message: item.message })) };
 }
