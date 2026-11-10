@@ -6,31 +6,11 @@
 // has a title ending in a question mark and a nonempty answer; anything else,
 // such as a product specification list, is left alone.
 
+import { htmlToPlainText } from './html-text.js';
+
 const QUESTION_END = /[?？؟;՞]\s*$/u;
 const ACCORDION_OPEN = /<div\b[^>]*\bdata-block="accordion"[^>]*>/gi;
 const DETAILS = /^\s*<details\b[^>]*>([\s\S]*?)<\/details>/i;
-
-const ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', '#39': "'" };
-
-function decodeEntities(value: string): string {
-  return value.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+|#39);/gi, (match, name: string) => {
-    const lower = name.toLowerCase();
-    if (lower.startsWith('#x')) return String.fromCodePoint(Math.min(parseInt(lower.slice(2), 16), 0x10ffff));
-    if (lower.startsWith('#')) return String.fromCodePoint(Math.min(Number(lower.slice(1)), 0x10ffff));
-    return ENTITIES[lower] ?? match;
-  });
-}
-
-/** Visible text of an HTML fragment: tags removed, block boundaries kept as spaces. */
-function htmlToPlainText(html: string): string {
-  return decodeEntities(html
-    .replace(/<(script|style|template)\b[\s\S]*?<\/\1>/gi, ' ')
-    .replace(/<br\s*\/?>/gi, ' ')
-    .replace(/<\/(p|div|li|h[1-6]|ul|ol|tr)>/gi, ' ')
-    .replace(/<[^>]+>/g, ''))
-    .replace(/\s+/g, ' ')
-    .trim();
-}
 
 export interface FaqItem { question: string; answer: string }
 
