@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildCoreBlockRegistry, collectFontUsage, fontFallbackFacesCss, fontRoleFamilies, fontSampleText, fontServiceProvider,
+  buildCoreBlockRegistry, collectFontUsage, CSS_FONT_USAGE_RENDER_VERSION, fontFallbackFacesCss, fontRoleFamilies, fontSampleText, fontServiceProvider,
   fontServiceStylesheet, googleFontsCssUrl, matchFontWeight, planSiteFonts, searchFontCatalog, serviceStylesheetFamilies,
   siteFontsErrors, siteThemeCss, defaultSiteSettings, webFontFamilies, webfontFallbackCss, validateSiteStyle, siteStylesCss, resolveBreakpointWidths,
   type FontPlan, type FontUsage, type SiteStyle, type Block,
@@ -44,6 +44,106 @@ describe('collectFontUsage', () => {
   it('counts headings inside rich text and blocks in slots', () => {
     const blocks: Block[] = [{ id: 'cols', type: 'core/columns', data: {}, slots: [[{ id: 'p', type: 'core/prose', data: { html: '<h3>Sub</h3>' } }]] }];
     expect(collectFontUsage({ blocks, styles: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6'].map(role => ({ id: role, name: role, role, targets: [], base: { weight: 500 } })) as SiteStyle[] }).heading.weights).toEqual([500, 700]);
+  });
+});
+
+describe('collectFontUsage: weights written in CSS (render version 17)', () => {
+  const v = CSS_FONT_USAGE_RENDER_VERSION;
+  const fromCss = (css: string, renderVersion = v) => collectFontUsage({ css: [css], renderVersion });
+
+  it('counts an unscoped rule for both body and heading', () => {
+    const result = fromCss('.nav a { font-weight: 600 }');
+    expect(result.body.weights).toEqual([400, 600]);
+    expect(result.heading.weights).toEqual([600, 700]);
+  });
+
+  it('counts a heading selector for the heading only', () => {
+    const result = fromCss('h2{font-weight:500}');
+    expect(result.heading.weights).toEqual([500, 700]);
+    expect(result.body.weights).toEqual([400]);
+    // A sibling of a heading is not inside it.
+    expect(fromCss('h2 + p{font-weight:300}').body.weights).toEqual([300, 400]);
+    // A class named like a heading is not a heading element.
+    expect(fromCss('.h2{font-weight:300}').body.weights).toEqual([300, 400]);
+  });
+
+  it('follows the font variable a rule names', () => {
+    const result = fromCss('.nav{font-family:var(--font-heading);font-weight:600}');
+    expect(result.heading.weights).toEqual([600, 700]);
+    expect(result.body.weights).toEqual([400]);
+    expect(fromCss('.tag{font-family:var(--font-accent, serif);font-weight:300}').accent.weights).toEqual([300]);
+  });
+
+  it('reads the font shorthand', () => {
+    const result = fromCss('.quote{font:italic 600 1rem/1.2 var(--font-body)}');
+    expect(result.body).toEqual({ weights: [400, 600], italic: [600] });
+    expect(result.heading).toEqual({ weights: [700], italic: [] });
+    // Without a weight the shorthand resets it to normal; a variable cannot be read.
+    expect(fromCss('.a{font:1rem/1.5 var(--font-heading)}').heading.weights).toEqual([400, 700]);
+    expect(fromCss('.a{font:var(--brand-font)}')).toEqual(collectFontUsage({}));
+    expect(fromCss('.a{font:small-caps bold 1rem var(--font-body)}').body.weights).toEqual([400, 700]);
+  });
+
+  it('counts italics at the rule\'s weight, or the role\'s regular weight', () => {
+    const result = fromCss('em.lead{font-style:italic;font-weight:300} blockquote{font-style:oblique}');
+    expect(result.body.italic).toEqual([300, 400]);
+    expect(result.heading.italic).toEqual([300, 700]);
+  });
+
+  it('counts <style> elements and style attributes in block data', () => {
+    const blocks: Block[] = [
+      { id: 'h', type: 'core/html', data: { html: '<style>.cta{font-weight:700} h3{font-weight:300}</style><p style="font-weight:800">Hi</p>' } },
+      { id: 'e', type: 'core/prose', data: { font: 'accent', html: '<p style=\'font-weight: 200\'>x</p>' } },
+      { id: 'i', type: 'core/prose', data: { html: '<p>x</p>' }, style_overrides: { custom_css: '@media (min-width: 600px) { .x { font-weight: 900 } }' } },
+    ];
+    const result = collectFontUsage({ blocks, blockTypes: registry, renderVersion: v });
+    expect(result.body.weights).toEqual([400, 700, 800, 900]);
+    expect(result.heading.weights).toEqual([300, 700, 900]);
+    expect(result.accent.weights).toEqual([200, 400]);
+  });
+
+  it('ignores variables, relative weights, comments, @font-face and other properties', () => {
+    const css = `
+      /* .old { font-weight: 300 } */
+      .a { font-weight: var(--w); }
+      .b { font-weight: bolder; }
+      .c { font-weight: lighter !important; }
+      @font-face { font-family: 'Brand'; font-weight: 100 900; src: url(a.woff2); }
+      @keyframes pulse { from { font-weight: 200 } }
+      :root { --w: 300; }
+      .d { font-variation-settings: 'wght' 300; }`;
+    expect(fromCss(css)).toEqual(collectFontUsage({}));
+  });
+
+  it('maps keywords and rounds weights between the hundreds', () => {
+    const result = fromCss('.a{font-weight:bold}.b{font-weight:normal}.c{font-weight:520 !important}.d{font-weight:1000}');
+    expect(result.body.weights).toEqual([400, 500, 700, 900]);
+  });
+
+  it('reads nested rules and grouping at-rules', () => {
+    const result = fromCss('@supports (display:grid) { .card { color: red; h2 { font-weight: 200 } & .meta { font-weight: 300 } } }');
+    expect(result.heading.weights).toEqual([200, 300, 700]);
+    expect(result.body.weights).toEqual([300, 400]);
+  });
+
+  it('leaves usage unchanged before render version 17', () => {
+    const blocks: Block[] = [{ id: 'h', type: 'core/html', data: { html: '<style>.cta{font-weight:600}</style><p style="font-weight:800">Hi</p>' } }];
+    const input = { css: ['.nav a { font-weight: 600 }', 'h2{font-style:italic}'], blocks, blockTypes: registry };
+    expect(collectFontUsage({ ...input, renderVersion: 16 })).toEqual(collectFontUsage({ blocks, blockTypes: registry }));
+    expect(collectFontUsage(input)).toEqual(collectFontUsage({ blocks, blockTypes: registry }));
+    expect(collectFontUsage({ ...input, renderVersion: v }).body.weights).toEqual([400, 600, 800]);
+  });
+
+  it('plans a variable Google family over the weights in the site\'s CSS', () => {
+    const css = ['.nav a{font-weight:600}', 'h1{font-family:var(--font-heading);font-weight:800}'];
+    const fonts = { heading: 'Outfit', body: 'Inter' };
+    const plan = planSiteFonts(fonts, collectFontUsage({ css, renderVersion: v }), { renderVersion: v });
+    expect(plan.families.find(family => family.family === 'Outfit')).toMatchObject({ weights: [600, 700, 800], variable: { weights: [600, 800] } });
+    expect(plan.families.find(family => family.family === 'Inter')).toMatchObject({ weights: [400, 600], variable: { weights: [400, 600] } });
+    // Version 16 keeps today's plan for the same CSS.
+    const v16 = planSiteFonts(fonts, collectFontUsage({ css, renderVersion: 16 }), { renderVersion: 16 });
+    expect(v16.families.find(family => family.family === 'Outfit')).toMatchObject({ weights: [700] });
+    expect(v16.families.find(family => family.family === 'Outfit')?.variable).toBeUndefined();
   });
 });
 

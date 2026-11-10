@@ -197,9 +197,17 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'Step cards, team members, pricing plans, timeline and scroll step items choose their heading level. Step cards, team members, testimonials, icon boxes, icons, pricing plans, containers, statistics, audio, video, search, before and after, and the announcement bar get the alignment, size, colour and background settings their neighbours already had.',
       'The Navigation block can collapse at another width or never, and set its menu symbol size, link spacing and colour. A Block menu\'s button can show a visible label, take its own colour and position. A row of Navigation links can be centred, end-aligned or spread out. A Navigation form can have a maximum width and alignment, and its layout CSS is layered and selected by attribute.',
       'Two columns can stay side by side at every width (stack_below never), and columns and grids stack without !important.',
-      'Form fields render at the site\'s render version. Fields can take half, a third or two thirds of a row, radio and checkbox answers can sit side by side, a form can set its maximum width and alignment and its button\'s alignment and width, and a Yes / No answer\'s labels follow the site\'s language.',
+      'Form fields render at the site\'s render version. Fields can take half, a third or two thirds of a row, radio and checkbox answers can sit side by side, a form can set its maximum width and alignment and its button\'s alignment and width, and a Yes / No answer\'s labels follow the site\'s language. A form\'s Back and Submit buttons sit together in a .form-actions row, so site CSS that placed the button directly in the form\'s grid (for example grid-column) must target form > .form-actions instead.',
       'The site title can be aligned and link to the home page; the page excerpt and site tagline set their size, alignment and colour; the page featured image can be aligned, rounded and focused, and its rules no longer style other images. Template blocks carry data-template-block with their own name. A small site logo is 2rem tall instead of 1.5rem.',
       'New class names and parts for site CSS: accordion items, the table of contents, the Block menu, form section headings and Yes / No answers, previous and next page links, and the inner parts of section, hero, call to action, feature row, media card, icon box, pricing plan, post card, audio, timeline, before and after, announcement bar, scroll steps, SVG animation and video. Accordion and pricing plan borders read --accordion-border and --pricing-border.',
+    ],
+  },
+  {
+    version: 17, core_version: '0.3.20', title: 'Fonts from site CSS and a steady cookie banner',
+    changes: [
+      'Font weights and italics written in CSS count as in use: the site\'s, pages\' and blocks\' custom CSS, <style> elements and style attributes in HTML. A rule that names a font role (var(--font-heading) and the others) or targets a heading loads that weight in that role; any other rule loads it in both the body and heading families, because either can inherit it. Before, such a weight was not loaded and the browser drew a nearby or synthesized weight unless fonts.load listed it.',
+      'Bare element rules in site CSS (h2, p, a, button and similar) no longer restyle the cookie banner, which keeps its own spacing, weights and colours. Class rules for its parts, such as .tr-consent__title, still change it.',
+      'The cookie banner\'s buttons use the site\'s body font at weight 600 instead of the browser\'s default button font.',
     ],
   },
 ];

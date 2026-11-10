@@ -88,13 +88,18 @@ export interface PreviewFonts {
   services: string[];
 }
 
-/** The fonts a preview of these blocks loads. A Fonts library that cannot be read leaves the uploaded fonts out of the preview. */
-export async function previewFonts(orgId: string, siteId: string, settings: SiteSettings, blocks: Iterable<Block>, blockTypes: ReadonlyMap<string, Pick<BlockType, 'schema'>>): Promise<PreviewFonts> {
+/**
+ * The fonts a preview of these blocks loads. `pageCss` is the shown page's own
+ * custom CSS; the site's is read from `settings`, as a publication reads both.
+ * A Fonts library that cannot be read leaves the uploaded fonts out of the preview.
+ */
+export async function previewFonts(orgId: string, siteId: string, settings: SiteSettings, blocks: Iterable<Block>, blockTypes: ReadonlyMap<string, Pick<BlockType, 'schema'>>, pageCss?: string | null): Promise<PreviewFonts> {
   let library: SiteFontFile[] = [];
   try { library = await listSiteFonts(orgId, siteId); }
   catch (error) { console.warn(JSON.stringify({ event: 'preview_fonts_library_unavailable', site_id: siteId, error: error instanceof Error ? error.message : String(error) })); }
   const renderVersion = resolveRenderVersion(settings.render_version);
-  const plan = siteFontPlan(settings.fonts, collectFontUsage({ styles: settings.styles, blocks, blockTypes }), { renderVersion, library });
+  const usage = collectFontUsage({ styles: settings.styles, blocks, blockTypes, css: [settings.custom_css, pageCss], renderVersion });
+  const plan = siteFontPlan(settings.fonts, usage, { renderVersion, library });
   const delivery = fontDelivery(settings.fonts);
   const fileIds = plannedLibraryFiles(plan, library).map(entry => entry.file.id);
   const selfHostedGoogle = delivery === 'self_hosted' ? plan.google_css_url : null;

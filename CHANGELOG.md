@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.20 (candidate, MCP 0.45.129)
+
+- Site and page custom CSS accept `scroll-behavior` and `overscroll-behavior`.
+  The check for the old Internet Explorer `behavior:` property also matched
+  them, so `html{scroll-behavior:smooth}` was refused.
+- Render version 17, found on autopilot.se:
+  - Font weights and italics written in CSS count as in use: site and page
+    custom CSS, block custom CSS, `<style>` elements and `style` attributes in
+    HTML. Before, a weight used only there (a 600 menu) was not loaded and the
+    browser drew a nearby or synthesized weight unless `fonts.load` listed it.
+  - Bare element rules in site CSS (`h2`, `p`, `a`, `button`) no longer
+    restyle the cookie banner; class rules such as `.tr-consent__title` still
+    do. Its buttons use the body font at weight 600 instead of the browser's
+    button font, because their `font` shorthand was invalid.
+- The render version 16 notes say that a form's buttons sit in a
+  `.form-actions` row, so CSS that placed the button in the form grid must
+  target `form > .form-actions`.
+
 ## 0.3.19 (candidate, MCP 0.45.128)
 
 - Media imports from a URL no longer lose files to passing transfer failures

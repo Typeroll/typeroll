@@ -394,7 +394,7 @@ export async function renderPreview(
     if (html) fontBlocks.push({ id: 'text', type: 'core/prose', data: { html } } as Block);
   }
   if (page.fields) fontBlocks.push({ id: 'fields', type: 'core/prose', data: page.fields as Record<string, unknown> } as Block);
-  const fonts = await previewFonts(orgId, siteId, settings, fontBlocks, blockRegistry);
+  const fonts = await previewFonts(orgId, siteId, settings, fontBlocks, blockRegistry, page.custom_css);
 
   return resolvePreviewMedia(buildHtml({
     page,

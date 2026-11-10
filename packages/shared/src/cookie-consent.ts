@@ -619,6 +619,21 @@ export const COOKIE_CONSENT_STYLES = `
 @media (prefers-reduced-motion:reduce){.tr-consent,.tr-consent__panel{animation:none!important}.tr-consent__btn{transition:none}}
 `;
 
+/** First render version that shields the banner from bare element rules in site CSS. */
+export const CONSENT_SHIELD_RENDER_VERSION = 17;
+
+/**
+ * Unlayered and placed after the site's CSS, these rules have the specificity
+ * of one element (0,0,1). A bare element rule in site CSS (h2, p, a, button)
+ * ties and loses on order, so the banner's layered styles apply again; a
+ * class rule such as .tr-consent__title still restyles it.
+ */
+export const COOKIE_CONSENT_SHIELD_CSS = ':where(.tr-consent,.tr-consent__manage) :is(div,span,h2,p,a,button,strong,b,em,i,u,small,ul,ol,li,br),'
+  + 'div:where(.tr-consent),button:where(.tr-consent__manage){all:revert-layer}';
+
+// `font:600 .9375rem/1.2 inherit` is not a valid shorthand, so before version 17 the buttons kept the browser's button font.
+const COOKIE_CONSENT_STYLES_V17 = COOKIE_CONSENT_STYLES.replace('font:600 .9375rem/1.2 inherit', 'font-family:inherit;font-size:.9375rem;font-weight:600;line-height:1.2');
+
 function escapeAttr(value: string): string {
   return value
     .replaceAll('&', '&amp;')
@@ -644,7 +659,10 @@ export function renderCookieConsent(
 ): string {
   if (consent?.enabled !== true) return '';
   // From render version 16 the banner styles sit in the base layer, so site CSS restyles them without !important.
-  const styles = (options.renderVersion ?? 1) >= 16 ? platformLayer('base', COOKIE_CONSENT_STYLES, options.renderVersion) : COOKIE_CONSENT_STYLES;
+  const version = options.renderVersion ?? 1;
+  const css = version >= CONSENT_SHIELD_RENDER_VERSION ? COOKIE_CONSENT_STYLES_V17 : COOKIE_CONSENT_STYLES;
+  const layered = version >= 16 ? platformLayer('base', css, options.renderVersion) : css;
+  const styles = version >= CONSENT_SHIELD_RENDER_VERSION ? `${layered}\n${COOKIE_CONSENT_SHIELD_CSS}` : layered;
   const labels = consentLabels(consent, language);
   const body = bodyHtml || `<p>${escapeText(labels.text)}</p>`;
   const necessary = consent.scripts_necessary ?? '';

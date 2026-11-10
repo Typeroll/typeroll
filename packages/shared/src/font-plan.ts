@@ -6,8 +6,9 @@
  * choose a role, never a family, so a template follows the site it is
  * inserted into. From render version 15 a publication loads only the weights
  * and italics the site uses (`collectFontUsage` → `planSiteFonts`); a variable
- * family loads as one file covering the needed range. Versions 1–14 keep the
- * fixed 400–700 Google request.
+ * family loads as one file covering the needed range. From version 17 that
+ * includes the weights written in custom CSS and in CSS inside blocks.
+ * Versions 1–14 keep the fixed 400–700 Google request.
  *
  * Family sources, in order: the site's uploaded fonts (Fonts library), a font
  * service (Adobe Fonts kit, Bunny Fonts or Fontshare stylesheet, which load
@@ -242,21 +243,166 @@ export interface FontUsageInput {
   blocks?: Iterable<Block | null | undefined>;
   /** Block types, for field defaults (a heading's default weight). */
   blockTypes?: BlockTypeLookup;
+  /** The site's stylesheets: its custom CSS and the pages' own. Counted from `CSS_FONT_USAGE_RENDER_VERSION`. */
+  css?: Iterable<string | null | undefined>;
+  /** The site's render version. From `CSS_FONT_USAGE_RENDER_VERSION` weights written in CSS count too. */
+  renderVersion?: number;
 }
+
+/** First render version whose font plan counts the weights and italics written in CSS. */
+export const CSS_FONT_USAGE_RENDER_VERSION = 17;
 
 const HEADING_ELEMENTS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6']);
 const WEIGHT_KEY = /(?:^|_)font_weight$/;
 const BOLD = /<(?:strong|b)[\s>]/i, ITALIC = /<(?:em|i)[\s>]/i, HEADING_HTML = /<h[1-6][\s>]/i;
 
+// ── Weights written in CSS ────────────────────────────────────────────────
+//
+// A small tokenizer, not a CSS parser: it only has to find font-weight,
+// font-style and the font shorthand, and which role's font they apply to.
+// Reading too much costs an extra weight; missing one makes the browser
+// synthesize or snap it.
+
+const CSS_FONT_HINT = /font(?:-weight|-style)?\s*:/i;
+const FONT_VARIABLE = /var\(\s*--font-(heading|body|mono|display|accent)(?![\w-])/gi;
+const HEADING_TYPE = /(?:^|[\s>+~(,])h[1-6](?![\w-])/gi;
+const GROUPING_AT_RULE = /^@(?:media|supports|layer|container|document|scope|starting-style)\b/i;
+const FONT_SIZE_TOKEN = /^(?:(?:[+-]?(?:\d+\.?\d*|\.\d+)(?:[a-z]+|%)|0|(?:xx?x?-)?(?:small|large)|medium|smaller|larger)(?:\/|$)|(?:calc|clamp|min|max)\()/i;
+const ANGLE_TOKEN = /^[+-]?[\d.]+(?:deg|g?rad|turn)$/i;
+
+/** A font-weight value as a planner weight: 100–900 in steps of 100, or undefined for relative keywords and variables. */
+function cssWeight(value: string): number | undefined {
+  const v = value.replace(/!\s*important\s*$/i, '').trim().toLowerCase();
+  if (v === 'bold') return 700;
+  if (v === 'normal') return 400;
+  if (!/^(?:\d+\.?\d*|\.\d+)$/.test(v)) return undefined;
+  const n = Number(v);
+  if (n < 1 || n > 1000) return undefined;
+  return Math.min(900, Math.max(100, Math.round(n / 100) * 100));
+}
+
+/** Whitespace-separated tokens outside parentheses. */
+function cssTokens(value: string): string[] {
+  const tokens: string[] = [];
+  let depth = 0, current = '';
+  for (const char of value) {
+    if (char === '(') depth++;
+    else if (char === ')') depth = Math.max(0, depth - 1);
+    if (/\s/.test(char) && depth === 0) { if (current) tokens.push(current); current = ''; }
+    else current += char;
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+/** The weight and style a `font` shorthand sets, or null when it cannot be read (`inherit`, a variable, a system font). */
+function fontShorthand(value: string): { weight?: number; italic: boolean } | null {
+  let weight: number | undefined, italic = false, relative = false;
+  for (const token of cssTokens(value.replace(/!\s*important\s*$/i, '').trim())) {
+    if (ANGLE_TOKEN.test(token)) continue;
+    if (FONT_SIZE_TOKEN.test(token)) return { weight: weight ?? (relative ? undefined : 400), italic };
+    const lower = token.toLowerCase();
+    if (lower.startsWith('var(')) return null;
+    if (lower === 'italic' || lower === 'oblique') italic = true;
+    else if (lower === 'bolder' || lower === 'lighter') relative = true;
+    else if (lower !== 'normal') weight = cssWeight(lower) ?? weight;
+  }
+  return null;
+}
+
+function cssDeclarations(body: string): Array<{ property: string; value: string }> {
+  return body.split(';').flatMap(part => {
+    const colon = part.indexOf(':');
+    if (colon < 0) return [];
+    const property = part.slice(0, colon).trim().toLowerCase(), value = part.slice(colon + 1).trim();
+    return property && value ? [{ property, value }] : [];
+  });
+}
+
+/** Style rules with their own declarations, through grouping at-rules and nesting. Other at-rules (@font-face, @keyframes) are skipped. */
+function cssStyleRules(css: string, parent = '', out: Array<{ selector: string; declarations: string }> = [], depth = 0) {
+  if (depth > 8) return out;
+  let i = 0, declarations = '';
+  while (i < css.length) {
+    const open = css.indexOf('{', i);
+    if (open < 0) { declarations += css.slice(i); break; }
+    let level = 1, j = open + 1;
+    for (; j < css.length && level > 0; j++) { if (css[j] === '{') level++; else if (css[j] === '}') level--; }
+    const head = css.slice(i, open).replace(/[^;]*\}/g, '');
+    const cut = head.lastIndexOf(';');
+    declarations += head.slice(0, cut + 1);
+    const prelude = head.slice(cut + 1).trim();
+    const inner = css.slice(open + 1, level ? j : j - 1);
+    if (GROUPING_AT_RULE.test(prelude)) cssStyleRules(inner, parent, out, depth + 1);
+    else if (prelude && !prelude.startsWith('@')) {
+      const selector = !parent ? prelude : prelude.includes('&') ? prelude.replace(/&/g, parent) : `${parent} ${prelude}`;
+      cssStyleRules(inner, selector, out, depth + 1);
+    }
+    i = j;
+  }
+  if (parent && declarations.trim()) out.push({ selector: parent, declarations });
+  return out;
+}
+
+/**
+ * The roles a selector's text sets: heading for heading elements (and what
+ * they contain), otherwise body and heading, since the weight can be
+ * inherited by either font.
+ */
+function selectorRoles(selector: string): SiteFontRole[] {
+  for (const part of selector.split(',')) {
+    const matches = [...part.matchAll(HEADING_TYPE)];
+    const last = matches[matches.length - 1];
+    if (!last || /[+~]/.test(part.slice(last.index! + last[0].length))) return ['body', 'heading'];
+  }
+  return ['heading'];
+}
+
 /**
  * Which weights and italics each role needs, from the site's styles, every
  * block's weight fields and defaults, and bold and italic text in rich text.
- * Body always needs 400. Headings without a styled weight are bold (700).
+ * From render version 17 also the weights written in CSS: the site's and the
+ * pages' custom CSS, and CSS inside block data (`<style>`, `style=""`, a
+ * block's own custom CSS). Body always needs 400. Headings without a styled
+ * weight are bold (700).
  */
 export function collectFontUsage(input: FontUsageInput): FontUsage {
   const sets = Object.fromEntries(SITE_FONT_ROLES.map(role => [role, { weights: new Set<number>(), italic: new Set<number>() }])) as Record<SiteFontRole, { weights: Set<number>; italic: Set<number> }>;
   const add = (role: SiteFontRole, weight: number, italic = false) => { if (isWeight(weight)) (italic ? sets[role].italic : sets[role].weights).add(weight); };
   sets.body.weights.add(400);
+
+  const countCss = (input.renderVersion ?? 0) >= CSS_FONT_USAGE_RENDER_VERSION;
+  /** One declaration block: its weights go to the font variables it names, otherwise to `roles`. */
+  const cssBlock = (declarations: string, roles: SiteFontRole[]) => {
+    const named = new Set<SiteFontRole>(), weights: number[] = [];
+    let italic = false;
+    for (const { property, value } of cssDeclarations(declarations)) {
+      if (property === 'font-family' || property === 'font') for (const match of value.matchAll(FONT_VARIABLE)) named.add(match[1].toLowerCase() as SiteFontRole);
+      if (property === 'font-weight') { const weight = cssWeight(value); if (weight) weights.push(weight); }
+      else if (property === 'font-style') { if (/^(?:italic|oblique)\b/i.test(value)) italic = true; }
+      else if (property === 'font') {
+        const font = fontShorthand(value);
+        if (font?.weight) weights.push(font.weight);
+        if (font?.italic) italic = true;
+      }
+    }
+    for (const role of named.size ? [...named] : roles) {
+      for (const weight of weights) add(role, weight);
+      if (italic) for (const weight of weights.length ? weights : [role === 'heading' ? 700 : 400]) add(role, weight, true);
+    }
+  };
+  const stylesheet = (css: string) => {
+    for (const rule of cssStyleRules(css.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, ' '))) cssBlock(rule.declarations, selectorRoles(rule.selector));
+  };
+  /** CSS in a block's text: `<style>` elements and `style` attributes in HTML, a stylesheet, or bare declarations (in the block's role). */
+  const cssText = (value: string, role: SiteFontRole) => {
+    if (/<[a-z!/]/i.test(value)) {
+      for (const match of value.matchAll(/<style\b[^>]*>([\s\S]*?)(?:<\/style\s*>|$)/gi)) stylesheet(match[1]);
+      for (const match of value.matchAll(/\sstyle\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)) cssBlock((match[1] ?? match[2]).replace(/&quot;|&#0*34;/g, '"').replace(/&#0*39;|&apos;/g, "'"), [role]);
+    } else if (value.includes('{')) stylesheet(value);
+    else if (/^\s*[a-z-]+\s*:/i.test(value)) cssBlock(value, [role]);
+  };
+  if (countCss) for (const css of input.css ?? []) if (typeof css === 'string' && CSS_FONT_HINT.test(css)) stylesheet(css);
 
   // Styles: element roles style every matching element; class styles a chosen block.
   const styledHeadings = new Set<string>();
@@ -288,7 +434,9 @@ export function collectFontUsage(input: FontUsageInput): FontUsage {
   const scanText = (value: unknown, role: SiteFontRole, depth = 0) => {
     if (depth > 8) return;
     if (typeof value === 'string') {
-      if (value.length < 4 || !value.includes('<')) return;
+      if (value.length < 4) return;
+      if (countCss && CSS_FONT_HINT.test(value)) cssText(value, role);
+      if (!value.includes('<')) return;
       const bold = BOLD.test(value), italic = ITALIC.test(value);
       if (bold) add(role, 700);
       if (italic) { add(role, 400, true); if (bold) add(role, 700, true); }
@@ -312,6 +460,8 @@ export function collectFontUsage(input: FontUsageInput): FontUsage {
     if (role !== 'body' && !/heading/.test(block.type)) add(role, 400);
     if (isSiteFontRole(data.title_font)) add(data.title_font, 600);
     scanText(data, role);
+    const instanceCss = block.style_overrides?.custom_css;
+    if (countCss && typeof instanceCss === 'string' && CSS_FONT_HINT.test(instanceCss)) stylesheet(instanceCss);
     for (const child of block.children ?? []) visit(child, depth + 1);
     for (const slot of block.slots ?? []) for (const child of slot ?? []) visit(child, depth + 1);
   };
