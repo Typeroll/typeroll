@@ -139,6 +139,27 @@ describe('POST /api/sites/{siteId}/lifecycle (portal session)', () => {
     expect(await restored.json()).toEqual({ status: 'active', site: 's' });
   });
 
+  it('refuses to archive while a custom domain is live, but not for the generated site address', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const { paths } = await import('@typeroll/shared');
+    const { generatedCloudflareNames } = await import('../../lib/publishing/cloudflare-account-claims');
+    await getStore().setDoc(paths.site('default', 's'), { name: 'S', created_at: '2026-01-01T00:00:00Z', domain: 'www.example.com', domain_status: 'live' });
+    const refused = await post({ action: 'archive' });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error).toContain('www.example.com');
+
+    const generated = `${generatedCloudflareNames('default', 's').site_label}.sites.example.com`;
+    await getStore().setDoc(paths.site('default', 's'), { name: 'S', created_at: '2026-01-01T00:00:00Z', domain: generated, domain_status: 'live' });
+    expect(await (await post({ action: 'archive' })).json()).toMatchObject({ status: 'archived', site: 's' });
+  });
+
+  it('does not treat another site\'s generated address as generated', async () => {
+    const { isGeneratedSiteAddress } = await import('../../lib/site-lifecycle');
+    const { generatedCloudflareNames } = await import('../../lib/publishing/cloudflare-account-claims');
+    expect(isGeneratedSiteAddress('o', 's', `${generatedCloudflareNames('o', 'other').site_label}.sites.example.com`)).toBe(false);
+    expect(isGeneratedSiteAddress('o', 's', `${generatedCloudflareNames('o', 's').site_label}.sites.example.com`)).toBe(true);
+  });
+
   it('rejects an unknown action', async () => {
     const { getStore } = await import('../../lib/datastore');
     const { paths } = await import('@typeroll/shared');

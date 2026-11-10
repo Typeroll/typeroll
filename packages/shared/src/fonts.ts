@@ -1,5 +1,5 @@
 import { contentWidthsCss } from './site-display-settings.js';
-import { designScalesCss, responsiveDesignScalesCss, resolvedDesignScales, TYPOGRAPHY_DEFAULTS, typographyError, validColor, type DesignScales, type TypographySettings } from './design-tokens.js';
+import { designScalesCss, responsiveDesignScalesCss, resolvedDesignScales, TYPOGRAPHY_DEFAULTS, proseMeasureCss, typographyError, validColor, type DesignScales, type TypographySettings } from './design-tokens.js';
 import { resolveBreakpointWidths } from './breakpoints.js';
 import { resolveRenderVersion } from './render-version.js';
 import { FONT_PLAN_RENDER_VERSION, FONT_ROLE_CSS, fontFallbackFacesCss, plannedFallbackFace, type FontPlan } from './font-plan.js';
@@ -79,7 +79,7 @@ export function siteThemeCss(settings: Pick<import('./types.js').SiteSettings, '
   --font-heading:${withFallback(fonts.heading ?? 'Inter')};
   --font-body:${withFallback(fonts.body ?? 'Inter')};
   --font-mono:${fonts.mono ? fontFamilyCss(fonts.mono) : 'ui-monospace'};${roleFonts}
-  ${designScalesCss(scales)}${fluid ? `\n  --type-rhythm:${typography.rhythm};\n  --measure-prose:${typography.line_length}ch;\n  --section-padding:var(--space-xl);\n  --spacing-xs:var(--space-xs);--spacing-sm:var(--space-sm);--spacing-md:var(--space-md);--spacing-lg:var(--space-lg);--spacing-xl:var(--space-xl);` : ''}
+  ${designScalesCss(scales)}${fluid ? `\n  --type-rhythm:${typography.rhythm};\n  --measure-prose:${proseMeasureCss(typography.line_length)};\n  --section-padding:var(--space-xl);\n  --spacing-xs:var(--space-xs);--spacing-sm:var(--space-sm);--spacing-md:var(--space-md);--spacing-lg:var(--space-lg);--spacing-xl:var(--space-xl);` : ''}
   --font-size-base:${fonts.size_base ?? 16}px;${v14 ? `\n  ${contentWidthsCss(settings.content_widths)}` : ''}
 }${responsiveDesignScalesCss(scales, resolveBreakpointWidths(settings.responsive_breakpoints))}${fluid ? ':where([data-block=prose]){max-inline-size:var(--measure-prose)}' : ''}${fontSmoothingCss(fonts.smoothing, resolveRenderVersion(settings.render_version))}${v15 ? FONT_ROLE_CSS : ''}`;
 }

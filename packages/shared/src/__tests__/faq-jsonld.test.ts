@@ -15,6 +15,10 @@ describe('FAQPage from accordions', () => {
       ],
     });
   });
+  it('leaves style, script and inline svg source out of questions and answers', () => {
+    const items = faqItemsFromHtml(accordion([['<svg viewBox="0 0 1 1"><title>chevron</title></svg>Do you pack?', '<style>.x{color:red}</style><p>Yes&rsquo;</p><noscript>JS</noscript>']]));
+    expect(items).toEqual([{ question: 'Do you pack?', answer: 'Yes’' }]);
+  });
   it('accepts question marks in other scripts', () => {
     expect(faqItemsFromHtml(accordion([['هل هو مجاني؟', 'نعم'], ['無料ですか？', 'はい']]))).toHaveLength(2);
   });

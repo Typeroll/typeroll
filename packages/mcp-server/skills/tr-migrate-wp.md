@@ -315,7 +315,7 @@ import_sitemap url="https://old.example.com/sitemap.xml"
 # Optional: direct Search Console query (platform service account must have property access)
 import_gsc_performance property="https://old.example.com/" months=6
 # Or paste a Search Console Pages CSV via csv="..." and source_origin.
-check_internal_links         # database preflight before deploy
+check_internal_links         # database preflight before deploy, incl. #fragment targets
 verify_migration_urls        # after trigger_deploy; compact exceptions by default
 record_migration_seo_acceptance  # after reviewing this exact deployment
 get_migration_launch_report      # final fail-closed launch gate
@@ -511,6 +511,8 @@ Use `fonts.size_base` (default 16), `typography.ratio_mobile` (1.2),
 spacing and line-height steps. `apply_standard_styles` uses those steps;
 `overwrite: true` resets existing roles, so review their current values first.
 Explicit sizes and breakpoint overrides still win and are not silently migrated.
+A template that owns its text columns sets `typography.line_length` to `"none"`:
+prose then fills its column, with no `--measure-prose` custom CSS.
 
 Heading role margins belong to editorial flow. Component titles use their own
 padding/gap, and opening headings in containers/sections add no top margin.

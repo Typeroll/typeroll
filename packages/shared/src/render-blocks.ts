@@ -57,6 +57,8 @@ import { columnStackCss } from './column-layout.js';
 import { formPresentationOptions } from './render-form.js';
 import { DATA_ATTRIBUTE_RENDER_VERSION, IMAGE_INSTANCE_CSS_V16, INSTANCE_RUNTIME_CSS_V16, mapMediaBreakpoints, rewriteSettingSelectors, settingDataAttributes, takeInlineCustomProperties } from './render-v16.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
+import type { RouteKind } from './page-identity.js';
+import { applyRouteOverrides, applyRouteOverridesToTree } from './route-overrides.js';
 import { renderIconHtml } from './icons.js';
 import { isMenuNavigation, renderMenuNavigation, usesMenuSubmenus, type MenuSource } from './menu-render.js';
 import { NAVIGATION_SUBMENU_SCRIPT } from './navigation-menu.js';
@@ -146,6 +148,14 @@ export interface RenderContext {
   derived?: Record<string, Array<Record<string, unknown>>>;
   /** Optional dependency-recording resolver for static publication. */
   derivedSource?: (query: DerivedQuery) => Array<Record<string, unknown>>;
+  /**
+   * The kind of route being rendered (page-identity.ts `routeKind`, the
+   * page's `<body data-route>`). A block's `route_overrides` for this kind
+   * are merged over its data before it renders. Set by the static build and
+   * the portal preview from the same identity they put on `<body>`; without
+   * it every block renders its own data.
+   */
+  route?: RouteKind;
 }
 
 export interface RenderBlocksOptions {
@@ -337,6 +347,9 @@ export function renderBlock(block: Block, options: RenderBlocksOptions): string 
 }
 
 function renderBlockContent(block: Block, options: RenderBlocksOptions): string {
+  // Per-route settings first, so the alias defaults, bindings and validation
+  // below see the data this route renders (route-overrides.ts).
+  block = applyRouteOverrides(block, options.context?.route);
   // Asset collection uses the same alias defaults and traversal limit.
   const expanded = expandBlockAlias(block, options.registry);
   if (!expanded) {
@@ -2471,6 +2484,11 @@ export interface CollectAssetsOptions {
   liveBaseUrl?: unknown;
   /** The site's field definitions, to tell which site field blocks are live. */
   siteFieldDefinitions?: Parameters<typeof usesLiveSiteField>[1];
+  /**
+   * The route kind the page renders as, like RenderContext.route, so the
+   * assets follow the settings a block's `route_overrides` give it there.
+   */
+  route?: RouteKind;
 }
 
 export function collectBlockAssets(
@@ -2478,7 +2496,7 @@ export function collectBlockAssets(
   registry: RenderBlocksOptions['registry'],
   opts?: CollectAssetsOptions,
 ): BlockAssetBundle {
-  blocks = withGlobalBlockContent(blocks, opts?.globalBlockSource);
+  blocks = applyRouteOverridesToTree(withGlobalBlockContent(blocks, opts?.globalBlockSource), opts?.route);
   const ids = [...collectBlockAssetTypeIds(blocks, registry, opts?.renderVersion)].sort();
   const css: string[] = [];
   const js: string[] = [];

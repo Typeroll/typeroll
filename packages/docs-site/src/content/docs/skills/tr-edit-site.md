@@ -78,6 +78,12 @@ reports `production: true`), every deploy is a production release: get the
 owner's approval and pass `confirm_live_domains: true`. Review with
 `get_preview_link` `include_working_copy: true` instead of deploying.
 
+**Renamed headings.** A heading without `anchor_id` takes its id from its text,
+so retitling a published one changes its `#` address. The write then answers
+with a `heading_anchor_changed` warning (`old_id`, `new_id`); unless the user
+wants the new address, set the heading's `anchor_id` (or the prose heading's
+`id`) to `old_id` so existing links keep working.
+
 **Publishing and failed deploys.** Poll `get_deploy_status` until the job is
 `succeeded` or `failed`. Every site in an organization shares one build
 engine: publish one site at a time, and start another site's publish only when

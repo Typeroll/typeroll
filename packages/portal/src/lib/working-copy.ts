@@ -1,6 +1,7 @@
 import { customCssWriteError } from './custom-css-write';
 import { isDeepStrictEqual } from 'node:util';
-import { ensureBlockIds, type Block } from '@typeroll/shared';
+import { ensureBlockIds, invalidFieldValuesBody, invalidSelectValues, type Block } from '@typeroll/shared';
+import { siteBlockRegistry } from './block-write-warnings';
 import { blockTreeInputError } from './block-tree-input';
 import { pageAuthorityFields } from '@typeroll/shared';
 import { pageAddress, pageContentType, routePageExcerpt, validatePageFields, validatePagePresentation } from './page-fields';
@@ -152,6 +153,18 @@ export async function filterWcFields(
     const blocks = fields.blocks === null ? [] : fields.blocks;
     const error = blockTreeInputError(blocks);
     if (error) throw new WorkingCopyError(error, 400);
+    // A select value outside its options is refused where the write sets or
+    // changes it; one the draft already holds stays, so legacy pages remain
+    // editable (it is still reported as field_type_mismatch).
+    const stored = (await readWorkingCopy(ctx, target))?.fields?.blocks
+      ?? (target.kind === 'page'
+        ? (await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id))?.blocks
+        : (await vstore.partial(ctx.orgId, ctx.siteId, ctx.versionId, target.id))?.blocks);
+    const invalid = invalidSelectValues(blocks, await siteBlockRegistry(ctx), { stored });
+    if (invalid.length) {
+      const body = invalidFieldValuesBody(invalid);
+      throw new WorkingCopyError(body.error, 400, body.code, body.details);
+    }
     fields = { ...fields, blocks: ensureBlockIds(structuredClone(blocks) as Block[]) };
   }
   // Check custom CSS only when it changes: an autosave that echoes a page's

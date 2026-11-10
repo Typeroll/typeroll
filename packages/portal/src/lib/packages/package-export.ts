@@ -230,6 +230,7 @@ export function detachPageLinks(blocks: Block[], pageUrl: (id: string) => string
     ...block,
     data: visit(block.data ?? {}) as Record<string, unknown>,
     ...(block.responsive ? { responsive: visit(block.responsive) as Block['responsive'] } : {}),
+    ...(block.route_overrides ? { route_overrides: visit(block.route_overrides) as Block['route_overrides'] } : {}),
     ...(block.children ? { children: block.children.map(copy) } : {}),
     ...(block.slots ? { slots: block.slots.map(slot => slot.map(copy)) } : {}),
   });

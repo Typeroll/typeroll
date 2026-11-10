@@ -18,15 +18,20 @@ import {
   partStyleIssues,
   partsTypeOf,
   resolveRenderVersion,
+  routeOverrideTypeWarnings,
+  routeOverridesError,
   treePartStyleIssues,
   validateSiteStyle,
   styleOverrideWarnings,
   unknownBlockDataFields,
   unknownBlockFields,
   unknownItemFields,
+  unknownRouteOverrideFields,
+  invalidSelectValues,
   type Block,
   type BlockTreeWarning,
   type BlockType,
+  type InvalidFieldValue,
   type PartStyleIssue,
   type SiteColors,
   type SiteStyle,
@@ -63,19 +68,74 @@ export async function singleBlockWriteWarnings(
   ctx: Ctx,
   blocks: Block[],
   blockId: string,
-  write: { data?: Record<string, unknown>; style_overrides?: unknown },
+  write: { data?: Record<string, unknown>; style_overrides?: unknown; route_overrides?: unknown },
   registry?: Registry,
 ): Promise<BlockTreeWarning[]> {
   const warnings: BlockTreeWarning[] = styleOverrideWarnings(write.style_overrides, blockId);
   const data = setValues(write.data);
-  const found = data && Object.keys(data).length ? findBlock(blocks, blockId) : null;
-  if (data && found) {
+  const routes = write.route_overrides && typeof write.route_overrides === 'object';
+  const found = (data && Object.keys(data).length) || routes ? findBlock(blocks, blockId) : null;
+  if (data && Object.keys(data).length && found) {
     const types = registry ?? await siteBlockRegistry(ctx);
     warnings.push(...blockDataTypeWarnings({ id: blockId, type: found.block.type, data }, types, blockId));
     warnings.push(...unknownItemFields({ id: blockId, type: found.block.type, data }, types));
   }
+  if (routes && found) {
+    // The block after the write holds the route overrides as written.
+    warnings.push(...routeOverrideTypeWarnings({ id: blockId, type: found.block.type, data: found.block.data, route_overrides: found.block.route_overrides }, registry ?? await siteBlockRegistry(ctx), blockId));
+  }
   if (found) warnings.push(...blockBehaviorWarnings({ ...found.block, data: { ...found.block.data, ...write.data } }, blockId));
   return warnings;
+}
+
+/**
+ * Why a single-block write's `route_overrides` cannot be stored, or null.
+ * `null` is allowed where it clears them (update_block).
+ */
+export function routeOverridesWriteError(value: unknown, path: string, allowNull = false): string | null {
+  if (value === undefined || (allowNull && value === null)) return null;
+  return routeOverridesError(value, path);
+}
+
+/**
+ * Unknown keys in the route overrides an update_block write sets, checked
+ * against the block's type with the data each route renders after the write.
+ */
+export function updateRouteOverrideUnknownFields(
+  blocks: Block[],
+  blockId: string,
+  data: Record<string, unknown> | undefined,
+  routeOverrides: Block['route_overrides'] | null | undefined,
+  registry: Registry,
+): UnknownFieldIssue[] {
+  if (!routeOverrides) return [];
+  const found = findBlock(blocks, blockId);
+  if (!found) return [];
+  return unknownRouteOverrideFields(
+    { id: blockId, type: found.block.type, data: { ...found.block.data, ...setValues(data) }, route_overrides: routeOverrides },
+    registry,
+  );
+}
+
+// ─── Select values outside their options ─────────────────────────────────
+//
+// Refused where the write sets or changes them (invalid_field_value); a value
+// the block already held is left alone and stays a field_type_mismatch warning.
+
+/** Select values outside their options in a block add_block inserts, its children and slots included. */
+export function addBlockInvalidFields(block: unknown, registry: Registry): InvalidFieldValue[] {
+  return invalidSelectValues(block, registry, { root: 'block' });
+}
+
+/**
+ * Select values outside their options that an update_block (or responsive)
+ * write set on `blockId`: the block after the write, compared with the same
+ * block before it. Its children are not part of the write.
+ */
+export function updatedBlockInvalidFields(before: Block[], after: Block[], blockId: string, registry: Registry): InvalidFieldValue[] {
+  const next = findBlock(after, blockId);
+  if (!next) return [];
+  return invalidSelectValues(next.block, registry, { root: 'block', stored: findBlock(before, blockId)?.block, descendants: false });
 }
 
 /** Unknown data keys in a block add_block inserts, its children and slots included. */

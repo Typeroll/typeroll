@@ -18,6 +18,7 @@ import type {
   Site,
 } from '@typeroll/shared';
 import type { ReadWriteStore } from './datastore';
+import { createPageAnchorIndex, fragmentResolves } from './page-anchor-ids';
 import { pageUrlFromDoc } from './page-paths';
 import { publicUrlsFor } from './site-public-urls';
 import { vstore } from './version-store';
@@ -26,8 +27,14 @@ export interface BrokenInternalLink {
   from: string;
   href: string;
   resolved_path: string;
-  /** `missing_page`: a menu item links to a page id that does not exist. */
-  reason: 'missing_route' | 'broken_redirect' | 'redirect_loop' | 'invalid_url' | 'missing_page';
+  /**
+   * `missing_page`: a menu item links to a page id that does not exist.
+   * `missing_fragment`: the Page at `resolved_path` exists but has no element
+   * whose id is `fragment` (same-page `#x` links resolve to their own Page).
+   */
+  reason: 'missing_route' | 'broken_redirect' | 'redirect_loop' | 'invalid_url' | 'missing_page' | 'missing_fragment';
+  /** The link's `#fragment` without `#`, on `missing_fragment` only. */
+  fragment?: string;
 }
 
 export interface InternalLinkReport {
@@ -45,7 +52,7 @@ export interface InternalLinkReport {
   links?: Array<{ from: string; path: string }>;
 }
 
-interface LinkSource { label: string; value: unknown; basePath: string }
+interface LinkSource { label: string; value: unknown; basePath: string; page?: Page }
 
 /** Check internal hrefs entirely against the versioned datastore snapshot.
  * No deployed site or network request is needed. */
@@ -56,9 +63,12 @@ export async function checkInternalLinks(args: {
   versionId: string;
   site: Site & { id: string };
   includeLinks?: boolean;
+  /** Check `#fragment`s against the target Page's rendered ids (default true). */
+  fragments?: boolean;
 }): Promise<InternalLinkReport> {
   const { store, orgId, siteId, versionId } = args;
-  const [pages, partials, contentTypes, templates, redirects, media, settings, menus] = await Promise.all([
+  const checkFragments = args.fragments !== false;
+  const [pages, partials, contentTypes, templates, redirects, media, settings, menus, blockTypes, siteFields] = await Promise.all([
     vstore.pages(orgId, siteId, versionId),
     vstore.partials(orgId, siteId, versionId),
     vstore.contentTypes(orgId, siteId, versionId),
@@ -67,6 +77,8 @@ export async function checkInternalLinks(args: {
     store.listDocs<Media>(paths.media(orgId, siteId)),
     vstore.settings(orgId, siteId, versionId),
     vstore.menus(orgId, siteId, versionId),
+    checkFragments ? vstore.blockTypes(orgId, siteId, versionId) : [],
+    checkFragments ? vstore.siteFields(orgId, siteId, versionId) : null,
   ]);
   const trailingSlash = settings?.trailing_slash ?? 'always';
   const types = new Map(contentTypes.map(type => [type.id, type]));
@@ -105,6 +117,7 @@ export async function checkInternalLinks(args: {
       label: `page:${page.id}`,
       value: { body: contentOf(page), fields: page.fields },
       basePath: applyTrailingSlash(pageUrlFromDoc(page), trailingSlash),
+      page,
     });
   }
   for (const partial of partials.filter((entry) => entry.status === 'published')) {
@@ -123,8 +136,31 @@ export async function checkInternalLinks(args: {
   let redirectedLinks = 0;
   const unique = new Set<string>();
   const links: Array<{ from: string; path: string }> = [];
+  // Fragment targets: live Pages by route, each rendered once on first use.
+  const pagesByRoute = new Map(livePages.map(page => [normalizeRoute(page.path!), page]));
+  const anchorsOf = checkFragments ? createPageAnchorIndex({
+    pages, contentTypes, templates, partials, blockTypes, menus, settings, siteFields: siteFields ?? { groups: [], values: {} },
+  }) : null;
+  const missingFragment = (target: Page | undefined, fragment: string | null): boolean => {
+    if (!anchorsOf || !target || fragment === null) return false;
+    const ids = anchorsOf(target);
+    return ids !== null && !fragmentResolves(fragment, ids);
+  };
   for (const source of sources) {
     for (const href of new Set(extractHrefs(source.value))) {
+      const fragment = fragmentOf(href);
+      // A bare `#x` points into the Page that contains it. Partials, templates
+      // and menus appear on many Pages, so only Page bodies are checked here.
+      if (href.trim().startsWith('#')) {
+        // `#` alone is a placeholder that scrolls to the top; `#{{…}}` is a binding.
+        if (!source.page || !anchorsOf || !fragment || fragment.includes('{')) continue;
+        const path = normalizeRoute(source.page.path!);
+        checkedLinks++;
+        unique.add(path);
+        if (missingFragment(source.page, fragment)) broken.push({ from: source.label, href, resolved_path: path, reason: 'missing_fragment', fragment });
+        else validLinks++;
+        continue;
+      }
       const parsed = internalPath(href, internalOrigins, source.basePath);
       if (parsed === null) continue;
       checkedLinks++;
@@ -135,9 +171,14 @@ export async function checkInternalLinks(args: {
       }
       const resolved = resolveRoute(parsed, routes, sortedRedirects);
       if (resolved.ok) {
+        if (!resolved.redirected && args.includeLinks) links.push({ from: source.label, path: parsed });
+        // A redirect keeps the fragment, so it must exist on the final Page.
+        if (resolved.path !== null && missingFragment(pagesByRoute.get(resolved.path), fragment)) {
+          broken.push({ from: source.label, href, resolved_path: resolved.path, reason: 'missing_fragment', fragment: fragment! });
+          continue;
+        }
         validLinks++;
         if (resolved.redirected) redirectedLinks++;
-        else if (args.includeLinks) links.push({ from: source.label, path: parsed });
       } else if (drafts.has(resolved.path) && ['missing_route','broken_redirect'].includes(resolved.reason)) {
         unpublished.push({ from: source.label, href, resolved_path: resolved.path, page_id: drafts.get(resolved.path)! });
       } else {
@@ -223,6 +264,12 @@ function extractHrefs(value: unknown): string[] {
   return out;
 }
 
+/** The fragment of an href without `#`, or null when it has none. */
+function fragmentOf(href: string): string | null {
+  const index = href.indexOf('#');
+  return index === -1 ? null : href.slice(index + 1).trim();
+}
+
 function internalPath(href: string, origins: Set<string>, basePath: string): string | null {
   const raw = href.trim();
   if (!raw || raw.startsWith('#') || /^(mailto|tel|sms|javascript|data):/iu.test(raw)) return null;
@@ -247,10 +294,12 @@ function resolveRoute(
   initial: string,
   routes: Set<string>,
   redirects: Redirect[],
-): { ok: true; redirected: boolean } | { ok: false; path: string; reason: BrokenInternalLink['reason'] } {
+): { ok: true; redirected: boolean; path: string | null } | { ok: false; path: string; reason: BrokenInternalLink['reason'] } {
   let path = normalizeRoute(initial);
-  if (routes.has(path)) return { ok: true, redirected: false };
+  if (routes.has(path)) return { ok: true, redirected: false, path };
   const seen = new Set<string>();
+  // A redirect that names its own fragment replaces the link's: nothing to check.
+  let keepsFragment = true;
   for (let hop = 0; hop < 10; hop++) {
     if (seen.has(path)) return { ok: false, path, reason: 'redirect_loop' };
     seen.add(path);
@@ -262,12 +311,13 @@ function resolveRoute(
     if (target === null) return { ok: false, path, reason: seen.size > 1 ? 'broken_redirect' : 'missing_route' };
     try {
       const parsed = new URL(target, 'https://internal.invalid');
-      if (parsed.origin !== 'https://internal.invalid') return { ok: true, redirected: true };
+      if (parsed.origin !== 'https://internal.invalid') return { ok: true, redirected: true, path: null };
       path = normalizeRoute(parsed.pathname);
+      if (parsed.hash) keepsFragment = false;
     } catch {
       return { ok: false, path: target, reason: 'broken_redirect' };
     }
-    if (routes.has(path)) return { ok: true, redirected: true };
+    if (routes.has(path)) return { ok: true, redirected: true, path: keepsFragment ? path : null };
   }
   return { ok: false, path, reason: 'redirect_loop' };
 }

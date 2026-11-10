@@ -160,6 +160,8 @@ Use `fonts.size_base` (default 16), `typography.ratio_mobile` (1.2),
 spacing and line-height steps. `apply_standard_styles` uses those steps;
 `overwrite: true` resets existing roles, so review their current values first.
 Explicit sizes and breakpoint overrides still win and are not silently migrated.
+A template that owns its text columns sets `typography.line_length` to `"none"`:
+prose then fills its column, with no `--measure-prose` custom CSS.
 
 Heading role margins belong to editorial flow. Component titles use their own
 padding/gap, and opening headings in containers/sections add no top margin.

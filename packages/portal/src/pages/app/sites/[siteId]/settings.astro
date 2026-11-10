@@ -196,7 +196,8 @@ const domainBlocksArchiving =
       <p>Base size below controls all rem-based sizes. Render version 10 adds fluid defaults; explicit role and step overrides keep their values.</p>
       {Object.entries(TYPOGRAPHY_DEFAULTS).map(([key, fallback]) => <div class="field">
         <label for={`typography-${key}`}>{typographyLabels[key]}</label>
-        <input id={`typography-${key}`} name={`typography.${key}`} type="number" min={key === 'line_length' ? 40 : key === 'rhythm' ? 0.5 : 1.1} max={key === 'line_length' ? 90 : key === 'rhythm' ? 2 : 1.5} step={key === 'line_length' ? 1 : 0.01} required value={settings.typography?.[key as keyof typeof TYPOGRAPHY_DEFAULTS] ?? fallback} />
+        <input id={`typography-${key}`} name={`typography.${key}`} type="number" min={key === 'line_length' ? 40 : key === 'rhythm' ? 0.5 : 1.1} max={key === 'line_length' ? 90 : key === 'rhythm' ? 2 : 1.5} step={key === 'line_length' ? 1 : 0.01} required value={typeof settings.typography?.[key as keyof typeof TYPOGRAPHY_DEFAULTS] === 'number' ? settings.typography[key as keyof typeof TYPOGRAPHY_DEFAULTS] : fallback} />
+        {key === 'line_length' && <label><input type="checkbox" name="typography.line_length_none" value="1" checked={settings.typography?.line_length === 'none'} /> No limit (the column decides)</label>}
       </div>)}
       <TypographyPreview settings={settings} siteId={siteId} client:load />
       <details>

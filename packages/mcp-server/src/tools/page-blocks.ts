@@ -7,6 +7,25 @@
 import { z } from 'zod';
 import { ok, withErrorBoundary, versionParam, type ToolDef } from './helpers.js';
 
+/**
+ * Per-route settings (Block.route_overrides). Strict, so a misspelled route
+ * kind is refused instead of being dropped on the way to the server.
+ */
+const routeOverrideSchema = z.object({
+  data_overrides: z.record(z.string(), z.unknown()).optional().describe('Field values merged over block.data on this route (shallow), checked like data.'),
+}).strict();
+const routeOverridesSchema = z.object({
+  home: routeOverrideSchema.optional(),
+  item: routeOverrideSchema.optional(),
+  page: routeOverrideSchema.optional(),
+  facet: routeOverrideSchema.optional(),
+}).strict().describe(
+  'Per-route settings, keyed by the page\'s route kind (its <body data-route>): home (the home page), item (an item of a content type other than page), page (an ordinary page), facet (a generated taxonomy page). On a route of that kind, data_overrides are merged over block.data before the block renders, in preview and in the build. Example for a shared header banner that is primary on the home page only: { "home": { "data_overrides": { "background": "primary" } } }. Use it instead of site CSS against body[data-route].',
+);
+
+const ROUTE_OVERRIDES =
+  ' `route_overrides` ({ home | item | page | facet: { data_overrides } }) varies any setting of the block by route kind without duplicating it or writing site CSS, e.g. a header section with background secondary and { "home": { "data_overrides": { "background": "primary" } } }. Override keys are checked like data keys (400 `unknown_field` and `invalid_field_value`, `field_type_mismatch` warnings); a route that is not a route kind is 400.';
+
 const blockSchema = z.object({
   id: z.string().optional().describe('Stable id. Omit to let the server generate one.'),
   type: z.string().describe('Block type id, e.g. "core/heading", "core/section", or a custom "user/banner".'),
@@ -20,6 +39,7 @@ const blockSchema = z.object({
     custom_class: z.string().optional(),
     html_id: z.string().optional(),
   }).optional(),
+  route_overrides: routeOverridesSchema.optional(),
 }).passthrough();
 
 /**
@@ -93,7 +113,7 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'add_block',
     description:
-      'Insert a block into a container (page, partial, or page template). BUFFER MODEL: block mutations on pages/partials edit the unsaved DRAFT — commit_working_copy is the explicit save. With no parent_id, inserts at the top level of the container. Otherwise inserts as a child (or into a slot for slot-containers). Position defaults to "end". Slot containers (core/columns, core/tabs — container: "slots"): slot_index picks the slot (0-based; defaults to 0) and works even if the parent instance has no slots array yet; a freshly added slot container gets its slots initialised to the type\'s arity. You can also pass the whole subtree inline via block.slots: [[...],[...]]. Pass `target: { kind: "partial", id: "header" }` to drop a block into the header on every page, etc. `page_id` is the legacy shorthand. A `data` key that no field of the block\'s type declares (read_block_type) is rejected with 400 `unknown_field`, for the block and every child; nothing is written, and `unknown_fields[].suggestions` says where it belongs (e.g. `item_overrides.<key>` for an item-block field on a repeater or its aliases, or the closest field names).' + PART_STYLES + COMPACT_ANSWER + ' `added_id` is the new block\'s id.',
+      'Insert a block into a container (page, partial, or page template). BUFFER MODEL: block mutations on pages/partials edit the unsaved DRAFT — commit_working_copy is the explicit save. With no parent_id, inserts at the top level of the container. Otherwise inserts as a child (or into a slot for slot-containers). Position defaults to "end". Slot containers (core/columns, core/tabs — container: "slots"): slot_index picks the slot (0-based; defaults to 0) and works even if the parent instance has no slots array yet; a freshly added slot container gets its slots initialised to the type\'s arity. You can also pass the whole subtree inline via block.slots: [[...],[...]]. Pass `target: { kind: "partial", id: "header" }` to drop a block into the header on every page, etc. `page_id` is the legacy shorthand. A `data` key that no field of the block\'s type declares (read_block_type) is rejected with 400 `unknown_field`, for the block and every child; nothing is written, and `unknown_fields[].suggestions` says where it belongs (e.g. `item_overrides.<key>` for an item-block field on a repeater or its aliases, or the closest field names). A select value outside the field\'s options is rejected with 400 `invalid_field_value` (`details.invalid_fields[]`: block_id, path, field, value, allowed).' + PART_STYLES + ROUTE_OVERRIDES + COMPACT_ANSWER + ' `added_id` is the new block\'s id.',
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
@@ -118,7 +138,7 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'update_block',
     description:
-      'Update a block\'s data fields (shallow merge), style overrides, or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper. Send values in the field\'s type (numbers as numbers); a value the block will not render comes back in `warnings` (`field_type_mismatch`) with its path. A `null` value removes that key from data (the field renders its default); use it to clean up a key stored by mistake. A written key that no field of the block\'s type declares is rejected with 400 `unknown_field` and nothing is written; `unknown_fields[].suggestions` says where it belongs: on core/repeater and its aliases (core/testimonials, core/page_list, ...) a field of the item block goes in `item_overrides.<key>`, otherwise the closest field names.' + PART_STYLES + COMPACT_ANSWER,
+      'Update a block\'s data fields (shallow merge), style overrides, per-route settings (route_overrides), or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper. Send values in the field\'s type (numbers as numbers); a value the block will not render comes back in `warnings` (`field_type_mismatch`) with its path. A select value outside the field\'s options (e.g. `level: 2` instead of "h2") is refused with 400 `invalid_field_value` naming the block, field and allowed values; one the block already held is left alone and only warned about. Changing the text of a heading without `anchor_id` on a published page changes its generated id; the answer then carries a `heading_anchor_changed` warning with `old_id` and `new_id` (set `anchor_id` to `old_id` to keep inbound links). A `null` value removes that key from data (the field renders its default); use it to clean up a key stored by mistake. A written key that no field of the block\'s type declares is rejected with 400 `unknown_field` and nothing is written; `unknown_fields[].suggestions` says where it belongs: on core/repeater and its aliases (core/testimonials, core/page_list, ...) a field of the item block goes in `item_overrides.<key>`, otherwise the closest field names.' + PART_STYLES + ROUTE_OVERRIDES + ' On update, `route_overrides` replaces the block\'s route overrides whole; null removes them.' + COMPACT_ANSWER,
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),
@@ -131,6 +151,7 @@ export const pageBlockTools: ToolDef[] = [
         custom_class: z.string().optional(),
         html_id: z.string().optional(),
       }).optional(),
+      route_overrides: routeOverridesSchema.nullable().optional().describe('Per-route settings: { home | item | page | facet: { data_overrides } }. Replaces the block\'s route overrides whole; null removes them.'),
       response: responseParam,
       version: versionParam,
     },
@@ -140,6 +161,7 @@ export const pageBlockTools: ToolDef[] = [
         block_id: args.block_id,
         data: args.data,
         style_overrides: args.style_overrides,
+        ...(args.route_overrides !== undefined ? { route_overrides: args.route_overrides } : {}),
       }, writeQuery(args.version, args.response));
       return ok(res);
     }),
@@ -208,7 +230,7 @@ export const pageBlockTools: ToolDef[] = [
   {
     name: 'set_block_responsive',
     description:
-      'Set a per-breakpoint value on one responsive field of a block (in any container — page, partial, or template). The renderer reads { mobile, tablet, laptop, desktop, wide } objects on any field marked responsive in the BlockType schema (use read_block_type to see which). Mobile-first inheritance: missing breakpoints inherit upward. Pass a scalar value to clear responsive back to a single value. Example: setting `cols` on a feature_grid to { mobile: 1, tablet: 2, desktop: 3 } renders 1-col on phones, 2-col on tablets, 3-col on desktop+. A field the block type does not declare is rejected with 400 `unknown_field`.' + COMPACT_ANSWER,
+      'Set a per-breakpoint value on one responsive field of a block (in any container — page, partial, or template). The renderer reads { mobile, tablet, laptop, desktop, wide } objects on any field marked responsive in the BlockType schema (use read_block_type to see which). Mobile-first inheritance: missing breakpoints inherit upward. Pass a scalar value to clear responsive back to a single value. Example: setting `cols` on a feature_grid to { mobile: 1, tablet: 2, desktop: 3 } renders 1-col on phones, 2-col on tablets, 3-col on desktop+. A field the block type does not declare is rejected with 400 `unknown_field`, and a value outside a select field\'s options with 400 `invalid_field_value`.' + COMPACT_ANSWER,
     inputSchema: {
       target: targetSchema.optional(),
       page_id: z.string().optional(),

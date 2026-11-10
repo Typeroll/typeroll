@@ -215,6 +215,9 @@ body or unrelated custom fields:
 
 The two date sources read Page metadata, not similarly named custom fields.
 Missing or invalid dates are omitted; explicit timezone offsets are preserved.
+The body (`articleBody` for Article and BlogPosting) and rich text fields are
+emitted as plain text: tags are removed, and so is the content of `<style>`,
+`<script>`, `<noscript>`, `<template>` and inline `<svg>` elements.
 Mapped mode does not add `articleBody`, publisher or unmapped fields. Existing
 custom date-field mappings remain supported. Page date mapping is available from
 Core 0.2.121; republish static sites after upgrading.

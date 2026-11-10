@@ -178,7 +178,8 @@ batch_update_pages updates=[
 - Give shared pages, especially articles, their own `og_image`.
 - Link every published page from somewhere. The readiness item `orphan_pages`
   lists pages that no internal link reaches; `check_internal_links` finds
-  broken saved links.
+  broken saved links, including `#fragment` links whose heading or anchor id
+  no longer exists (`missing_fragment`).
 
 ### 5. Structured data beyond the automatic output
 

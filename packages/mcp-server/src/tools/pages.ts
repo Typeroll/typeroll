@@ -186,7 +186,7 @@ export const pageTools: ToolDef[] = [
       fields: z.record(z.string(), z.unknown()).optional(),
           slug: z.string().optional(),
           html_content: z.string().optional(),
-          blocks: z.array(z.any()).optional().describe('Block tree, only used when content_mode="blocks".'),
+          blocks: z.array(z.any()).optional().describe('Block tree, only used when content_mode="blocks". A select value the write sets or changes outside the field\'s options (e.g. level 2 instead of "h2") is refused with 400 invalid_field_value; one a block already held is only warned about (field_type_mismatch). Retitling a published heading without anchor_id warns heading_anchor_changed with old_id and new_id.'),
           status: z.enum(['draft', 'review', 'unlisted', 'published']).optional(),
           publish_at: z.string().nullable().optional().describe(
             'Scheduled publishing (0.29.0+): ISO datetime at which the platform flips status → published AND deploys the site. Applies immediately (publish state, never drafted); null clears the schedule. Requires the SAVED content to be ready — schedule after save_changes/commit.',

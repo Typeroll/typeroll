@@ -8,7 +8,8 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { apiStructureLockRefusal } from '../../../../../../lib/structure-lock';
 import { vstore } from '../../../../../../lib/version-store';
 import { sanitizeBody } from '../../../../../../lib/sanitize';
-import { ensureBlockIds, type Partial as PartialDoc } from '@typeroll/shared';
+import { ensureBlockIds, invalidFieldValuesBody, invalidSelectValues, type Partial as PartialDoc } from '@typeroll/shared';
+import { siteBlockRegistry } from '../../../../../../lib/block-write-warnings';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 function project(p: PartialDoc, summary: boolean): Record<string, unknown> {
@@ -63,6 +64,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     const error = blockTreeInputError(body.blocks);
     if (error || !Array.isArray(body.blocks) || !body.blocks.length) return apiError(error ?? 'blocks must be a non-empty block tree', 400);
     if (body.html_content !== undefined) return apiError('Send either blocks or html_content, not both', 400);
+    const invalid = invalidSelectValues(body.blocks, await siteBlockRegistry(ctx));
+    if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
   }
   if (body.status !== undefined && !['draft', 'published'].includes(String(body.status))) return apiError('status must be draft or published', 400);
   const settings = await vstore.settings(ctx.orgId, ctx.siteId, ctx.versionId);

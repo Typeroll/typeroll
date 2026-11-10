@@ -258,7 +258,7 @@ export function blockStyleRefs(blocks: readonly Block[] | undefined): string[] {
       else scan(child, inner);
     }
   };
-  walkBlocks(blocks, block => { scan(block.data); scan(block.responsive); });
+  walkBlocks(blocks, block => { scan(block.data); scan(block.responsive); scan(block.route_overrides); });
   return [...found];
 }
 
@@ -308,6 +308,7 @@ export function rewriteBlockReferences(blocks: readonly Block[], maps: BlockRefe
   const copy = (block: Block): Block => {
     const next: Block = { ...block, type: maps.blockTypes?.get(block.type) ?? block.type, data: rewrite(block.data ?? {}) as Record<string, unknown> };
     if (block.responsive) next.responsive = rewrite(block.responsive) as Block['responsive'];
+    if (block.route_overrides) next.route_overrides = rewrite(block.route_overrides) as Block['route_overrides'];
     if (block.children) next.children = block.children.map(copy);
     if (block.slots) next.slots = block.slots.map(slot => slot.map(copy));
     return next;

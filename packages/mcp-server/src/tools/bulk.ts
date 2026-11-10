@@ -9,7 +9,7 @@ export const bulkTools: ToolDef[] = [
   {
     name: 'check_internal_links',
     description:
-      'Check internal hrefs against the versioned database before deploy. Covers published Pages of every content type, partials, Page templates, generated facet routes, media URLs and redirect chains. Returns every broken source/href pair without requesting the live site.',
+      'Check internal hrefs against the versioned database before deploy. Covers published Pages of every content type, partials, Page templates, generated facet routes, media URLs and redirect chains. A `#fragment` (same-page `#x` in a Page, or `/path#x` from anywhere) must match an id on the target Page as it renders: heading ids including generated ones and `anchor_id`, block `html_id`, and ids in HTML; `#` and `#top` always resolve. Returns every broken source/href pair without requesting the live site; a missing fragment has reason `missing_fragment` with `fragment` and the target Page in `resolved_path`.',
     inputSchema: { version: versionParam },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       return ok(await client.get(siteId, 'internal-links', v(args.version)));

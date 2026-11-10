@@ -185,4 +185,26 @@ describe('the gate is reachable from the chat tool path', () => {
     expect(stored.data.html).toBe('<div></div>');
     expect(stored.data.js).toBeUndefined();
   });
+
+  it('add_block through the chat drops JS from a route override on a gated site too', async () => {
+    await seedType();
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    await store.setDoc(paths.site(ORG, SITE), { name: 'Mine', hosting_adapter: 'cloudflare', ai_scripts_enabled: false });
+    await store.setDoc(paths.page(ORG, SITE, 'home'), { title: 'Home', slug: 'home', status: 'published', content_mode: 'blocks', blocks: [] });
+    const { runTool } = await import('../../lib/anthropic');
+    const ctx = {
+      orgId: ORG, siteId: SITE, versionId: VERSION,
+      site: { id: SITE, name: 'Mine', ai_scripts_enabled: false },
+      version: null, portalOrigin: 'https://app.typeroll.com',
+    };
+    const res = await runTool('add_block', {
+      target: { kind: 'page', id: 'home' },
+      block: { type: 'user/embed', data: { html: '<div></div>' }, route_overrides: { home: { data_overrides: { js: 'alert(1)', html: '<p></p>' } } } },
+    }, ctx as never);
+    expect((res.result as { warnings?: string[] }).warnings).toHaveLength(1);
+    const { loadContainer } = await import('../../lib/block-containers');
+    const stored = (await loadContainer({ kind: 'page', id: 'home' }, ctx as never)).blocks[0];
+    expect(stored.route_overrides).toEqual({ home: { data_overrides: { html: '<p></p>' } } });
+  });
 });

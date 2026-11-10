@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.3.21 (candidate, MCP 0.45.130)
+
+- Docs: render versions 16 and 17 in the settings table, styling the cookie
+  banner, the version 16 `.form-actions` row, and what `tr-upgrade-rendering`
+  checks for versions 16 and 17.
+- Render version 17 also counts the font weights in the CSS of a site's own
+  block types (`<style>` in the template, and `styles`), as its notes say for
+  `<style>` elements in HTML. Found on autopilot.se, where a FAQ marker drawn
+  at 400 in a layout block's template was not loaded without `fonts.load`.
+- Archiving a site is no longer refused for its generated address
+  (`site-….<sites domain>`); a live custom domain still blocks it.
+- `typography.line_length: "none"`: prose fills its column.
+- `route_overrides` on a block: settings per route kind (home, item, page,
+  facet), for example a shared header section that is primary on the home page.
+- Block writes refuse a new or changed select value outside its options with
+  400 `invalid_field_value` (block, field, allowed values); a legacy value that
+  is already stored stays editable and keeps its warning. Found on moveria-nl,
+  where `level: 2` was saved and rendered as a `<div>`.
+- A write that changes a published heading's generated id returns a
+  `heading_anchor_changed` warning with the old and new id and how to keep it.
+- `check_internal_links` checks `#fragment` and `/path#fragment` against the
+  ids the target Page renders (`missing_fragment`); the migration launch report
+  lists them as a non-blocking warning.
+- Article JSON-LD `articleBody` (and FAQ answers) are plain text without
+  `<style>`, `<script>` or markup.
+
 ## 0.3.20 (candidate, MCP 0.45.129)
 
 - Site and page custom CSS accept `scroll-behavior` and `overscroll-behavior`.

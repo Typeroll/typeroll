@@ -75,6 +75,7 @@ import {
   HEADER_BEHAVIOR_CSS,
   HEADER_BEHAVIOR_RUNTIME_JS,
   pageIdentityAttributes,
+  routeKind,
   type FormBlockOptions,
   queryDerivedSource,
 } from '@typeroll/shared';
@@ -246,7 +247,11 @@ export async function renderPreview(
     return resolveContentPage(candidate, type) ?? candidate;
   });
   const breadcrumbs = pageBreadcrumbs(page, breadcrumbPages, settings.trailing_slash ?? 'always', contentType);
+  // The page's identity, as [...slug].astro builds it: <body data-route> and
+  // the route its blocks' route_overrides apply on come from the same input.
+  const identityInput = { page, defaultContentType: 'page' };
   const renderCtx: RenderContext = {
+    route: routeKind(identityInput),
     content_type: { ...contentType, ...pageNavigation(page, contentType, previewPages, settings.trailing_slash) },
     backlinks: buildBacklinkIndex(contentTypes, previewPages.filter(candidate => candidate.status === 'published')),
     page: {
@@ -356,6 +361,7 @@ export async function renderPreview(
     includeScripts: opts.allowScripts === true,
     renderVersion,
     globalBlockSource,
+    route: renderCtx.route,
     siteFieldValues: renderCtx.site?.fields,
     liveBaseUrl: live.liveBaseUrl, siteFieldDefinitions: siteFields.groups,
     // Block part styles, as the published build emits them.
@@ -418,7 +424,7 @@ export async function renderPreview(
     robotsBlocked,
     // Same call as the site's [...slug].astro, so page-scoped CSS such as
     // body[data-route="home"] matches in preview exactly as it does when published.
-    bodyAttributes: pageIdentityAttributes({ page, defaultContentType: 'page' }),
+    bodyAttributes: pageIdentityAttributes(identityInput),
     seoHead: (() => {
       if (!seoBase) return '';
       const pathname = applyTrailingSlash('/' + pagePathSegment(page), settings.trailing_slash ?? 'always');

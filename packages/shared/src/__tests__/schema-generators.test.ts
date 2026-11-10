@@ -88,6 +88,24 @@ describe('buildContentPageSchema', () => {
     expect(buildContentPageSchema(item, coll, site, 'https://x/blog/a/')).toBeNull();
   });
 
+  it('builds articleBody from the visible text, without style or script source', () => {
+    const coll: ContentType = {
+      id: 'blog', name: 'blog', label_singular: 'Post', label_plural: 'Posts', route_template: '/{slug}', created_at: '2024-01-01',
+      schema_type: 'Article', schema_field_map: { summary: 'abstract' },
+      fields: [{ name: 'summary', label: 'Summary', type: 'richtext' }],
+    };
+    const item: Page = makePage({
+      id: 'a', status: 'published', title: 'Moving to Germany',
+      html_content: '<style>.block-hero{color:red}</style><h2 id="x">Costs &amp; planning</h2><p>Plan&nbsp;early.</p>'
+        + '<script type="application/ld+json">{"a":1}</script><noscript>Enable JS</noscript><template><p>hidden</p></template>'
+        + '<p><svg viewBox="0 0 1 1"><title>icon</title><style>.i{fill:red}</style></svg>Book a mover.</p>',
+      summary: '<p>Short</p><style>p{margin:0}</style>',
+    });
+    const ld = JSON.parse(buildContentPageSchema(item, coll, site, 'https://x/a/')!);
+    expect(ld.articleBody).toBe('Costs & planning Plan early. Book a mover.');
+    expect(ld.abstract).toBe('Short');
+  });
+
   it('maps BlogPosting fields with built-in defaults', () => {
     const coll: ContentType = {
       id: 'blog', name: 'blog',
@@ -111,7 +129,7 @@ describe('buildContentPageSchema', () => {
     );
     expect(ld['@type']).toBe('BlogPosting');
     expect(ld.headline).toBe('My post');
-    expect(ld.articleBody).toBe('<p>Hello world</p>');
+    expect(ld.articleBody).toBe('Hello world');
     expect(ld.description).toBe('Hello');
     expect(ld.image).toBe('https://cdn/x.png');
     expect(ld.author).toEqual({ '@type': 'Person', name: 'Tomas' });

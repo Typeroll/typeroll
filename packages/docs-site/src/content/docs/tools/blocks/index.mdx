@@ -1,6 +1,6 @@
 ---
 title: "Blocks Tools"
-description: "Technical reference for block tools: containers, instance and block type tools, write answers, warnings and page identity in built markup."
+description: "Technical reference for block tools: containers, instance and block type tools, settings by route, write answers, warnings and page identity in built markup."
 ---
 
 Pages, partials, Page templates all share one editing surface: a tree of **blocks**. The AI agent reaches for blocks instead of writing raw HTML — it's faster, more consistent, and the same edits the AI agent makes are what you see in the editor's drag-and-drop panel.
@@ -189,12 +189,57 @@ into blocks.
 | `find_pages_using_block_type`               | Reverse-index: which pages reference this type?   |
 | `export_block_types` / `import_block_types` | `.tcblocks` package format for portability        |
 
+## Settings by route
+
+A block can change its settings by route kind with `route_overrides`, so one
+block in a shared header or footer can look different on the home page without
+site CSS and without a second copy of the block behind visibility branches.
+Keys are the route kinds of [page identity](#page-identity-in-built-markup):
+`home`, `item`, `page` and `facet`. On a route of that kind, the override's
+`data_overrides` are merged over the block's `data` (shallow) before the block
+renders, in preview and in the published build.
+
+```json
+{
+  "type": "core/section",
+  "data": { "background": "secondary" },
+  "route_overrides": {
+    "home": { "data_overrides": { "background": "primary" } }
+  }
+}
+```
+
+That section is `primary` on `/` and `secondary` on every other page, item and
+facet route.
+
+```
+update_block target={kind:"partial", id:"header"} block_id=banner
+  route_overrides={ home: { data_overrides: { background: "primary" } } }
+```
+
+- Any setting of the block can vary: colours, text, layout, a repeater's
+  `item_block`. Fonts, block CSS and part styles follow the settings the route
+  renders.
+- Override keys are checked like `data` keys. A key no field of the block's type
+  declares is refused with 400 `unknown_field` on `add_block` and
+  `update_block` and reported as a warning on whole-tree writes; a value of the
+  wrong type is a `field_type_mismatch` warning. A key that is not a route kind,
+  or anything other than `data_overrides` inside one, is refused with 400.
+- `update_block` replaces the block's `route_overrides` whole; `null` removes
+  them. They are kept by copy, duplicate, export and import, and renamed with
+  the block type's fields on a schema change.
+- A block without `route_overrides` renders exactly as before. A preview with
+  no page, such as a block type preview, renders the base data.
+
+The block editor does not yet have controls for route overrides; set them with
+`update_block` or `add_block`. The editor keeps them when you edit the block.
+
 ## Page identity in built markup
 
 Every built page carries `data-*` attributes on `<body>` describing which route
-it is, so a stylesheet can vary by route without duplicating a block tree
-behind visibility branches. Preview writes the same attributes, so
-a page-scoped rule looks the same in preview and on the published site.
+it is. Preview writes the same attributes, so a page-scoped rule looks the same
+in preview and on the published site. The `data-route` value is also the route
+kind [`route_overrides`](#settings-by-route) uses.
 
 | Attribute                               | Value                                                    |
 | --------------------------------------- | -------------------------------------------------------- |
@@ -206,18 +251,14 @@ a page-scoped rule looks the same in preview and on the published site.
 | `data-depth`                            | segments below the root: `/` is `0`, `/guides/a/` is `2` |
 | `data-page-number`                      | the slice number, only on pages after the first          |
 
-To vary a block in a shared partial by page, give that block a
-`style_overrides.custom_class` and select it under the page attribute. Do not
-mark the page content or select on `data-source-block-id` or `.block-*`; those
-are not part of this contract.
+To vary a block's settings by route kind, use
+[`route_overrides`](#settings-by-route); it needs no site CSS. For what a
+setting cannot express, or to vary by another attribute such as the content
+type or the template, give the block a `style_overrides.custom_class` and
+select it under the page attribute. Do not mark the page content or select on
+`data-source-block-id` or `.block-*`; those are not part of this contract.
 
 ```css
-body[data-route="home"] .header-banner {
-  background: #007cba;
-}
-body[data-route="home"] .banner {
-  --banner: var(--color-primary);
-}
 body[data-route="item"][data-content-type="article"] .banner {
   --banner: teal;
 }
@@ -272,7 +313,8 @@ own, so a sweep says which page was affected), the working copy
 and the caller has already spent the round trip. Check for `warnings` after a
 successful write; the absence of the field is the only clean signal. The one
 exception is an unknown `data` key in `add_block` or `update_block`, which is
-rejected (see below).
+rejected (see below), and so is a select value outside its options
+([Select values](#select-values)).
 
 ### Unknown data fields
 
@@ -370,8 +412,93 @@ A known field whose value has the wrong type is reported as
 Number fields need a number; a string that is exactly a number, such as
 `"600"`, is rendered as that number, including values already stored. Boolean
 fields need `true` or `false`, not the text `"true"`. A select field needs one
-of its options. Responsive values are checked per breakpoint and array items
-per item. `add_block` and `update_block` (`POST`/`PATCH .../blocks`, for pages
+of its options, and a new or changed select value outside them is refused
+(below); the warning is for one the block already held. Responsive values are
+checked per breakpoint and array items per item. `add_block` and `update_block` (`POST`/`PATCH .../blocks`, for pages
 and other containers) return these warnings for the fields they write; page,
 partial and batch writes return them for the whole tree. Both check the site's
 own block types as well as core.
+
+### Select values
+
+A select field renders only one of its options: `core/rich_heading` with
+`"level": 2` (a number) renders a `<div>`, not an `<h2>`. Every block write
+refuses a select value outside the field's options with `400
+invalid_field_value`, and nothing is written: `PUT`/`PATCH /pages/{pageId}`,
+`POST /pages`, `PUT`/`PATCH /partials/{partialId}`, `POST /partials`, the
+working copy `PUT`, `POST /pages/batch-write` (per entry, with `code` and
+`details` beside `ok: false`), `add_block`, `update_block` and
+`/blocks/responsive`, for pages and other containers. Breakpoint values,
+array items and `route_overrides` `data_overrides` are checked the same way.
+
+```json
+{
+  "error": "core/rich_heading block intro: blocks[0].data.level is 2, but level must be one of \"h1\", \"h2\", \"h3\", \"h4\", \"h5\", \"h6\". Nothing was written.",
+  "code": "invalid_field_value",
+  "details": {
+    "invalid_fields": [
+      {
+        "block_id": "intro",
+        "block_type": "core/rich_heading",
+        "path": "blocks[0].data.level",
+        "field": "level",
+        "value": 2,
+        "allowed": ["h1", "h2", "h3", "h4", "h5", "h6"],
+        "message": "core/rich_heading block intro: blocks[0].data.level is 2, but level must be one of \"h1\", \"h2\", \"h3\", \"h4\", \"h5\", \"h6\"."
+      }
+    ]
+  }
+}
+```
+
+Only values the write sets or changes are refused. A block is matched by its
+id with the draft before the write; a value it already held is left alone and
+reported as a `field_type_mismatch` warning, so a page saved with such a value
+stays editable and the value can be fixed whenever it suits. A new block, or
+one without an id, is checked whole. In `update_block` and
+`/blocks/responsive` the path starts at `block.data`; in `add_block` at
+`block.data`, with `block.children[0].data...` for nested blocks. A numeric
+option such as a font weight accepts the number as well as the text
+(`600` or `"600"`).
+
+### Heading anchors
+
+A heading without an explicit id gets one from its text when the page renders
+(`Kosten berekenen` → `#kosten-berekenen`, with `-2`, `-3` for duplicates);
+the table of contents links to it. An explicit id is `data.anchor_id` on
+`core/heading` and `core/rich_heading`, or an `id` attribute on an `h2`–`h4`
+in `core/prose`, `core/html` or an HTML-mode page. Changing the text of a
+heading without one changes its address, and links to the old `#` address
+stop working.
+
+When a write changes the id of a heading on a published page, its response
+carries a `heading_anchor_changed` warning with the old and the new id:
+
+```json
+{
+  "code": "heading_anchor_changed",
+  "block_id": "kosten",
+  "block_type": "core/rich_heading",
+  "path": "blocks[0].data.anchor_id",
+  "old_id": "kosten-berekenen",
+  "new_id": "kosten-vergelijken",
+  "message": "A heading in core/rich_heading block kosten is published with the id \"kosten-berekenen\" and will get \"kosten-vergelijken\" (an id without anchor_id follows the heading text), so links to #kosten-berekenen stop working. Set blocks[0].data.anchor_id to \"kosten-berekenen\" to keep them."
+}
+```
+
+To keep the old address, set `anchor_id` to `old_id` (the `path` says where);
+for a heading in prose or HTML the `path` is the HTML (`data.html` or
+`html_content`), and the heading gets `id="<old_id>"`. Nothing is pinned
+automatically: the write lands, and the page renders as before.
+
+A page is published when its status is `published` or `unlisted` and the site
+has been deployed; the ids visitors have are taken from the saved page as it
+was before the write, since a draft is never deployed. The warning comes with
+the write that makes the old id disappear, once: `PUT`/`PATCH
+/pages/{pageId}` (also with `save: true`), `POST /pages/batch-write` (per
+entry), the working copy `PUT`, and the page block routes (`add_block`,
+`update_block`, moving or removing a block, `/blocks/responsive`). It is not
+reported when the heading or its block is removed, when the heading now has
+an explicit id, or when the old id is still on the page. Headings that other
+blocks render, such as card titles, are not part of the comparison; they can
+only shift a duplicate's number.

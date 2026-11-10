@@ -205,7 +205,7 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
   {
     version: 17, core_version: '0.3.20', title: 'Fonts from site CSS and a steady cookie banner',
     changes: [
-      'Font weights and italics written in CSS count as in use: the site\'s, pages\' and blocks\' custom CSS, <style> elements and style attributes in HTML. A rule that names a font role (var(--font-heading) and the others) or targets a heading loads that weight in that role; any other rule loads it in both the body and heading families, because either can inherit it. Before, such a weight was not loaded and the browser drew a nearby or synthesized weight unless fonts.load listed it.',
+      'Font weights and italics written in CSS count as in use: the site\'s, pages\' and blocks\' custom CSS, the templates and styles of the site\'s own block types, <style> elements and style attributes in HTML. A rule that names a font role (var(--font-heading) and the others) or targets a heading loads that weight in that role; any other rule loads it in both the body and heading families, because either can inherit it. Before, such a weight was not loaded and the browser drew a nearby or synthesized weight unless fonts.load listed it.',
       'Bare element rules in site CSS (h2, p, a, button and similar) no longer restyle the cookie banner, which keeps its own spacing, weights and colours. Class rules for its parts, such as .tr-consent__title, still change it.',
       'The cookie banner\'s buttons use the site\'s body font at weight 600 instead of the browser\'s default button font.',
     ],

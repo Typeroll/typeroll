@@ -154,8 +154,11 @@ and `form-section-description`.
 A `core/form` block places the form with `max_width_px` (240–2400), `align`
 (`start`, the default, `center` or `end`), `submit_align` (`start`, `center` or
 `end`, for the submit and back buttons) and `submit_width` (`auto` or `full`).
-Below render version 16 these settings change nothing, and form fields render
-as before.
+From render version 16 the Back and Submit buttons sit together in a
+`.form-actions` row: site CSS that placed the button directly in the form's
+grid (for example `grid-column: 1 / -1`) targets `form > .form-actions`
+instead. Below render version 16 these settings change nothing, and form
+fields render as before.
 
 ## Live choices and actions supplied by installed apps
 

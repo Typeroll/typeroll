@@ -1,6 +1,7 @@
 // Block write tools answer compactly unless asked for the tree, and pass
 // unknown-field rejections through with their suggestions.
 import { describe, it, expect } from 'vitest';
+import { z } from 'zod';
 import { TyperollClient } from '../src/client.js';
 import { pageBlockTools } from '../src/tools/page-blocks.js';
 
@@ -97,5 +98,28 @@ describe('block write tools', () => {
     const { deps, calls } = setup();
     await tool('update_block').handler({ page_id: 'home', block_id: 'b', data: { part_styles: { link: 'quiet-link' } } } as never, deps);
     expect(JSON.parse(calls[0]!.body!)).toMatchObject({ block_id: 'b', data: { part_styles: { link: 'quiet-link' } } });
+  });
+
+  it('accepts route_overrides on add_block and update_block and refuses a route that is not a route kind', () => {
+    const overrides = { home: { data_overrides: { background: 'primary' } } };
+    const add = z.object(tool('add_block').inputSchema as z.ZodRawShape);
+    const update = z.object(tool('update_block').inputSchema as z.ZodRawShape);
+    expect(add.safeParse({ target: { kind: 'partial', id: 'header' }, block: { type: 'core/section', data: { background: 'secondary' }, route_overrides: overrides } }).success).toBe(true);
+    expect(update.safeParse({ target: { kind: 'partial', id: 'header' }, block_id: 'b', route_overrides: overrides }).success).toBe(true);
+    expect(update.safeParse({ page_id: 'home', block_id: 'b', route_overrides: null }).success).toBe(true);
+    expect(update.safeParse({ page_id: 'home', block_id: 'b', route_overrides: { homepage: { data_overrides: {} } } }).success).toBe(false);
+    expect(update.safeParse({ page_id: 'home', block_id: 'b', route_overrides: { home: { background: 'primary' } } }).success).toBe(false);
+    for (const name of ['add_block', 'update_block']) expect(tool(name).description).toContain('route_overrides');
+  });
+
+  it('sends route_overrides to the API as given and leaves them out when not set', async () => {
+    const { deps, calls } = setup();
+    const overrides = { home: { data_overrides: { background: 'primary' } } };
+    await tool('update_block').handler({ target: { kind: 'partial', id: 'header' }, block_id: 'b', route_overrides: overrides } as never, deps);
+    await tool('update_block').handler({ page_id: 'home', block_id: 'b', route_overrides: null } as never, deps);
+    await tool('update_block').handler({ page_id: 'home', block_id: 'b', data: { text: 'x' } } as never, deps);
+    expect(JSON.parse(calls[0]!.body!)).toMatchObject({ block_id: 'b', route_overrides: overrides });
+    expect(JSON.parse(calls[1]!.body!)).toEqual({ block_id: 'b', route_overrides: null });
+    expect(JSON.parse(calls[2]!.body!)).not.toHaveProperty('route_overrides');
   });
 });

@@ -23,6 +23,7 @@
 
 import type { ContentType, Page, SiteSettings } from './types.js';
 import { schemaDate } from './schema-dates.js';
+import { htmlToPlainText } from './html-text.js';
 
 type SchemaObj = Record<string, unknown>;
 
@@ -226,7 +227,13 @@ export function buildContentPageSchema(
 
   const mappedOnly = contentType.schema_field_mode === 'mapped';
   const userMap = contentType.schema_field_map;
-  const data = { ...page.fields, title: page.title, body: page.html_content, author: page.author,
+  // Schema.org text properties (articleBody, description) take words, not
+  // markup: the body and rich text fields become plain text without the CSS
+  // or script source of <style> and <script> elements.
+  const richText = new Set(contentType.fields.filter(def => def.type === 'richtext').map(def => def.name));
+  const fields = Object.fromEntries(Object.entries(page.fields ?? {}).map(([name, value]) =>
+    [name, richText.has(name) && typeof value === 'string' ? htmlToPlainText(value) : value]));
+  const data = { ...fields, title: page.title, body: htmlToPlainText(page.html_content), author: page.author,
     ...(page.seo_description ? { description: page.seo_description } : {}),
     ...(page.og_image ? { image: page.og_image } : {}),
     // Page metadata is available to explicit maps in both field modes. Do not

@@ -32,9 +32,11 @@ import {
   workingCopyDiffers,
 } from '../../../../../../../../lib/working-copy';
 import { blockLocation, blockWriteResponse, blockWriteSummary } from '../../../../../../../../lib/block-write-response';
-import type { Block, Page } from '@typeroll/shared';
+import { blockTreeError, invalidFieldValuesBody, type Block, type Page } from '@typeroll/shared';
 import {
+  addBlockInvalidFields,
   addBlockUnknownFields,
+  updatedBlockInvalidFields,
   partStyleErrorsBody,
   singleBlockPartStyleCheck,
   updatedBlockPartStyleCheck,
@@ -42,7 +44,10 @@ import {
   siteBlockRegistry,
   unknownFieldsBody,
   updateBlockUnknownFields,
+  updateRouteOverrideUnknownFields,
+  routeOverridesWriteError,
 } from '../../../../../../../../lib/block-write-warnings';
+import { headingAnchorWarnings } from '../../../../../../../../lib/heading-anchor-warnings';
 
 // Buffer model: mutations read from and write to the page's WORKING COPY
 // (the draft layer). Nothing lands on the saved page until an explicit
@@ -58,6 +63,11 @@ async function loadDraft(ctx: Ctx, pageId: string): Promise<{ page: Page; saved:
     saved: page,
     tree: (wc?.fields?.blocks as Block[] | undefined) ?? page.blocks ?? [],
   };
+}
+
+/** Published heading ids a tree mutation changed (heading_anchor_changed). */
+function anchorWarnings(ctx: Ctx, draft: { saved: Page; tree: Block[] }, blocks: Block[]) {
+  return headingAnchorWarnings(ctx, draft.saved, { content_mode: 'blocks', blocks: draft.tree }, { content_mode: 'blocks', blocks });
 }
 
 /** Write the tree to the working copy; true when it now differs from the saved page. */
@@ -103,6 +113,10 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
   const shapeError = bodyShapeError(body, ['block', 'parent_id', 'slot_index', 'position', 'response']);
   if (shapeError) return apiError(shapeError, 400);
+  // route_overrides and the rest of the block's shape, children included,
+  // are checked before anything is written (a 400 naming the path).
+  const treeError = blockTreeError([body.block], 'block');
+  if (treeError) return apiError(treeError, 400);
   const mode = blockWriteResponse(request, body);
   if (typeof mode !== 'string') return apiError(mode.error, 400);
 
@@ -111,6 +125,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const registry = await siteBlockRegistry(ctx);
   const unknown = addBlockUnknownFields(body.block, registry);
   if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
+  const invalid = addBlockInvalidFields(body.block, registry);
+  if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
   const partStyles = await singleBlockPartStyleCheck(ctx, body.block as { type: string; data?: unknown }, body.block.data, registry, 'block.data');
   if (partStyles.errors.length) return apiResponse(ctx, partStyleErrorsBody(partStyles.errors), 400, body);
 
@@ -126,10 +142,11 @@ export const POST: APIRoute = async ({ request, params }) => {
       data: body.block.data, style_overrides: body.block.style_overrides,
     }, registry);
     warnings.push(...partStyles.warnings);
+    const anchors = await anchorWarnings(ctx, draft, result.blocks);
     return apiResponse(ctx, {
       added_id: result.added_id,
       ...(mode === 'summary' ? blockWriteSummary(result.blocks, result.added_id, unsaved) : { blocks: result.blocks }),
-      ...(warnings.length ? { warnings } : {}),
+      ...(warnings.length || anchors.length ? { warnings: [...warnings, ...anchors] } : {}),
     });
   } catch (e) {
     return mutError(e);
@@ -146,16 +163,19 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     block_id?: string;
     data?: Record<string, unknown>;
     style_overrides?: Block['style_overrides'];
+    route_overrides?: Block['route_overrides'] | null;
     response?: string;
   } | null;
   if (!body?.block_id) return apiError('block_id is required');
   if (body && 'responsive' in body) {
     return apiError('responsive is not writable here. Put breakpoint values in data or use the /responsive endpoint.', 400);
   }
-  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'response'], {
-    requireOneOf: ['data', 'style_overrides'],
+  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'route_overrides', 'response'], {
+    requireOneOf: ['data', 'style_overrides', 'route_overrides'],
   });
   if (shapeError) return apiError(shapeError, 400);
+  const routeError = routeOverridesWriteError(body.route_overrides, 'route_overrides', true);
+  if (routeError) return apiError(routeError, 400);
   const mode = blockWriteResponse(request, body);
   if (typeof mode !== 'string') return apiError(mode.error, 400);
   if (body.data !== undefined && (!body.data || typeof body.data !== 'object' || Array.isArray(body.data))) {
@@ -167,15 +187,21 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // A key no field of the block's type declares would be stored and never
   // rendered; reject it, naming where it probably belongs.
   const registry = await siteBlockRegistry(ctx);
-  const unknown = updateBlockUnknownFields(draft.tree, body.block_id, body.data, registry);
+  const unknown = [
+    ...updateBlockUnknownFields(draft.tree, body.block_id, body.data, registry),
+    ...updateRouteOverrideUnknownFields(draft.tree, body.block_id, body.data, body.route_overrides, registry),
+  ];
   if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
   try {
     const blocks = updateBlock(draft.tree, {
       block_id: body.block_id,
       data: body.data,
       style_overrides: body.style_overrides,
+      route_overrides: body.route_overrides,
       null_removes: true,
     });
+    const invalid = updatedBlockInvalidFields(draft.tree, blocks, body.block_id, registry);
+    if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
     // Part styles are checked on the block as written: a style the site lacks,
     // of another kind, or unreadable on the part's background is refused.
     const partStyles = await updatedBlockPartStyleCheck(ctx, blocks, body.block_id, body.data, registry);
@@ -184,7 +210,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // A misspelled override is stored, returned and built without comment.
     // The caller cannot read our logs, so it travels in the body.
     // Field values the schema will not render travel the same way.
-    const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings];
+    const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings, ...await anchorWarnings(ctx, draft, blocks)];
     return apiResponse(ctx, {
       ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}),
       ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks }),
@@ -228,7 +254,11 @@ export const PUT: APIRoute = async ({ request, params }) => {
       target_position: body.target_position,
     });
     const unsaved = await persistDraft(ctx, pageId, blocks, draft.saved);
-    return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks });
+    const warnings = await anchorWarnings(ctx, draft, blocks);
+    return apiResponse(ctx, {
+      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks }),
+      ...(warnings.length ? { warnings } : {}),
+    });
   } catch (e) {
     return mutError(e);
   }
@@ -254,7 +284,11 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     const location = blockLocation(draft.tree, blockId);
     const blocks = removeBlock(draft.tree, blockId);
     const unsaved = await persistDraft(ctx, pageId, blocks, draft.saved);
-    return apiResponse(ctx, mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: unsaved } : { blocks });
+    const warnings = await anchorWarnings(ctx, draft, blocks);
+    return apiResponse(ctx, {
+      ...(mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: unsaved } : { blocks }),
+      ...(warnings.length ? { warnings } : {}),
+    });
   } catch (e) {
     return mutError(e);
   }

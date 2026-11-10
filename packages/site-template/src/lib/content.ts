@@ -453,7 +453,8 @@ export let getBlockRegistry = buildMemo(loadBlockRegistry);
  * binds page context — its output genuinely differs per route — so those are
  * detected and rendered normally rather than cached wrong.
  *
- * ⚠️ INVARIANT: the key covers the partial's content, NOT the caller's context.
+ * ⚠️ INVARIANT: the key covers the partial's content and the route kind
+ * (`context.route`, for route_overrides), NOT the rest of the caller's context.
  * That is sound only while every caller passes an equivalent non-route-varying
  * context — in practice, a `site` slice built the same way. Both callers go
  * through `siteContext()` for exactly that reason. This is not theoretical: an
@@ -602,8 +603,12 @@ export async function renderPartialHtml(
   // silently omit the later route's dependencies from its receipt.
   if (process.env.TYPEROLL_RENDER_CACHE_WORK || !BUILD_CACHE_ENABLED || await isRouteVarying(partial, directives?.freeBlocks)) return render();
 
+  // A block's route_overrides render the same partial differently by route
+  // kind (home, item, page, facet), so the route kind is part of the key: at
+  // most one render per kind, never one route's header on another kind's page.
+  // Covers overrides inside the global blocks the partial places as well.
   const key = partial.content_mode === 'blocks' && partial.blocks?.length
-    ? `blocks:${partial.id}:${JSON.stringify(partial.blocks)}`
+    ? `blocks:${partial.id}:route:${context?.route ?? ''}:${JSON.stringify(partial.blocks)}`
     : `html:${partial.id}:${expandedHtml}:iframes:${JSON.stringify(directives?.iframeAllowedHosts ?? [])}`;
   const hit = partialHtmlCache.get(key);
   if (hit !== undefined) return hit;

@@ -444,7 +444,7 @@ export async function readSiteReadiness(args: {
     vstore.siteFields(orgId, siteId, versionId),
     store.listDocs<Media>(paths.media(orgId, siteId)),
     store.getDoc<SiteApps>(paths.apps(orgId, siteId)),
-    checkInternalLinks({ store, orgId, siteId, versionId, site: args.site, includeLinks: true }),
+    checkInternalLinks({ store, orgId, siteId, versionId, site: args.site, includeLinks: true, fragments: false }),
     args.readZone().catch(() => ({ status: 'unavailable', host: args.site.domain ?? '' }) as ZoneAiPolicyRead),
   ]);
   if (!settings) throw new Error('Site settings not found');
