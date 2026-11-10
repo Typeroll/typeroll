@@ -102,6 +102,12 @@ describe('renderMenuItems', () => {
     expect(renderMenuItems(items, { ...options, display: 'none' })).not.toContain('block-nav-sub');
   });
 
+  it('keeps a fragment-only #cookie-settings item as the link the consent runtime opens the banner from', () => {
+    const footer: Menu = { id: 'f', name: 'F', items: [{ id: 'cookies', type: 'url', href: '#cookie-settings', label: 'Cookie settings' }] };
+    expect(validateMenu(footer).errors).toEqual([]);
+    expect(renderMenuItems(resolveMenu(footer, pages, '/').items, options)).toBe('<li><a href="#cookie-settings">Cookie settings</a></li>');
+  });
+
   it('escapes labels and addresses', () => {
     const evil: Menu = { id: 'e', name: 'E', items: [{ id: 'x', type: 'url', href: '/a"b', label: '<b>x</b>' }] };
     expect(renderMenuItems(resolveMenu(evil, pages, '/').items, options)).toBe('<li><a href="/a&quot;b">&lt;b&gt;x&lt;/b&gt;</a></li>');

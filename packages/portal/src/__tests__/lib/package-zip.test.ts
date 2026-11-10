@@ -35,7 +35,10 @@ describe('package zip', () => {
     expect(read.manifest.id).toBe('acme');
     expect([...read.files.keys()]).toEqual([imagePath]);
     expect(Buffer.from(read.files.get(imagePath)!).equals(Buffer.from(image))).toBe(true);
-    // Writing the same package again gives the same bytes.
+    // No entry carries the time of writing, so writing again gives the same bytes.
+    const entries = Object.values((await JSZip.loadAsync(written)).files);
+    expect(entries.filter(entry => entry.dir)).toEqual([]);
+    expect(entries.every(entry => entry.date.getTime() === entries[0].date.getTime())).toBe(true);
     expect(sha(await writeSitePackageZip(manifest(files), files))).toBe(sha(written));
   });
 

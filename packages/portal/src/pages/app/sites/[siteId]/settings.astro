@@ -348,11 +348,10 @@ const domainBlocksArchiving =
       <p class="muted text-sm" style="margin-top: -0.5rem;">
         A small floating "Cookies" button appears bottom-left once the visitor
         has chosen, so they can change their mind. Want the link in the footer
-        instead? Put <code>data-tr-open-consent</code> on any link or button in
-        the footer partial, e.g.
-        <code>&lt;a href="#" data-tr-open-consent&gt;Cookies&lt;/a&gt;</code>,
-        and hide the floating button in Custom CSS with
-        <code>.tr-consent__manage{'{'}display:none{'}'}</code>.
+        instead? Add a link to <code>#cookie-settings</code> (for example a
+        "Cookie settings" item in the footer menu) and set "Reopen button"
+        below to "None". Visitors must always be able to change or withdraw
+        their choice, so keep that link on every page.
       </p>
       </details>
       <div class="field">
@@ -379,6 +378,14 @@ const domainBlocksArchiving =
           placeholder="/privacy-policy"
         />
         <p class="muted text-sm">When set, a "Read our privacy policy" link appears under the text.</p>
+      </div>
+      <div class="field">
+        <label for="setting-cookie_consent-manage_button">Reopen button</label>
+        <select id="setting-cookie_consent-manage_button" name="cookie_consent.manage_button">
+          <option value="floating" selected={settings.cookie_consent?.manage_button !== 'none'}>Floating "Cookies" button, bottom-left</option>
+          <option value="none" selected={settings.cookie_consent?.manage_button === 'none'}>None: the site links to #cookie-settings</option>
+        </select>
+        <p class="muted text-sm">With "None", put a link to <code>#cookie-settings</code> in the footer so visitors can still reopen the banner.</p>
       </div>
       <details class="field">
         <summary>Banner wording</summary>

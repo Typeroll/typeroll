@@ -199,5 +199,22 @@ describe('cookie consent — settings POST handler', () => {
     const persisted = (await vstore.settings(ORG, SITE, MAIN_VERSION_ID)) as SiteSettings;
     expect(persisted.cookie_consent?.enabled).toBe(true);
     expect(persisted.cookie_consent?.reload_after_consent).toBe(false);
+    expect(persisted.cookie_consent?.manage_button).toBeUndefined();
+  });
+
+  it('stores manage_button "none" from the Reopen button choice and nothing for floating', async () => {
+    await seedSite();
+    const { vstore } = await import('../../lib/version-store');
+    const save = async (value: string) => {
+      const form = new FormData();
+      form.set('site_name', 'My Site');
+      form.set('cookie_consent.enabled', 'on');
+      form.set('cookie_consent.manage_button', value);
+      await postSettings(form);
+      return ((await vstore.settings(ORG, SITE, MAIN_VERSION_ID)) as SiteSettings).cookie_consent?.manage_button;
+    };
+    expect(await save('none')).toBe('none');
+    expect(await save('floating')).toBeUndefined();
+    expect(await save('bogus')).toBeUndefined();
   });
 });

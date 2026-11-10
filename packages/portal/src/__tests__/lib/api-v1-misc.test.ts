@@ -219,6 +219,68 @@ describe('settings endpoints', () => {
     const settings = await vstore.settings(ORG, SITE, MAIN_VERSION_ID);
     expect(settings?.cookie_consent?.labels).toEqual({ title: 'Cookies auf dieser Website' });
   });
+
+  it('PATCH validates cookie_consent.manage_button and warns without a reopen link', async () => {
+    const { token } = await setup();
+    const { vstore } = await import('../../lib/version-store');
+    const { getStore } = await import('../../lib/datastore');
+    const patch = async (cookie_consent: unknown) => {
+      const res = await callRoute(
+        import('../../pages/api/v1/sites/[siteId]/settings'),
+        'PATCH',
+        `http://localhost/api/v1/sites/${SITE}/settings`,
+        { siteId: SITE },
+        { headers: bearer(token), body: { cookie_consent } },
+      );
+      return { status: res.status, body: await res.json() as { warnings?: string[]; error?: string } };
+    };
+    const reopenWarning = (body: { warnings?: string[] }) => (body.warnings ?? []).some(w => w.startsWith('cookie_reopen_link_missing'));
+
+    for (const value of ['hidden', true, 'Floating']) {
+      const res = await patch({ manage_button: value });
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body)).toContain('cookie_consent.manage_button must be one of: floating, none');
+    }
+
+    const off = await patch({ enabled: true, manage_button: 'none' });
+    expect(off.status).toBe(200);
+    expect(reopenWarning(off.body)).toBe(true);
+    expect((await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.cookie_consent?.manage_button).toBe('none');
+
+    // A footer menu item linking to #cookie-settings is enough.
+    await getStore().setDoc(paths.menu(ORG, SITE, 'footer', MAIN_VERSION_ID), {
+      name: 'Footer', locations: ['footer'],
+      items: [{ id: 'cookies', type: 'url', href: '#cookie-settings', label: 'Cookie settings' }],
+    });
+    const linked = await patch({ manage_button: 'none' });
+    expect(linked.status).toBe(200);
+    expect(reopenWarning(linked.body)).toBe(false);
+
+    // The floating default never warns, and null restores it.
+    const restored = await patch({ manage_button: null });
+    expect(restored.status).toBe(200);
+    expect(reopenWarning(restored.body)).toBe(false);
+    expect((await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.cookie_consent).toEqual({ enabled: true });
+  });
+
+  it('PATCH counts a data-tr-open-consent element in a footer partial as a reopen link', async () => {
+    const { token } = await setup();
+    const { getStore } = await import('../../lib/datastore');
+    await getStore().setDoc(paths.partial(ORG, SITE, 'footer', MAIN_VERSION_ID), {
+      name: 'Footer', kind: 'footer', status: 'published', content_mode: 'html',
+      html_content: '<footer><button type="button" data-tr-open-consent>Cookies</button></footer>',
+    });
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/settings'),
+      'PATCH',
+      `http://localhost/api/v1/sites/${SITE}/settings`,
+      { siteId: SITE },
+      { headers: bearer(token), body: { cookie_consent: { enabled: true, manage_button: 'none' } } },
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json() as { warnings?: string[] };
+    expect((body.warnings ?? []).some(w => w.startsWith('cookie_reopen_link_missing'))).toBe(false);
+  });
 });
 
 describe('media endpoints', () => {

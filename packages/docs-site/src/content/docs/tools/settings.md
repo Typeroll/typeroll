@@ -386,6 +386,7 @@ settings route and MCP tool:
     "scripts_necessary": "",
     "scripts_optional": "<script>startAnalytics()</script>",
     "reload_after_consent": false,
+    "manage_button": "floating",
     "labels": {
       "title": "Cookies auf dieser Website",
       "accept_all": "Alle akzeptieren"
@@ -406,6 +407,34 @@ reopens the banner) and `manage_button` (its visible text, "Cookies" by
 default). Values are plain text of at most 120 characters,
 and blank values use the built-in wording. `labels` is replaced as a whole.
 
+#### Reopening the banner
+
+Visitors must be able to change or withdraw their choice as easily as they
+gave it, so the banner always needs a way back. `manage_button` decides what
+Typeroll renders for that:
+
+- `"floating"` (the default): the "Cookies" button fixed bottom-left.
+- `"none"`: no floating button, for example where it covers form fields on a
+  phone. The site then links to the banner itself.
+
+Any link to `#cookie-settings` opens the banner: a footer menu item
+(`type: "url"`, `href: "#cookie-settings"`, label "Cookie settings"), a link
+in a Navigation links block or in footer HTML. No extra attribute is needed.
+A page opened at `#cookie-settings`, such as `/privacy/#cookie-settings`,
+shows the banner as well. Any element with `data-tr-open-consent` also opens
+it. Without the banner the link does nothing.
+
+```json
+{ "cookie_consent": { "manage_button": "none" } }
+```
+
+A write that leaves the banner on with `manage_button: "none"` while no
+header, footer or other partial and no menu has a `#cookie-settings` link or
+`data-tr-open-consent` element returns the warning
+`cookie_reopen_link_missing`; the publication's job `warnings` repeat it.
+`null` restores `"floating"`. The setting needs no new render version: the
+default output is unchanged.
+
 The object is shallow-merged, so omitted fields keep their saved values. In a
 signed hosted preview the banner and optional-script gate work, but the frame
 has an intentionally opaque origin: the choice is held in memory for the
@@ -418,7 +447,7 @@ The banner's parts carry classes for site CSS: `.tr-consent` (the overlay),
 `.tr-consent__panel`, `.tr-consent__title`, `.tr-consent__body`,
 `.tr-consent__link`, `.tr-consent__actions`, `.tr-consent__btn` with
 `--ghost` and `--primary`, and `.tr-consent__manage` (the floating button that
-reopens it). It takes `--color-primary`, `--font-body` and `--font-heading`
+reopens it; to remove it, set `manage_button: "none"` rather than hiding it in CSS). It takes `--color-primary`, `--font-body` and `--font-heading`
 from the theme. From render version 16 its styles sit in a cascade layer, so a
 class rule such as `.tr-consent__title { font-weight: 700 }` changes it
 without `!important`. In version 16 a bare element rule in site CSS (`h2`, `p`,

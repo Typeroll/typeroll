@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.3.23 (candidate, MCP 0.45.132)
+
+- The page list (`GET /api/v1/sites/{siteId}/pages`, MCP `list_pages`) reports
+  `has_unsaved_changes` for every page, as reading one page already did. Before,
+  the field was missing from the list, so a pre-publish check that read it as
+  false missed drafts made with block edits. Found on moveria.nl.
+
+- `cookie_consent.manage_button: "none"` leaves out the floating "Cookies"
+  button (and its CSS) that reopens the banner; `"floating"`, the default,
+  renders as before. Any link to `#cookie-settings`, such as a footer menu
+  item, now opens the banner without custom attributes, as does a page opened
+  at `#cookie-settings`; `check_internal_links` accepts the fragment. A
+  settings write, and the publication's job `warnings`, report
+  `cookie_reopen_link_missing` when the button is off and no partial or menu
+  links to `#cookie-settings` or has a `data-tr-open-consent` element, since
+  visitors must be able to withdraw consent as easily as they gave it. The
+  portal's cookie settings have a "Reopen button" choice. Found on
+  autopilot.se, where the floating button covered form options on mobile.
+
+- Per-route block settings (`route_overrides`) now reach the published site.
+  The publication projection carried every other block field but dropped this
+  one, so a header block that is primary on the home page previewed correctly
+  and published with its base settings on every route. Route overrides are
+  projected like `responsive` data overrides (declared, rendered fields only),
+  and a test now fails when a new Block field is neither projected nor
+  declared editorial. Republish to apply. Found on moveria.nl.
+
 ## 0.3.22 (candidate, MCP 0.45.131)
 
 - Organization owners can permanently delete an archived site themselves,
