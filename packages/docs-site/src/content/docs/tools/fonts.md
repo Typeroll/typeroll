@@ -59,8 +59,9 @@ family loads 400–700.
 
 From render version 17 the weights and italics written in CSS count too:
 `font-weight`, `font-style` and the `font` shorthand in the site's and the
-pages' custom CSS, a block's own custom CSS, and `<style>` elements and
-`style` attributes in HTML. A rule whose `font-family` or `font` names a role
+pages' custom CSS, a block's own custom CSS, the template and styles of the
+site's own block types in use, and `<style>` elements and `style` attributes in
+HTML. A rule whose `font-family` or `font` names a role
 (`var(--font-heading)`, `--font-body`, `--font-display`, `--font-accent`,
 `--font-mono`) loads the weight in that role; a rule for a heading element
 (`h1`–`h6`) loads it in the heading family; any other rule loads it in both

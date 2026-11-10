@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Render version 17 also counts the font weights in the CSS of a site's own
+  block types (`<style>` in the template, and `styles`), as its notes say for
+  `<style>` elements in HTML. Found on autopilot.se, where a FAQ marker drawn
+  at 400 in a layout block's template was not loaded without `fonts.load`.
+- Archiving a site is no longer refused for its generated address
+  (`site-….<sites domain>`); a live custom domain still blocks it.
+- `typography.line_length: "none"`: prose fills its column.
+- `route_overrides` on a block: settings per route kind (home, item, page,
+  facet), for example a shared header section that is primary on the home page.
+
 ## 0.3.20 (candidate, MCP 0.45.129)
 
 - Site and page custom CSS accept `scroll-behavior` and `overscroll-behavior`.

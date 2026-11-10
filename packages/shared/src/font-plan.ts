@@ -17,6 +17,7 @@
  */
 import type { Block, BlockType } from './types.js';
 import { routeOverrideEntries } from './route-overrides.js';
+import { blockOutputForVersion } from './render-version.js';
 import type { SiteStyle, StyleProps } from './site-styles.js';
 import { FONT_CATALOG, type CatalogFont } from './font-catalog.js';
 import type { FallbackOverrides } from './font-file.js';
@@ -236,13 +237,14 @@ export function fontRoleFamilies(fonts: FontSettings | undefined): Record<SiteFo
 export interface FontRoleUsage { weights: number[]; italic: number[] }
 export type FontUsage = Record<SiteFontRole, FontRoleUsage>;
 
-type BlockTypeLookup = ReadonlyMap<string, Pick<BlockType, 'schema'>> | ((id: string) => Pick<BlockType, 'schema'> | undefined);
+type FontBlockType = Pick<BlockType, 'schema'> & Partial<Pick<BlockType, 'origin' | 'template' | 'styles' | 'render_versions'>>;
+type BlockTypeLookup = ReadonlyMap<string, FontBlockType> | ((id: string) => FontBlockType | undefined);
 
 export interface FontUsageInput {
   styles?: readonly SiteStyle[] | null;
   /** Every block tree of the site: page bodies, partials, global blocks and templates in use. */
   blocks?: Iterable<Block | null | undefined>;
-  /** Block types, for field defaults (a heading's default weight). */
+  /** Block types, for field defaults (a heading's default weight) and, from `CSS_FONT_USAGE_RENDER_VERSION`, the CSS in the site's own types' templates and styles. */
   blockTypes?: BlockTypeLookup;
   /** The site's stylesheets: its custom CSS and the pages' own. Counted from `CSS_FONT_USAGE_RENDER_VERSION`. */
   css?: Iterable<string | null | undefined>;
@@ -445,12 +447,25 @@ export function collectFontUsage(input: FontUsageInput): FontUsage {
     } else if (Array.isArray(value)) for (const item of value) scanText(item, role, depth + 1);
     else if (value && typeof value === 'object') for (const inner of Object.values(value)) scanText(inner, role, depth + 1);
   };
+  // The CSS a site's own block type brings, once per type in use: `<style>`
+  // in its template and its styles, at the site's render version. Core types
+  // are left out: their weights come from their schema defaults.
+  const typeCssSeen = new Set<string>();
+  const typeCss = (id: string, type: FontBlockType | undefined, role: SiteFontRole) => {
+    if (!countCss || !type || type.origin === 'core' || typeCssSeen.has(id)) return;
+    typeCssSeen.add(id);
+    const output = blockOutputForVersion({ template: type.template, styles: type.styles, render_versions: type.render_versions }, input.renderVersion ?? 0);
+    if (typeof output.template === 'string' && CSS_FONT_HINT.test(output.template)) cssText(output.template, role);
+    if (typeof output.styles === 'string' && CSS_FONT_HINT.test(output.styles)) stylesheet(output.styles);
+  };
   const visit = (block: Block | null | undefined, depth: number) => {
     if (!block || typeof block !== 'object' || depth > 32) return;
     // Each route's settings load the fonts they choose, like the base data.
     for (const [, override] of routeOverrideEntries(block)) visit({ id: block.id, type: block.type, data: { ...block.data, ...override } }, depth + 1);
-    const schema = lookup(block.type)?.schema ?? [];
+    const type = lookup(block.type);
+    const schema = type?.schema ?? [];
     const role = blockRole(block, schema.find(field => field.name === 'font')?.default);
+    typeCss(block.type, type, role);
     const weights: number[] = [];
     const data = block.data ?? {};
     for (const field of schema) if (WEIGHT_KEY.test(field.name) && data[field.name] === undefined && field.default !== undefined) weightValues(field.default, weights);

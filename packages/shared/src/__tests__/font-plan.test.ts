@@ -145,6 +145,33 @@ describe('collectFontUsage: weights written in CSS (render version 17)', () => {
     expect(v16.families.find(family => family.family === 'Outfit')).toMatchObject({ weights: [700] });
     expect(v16.families.find(family => family.family === 'Outfit')?.variable).toBeUndefined();
   });
+
+  // Found on autopilot.se: a FAQ marker drawn at 400 by CSS in a site block type's template.
+  it("counts CSS in a site block type's template and styles, once, at the site's render version", () => {
+    const layout = {
+      origin: 'user' as const, schema: [],
+      template: '<article><style>.faq summary::after{content:"+";font-weight:400} .faq summary{font-family:var(--font-heading);font-weight:700}</style>{{children}}</article>',
+      styles: '.faq .lead{font-weight:300}',
+      render_versions: [{ from: 18, styles: '.faq .lead{font-weight:800}' }],
+    };
+    const blockTypes = new Map([['user/layout', layout]]);
+    const blocks = [{ id: 'a', type: 'user/layout', data: {} }, { id: 'b', type: 'user/layout', data: {} }];
+    const usage = collectFontUsage({ blocks, blockTypes, renderVersion: v });
+    expect(usage.heading.weights).toEqual([300, 400, 700]);
+    expect(usage.body.weights).toEqual([300, 400]);
+    // Version 16 does not read block type CSS.
+    expect(collectFontUsage({ blocks, blockTypes, renderVersion: 16 }).heading.weights).toEqual([700]);
+  });
+
+  it('leaves core block type CSS to their schema defaults', () => {
+    const blockTypes = new Map([['core/x', { origin: 'core' as const, schema: [], styles: '.x{font-weight:300}' }]]);
+    expect(collectFontUsage({ blocks: [{ id: 'a', type: 'core/x', data: {} }], blockTypes, renderVersion: v }).body.weights).toEqual([400]);
+  });
+
+  it('ignores a type that is not used on the site', () => {
+    const blockTypes = new Map([['user/unused', { origin: 'user' as const, schema: [], styles: '.x{font-weight:300}' }]]);
+    expect(collectFontUsage({ blocks: [], blockTypes, renderVersion: v }).body.weights).toEqual([400]);
+  });
 });
 
 describe('matchFontWeight', () => {
