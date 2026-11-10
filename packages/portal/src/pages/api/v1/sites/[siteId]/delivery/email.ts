@@ -10,7 +10,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const body = await request.json().catch(() => null);
   if (!body || typeof body.to !== 'string' || !/^[^\s@,;\r\n]+@[^\s@,;\r\n]+\.[^\s@,;\r\n]+$/.test(body.to) ||
       typeof body.subject !== 'string' || body.subject.length > 200 || /[\r\n]/.test(body.subject) ||
-      typeof body.text !== 'string' || body.text.length > 32_000) return apiError('Invalid transactional email', 400);
+      typeof body.text !== 'string' || body.text.length > 32_000 ||
+      (body.format !== undefined && body.format !== 'text' && body.format !== 'linked_text')) return apiError('Invalid transactional email', 400);
   try {
     const receipt = await sendApplicationEmail({ orgId: ctx.orgId, siteId: ctx.siteId, installationId: ctx.extensionIdentity.installationId }, body);
     return apiResponse(ctx, publicReceipt(receipt), ['accepted', 'delivered'].includes(receipt.status) ? 202 : 409);
