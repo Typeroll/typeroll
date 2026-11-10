@@ -19,12 +19,12 @@ export const MISSING_MEDIA_LIST_LIMIT = 100;
 const MISSING_MEDIA_WARNING_LIMIT = 20;
 
 /** Only the host of a source address: the full URL may carry a token. */
-function sourceHost(url: unknown): string | null {
+export function sourceHost(url: unknown): string | null {
   if (typeof url !== 'string' || !url) return null;
   try { return new URL(url).host || null; } catch { return null; }
 }
 /** Addresses in a recorded failure are reduced to their host for the same reason. */
-const hostOnly = (text: string) => text.replace(/\bhttps?:\/\/[^\s"'`<>)]+/g, url => sourceHost(url) ?? '[address]').slice(0, 500);
+export const hostOnly = (text: string) => text.replace(/\bhttps?:\/\/[^\s"'`<>)]+/g, url => sourceHost(url) ?? '[address]').slice(0, 500);
 
 /**
  * Classifies referenced media that is not ready in the connected organization

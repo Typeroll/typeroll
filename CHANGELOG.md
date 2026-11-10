@@ -29,6 +29,23 @@
   references are left empty and each one is reported in `job.warnings`. Files
   still uploading or migrating keep failing with `media_migration_pending`,
   which now gives their count.
+- A media migration that set files aside no longer reports `complete`: the
+  site and the overall status report `complete_with_failures`, and both carry
+  `ok` (`true` only for `complete` without set-aside files), so a client that
+  knows only `complete` can check `ok` or `failed_files`. `failed_media` now
+  lists every set-aside file of every site, 100 per call with
+  `failed_media_total` and a `failed_media_next` cursor (`failed_after` in
+  `GET /publishing/media-migration` and `read_organization_media_migration`),
+  with `source_host` and `source_url` without its query. Counts and the list are
+  both read from the media records. Before, job counters (including that of an
+  organization-wide pass from before per-site jobs) could report skipped files
+  that `failed_media`, at most 50 per site and 100 in all, did not list: Moveria
+  saw 99 skipped files and 12 listed. A copy of a stored file
+  that fails for a passing reason (Workers plan CPU limit, 5xx, timeout) is
+  retried after 1, 5, 15, 30 and 60 minutes like a pending import, instead of
+  three times within seconds; only then is it set aside, marked
+  `transient: true`. Refused sources and integrity failures are still set aside
+  at once. Publishing → Media storage lists the files and offers a retry.
 
 ## 0.3.24 (candidate, MCP 0.45.133)
 

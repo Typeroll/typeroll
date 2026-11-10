@@ -6,7 +6,11 @@ import type { Media } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
 import { ConnectionError } from '../publishing/connections';
 
-/** Delay before each automatic retry of a pending import. After the last one fails, the file is set aside until someone retries it. */
+/**
+ * Delay before each automatic retry of a pending import, and of a stored file whose
+ * migration copy failed for a passing reason. After the last one fails, the file is
+ * set aside until someone retries it.
+ */
 export const IMPORT_RETRY_DELAYS_MS = [1, 5, 15, 30, 60].map(minutes => minutes * 60_000);
 
 export type ImportingMedia = Media & {
@@ -15,7 +19,10 @@ export type ImportingMedia = Media & {
   import_failures?: number;
   /** When the migration tries the copy again; null when no automatic retry is planned. */
   import_retry_at?: string | null;
-  migration_failed?: boolean; migration_error?: { code: string; message: string; at: string } | null;
+  /** `transient`: the copy failed for a passing reason on every automatic retry; a retry from Publishing may succeed. */
+  migration_failed?: boolean; migration_error?: { code: string; message: string; at: string; transient?: boolean } | null;
+  /** Failed migration copies of a stored file since the last success or manual retry, and when the next one runs. */
+  migration_failures?: number; migration_retry_at?: string | null;
 };
 
 /**

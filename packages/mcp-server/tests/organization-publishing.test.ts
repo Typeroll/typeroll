@@ -102,6 +102,18 @@ describe('organization publishing through the MCP transport', () => {
     } finally { await s.close(); }
   });
 
+  it('pages through set-aside media and says that complete_with_failures is not success', async () => {
+    const s = await session();
+    try {
+      const { tools } = await s.client.listTools();
+      const tool = tools.find(t => t.name === 'read_organization_media_migration')!;
+      for (const term of ['complete_with_failures', 'is not success', 'ok is true only', 'failed_media_next', 'failed_after', 'source_host', 'transient']) expect(tool.description).toContain(term);
+      expect((await s.client.callTool({ name: 'read_organization_media_migration', arguments: {} })).isError).not.toBe(true);
+      expect((await s.client.callTool({ name: 'read_organization_media_migration', arguments: { failed_after: 'moveria-de/image 1' } })).isError).not.toBe(true);
+      expect(s.requests).toEqual(['https://example.test/api/v1/publishing/media-migration', 'https://example.test/api/v1/publishing/media-migration?failed_after=moveria-de%2Fimage%201']);
+    } finally { await s.close(); }
+  });
+
   it('checks organization build access without a site and forwards the revision', async () => {
     const s = await session();
     try {

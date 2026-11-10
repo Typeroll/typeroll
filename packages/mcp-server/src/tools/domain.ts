@@ -192,9 +192,9 @@ export const domainTools: ToolDef[] = [
   {
     name: 'read_organization_media_migration',
     noSite: true,
-    description: 'Read progress and actionable failures while original media moves to the organization Cloudflare account: overall state with updated_at, each site (state, counts, error, updated_at) and failed_media (site_id, media_id, filename, source_url, code, message, at) for files that could not be copied and were set aside. Fix or delete those files, then retry_organization_media_migration. Requires an organization API key.',
-    inputSchema: {},
-    handler: withErrorBoundary(async (_args, { client }) => ok(await client.rootGet('publishing/media-migration'))),
+    description: 'Read progress and actionable failures while original media moves to the organization Cloudflare account: overall state, ok and updated_at, each site (state, ok, counts, error, updated_at) and failed_media for files that could not be copied and were set aside. state is queued | running | failed | complete | complete_with_failures. complete_with_failures means the migration finished but set files aside: it is not success, and ok is true only for complete with failed_files 0. failed_media lists every set-aside file, 100 per call in site and media order (site_id, media_id, filename, source_url without its query, source_host, code, message, at, transient); failed_media_total counts them all and failed_media_next, when not null, is the failed_after value for the next page. transient: true means the copy failed for a passing reason (for example media_transfer_resources_exceeded, a 5xx or a timeout) after the automatic retries at 1, 5, 15, 30 and 60 minutes, so a retry may succeed; other codes (a refused source, an integrity failure) need the file fixed or deleted. Then call retry_organization_media_migration. Requires an organization API key.',
+    inputSchema: { failed_after: z.string().optional().describe('failed_media_next from the previous call, to read the next page of failed_media.') },
+    handler: withErrorBoundary(async (args, { client }) => ok(await client.rootGet(`publishing/media-migration${args.failed_after ? `?failed_after=${encodeURIComponent(args.failed_after)}` : ''}`))),
   },
   {
     name: 'retry_organization_media_migration',
