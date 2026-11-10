@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.23 (candidate, MCP 0.45.132)
 
 - The page list (`GET /api/v1/sites/{siteId}/pages`, MCP `list_pages`) reports
   `has_unsaved_changes` for every page, as reading one page already did. Before,
