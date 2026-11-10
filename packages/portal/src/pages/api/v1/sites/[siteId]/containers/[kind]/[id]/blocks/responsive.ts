@@ -16,7 +16,8 @@ import {
 } from '../../../../../../../../../lib/block-containers';
 import { setBlockResponsiveField, BlockMutationError } from '../../../../../../../../../lib/block-mutations';
 import { blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
-import { siteBlockRegistry, unknownFieldsBody, updateBlockUnknownFields } from '../../../../../../../../../lib/block-write-warnings';
+import { siteBlockRegistry, unknownFieldsBody, updateBlockUnknownFields, updatedBlockInvalidFields } from '../../../../../../../../../lib/block-write-warnings';
+import { invalidFieldValuesBody } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -46,13 +47,16 @@ export const POST: APIRoute = async ({ request, params }) => {
 
   try {
     const loaded = await loadContainer(target, ctx);
-    const unknown = updateBlockUnknownFields(loaded.blocks, body.block_id, { [body.field]: body.value ?? '' }, await siteBlockRegistry(ctx));
+    const registry = await siteBlockRegistry(ctx);
+    const unknown = updateBlockUnknownFields(loaded.blocks, body.block_id, { [body.field]: body.value ?? '' }, registry);
     if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
     const blocks = setBlockResponsiveField(loaded.blocks, {
       block_id: body.block_id,
       field: body.field,
       value: body.value,
     });
+    const invalid = updatedBlockInvalidFields(loaded.blocks, blocks, body.block_id, registry);
+    if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
     const written = await writeContainer(target, blocks, ctx, loaded.raw);
     return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks });
   } catch (e) {

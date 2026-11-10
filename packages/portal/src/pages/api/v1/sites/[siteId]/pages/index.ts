@@ -8,7 +8,8 @@
 // warnings: [{ code: 'slug_adjusted', requested, slug, path, conflicting_page_id }].
 
 import type { APIRoute } from 'astro';
-import { pageSort, comparePageValues, pageContentValues, pageExcerpt, DEFAULT_CONTENT_TYPE, type Page } from '@typeroll/shared';
+import { pageSort, comparePageValues, pageContentValues, pageExcerpt, invalidFieldValuesBody, invalidSelectValues, DEFAULT_CONTENT_TYPE, type Page } from '@typeroll/shared';
+import { siteBlockRegistry } from '../../../../../../lib/block-write-warnings';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { createPage } from '../../../../../../lib/page-create';
@@ -134,6 +135,9 @@ export const POST: APIRoute = async ({ request, params }) => {
   const authority = apiWriteAuthority(body);
   if ('error' in authority) return apiError(authority.error, 400);
   const { override_reason: _reason, write_mode: _mode, ...input } = body as Record<string, unknown>;
+  // Every value of a new page is new: a select value outside its options is refused.
+  const invalid = Array.isArray(input.blocks) ? invalidSelectValues(input.blocks, await siteBlockRegistry(ctx)) : [];
+  if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
   try {
     const result = await createPage(ctx, input, body.write_mode === 'import' ? 'import' : authority.actor, `api-key:${ctx.keyPrefix}`);
     return apiResponse(ctx, { ...result, page: { ...projectPage(result.page, true), url: await pageAddress(ctx, result.page) } }, 201, body);

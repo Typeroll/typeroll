@@ -27,9 +27,11 @@ import {
   unknownBlockFields,
   unknownItemFields,
   unknownRouteOverrideFields,
+  invalidSelectValues,
   type Block,
   type BlockTreeWarning,
   type BlockType,
+  type InvalidFieldValue,
   type PartStyleIssue,
   type SiteColors,
   type SiteStyle,
@@ -113,6 +115,27 @@ export function updateRouteOverrideUnknownFields(
     { id: blockId, type: found.block.type, data: { ...found.block.data, ...setValues(data) }, route_overrides: routeOverrides },
     registry,
   );
+}
+
+// ─── Select values outside their options ─────────────────────────────────
+//
+// Refused where the write sets or changes them (invalid_field_value); a value
+// the block already held is left alone and stays a field_type_mismatch warning.
+
+/** Select values outside their options in a block add_block inserts, its children and slots included. */
+export function addBlockInvalidFields(block: unknown, registry: Registry): InvalidFieldValue[] {
+  return invalidSelectValues(block, registry, { root: 'block' });
+}
+
+/**
+ * Select values outside their options that an update_block (or responsive)
+ * write set on `blockId`: the block after the write, compared with the same
+ * block before it. Its children are not part of the write.
+ */
+export function updatedBlockInvalidFields(before: Block[], after: Block[], blockId: string, registry: Registry): InvalidFieldValue[] {
+  const next = findBlock(after, blockId);
+  if (!next) return [];
+  return invalidSelectValues(next.block, registry, { root: 'block', stored: findBlock(before, blockId)?.block, descendants: false });
 }
 
 /** Unknown data keys in a block add_block inserts, its children and slots included. */

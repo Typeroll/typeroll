@@ -313,7 +313,8 @@ own, so a sweep says which page was affected), the working copy
 and the caller has already spent the round trip. Check for `warnings` after a
 successful write; the absence of the field is the only clean signal. The one
 exception is an unknown `data` key in `add_block` or `update_block`, which is
-rejected (see below).
+rejected (see below), and so is a select value outside its options
+([Select values](#select-values)).
 
 ### Unknown data fields
 
@@ -411,8 +412,51 @@ A known field whose value has the wrong type is reported as
 Number fields need a number; a string that is exactly a number, such as
 `"600"`, is rendered as that number, including values already stored. Boolean
 fields need `true` or `false`, not the text `"true"`. A select field needs one
-of its options. Responsive values are checked per breakpoint and array items
-per item. `add_block` and `update_block` (`POST`/`PATCH .../blocks`, for pages
+of its options, and a new or changed select value outside them is refused
+(below); the warning is for one the block already held. Responsive values are
+checked per breakpoint and array items per item. `add_block` and `update_block` (`POST`/`PATCH .../blocks`, for pages
 and other containers) return these warnings for the fields they write; page,
 partial and batch writes return them for the whole tree. Both check the site's
 own block types as well as core.
+
+### Select values
+
+A select field renders only one of its options: `core/rich_heading` with
+`"level": 2` (a number) renders a `<div>`, not an `<h2>`. Every block write
+refuses a select value outside the field's options with `400
+invalid_field_value`, and nothing is written: `PUT`/`PATCH /pages/{pageId}`,
+`POST /pages`, `PUT`/`PATCH /partials/{partialId}`, `POST /partials`, the
+working copy `PUT`, `POST /pages/batch-write` (per entry, with `code` and
+`details` beside `ok: false`), `add_block`, `update_block` and
+`/blocks/responsive`, for pages and other containers. Breakpoint values,
+array items and `route_overrides` `data_overrides` are checked the same way.
+
+```json
+{
+  "error": "core/rich_heading block intro: blocks[0].data.level is 2, but level must be one of \"h1\", \"h2\", \"h3\", \"h4\", \"h5\", \"h6\". Nothing was written.",
+  "code": "invalid_field_value",
+  "details": {
+    "invalid_fields": [
+      {
+        "block_id": "intro",
+        "block_type": "core/rich_heading",
+        "path": "blocks[0].data.level",
+        "field": "level",
+        "value": 2,
+        "allowed": ["h1", "h2", "h3", "h4", "h5", "h6"],
+        "message": "core/rich_heading block intro: blocks[0].data.level is 2, but level must be one of \"h1\", \"h2\", \"h3\", \"h4\", \"h5\", \"h6\"."
+      }
+    ]
+  }
+}
+```
+
+Only values the write sets or changes are refused. A block is matched by its
+id with the draft before the write; a value it already held is left alone and
+reported as a `field_type_mismatch` warning, so a page saved with such a value
+stays editable and the value can be fixed whenever it suits. A new block, or
+one without an id, is checked whole. In `update_block` and
+`/blocks/responsive` the path starts at `block.data`; in `add_block` at
+`block.data`, with `block.children[0].data...` for nested blocks. A numeric
+option such as a font weight accepts the number as well as the text
+(`600` or `"600"`).

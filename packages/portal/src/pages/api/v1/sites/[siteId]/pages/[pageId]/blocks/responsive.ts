@@ -20,8 +20,8 @@ import { vstore } from '../../../../../../../../lib/version-store';
 import { setBlockResponsiveField, BlockMutationError } from '../../../../../../../../lib/block-mutations';
 import { mergeWorkingCopy, readWorkingCopy, workingCopyDiffers } from '../../../../../../../../lib/working-copy';
 import { blockWriteResponse, blockWriteSummary } from '../../../../../../../../lib/block-write-response';
-import { siteBlockRegistry, unknownFieldsBody, updateBlockUnknownFields } from '../../../../../../../../lib/block-write-warnings';
-import type { Block } from '@typeroll/shared';
+import { siteBlockRegistry, unknownFieldsBody, updateBlockUnknownFields, updatedBlockInvalidFields } from '../../../../../../../../lib/block-write-warnings';
+import { invalidFieldValuesBody, type Block } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -51,7 +51,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const wcTarget = { kind: 'page', id: pageId } as const;
   const wc = await readWorkingCopy(ctx, wcTarget);
   const source = (wc?.fields?.blocks as Block[] | undefined) ?? page.blocks ?? [];
-  const unknown = updateBlockUnknownFields(source, body.block_id, { [body.field]: body.value ?? '' }, await siteBlockRegistry(ctx));
+  const registry = await siteBlockRegistry(ctx);
+  const unknown = updateBlockUnknownFields(source, body.block_id, { [body.field]: body.value ?? '' }, registry);
   if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
   try {
     const blocks = setBlockResponsiveField(source, {
@@ -59,6 +60,8 @@ export const POST: APIRoute = async ({ request, params }) => {
       field: body.field,
       value: body.value,
     });
+    const invalid = updatedBlockInvalidFields(source, blocks, body.block_id, registry);
+    if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
     const unsaved = workingCopyDiffers(page, await mergeWorkingCopy(ctx, wcTarget, { blocks }));
     return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks });
   } catch (e) {

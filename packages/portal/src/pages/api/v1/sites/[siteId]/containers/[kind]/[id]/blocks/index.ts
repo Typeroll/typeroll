@@ -38,10 +38,12 @@ import {
   removeBlock,
   BlockMutationError,
 } from '../../../../../../../../../lib/block-mutations';
-import { blockTreeError, type Block } from '@typeroll/shared';
+import { blockTreeError, invalidFieldValuesBody, type Block } from '@typeroll/shared';
 import { blockLocation, blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
 import {
+  addBlockInvalidFields,
   addBlockUnknownFields,
+  updatedBlockInvalidFields,
   partStyleErrorsBody,
   singleBlockPartStyleCheck,
   updatedBlockPartStyleCheck,
@@ -125,6 +127,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     const registry = await siteBlockRegistry(ctx);
     const unknown = addBlockUnknownFields(body.block, registry);
     if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
+    const invalid = addBlockInvalidFields(body.block, registry);
+    if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
     const partStyles = await singleBlockPartStyleCheck(ctx, body.block as { type: string; data?: unknown }, body.block.data, registry, 'block.data');
     if (partStyles.errors.length) return apiResponse(ctx, partStyleErrorsBody(partStyles.errors), 400, body);
     const result = addBlock(loaded.blocks, {
@@ -194,6 +198,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       route_overrides: body.route_overrides,
       null_removes: true,
     });
+    const invalid = updatedBlockInvalidFields(loaded.blocks, blocks, body.block_id, registry);
+    if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
     // Part styles are checked on the block as written: a style the site lacks,
     // of another kind, or unreadable on the part's background is refused.
     const partStyles = await updatedBlockPartStyleCheck(ctx, blocks, body.block_id, body.data, registry);

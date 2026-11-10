@@ -76,6 +76,15 @@ function scalarProblem(field: FieldDefinition, value: unknown): string | null {
   }
 }
 
+/** A scalar value its field will not render, with where it sits inside the block's data. */
+interface FieldProblem {
+  field: FieldDefinition;
+  value: unknown;
+  path: string;
+  /** Keys from the data object to the value, e.g. `['items', 0, 'style']`. */
+  keys: Array<string | number>;
+}
+
 function fieldWarnings(
   fields: readonly FieldDefinition[],
   data: Record<string, unknown>,
@@ -83,21 +92,24 @@ function fieldWarnings(
   blockId: string | undefined,
   out: FieldTypeWarning[],
   depth: number,
+  keys: Array<string | number> = [],
+  problems?: FieldProblem[],
 ): void {
   if (depth > 4) return;
   for (const field of fields) {
     if (!Object.hasOwn(data, field.name)) continue;
     const value = data[field.name];
     const at = `${path}.${field.name}`;
+    const here = [...keys, field.name];
     if (field.type === 'object' && field.fields?.length && value && typeof value === 'object' && !Array.isArray(value)) {
-      fieldWarnings(field.fields, value as Record<string, unknown>, at, blockId, out, depth + 1);
+      fieldWarnings(field.fields, value as Record<string, unknown>, at, blockId, out, depth + 1, here, problems);
       continue;
     }
     if (field.type === 'array' && field.fields?.length) {
       if (!Array.isArray(value)) continue;
       value.forEach((item, index) => {
         if (item && typeof item === 'object' && !Array.isArray(item)) {
-          fieldWarnings(field.fields!, item as Record<string, unknown>, `${at}[${index}]`, blockId, out, depth + 1);
+          fieldWarnings(field.fields!, item as Record<string, unknown>, `${at}[${index}]`, blockId, out, depth + 1, [...here, index], problems);
         }
       });
       continue;
@@ -106,12 +118,13 @@ function fieldWarnings(
       partStylesWarnings(field, value, at, blockId, out);
       continue;
     }
-    const entries: Array<[string, unknown]> = field.responsive && isResponsiveValue(value)
-      ? BREAKPOINT_ORDER.filter(point => point in (value as object)).map(point => [`${at}.${point}`, (value as Record<string, unknown>)[point]])
-      : [[at, value]];
-    for (const [valuePath, entry] of entries) {
+    const entries: Array<[string, unknown, Array<string | number>]> = field.responsive && isResponsiveValue(value)
+      ? BREAKPOINT_ORDER.filter(point => point in (value as object)).map(point => [`${at}.${point}`, (value as Record<string, unknown>)[point], [...here, point]])
+      : [[at, value, here]];
+    for (const [valuePath, entry, entryKeys] of entries) {
       const expected = scalarProblem(field, entry);
       if (!expected) continue;
+      problems?.push({ field, value: entry, path: valuePath, keys: entryKeys });
       out.push({
         code: 'field_type_mismatch',
         ...(blockId ? { block_id: blockId } : {}),
@@ -214,4 +227,139 @@ export function blockFieldTypeWarnings(
   };
   visit(value, root);
   return out;
+}
+
+// ─── Invalid select values ────────────────────────────────────────────────
+//
+// A select field renders only one of its options: `core/rich_heading` with
+// `level: 2` (a number) renders a <div>, not an <h2>, because the tag-name
+// substitution accepts only the listed tag names. Other type mismatches stay
+// warnings; a select value outside its options is refused, but only where
+// the write sets or changes it. A value the stored block already holds is
+// left alone (and still warned about), so a page that was saved with a
+// legacy value before this check stays editable.
+
+export interface InvalidFieldValue {
+  block_id?: string;
+  block_type: string;
+  /** Path to the value, e.g. `blocks[0].data.level` or `blocks[1].route_overrides.home.data_overrides.align.mobile`. */
+  path: string;
+  field: string;
+  value: unknown;
+  /** The values the field accepts. */
+  allowed: string[];
+  message: string;
+}
+
+function selectAllowed(field: FieldDefinition): string[] {
+  return /(?:^|_)(?:font|font_family)$/.test(field.name) ? [...FONT_ROLES] : [...(field.options ?? [])];
+}
+
+function valueAt(data: unknown, keys: ReadonlyArray<string | number>): unknown {
+  let node = data;
+  for (const key of keys) {
+    if (!node || typeof node !== 'object') return undefined;
+    node = (node as Record<string | number, unknown>)[key];
+  }
+  return node;
+}
+
+function sameValue(a: unknown, b: unknown): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
+}
+
+function blocksById(tree: unknown): Map<string, Block> {
+  const out = new Map<string, Block>();
+  const seen = new Set<object>();
+  const visit = (node: unknown) => {
+    if (!Array.isArray(node)) return;
+    for (const block of node) {
+      if (!block || typeof block !== 'object' || Array.isArray(block) || seen.has(block)) continue;
+      seen.add(block);
+      const typed = block as Block;
+      if (typeof typed.id === 'string' && typed.id && !out.has(typed.id)) out.set(typed.id, typed);
+      visit(typed.children);
+      if (Array.isArray(typed.slots)) typed.slots.forEach(visit);
+    }
+  };
+  visit(tree);
+  return out;
+}
+
+/** Select values outside their options in one block's data and route overrides, unchanged stored values excepted. */
+function blockInvalidSelects(
+  block: Block,
+  registry: ReadonlyMap<string, BlockType>,
+  path: string,
+  stored: Block | undefined,
+  out: InvalidFieldValue[],
+): void {
+  const type = registry.get(block.type);
+  if (!type?.schema) return;
+  const blockId = typeof block.id === 'string' && block.id ? block.id : undefined;
+  const base = block.data && typeof block.data === 'object' && !Array.isArray(block.data) ? block.data as Record<string, unknown> : {};
+  const sources: Array<[Record<string, unknown>, Record<string, unknown>, string, unknown]> = [[base, base, `${path}.data`, stored?.data]];
+  for (const [route, data] of routeOverrideEntries(block)) {
+    const storedRoute = (stored?.route_overrides as Record<string, { data_overrides?: unknown }> | undefined)?.[route]?.data_overrides;
+    sources.push([data, { ...base, ...data }, `${path}.route_overrides.${route}.data_overrides`, storedRoute]);
+  }
+  for (const [data, schemaData, at, storedData] of sources) {
+    const problems: FieldProblem[] = [];
+    fieldWarnings(blockDataSchema(type, schemaData, registry), data, at, blockId, [], 0, [], problems);
+    for (const problem of problems) {
+      if (problem.field.type !== 'select' || !problem.field.options?.length) continue;
+      if (stored && sameValue(valueAt(storedData, problem.keys), problem.value)) continue;
+      const allowed = selectAllowed(problem.field);
+      out.push({
+        ...(blockId ? { block_id: blockId } : {}),
+        block_type: block.type,
+        path: problem.path,
+        field: problem.field.name,
+        value: problem.value,
+        allowed,
+        message: `${block.type}${blockId ? ` block ${blockId}` : ''}: ${problem.path} is ${describe(problem.value)}, but ${problem.field.name} must be one of ${allowed.map(option => JSON.stringify(option)).join(', ')}.`,
+      });
+    }
+  }
+}
+
+/**
+ * Select values that are not one of the field's options, in a block tree
+ * (an array) or in one block (an object, whose path is `root`). With
+ * `stored` (the tree or block before the write), a block whose id is in it
+ * is refused only for values that differ from the stored value at the same
+ * place; new blocks and blocks without an id are checked whole.
+ * `descendants: false` checks only the given block itself. Unknown block
+ * types are skipped.
+ */
+export function invalidSelectValues(
+  value: unknown,
+  registry: ReadonlyMap<string, BlockType>,
+  options: { root?: string; stored?: unknown; descendants?: boolean } = {},
+): InvalidFieldValue[] {
+  const out: InvalidFieldValue[] = [];
+  const stored = blocksById(Array.isArray(options.stored) ? options.stored : options.stored ? [options.stored] : []);
+  const seen = new Set<object>();
+  const visitBlock = (block: unknown, at: string) => {
+    if (!block || typeof block !== 'object' || Array.isArray(block) || seen.has(block)) return;
+    seen.add(block);
+    const typed = block as Block;
+    if (typeof typed.type === 'string') blockInvalidSelects(typed, registry, at, typeof typed.id === 'string' && typed.id ? stored.get(typed.id) : undefined, out);
+    if (options.descendants === false) return;
+    if (typed.children !== undefined) visit(typed.children, `${at}.children`);
+    if (Array.isArray(typed.slots)) typed.slots.forEach((slot, s) => visit(slot, `${at}.slots[${s}]`));
+  };
+  const visit = (node: unknown, path: string) => {
+    if (Array.isArray(node)) node.forEach((block, index) => visitBlock(block, `${path}[${index}]`));
+  };
+  if (Array.isArray(value)) visit(value, options.root ?? 'blocks');
+  else visitBlock(value, options.root ?? 'block');
+  return out;
+}
+
+/** The 400 body for a write that sets select values outside their options. */
+export function invalidFieldValuesBody(issues: InvalidFieldValue[]): { error: string; code: 'invalid_field_value'; details: { invalid_fields: InvalidFieldValue[] } } {
+  const first = issues[0]!;
+  const more = issues.length > 1 ? ` (and ${issues.length - 1} more, listed in details.invalid_fields)` : '';
+  return { error: `${first.message}${more} Nothing was written.`, code: 'invalid_field_value', details: { invalid_fields: issues } };
 }
