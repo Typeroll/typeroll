@@ -127,6 +127,22 @@ describe('renderPreview fonts', () => {
     expect(ticket).toMatchObject({ o: ORG, s: SITE, g: 'https://fonts.googleapis.com/css2?family=Inter:wght@700&display=swap', f: ['font-1'] });
   });
 
+  it('plans the weights in the site\'s and the page\'s custom CSS from render version 17, like a publication', async () => {
+    library.list.mockResolvedValue([]);
+    const settings = { fonts: { heading: 'Outfit', body: 'Inter', delivery: 'google' as const, size_base: 16 }, custom_css: '.nav a{font-weight:600}' };
+    const page = { custom_css: 'h2{font-weight:500}' };
+    const { publicationFontUsage, siteFontPlan } = await import('../../lib/fonts/font-delivery');
+    for (const renderVersion of [16, 17]) {
+      await seedSite({ ...settings, render_version: renderVersion }, page);
+      const html = (await render())!;
+      const published = siteFontPlan(settings.fonts, publicationFontUsage({ settings: { ...settings, render_version: renderVersion }, pages: [{ html_content: '<p>Hello</p>', ...page }] }), { renderVersion });
+      expect(html).toContain(`<link rel="stylesheet" href="${published.google_css_url!.replace(/&/g, '&amp;')}">`);
+      expect(published.google_css_url).toBe(renderVersion === 17
+        ? 'https://fonts.googleapis.com/css2?family=Outfit:wght@500..700&family=Inter:wght@400..600&display=swap'
+        : 'https://fonts.googleapis.com/css2?family=Outfit:wght@700&family=Inter:wght@400&display=swap');
+    }
+  });
+
   it('keeps the Google CDN when the site chose it and links font services from their CDN', async () => {
     library.list.mockResolvedValue([]);
     await seedSite({ render_version: 14, fonts: { heading: 'Inter', body: 'proxima-nova', delivery: 'google', size_base: 16, services: [{ provider: 'adobe', kit: 'abc1234', families: ['proxima-nova'] }] } });

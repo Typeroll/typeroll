@@ -424,7 +424,9 @@ export interface SiteSettings {
     accent?: string;
     /**
      * Weights and italics to load for a role beyond those the site uses
-     * (render version 15), for example for custom CSS. See `planSiteFonts`.
+     * (render version 15), for example one set by a script or a CSS
+     * variable. From render version 17 weights written in CSS count as used.
+     * See `collectFontUsage` and `planSiteFonts`.
      */
     load?: { [R in import('./font-plan.js').SiteFontRole]?: { weights?: number[]; italic?: number[] } };
     /** Adobe Fonts kits and Bunny Fonts or Fontshare stylesheets, loaded from their CDN. */

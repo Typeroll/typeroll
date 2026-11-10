@@ -57,8 +57,22 @@ range in use, and a self-hosted family gets a metric-matched fallback face so
 text keeps its place while the font loads. Before render version 15 every
 family loads 400–700.
 
-There is nothing to list for normal use. To load more, for example for
-weights used only in custom CSS, add them per role with `fonts.load`:
+From render version 17 the weights and italics written in CSS count too:
+`font-weight`, `font-style` and the `font` shorthand in the site's and the
+pages' custom CSS, a block's own custom CSS, and `<style>` elements and
+`style` attributes in HTML. A rule whose `font-family` or `font` names a role
+(`var(--font-heading)`, `--font-body`, `--font-display`, `--font-accent`,
+`--font-mono`) loads the weight in that role; a rule for a heading element
+(`h1`–`h6`) loads it in the heading family; any other rule loads it in both
+the body and heading families, because either can inherit it. A `style`
+attribute counts for its block's font. `bold` is 700, `normal` 400, and a
+weight between the hundreds counts as the nearest hundred; `bolder`,
+`lighter` and `var(...)` cannot be read and are not counted. In versions 15
+and 16 CSS weights are not counted.
+
+There is nothing to list for normal use. To load more, for example for a
+weight that appears nowhere the planner reads (set by a script, or through a
+CSS variable), add it per role with `fonts.load`:
 
 ```json
 {

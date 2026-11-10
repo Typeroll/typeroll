@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import {
   buildCoreBlockRegistry, collectFontUsage, fallbackOverrides, fontFileWeightRange, FONT_PLAN_RENDER_VERSION, googleFontsCssUrl,
-  globalBlockSourceFromPartials, matchFontWeight, planSiteFonts, readFontFile, webFontFamilies, withGlobalBlockContent,
+  globalBlockSourceFromPartials, matchFontWeight, planSiteFonts, readFontFile, resolveRenderVersion, webFontFamilies, withGlobalBlockContent,
   type Block, type BlockType, type FontPlan, type FontUsage, type PlannedFamily, type SiteFontFile, type SiteSettings,
 } from '@typeroll/shared';
 import { FONT_CODECS } from './codecs';
@@ -32,7 +32,7 @@ export function siteFontPlan(fonts: Fonts, usage: FontUsage, options: { renderVe
   return plan;
 }
 
-type Doc = { kind?: string; status?: string; content_mode?: string; blocks?: unknown; html_content?: unknown; fields?: unknown; steps?: Array<{ blocks?: unknown }> };
+type Doc = { kind?: string; status?: string; content_mode?: string; blocks?: unknown; html_content?: unknown; fields?: unknown; custom_css?: unknown; steps?: Array<{ blocks?: unknown }> };
 interface FrozenContent {
   settings?: Partial<SiteSettings>;
   pages?: Doc[]; partials?: Doc[]; pageTemplates?: Doc[]; forms?: Doc[];
@@ -66,11 +66,20 @@ export function publicationFontBlocks(publication: FrozenContent): Block[] {
   return trees;
 }
 
-/** Weights and italics a frozen publication uses. */
+/** The stylesheets a frozen publication renders: the site's custom CSS and each page's own. */
+export function publicationFontCss(publication: FrozenContent): string[] {
+  return [publication.settings?.custom_css, ...(publication.pages ?? []).map(page => page.custom_css)]
+    .filter((css): css is string => typeof css === 'string' && !!css);
+}
+
+/** Weights and italics a frozen publication uses (from render version 17 including those written in CSS). */
 export function publicationFontUsage(publication: FrozenContent): FontUsage {
   const registry = buildCoreBlockRegistry() as Map<string, Pick<BlockType, 'id' | 'schema'>>;
   for (const type of publication.blockTypes ?? []) if (type?.id) registry.set(type.id, type);
-  return collectFontUsage({ styles: publication.settings?.styles, blocks: publicationFontBlocks(publication), blockTypes: registry });
+  return collectFontUsage({
+    styles: publication.settings?.styles, blocks: publicationFontBlocks(publication), blockTypes: registry,
+    css: publicationFontCss(publication), renderVersion: resolveRenderVersion(publication.settings?.render_version),
+  });
 }
 
 // ── Uploaded files ────────────────────────────────────────────────────────
