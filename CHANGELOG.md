@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.22 (candidate, MCP 0.45.131)
 
 - Organization owners can permanently delete an archived site themselves,
   through the API or an AI agent acting for them; until now only the platform
