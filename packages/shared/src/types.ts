@@ -2006,7 +2006,9 @@ export interface DeployJob {
   /** Final error message on failure. */
   error?: string;
   /** Where a failed publication stopped, and the build provider's own log when one was read. */
-  failure?: { stage: string; code: string; diagnostic?: BuildDiagnostic; provider_log?: BuildFailureLog };
+  failure?: { stage: string; code: string; diagnostic?: BuildDiagnostic; provider_log?: BuildFailureLog;
+    /** media_missing: referenced files whose copy to organization storage failed (at most 100), and their total. */
+    missing_media?: Array<{ media_id: string; filename: string; source_host: string | null; code: string; reason: string }>; missing_media_total?: number };
   /** Non-blocking preflight findings. The deploy still succeeds, but these
    *  need editorial attention before launch. */
   warnings?: string[];
@@ -2031,6 +2033,8 @@ export interface DeployJob {
   production?: boolean;
   /** The caller acknowledged the live domains with confirm_live_domains: true. */
   live_domains_confirmed?: boolean;
+  /** The caller accepted publishing without referenced media that is missing from storage (accept_missing_media: true); their references are left empty. */
+  accept_missing_media?: boolean;
   started_at: string;
   finished_at?: string;
   triggered_by?: string;

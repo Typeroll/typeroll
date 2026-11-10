@@ -197,7 +197,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
         frozen.derivation = { receipts: derivation.receipts, cache_keys: derivation.cache_keys, ...(derivation.skipped.length > 0 ? { skipped: derivation.skipped } : {}) };
       }
       const [domains, organization] = await Promise.all([getSiteDomains(args.orgId, args.siteId), getOrganizationDomains(args.orgId)]);
-      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, undefined, { deferReferences: true, domains, dryRun: args.dryRun === true });
+      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, undefined, { deferReferences: true, domains, dryRun: args.dryRun === true, acceptMissingMedia: job.accept_missing_media === true });
       // Images travel with the site; an organization media host lives in a Cloudflare account hosted sites do not have.
       if (mapped.manifest && mapped.manifest.delivery !== 'static') {
         throw new ConnectionError('Images of a hosted site are published with the site. Remove the organization media host in Publishing, then publish again.', 409, 'hosted_media_host_unsupported');
@@ -354,6 +354,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       code: error instanceof DerivationError ? 'publication_derivation_failed' : error instanceof ConnectionError ? error.code ?? 'hosted_publication_failed' : 'publication_internal_error',
       ...(error instanceof DerivationError ? { provider: error.provider } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
+      ...(error instanceof ConnectionError && Array.isArray(error.details?.missing_media) ? { missing_media: error.details.missing_media, missing_media_total: error.details.missing_media_total } : {}),
       ...(error instanceof ConnectionError && error.details?.cloudflare_errors ? { provider: 'Cloudflare', provider_operation: error.details.operation, http_status: error.details.http_status } : {}) };
     const internal = failure.code === 'publication_internal_error' && error instanceof Error
       ? { error_name: error.name, error_message: redactFailureText(error.message) } : {};

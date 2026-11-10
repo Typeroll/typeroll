@@ -18,6 +18,17 @@
   one at a time until copies succeed again, instead of retrying three times at
   full concurrency. If it persists, the file's error says that the Workers plan
   stopped the copy and that Workers Paid raises the limit.
+- Publishing checks once per publication, dry runs included, that every
+  referenced media file is in the site's media storage. Files whose copy failed
+  and was set aside (`migration_failed`), rejected imports and files with no
+  stored copy fail the job with `media_missing`; `job.failure.missing_media`
+  lists them (`media_id`, `filename`, `source_host`, `code`, `reason`; at most
+  100) and `missing_media_total` counts them all. `POST
+  /api/v1/sites/{siteId}/deploy` and MCP `trigger_deploy` accept
+  `accept_missing_media: true` to publish without those files: their
+  references are left empty and each one is reported in `job.warnings`. Files
+  still uploading or migrating keep failing with `media_migration_pending`,
+  which now gives their count.
 
 ## 0.3.24 (candidate, MCP 0.45.133)
 
