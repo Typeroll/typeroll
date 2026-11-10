@@ -54,6 +54,8 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
         scripts_necessary: String(form.get('cookie_consent.scripts_necessary') ?? '') || undefined,
         scripts_optional: String(form.get('cookie_consent.scripts_optional') ?? '') || undefined,
         reload_after_consent: form.get('cookie_consent.reload_after_consent') === 'on',
+        // Only `none` is stored; the floating button is the default.
+        manage_button: form.get('cookie_consent.manage_button') === 'none' ? 'none' as const : undefined,
         labels: normalizeCookieConsentLabels(Object.fromEntries(
           COOKIE_CONSENT_LABEL_KEYS.map((key) => [key, String(form.get(`cookie_consent.labels.${key}`) ?? '')]),
         )).labels,

@@ -1,4 +1,4 @@
-import { blockTreeError, CORE_BLOCK_TYPES, findMenu, unknownSiteFieldReferences, unknownSnippetReferences, type SiteFieldGroup, isMenuNavigation, locationConflicts, resolveMenu, resolveRenderVersion, validateMenu, withGlobalBlockContent, globalBlockSourceFromPartials, type Block, type BlockType, type Menu, type MenuPage } from '@typeroll/shared';
+import { blockTreeError, cookieReopenLinkWarning, CORE_BLOCK_TYPES, findMenu, unknownSiteFieldReferences, unknownSnippetReferences, type SiteFieldGroup, isMenuNavigation, locationConflicts, resolveMenu, resolveRenderVersion, validateMenu, withGlobalBlockContent, globalBlockSourceFromPartials, type Block, type BlockType, type Menu, type MenuPage } from '@typeroll/shared';
 import { projectPublicationBlocks, projectPublicationBlockTypes, projectPublicationSchema } from '../../../../../scripts/lib/publication-blocks.mjs';
 import { ConnectionError } from './connections';
 
@@ -170,4 +170,13 @@ export function publicationSnippetWarnings(publication: { pages?: Document[]; pa
   for (const partial of publication.partials ?? []) check(partial.blocks, `partial ${partial.id}`);
   for (const template of publication.pageTemplates ?? []) check(template.blocks, `page template ${template.id}`);
   return warnings;
+}
+
+/**
+ * A banner without the floating button whose published partials and menus
+ * hold no link to #cookie-settings: visitors could not reopen it.
+ */
+export function publicationCookieReopenWarnings(publication: { settings?: Record<string, any>; partials?: Document[]; menus?: Document[] }): string[] {
+  const warning = cookieReopenLinkWarning(publication.settings?.cookie_consent, [...(publication.partials ?? []), ...(publication.menus ?? [])]);
+  return warning ? [warning] : [];
 }

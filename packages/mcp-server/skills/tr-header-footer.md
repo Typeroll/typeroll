@@ -202,7 +202,14 @@ English. For any other language, write `text` and set `labels` (`title`,
 `reject`, `necessary`, `accept_all`, `privacy_link`, `manage`,
 `manage_button`) in that language. `manage` is the accessible name and
 `manage_button` the visible text of the floating button that reopens the
-banner. The publication's job `warnings`
+banner.
+
+To leave out the floating button (it can cover form fields on a phone), set
+`cookie_consent.manage_button: "none"` and add a "Cookie settings" item to the
+footer menu: `type: "url"`, `href: "#cookie-settings"`. Any link to
+`#cookie-settings` opens the banner, so visitors can still change or withdraw
+their choice; the settings write warns with `cookie_reopen_link_missing`
+while no partial or menu has one. Do not hide `.tr-consent__manage` with CSS. The publication's job `warnings`
 list any banner wording and built-in control labels that fall back to English.
 
 Use `update_site_settings`, then read settings back. `scripts_necessary` and
