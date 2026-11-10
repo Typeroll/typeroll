@@ -160,7 +160,14 @@ maps to one HTTP endpoint; the actual logic runs in the customer's portal
   site (owner-organization admin; refused while a custom domain is live or
   verified). An archived site refuses every other write. `purge_site_media`
   permanently deletes an archived site's media (irreversible — confirm with
-  the user first). `get_site` reports `lifecycle.status` and
+  the user first). Deleting an archived site for good is two steps and needs
+  an owner of the owning organization on their own connection:
+  `get_site_deletion_inventory` (writes nothing; blockers, counts, what stays
+  in the owner's accounts, a digest), then — only after the owner explicitly
+  confirms that inventory for this site — `delete_site` with its
+  `confirm.body`. A 202 `in_progress` means call again with the same
+  arguments. Tell the owner about the `untouched` resources (Git repository,
+  hosting project that keeps serving, DNS). `get_site` reports `lifecycle.status` and
   `ai_scripts_enabled`; `get_media_upload_status` is the upload pre-flight
   the portal media library shows.
 
@@ -1318,7 +1325,7 @@ preview.
 |---|---|
 | **Guide + skills (playbook)** | `read_guide` (returns this whole guide — the bridge for hosted clients that can't read it off disk), `list_skills`, `read_skill` — the bundled `tr-*.md` recipes (incl. `tr-responsive` for per-breakpoint layout). Call `list_skills` first when a task looks like "build / migrate / redesign a site", then `read_skill name=…`. No API key or site context needed. |
 | **Discovery** | `get_site`, `create_site`, `create_site_and_migrate`, `create_site_and_plan` (org-scoped key only — see below), `update_site` (incl. `ai_scripts_enabled`, admin), `list_versions`, `read_site_settings` |
-| **Site lifecycle** | `archive_site`, `restore_site`, `purge_site_media` (archived sites only, irreversible). Owner-organization admin, as in the portal. |
+| **Site lifecycle** | `archive_site`, `restore_site`, `purge_site_media` (archived sites only, irreversible). Owner-organization admin, as in the portal. `get_site_deletion_inventory`, `delete_site` (archived sites only, permanent; an organization owner's own connection, after the owner confirms the inventory). |
 | **Workflows** | `list_workflows`, `start_workflow` (write; `rebuild_deploy` admin), `get_workflow`, `approve_workflow` (only `paused_for_review`, with the user's consent), `cancel_workflow` |
 | **Access** | `list_api_keys`, `revoke_api_key` (site admin), `list_organization_api_keys`, `revoke_organization_api_key` (organization key; new keys are created only in the portal), `list_site_shares`, `share_site`, `update_site_share`, `revoke_site_share` (site admin), `create_organization_invite`, `list_organization_invites`, `revoke_organization_invite` (organization key), `read_organization_ai_settings`, `set_organization_ai_key`, `remove_organization_ai_key`, `set_organization_ai_site_access` (the portal AI chat's own key and Sites; organization key) |
 | **Organization publishing** | `read_organization_publishing_connections`, `diagnose_organization_github_connection`, `diagnose_organization_cloudflare_connection`, `disconnect_organization_publishing_provider`, `connect_organization_cloudflare`, `prepare_organization_media_storage`, `save_organization_media_access`, plus builds, Hosting Groups, domains and media migration tools (organization key) |

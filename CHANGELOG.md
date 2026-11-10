@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased
+
+- Organization owners can permanently delete an archived site themselves,
+  through the API or an AI agent acting for them; until now only the platform
+  operator could. `GET /api/v1/sites/{siteId}/deletion` (MCP
+  `get_site_deletion_inventory`) writes nothing and returns document counts per
+  collection and version, blockers (`not_archived`, `domain_serving`,
+  `shared_with_other_orgs`, `media_present`, `hosting_service_unavailable`),
+  the resources left untouched in the owner's own accounts (Git repository,
+  the Pages project that keeps serving the last publication, DNS, app data) and
+  a digest. `POST /api/v1/sites/{siteId}/deletion` (MCP `delete_site`) takes
+  `confirm_site_id` and `confirm_digest` and refuses another site, a stale
+  digest or a blocked site. It revokes the site's API keys, removes stale share
+  index entries, deletes leaf first with the site document last, answers 202
+  `in_progress` for a large site (repeat the same request), records an audit
+  entry on the organization (`audit_id`) and retires a hosted site on its
+  hosting service. Only an owner's personal connection may do this;
+  administrators, organization and site API keys, shares and apps are refused
+  with 403 `owner_authority_required`. A site whose deletion has started cannot
+  be restored (409 `site_deletion_in_progress`). Guide: Delete a site.
+- Datastores can list the documents beneath a path (`listTree`) on fixtures,
+  SQLite and the Durable Object store.
+
 ## 0.3.21 (candidate, MCP 0.45.130)
 
 - Docs: render versions 16 and 17 in the settings table, styling the cookie

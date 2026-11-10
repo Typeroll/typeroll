@@ -135,6 +135,8 @@ export function effectFor(name: string): ToolEffect {
     || name === 'archive_site'
     || name === 'restore_site'
     || name === 'purge_site_media'
+    // Owner authority is checked by the route; admin is the least it needs.
+    || name === 'delete_site'
     || name === 'install_extension'
     || name === 'set_extension_installation_status'
     || name === 'uninstall_extension'

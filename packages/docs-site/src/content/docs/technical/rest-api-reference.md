@@ -1176,6 +1176,30 @@ Delete an unused content type. Reassign or delete its pages first; the standard 
 | `name` | path | string | yes |  |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
+## Site: Deletion
+
+### `get_site_deletion_inventory`
+
+`GET /api/v1/sites/{siteId}/deletion`
+
+Permission: `read`
+
+Step 1 of permanently deleting an ARCHIVED site. Writes nothing. Returns what deletion would remove (document counts per collection and per version), `blockers` (not_archived, domain_serving, shared_with_other_orgs, media_present — run purge_site_media first, hosting_service_unavailable), `untouched` resources in the owner's own accounts that deletion leaves alone (Git repository, Cloudflare Pages project that keeps serving the last publication, DNS, app data) with what to do about each, the API keys it revokes, a `digest` of all of it, and `confirm` — exactly what delete_site needs. Requires an owner of the organization that owns the site, through their own MCP connection or personal API token; organization/site API keys, administrators, editors and shares are refused (403 owner_authority_required). Before calling delete_site, show the inventory to the owner and get their explicit confirmation naming this site.
+
+### `delete_site`
+
+`POST /api/v1/sites/{siteId}/deletion`
+
+Permission: `admin`
+
+Step 2: PERMANENTLY delete this archived site and all its content. Irreversible. Call only after get_site_deletion_inventory and after the organization owner has explicitly confirmed that inventory for this exact site in the conversation; never infer consent and never delete a site the owner did not name. Send the inventory's `confirm.body` unchanged: `confirm_site_id` must equal this site's id and `confirm_digest` the inventory digest; a changed site answers 409 site_deletion_digest_stale (read the inventory again and re-confirm), a blocked one 409 site_deletion_blocked. Revokes the site's API keys first, deletes its documents leaf first and the site last, and writes an audit record (`audit_id`). HTTP 202 `in_progress` means a large site is not finished: call again with the same arguments (no new confirmation needed; an interrupted deletion cannot be restored, only finished). The answer lists `untouched` resources in the owner's accounts — tell the owner about them. Same authority as get_site_deletion_inventory.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `confirm_site_id` | body | string | yes | This site's id, exactly. From the inventory's confirm.body. |
+| `confirm_digest` | body | string | yes | The inventory digest the owner confirmed. From the inventory's confirm.body. |
+| `reason` | body | string | no | Why the site is deleted; kept in the audit record. |
+
 ## Site: Delivery
 
 ### `get_incoming_email_settings`
