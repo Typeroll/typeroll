@@ -19,6 +19,7 @@
 import { ARCHIVED_SITE_MESSAGE, isArchivedSite, paths } from '@typeroll/shared';
 import type { Site } from '@typeroll/shared';
 import { getStore } from './datastore';
+import { generatedCloudflareNames } from './publishing/cloudflare-account-claims';
 
 export type SiteLifecycleAction = 'archive' | 'restore';
 
@@ -37,6 +38,11 @@ export function siteLifecycleState(site: Pick<Site, 'lifecycle'>): Record<string
     archived_by: lifecycle.archived_by,
     ...(lifecycle.reason ? { reason: lifecycle.reason } : {}),
   };
+}
+
+/** Whether `host` is the generated address Core publishes a site at before it has a domain. */
+export function isGeneratedSiteAddress(orgId: string, siteId: string, host: string): boolean {
+  return host.toLowerCase().split('.')[0] === generatedCloudflareNames(orgId, siteId).site_label;
 }
 
 /**
@@ -68,7 +74,10 @@ export async function changeSiteLifecycle(input: {
     // artifact, and archiving does not take it down — publishing is what stops.
     // Refusing here keeps the operator from inheriting a retired site that is
     // still the public face of a customer's domain.
-    if (site.domain && (site.domain_status === 'live' || site.domain_status === 'verified')) {
+    // The site's generated address (site-<label>.<sites domain>) is not a
+    // customer's domain: it belongs to the organization's hosting and stays
+    // with the archived site, like the last publication.
+    if (site.domain && (site.domain_status === 'live' || site.domain_status === 'verified') && !isGeneratedSiteAddress(ownerOrgId, site.id, site.domain)) {
       return {
         status: 409,
         body: {
