@@ -161,6 +161,34 @@ describe('consent runtime reopen links', () => {
     expect(needed()).toBe(true);
   });
 
+  it('opens the banner from a #cookie-settings link a script made absolute, but not one to another page', () => {
+    history.replaceState(null, '', '/event/lunch/?utm_source=x');
+    document.body.innerHTML = `<footer><a id="here" href="${location.origin}/event/lunch/?utm_source=x&ref=a#cookie-settings">Cookies</a>`
+      + `<a id="elsewhere" href="${location.origin}/privacy/#cookie-settings">Privacy</a></footer>`;
+    runRuntime();
+    // Record what the runtime decided, then stop the test DOM from navigating.
+    const prevented: boolean[] = [];
+    const record = (e: Event) => { prevented.push(e.defaultPrevented); e.preventDefault(); };
+    window.addEventListener('click', record);
+    try {
+      document.getElementById('elsewhere')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(needed()).toBe(false);
+      document.getElementById('here')!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(needed()).toBe(true);
+      expect(prevented).toEqual([false, true]);
+    } finally {
+      window.removeEventListener('click', record);
+    }
+  });
+
+  it('opens the banner when the hash changes to #cookie-settings', () => {
+    runRuntime();
+    expect(needed()).toBe(false);
+    location.hash = 'cookie-settings';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(needed()).toBe(true);
+  });
+
   it('still opens the banner from data-tr-open-consent elements', () => {
     document.body.innerHTML = '<button type="button" data-tr-open-consent>Cookies</button>';
     runRuntime();

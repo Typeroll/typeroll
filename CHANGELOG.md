@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- A link to `#cookie-settings` now opens the cookie banner even after another
+  script has made its href absolute, as long as it points at the same page
+  (query and all). Before, the banner listened only for the literal
+  `href="#cookie-settings"`, so on autopilot.se the footer link did nothing on
+  a page where the attribution app adds tracking parameters to links. The
+  banner also opens when the hash changes to `#cookie-settings`.
+
 ## 0.3.23 (candidate, MCP 0.45.132)
 
 - The page list (`GET /api/v1/sites/{siteId}/pages`, MCP `list_pages`) reports
