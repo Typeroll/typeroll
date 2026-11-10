@@ -1,7 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.3.21 (candidate, MCP 0.45.130)
 
+- Docs: render versions 16 and 17 in the settings table, styling the cookie
+  banner, the version 16 `.form-actions` row, and what `tr-upgrade-rendering`
+  checks for versions 16 and 17.
 - Render version 17 also counts the font weights in the CSS of a site's own
   block types (`<style>` in the template, and `styles`), as its notes say for
   `<style>` elements in HTML. Found on autopilot.se, where a FAQ marker drawn
