@@ -250,7 +250,16 @@ URLs; combine it with historical redirects, GSC and an authoritative export.
 
 `check_internal_links` reports `unpublished_targets` separately from `broken`.
 It also checks draft page sources (listed in `draft_sources`), so links can be
-corrected before publishing. Problems confined to unpublished source pages do
+corrected before publishing.
+In-page links count too. A `#section` in a Page, or `/path#section` from any
+page, partial, template or menu, must match an element id on the target Page
+as Typeroll renders it: heading ids (including the generated ones and
+`anchor_id`), a block's `html_id`, and ids in HTML content. `#` and `#top`
+always resolve. A missing target is a `broken` entry with reason
+`missing_fragment`, the `fragment` and the target Page in `resolved_path`.
+WordPress tables of contents often point at heading ids or `<a name>` anchors
+that the import did not keep; publishing removes `name` anchors, so give the
+heading an `id` (or `anchor_id`) or update the link. Problems confined to unpublished source pages do
 not block launch of the live pages.
 Matched drafts still block migration launch; they do not count as migrated.
 Redirect writes return structured chain/loop warnings. The Redirects page and

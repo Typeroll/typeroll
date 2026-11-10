@@ -81,4 +81,57 @@ describe('checkInternalLinks', () => {
     expect(report.unpublished_targets).toEqual([expect.objectContaining({ from: 'menu:main', page_id: 'wip' })]);
     expect(report.links?.filter(link => link.from === 'menu:main').map(link => link.path).sort()).toEqual(['/about', '/team']);
   });
+
+  it('reports #fragments that no element on the target Page carries', async () => {
+    const { getStore } = await import('../../lib/datastore');
+    const store = getStore();
+    // An imported table of contents whose heading ids were not carried over.
+    const toc = Array.from({ length: 12 }, (_, index) => `<a href="#wp-section-${index + 1}">Section ${index + 1}</a>`).join('');
+    await store.setDoc(paths.page(ORG, SITE, 'guide', MAIN_VERSION_ID), {
+      title: 'Guide', slug: 'guide', status: 'published', content_mode: 'html',
+      html_content: `<nav>${toc}</nav><a href="#">top</a><a href="#top">top</a><a href="#kept">kept</a>`
+        + '<a href="#waarom-verhuizen">generated</a><a href="#caf%C3%A9">encoded</a><a href="#legacy">legacy</a><a href="#site-footer">footer</a>'
+        + '<h2 id="kept">Kept</h2><h2>Waarom verhuizen?</h2><p id="café">Café</p><a name="legacy"></a>',
+    });
+    await store.setDoc(paths.page(ORG, SITE, 'blocks', MAIN_VERSION_ID), {
+      title: 'Blocks', slug: 'blocks', status: 'published', content_mode: 'blocks', blocks: [
+        { id: 'h1', type: 'core/heading', data: { text: 'Kosten & planning', level: 'h2' } },
+        { id: 'h2', type: 'core/heading', data: { text: 'Custom', level: 'h3', anchor_id: 'custom-anchor' } },
+        { id: 'p1', type: 'core/prose', data: { html: '<p>Body</p>' }, style_overrides: { html_id: 'intro' } },
+      ],
+    });
+    await store.setDoc(paths.page(ORG, SITE, 'links', MAIN_VERSION_ID), {
+      title: 'Links', slug: 'links', status: 'published', content_mode: 'html',
+      html_content: '<a href="/blocks#kosten-planning">a</a><a href="/blocks/#custom-anchor">b</a><a href="/blocks?x=1#intro">c</a>'
+        + '<a href="/blocks#gone">d</a><a href="/old-blocks#intro">e</a><a href="/old-blocks#nope">f</a><a href="/guide#kept">g</a>',
+    });
+    await store.setDoc(paths.partial(ORG, SITE, 'footer', MAIN_VERSION_ID), {
+      name: 'Footer', kind: 'footer', status: 'published', content_mode: 'html',
+      html_content: '<footer id="site-footer"><a href="#anything">skipped</a><a href="/guide#missing-from-footer">x</a></footer>',
+    });
+    await store.setDoc(`${paths.redirects(ORG, SITE, MAIN_VERSION_ID)}/old-blocks`, {
+      from_path: '/old-blocks', to_path: '/blocks', status_code: 301,
+    });
+
+    const { checkInternalLinks } = await import('../../lib/internal-link-check');
+    const site = { id: SITE, name: 'Site', hosting_adapter: 'cloudflare' as const, created_at: new Date().toISOString() };
+    const report = await checkInternalLinks({ store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site });
+    const fragments = report.broken.filter(entry => entry.reason === 'missing_fragment');
+    expect(fragments.filter(entry => entry.from === 'page:guide')).toEqual([
+      ...Array.from({ length: 12 }, (_, index) => ({
+        from: 'page:guide', href: `#wp-section-${index + 1}`, resolved_path: '/guide', reason: 'missing_fragment', fragment: `wp-section-${index + 1}`,
+      })),
+      // The sanitizer drops `<a name>`, so a published page has no such anchor.
+      { from: 'page:guide', href: '#legacy', resolved_path: '/guide', reason: 'missing_fragment', fragment: 'legacy' },
+    ]);
+    expect(fragments.filter(entry => entry.from !== 'page:guide').map(entry => [entry.from, entry.href, entry.resolved_path])).toEqual([
+      ['page:links', '/blocks#gone', '/blocks'],
+      ['page:links', '/old-blocks#nope', '/blocks'],
+      ['partial:footer', '/guide#missing-from-footer', '/guide'],
+    ]);
+    expect(report.broken.filter(entry => entry.reason !== 'missing_fragment')).toEqual([]);
+
+    const plain = await checkInternalLinks({ store, orgId: ORG, siteId: SITE, versionId: MAIN_VERSION_ID, site, fragments: false });
+    expect(plain.broken).toEqual([]);
+  });
 });

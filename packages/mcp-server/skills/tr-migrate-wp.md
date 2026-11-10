@@ -315,7 +315,7 @@ import_sitemap url="https://old.example.com/sitemap.xml"
 # Optional: direct Search Console query (platform service account must have property access)
 import_gsc_performance property="https://old.example.com/" months=6
 # Or paste a Search Console Pages CSV via csv="..." and source_origin.
-check_internal_links         # database preflight before deploy
+check_internal_links         # database preflight before deploy, incl. #fragment targets
 verify_migration_urls        # after trigger_deploy; compact exceptions by default
 record_migration_seo_acceptance  # after reviewing this exact deployment
 get_migration_launch_report      # final fail-closed launch gate
