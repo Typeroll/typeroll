@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cookieConsentLanguage, renderCookieConsent } from '../cookie-consent';
+import { cookieConsentLanguage, cookieConsentManageButtonError, cookieReopenLinkWarning, hasCookieReopenControl, renderCookieConsent } from '../cookie-consent';
 
 describe('renderCookieConsent', () => {
   it('renders one complete, consent-gated fragment', () => {
@@ -61,4 +61,63 @@ describe('renderCookieConsent', () => {
     expect(html).toContain('aria-label="Einstellungen"');
     expect(html).toContain('<p>Eigener Text</p>');
   });
+
+  it('renders the floating reopen button by default and for "floating"', () => {
+    for (const version of [1, 16, 17]) {
+      const base = renderCookieConsent({ enabled: true }, undefined, 'en', { renderVersion: version });
+      expect(renderCookieConsent({ enabled: true, manage_button: 'floating' }, undefined, 'en', { renderVersion: version })).toBe(base);
+      expect(base).toContain('<button type="button" class="tr-consent__manage" data-tr-open-consent aria-label="Manage cookie settings">');
+      expect(base).toContain('.tr-consent__manage{appearance:none;');
+    }
+  });
+
+  it('leaves out the floating button and its CSS for "none"', () => {
+    for (const version of [1, 16, 17]) {
+      const base = renderCookieConsent({ enabled: true }, undefined, 'en', { renderVersion: version });
+      const html = renderCookieConsent({ enabled: true, manage_button: 'none' }, undefined, 'en', { renderVersion: version });
+      expect(html).not.toContain('class="tr-consent__manage"');
+      expect(html).not.toMatch(/\.tr-consent__manage[{:\s]/);
+      expect(html).not.toContain('>Cookies</span>');
+      // The banner and its runtime are otherwise unchanged.
+      expect(html).toContain('id="tr-consent"');
+      expect(html).toContain('data-cookie-consent-runtime="1"');
+      expect(html).toContain('.tr-consent__panel{');
+      const withoutButton = base
+        .replace(/<button type="button" class="tr-consent__manage"[\s\S]*?<\/button>\n/, '')
+        .split('\n').filter(line => !line.includes('.tr-consent__manage')).join('\n');
+      expect(html.split('\n').filter(line => !line.includes('.tr-consent__manage')).join('\n')).toBe(withoutButton);
+    }
+  });
 });
+
+describe('cookie_consent.manage_button', () => {
+  it('accepts floating, none and null only', () => {
+    expect(cookieConsentManageButtonError(undefined)).toBeNull();
+    expect(cookieConsentManageButtonError(null)).toBeNull();
+    expect(cookieConsentManageButtonError('floating')).toBeNull();
+    expect(cookieConsentManageButtonError('none')).toBeNull();
+    for (const value of ['hidden', '', 'None', false, 0, {}]) {
+      expect(cookieConsentManageButtonError(value)).toBe('cookie_consent.manage_button must be one of: floating, none');
+    }
+  });
+
+  it('finds reopen links in partial HTML, block data and menus', () => {
+    expect(hasCookieReopenControl([])).toBe(false);
+    expect(hasCookieReopenControl([{ html_content: '<a href="#cookie-settings">Cookie settings</a>' }])).toBe(true);
+    expect(hasCookieReopenControl([{ blocks: [{ type: 'core/navigation_links', data: { links: [{ label: 'Cookies', href: '#cookie-settings' }] } }] }])).toBe(true);
+    expect(hasCookieReopenControl([{ items: [{ type: 'url', href: '/privacy/#cookie-settings' }] }])).toBe(true);
+    expect(hasCookieReopenControl([{ html_content: '<button data-tr-open-consent>Cookies</button>' }])).toBe(true);
+    expect(hasCookieReopenControl([{ html_content: '<a href="#cookie-settings-old">x</a><a href="/privacy/">Privacy</a>' }])).toBe(false);
+  });
+
+  it('warns only for an enabled banner without the button and without a reopen link', () => {
+    const footer = { html_content: '<a href="#cookie-settings">Cookie settings</a>' };
+    expect(cookieReopenLinkWarning({ enabled: true, manage_button: 'none' }, [])).toMatch(/^cookie_reopen_link_missing: /);
+    expect(cookieReopenLinkWarning({ enabled: true, manage_button: 'none' }, [footer])).toBeNull();
+    expect(cookieReopenLinkWarning({ enabled: true }, [])).toBeNull();
+    expect(cookieReopenLinkWarning({ enabled: true, manage_button: 'floating' }, [])).toBeNull();
+    expect(cookieReopenLinkWarning({ enabled: false, manage_button: 'none' }, [])).toBeNull();
+    expect(cookieReopenLinkWarning(undefined, [])).toBeNull();
+  });
+});
+

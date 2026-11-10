@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- `cookie_consent.manage_button: "none"` leaves out the floating "Cookies"
+  button (and its CSS) that reopens the banner; `"floating"`, the default,
+  renders as before. Any link to `#cookie-settings`, such as a footer menu
+  item, now opens the banner without custom attributes, as does a page opened
+  at `#cookie-settings`; `check_internal_links` accepts the fragment. A
+  settings write, and the publication's job `warnings`, report
+  `cookie_reopen_link_missing` when the button is off and no partial or menu
+  links to `#cookie-settings` or has a `data-tr-open-consent` element, since
+  visitors must be able to withdraw consent as easily as they gave it. The
+  portal's cookie settings have a "Reopen button" choice. Found on
+  autopilot.se, where the floating button covered form options on mobile.
+
 ## 0.3.22 (candidate, MCP 0.45.131)
 
 - Organization owners can permanently delete an archived site themselves,

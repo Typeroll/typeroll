@@ -89,7 +89,7 @@ describe('checkInternalLinks', () => {
     const toc = Array.from({ length: 12 }, (_, index) => `<a href="#wp-section-${index + 1}">Section ${index + 1}</a>`).join('');
     await store.setDoc(paths.page(ORG, SITE, 'guide', MAIN_VERSION_ID), {
       title: 'Guide', slug: 'guide', status: 'published', content_mode: 'html',
-      html_content: `<nav>${toc}</nav><a href="#">top</a><a href="#top">top</a><a href="#kept">kept</a>`
+      html_content: `<nav>${toc}</nav><a href="#">top</a><a href="#top">top</a><a href="#kept">kept</a><a href="#cookie-settings">cookies</a>`
         + '<a href="#waarom-verhuizen">generated</a><a href="#caf%C3%A9">encoded</a><a href="#legacy">legacy</a><a href="#site-footer">footer</a>'
         + '<h2 id="kept">Kept</h2><h2>Waarom verhuizen?</h2><p id="café">Café</p><a name="legacy"></a>',
     });
@@ -103,7 +103,9 @@ describe('checkInternalLinks', () => {
     await store.setDoc(paths.page(ORG, SITE, 'links', MAIN_VERSION_ID), {
       title: 'Links', slug: 'links', status: 'published', content_mode: 'html',
       html_content: '<a href="/blocks#kosten-planning">a</a><a href="/blocks/#custom-anchor">b</a><a href="/blocks?x=1#intro">c</a>'
-        + '<a href="/blocks#gone">d</a><a href="/old-blocks#intro">e</a><a href="/old-blocks#nope">f</a><a href="/guide#kept">g</a>',
+        + '<a href="/blocks#gone">d</a><a href="/old-blocks#intro">e</a><a href="/old-blocks#nope">f</a><a href="/guide#kept">g</a>'
+        // `#cookie-settings` opens the cookie banner on any Page.
+        + '<a href="/guide#cookie-settings">h</a>',
     });
     await store.setDoc(paths.partial(ORG, SITE, 'footer', MAIN_VERSION_ID), {
       name: 'Footer', kind: 'footer', status: 'published', content_mode: 'html',

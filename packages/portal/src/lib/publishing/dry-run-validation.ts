@@ -58,7 +58,9 @@ export function publicationLanguageWarnings(publication: { settings?: Record<str
     if (consent?.enabled !== true) continue;
     const missing = [
       ...(String(consent.text ?? '').trim() ? [] : ['cookie_consent.text']),
-      ...COOKIE_CONSENT_LABEL_KEYS.filter(key => !String(consent.labels?.[key] ?? '').trim()).map(key => `cookie_consent.labels.${key}`),
+      // Without the floating button its two labels are not shown.
+      ...COOKIE_CONSENT_LABEL_KEYS.filter(key => !(consent.manage_button === 'none' && key.startsWith('manage')))
+        .filter(key => !String(consent.labels?.[key] ?? '').trim()).map(key => `cookie_consent.labels.${key}`),
     ];
     if (missing.length) warnings.push(`The cookie banner shows English on ${language} pages for ${missing.join(', ')}. Save ${language} wording for them in the site settings.`);
   }

@@ -138,3 +138,40 @@ describe('consent runtime activate()', () => {
     }
   });
 });
+
+describe('consent runtime reopen links', () => {
+  const needed = () => document.documentElement.classList.contains('tr-consent-needed');
+
+  beforeEach(() => {
+    document.documentElement.classList.remove('tr-consent-needed');
+    history.replaceState(null, '', '/');
+  });
+
+  it('opens the banner from an ordinary #cookie-settings link without navigating', () => {
+    document.body.innerHTML = '<footer><a href="#cookie-settings"><span>Cookie settings</span></a><a href="#other">Other</a></footer>';
+    runRuntime();
+    const other = new MouseEvent('click', { bubbles: true, cancelable: true });
+    document.querySelector('a[href="#other"]')!.dispatchEvent(other);
+    expect(other.defaultPrevented).toBe(false);
+    expect(needed()).toBe(false);
+
+    const click = new MouseEvent('click', { bubbles: true, cancelable: true });
+    document.querySelector('a[href="#cookie-settings"] span')!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    expect(needed()).toBe(true);
+  });
+
+  it('still opens the banner from data-tr-open-consent elements', () => {
+    document.body.innerHTML = '<button type="button" data-tr-open-consent>Cookies</button>';
+    runRuntime();
+    document.querySelector('button')!.click();
+    expect(needed()).toBe(true);
+  });
+
+  it('opens the banner on a page loaded at #cookie-settings', () => {
+    history.replaceState(null, '', '/privacy/#cookie-settings');
+    runRuntime();
+    expect(needed()).toBe(true);
+  });
+});
+

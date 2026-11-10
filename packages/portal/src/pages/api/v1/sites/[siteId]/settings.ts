@@ -36,7 +36,7 @@ import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentio
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
 import { fontSettingsWarnings, listSiteFonts } from '../../../../../lib/fonts/font-library';
 import { handoverWriteErrors, normalizedHandover } from '../../../../../lib/site-handover-write';
-import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, siteFontsErrors, type SiteSettings } from '@typeroll/shared';
+import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, cookieConsentManageButtonError, cookieReopenLinkWarning, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, siteFontsErrors, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
@@ -87,7 +87,7 @@ function installationRefusedFields(body: Record<string, unknown>): string[] {
 
 const COOKIE_CONSENT_FIELDS = new Set([
   'enabled', 'text', 'privacy_policy_url', 'scripts_necessary',
-  'scripts_optional', 'reload_after_consent', 'labels',
+  'scripts_optional', 'reload_after_consent', 'labels', 'manage_button',
 ]);
 
 export const GET: APIRoute = async ({ request, params }) => {
@@ -235,6 +235,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (consent.reload_after_consent !== undefined && typeof consent.reload_after_consent !== 'boolean') {
       return apiError('cookie_consent.reload_after_consent must be boolean', 400);
     }
+    { const error = cookieConsentManageButtonError(consent.manage_button); if (error) return apiError(error, 400); }
     if (consent.labels !== undefined) {
       const checked = normalizeCookieConsentLabels(consent.labels);
       if (checked.error) return apiError(checked.error, 400);
@@ -267,7 +268,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       const before = (existing[k] as Record<string, unknown> | undefined) ?? {};
       update[k] = { ...before, ...(v as Record<string, unknown>) };
       // null removes an optional nested value (fonts.smoothing, colors.on_*) instead of storing null.
-      for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && (k === 'fonts' || k === 'colors')) delete (update[k] as Record<string, unknown>)[field];
+      // So does cookie_consent.manage_button, which then shows the floating button again.
+      for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && (k === 'fonts' || k === 'colors' || (k === 'cookie_consent' && field === 'manage_button'))) delete (update[k] as Record<string, unknown>)[field];
     } else if (TOP_LEVEL.has(k)) {
       // null clears an optional field; the store drops undefined values.
       // A site always has a time zone: null resets it to the usual one for its language.
@@ -325,6 +327,26 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
   if (update.fonts) warnings.push(...fontSettingsWarnings(update.fonts as SiteSettings['fonts'], await listSiteFonts(ctx.orgId, ctx.siteId)));
   warnings.push(...customCssWarnings(update.custom_css).map(problem => `Custom CSS line ${problem.line}: ${problem.message}`));
+  // A banner without the floating button needs a reopen link somewhere visitors find it.
+  if (update.cookie_consent) {
+    const reopen = await cookieReopenLinkWarningFor(ctx, update.cookie_consent as SiteSettings['cookie_consent']);
+    if (reopen) warnings.push(reopen);
+  }
   if (warnings.length) resp.warnings = warnings;
   return apiResponse(ctx, resp, 200, body);
 };
+
+/** The cookie_reopen_link_missing warning, checked against the version's partials and menus. */
+async function cookieReopenLinkWarningFor(ctx: { orgId: string; siteId: string; versionId: string }, consent: SiteSettings['cookie_consent']): Promise<string | null> {
+  if (!cookieReopenLinkWarning(consent, [])) return null;
+  try {
+    const [partials, menus] = await Promise.all([
+      vstore.partials(ctx.orgId, ctx.siteId, ctx.versionId),
+      vstore.menus(ctx.orgId, ctx.siteId, ctx.versionId),
+    ]);
+    return cookieReopenLinkWarning(consent, [...partials, ...menus]);
+  } catch {
+    // Unknown partials or menus: no warning rather than a false one.
+    return null;
+  }
+}

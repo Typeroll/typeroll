@@ -1,4 +1,5 @@
 import {
+  COOKIE_SETTINGS_FRAGMENT,
   buildCoreBlockRegistry,
   composePageWithTemplate,
   countBlockH1s,
@@ -129,12 +130,13 @@ function codePoint(value: number, fallback: string): string {
 /**
  * Whether a URL fragment scrolls somewhere on a Page with these ids, as a
  * browser decides: the empty fragment and `top` scroll to the top; otherwise
- * the raw or percent-decoded fragment must equal an id.
+ * the raw or percent-decoded fragment must equal an id. `#cookie-settings`
+ * opens the cookie banner instead of scrolling, so it always resolves.
  */
 export function fragmentResolves(fragment: string, ids: Set<string>): boolean {
   if (fragment === '' || ids.has(fragment)) return true;
   let decoded = fragment;
   try { decoded = decodeURIComponent(fragment); } catch { /* keep the raw fragment */ }
   if (ids.has(decoded)) return true;
-  return decoded.toLowerCase() === 'top';
+  return decoded.toLowerCase() === 'top' || decoded === COOKIE_SETTINGS_FRAGMENT;
 }

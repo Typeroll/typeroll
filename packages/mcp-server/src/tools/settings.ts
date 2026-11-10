@@ -128,6 +128,7 @@ export const settingsTools: ToolDef[] = [
         scripts_necessary: z.string().optional().describe('Trusted script markup that runs before consent.'),
         scripts_optional: z.string().optional().describe('Trusted script markup activated only after full consent.'),
         reload_after_consent: z.boolean().optional(),
+        manage_button: z.enum(['floating', 'none']).nullable().optional().describe('How visitors reopen the banner after choosing. `floating` (default) shows the "Cookies" button fixed bottom-left; `none` leaves it out, for example where it covers forms on mobile. With `none`, link to `#cookie-settings` from the footer (a menu `url` item with href "#cookie-settings" works): withdrawing consent must stay as easy as giving it, and the write returns a `cookie_reopen_link_missing` warning while no partial or menu has such a link. null restores the default.'),
         labels: z.object({
           title: z.string().optional(),
           reject: z.string().optional(),
@@ -136,7 +137,7 @@ export const settingsTools: ToolDef[] = [
           privacy_link: z.string().optional(),
           manage: z.string().optional(),
           manage_button: z.string().optional(),
-        }).optional().describe('Plain-text replacements for the banner heading, buttons and links (max 120 characters each). `manage` is the accessible name and `manage_button` the visible text of the floating button that reopens the banner. Omitted or blank labels follow the page language: Swedish, Norwegian Bokmål, German, Dutch, Finnish, French, Polish, Italian, Spanish, otherwise English. Replaces the whole labels object.'),
+        }).optional().describe('Plain-text replacements for the banner heading, buttons and links (max 120 characters each). `manage` is the accessible name and `manage_button` the visible text of the floating button that reopens the banner (not the `manage_button` setting beside `labels`). Omitted or blank labels follow the page language: Swedish, Norwegian Bokmål, German, Dutch, Finnish, French, Polish, Italian, Spanish, otherwise English. Replaces the whole labels object.'),
       }).optional().describe('Native consent banner configuration. Partial updates preserve omitted fields. Script fields execute in visitor browsers and are accepted under the API key authority.'),
       language_sections: z.array(z.object({
         language: z.string().describe('BCP 47 tag matched against Page.language, such as "sv-SE". Not the site language.'),

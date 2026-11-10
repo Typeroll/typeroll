@@ -1,4 +1,4 @@
-import type { CookieConsentLabels, CookieConsentSettings } from './types.js';
+import type { CookieConsentLabels, CookieConsentManageButton, CookieConsentSettings } from './types.js';
 import { buildConsentRuntime, wrapConsentScripts } from './consent-scripts.js';
 import { uiLanguage, type UiLanguage } from './ui-text.js';
 import { platformLayer } from './cascade-layers.js';
@@ -562,6 +562,52 @@ export function normalizeCookieConsentLabels(value: unknown): { labels?: CookieC
   return Object.keys(labels).length ? { labels } : {};
 }
 
+export const COOKIE_CONSENT_MANAGE_BUTTONS: readonly CookieConsentManageButton[] = ['floating', 'none'];
+
+/** Fragment of an ordinary link that reopens the banner: `<a href="#cookie-settings">`. */
+export const COOKIE_SETTINGS_FRAGMENT = 'cookie-settings';
+export const COOKIE_SETTINGS_HREF = `#${COOKIE_SETTINGS_FRAGMENT}`;
+
+/** Why a cookie_consent.manage_button value cannot be stored, or null. */
+export function cookieConsentManageButtonError(value: unknown): string | null {
+  if (value === undefined || value === null) return null;
+  return (COOKIE_CONSENT_MANAGE_BUTTONS as readonly unknown[]).includes(value)
+    ? null
+    : `cookie_consent.manage_button must be one of: ${COOKIE_CONSENT_MANAGE_BUTTONS.join(', ')}`;
+}
+
+/** Whether the floating "Cookies" button is rendered (everything but `none`). */
+export function cookieConsentFloatingButton(consent: Pick<CookieConsentSettings, 'manage_button'> | undefined): boolean {
+  return consent?.manage_button !== 'none';
+}
+
+const REOPEN_CONTROL = /data-tr-open-consent|#cookie-settings(?![\w-])/;
+
+/**
+ * Whether any of the given stored documents (partials, menus) holds a control
+ * that reopens the banner: an element with `data-tr-open-consent` or a link to
+ * `#cookie-settings`, in HTML, block data or a menu item's href.
+ */
+export function hasCookieReopenControl(documents: readonly unknown[]): boolean {
+  return documents.some((doc) => {
+    try { return REOPEN_CONTROL.test(JSON.stringify(doc) ?? ''); } catch { return false; }
+  });
+}
+
+/**
+ * The warning for a site whose banner is on without the floating button and
+ * without a reopen link in its partials or menus, or null.
+ */
+export function cookieReopenLinkWarning(
+  consent: CookieConsentSettings | undefined,
+  documents: readonly unknown[],
+): string | null {
+  if (consent?.enabled !== true || cookieConsentFloatingButton(consent) || hasCookieReopenControl(documents)) return null;
+  return 'cookie_reopen_link_missing: cookie_consent.manage_button is "none" and no header, footer or menu links to #cookie-settings, '
+    + 'so visitors cannot change or withdraw their cookie choice. Add a "Cookie settings" link with href "#cookie-settings" '
+    + 'to the footer menu or footer partial, or set manage_button to "floating".';
+}
+
 function consentLabels(consent: CookieConsentSettings, language: unknown): ConsentStrings {
   const defaults = CONSENT_STRINGS[cookieConsentLanguage(language)];
   const custom = consent.labels ?? {};
@@ -669,7 +715,10 @@ export function renderCookieConsent(
   if (consent?.enabled !== true) return '';
   // From render version 16 the banner styles sit in the base layer, so site CSS restyles them without !important.
   const version = options.renderVersion ?? 1;
-  const css = version >= CONSENT_SHIELD_RENDER_VERSION ? COOKIE_CONSENT_STYLES_V17 : COOKIE_CONSENT_STYLES;
+  const floating = cookieConsentFloatingButton(consent);
+  const allCss = version >= CONSENT_SHIELD_RENDER_VERSION ? COOKIE_CONSENT_STYLES_V17 : COOKIE_CONSENT_STYLES;
+  // Without the floating button its rules are left out; every one of them names it.
+  const css = floating ? allCss : allCss.split('\n').filter((line) => !line.includes('.tr-consent__manage')).join('\n');
   const layered = version >= 16 ? platformLayer('base', css, options.renderVersion) : css;
   const styles = version >= CONSENT_SHIELD_RENDER_VERSION ? `${layered}\n${COOKIE_CONSENT_SHIELD_CSS}` : layered;
   const labels = consentLabels(consent, language);
@@ -697,9 +746,9 @@ export function renderCookieConsent(
     </div>
   </div>
 </div>
-<button type="button" class="tr-consent__manage" data-tr-open-consent aria-label="${escapeAttr(labels.manage)}">
+${floating ? `<button type="button" class="tr-consent__manage" data-tr-open-consent aria-label="${escapeAttr(labels.manage)}">
   <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.3"/><circle cx="6" cy="6.5" r=".9" fill="currentColor"/><circle cx="10.5" cy="7.5" r=".7" fill="currentColor"/><circle cx="7" cy="10.5" r=".8" fill="currentColor"/></svg>
   <span>${escapeText(labels.manage_button)}</span>
 </button>
-<script data-cookie-consent-runtime="1">${buildConsentRuntime(consent.reload_after_consent === true, options.initialChoice)}</script>`;
+` : ''}<script data-cookie-consent-runtime="1">${buildConsentRuntime(consent.reload_after_consent === true, options.initialChoice)}</script>`;
 }

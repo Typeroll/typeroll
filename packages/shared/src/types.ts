@@ -661,12 +661,22 @@ export interface CookieConsentSettings {
    */
   reload_after_consent?: boolean;
   /**
+   * How visitors reopen the banner after choosing. `floating` (the default)
+   * renders the "Cookies" button fixed bottom-left. `none` leaves it out; the
+   * site then links to `#cookie-settings` (or an element with
+   * `data-tr-open-consent`) from its footer, so withdrawing consent stays as
+   * easy as giving it.
+   */
+  manage_button?: CookieConsentManageButton;
+  /**
    * Plain-text replacements for the banner's built-in wording. Omitted or
    * blank labels use the page language's default (Swedish, German or
    * English).
    */
   labels?: CookieConsentLabels;
 }
+
+export type CookieConsentManageButton = 'floating' | 'none';
 
 export interface CookieConsentLabels {
   title?: string;
