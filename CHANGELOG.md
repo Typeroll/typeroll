@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- Published pages and the site preview no longer show an app component's
+  editor placeholder ("Next occurrence loads on the published site.") to
+  visitors. The text, always in English, showed until the Extension runtime
+  replaced it, and for good when the script did not load. Pages with an
+  Extension mount, as a block or an `<x-extension>` in a partial, now hide
+  it with platform CSS, which also covers block types provisioned by
+  existing installations. The mount takes no space until the component
+  renders; what the component renders is unchanged. The editor canvas still
+  shows the placeholder where the component sits. A bug fix of leaked editor
+  UI, so it applies on every render version. Found on autopilot.se.
+
 ## 0.3.23 (candidate, MCP 0.45.132)
 
 - The page list (`GET /api/v1/sites/{siteId}/pages`, MCP `list_pages`) reports

@@ -382,7 +382,18 @@ await (async function extensionPartialScenario() {
           || (notFound.match(/class="tr-extension-mount"/g) ?? []).length !== 2) {
         fail('[extension-html-partials] 404 output did not expand both partial directives');
       }
-      log('[extension-html-partials] ✓ header + footer directives expanded into mounts');
+      // The editor placeholder stays in the markup but is hidden: visitors see
+      // nothing until the runtime fills the mount, and nothing if it never runs.
+      const hidden = /<style data-tr-extension-mounts[^>]*>\.tr-extension-mount>\.tr-extension-placeholder\{display:none\}<\/style>/;
+      for (const [name, output] of [['index', html], ['404', notFound]]) {
+        if (!hidden.test(output) || hidden.exec(output).index > output.indexOf('</head>')) {
+          fail(`[extension-html-partials] ${name} output does not hide the Extension placeholder in <head>`);
+        }
+        if (!output.includes('<p class="tr-extension-placeholder">Lead form loads on the published site.</p>')) {
+          fail(`[extension-html-partials] ${name} output lost the mount's placeholder markup`);
+        }
+      }
+      log('[extension-html-partials] ✓ header + footer directives expanded into mounts, placeholders hidden');
       res();
     });
   });

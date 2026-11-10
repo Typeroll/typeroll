@@ -5,6 +5,24 @@ import {
   parsePageHandoffPacket,
 } from './page-handoff.js';
 
+/**
+ * Hides the editor placeholder in an Extension mount ("… loads on the
+ * published site."). The placeholder marks where an app component sits in
+ * the script-free editor canvas; on a published page or the site preview the
+ * Extension runtime replaces it, and a visitor must not see it before that or
+ * when the runtime never runs. Existing installations keep the placeholder in
+ * their stored block-type template, so this hides it instead of changing the
+ * markup. The mount itself, and whatever the runtime renders into it, is not
+ * styled.
+ */
+export const EXTENSION_PLACEHOLDER_HIDDEN_CSS = '.tr-extension-mount>.tr-extension-placeholder{display:none}';
+
+/** True when any block type renders an Extension mount, as a block or an `<x-extension>` directive. */
+export function hasExtensionBlockTypes(blockTypes: Iterable<{ extension?: unknown }>): boolean {
+  for (const blockType of blockTypes) if (blockType.extension) return true;
+  return false;
+}
+
 /** Resolve a root-relative site path for either the published site or a
  * navigable preview. Exported so the preview-path contract has direct tests. */
 export function resolveExtensionSiteUrl(

@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths } from '@typeroll/shared';
-import type { Block, ContentType, PageTemplate, Form, Page, Site, SiteVersion } from '@typeroll/shared';
+import type { Block, ContentType, ExtensionFrontendComponent as ExtensionComponent, ExtensionInstallation, ExtensionManifest, PageTemplate, Form, Page, Site, SiteVersion } from '@typeroll/shared';
 
 const ORG = 'orgone';
 const SITE = 'mysite';
@@ -123,6 +123,55 @@ describe('renderPreview — blocks mode', () => {
     expect(html).toContain('class="installed-lead"');
     expect(html).toContain('data-tr-extension="se.example.lead"');
     expect(html).not.toContain('unknown block type');
+  });
+
+  it('hides Extension mount placeholders in the site preview but keeps them in the editor canvas', async () => {
+    await seedSite();
+    const { getStore } = await import('../../lib/datastore');
+    const { extensionBlockType } = await import('../../lib/extensions/provision');
+    const { EXTENSION_PLACEHOLDER_HIDDEN_CSS } = await import('@typeroll/shared');
+    // The block type exactly as an installation provisions it: the stored
+    // template still carries the placeholder on existing sites.
+    const { id: blockTypeId, ...blockType } = extensionBlockType(
+      { id: 'inst_1', granted_scopes: [] } as unknown as ExtensionInstallation,
+      { id: 'se.example.events' } as unknown as ExtensionManifest,
+      { id: 'next-occurrence', label: 'Next occurrence', render_mode: 'bundled_component' } as unknown as ExtensionComponent,
+    );
+    await getStore().setDoc(paths.blockType(ORG, SITE, blockTypeId, MAIN_VERSION_ID), blockType);
+    await getStore().setDoc(paths.partial(ORG, SITE, 'header', MAIN_VERSION_ID), {
+      name: 'Header', kind: 'header', content_mode: 'html', status: 'published',
+      html_content: `<header><x-extension block="${blockTypeId}" /></header>`,
+    });
+    await seedBlockPage([{ id: 'next', type: blockTypeId, data: {} }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const placeholder = '<p class="tr-extension-placeholder">Next occurrence loads on the published site.</p>';
+    const hidden = `<style data-tr-extension-mounts="1">${EXTENSION_PLACEHOLDER_HIDDEN_CSS}</style>`;
+
+    // Site preview: the runtime fills the mounts, so the placeholder is hidden.
+    const preview = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, { allowScripts: true }))!;
+    expect(preview.match(/class="tr-extension-mount"/g)).toHaveLength(2);
+    expect(preview.split(placeholder)).toHaveLength(3);
+    expect(preview).toContain(hidden);
+    expect(preview.indexOf(hidden)).toBeLessThan(preview.indexOf('</head>'));
+    expect(EXTENSION_PLACEHOLDER_HIDDEN_CSS).toBe('.tr-extension-mount>.tr-extension-placeholder{display:none}');
+    // The provisioned dashed-box style is untouched; only the placeholder hides.
+    expect(preview).toContain('.tr-extension-placeholder{padding:1rem;border:1px dashed currentColor');
+
+    // Editor canvas: script-free, the placeholder marks where the component sits.
+    for (const opts of [{ allowScripts: false, editorCanvasId: 'canvas-0123456789abcdef' }, {}]) {
+      const canvas = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, opts))!;
+      expect(canvas.split(placeholder)).toHaveLength(3);
+      expect(canvas).not.toContain('data-tr-extension-mounts');
+      expect(canvas).not.toContain(EXTENSION_PLACEHOLDER_HIDDEN_CSS);
+    }
+  });
+
+  it('emits no Extension placeholder CSS on preview pages without a mount', async () => {
+    await seedSite();
+    await seedBlockPage([{ id: 'h', type: 'core/heading', data: { text: 'Home', level: 'h2' } }]);
+    const { renderPreview } = await import('../../lib/render-preview');
+    const preview = (await renderPreview(ORG, SITE, 'home', MAIN_VERSION_ID, { allowScripts: true }))!;
+    expect(preview).not.toContain('data-tr-extension-mounts');
   });
 
   it('renders an explicit diagnostic when a block-type dependency is missing', async () => {

@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
+import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, EXTENSION_PLACEHOLDER_HIDDEN_CSS, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 // Inlined rather than imported: from render version 14 they go into cascade
@@ -27,6 +27,12 @@ interface Props {
   apps?: SiteApps;
   /** Public, secret-free metadata for enabled external Extensions. */
   extensions?: ExtensionRuntimeSnapshot;
+  /**
+   * The site has block types that render Extension mounts. Their editor
+   * placeholder is then hidden, so visitors never see it while the runtime
+   * loads, or at all when it does not run.
+   */
+  extensionMounts?: boolean;
   /**
    * Concatenated CSS for every block type used by this page. Inlined in
    * <head> so blocks render unstyled-free on first paint. Tree-shaken
@@ -61,7 +67,7 @@ interface Props {
   preloadImage?: string | null;
 }
 
-const { page, contentType, settings, blockCss, blockJs, clientCapabilities, extraJsonLd, apps, extensions, breadcrumbs, mediaByUrl, preloadImage } = Astro.props;
+const { page, contentType, settings, blockCss, blockJs, clientCapabilities, extraJsonLd, apps, extensions, extensionMounts, breadcrumbs, mediaByUrl, preloadImage } = Astro.props;
 const extensionRuntime = extensions?.installations?.length
   ? buildExtensionRuntimeScript(extensions, { analytics: apps?.apps?.analytics?.enabled && typeof apps.apps.analytics.config.event_token === 'string' && typeof apps.apps.analytics.config.event_endpoint === 'string'
       ? { endpoint: apps.apps.analytics.config.event_endpoint, token: apps.apps.analytics.config.event_token, requires_consent: settings.cookie_consent?.enabled === true } : undefined })
@@ -218,6 +224,7 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     {fontFallbackStyle && <style set:html={fontFallbackStyle} />}
 
     {blockCss && <style set:html={blockCss} />}
+    {(extensionMounts || Boolean(extensions?.installations?.length)) && <style data-tr-extension-mounts set:html={EXTENSION_PLACEHOLDER_HIDDEN_CSS} />}
     {direction === 'rtl' && <style data-direction set:html={directionCss(direction, renderVersion)} />}
     {siteStyles && <style data-site-styles set:html={platformLayer('styles', siteStyles, renderVersion)} />}
     {settings.custom_css && <style set:html={styleElementText(settings.custom_css)} />}

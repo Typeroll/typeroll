@@ -3,7 +3,7 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import Header from './Header.astro';
 import Footer from './Footer.astro';
 import { buildSiteFields, getLiveBaseUrl, getAllPages, getBuildYear, getBlockRegistry, getExtensionsPublic, getPartials, getSiteSettings, urlFor } from '../lib/content';
-import { collectBlockAssets, globalBlockSourceFromPartials, notFoundText, platformLayer, resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage, siteContext } from '@typeroll/shared';
+import { collectBlockAssets, globalBlockSourceFromPartials, hasExtensionBlockTypes, notFoundText, platformLayer, resolveBreakpointWidths, resolveRenderVersion, settingsForLanguage, siteContext } from '@typeroll/shared';
 import type { Block, LanguageSection, Page, RenderContext } from '@typeroll/shared';
 
 interface Props {
@@ -80,7 +80,7 @@ const renderCtx: RenderContext = {
   site: { ...siteContext(settings as unknown as Record<string, unknown>, getBuildYear()), fields: siteFields.values, live_base_url: liveBaseUrl },
 };
 ---
-<BaseLayout page={page} settings={settings} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs}>
+<BaseLayout page={page} settings={settings} extensions={extensionsPublic} extensionMounts={hasExtensionBlockTypes(blockRegistry.values())} blockCss={blockCss} blockJs={blockJs}>
   <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
   <main class:list={['page-content', 'not-found', notFoundLayered && 'not-found--layered']} data-tr-not-found>
     {notFoundLayered && <style set:html={platformLayer('base', '.not-found--layered { text-align:center; padding:var(--spacing-xl) var(--spacing-md); }\n.not-found--layered h1 { font-size:3rem; margin-bottom:var(--spacing-md); }', resolveRenderVersion(settings.render_version))} />}
