@@ -16,6 +16,7 @@
  * by default).
  */
 import type { Block, BlockType } from './types.js';
+import { routeOverrideEntries } from './route-overrides.js';
 import type { SiteStyle, StyleProps } from './site-styles.js';
 import { FONT_CATALOG, type CatalogFont } from './font-catalog.js';
 import type { FallbackOverrides } from './font-file.js';
@@ -446,6 +447,8 @@ export function collectFontUsage(input: FontUsageInput): FontUsage {
   };
   const visit = (block: Block | null | undefined, depth: number) => {
     if (!block || typeof block !== 'object' || depth > 32) return;
+    // Each route's settings load the fonts they choose, like the base data.
+    for (const [, override] of routeOverrideEntries(block)) visit({ id: block.id, type: block.type, data: { ...block.data, ...override } }, depth + 1);
     const schema = lookup(block.type)?.schema ?? [];
     const role = blockRole(block, schema.find(field => field.name === 'font')?.default);
     const weights: number[] = [];

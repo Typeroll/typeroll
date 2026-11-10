@@ -1061,5 +1061,40 @@ await (async function headerBehaviorScenario() {
   });
 })();
 
+// Scenario: route_overrides. One header block, secondary everywhere and primary
+// on the home page, with no site CSS. The header partial is cached across
+// routes in a production build, so this also pins that the cache keeps one
+// render per route kind instead of serving the first route's header to all.
+await (async function routeOverridesScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-route-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+  const headerPath = join(tmpFixtures, 'organizations', 'default', 'sites', 'default', 'versions', 'main', 'partials', 'header.json');
+  writeFileSync(headerPath, JSON.stringify({
+    name: 'Main header', kind: 'header', content_mode: 'blocks', status: 'published',
+    blocks: [{
+      id: 'banner', type: 'core/section', data: { background: 'secondary' },
+      style_overrides: { custom_class: 'service-banner-header-surface' },
+      route_overrides: { home: { data_overrides: { background: 'primary' } } },
+      children: [{ id: 'banner-text', type: 'core/prose', data: { html: '<p>Route banner</p>' } }],
+    }],
+  }));
+  await build('route-overrides', { TYPEROLL_FIXTURES_DIR: tmpFixtures }, (outDir) => {
+    const banner = (route) => {
+      const html = readFileSync(join(outDir, route), 'utf8');
+      const tag = html.match(/<section[^>]*service-banner-header-surface[^>]*>/)?.[0] ?? html.match(/<section data-block="section"[^>]*>(?=[\s\S]*Route banner)/)?.[0];
+      if (!tag) fail(`[route-overrides] ${route} has no header banner`);
+      return tag;
+    };
+    if (!banner('index.html').includes('--block-bg:var(--color-primary)')) fail('[route-overrides] the home page banner is not primary');
+    for (const route of ['about/index.html', 'blog/hello-from-smoke-test/index.html']) {
+      if (!banner(route).includes('--block-bg:var(--color-secondary)')) fail(`[route-overrides] ${route} banner is not secondary`);
+    }
+    log('[route-overrides] ✓ header banner primary on /, secondary on a page and an item');
+  });
+})();
+
 log('OK — all smoke scenarios passed');
 process.exit(0);

@@ -151,6 +151,25 @@ Each entry in `links` (`core/navigation_links` and `core/navigation`) may set
 A `core/tabs` choice with a direct `href` accepts `link_rel` and `new_tab` too,
 so a partner banner built from tabs can mark its links the same way.
 
+A header or footer block that must look different on some routes (a banner
+that is `primary` over the home page's hero and `secondary` elsewhere) keeps
+one block and sets `route_overrides`, keyed by route kind (`home`, `item`,
+`page`, `facet`):
+
+```json
+{
+  "type": "core/section",
+  "data": { "background": "secondary" },
+  "route_overrides": {
+    "home": { "data_overrides": { "background": "primary" } }
+  }
+}
+```
+
+Set it with `update_block` (`null` removes it). Do not duplicate the block
+behind visibility branches or write site CSS against `body[data-route]` for a
+setting the block has.
+
 ## Footer tree and consent
 
 Use an accessible footer navigation landmark and `core/navigation_links` with

@@ -28,6 +28,7 @@
 import { STYLE_OVERRIDE_KEYS, type Block, type BlockType } from './types.js';
 import { closestFieldNames } from './closest-names.js';
 import { PART_STYLES_FIELD } from './block-parts.js';
+import { routeOverrideEntries } from './route-overrides.js';
 
 export { closestFieldNames };
 
@@ -212,6 +213,24 @@ function unknownPartStyleKeys(types: readonly BlockType[], value: unknown, path:
   return issues;
 }
 
+/**
+ * Unknown keys in a block's `route_overrides` data. Each route's keys are
+ * checked against the block's type with the data that route renders, so a
+ * repeater override resolves its item block like the block's own data does.
+ */
+export function unknownRouteOverrideFields(
+  block: { id?: unknown; type: string; data?: unknown; route_overrides?: Block['route_overrides'] },
+  registry: Registry,
+  path = 'route_overrides',
+): UnknownFieldIssue[] {
+  const base = block.data && typeof block.data === 'object' && !Array.isArray(block.data) ? block.data as Record<string, unknown> : {};
+  return routeOverrideEntries(block).flatMap(([route, data]) => unknownBlockDataFields(
+    { id: block.id, type: block.type, data: { ...base, ...data } },
+    registry,
+    { path: `${path}.${route}.data_overrides`, keys: Object.keys(data) },
+  ));
+}
+
 /** Unknown data keys in a block and everything inside it (children and slots). */
 export function unknownBlockFields(block: unknown, registry: Registry, path = 'block'): UnknownFieldIssue[] {
   const out: UnknownFieldIssue[] = [];
@@ -220,7 +239,10 @@ export function unknownBlockFields(block: unknown, registry: Registry, path = 'b
     if (!node || typeof node !== 'object' || Array.isArray(node) || seen.has(node)) return;
     seen.add(node);
     const typed = node as Block;
-    if (typeof typed.type === 'string') out.push(...unknownBlockDataFields(typed, registry, { path: `${at}.data` }));
+    if (typeof typed.type === 'string') {
+      out.push(...unknownBlockDataFields(typed, registry, { path: `${at}.data` }));
+      out.push(...unknownRouteOverrideFields(typed, registry, `${at}.route_overrides`));
+    }
     if (Array.isArray(typed.children)) typed.children.forEach((child, index) => visit(child, `${at}.children[${index}]`));
     if (Array.isArray(typed.slots)) typed.slots.forEach((slot, s) => Array.isArray(slot) && slot.forEach((child, index) => visit(child, `${at}.slots[${s}][${index}]`)));
   };

@@ -51,6 +51,8 @@ import { FORMS_RUNTIME_JS, formShellCss,
   siteContext,
   transformBodyForSeo,
   pageIdentityAttributes,
+  routeKind,
+  applyRouteOverridesToTree,
   faqPageJsonLd,
   jsonLdDeclaresType,
   leadingBackgroundImage,
@@ -117,7 +119,21 @@ const snippetSource = await buildSnippetSource();
 const liveBaseUrl = await getLiveBaseUrl();
 const contentType = (await getContentTypes()).find(type => type.id === (props.page.content_type ?? 'page'));
 const navigationPages = await getAllPages();
+// What this page says about itself in its markup. The route is the only place
+// that knows whether this URL is a facet or a numbered slice, so it is built
+// here rather than inferred later from the page alone. The same input gives
+// blocks their route (route_overrides), so a setting that varies by route
+// follows exactly the <body data-route> a stylesheet would have matched.
+const facetScope = props.facet?.filters?.[0];
+const identityInput = {
+  page: props.page,
+  ...(facetScope ? { facet: { field: facetScope.field, value: String(facetScope.value ?? '') } } : {}),
+  ...(props.pageNum ? { pageNum: props.pageNum } : {}),
+  defaultContentType: 'page',
+};
+const identity = pageIdentityAttributes(identityInput);
 const renderCtx: RenderContext = {
+  route: routeKind(identityInput),
   page: { ...pageContentValues(props.page), breadcrumbs: props.breadcrumbs },
   site: { ...siteContext(settings as unknown as Record<string, unknown>, getBuildYear()), fields: siteFields.values, live_base_url: liveBaseUrl, url: Astro.site?.href, get derived_data_url() { return derivedDataUrl(); } },
   content_type: contentType ? navigationContext(contentType, props.page.id, () => pageNavigation(props.page, contentType, navigationPages, settings.trailing_slash)) : undefined,
@@ -142,17 +158,6 @@ const renderCtx: RenderContext = {
         trailing_slash: settings.trailing_slash ?? 'always',
       },
 };
-
-// What this page says about itself in its markup. The route is the only place
-// that knows whether this URL is a facet or a numbered slice, so it is built
-// here rather than inferred later from the page alone.
-const facetScope = props.facet?.filters?.[0];
-const identity = pageIdentityAttributes({
-  page: props.page,
-  ...(facetScope ? { facet: { field: facetScope.field, value: String(facetScope.value ?? '') } } : {}),
-  ...(props.pageNum ? { pageNum: props.pageNum } : {}),
-  defaultContentType: 'page',
-});
 
 // Collection-backed repeaters fetch their items via this resolver. Built
 // once per build (it pre-loads all published items from every collection)
@@ -235,7 +240,7 @@ if (bodyHtml) bodyHtml = resolveAuthoredVariables(bodyHtml, { year: getBuildYear
     ...(footer?.content_mode === 'blocks' ? footer.blocks ?? [] : []),
   ];
   const assets = collectBlockAssets([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], blockRegistry, {
-    renderVersion, globalBlockSource,
+    renderVersion, globalBlockSource, route: renderCtx.route,
     // Opening hours ship their refresh script only where an automatic format shows them.
     siteFieldValues: siteFields.values,
     // Live snippets and live site fields ship their script only with a live base URL.
@@ -245,7 +250,7 @@ if (bodyHtml) bodyHtml = resolveAuthoredVariables(bodyHtml, { year: getBuildYear
   });
   // Same tree as the asset pass — a header banner and a footer banner both
   // asking for addresses must produce one loader, not two.
-  clientCapabilities = [...collectClientCapabilities(withGlobalBlockContent([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], globalBlockSource))];
+  clientCapabilities = [...collectClientCapabilities(applyRouteOverridesToTree(withGlobalBlockContent([...partialBlocks, ...(bodyBlocks ?? []), ...formBlocks], globalBlockSource), renderCtx.route))];
   blockCss = assets.css;
   blockJs = assets.js;
 }

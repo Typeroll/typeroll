@@ -135,7 +135,7 @@ export function addBlock(
 
 /**
  * Update a block in place — merges new `data` shallow-merge, optionally
- * replaces `style_overrides`. Does not touch children/slots.
+ * replaces `style_overrides` and `route_overrides`. Does not touch children/slots.
  */
 export function updateBlock(
   blocks: Block[],
@@ -144,6 +144,8 @@ export function updateBlock(
     data?: Record<string, unknown>;
     style_overrides?: Block['style_overrides'];
     responsive?: Block['responsive'];
+    /** Replaces the block's per-route settings; `null` removes them. */
+    route_overrides?: Block['route_overrides'] | null;
     /** Editorial tree label. Empty/whitespace clears it back to the derived label. */
     name?: string;
     /**
@@ -164,6 +166,8 @@ export function updateBlock(
   }
   if (args.style_overrides !== undefined) found.block.style_overrides = args.style_overrides;
   if (args.responsive !== undefined) found.block.responsive = args.responsive;
+  if (args.route_overrides === null) delete found.block.route_overrides;
+  else if (args.route_overrides !== undefined) found.block.route_overrides = args.route_overrides;
   if (args.name !== undefined) {
     const n = args.name.trim();
     if (n) found.block.name = n;

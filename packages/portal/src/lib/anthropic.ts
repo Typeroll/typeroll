@@ -18,7 +18,7 @@ import { DESIGN_NOTES_STARTER } from './design-notes';
 import { PLAYBOOK_STARTER } from './playbook';
 import { pageLiveUrl, pagePreviewUrl } from './site-urls';
 import { checkRedirectWrite } from './redirect-write';
-import { paths, siteFontsErrors, slugify } from '@typeroll/shared';
+import { paths, routeOverrideEntries, siteFontsErrors, slugify } from '@typeroll/shared';
 import type { Block, BlockType } from '@typeroll/shared';
 import { CORE_BLOCK_TYPES } from '@typeroll/shared';
 import {
@@ -1602,11 +1602,16 @@ export async function runTool(name: string, input: Record<string, unknown>, ctx:
         // per-type `script` gate, so a block type declaring script_fields
         // would otherwise let the chat write visitor-executed JS around it.
         const { resolveScriptFields, gateBlockInstanceScript } = await import('./block-script-gate');
+        const scriptFields = await resolveScriptFields(ctx.orgId, ctx.siteId, ctx.versionId, blockInput.type);
         const scriptWarnings = gateBlockInstanceScript(
           blockInput.data as Record<string, unknown> | undefined,
-          await resolveScriptFields(ctx.orgId, ctx.siteId, ctx.versionId, blockInput.type),
+          scriptFields,
           ctx.site,
         );
+        // A route's settings render like the block's own data, so they pass the same gate.
+        for (const [, override] of routeOverrideEntries(blockInput)) {
+          for (const warning of gateBlockInstanceScript(override, scriptFields, ctx.site)) if (!scriptWarnings.includes(warning)) scriptWarnings.push(warning);
+        }
         const result = addBlockMutation(loaded.blocks, {
           block: { id: '', data: {}, ...blockInput } as Block,
           parent_id: input.parent_id as string | null | undefined,

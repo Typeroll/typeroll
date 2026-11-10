@@ -41,7 +41,8 @@ export interface PageIdentityInput {
  * worse than emitting nothing, because a stylesheet would then be written
  * against it.
  */
-export type RouteKind = 'home' | 'facet' | 'item' | 'page';
+export const ROUTE_KINDS = ['home', 'facet', 'item', 'page'] as const;
+export type RouteKind = (typeof ROUTE_KINDS)[number];
 
 export function routeKind(input: PageIdentityInput): RouteKind {
   if (input.facet) return 'facet';

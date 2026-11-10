@@ -5,7 +5,7 @@
 // prioritized recommendations. The findings are stored in workflow.results so
 // they can be rendered in the portal's SEO dashboard.
 
-import { paths , MAIN_VERSION_ID, buildCoreBlockRegistry, composePageWithTemplate, createPageSource, pageContentValues, renderBlocks } from '@typeroll/shared';
+import { paths , MAIN_VERSION_ID, buildCoreBlockRegistry, composePageWithTemplate, createPageSource, pageContentValues, renderBlocks, routeKind } from '@typeroll/shared';
 import { vstore } from '../version-store';
 import type { Page } from '@typeroll/shared';
 import { type WorkflowDef } from './types';
@@ -176,7 +176,7 @@ async function pageBodyRenderer(orgId: string, siteId: string, pages: Page[]): P
     const template = templates.find((t) => t.id === (page.template || type?.template));
     const blocks = template ? composePageWithTemplate(template.blocks, page.blocks ?? []) : page.blocks ?? [];
     try {
-      return renderBlocks(blocks, { registry, pageSource, context: { page: pageContentValues(page), content_type: type as unknown as Record<string, unknown> } });
+      return renderBlocks(blocks, { registry, pageSource, context: { page: pageContentValues(page), content_type: type as unknown as Record<string, unknown>, route: routeKind({ page, defaultContentType: 'page' }) } });
     } catch {
       return page.html_content ?? '';
     }

@@ -1,6 +1,6 @@
 import { Parser } from 'htmlparser2';
 import type { Block, BlockType, ContentType, FieldDefinition, Page, Partial as PartialDoc } from '@typeroll/shared';
-import { pageContentValues, publicContentPage } from '@typeroll/shared';
+import { pageContentValues, publicContentPage, routeOverrideEntries } from '@typeroll/shared';
 
 /** Page-owned image references, not every image in the site's media library. */
 export function pageSitemapImages(page: Page, options: {
@@ -64,6 +64,7 @@ export function pageSitemapImages(page: Page, options: {
       fields(schema, block.data);
       if (block.type === 'core/html') html(block.data.html);
       for (const override of Object.values(block.responsive ?? {})) fields(schema, override?.data_overrides ?? {});
+      for (const [, override] of routeOverrideEntries(block)) fields(schema, override);
       if (block.type === 'core/global_block') {
         const id = String(block.data.global_block_id ?? '');
         if (!visited.has(id)) {

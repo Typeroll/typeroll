@@ -18,6 +18,7 @@ import { tokenScale, scaleValue, validColor, FONT_ROLES } from './design-tokens.
 import { BREAKPOINT_ORDER, isResponsiveValue } from './breakpoints.js';
 import { STYLE_ID_PATTERN } from './site-styles.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
+import { routeOverrideEntries } from './route-overrides.js';
 
 const NUMBER_TEXT = /^\s*-?(?:\d+(?:\.\d+)?|\.\d+)\s*$/;
 
@@ -167,6 +168,27 @@ export function blockDataTypeWarnings(
   const out: FieldTypeWarning[] = [];
   const blockId = typeof block.id === 'string' && block.id ? block.id : undefined;
   fieldWarnings(blockDataSchema(type, block.data as Record<string, unknown>, registry), block.data as Record<string, unknown>, `${path}.data`, blockId, out, 0);
+  out.push(...routeOverrideTypeWarnings(block, registry, path));
+  return out;
+}
+
+/**
+ * Type mismatches in a block's `route_overrides` data, checked against the
+ * schema of the data each route renders (route-overrides.ts).
+ */
+export function routeOverrideTypeWarnings(
+  block: Pick<Block, 'type' | 'data' | 'route_overrides'> & { id?: unknown },
+  registry: ReadonlyMap<string, BlockType>,
+  path = 'block',
+): FieldTypeWarning[] {
+  const type = registry.get(block.type);
+  if (!type?.schema) return [];
+  const out: FieldTypeWarning[] = [];
+  const blockId = typeof block.id === 'string' && block.id ? block.id : undefined;
+  const base = block.data && typeof block.data === 'object' ? block.data as Record<string, unknown> : {};
+  for (const [route, data] of routeOverrideEntries(block)) {
+    fieldWarnings(blockDataSchema(type, { ...base, ...data }, registry), data, `${path}.route_overrides.${route}.data_overrides`, blockId, out, 0);
+  }
   return out;
 }
 

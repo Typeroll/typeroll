@@ -38,7 +38,7 @@ import {
   removeBlock,
   BlockMutationError,
 } from '../../../../../../../../../lib/block-mutations';
-import type { Block } from '@typeroll/shared';
+import { blockTreeError, type Block } from '@typeroll/shared';
 import { blockLocation, blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
 import {
   addBlockUnknownFields,
@@ -49,6 +49,8 @@ import {
   siteBlockRegistry,
   unknownFieldsBody,
   updateBlockUnknownFields,
+  updateRouteOverrideUnknownFields,
+  routeOverridesWriteError,
 } from '../../../../../../../../../lib/block-write-warnings';
 
 function parseTarget(params: Record<string, string | undefined>):
@@ -112,6 +114,10 @@ export const POST: APIRoute = async ({ request, params }) => {
   }
   const shapeError = bodyShapeError(body, ['block', 'parent_id', 'slot_index', 'position', 'working_copy', 'response']);
   if (shapeError) return apiError(shapeError, 400);
+  // route_overrides and the rest of the block's shape, children included,
+  // are checked before anything is written (a 400 naming the path).
+  const treeError = blockTreeError([body.block], 'block');
+  if (treeError) return apiError(treeError, 400);
   const mode = blockWriteResponse(request, body);
   if (typeof mode !== 'string') return apiError(mode.error, 400);
   try {
@@ -152,6 +158,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     block_id?: string;
     data?: Record<string, unknown>;
     style_overrides?: Block['style_overrides'];
+    route_overrides?: Block['route_overrides'] | null;
     working_copy?: boolean;
     response?: string;
   } | null;
@@ -159,10 +166,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body && 'responsive' in body) {
     return apiError('responsive is not writable here. Put breakpoint values in data or use the /responsive endpoint.', 400);
   }
-  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'working_copy', 'response'], {
-    requireOneOf: ['data', 'style_overrides'],
+  const shapeError = bodyShapeError(body, ['block_id', 'data', 'style_overrides', 'route_overrides', 'working_copy', 'response'], {
+    requireOneOf: ['data', 'style_overrides', 'route_overrides'],
   });
   if (shapeError) return apiError(shapeError, 400);
+  const routeError = routeOverridesWriteError(body.route_overrides, 'route_overrides', true);
+  if (routeError) return apiError(routeError, 400);
   const mode = blockWriteResponse(request, body);
   if (typeof mode !== 'string') return apiError(mode.error, 400);
   if (body.data !== undefined && (!body.data || typeof body.data !== 'object' || Array.isArray(body.data))) {
@@ -173,12 +182,16 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // A key no field of the block's type declares would be stored and never
     // rendered; reject it, naming where it probably belongs.
     const registry = await siteBlockRegistry(ctx);
-    const unknown = updateBlockUnknownFields(loaded.blocks, body.block_id, body.data, registry);
+    const unknown = [
+      ...updateBlockUnknownFields(loaded.blocks, body.block_id, body.data, registry),
+      ...updateRouteOverrideUnknownFields(loaded.blocks, body.block_id, body.data, body.route_overrides, registry),
+    ];
     if (unknown.length) return apiResponse(ctx, unknownFieldsBody(unknown), 400, body);
     const blocks = updateBlock(loaded.blocks, {
       block_id: body.block_id,
       data: body.data,
       style_overrides: body.style_overrides,
+      route_overrides: body.route_overrides,
       null_removes: true,
     });
     // Part styles are checked on the block as written: a style the site lacks,

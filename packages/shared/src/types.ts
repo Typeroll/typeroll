@@ -1007,6 +1007,7 @@ export interface MigrationUrl {
 // ─── Blocks ──────────────────────────────────────────────────────────────
 
 import type { Breakpoint } from './breakpoints.js';
+import type { RouteKind } from './page-identity.js';
 
 export interface ResponsiveOverride {
   hidden?: boolean;
@@ -1046,7 +1047,24 @@ export interface Block {
    */
   hidden_on?: Breakpoint[];
 
+  /**
+   * Per-route settings, keyed by the page's route kind (`routeKind` in
+   * page-identity.ts, the value of `<body data-route>`). On a route of that
+   * kind the override's `data_overrides` are merged over `data` (shallow)
+   * before the block renders, so a shared header can be primary on the home
+   * page and secondary elsewhere without site CSS. Checked like `data` on
+   * write (route-overrides.ts); without a route in the render context the
+   * block renders its own data.
+   */
+  route_overrides?: { [K in RouteKind]?: RouteOverride };
+
   style_overrides?: StyleOverrides;
+}
+
+/** One route's settings for a block (Block.route_overrides). */
+export interface RouteOverride {
+  /** Field values merged over the block's `data` on this route. */
+  data_overrides?: Record<string, unknown>;
 }
 
 /**

@@ -168,7 +168,7 @@ export interface TreeMigration {
 
 /**
  * Apply a plan to every instance of `typeId` in a block tree: blocks of the
- * type (data and responsive overrides) and static repeater items rendered
+ * type (data, responsive and route overrides) and static repeater items rendered
  * with it as `item_block`. Returns a new tree; the input is not modified.
  */
 export function migrateTree(
@@ -196,6 +196,11 @@ export function migrateTree(
       if (isRecord(block.responsive)) {
         next.responsive = Object.fromEntries(Object.entries(block.responsive).map(([breakpoint, override]) =>
           [breakpoint, isRecord(override) ? apply(override) : override])) as Block['responsive'];
+      }
+      // A route's settings are renamed and dropped with the fields they set.
+      if (isRecord(block.route_overrides)) {
+        next.route_overrides = Object.fromEntries(Object.entries(block.route_overrides).map(([route, override]) =>
+          [route, isRecord(override) && isRecord(override.data_overrides) ? { ...override, data_overrides: apply(override.data_overrides) } : override])) as Block['route_overrides'];
       }
     }
     if (itemBlockOf(block, resolve) === typeId && Array.isArray(block.data?.items)) {
