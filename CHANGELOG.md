@@ -22,6 +22,15 @@
   be restored (409 `site_deletion_in_progress`). Guide: Delete a site.
 - Datastores can list the documents beneath a path (`listTree`) on fixtures,
   SQLite and the Durable Object store.
+- `core/embed` can wait for cookie consent: with `consent: "optional"` its
+  HTML (iframes and images included) and `js` stay off until the visitor
+  accepts all cookies in the banner, and a note with a button that opens the
+  banner shows until then (`consent_placeholder`, otherwise a built-in
+  sentence in the page language). Stored consent loads it at once; "necessary
+  only" and "decline" keep it off. A write that gates an embed on a site
+  without the banner returns `consent_embed_without_banner`. The default,
+  `"none"`, renders as before. Found on moveria.nl, where an embedded energy
+  comparer set its `v` and `vc` cookies before the visitor answered.
 
 ## 0.3.21 (candidate, MCP 0.45.130)
 

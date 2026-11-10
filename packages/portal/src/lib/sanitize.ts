@@ -343,21 +343,46 @@ function restoreMarkers(html: string): string {
   return html.replace(TYPEROLL_TOKEN_RE, (_m, payload: string) => `<!-- ${payload} -->`);
 }
 
+// Consent-gated content (shared consent-embed.ts). A core/embed set to wait
+// for cookie consent renders its html inside <template data-tr-consent="optional">,
+// which keeps iframes, images and scripts inert until the consent runtime
+// stamps the content out after the visitor accepts all cookies. Any other
+// <template> is still unwrapped, as before. For the sanitizer pass the gated
+// template is renamed to a per-call placeholder, so its content is sanitized
+// like any other markup and the placeholder cannot be forged by content; it
+// is restored with exactly that one attribute.
+// Kept in lockstep with packages/site-template/src/lib/sanitize.ts.
+const CONSENT_TEMPLATE_OPEN = '<template data-tr-consent="optional" data-tr-consent-embed-content>';
+
+function guardConsentTemplates(): { placeholder: string; transform: (tagName: string, attribs: sanitizeHtml.Attributes) => sanitizeHtml.Tag } {
+  const placeholder = `tr-consent-${globalThis.crypto.randomUUID().replace(/-/g, '')}`;
+  return {
+    placeholder,
+    transform: (tagName, attribs) => (attribs['data-tr-consent'] === 'optional' && Object.hasOwn(attribs, 'data-tr-consent-embed-content') ? { tagName: placeholder, attribs: {} } : { tagName, attribs }),
+  };
+}
+
+function restoreConsentTemplates(html: string, placeholder: string): string {
+  return html.split(`<${placeholder}>`).join(CONSENT_TEMPLATE_OPEN).split(`</${placeholder}>`).join('</template>');
+}
+
 export function sanitizeBody(html: string, iframeAllowedHosts: string[] = []): string {
   const customHosts = normalizeIframeAllowedHosts(iframeAllowedHosts).hosts;
   const protectedHtml = protectMarkers(html);
   const { placeholder, ...styleGuard } = guardStyleText();
+  const consentGuard = guardConsentTemplates();
   const cleaned = stripCssExploits(restoreStyleTags(sanitizeHtml(protectedHtml, {
     ...options,
     ...styleGuard,
+    transformTags: { ...styleGuard.transformTags, template: consentGuard.transform },
     allowedIframeHostnames: [...DEFAULT_IFRAME_ALLOWED_HOSTS, ...customHosts],
-    allowedTags: [...allowedTags, 'tr-marker', placeholder],
+    allowedTags: [...allowedTags, 'tr-marker', placeholder, consentGuard.placeholder],
     allowedAttributes: {
       ...options.allowedAttributes,
       'tr-marker': ['data-tr'],
     },
   }), placeholder));
-  return restoreSvgAttrCase(restoreMarkers(cleaned));
+  return restoreSvgAttrCase(restoreMarkers(restoreConsentTemplates(cleaned, consentGuard.placeholder)));
 }
 
 // sanitize-html's underlying htmlparser2 lowercases every attribute name

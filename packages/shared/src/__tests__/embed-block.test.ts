@@ -101,3 +101,62 @@ describe('per-instance script emission', () => {
     expect(css).not.toBe('');
   });
 });
+
+describe('consent-gated embeds', () => {
+  const html = '<iframe src="https://tool.vendor.example/compare" title="Compare"></iframe>';
+
+  it('renders an embed without consent exactly as before', () => {
+    // consent "none" is the default and must not change a byte of existing output.
+    const plain = renderBlocks([embedBlock({ html, js: 'x()' })], { registry });
+    expect(renderBlocks([embedBlock({ html, js: 'x()', consent: 'none' })], { registry })).toBe(plain);
+    expect(plain).not.toContain('<template');
+    expect(plain).not.toContain('data-tr-consent');
+    expect(collectBlockAssets([embedBlock({ html, js: 'x()', consent: 'none' })], registry))
+      .toEqual(collectBlockAssets([embedBlock({ html, js: 'x()' })], registry));
+  });
+
+  it('keeps the html inert in a consent template next to a placeholder', () => {
+    const body = renderBlocks([embedBlock({ html, consent: 'optional' })], { registry });
+    expect(body).toContain('data-tr-consent-embed="optional"');
+    expect(body).toContain(`<template data-tr-consent="optional" data-tr-consent-embed-content>${html}</template>`);
+    // The iframe exists only inside the template.
+    expect(body.replace(/<template[\s\S]*<\/template>/, '')).not.toContain('<iframe');
+    expect(body).toContain('<div class="tr-consent-embed" data-tr-consent-placeholder>');
+    expect(body).toContain('<button type="button" class="tr-consent-embed__button" data-tr-open-consent>Manage cookie settings</button>');
+    expect(body).toContain('This content is shown when you accept all cookies.');
+  });
+
+  it('writes the placeholder in the page language and uses the site label', () => {
+    const body = renderBlocks([embedBlock({ html, consent: 'optional' })], {
+      registry,
+      context: { page: { language: 'nl-NL' }, site: { cookie_consent: { enabled: true } } },
+    });
+    expect(body).toContain('Deze inhoud wordt getoond als je alle cookies accepteert.');
+    expect(body).toContain('>Cookie-instellingen beheren</button>');
+    const labelled = renderBlocks([embedBlock({ html, consent: 'optional' })], {
+      registry,
+      context: { page: { language: 'nl' }, site: { cookie_consent: { enabled: true, labels: { manage: 'Cookievoorkeuren' } } } },
+    });
+    expect(labelled).toContain('>Cookievoorkeuren</button>');
+  });
+
+  it('shows the block\'s own placeholder text, escaped', () => {
+    const body = renderBlocks([embedBlock({ html, consent: 'optional', consent_placeholder: 'Vergelijker <na> toestemming' })], { registry });
+    expect(body).toContain('<p class="tr-consent-embed__text">Vergelijker &lt;na&gt; toestemming</p>');
+  });
+
+  it('runs the js only after the consent runtime activated the block', () => {
+    const blocks = [embedBlock({ html, js: 'el.dataset.ran = "1"', consent: 'optional' })];
+    const { js, css } = collectBlockAssets(blocks, registry);
+    expect(js).toContain('typeroll:consent-embed');
+    expect(js).toContain('el.dataset.ran = "1"');
+    expect(css).toContain('.tr-consent-embed');
+    expect(renderBlocks(blocks, { registry })).toContain('data-bid="blk_embed"');
+  });
+
+  it('ships the placeholder styles only on pages with a gated embed', () => {
+    expect(collectBlockAssets([embedBlock({ html })], registry).css).not.toContain('tr-consent-embed');
+    const nested: Block[] = [{ id: 'sec', type: 'core/section', data: {}, children: [embedBlock({ html, consent: 'optional' })] } as Block];
+    expect(collectBlockAssets(nested, registry).css).toContain('tr-consent-embed');
+  });
+});

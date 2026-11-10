@@ -38,6 +38,48 @@ Core blocks (id starts with `core/`) are managed in platform code and can't be
 changed. A block type in use cannot be deleted; `find_pages_using_block_type`
 lists where it is used.
 
+## Embeds that wait for cookie consent
+
+Many third-party widgets — price comparers, booking tools, maps, social feeds —
+set cookies or contact their vendor as soon as they load. Set the embed's
+**Load after cookie consent** (`consent`) to **Only after the visitor accepts
+all cookies** (`"optional"`) and it waits for the same answer as the banner's
+optional scripts:
+
+```json
+{
+  "type": "core/embed",
+  "data": {
+    "html": "<div class=\"comparer\"></div>",
+    "js": "const s = document.createElement('script'); s.src = 'https://widgets.vendor.example/comparer.js'; el.append(s);",
+    "consent": "optional"
+  }
+}
+```
+
+- **Before the visitor answers** the block's HTML is inert: its iframes,
+  images and other resources are not loaded and its JavaScript does not run,
+  so the widget sets no cookies. The visitor sees a short note and a button
+  that opens the cookie banner. The note follows the page language;
+  `consent_placeholder` replaces it with your own plain text. The button uses
+  the banner's settings label (`cookie_consent.labels.manage`).
+- **After "Accept all"** the HTML appears where the note was and the
+  JavaScript runs, with `el` holding the HTML, without reloading the page
+  (unless the banner is set to `reload_after_consent`).
+- **On later visits** with stored consent the widget loads straight away.
+  **"Necessary only" and "Decline"** keep it off, also on later visits.
+
+The gate needs the cookie banner (`cookie_consent.enabled`). Without it
+visitors can never accept, so the embed stays a note; a write that gates an
+embed on such a site returns a `consent_embed_without_banner` warning.
+
+`consent` defaults to `"none"`, which renders the embed exactly as before.
+Keep that for a vendor snippet that brings its own consent dialog or checks
+consent itself, so the visitor is not asked twice. The note has the classes
+`.tr-consent-embed`, `.tr-consent-embed__text` and `.tr-consent-embed__button`;
+its default styles have no specificity, so any site rule restyles it. A
+consent-aware site script can also listen for the `typeroll:consent` event.
+
 ## Block parts
 
 A **part** is a named element inside a block that a [named style](../../styles/)

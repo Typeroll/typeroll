@@ -425,6 +425,14 @@ without `!important`. In version 16 a bare element rule in site CSS (`h2`, `p`,
 `button`) also reaches the banner; from version 17 such rules no longer do,
 and only rules that name the banner's classes restyle it.
 
+#### Embeds behind the banner
+
+A `core/embed` block with `consent: "optional"` waits for the same answer as
+`scripts_optional`: its HTML and JavaScript load only after "Accept all", and
+a note with a button that reopens the banner shows until then. The button uses
+the `manage` label. See
+[embeds that wait for cookie consent](../blocks/parts/#embeds-that-wait-for-cookie-consent).
+
 ### `language_sections` array
 
 One site can serve several languages from language folders. Each section names

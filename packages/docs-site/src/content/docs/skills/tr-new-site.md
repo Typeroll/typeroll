@@ -131,6 +131,7 @@ Common requirements that are easy to misclassify:
 | Cookie notice | `settings.cookie_consent`, not a page block |
 | Consent copy owned by an installed Extension | `list_extension_installations` → `read_extension_installation` → `update_extension_installation_config`, using exact manifest schema keys; the update queues a production deploy by default |
 | One-off HTML + JavaScript embed | `core/embed`; reusable widgets use a custom block type with `script` |
+| Third-party widget that sets cookies (comparer, booking, map) | `core/embed` with `consent: "optional"` and the cookie banner on; it loads only after the visitor accepts all cookies |
 | CTA/button variants | `core/cta` and `core/button`, styled from site tokens or a narrowly scoped class |
 | Two-column image/text | `core/media_card`, `core/feature_row`, or `core/columns` |
 | Figures, captions and tables | `core/prose` / richtext; the sanitizer preserves these semantic tags |
