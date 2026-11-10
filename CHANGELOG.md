@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.24 (candidate, MCP 0.45.133)
+
+- A link to `#cookie-settings` now opens the cookie banner even after another
+  script has made its href absolute, as long as it points at the same page
+  (query and all). Before, the banner listened only for the literal
+  `href="#cookie-settings"`, so on autopilot.se the footer link did nothing on
+  a page where the attribution app adds tracking parameters to links. The
+  banner also opens when the hash changes to `#cookie-settings`.
+
+- Apps can send email with links that hide their address. `POST
+  /delivery/email` takes `format: "linked_text"`: `[label](https://…)` in the
+  text becomes a link in an HTML part that Core builds itself (everything else
+  is escaped, so apps still cannot send their own HTML), and the plain-text
+  part reads `label (url)`. A backslash escapes brackets. Without `format`
+  nothing changes. Asked for by autopilot.se, whose event emails showed a long
+  unsubscribe address.
+
 ## 0.3.23 (candidate, MCP 0.45.132)
 
 - The page list (`GET /api/v1/sites/{siteId}/pages`, MCP `list_pages`) reports

@@ -88,7 +88,8 @@ export function buildConsentRuntime(reloadAfterConsent: boolean, initialChoice?:
   // `<a href="#cookie-settings">` (cookie-consent.ts COOKIE_SETTINGS_HREF)
   // opens the banner like data-tr-open-consent, because menus and link fields
   // hold an href but no custom attributes. A page opened at #cookie-settings
-  // (a link from another page) shows the banner too.
+  // (a link from another page), or whose hash changes to it, shows the banner
+  // too.
   // initialChoice presets the in-memory answer for a review preview, where the
   // sandbox has no cookies; published pages never pass it.
   const memory = initialChoice === 'all' || initialChoice === 'necessary' ? `'${initialChoice}'` : 'null';
@@ -106,9 +107,12 @@ export function buildConsentRuntime(reloadAfterConsent: boolean, initialChoice?:
       function attach(){var r=document.getElementById('tr-consent');if(r){r.addEventListener('click',function(e){var b=e.target&&e.target.closest&&e.target.closest('[data-tr-consent-action]');if(!b)return;var a=b.getAttribute('data-tr-consent-action');if(a==='all'||a==='necessary'||a==='rejected')set(a)})}
         /* Delegate clicks on any element carrying data-tr-open-consent —
            footer links, the floating chip, custom block "Manage cookies"
-           buttons, etc. — and on plain links to #cookie-settings. One
-           handler on document, no per-link wiring. */
-        document.addEventListener('click',function(e){var t=e.target&&e.target.closest&&e.target.closest('[data-tr-open-consent],a[href="#cookie-settings"]');if(!t)return;e.preventDefault();open()});
+           buttons, etc. — and on links to #cookie-settings on this page,
+           also after a script has made the href absolute (an attribution
+           script adding parameters, say). One handler on document, no
+           per-link wiring. */
+        document.addEventListener('click',function(e){var t=e.target&&e.target.closest&&e.target.closest('[data-tr-open-consent],a[href*="#cookie-settings"]');if(!t)return;if(!t.hasAttribute('data-tr-open-consent')&&!(t.hash==='#cookie-settings'&&t.host===location.host&&t.pathname===location.pathname))return;e.preventDefault();open()});
+        window.addEventListener('hashchange',function(){if(location.hash==='#cookie-settings')open()});
         if(location.hash==='#cookie-settings')open()}
       if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',attach);else attach();
       window.typerollConsent={open:open,close:function(){document.documentElement.classList.remove('tr-consent-needed')},set:set,get:read};
