@@ -1,4 +1,17 @@
 const breakpoints = new Set(['mobile', 'tablet', 'laptop', 'desktop', 'wide']);
+/** ROUTE_KINDS in page-identity.ts; publication-projection.test.mjs keeps the two equal. */
+export const PUBLICATION_ROUTE_KINDS = Object.freeze(['home', 'facet', 'item', 'page']);
+const routeKinds = new Set(PUBLICATION_ROUTE_KINDS);
+/**
+ * Every Block field (types.ts), as projected or deliberately left behind.
+ * publication-projection.test.mjs fails when a new Block field is missing
+ * here: a rendered field the projection does not carry previews correctly and
+ * silently publishes without effect.
+ */
+export const PUBLICATION_BLOCK_FIELDS = Object.freeze({
+  projected: Object.freeze(['id', 'type', 'data', 'children', 'slots', 'hidden_on', 'responsive', 'route_overrides', 'style_overrides']),
+  editorial: Object.freeze(['name']),
+});
 
 function object(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -97,6 +110,20 @@ export function projectPublicationBlocks(blocks, definitions, depth = 0) {
         if (override.data_overrides !== undefined) projected.data_overrides = projectBlockData(override.data_overrides, definition, definitions, block.data);
         if (typeof override.class_overrides === 'string') projected.class_overrides = override.class_overrides;
         result.responsive[breakpoint] = projected;
+      }
+    }
+    // Per-route settings (route-overrides.ts): a shared header that is primary
+    // on the home page only. Left out, every route renders the base data while
+    // the portal preview, which reads the stored block, shows the override.
+    if (block.route_overrides !== undefined) {
+      if (!object(block.route_overrides)) throw new Error('Invalid block route overrides');
+      result.route_overrides = {};
+      for (const [route, override] of Object.entries(block.route_overrides)) {
+        if (!routeKinds.has(route) || !object(override)) throw new Error('Invalid block route overrides');
+        if (Object.keys(override).some(key => key !== 'data_overrides')) throw new Error('Invalid block route overrides');
+        const projected = {};
+        if (override.data_overrides !== undefined) projected.data_overrides = projectBlockData(override.data_overrides, definition, definitions, block.data);
+        result.route_overrides[route] = projected;
       }
     }
     if (block.style_overrides !== undefined) {

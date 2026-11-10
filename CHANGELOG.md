@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Per-route block settings (`route_overrides`) now reach the published site.
+  The publication projection carried every other block field but dropped this
+  one, so a header block that is primary on the home page previewed correctly
+  and published with its base settings on every route. Route overrides are
+  projected like `responsive` data overrides (declared, rendered fields only),
+  and a test now fails when a new Block field is neither projected nor
+  declared editorial. Republish to apply. Found on moveria.nl.
+
 ## 0.3.22 (candidate, MCP 0.45.131)
 
 - Organization owners can permanently delete an archived site themselves,
