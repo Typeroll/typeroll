@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.24 (candidate, MCP 0.45.133)
 
 - A link to `#cookie-settings` now opens the cookie banner even after another
   script has made its href absolute, as long as it points at the same page
