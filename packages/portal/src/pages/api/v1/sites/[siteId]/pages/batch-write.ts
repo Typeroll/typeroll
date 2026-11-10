@@ -18,8 +18,9 @@ import { applyContentWrite } from '../../../../../../lib/content-write';
 import { WorkingCopyError } from '../../../../../../lib/working-copy';
 import { apiWriteAuthority } from '../../../../../../lib/field-authority';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
-import { ensureBlockIds, type BlockTreeWarning, type BlockType, type Page } from '@typeroll/shared';
+import { ensureBlockIds, type BlockTreeWarning, type BlockType, type HeadingAnchorChangedWarning, type Page } from '@typeroll/shared';
 import { siteBlockRegistry, treeWriteWarnings } from '../../../../../../lib/block-write-warnings';
+import { headingAnchorWarnings, pageDraftBody } from '../../../../../../lib/heading-anchor-warnings';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 
 const BATCH_MAX = 200;
@@ -64,7 +65,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (body.length > BATCH_MAX) return apiError(`Too many entries (max ${BATCH_MAX})`);
 
   const results = await Promise.all(
-    body.map(async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; staged?: string[]; applied_immediately?: string[]; error?: string; code?: string; details?: Record<string, unknown>; warnings?: BlockTreeWarning[] }> => {
+    body.map(async (raw): Promise<{ page_id: string; ok: boolean; saved?: boolean; staged?: string[]; applied_immediately?: string[]; error?: string; code?: string; details?: Record<string, unknown>; warnings?: Array<BlockTreeWarning | HeadingAnchorChangedWarning> }> => {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { page_id: '', ok: false, error: 'Each entry must be an object' };
       const item = raw as Item;
       const pageId = typeof item.page_id === 'string' ? item.page_id : '';
@@ -96,13 +97,16 @@ export const POST: APIRoute = async ({ request, params }) => {
         if (Object.keys(patch).length === 0) {
           return { page_id: pageId, ok: false, error: 'no writable fields in patch' };
         }
+        const before = 'blocks' in patch || 'html_content' in patch ? await pageDraftBody(ctx, pageId, existing) : null;
         const result = await applyContentWrite(
           ctx, { kind: 'page', id: pageId }, patch,
           { save: item.save === true, updatedBy: `api-key:${ctx.keyPrefix}`, ...authority, answerSources: item.answer_sources },
         );
         // Per entry, beside its own result: a sweep of 200 pages must say
         // which page carried the inert key, not that one of them did.
-        const warnings = await treeWriteWarnings(ctx, (item.patch as { blocks?: unknown } | undefined)?.blocks, await registry());
+        const warnings: Array<BlockTreeWarning | HeadingAnchorChangedWarning> = await treeWriteWarnings(ctx, (item.patch as { blocks?: unknown } | undefined)?.blocks, await registry());
+        const fresh = before ? await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId) : null;
+        if (before && fresh) warnings.push(...await headingAnchorWarnings(ctx, existing, before, await pageDraftBody(ctx, pageId, fresh)));
         return { page_id: pageId, ok: true, saved: result.committed || (result.staged.length === 0 && result.applied_immediately.length > 0), staged: result.staged, applied_immediately: result.applied_immediately, ...(warnings.length ? { warnings } : {}) };
       } catch (e) {
         return { page_id: pageId, ok: false, error: e instanceof Error ? e.message : 'unknown error', ...(e instanceof WorkingCopyError && e.code ? { code: e.code } : {}), ...(e instanceof WorkingCopyError && e.details ? { details: e.details } : {}) };

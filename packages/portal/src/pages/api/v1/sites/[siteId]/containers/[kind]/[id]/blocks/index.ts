@@ -30,6 +30,7 @@ import {
   writeContainer,
   ContainerError,
   type BlockContainerKind,
+  type LoadedContainer,
 } from '../../../../../../../../../lib/block-containers';
 import {
   addBlock,
@@ -38,7 +39,8 @@ import {
   removeBlock,
   BlockMutationError,
 } from '../../../../../../../../../lib/block-mutations';
-import { blockTreeError, invalidFieldValuesBody, type Block } from '@typeroll/shared';
+import { blockTreeError, invalidFieldValuesBody, type Block, type HeadingAnchorChangedWarning, type Page } from '@typeroll/shared';
+import { headingAnchorWarnings } from '../../../../../../../../../lib/heading-anchor-warnings';
 import { blockLocation, blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
 import {
   addBlockInvalidFields,
@@ -66,6 +68,12 @@ function parseTarget(params: Record<string, string | undefined>):
     return { ok: false, response: apiError(`kind must be page|partial|template, got "${kind}"`, 400) };
   }
   return { ok: true, target: { kind, id } };
+}
+
+/** Published heading ids a page tree mutation changed (heading_anchor_changed). */
+async function anchorWarnings(ctx: { orgId: string; siteId: string; versionId: string }, loaded: LoadedContainer, blocks: Block[]): Promise<HeadingAnchorChangedWarning[]> {
+  if (loaded.target.kind !== 'page') return [];
+  return headingAnchorWarnings(ctx, loaded.raw as Page, { content_mode: 'blocks', blocks: loaded.blocks }, { content_mode: 'blocks', blocks });
 }
 
 function mutError(e: unknown): Response {
@@ -142,10 +150,11 @@ export const POST: APIRoute = async ({ request, params }) => {
       data: body.block.data, style_overrides: body.block.style_overrides,
     }, registry);
     warnings.push(...partStyles.warnings);
+    const anchors = await anchorWarnings(ctx, loaded, result.blocks);
     return apiResponse(ctx, {
       added_id: result.added_id,
       ...(mode === 'summary' ? blockWriteSummary(result.blocks, result.added_id, written.has_unsaved_changes) : { blocks: result.blocks }),
-      ...(warnings.length ? { warnings } : {}),
+      ...(warnings.length || anchors.length ? { warnings: [...warnings, ...anchors] } : {}),
     });
   } catch (e) {
     return mutError(e);
@@ -208,7 +217,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // A misspelled override is stored, returned and built without comment.
     // The caller cannot read our logs, so it travels in the body.
     // Field values the schema will not render travel the same way.
-    const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings];
+    const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings, ...await anchorWarnings(ctx, loaded, blocks)];
     return apiResponse(ctx, {
       ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}),
       ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks }),
@@ -251,7 +260,11 @@ export const PUT: APIRoute = async ({ request, params }) => {
       target_position: body.target_position,
     });
     const written = await writeContainer(t.target, blocks, ctx, loaded.raw);
-    return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks });
+    const warnings = await anchorWarnings(ctx, loaded, blocks);
+    return apiResponse(ctx, {
+      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks }),
+      ...(warnings.length ? { warnings } : {}),
+    });
   } catch (e) {
     return mutError(e);
   }
@@ -275,7 +288,11 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     const location = blockLocation(loaded.blocks, blockId);
     const blocks = removeBlock(loaded.blocks, blockId);
     const written = await writeContainer(t.target, blocks, ctx, loaded.raw);
-    return apiResponse(ctx, mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: written.has_unsaved_changes } : { blocks });
+    const warnings = await anchorWarnings(ctx, loaded, blocks);
+    return apiResponse(ctx, {
+      ...(mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: written.has_unsaved_changes } : { blocks }),
+      ...(warnings.length ? { warnings } : {}),
+    });
   } catch (e) {
     return mutError(e);
   }

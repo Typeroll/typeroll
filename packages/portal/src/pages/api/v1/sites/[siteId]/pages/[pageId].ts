@@ -32,11 +32,12 @@ import {
   WorkingCopyError,
 } from '../../../../../../lib/working-copy';
 import { treeWriteWarnings } from '../../../../../../lib/block-write-warnings';
+import { headingAnchorWarnings, pageDraftBody } from '../../../../../../lib/heading-anchor-warnings';
 import { checkAlternates } from '../../../../../../lib/page-alternates';
 import { blockTreeInputError } from '../../../../../../lib/block-tree-input';
 import { pickWritable, REPLACEABLE } from '../../../../../../lib/page-writable';
 import { contentModeMismatch } from '../../../../../../lib/content-mode-warning';
-import { pageExcerpt, type Page } from '@typeroll/shared';
+import { pageExcerpt, type Page, type PageBody } from '@typeroll/shared';
 
 function project(p: Page, hasUnsaved: boolean): Record<string, unknown> {
   return {
@@ -132,6 +133,28 @@ async function handleWrite(
   };
 }
 
+/** The draft body before a write that changes it; null when the write leaves the body alone. */
+async function bodyBeforeWrite(
+  ctx: { orgId: string; siteId: string; versionId: string },
+  pageId: string,
+  saved: Page,
+  update: Record<string, unknown>,
+): Promise<PageBody | null> {
+  return 'blocks' in update || 'html_content' in update ? pageDraftBody(ctx, pageId, saved) : null;
+}
+
+/** Published heading ids the write changed (heading_anchor_changed). */
+async function anchorWarnings(
+  ctx: { orgId: string; siteId: string; versionId: string },
+  saved: Page,
+  before: PageBody | null,
+  payload: Record<string, unknown>,
+): Promise<unknown[]> {
+  const page = payload.page as Page | null;
+  if (!before || !page) return [];
+  return headingAnchorWarnings(ctx, saved, before, page);
+}
+
 export const PATCH: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
@@ -161,12 +184,13 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if ('error' in authority) return apiError(authority.error);
 
   try {
+    const before = await bodyBeforeWrite(ctx, pageId, existing, update);
     const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources, authority);
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
     const mismatch = contentModeMismatch((await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId))?.content_mode, body, `/api/v1/sites/${ctx.siteId}/pages/${pageId}/mode`);
-    const warnings: unknown[] = [...await treeWriteWarnings(ctx, body.blocks), ...(mismatch ? [mismatch] : [])];
+    const warnings: unknown[] = [...await treeWriteWarnings(ctx, body.blocks), ...(mismatch ? [mismatch] : []), ...await anchorWarnings(ctx, existing, before, payload)];
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {
@@ -207,12 +231,13 @@ export const PUT: APIRoute = async ({ request, params }) => {
   if ('error' in authority) return apiError(authority.error);
 
   try {
+    const before = await bodyBeforeWrite(ctx, pageId, existing, update);
     const payload = await handleWrite(ctx, pageId, update, body.save === true, body.answer_sources, authority);
     // Reported, not rejected: the write is otherwise fine and the caller has
     // already spent the round trip. It has to travel in the body, because a
     // caller driving the API cannot read our logs.
     const mismatch = contentModeMismatch((await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, pageId))?.content_mode, body, `/api/v1/sites/${ctx.siteId}/pages/${pageId}/mode`);
-    const warnings: unknown[] = [...await treeWriteWarnings(ctx, body.blocks), ...(mismatch ? [mismatch] : [])];
+    const warnings: unknown[] = [...await treeWriteWarnings(ctx, body.blocks), ...(mismatch ? [mismatch] : []), ...await anchorWarnings(ctx, existing, before, payload)];
     const cssWarnings = customCssWarnings(body.custom_css).map(({ line, message }) => ({ line, message }));
     return apiResponse(ctx, { ...payload, ...(warnings.length ? { warnings } : {}), ...(cssWarnings.length ? { css_warnings: cssWarnings } : {}) }, 200, body);
   } catch (e) {

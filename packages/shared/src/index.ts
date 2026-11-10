@@ -16,6 +16,7 @@ export * from './page-identity.js';
 export * from './route-overrides.js';
 export * from './render-blocks.js';
 export * from './heading-outline.js';
+export * from './heading-anchors.js';
 export * from './composition-review.js';
 export * from './icons.js';
 export * from './core-blocks.js';

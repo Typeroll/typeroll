@@ -14,6 +14,7 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { vstore } from '../../../../../../lib/version-store';
 import { apiWriteAuthority } from '../../../../../../lib/field-authority';
 import { treeWriteWarnings } from '../../../../../../lib/block-write-warnings';
+import { headingAnchorWarnings, pageDraftBody } from '../../../../../../lib/heading-anchor-warnings';
 import {
   commitWorkingCopy,
   discardWorkingCopy,
@@ -61,11 +62,15 @@ export const PUT: APIRoute = async ({ request, params }) => {
   if (!(await targetExists(ctx, target))) return apiError('Target not found', 404);
 
   try {
+    const saved = target.kind === 'page' && ('blocks' in body.fields || 'html_content' in body.fields)
+      ? await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id) : null;
+    const before = saved ? await pageDraftBody(ctx, target.id, saved) : null;
     const filtered = await filterWcFields(ctx, target, body.fields);
     const wc = await mergeWorkingCopy(ctx, target, filtered, `api-key:${ctx.keyPrefix}`);
     // Same report as a page or partial write: the tree lands, and keys that
     // will never render travel back in the body.
-    const warnings = await treeWriteWarnings(ctx, filtered.blocks);
+    const warnings: unknown[] = await treeWriteWarnings(ctx, filtered.blocks);
+    if (saved && before) warnings.push(...await headingAnchorWarnings(ctx, saved, before, await pageDraftBody(ctx, target.id, saved)));
     return apiResponse(ctx, { ok: true, updated_at: wc.updated_at, ...(warnings.length ? { warnings } : {}) }, 200, body);
   } catch (e) {
     if (e instanceof WorkingCopyError) return apiError(e.message, e.status, ctx, e);

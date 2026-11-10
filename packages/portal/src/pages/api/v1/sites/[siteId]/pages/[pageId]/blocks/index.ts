@@ -47,6 +47,7 @@ import {
   updateRouteOverrideUnknownFields,
   routeOverridesWriteError,
 } from '../../../../../../../../lib/block-write-warnings';
+import { headingAnchorWarnings } from '../../../../../../../../lib/heading-anchor-warnings';
 
 // Buffer model: mutations read from and write to the page's WORKING COPY
 // (the draft layer). Nothing lands on the saved page until an explicit
@@ -62,6 +63,11 @@ async function loadDraft(ctx: Ctx, pageId: string): Promise<{ page: Page; saved:
     saved: page,
     tree: (wc?.fields?.blocks as Block[] | undefined) ?? page.blocks ?? [],
   };
+}
+
+/** Published heading ids a tree mutation changed (heading_anchor_changed). */
+function anchorWarnings(ctx: Ctx, draft: { saved: Page; tree: Block[] }, blocks: Block[]) {
+  return headingAnchorWarnings(ctx, draft.saved, { content_mode: 'blocks', blocks: draft.tree }, { content_mode: 'blocks', blocks });
 }
 
 /** Write the tree to the working copy; true when it now differs from the saved page. */
@@ -136,10 +142,11 @@ export const POST: APIRoute = async ({ request, params }) => {
       data: body.block.data, style_overrides: body.block.style_overrides,
     }, registry);
     warnings.push(...partStyles.warnings);
+    const anchors = await anchorWarnings(ctx, draft, result.blocks);
     return apiResponse(ctx, {
       added_id: result.added_id,
       ...(mode === 'summary' ? blockWriteSummary(result.blocks, result.added_id, unsaved) : { blocks: result.blocks }),
-      ...(warnings.length ? { warnings } : {}),
+      ...(warnings.length || anchors.length ? { warnings: [...warnings, ...anchors] } : {}),
     });
   } catch (e) {
     return mutError(e);
@@ -203,7 +210,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     // A misspelled override is stored, returned and built without comment.
     // The caller cannot read our logs, so it travels in the body.
     // Field values the schema will not render travel the same way.
-    const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings];
+    const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings, ...await anchorWarnings(ctx, draft, blocks)];
     return apiResponse(ctx, {
       ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}),
       ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks }),
@@ -247,7 +254,11 @@ export const PUT: APIRoute = async ({ request, params }) => {
       target_position: body.target_position,
     });
     const unsaved = await persistDraft(ctx, pageId, blocks, draft.saved);
-    return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks });
+    const warnings = await anchorWarnings(ctx, draft, blocks);
+    return apiResponse(ctx, {
+      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks }),
+      ...(warnings.length ? { warnings } : {}),
+    });
   } catch (e) {
     return mutError(e);
   }
@@ -273,7 +284,11 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     const location = blockLocation(draft.tree, blockId);
     const blocks = removeBlock(draft.tree, blockId);
     const unsaved = await persistDraft(ctx, pageId, blocks, draft.saved);
-    return apiResponse(ctx, mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: unsaved } : { blocks });
+    const warnings = await anchorWarnings(ctx, draft, blocks);
+    return apiResponse(ctx, {
+      ...(mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: unsaved } : { blocks }),
+      ...(warnings.length ? { warnings } : {}),
+    });
   } catch (e) {
     return mutError(e);
   }

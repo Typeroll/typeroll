@@ -22,6 +22,7 @@ import { mergeWorkingCopy, readWorkingCopy, workingCopyDiffers } from '../../../
 import { blockWriteResponse, blockWriteSummary } from '../../../../../../../../lib/block-write-response';
 import { siteBlockRegistry, unknownFieldsBody, updateBlockUnknownFields, updatedBlockInvalidFields } from '../../../../../../../../lib/block-write-warnings';
 import { invalidFieldValuesBody, type Block } from '@typeroll/shared';
+import { headingAnchorWarnings } from '../../../../../../../../lib/heading-anchor-warnings';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -63,7 +64,12 @@ export const POST: APIRoute = async ({ request, params }) => {
     const invalid = updatedBlockInvalidFields(source, blocks, body.block_id, registry);
     if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
     const unsaved = workingCopyDiffers(page, await mergeWorkingCopy(ctx, wcTarget, { blocks }));
-    return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks });
+    // A scalar value can set any declared field, the heading text included.
+    const warnings = await headingAnchorWarnings(ctx, page, { content_mode: 'blocks', blocks: source }, { content_mode: 'blocks', blocks });
+    return apiResponse(ctx, {
+      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks }),
+      ...(warnings.length ? { warnings } : {}),
+    });
   } catch (e) {
     if (e instanceof BlockMutationError) {
       return apiError(e.message, e.code === 'not_found' ? 404 : 400);

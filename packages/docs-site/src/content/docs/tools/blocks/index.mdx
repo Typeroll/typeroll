@@ -460,3 +460,45 @@ one without an id, is checked whole. In `update_block` and
 `block.data`, with `block.children[0].data...` for nested blocks. A numeric
 option such as a font weight accepts the number as well as the text
 (`600` or `"600"`).
+
+### Heading anchors
+
+A heading without an explicit id gets one from its text when the page renders
+(`Kosten berekenen` → `#kosten-berekenen`, with `-2`, `-3` for duplicates);
+the table of contents links to it. An explicit id is `data.anchor_id` on
+`core/heading` and `core/rich_heading`, or an `id` attribute on an `h2`–`h4`
+in `core/prose`, `core/html` or an HTML-mode page. Changing the text of a
+heading without one changes its address, and links to the old `#` address
+stop working.
+
+When a write changes the id of a heading on a published page, its response
+carries a `heading_anchor_changed` warning with the old and the new id:
+
+```json
+{
+  "code": "heading_anchor_changed",
+  "block_id": "kosten",
+  "block_type": "core/rich_heading",
+  "path": "blocks[0].data.anchor_id",
+  "old_id": "kosten-berekenen",
+  "new_id": "kosten-vergelijken",
+  "message": "A heading in core/rich_heading block kosten is published with the id \"kosten-berekenen\" and will get \"kosten-vergelijken\" (an id without anchor_id follows the heading text), so links to #kosten-berekenen stop working. Set blocks[0].data.anchor_id to \"kosten-berekenen\" to keep them."
+}
+```
+
+To keep the old address, set `anchor_id` to `old_id` (the `path` says where);
+for a heading in prose or HTML the `path` is the HTML (`data.html` or
+`html_content`), and the heading gets `id="<old_id>"`. Nothing is pinned
+automatically: the write lands, and the page renders as before.
+
+A page is published when its status is `published` or `unlisted` and the site
+has been deployed; the ids visitors have are taken from the saved page as it
+was before the write, since a draft is never deployed. The warning comes with
+the write that makes the old id disappear, once: `PUT`/`PATCH
+/pages/{pageId}` (also with `save: true`), `POST /pages/batch-write` (per
+entry), the working copy `PUT`, and the page block routes (`add_block`,
+`update_block`, moving or removing a block, `/blocks/responsive`). It is not
+reported when the heading or its block is removed, when the heading now has
+an explicit id, or when the old id is still on the page. Headings that other
+blocks render, such as card titles, are not part of the comparison; they can
+only shift a duplicate's number.
