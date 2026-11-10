@@ -2659,7 +2659,7 @@ One-time, reviewed move of accepted custom-field answers to other paths of the s
 
 Permission: `read`
 
-List pages on the active site. Returns id, title, slug, status, and SEO summary (no html_content by default — use read_page or batch_read_pages for body content). Supports filtering by status and forward-cursor pagination. Pass full=true to include html_content + blocks in the response.
+List pages on the active site. Returns id, title, slug, status, SEO summary and has_unsaved_changes (true while the page has an unsaved draft; the listed fields are the saved values) (no html_content by default — use read_page or batch_read_pages for body content). Supports filtering by status and forward-cursor pagination. Pass full=true to include html_content + blocks in the response.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |

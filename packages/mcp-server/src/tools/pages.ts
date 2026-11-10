@@ -50,7 +50,7 @@ export const pageTools: ToolDef[] = [
   {
     name: 'list_pages',
     description:
-      'List pages on the active site. Returns id, title, slug, status, and SEO summary (no html_content by default — use read_page or batch_read_pages for body content). Supports filtering by status and forward-cursor pagination. Pass full=true to include html_content + blocks in the response.',
+      'List pages on the active site. Returns id, title, slug, status, SEO summary and has_unsaved_changes (true while the page has an unsaved draft; the listed fields are the saved values) (no html_content by default — use read_page or batch_read_pages for body content). Supports filtering by status and forward-cursor pagination. Pass full=true to include html_content + blocks in the response.',
     inputSchema: {
       status: z.enum(['draft', 'review', 'unlisted', 'published', 'all']).optional(),
       sort_by: z.string().optional().describe('Sort field; defaults to the selected content type’s order. Unfiltered lists use stable Page IDs.'),

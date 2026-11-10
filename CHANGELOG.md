@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- The page list (`GET /api/v1/sites/{siteId}/pages`, MCP `list_pages`) reports
+  `has_unsaved_changes` for every page, as reading one page already did. Before,
+  the field was missing from the list, so a pre-publish check that read it as
+  false missed drafts made with block edits. Found on moveria.nl.
+
 ## 0.3.22 (candidate, MCP 0.45.131)
 
 - Organization owners can permanently delete an archived site themselves,

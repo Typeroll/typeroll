@@ -15,7 +15,7 @@ import { vstore } from '../../../../../../lib/version-store';
 import { createPage } from '../../../../../../lib/page-create';
 import { apiWriteAuthority } from '../../../../../../lib/field-authority';
 import { pageAddress } from '../../../../../../lib/page-fields';
-import { WorkingCopyError } from '../../../../../../lib/working-copy';
+import { listWorkingCopies, WorkingCopyError } from '../../../../../../lib/working-copy';
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -115,10 +115,12 @@ export const GET: APIRoute = async ({ request, params }) => {
     pages = idx >= 0 ? pages.slice(idx + 1) : pages;
   }
   const slice = pages.slice(0, limit);
+  // Same signal as GET /pages/{id}: an edit in the working copy is unsaved until committed.
+  const unsaved = new Set((await listWorkingCopies(ctx)).filter(wc => wc.kind === 'page').map(wc => wc.target_id));
   const nextCursor = pages.length > limit ? encodeCursor({ after_id: slice[slice.length - 1]!.id }) : null;
 
   return apiResponse(ctx, {
-    pages: await Promise.all(slice.map(async p => ({ ...projectPage(p, fullBody), url: await pageAddress(ctx, p) }))),
+    pages: await Promise.all(slice.map(async p => ({ ...projectPage(p, fullBody), has_unsaved_changes: unsaved.has(p.id), url: await pageAddress(ctx, p) }))),
     next_cursor: nextCursor,
     total: undefined, // not computed — pagination is forward-only by design
   });
