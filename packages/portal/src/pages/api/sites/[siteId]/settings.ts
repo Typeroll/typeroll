@@ -213,7 +213,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
     next.design_scales = scales;
   }
   if (includesSection('design') && form.has('typography.rhythm')) {
-    const typography = Object.fromEntries(Object.keys(TYPOGRAPHY_DEFAULTS).map(key => [key, Number(form.get(`typography.${key}`))]));
+    const typography: Record<string, number | 'none'> = Object.fromEntries(Object.keys(TYPOGRAPHY_DEFAULTS).map(key => [key, Number(form.get(`typography.${key}`))]));
+    // "No limit": prose has no reading measure and fills its column.
+    if (form.get('typography.line_length_none')) typography.line_length = 'none';
     const error = typographyError(typography);
     if (error) return new Response(error, { status: 400 });
     next.typography = typography;

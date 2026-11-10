@@ -24,8 +24,10 @@ export function designScalesError(value) {
 export function typographyError(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 'typography must be an object';
   for (const [key, v] of Object.entries(value)) {
+    // "none": no reading measure; the column decides the prose width.
+    if (key === 'line_length' && v === 'none') continue;
     const range = key === 'line_length' ? [40, 90] : key === 'rhythm' ? [0.5, 2] : ['ratio_mobile','ratio_desktop'].includes(key) ? [1.1, 1.5] : null;
-    if (!range || typeof v !== 'number' || !Number.isFinite(v) || v < range[0] || v > range[1]) return `typography.${key} must be ${range ? `a number from ${range[0]} to ${range[1]}` : 'a supported setting'}`;
+    if (!range || typeof v !== 'number' || !Number.isFinite(v) || v < range[0] || v > range[1]) return `typography.${key} must be ${range ? `a number from ${range[0]} to ${range[1]}${key === 'line_length' ? ' or "none"' : ''}` : 'a supported setting'}`;
   }
   return null;
 }

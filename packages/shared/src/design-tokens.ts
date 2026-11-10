@@ -64,8 +64,18 @@ export function colorCss(value: string): string {
   return (COLOR_TOKENS as readonly string[]).includes(value)
     ? `var(--color-${value.replace(/_/g, '-')})` : validColor(value) ? value : '';
 }
-export interface TypographySettings { ratio_mobile?: number; ratio_desktop?: number; rhythm?: number; line_length?: number }
+/** `line_length`: 40–90 characters, or `'none'` for no reading measure (the column decides). */
+export interface TypographySettings { ratio_mobile?: number; ratio_desktop?: number; rhythm?: number; line_length?: number | 'none' }
 export const TYPOGRAPHY_DEFAULTS = { ratio_mobile: 1.2, ratio_desktop: 1.25, rhythm: 1, line_length: 65 } as const;
+/**
+ * The `--measure-prose` value for a line length. `'none'` emits `100%`, not
+ * `none`: the property is also read inside `min(100%, var(--measure-prose))`
+ * and by custom CSS in `calc()`/`min()`, where `none` is invalid. `100%` keeps
+ * every consumer valid and lets prose fill its column.
+ */
+export function proseMeasureCss(lineLength: number | 'none'): string {
+  return lineLength === 'none' ? '100%' : `${lineLength}ch`;
+}
 const number = (value: number) => Number(value.toFixed(5));
 /** Fluid endpoints at 360/1280px. rem bounds preserve reader font preferences. */
 function fluid(min: number, max: number, base: number): string {

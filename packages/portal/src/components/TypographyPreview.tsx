@@ -48,6 +48,7 @@ export default function TypographyPreview({ settings, siteId }: { settings: Site
       try {
         for (const [name,value] of data) {
           if (typeof value !== 'string') continue;
+          if (name === 'typography.line_length_none') continue;
           if (name.startsWith('typography.')) (next.typography as Record<string,number>)[name.split('.')[1]] = Number(value);
           if (name === 'fonts.size_base') next.fonts.size_base = Number(value);
           if (name === 'fonts.heading' || name === 'fonts.body') next.fonts[name.split('.')[1] as 'heading'|'body'] = value;
@@ -59,6 +60,7 @@ export default function TypographyPreview({ settings, siteId }: { settings: Site
             ((next.design_scales as any)[scale] ??= {})[step] = value.trim().startsWith('{') ? JSON.parse(value) : value;
           }
         }
+        if (data.get('typography.line_length_none')) next.typography.line_length = 'none';
         const validation = typographyError(next.typography) ?? designScalesError(next.design_scales);
         if (validation) { setError(validation); return; }
         if (!Number.isFinite(next.fonts.size_base) || next.fonts.size_base < 12 || next.fonts.size_base > 24) { setError('Base font size must be from 12 to 24px.'); return; }

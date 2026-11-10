@@ -17,3 +17,9 @@ it('exposes responsive scale and fluid controls to hosted and stdio clients',()=
  expect(schema.safeParse({typography:{ratio_mobile:1.2,rhythm:1.1},design_scales:{type_size:{'3xl':{mobile:'2rem',desktop:'3rem'}}}}).success).toBe(true);
  expect(schema.safeParse({design_scales:{space:{lg:{phone:'1rem'}}}}).success).toBe(false);
 });
+it('accepts line_length "none" and refuses other strings or out-of-range numbers',()=>{
+ const schema=z.object(settingsTools.find(t=>t.name==='update_site_settings')!.inputSchema!);
+ expect(schema.safeParse({typography:{line_length:'none'}}).success).toBe(true);
+ expect(schema.safeParse({typography:{line_length:65}}).success).toBe(true);
+ for (const line_length of ['auto',30,'65']) expect(schema.safeParse({typography:{line_length}}).success).toBe(false);
+});

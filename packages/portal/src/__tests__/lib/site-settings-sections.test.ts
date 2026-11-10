@@ -82,6 +82,16 @@ it('round-trips responsive scales and typography without changing another sectio
   expect(result.status).toBe(200);
   expect(await read()).toMatchObject({site_name:'Original',typography:{rhythm:1.2,line_length:68},design_scales:{space:{lg:{mobile:'1rem',desktop:'2rem'}}}});
 });
+it('saves "No limit" as line_length none and refuses other line lengths',async()=>{
+  const typography={settings_section:'design','typography.ratio_mobile':'1.2','typography.ratio_desktop':'1.25','typography.rhythm':'1'};
+  expect((await post({...typography,'typography.line_length':'65','typography.line_length_none':'1'})).status).toBe(200);
+  expect((await read())?.typography).toEqual({ratio_mobile:1.2,ratio_desktop:1.25,rhythm:1,line_length:'none'});
+  const before=await read();
+  for (const value of ['auto','30']) expect((await post({...typography,'typography.line_length':value})).status).toBe(400);
+  expect(await read()).toEqual(before);
+  expect((await post({...typography,'typography.line_length':'72'})).status).toBe(200);
+  expect((await read())?.typography?.line_length).toBe(72);
+});
 it('rejects malformed responsive JSON before saving',async()=>{
   const before=await read();
   expect((await post({settings_section:'design','design_scales.type_size.xs':'{broken'})).status).toBe(400);

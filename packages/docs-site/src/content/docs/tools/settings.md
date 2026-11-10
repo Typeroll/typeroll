@@ -320,7 +320,11 @@ controls at 375, 768 and 1280px before saving.
 | `typography.ratio_mobile`  | `1.2`   | 1.1–1.5; narrow-screen heading scale            |
 | `typography.ratio_desktop` | `1.25`  | 1.1–1.5; wide-screen heading scale              |
 | `typography.rhythm`        | `1`     | 0.5–2; spacing and proportional heading margins |
-| `typography.line_length`   | `65`    | 40–90 characters; prose measure                 |
+| `typography.line_length`   | `65`    | 40–90 characters, or `"none"`; prose measure    |
+
+`typography.line_length: "none"` removes the reading measure: prose fills its
+column (`--measure-prose` is `100%`), for templates that set their own text
+columns.
 
 Set these fields at the top level of `update_site_settings` alongside `fonts`.
 `design_scales.type_size`, `.space` and `.leading` customize named steps.
