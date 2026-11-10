@@ -239,7 +239,10 @@ Passing reasons are a busy or rate-limited source
 (`media_source_temporarily_unavailable`), an interrupted or timed-out transfer
 (`media_transfer_interrupted`, `media_transfer_timeout`), a busy transfer Worker
 (`media_transfer_busy`), destination storage answering 5xx
-(`media_destination_unavailable`) and any other 5xx or 429 from the transfer
+(`media_destination_unavailable`), Cloudflare stopping the transfer Worker at
+its plan's CPU limit (`media_transfer_resources_exceeded`, error 1102 on
+Workers Free; Typeroll then copies that organization's files one at a time and
+Workers Paid raises the limit) and any other 5xx or 429 from the transfer
 Worker (`media_transfer_unavailable`, with the HTTP status in
 `details.upstream_status`). The site's media migration retries the copy after 1,
 5, 15, 30 and 60 minutes; after the last attempt the file is set aside and

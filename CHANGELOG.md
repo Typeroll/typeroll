@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+- The media transfer Worker in the customer's Cloudflare account hashes each
+  file once, on the way into R2, and no longer downloads the stored copy to hash
+  it a second time. It reads the source in 256 KiB pieces instead of passing
+  every 4 KiB network chunk through JavaScript. A 4 MiB copy used about 24 ms of
+  CPU in local workerd and now uses about 2 ms; on Workers Free (10 ms per
+  request) Moveria's 3–6 MB images were stopped with error 1102 and 99 files
+  were left uncopied. The integrity guarantee is unchanged: the hashed bytes
+  are the uploaded bytes, the PUT has an exact length, and the digest and size
+  are checked before a receipt is issued. The portal redeploys the Worker on
+  its next use; older Workers keep working until then.
+- A 503 from the transfer Worker without its own error code (Cloudflare
+  stopping it at the plan's CPU limit) is now `media_transfer_resources_exceeded`.
+  Typeroll retries it once after a pause and copies that organization's files
+  one at a time until copies succeed again, instead of retrying three times at
+  full concurrency. If it persists, the file's error says that the Workers plan
+  stopped the copy and that Workers Paid raises the limit.
+
 ## 0.3.24 (candidate, MCP 0.45.133)
 
 - A link to `#cookie-settings` now opens the cookie banner even after another

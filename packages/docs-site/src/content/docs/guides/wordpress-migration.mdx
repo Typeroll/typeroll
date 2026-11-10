@@ -334,7 +334,9 @@ for setup, limits and recovery.
 With Core 0.1.97, Typeroll sets up a small transfer Worker in your organization’s
 connected Cloudflare account. It downloads originals from WordPress directly
 into your private R2 bucket and verifies the copied bytes before Typeroll updates
-references. File bodies do not pass through the Typeroll Cloud portal or the MCP
+references. Each file is hashed once on the way into R2, so typical images
+fit within the 10 ms CPU limit of Workers Free. Typeroll updates the Worker
+automatically the next time it copies a file after a release. File bodies do not pass through the Typeroll Cloud portal or the MCP
 server. This is independent of whether GitHub or Cloudflare builds your site.
 
 The **Media storage** card shows transfer setup status. If an existing Cloudflare
