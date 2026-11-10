@@ -179,11 +179,13 @@ export async function writeSitePackageZip(manifest: SitePackage, files: Readonly
   if (mismatch) throw new PackageError(`The manifest's integrity list does not match ${mismatch}`, 500, 'package_integrity_failed');
   const zip = new JSZip();
   // A fixed date keeps the same package byte-identical when written again.
+  // createFolders: false stops JSZip adding a `media/` entry stamped with the
+  // current time, which made two writes differ across a two-second boundary.
   const date = new Date(Date.UTC(2020, 0, 1));
-  zip.file(SITE_PACKAGE_MANIFEST, JSON.stringify(manifest, null, 2), { date, compression: 'DEFLATE' });
+  zip.file(SITE_PACKAGE_MANIFEST, JSON.stringify(manifest, null, 2), { date, createFolders: false, compression: 'DEFLATE' });
   for (const [path, content] of [...files].sort(([a], [b]) => a.localeCompare(b))) {
     // Images, video and WOFF2 are compressed already.
-    zip.file(path, content, { date, binary: true, compression: path.endsWith('.svg') ? 'DEFLATE' : 'STORE' });
+    zip.file(path, content, { date, binary: true, createFolders: false, compression: path.endsWith('.svg') ? 'DEFLATE' : 'STORE' });
   }
   return zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE', compressionOptions: { level: 6 } });
 }
