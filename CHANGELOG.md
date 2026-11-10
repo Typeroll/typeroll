@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.20 (candidate, MCP 0.45.129)
 
 - Site and page custom CSS accept `scroll-behavior` and `overscroll-behavior`.
   The check for the old Internet Explorer `behavior:` property also matched
