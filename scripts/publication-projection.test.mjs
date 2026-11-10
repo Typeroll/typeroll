@@ -127,3 +127,28 @@ test('publication keeps which form fields load live choices, by name only', () =
   for (const invalid of ['occurrence', [{ field: '../x' }], [{}]])
     assert.throws(() => projectStaticPublication({ ...base, publicRuntime: { forms: [{ ...form, option_sources: invalid }] } }, identity), /option_sources/);
 });
+
+test('publication keeps route_overrides at every depth, projected like the block data', async () => {
+  const { ROUTE_KINDS } = await import('data:text/javascript;base64,' + Buffer.from((await build({ stdin: { contents: "export { ROUTE_KINDS } from './packages/shared/src/page-identity.ts';", resolveDir: process.cwd() }, bundle: true, platform: 'node', format: 'esm', write: false })).outputFiles[0].text).toString('base64'));
+  const { PUBLICATION_ROUTE_KINDS } = await import('./lib/publication-blocks.mjs');
+  assert.deepEqual([...PUBLICATION_ROUTE_KINDS], [...ROUTE_KINDS]);
+  const surface = { id: 'surface', type: 'core/section', data: { background: 'var(--color-secondary)' },
+    route_overrides: { home: { data_overrides: { background: 'var(--color-primary)', not_a_field: 'private' } }, item: {} } };
+  const [shell] = projectPublicationBlocks([{ id: 'shell', type: 'core/container', data: {}, children: [surface] }], CORE_BLOCK_TYPES);
+  assert.deepEqual(shell.children[0].route_overrides, { home: { data_overrides: { background: 'var(--color-primary)' } }, item: {} });
+  assert.equal('route_overrides' in shell, false);
+  for (const invalid of [[], { landing: { data_overrides: {} } }, { home: { class_overrides: 'x' } }, { home: [] }])
+    assert.throws(() => projectPublicationBlocks([{ ...surface, route_overrides: invalid }], CORE_BLOCK_TYPES), /route overrides/);
+});
+
+test('every Block field is either projected into the publication or declared editorial', async () => {
+  const { PUBLICATION_BLOCK_FIELDS } = await import('./lib/publication-blocks.mjs');
+  const source = await (await import('node:fs/promises')).readFile(new URL('../packages/shared/src/types.ts', import.meta.url), 'utf8');
+  const start = source.indexOf('export interface Block {');
+  const fields = [...source.slice(start, source.indexOf('\n}\n', start)).matchAll(/^ {2}(\w+)\??:/gm)].map(match => match[1]);
+  assert.ok(fields.includes('route_overrides'));
+  assert.deepEqual([...fields].sort(), [...PUBLICATION_BLOCK_FIELDS.projected, ...PUBLICATION_BLOCK_FIELDS.editorial].sort());
+  const every = { id: 'b', type: 'core/section', name: 'Editorial', data: { background: 'primary' }, children: [], slots: [], hidden_on: ['mobile'],
+    responsive: { tablet: { hidden: true } }, route_overrides: { home: { data_overrides: { background: 'secondary' } } }, style_overrides: { custom_class: 'x' } };
+  assert.deepEqual(Object.keys(projectPublicationBlocks([every], CORE_BLOCK_TYPES)[0]).sort(), [...PUBLICATION_BLOCK_FIELDS.projected].sort());
+});
