@@ -118,7 +118,7 @@ describe('consent-gated embeds', () => {
   it('keeps the html inert in a consent template next to a placeholder', () => {
     const body = renderBlocks([embedBlock({ html, consent: 'optional' })], { registry });
     expect(body).toContain('data-tr-consent-embed="optional"');
-    expect(body).toContain(`<template data-tr-consent="optional">${html}</template>`);
+    expect(body).toContain(`<template data-tr-consent="optional" data-tr-consent-embed-content>${html}</template>`);
     // The iframe exists only inside the template.
     expect(body.replace(/<template[\s\S]*<\/template>/, '')).not.toContain('<iframe');
     expect(body).toContain('<div class="tr-consent-embed" data-tr-consent-placeholder>');

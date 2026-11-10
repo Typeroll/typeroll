@@ -3,7 +3,7 @@ import { buildCoreBlockRegistry, renderBlocks } from '@typeroll/shared';
 import { sanitizeBody as portal } from '../../lib/sanitize';
 import { sanitizeBody as renderer } from '../../../../site-template/src/lib/sanitize';
 
-// A consent-gated core/embed keeps its html in <template data-tr-consent="optional">.
+// A consent-gated core/embed keeps its html in <template data-tr-consent="optional" data-tr-consent-embed-content>.
 // The rendered body passes the sanitizer, which must keep that template (or
 // the iframe would load before consent) while still sanitizing its content.
 const registry = buildCoreBlockRegistry();
@@ -16,19 +16,21 @@ describe.each([['portal', portal], ['renderer', renderer]] as const)('%s sanitiz
   });
 
   it('sanitizes the gated content like any other markup', () => {
-    const out = sanitize('<template data-tr-consent="optional"><p onclick="x()">Hi</p><script>steal()</script><iframe src="https://evil.example/"></iframe></template>');
+    const out = sanitize('<template data-tr-consent="optional" data-tr-consent-embed-content><p onclick="x()">Hi</p><script>steal()</script><iframe src="https://evil.example/"></iframe></template>');
     // The disallowed host loses its src, exactly as outside the gate.
-    expect(out).toBe('<template data-tr-consent="optional"><p>Hi</p><iframe></iframe></template>');
+    expect(out).toBe('<template data-tr-consent="optional" data-tr-consent-embed-content><p>Hi</p><iframe></iframe></template>');
   });
 
   it('keeps an iframe host allowed by the site inside the gate', () => {
     const out = sanitize(gated('<iframe src="https://tool.vendor.example/compare"></iframe>'), ['tool.vendor.example']);
-    expect(out).toContain('<template data-tr-consent="optional"><iframe src="https://tool.vendor.example/compare"></iframe></template>');
+    expect(out).toContain('<template data-tr-consent="optional" data-tr-consent-embed-content><iframe src="https://tool.vendor.example/compare"></iframe></template>');
   });
 
   it('still unwraps any other template, as before', () => {
     expect(sanitize('<template><p>Shown</p></template>')).toBe('<p>Shown</p>');
     expect(sanitize('<template data-tr-consent="necessary"><p>Shown</p></template>')).toBe('<p>Shown</p>');
+    // Hand-written HTML from before gated embeds existed renders exactly as it did.
+    expect(sanitize('<template data-tr-consent="optional"><p>Shown</p></template>')).toBe('<p>Shown</p>');
   });
 
   it('keeps the placeholder button that opens the banner', () => {

@@ -311,13 +311,13 @@ function restoreMarkers(html: string): string {
 // like any other markup and the placeholder cannot be forged by content; it
 // is restored with exactly that one attribute.
 // Kept in lockstep with packages/portal/src/lib/sanitize.ts.
-const CONSENT_TEMPLATE_OPEN = '<template data-tr-consent="optional">';
+const CONSENT_TEMPLATE_OPEN = '<template data-tr-consent="optional" data-tr-consent-embed-content>';
 
 function guardConsentTemplates(): { placeholder: string; transform: (tagName: string, attribs: sanitizeHtml.Attributes) => sanitizeHtml.Tag } {
   const placeholder = `tr-consent-${globalThis.crypto.randomUUID().replace(/-/g, '')}`;
   return {
     placeholder,
-    transform: (tagName, attribs) => (attribs['data-tr-consent'] === 'optional' ? { tagName: placeholder, attribs: {} } : { tagName, attribs }),
+    transform: (tagName, attribs) => (attribs['data-tr-consent'] === 'optional' && Object.hasOwn(attribs, 'data-tr-consent-embed-content') ? { tagName: placeholder, attribs: {} } : { tagName, attribs }),
   };
 }
 

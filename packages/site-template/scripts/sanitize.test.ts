@@ -78,7 +78,8 @@ test('scheme-checks form actions and SVG references and drops password inputs', 
 });
 
 test('keeps a consent-gated template inert and unwraps any other template', () => {
-  const gated = sanitizeBody('<template data-tr-consent="optional"><iframe src="https://www.youtube.com/embed/x"></iframe><script>x()</script></template>');
-  assert.equal(gated, '<template data-tr-consent="optional"><iframe src="https://www.youtube.com/embed/x"></iframe></template>');
+  const gated = sanitizeBody('<template data-tr-consent="optional" data-tr-consent-embed-content><iframe src="https://www.youtube.com/embed/x"></iframe><script>x()</script></template>');
+  assert.equal(gated, '<template data-tr-consent="optional" data-tr-consent-embed-content><iframe src="https://www.youtube.com/embed/x"></iframe></template>');
   assert.equal(sanitizeBody('<template><p>Shown</p></template>'), '<p>Shown</p>');
+  assert.equal(sanitizeBody('<template data-tr-consent="optional"><p>Shown</p></template>'), '<p>Shown</p>');
 });

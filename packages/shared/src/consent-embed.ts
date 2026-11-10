@@ -108,7 +108,7 @@ export function consentEmbedHtml(
   const custom = typeof options.placeholder === 'string' ? options.placeholder.trim() : '';
   const text = custom || consentEmbedDefaultText(options.language);
   const button = cookieConsentManageLabel(options.language, options.consentLabels);
-  return `<template data-tr-consent="optional">${html}</template>`
+  return `<template data-tr-consent="optional" data-tr-consent-embed-content>${html}</template>`
     + `<div class="tr-consent-embed" data-tr-consent-placeholder>`
     + `<p class="tr-consent-embed__text">${escapeHtml(text)}</p>`
     + `<button type="button" class="tr-consent-embed__button" data-tr-open-consent>${escapeHtml(button)}</button>`
