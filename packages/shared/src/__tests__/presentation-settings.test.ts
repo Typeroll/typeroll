@@ -243,6 +243,7 @@ describe('every core block field changes what renders', () => {
   const WHEN: Record<string, Record<string, unknown>> = {
     'core/post_card.image_alt': { image:'/card.webp', show_image:true },
     'core/video.click_to_load': { source:'youtube', video_url:'https://youtu.be/dQw4w9WgXcQ' },
+    'core/embed.consent_placeholder': { consent: 'optional' },
     'template/site_logo.mode': { image:'/logo.svg' },
     ...Object.fromEntries(['limit', 'sort_by', 'sort_order', 'filter_field', 'filter_value', 'pinned_ids', 'exclude_current', 'paginate']
       .map(name => [`core/repeater.${name}`, { source_type: 'pages', item_block: 'core/post_card' }])),

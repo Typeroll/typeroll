@@ -425,6 +425,14 @@ without `!important`. In version 16 a bare element rule in site CSS (`h2`, `p`,
 `button`) also reaches the banner; from version 17 such rules no longer do,
 and only rules that name the banner's classes restyle it.
 
+#### Embeds behind the banner
+
+A `core/embed` block with `consent: "optional"` waits for the same answer as
+`scripts_optional`: its HTML and JavaScript load only after "Accept all", and
+a note with a button that reopens the banner shows until then. The button uses
+the `manage` label. See
+[embeds that wait for cookie consent](../blocks/parts/#embeds-that-wait-for-cookie-consent).
+
 ### `language_sections` array
 
 One site can serve several languages from language folders. Each section names
@@ -641,6 +649,35 @@ Over REST: `POST /api/v1/sites/{siteId}/lifecycle` with
 `{ "action": "archive", "reason": "…" }` or `{ "action": "restore" }`, and
 `GET /api/v1/sites/{siteId}/lifecycle` for the current state. The archiving
 key is recorded as `api-key:{prefix}`.
+
+## `get_site_deletion_inventory` / `delete_site`
+
+Permanently delete an **archived** site and all its content, in two steps. See
+[Delete a site](../../guides/delete-a-site/) for what is deleted, what stays in
+your own accounts and every answer.
+
+- `get_site_deletion_inventory` writes nothing. It returns document counts per
+  collection and per version, `blockers` (`not_archived`, `domain_serving`,
+  `shared_with_other_orgs`, `media_present`, `hosting_service_unavailable`), the
+  API keys that are revoked, `untouched` resources in your accounts, a `digest`
+  and `confirm`, the exact confirmation to send.
+- `delete_site` takes `confirm_site_id` (this site's id), `confirm_digest` (the
+  inventory's digest) and an optional `reason`. It refuses a different site
+  (400 `confirm_site_id_mismatch`), a changed site (409
+  `site_deletion_digest_stale`) and a blocked one (409 `site_deletion_blocked`).
+  It answers 200 `deleted` with an `audit_id`, or 202 `in_progress` for a large
+  site: call again with the same arguments to continue.
+- Both require an owner of the organization that owns the site, through the
+  owner's own MCP connection or personal API token. Administrators, editors,
+  organization and site API keys and shares are refused with 403
+  `owner_authority_required`.
+
+An agent must show the inventory to the owner and get explicit confirmation for
+this site before calling `delete_site`.
+
+Over REST: `GET /api/v1/sites/{siteId}/deletion` and
+`POST /api/v1/sites/{siteId}/deletion` with
+`{ "confirm_site_id": "…", "confirm_digest": "sha256:…", "reason": "…" }`.
 
 ## Exporting your content
 

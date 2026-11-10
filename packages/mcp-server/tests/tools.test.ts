@@ -17,6 +17,7 @@ import { mediaTools } from '../src/tools/media.js';
 import { migrationTools } from '../src/tools/migration.js';
 import { domainTools } from '../src/tools/domain.js';
 import { deployTools } from '../src/tools/deploy.js';
+import { effectFor } from '../src/server.js';
 
 interface Recorded {
   method: string;
@@ -490,6 +491,29 @@ describe('site admin tools', () => {
       { method: 'POST', url: 'https://example.test/api/v1/sites/mysite/lifecycle', body: JSON.stringify({ action: 'archive' }) },
       { method: 'POST', url: 'https://example.test/api/v1/sites/mysite/lifecycle', body: JSON.stringify({ action: 'restore' }) },
     ]);
+  });
+
+  it('get_site_deletion_inventory reads and delete_site confirms the deletion of the selected site', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({ status: 'in_progress', audit_id: 'a1', remaining_documents: 12 }, 202));
+    await find(siteTools, 'get_site_deletion_inventory').handler({} as never, { client, siteId });
+    const result = await find(siteTools, 'delete_site').handler({ confirm_site_id: 'mysite', confirm_digest: 'sha256:abc', reason: 'Done' } as never, { client, siteId });
+    expect(result.isError).toBeFalsy();
+    expect(result.content[0].text).toContain('in_progress');
+    expect(calls).toEqual([
+      { method: 'GET', url: 'https://example.test/api/v1/sites/mysite/deletion', body: null },
+      { method: 'POST', url: 'https://example.test/api/v1/sites/mysite/deletion', body: JSON.stringify({ confirm_site_id: 'mysite', confirm_digest: 'sha256:abc', reason: 'Done' }) },
+    ]);
+    expect(effectFor('delete_site')).toBe('admin');
+    expect(effectFor('get_site_deletion_inventory')).toBe('read');
+    expect(find(siteTools, 'delete_site').description).toMatch(/explicitly confirmed/);
+  });
+
+  it('delete_site refuses locally when the confirmation names another site', async () => {
+    const { client, siteId, calls } = setup(() => jsonResponse({}));
+    const result = await find(siteTools, 'delete_site').handler({ confirm_site_id: 'other-site', confirm_digest: 'sha256:abc' } as never, { client, siteId });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Nothing was deleted');
+    expect(calls).toEqual([]);
   });
 
   it('purge_site_media treats a 207 partial purge as a result, not an error', async () => {

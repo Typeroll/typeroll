@@ -1,6 +1,6 @@
 // Sites tools — discovery, Site-level identity edits and the site lifecycle
-// (archive / restore). Each maps to a v1 route with the same permission
-// check as the corresponding portal action.
+// (archive / restore, and permanent deletion by an owner). Each maps to a v1
+// route with the same permission check as the corresponding portal action.
 
 import { z } from 'zod';
 import { fail, ok, withErrorBoundary, type ToolDef } from './helpers.js';
@@ -152,6 +152,28 @@ export const siteTools: ToolDef[] = [
     handler: withErrorBoundary(async (_args, { client, siteId }) => {
       const res = await client.post(siteId, 'lifecycle', { action: 'restore' });
       return ok(res);
+    }),
+  },
+  {
+    name: 'get_site_deletion_inventory',
+    description:
+      'Step 1 of permanently deleting an ARCHIVED site. Writes nothing. Returns what deletion would remove (document counts per collection and per version), `blockers` (not_archived, domain_serving, shared_with_other_orgs, media_present — run purge_site_media first, hosting_service_unavailable), `untouched` resources in the owner\'s own accounts that deletion leaves alone (Git repository, Cloudflare Pages project that keeps serving the last publication, DNS, app data) with what to do about each, the API keys it revokes, a `digest` of all of it, and `confirm` — exactly what delete_site needs. Requires an owner of the organization that owns the site, through their own MCP connection or personal API token; organization/site API keys, administrators, editors and shares are refused (403 owner_authority_required). Before calling delete_site, show the inventory to the owner and get their explicit confirmation naming this site.',
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'deletion'))),
+  },
+  {
+    name: 'delete_site',
+    description:
+      'Step 2: PERMANENTLY delete this archived site and all its content. Irreversible. Call only after get_site_deletion_inventory and after the organization owner has explicitly confirmed that inventory for this exact site in the conversation; never infer consent and never delete a site the owner did not name. Send the inventory\'s `confirm.body` unchanged: `confirm_site_id` must equal this site\'s id and `confirm_digest` the inventory digest; a changed site answers 409 site_deletion_digest_stale (read the inventory again and re-confirm), a blocked one 409 site_deletion_blocked. Revokes the site\'s API keys first, deletes its documents leaf first and the site last, and writes an audit record (`audit_id`). HTTP 202 `in_progress` means a large site is not finished: call again with the same arguments (no new confirmation needed; an interrupted deletion cannot be restored, only finished). The answer lists `untouched` resources in the owner\'s accounts — tell the owner about them. Same authority as get_site_deletion_inventory.',
+    inputSchema: {
+      confirm_site_id: z.string().min(1).describe('This site\'s id, exactly. From the inventory\'s confirm.body.'),
+      confirm_digest: z.string().min(1).describe('The inventory digest the owner confirmed. From the inventory\'s confirm.body.'),
+      reason: z.string().max(500).optional().describe('Why the site is deleted; kept in the audit record.'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      if (args.confirm_site_id !== siteId) {
+        return fail(new Error(`confirm_site_id "${args.confirm_site_id}" is not the selected site "${siteId}". Nothing was deleted.`));
+      }
+      return ok(await client.post(siteId, 'deletion', definedFields(args)));
     }),
   },
 ];

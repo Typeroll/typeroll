@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.22 (candidate, MCP 0.45.131)
+
+- Organization owners can permanently delete an archived site themselves,
+  through the API or an AI agent acting for them; until now only the platform
+  operator could. `GET /api/v1/sites/{siteId}/deletion` (MCP
+  `get_site_deletion_inventory`) writes nothing and returns document counts per
+  collection and version, blockers (`not_archived`, `domain_serving`,
+  `shared_with_other_orgs`, `media_present`, `hosting_service_unavailable`),
+  the resources left untouched in the owner's own accounts (Git repository,
+  the Pages project that keeps serving the last publication, DNS, app data) and
+  a digest. `POST /api/v1/sites/{siteId}/deletion` (MCP `delete_site`) takes
+  `confirm_site_id` and `confirm_digest` and refuses another site, a stale
+  digest or a blocked site. It revokes the site's API keys, removes stale share
+  index entries, deletes leaf first with the site document last, answers 202
+  `in_progress` for a large site (repeat the same request), records an audit
+  entry on the organization (`audit_id`) and retires a hosted site on its
+  hosting service. Only an owner's personal connection may do this;
+  administrators, organization and site API keys, shares and apps are refused
+  with 403 `owner_authority_required`. A site whose deletion has started cannot
+  be restored (409 `site_deletion_in_progress`). Guide: Delete a site.
+- Datastores can list the documents beneath a path (`listTree`) on fixtures,
+  SQLite and the Durable Object store.
+- `core/embed` can wait for cookie consent: with `consent: "optional"` its
+  HTML (iframes and images included) and `js` stay off until the visitor
+  accepts all cookies in the banner, and a note with a button that opens the
+  banner shows until then (`consent_placeholder`, otherwise a built-in
+  sentence in the page language). Stored consent loads it at once; "necessary
+  only" and "decline" keep it off. A write that gates an embed on a site
+  without the banner returns `consent_embed_without_banner`. The default,
+  `"none"`, renders as before. Found on moveria.nl, where an embedded energy
+  comparer set its `v` and `vc` cookies before the visitor answered.
+
 ## 0.3.21 (candidate, MCP 0.45.130)
 
 - Docs: render versions 16 and 17 in the settings table, styling the cookie

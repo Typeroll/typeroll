@@ -69,5 +69,6 @@ export function durableObjectTransport(stub: { [K in keyof DocumentStoreRpc]: (.
     deleteTree: async path => stub.deleteTree(path),
     sequence: async () => stub.sequence(),
     changedSince: async (seq, root) => stub.changedSince(seq, root),
+    paths: async (after, limit) => stub.paths(after, limit),
   };
 }

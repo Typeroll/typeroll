@@ -54,7 +54,8 @@ with HTTP 409. Restoring is the exception, which is what makes it possible.
 
 Once a site is archived, its media can be deleted from your organization's
 storage — the step before retiring the site for good. This is irreversible and
-requires the same owner-organization admin permission. Use the MCP tool
+requires the same owner-organization admin permission, and permanent deletion
+waits for it. Use the MCP tool
 `purge_site_media` or `POST /api/v1/sites/{siteId}/media/purge`. Objects that
 cannot be removed are reported and kept on record; run it again to retry them.
 Your Git repository and hosting project are not touched. See
@@ -74,15 +75,14 @@ published version.
 
 ## Deleting a site permanently
 
-Archiving is as far as the portal goes, and that is deliberate. A site also owns
-media in storage shared across your organization, and it is connected to your
-Git repository and your hosting project. Removing those is not reversible and
-not always ours to do — your repository is yours.
+Archiving deletes nothing. When the site should be gone for good, an owner of
+the organization can delete it permanently once it is archived, through the API
+or an AI agent: review an inventory of exactly what is removed and what stays
+in your own accounts, then confirm it. Your Git repository, hosting project and
+DNS are not touched, and the last publication keeps serving from your hosting
+project until you remove it there. See [Delete a site](../delete-a-site/).
 
-Permanent deletion is therefore an operator procedure rather than a button.
-Archive the site first, then ask Typeroll support to destroy it. You will get an
-inventory of exactly what would be removed, and what has to be handled in your
-own accounts, before anything happens.
+While a deletion is under way the site cannot be restored.
 
 ## Check it
 

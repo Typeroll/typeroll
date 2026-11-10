@@ -1,0 +1,161 @@
+---
+title: Delete a site
+description: Permanently delete an archived site and its content, as an organization owner or through an AI agent acting for one, after reviewing exactly what will be removed.
+---
+
+Deleting a site removes it and all its content from Typeroll for good. It
+cannot be undone. Archive the site first — see [Archive a site](../archive-a-site/) —
+and export it if you might want the content later (see
+[Export and backup](../export-and-backup/)).
+
+Deleting is done through the API or an AI agent. There is no portal button.
+
+## Who can delete a site
+
+Only an **owner** of the organization that owns the site, through their own
+connection:
+
+- an MCP connection set up by the owner (see
+  [Personal AI connections](../ai-connections/)), or
+- a personal API token of the owner, sent with the `Typeroll-Organization`
+  header.
+
+Everyone else is refused with HTTP 403 `owner_authority_required`:
+administrators, builders and editors, organization and site API keys (they
+belong to no person, and an administrator can create them), organizations the
+site is shared with, and installed apps. A read-only token can read the
+inventory but not delete.
+
+## How it works
+
+Deleting takes two steps, so neither you nor an agent deletes the wrong site by
+mistake.
+
+1. **Read the inventory.** It changes nothing. It lists:
+   - how many documents would be removed, per collection and per version
+     (pages, partials, revisions, forms, submissions, deploy history, app
+     installations and their credentials, API keys, shares, audit trail);
+   - **blockers** that must be resolved first;
+   - the site API keys that are revoked;
+   - **untouched** resources in your own accounts, with what to do about each;
+   - a **digest**, a fingerprint of all of the above, and the exact
+     confirmation to send.
+2. **Confirm.** Send the site id and the digest back. Typeroll reads the
+   inventory again and deletes only if the site id matches the site in the
+   address and the digest still matches. If anything changed in between, the
+   confirmation is refused with HTTP 409 `site_deletion_digest_stale`: read the
+   inventory again and review it again.
+
+An agent must show you the inventory and wait for your explicit confirmation
+for this site before it confirms. The MCP tools tell agents to do so.
+
+## Blockers
+
+| Code                          | What to do                                                                                                                                                                                                        |
+| ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `not_archived`                | Archive the site first.                                                                                                                                                                                           |
+| `domain_serving`              | A custom domain is still live or verified on the site. Move or remove it first — see [Custom domains](../../publishing/domains/). The site's generated address does not block.                                    |
+| `shared_with_other_orgs`      | The site is shared with another organization. Revoke the shares first (`revoke_site_share`).                                                                                                                      |
+| `media_present`               | The site still has media. Remove it first with `purge_site_media` (see [Archive a site](../archive-a-site/#removing-an-archived-sites-media)); that step reports files it could not remove so you can retry them. |
+| `hosting_service_unavailable` | The site is served by a hosting service this installation cannot reach. Nothing is deleted.                                                                                                                       |
+
+## What is deleted, and what is not
+
+Deleted from Typeroll: the site and every document beneath it — all versions
+with their pages, partials, revisions and settings, forms and submissions,
+snippets, fonts library entries, app installations with their credentials,
+deploy history, API keys and shares. The site's API keys are revoked before
+anything else, and stale share entries other organizations hold for the site
+are removed.
+
+Not deleted, because it is in your own accounts:
+
+- **The website keeps serving.** With publishing through your own
+  GitHub and Cloudflare accounts, the Cloudflare Pages project keeps serving
+  the last publication at its `pages.dev` address and the site's generated
+  address (`site-….<your sites domain>`). Delete the Pages project in
+  Cloudflare to take the website down.
+- **The Git repository** with the generated site source in your
+  organization's GitHub account. Delete or archive it in GitHub.
+- **DNS records** you created for the site's domain at your DNS provider.
+- **Your organization's build engine**, which all its sites share.
+- **Data an app keeps in its own storage.** The installation and its
+  credentials are removed, so the app can no longer reach the site; ask the
+  app's provider to delete its data.
+- **Uploaded font files** stored in your organization's private media storage.
+  Delete fonts with `delete_font` before deleting the site to remove them.
+
+The inventory lists the ones that apply to your site, by name.
+
+A site served by a Typeroll-managed hosting service (the `hosted` publishing
+mode) is also taken off that service: its platform address and stored
+publications are removed and the website stops answering. The inventory lists
+this under `also_removed`.
+
+## Through an AI agent
+
+Ask your agent to delete the site. It calls `get_site_deletion_inventory`,
+shows you the result and, once you confirm, calls `delete_site` with the
+inventory's `confirm.body`. See [Settings tools](../../tools/settings/#get_site_deletion_inventory--delete_site).
+
+## Through the REST API
+
+```bash
+# 1. Inventory (writes nothing)
+curl https://app.typeroll.com/api/v1/sites/old-site/deletion \
+  -H "Authorization: Bearer $TYPEROLL_TOKEN" \
+  -H "Typeroll-Organization: your-org-id"
+
+# 2. Confirm with the inventory's confirm.body
+curl -X POST https://app.typeroll.com/api/v1/sites/old-site/deletion \
+  -H "Authorization: Bearer $TYPEROLL_TOKEN" \
+  -H "Typeroll-Organization: your-org-id" \
+  -H "Content-Type: application/json" \
+  -d '{"confirm_site_id":"old-site","confirm_digest":"sha256:…","reason":"Staging copy"}'
+```
+
+`reason` is optional and kept in the audit record.
+
+The answer is HTTP 200 with `status: "deleted"`, the `audit_id`, the
+`revoked_api_keys`, the number of `deleted_documents` and the `untouched`
+resources. Other answers:
+
+| Status | Code                                                    | Meaning                                                                             |
+| ------ | ------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| 202    | —                                                       | `status: "in_progress"`: a large site is not finished. Send the same request again. |
+| 400    | `confirm_site_id_mismatch`                              | `confirm_site_id` is not the site in the address. Nothing was deleted.              |
+| 403    | `owner_authority_required`                              | The caller is not an owner's own connection.                                        |
+| 409    | `confirm_digest_required`, `site_deletion_digest_stale` | No digest, or not the current inventory's. Read it again.                           |
+| 409    | `site_deletion_blocked`                                 | `details.blockers` lists what to resolve.                                           |
+| 503    | `site_hosting_unreachable` (or the service's code)      | A hosted site's hosting service did not answer. Send the same request again.        |
+
+## If a deletion is interrupted
+
+Typeroll deletes leaf first: each version together with its content and
+revisions, then the remaining documents, and the site itself last. A deletion
+that stops — a timeout, a large site answering 202 — leaves a site that still
+exists with part of its content gone, never content pointing at a missing site.
+
+From then on the inventory reports `status: "in_progress"` with the digest you
+confirmed. Send the same confirmation again to finish; it continues where it
+stopped and does not need a new review. An interrupted deletion cannot be
+undone: restoring the site is refused with HTTP 409 `site_deletion_in_progress`.
+
+## The audit record
+
+Every attempt by an owner — refused, unconfirmed or carried out — is recorded on
+the organization with who asked, when, the digest, the reason, the revoked keys
+and how many documents were removed. The record stays after the site is gone.
+The response's `audit_id` names it.
+
+## Self-hosting
+
+Self-hosted installations delete the same way. What lives outside Typeroll's
+datastore — your Git repository, hosting project, DNS and object storage — is
+untouched and listed, as above.
+
+## Check it
+
+After a 200 answer, the site's routes answer HTTP 404 `site_not_found`, and
+`list_sites` no longer lists it. The untouched resources are still in your
+accounts until you remove them.

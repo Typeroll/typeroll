@@ -511,3 +511,7 @@ The response counts `records`, `objects_deleted`, `records_removed` and
 and lists them in `failed`; their records are kept so nothing becomes
 untraceable, and calling again retries exactly those. Over REST:
 `POST /api/v1/sites/{siteId}/media/purge`.
+
+Permanent deletion of the site (`delete_site`) is blocked with
+`media_present` until this purge has removed every media record. See
+[Delete a site](../../guides/delete-a-site/).

@@ -27,8 +27,10 @@ export interface BlockTreeWarning {
    * `unknown_style`, `style_target_mismatch` and `part_style_contrast` concern a
    * block's `part_styles` and need the site's styles (block-parts.ts
    * `partStyleIssues`); the portal adds them to tree writes.
+   * `consent_embed_without_banner` needs the site's settings (consent-embed.ts);
+   * the portal adds it to tree and single-block writes.
    */
-  code: 'ineffective_whole_card_link' | 'children_in_slot_block' | 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field' | 'unknown_style' | 'style_target_mismatch' | 'part_style_contrast';
+  code: 'ineffective_whole_card_link' | 'children_in_slot_block' | 'unknown_style_override' | 'heading_part_as_text' | 'field_type_mismatch' | 'unknown_field' | 'unknown_style' | 'style_target_mismatch' | 'part_style_contrast' | 'consent_embed_without_banner';
   /** The block's id where it has one; a tree may be written before ids exist. */
   block_id?: string;
   /** Path to the offending key, e.g. `blocks[0].style_overrides.class`. */

@@ -52,6 +52,7 @@ export default defineConfig({
             { label: 'Hand a site over', slug: 'guides/handover' },
             { label: 'Export and backup', slug: 'guides/export-and-backup' },
             { label: 'Archive a site', slug: 'guides/archive-a-site' },
+            { label: 'Delete a site', slug: 'guides/delete-a-site' },
           ],
         },
         {

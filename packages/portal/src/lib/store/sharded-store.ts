@@ -200,6 +200,11 @@ export class ShardedStore implements ReadWriteStore {
     await (await this.storeFor(path)).deleteTree(path);
   }
 
+  /** A tree lives in the object of its root: a site's documents all live in the site's object. */
+  async listTree(root: string, opts?: { after?: string; limit?: number }): Promise<string[]> {
+    return (await this.storeFor(root)).listTree(root, opts);
+  }
+
   async listDocs<T = unknown>(collection: string, opts?: { filters?: Filter[]; limit?: number; startAfterId?: string }): Promise<Array<T & { id: string }>> {
     if (COUNTER_COLLECTION.test(collection)) throw new Error(`${collection} is spread over counter objects and cannot be listed`);
     // Organizations are listed from their copies in the global object.

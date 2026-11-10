@@ -3,11 +3,11 @@
 // (/api/v1/sites/{siteId}/lifecycle), so a person in the UI and an agent with
 // an API key get the same rules and the same answers.
 //
-// Archiving is the portal's whole lifecycle vocabulary on purpose. Everything
-// destructive — R2 objects that are shared across an organization, the
-// customer's Git repository, the Cloudflare Pages project, private app
-// databases — is owned by systems the portal does not control, so destroying a
-// site is an operator procedure that reads this state as its precondition.
+// Archiving is reversible and deletes nothing. Permanent deletion is a
+// separate owner-only step with this state as its precondition
+// (lib/site-deletion.ts); it removes the site's documents and leaves what
+// lives in the customer's own accounts — the Git repository, the Cloudflare
+// Pages project, DNS — untouched and listed.
 //
 // What archiving actually does is enforced by the write guards
 // (lib/access.ts → requirePermission, lib/api-auth.ts → requireApiKey): every
@@ -46,6 +46,16 @@ export function isGeneratedSiteAddress(orgId: string, siteId: string, host: stri
 }
 
 /**
+ * The custom domain that still serves this site, or null. A domain that is
+ * live or verified keeps answering visitors from the last publication; the
+ * site's generated address is not a customer's domain and does not count.
+ */
+export function servedCustomDomain(ownerOrgId: string, site: Pick<Site, 'id' | 'domain' | 'domain_status'>): string | null {
+  if (!site.domain || (site.domain_status !== 'live' && site.domain_status !== 'verified')) return null;
+  return isGeneratedSiteAddress(ownerOrgId, site.id, site.domain) ? null : site.domain;
+}
+
+/**
  * Apply `action` to `site`. `actor` is recorded as `archived_by`: a user id for
  * a session, `api-key:<prefix>` for an API key.
  *
@@ -77,7 +87,7 @@ export async function changeSiteLifecycle(input: {
     // The site's generated address (site-<label>.<sites domain>) is not a
     // customer's domain: it belongs to the organization's hosting and stays
     // with the archived site, like the last publication.
-    if (site.domain && (site.domain_status === 'live' || site.domain_status === 'verified') && !isGeneratedSiteAddress(ownerOrgId, site.id, site.domain)) {
+    if (servedCustomDomain(ownerOrgId, site)) {
       return {
         status: 409,
         body: {
@@ -96,6 +106,19 @@ export async function changeSiteLifecycle(input: {
     };
     await getStore().updateDoc(paths.site(ownerOrgId, site.id), { lifecycle });
     return { status: 200, body: { status: 'archived', site: site.id, message: ARCHIVED_SITE_MESSAGE } };
+  }
+
+  // A started deletion has already removed part of the site; restoring would
+  // revive a site with missing content. Finishing the deletion is the way out.
+  if (site.lifecycle?.deletion) {
+    return {
+      status: 409,
+      body: {
+        error: 'This site is being permanently deleted and cannot be restored. Finish the deletion with POST /api/v1/sites/{siteId}/deletion.',
+        code: 'site_deletion_in_progress',
+        details: { audit_id: site.lifecycle.deletion.audit_id },
+      },
+    };
   }
 
   // Restore. `null` rather than a deleted key so the write is a plain field
