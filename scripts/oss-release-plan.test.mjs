@@ -98,7 +98,7 @@ test('the generated release manifest matches the runtime version sources', () =>
   assert.equal(manifest.schema_version, 2);
   assert.equal(manifest.core_version, '0.3.26');
   assert.equal(manifest.mcp_version, '0.45.134');
-  assert.equal(manifest.template_capabilities_version, '0.57.0');
+  assert.equal(manifest.template_capabilities_version, '0.58.0');
   assert.equal(manifest.bundle_digest, DIGEST);
   assert.equal(manifest.operator_api_version, 1);
   assert.equal(manifest.site_hosting_version, 1);
