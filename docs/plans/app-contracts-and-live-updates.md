@@ -63,11 +63,13 @@ A published page holds only the mount point, which never needs to change within
 a contract:
 
 ```html
-<div data-tr-app="com.typeroll.recurring-events"
-     data-tr-installation="inst_…"
-     data-tr-component="next-occurrence"
-     data-tr-variant="lunch-page"
-     data-tr-reserve="160">
+<div
+  data-tr-app="com.typeroll.recurring-events"
+  data-tr-installation="inst_…"
+  data-tr-component="next-occurrence"
+  data-tr-variant="lunch-page"
+  data-tr-reserve="160"
+>
   <noscript><a href="#anmalan">Anmäl dig</a></noscript>
 </div>
 ```
@@ -119,14 +121,14 @@ later release); nothing a running release reads is removed or renamed.
 
 ## What changes
 
-| Today | With contracts |
-| --- | --- |
-| Version set per installation, `api_base` per version | Installation binds to app + contract |
-| One Worker per release | One stable address per contract |
-| Component JS frozen into the publication | Loader fetches the current component |
-| Props in markup | Named variant in markup, settings in the app admin |
-| App release → switch + dry run + publication per site | App release → staged rollout, no publication |
-| New scopes need a new grant before use | Same, but the release must work without them |
+| Today                                                 | With contracts                                     |
+| ----------------------------------------------------- | -------------------------------------------------- |
+| Version set per installation, `api_base` per version  | Installation binds to app + contract               |
+| One Worker per release                                | One stable address per contract                    |
+| Component JS frozen into the publication              | Loader fetches the current component               |
+| Props in markup                                       | Named variant in markup, settings in the app admin |
+| App release → switch + dry run + publication per site | App release → staged rollout, no publication       |
+| New scopes need a new grant before use                | Same, but the release must work without them       |
 
 ## Risks
 
