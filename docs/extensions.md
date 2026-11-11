@@ -358,7 +358,7 @@ Installation credentials can use these generic APIs with explicit scopes:
 
 | API | Scope | Boundary |
 | --- | --- | --- |
-| `GET /extensions/self` | `extension:config:read` | Own enabled installation, validated non-secret config, version and verified site origins |
+| `GET /extensions/self` | `extension:config:read` | Own enabled installation, validated non-secret config, `version`, `published_version` and verified site origins |
 | `GET/PUT /pages/{pageId}/owner-fields` | `content:owner` | Next release: typed owner fields + revision; PUT creates a pending proposal, never directly saves a Page. See the owner-review guide. |
 | `POST /delivery/email` | `email:send` | Single recipient, bounded plain text, configured site connector, no connector credentials returned |
 | `POST /forms/{formId}/actions` | `forms:execute` | Before/after actions on a form bound to this installation only |
@@ -374,6 +374,28 @@ creation and target updates require admin authority; a provider may bind only
 its own installation. Existing form steps, styling, actions and field names
 remain Core data. Endpoint resolution fails closed for a missing/disabled app;
 it never converts an app operation into a normal Forms submission.
+
+`version` in `GET /extensions/self` is the release the app API runs now.
+`published_version` is the release the live publication was built with: the
+version recorded for this installation on the site's last publication
+(`null` when nothing is published, the installation is not in it, or the
+publication predates recorded versions). Changing an installation's version
+takes effect for the app API immediately, but live pages keep calling the
+published version until the next publication activates. A versioned app
+Worker must therefore keep answering requests for `published_version` and
+switch only when it changes; treat `null` as unknown and fall back to
+`version`. After a version change, run a dry-run publication and publish soon.
+A domain-only republication keeps the published versions.
+
+A publication whose form target is not declared for POST by the
+installation's active version fails with `form_app_endpoint_unavailable`
+(`form_app_installation_unavailable` for a missing or disabled installation),
+naming the form, installation, path and active version. An explicit version
+change (`PATCH /extensions/{installationId}` with `version`) is refused with
+409 `form_targets_undeclared`, `requires_confirmation: true` and
+`affected_forms` (`form_id`, `name`, `path`) when the release it resolves to
+does not declare a form's endpoint. Install a release that declares it, change
+the form target, or repeat with `confirm_form_targets: true`.
 
 Bundled components receive optional `context.analytics` with endpoint, public
 site token and `requires_consent`. Core accepts only configured Analytics event

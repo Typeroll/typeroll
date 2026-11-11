@@ -38,12 +38,13 @@ export const extensionTools: ToolDef[] = [
   },
   {
     name: 'activate_extension_release',
-    description: 'Explicitly activate a pending migration release for this site only. First read_extension_installation and review pending_activation_manifest, configuration and app migration instructions. Changes runtime selection immediately; never queues publication. Existing permissions remain unless granted_scopes is explicitly supplied. Admin permission required.',
+    description: 'Explicitly activate a pending migration release for this site only. First read_extension_installation and review pending_activation_manifest, configuration and app migration instructions. Changes the app API\'s runtime selection immediately, but published pages keep calling the version they were built with until the next publication activates: run trigger_deploy with dry_run: true first, then publish soon after, since the live site can break in between. Never queues publication itself. Refused with 409 form_targets_undeclared and affected_forms when a form posts to an endpoint the new release does not declare (its publication would fail); install a release that declares it, change the form target, or repeat with confirm_form_targets: true. Existing permissions remain unless granted_scopes is explicitly supplied. Admin permission required.',
     inputSchema: {
       installation_id: z.string().min(1),
       version: z.string().min(1).describe('Pending published release to activate.'),
       config: z.record(z.string(), z.unknown()).optional(),
       granted_scopes: z.array(z.string()).optional(),
+      confirm_form_targets: z.boolean().optional().describe('Activate although the forms listed in affected_forms post to endpoints this release does not declare.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const { installation_id, ...patch } = args;

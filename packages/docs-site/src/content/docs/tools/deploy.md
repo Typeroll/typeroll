@@ -13,6 +13,23 @@ Deploy the site.
 
 Ask the agent to deploy explicitly after you have reviewed and saved the intended changes.
 
+### Before you publish
+
+A deploy publishes everything that is saved on the site, not only your own
+changes: edits by other people and by other agent sessions ship too. Before a
+real deploy:
+
+1. Review your edits with `get_preview_link` and `include_working_copy: true`.
+   Target the changed page (`page_id` or `slug`) so its path is in the link,
+   and use the returned `frame_url` for screenshots and rendering checks.
+2. Save the working copies you want to publish. Unsaved working copies are not
+   deployed.
+3. Run `trigger_deploy` with `dry_run: true` and read `get_publication_impact`.
+   If it lists changes you did not make, stop and find out whose they are.
+
+After switching an app's version, dry-run and publish soon: the live site keeps
+the version it was published with until the next publication.
+
 ### Deploys after cutover
 
 Before a site is cut over, a deploy publishes to its temporary, noindexed

@@ -214,6 +214,9 @@ a. Choose access based on missing evidence, not a mandatory plugin install:
    Do not ask the owner to install the helper when public sources cover the scope.
    Inventory both Pages and posts (including sitemap-excluded public records),
    crawl internal links and inspect redirects, menus and CSS background images.
+   On the user's own computer, crawl and download slowly (one or two requests
+   at a time, back off on 429/503): an ISP, router or DNS resolver can throttle
+   or block rapid requests. Prefer a cloud session for large sites.
    Do not claim the helper exports a field without reading its current contract.
    The helper is distributed through Typeroll's documented package; do not claim
    WordPress.org availability. Listing it there is separate publication work.
@@ -375,7 +378,10 @@ suggestion; leave it if the user chose to skip it.
 The report warns and never blocks a publication. A clean report is not approval
 to publish: publish only when the user has approved it.
 
-When the user signs off:
+When the user signs off, dry-run first: `trigger_deploy dry_run=true` and
+`get_publication_impact`. The publication ships everything saved on the site,
+including other people's and other sessions' changes; stop and ask about any
+you did not make. Then:
 
 ```
 read_site_readiness
@@ -389,7 +395,10 @@ get_deploy_status job_id=<id>    # poll
 ```
 
 The readiness report does not replace `get_migration_launch_report`: URL
-parity and SEO acceptance remain the migration's own launch gate.
+parity and SEO acceptance remain the migration's own launch gate. Do not call
+the migration finished while `read_organization_media_migration` lists
+`failed_media` for the site or a page import failed, unless each failure is
+reviewed and accepted; check the live pages' images once after publication.
 
 Run `read_site_readiness` again after the publication. It reads saved content
 and settings, so confirm the rest on the live site: the AI crawler zone check

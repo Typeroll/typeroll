@@ -1,29 +1,43 @@
-import { paths, type ExtensionInstallation, type Form } from '@typeroll/shared';
+import { paths, type ExtensionInstallation, type ExtensionManifest, type Form } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { formEmbedInfo } from '../forms-signing';
 import { extensionIssuer } from '../extensions/auth';
 import { resolveExtensionVersion } from '../extensions/resolution';
+import { ConnectionError } from '../publishing/connections';
 
 export interface FormEndpoint { submit_url: string; submit_token: null; pow_bits: 0 }
 
+/** A form posts only to a route its app version declares for POST, matched exactly. */
+export function declaresAppFormRoute(api: ExtensionManifest['api'] | undefined, route: string | undefined): api is NonNullable<ExtensionManifest['api']> {
+  return !!api && !!route && api.routes.some(item => item.path === route && item.methods.includes('POST'));
+}
+
 /** Resolve only declared, installed provider routes. Never turn a missing app form into a normal submission. */
 export async function resolveAppFormEndpoint(
-  form: Pick<Form, 'target'>,
+  form: Pick<Form, 'target'> & Partial<Pick<Form, 'id' | 'name'>>,
   args: { orgId: string; siteId: string; portalUrl: string },
 ): Promise<FormEndpoint | null> {
   if (!form.target) return null;
   const id = form.target.installation_id;
+  const label = form.id ? `Form ${form.name ? `"${form.name}" (${form.id})` : form.id}` : 'The form';
   if (!id) {
     if (form.target.app) throw new Error('This form requires migration to its owning app installation before publishing');
     return null;
   }
   const installation = await getStore().getDoc<ExtensionInstallation>(paths.extensionInstallation(args.orgId, args.siteId, id));
-  if (!installation || installation.status !== 'enabled') throw new Error('The form app installation is unavailable');
+  // Coded, so a publication reports the form instead of publication_internal_error.
+  if (!installation || installation.status !== 'enabled') {
+    throw new ConnectionError(`${label} posts to app installation ${id}, which is unavailable. Enable the installation, or change the form's target.`, 409, 'form_app_installation_unavailable');
+  }
   const version = (await resolveExtensionVersion(installation)).version;
   const api = version?.manifest.api;
   const route = form.target.path;
-  if (!api || !route || !api.routes.some(item => item.path === route && item.methods.includes('POST'))) throw new Error('The form endpoint is not declared by its app');
-  if (!route.startsWith('/') || route.startsWith('//') || /[?#]/.test(route)) throw new Error('Invalid app form route');
+  if (!declaresAppFormRoute(api, route)) {
+    throw new ConnectionError(`${label} posts to ${route ?? '(no path)'} on app installation ${id}, but that endpoint is not declared by the installation's active version ` +
+      `${version?.version ?? '(none)'}. The endpoint must be declared for POST by the active version: install a version that declares it, or change the form's target.`,
+    409, 'form_app_endpoint_unavailable', { form_id: form.id ?? null, installation_id: id, path: route ?? null, active_version: version?.version ?? null });
+  }
+  if (!route!.startsWith('/') || route!.startsWith('//') || /[?#]/.test(route!)) throw new Error('Invalid app form route');
   const url = new URL(api.base_url.replace(/\/$/, '') + route);
   url.searchParams.set('issuer', args.portalUrl);
   url.searchParams.set('org_id', args.orgId);

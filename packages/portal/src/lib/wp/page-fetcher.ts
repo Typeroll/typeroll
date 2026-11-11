@@ -10,6 +10,7 @@
 
 import { isScraperConfigured, Scraper } from './scraper';
 import { migrationSourcePolicy, safeFetch } from '../net/safe-fetch';
+import { politeFetch, type PoliteRetryOptions } from '../net/polite-fetch';
 
 export interface FetchedPage {
   url: string;
@@ -30,9 +31,9 @@ const BOT_BLOCK_HINTS = [
   'Please enable JavaScript',
 ];
 
-export async function fetchRendered(url: string): Promise<FetchedPage | null> {
-  // Plain fetch first.
-  const direct = await tryDirectFetch(url);
+export async function fetchRendered(url: string, polite: PoliteRetryOptions = {}): Promise<FetchedPage | null> {
+  // Plain fetch first; a 429 or 503 is waited out as the host asks.
+  const direct = await tryDirectFetch(url, polite);
   if (direct) return direct;
 
   // Scraper fallback.
@@ -48,10 +49,10 @@ export async function fetchRendered(url: string): Promise<FetchedPage | null> {
   return null;
 }
 
-async function tryDirectFetch(url: string): Promise<FetchedPage | null> {
+async function tryDirectFetch(url: string, polite: PoliteRetryOptions): Promise<FetchedPage | null> {
   try {
     // Guarded: public destinations only (each redirect re-checked), bounded body.
-    const res = await safeFetch(url, {
+    const res = await politeFetch(() => safeFetch(url, {
       headers: {
         // Use a common browser UA — many sites return a stripped page to
         // bare-bones user agents.
@@ -61,7 +62,7 @@ async function tryDirectFetch(url: string): Promise<FetchedPage | null> {
         'Accept-Language': 'en-US,en;q=0.9',
       },
       redirect: 'follow',
-    }, migrationSourcePolicy({ label: 'Page URL', timeoutMs: FETCH_TIMEOUT_MS, maxBytes: MAX_HTML_BYTES }));
+    }, migrationSourcePolicy({ label: 'Page URL', timeoutMs: FETCH_TIMEOUT_MS, maxBytes: MAX_HTML_BYTES })), polite);
     if (!res.ok) return null;
     const html = await res.text();
     if (html.length < MIN_HTML_LENGTH) return null;

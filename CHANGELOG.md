@@ -74,6 +74,47 @@
   warning; a publication never fails because of it, and nothing is checked in
   the background.
 
+- Changing an app installation's version no longer breaks the live site until
+  the next publication. Each publication records the app versions it was built
+  with (`extension_versions`), and `GET /extensions/self` returns
+  `published_version`, so an app backend can keep serving the published pages
+  until the next publication activates. Found on autopilot.se, whose event box
+  failed for minutes after an app upgrade.
+
+- A form that posts to an app endpoint the installed app version does not
+  declare now fails publication with `form_app_endpoint_unavailable` and a
+  message naming the form, path and version, instead of an unclassified
+  internal error. Changing the installation to such a version is refused with
+  `form_targets_undeclared` and `affected_forms` unless `confirm_form_targets:
+  true` is sent.
+
+- Render version 18: a Heading, Rich heading or Text block that opens the page
+  has no space above its heading. Before, its 1.6em space collapsed through
+  `<main>` and moved the whole page down.
+
+- Frame previews (`frame_url`) no longer insert the "content changed" or
+  derivation notices into the page, so they never shift the layout of a
+  screenshot. The frame reports them in an `X-Typeroll-Preview-State` header
+  and meta tags; the full preview shows them as an overlay.
+
+- `typography` and `design_scales` in a settings update merge with the saved
+  values, as colors and fonts already did. Before, `{ "typography": {
+  "line_length": "none" } }` silently reset every other typography control.
+  `null` resets one control, or all of them.
+
+- Migration fetches from the old site honour `Retry-After` and back off on 429
+  and 503, and sequential crawls pause briefly between requests. URL parity
+  checks default to 4 parallel requests instead of 6.
+
+- The site starter's check scripts run at a slow, polite pace on your own
+  computer (2 at a time, 300 ms apart per host) and faster in cloud sessions
+  and CI, retry 429 and 5xx with backoff, and say which pace they use
+  (`TYPEROLL_REQUEST_PROFILE`, `TYPEROLL_REQUEST_CONCURRENCY`). Home internet
+  providers can throttle or block many rapid requests. The docs, starter and
+  skills now also say to dry-run before publishing, compare render upgrades
+  against captures from before the upgrade, and check failed media before
+  calling a migration done.
+
 ## 0.3.24 (candidate, MCP 0.45.133)
 
 - A link to `#cookie-settings` now opens the cookie banner even after another

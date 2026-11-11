@@ -180,6 +180,13 @@ uses `X-Typeroll-Extension-Token` and contains no visitor identity.
   otherwise its tokens, admin launch, and frontend are unavailable without
   blocking the rest of the site build.
 
+A version change, automatic or activated, reaches the app API at once but
+reaches visitors only with the site's next publication: published pages keep
+calling the release they were built with. `GET /extensions/self` reports both,
+as `version` and `published_version`; a backend that runs one deployment per
+release keeps serving `published_version` until it changes. See
+[versioned backends](../backend/#versioned-backends).
+
 Download the complete
 [`typeroll-extension-manifest-v3.schema.json`](../../specs/typeroll-extension-manifest-v3.schema.json).
 The published file is generated from the same schema used by the portal.
@@ -230,14 +237,21 @@ A site administrator reviews the pending release in **Extensions → Review
 update**, supplies required configuration and explicitly approves permissions.
 Activation selects the new backend immediately for that installation only; it
 does not publish pages. Prepare provider trust and data migration first, then
-publish updated frontend assets separately. Other installations are unaffected.
-Normal compatible updates within an approved release family remain automatic.
+publish updated frontend assets separately. Until the next publication
+activates, live pages still call the previous release, so run a dry-run
+publication right after activating and publish soon. Other installations are
+unaffected. Normal compatible updates within an approved release family remain
+automatic.
 
 Installation reads expose `pending_activation_version` and
 `pending_activation_manifest`. Administrators can PATCH the installation with
 `version`, optional `config`, and optional `granted_scopes`, or use MCP
 `activate_extension_release`. Omitted permissions never grant new scopes.
-Invalid required configuration leaves the installation unchanged. Customer
+Invalid required configuration leaves the installation unchanged. So does a
+release that no longer declares the POST route of a Form bound to the
+installation: the PATCH answers 409 `form_targets_undeclared` with
+`affected_forms`, since publishing those Forms would fail. Change their target
+or repeat with `confirm_form_targets: true`. Customer
 version selection is restricted to forward activation across such a boundary;
 this is not a general version pin or rollback interface.
 

@@ -17,6 +17,7 @@ import { verifyActivePreviewToken } from '../../../lib/preview-signing';
 import { rewritePreviewMediaUrls } from '../../../lib/preview-media';
 import { rateLimit } from '../../../lib/rate-limit';
 import { isolatedPreviewHeaders, publicRequestOrigin } from '../../../lib/preview-headers';
+import { injectPreviewNotices, previewStateHeaders, type PreviewNotice } from '../../../lib/preview-notices';
 import {
   buildExtensionPreviewShell,
   extensionPreviewShellHeaders,
@@ -132,14 +133,21 @@ export const GET: APIRoute = async ({ params, request }) => {
   }
   // Private original references stay stable in CMS content. Only this expiring
   // response carries the preview capability; it is never persisted in content or Git.
-  // A failed derivation is shown, not rendered as empty listings.
-  const noticeStyle = 'position:sticky;top:0;z-index:2147483647;padding:.75rem 1rem;font:14px/1.4 system-ui,sans-serif';
-  const notice = (derivation.status === 'failed'
-    ? `<div role="alert" data-tr-derivation-error style="${noticeStyle};background:#fff5f5;color:#742a2a;border-bottom:2px solid #c53030">App data could not be derived for this preview, so lists, counts and filters that use it are missing. ${escapeHtml(derivation.error?.message ?? '')}</div>`
-    : '') + (ticket.cr && derivation.content_revision && derivation.content_revision !== ticket.cr
-    ? `<div role="status" data-tr-content-changed style="${noticeStyle};background:#fffbeb;color:#713f12;border-bottom:2px solid #d97706">Content changed since this preview link was created (revision ${escapeHtml(ticket.cr.slice(0, 12))}, now ${escapeHtml(derivation.content_revision.slice(0, 12))}). This page shows the current content; create new links to compare render versions on identical content.</div>`
-    : '');
-  return plain(rewritePreviewMediaUrls(notice ? html.replace(/<body[^>]*>/i, match => match + notice) : html, siteId, token!), 200);
+  // A failed derivation is shown, not rendered as empty listings. Notices never
+  // enter the frame's layout (it is what screenshots and visual comparison
+  // capture): the frame carries them as a header and <meta>, and the shell
+  // shows them as an overlay outside the frame.
+  const notices: PreviewNotice[] = [];
+  if (derivation.status === 'failed') {
+    notices.push({ kind: 'derivation-failed', message: `App data could not be derived for this preview, so lists, counts and filters that use it are missing. ${derivation.error?.message ?? ''}`.trim() });
+  }
+  if (ticket.cr && derivation.content_revision && derivation.content_revision !== ticket.cr) {
+    notices.push({ kind: 'content-changed', message: `Content changed since this preview link was created (revision ${ticket.cr.slice(0, 12)}, now ${derivation.content_revision.slice(0, 12)}). This page shows the current content; create new links to compare render versions on identical content.` });
+  }
+  const body = injectPreviewNotices(html, notices, { id: bridgeId, parentOrigin: publicRequestOrigin(request) });
+  const response = plain(rewritePreviewMediaUrls(body, siteId, token!), 200);
+  for (const [name, value] of Object.entries(previewStateHeaders(notices))) response.headers.set(name, value);
+  return response;
 };
 
 function escapeHtml(s: string): string {

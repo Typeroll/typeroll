@@ -206,7 +206,12 @@ in a component, public snapshot or guide.
 Relative to `/api/v1/sites/{siteId}`:
 
 - `GET /extensions/self` returns the own enabled installation's resolved
-  version, validated non-secret config and verified site origins.
+  `version`, `published_version`, validated non-secret config and verified
+  site origins. `version` is the release your API runs now;
+  `published_version` is the release the live publication was built with, or
+  `null` when that is unknown (nothing published yet, the installation is not
+  in the publication, or the publication predates recorded versions). See
+  [versioned backends](#versioned-backends).
 - `GET/PUT /pages/{pageId}/owner-fields` reads typed owner-writable fields and a revision. PUT creates an isolated pending proposal using `{changes,base_revision,request_id}` and a server-derived `X-Typeroll-Owner-Subject` digest. Core 0.2.99 also supports independent review groups with `group_id` and `group_revision`; the subject-authenticated descriptor returns their current review state. It never writes accepted Page content directly. Authenticate the visitor and bind its record in the provider. See [Owner answers and review](../../guides/owner-review/). This replaces the direct-write contract in Core 0.2.24 and earlier.
 - `POST /delivery/email` sends `{ idempotency_key, to, subject, text, format? }` through the site's
   configured connector. It supports one recipient and returns delivery errors
@@ -234,6 +239,26 @@ installation may delete a Form bound to itself, but never with
 `delete_submissions=true`: erasing submitted data needs a site administrator.
 A component's `form_bindings` never receive a Core submit token for a Form bound
 to an app installation.
+
+A Form's path must stay declared by the installation's active release.
+Changing the installation to a release that does not declare it is refused
+with 409 `form_targets_undeclared` and `affected_forms`, unless the request
+repeats with `confirm_form_targets: true`. A publication that meets such a
+Form fails with `form_app_endpoint_unavailable`, naming the Form, installation,
+path and active version; the live site stays as it was.
+
+## Versioned backends
+
+When each release of your app runs as its own backend (for example one Worker
+per version), remember that published pages are static: their components and
+Forms call the backend of the release they were built with. Changing an
+installation's version switches `version` for your API at once, but visitors
+keep calling the published release until the site's next publication
+activates. Keep serving `published_version` from `GET /extensions/self` until
+it changes, and treat `null` as unknown and fall back to `version`. Comparing
+your own release with `version` alone breaks the live site in the window
+between a version change and the next publication. A domain-only
+republication keeps the published versions.
 
 ## Authenticated product guides (Core 0.2.9)
 

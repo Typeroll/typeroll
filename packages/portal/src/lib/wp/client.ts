@@ -6,9 +6,12 @@
 //
 // Every request goes through the guarded outbound transport: the source and
 // each redirect must be a public address, and each response is time- and
-// size-bounded. A source cannot declare unbounded pagination.
+// size-bounded. A source cannot declare unbounded pagination. The client is
+// polite to the old host (lib/net/polite-fetch): it waits out 429 and 503 as
+// the host asks and keeps a small gap between the pages of a collection.
 
 import { migrationSourcePolicy, safeFetch, type OutboundPolicy } from '../net/safe-fetch';
+import { politeFetch, RequestPacer, type PoliteOptions } from '../net/polite-fetch';
 
 /** Upper bound on pages read from one collection (100 items each). */
 export const WP_MAX_PAGES = 1000;
@@ -127,16 +130,22 @@ export interface WPSiteInfo {
 }
 
 export class WPClient {
-  constructor(private baseUrl: string) {
+  /** Backoff and pacing; tests inject `sleep` or `paceMs: 0`. */
+  constructor(private baseUrl: string, private readonly polite: PoliteOptions = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
+  }
+
+  /** One guarded request, retried while the host answers 429 or 503. */
+  private request(url: string, init: RequestInit, policy: OutboundPolicy = WP_REQUEST_POLICY): Promise<Response> {
+    return politeFetch(() => safeFetch(url, init, policy), this.polite);
   }
 
   private async fetchJSON<T>(path: string, init?: RequestInit): Promise<T> {
     const url = `${this.baseUrl}${path}`;
-    const res = await safeFetch(url, {
+    const res = await this.request(url, {
       ...init,
       headers: { 'User-Agent': 'Typeroll-Migrator/0.1', ...(init?.headers ?? {}) },
-    }, WP_REQUEST_POLICY);
+    });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${url}`);
     return (await res.json()) as T;
   }
@@ -216,7 +225,9 @@ export class WPClient {
       for (const m of items) out.set(m.id, m);
     } catch {
       // Fall back to per-id fetches if the batch endpoint chokes.
+      const pacer = RequestPacer.for(this.polite);
       for (const id of unique) {
+        await pacer.wait();
         const m = await this.getMedia(id);
         if (m) out.set(id, m);
       }
@@ -243,7 +254,7 @@ export class WPClient {
 
   /** Download a remote asset as a Buffer (for media). */
   async download(url: string): Promise<{ data: Buffer; contentType: string }> {
-    const res = await safeFetch(url, {}, { ...WP_REQUEST_POLICY, label: 'Download URL' });
+    const res = await this.request(url, {}, { ...WP_REQUEST_POLICY, label: 'Download URL' });
     if (!res.ok) throw new Error(`Download failed: ${res.status} ${url}`);
     const buf = Buffer.from(await res.arrayBuffer());
     return { data: buf, contentType: res.headers.get('content-type') ?? 'application/octet-stream' };
@@ -254,11 +265,13 @@ export class WPClient {
     const out: T[] = [];
     let page = 1;
     let bytes = 0;
+    const pacer = RequestPacer.for(this.polite);
     while (true) {
       const url = `${this.baseUrl}${path}${sep}page=${page}`;
-      const res = await safeFetch(url, {
+      await pacer.wait();
+      const res = await this.request(url, {
         headers: { 'User-Agent': 'Typeroll-Migrator/0.1' },
-      }, WP_REQUEST_POLICY);
+      });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}: ${url}`);
       const text = await res.text();
       bytes += text.length;
