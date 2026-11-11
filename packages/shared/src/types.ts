@@ -1182,6 +1182,11 @@ export interface FieldDefinition {
   default?: unknown;
   placeholder?: string;
   options?: string[];
+  /**
+   * A text field holding an app contract variant: the editor offers the
+   * variants the installed app lists for the edited block's component.
+   */
+  extension_variants?: boolean;
   /** Human-readable labels for `options`, matched by index. Stored values
    * remain the corresponding option so labels can be localized safely. */
   option_labels?: string[];
@@ -1435,7 +1440,7 @@ export interface BlockType {
     extension_id: string;
     installation_id: string;
     component_id: string;
-    render_mode: 'bundled_component' | 'embedded_app';
+    render_mode: 'bundled_component' | 'embedded_app' | 'contract_component';
   };
   shared?: boolean;
   created_at: string;

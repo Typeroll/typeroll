@@ -463,7 +463,7 @@ describe('extension scopes', () => {
 describe('extension renderer capabilities', () => {
   it('advertises the executable runtime contract', () => {
     expect(SITE_TEMPLATE_CAPABILITIES).toMatchObject({
-      template_capabilities_version: '0.57.0',
+      template_capabilities_version: '0.58.0',
       supports_responsive_image_framing: true,
       supports_shared_body_heading_scale: true,
       supports_site_responsive_breakpoints: true,
@@ -479,12 +479,13 @@ describe('extension renderer capabilities', () => {
       supports_extension_form_bindings: true,
       supports_extension_form_actions: true,
       supports_extension_page_handoff: true,
+      supports_extension_contracts: true,
       extension_protocol_version: 3,
-      extension_runtime_version: '0.45.0',
+      extension_runtime_version: '0.46.0',
       supports_extension_installation_config_api: true,
       supports_indexing_diagnostics: true,
       supports_migration_launch_report: true,
-      extension_render_modes: ['bundled_component', 'embedded_app'],
+      extension_render_modes: ['bundled_component', 'embedded_app', 'contract_component'],
     });
   });
 });
