@@ -151,10 +151,19 @@ export async function runnerRequest(request: Request, org: string, action: strin
       const code = mediaFailureCode(stage, reportedCode, diagnostic);
       const retryMedia = ((metadata.kind !== 'qualification' && stage === 'media' && ['build_process_timeout', 'media_transfer_interrupted'].includes(code)) ||
         (metadata.kind === 'static_verification' && stage === 'verification' && code === 'static_verification_pending')) && task.attempt < buildAttemptLimit(task);
+      // Build storage refusing the finished artifact (R2 HTTP 5xx or a dropped
+      // connection, after the engine's own retries; older engines do not retry)
+      // says nothing about the site. Run the same frozen build once more: it
+      // keeps its prepared media, and a second refusal fails the publication.
+      const retryUpload = !retryMedia && metadata.kind !== 'qualification' && stage === 'artifact' && code === 'artifact_upload_failed' &&
+        !task.artifact_upload_retried && task.attempt < buildAttemptLimit(task);
+      const retry = retryMedia || retryUpload;
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),
         // A retry waits its own queue window; keeping the first attempt's queue time
         // expired it within minutes and replaced the cause with a queue timeout.
-        { ...(validation ? { seo_report: validation } : {}), status: retryMedia ? 'queued' : 'failed', ...(retryMedia ? { queued_at: Date.now() } : {}), token_hash: null, error_code: `${stage}_${code}`, error_detail: diagnostic, lease_until: 0 });
+        { ...(validation ? { seo_report: validation } : {}), status: retry ? 'queued' : 'failed', ...(retry ? { queued_at: Date.now() } : {}), ...(retryUpload ? { artifact_upload_retried: true } : {}),
+          token_hash: null, error_code: `${stage}_${code}`, error_detail: diagnostic, lease_until: 0 });
+      if (retryUpload) console.warn(JSON.stringify({ event: 'build_artifact_upload_retry', org_id: org, task: key, kind: metadata.kind, attempt: task.attempt }));
       if (metadata.kind === 'qualification') {
         const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
         if (disabled) {

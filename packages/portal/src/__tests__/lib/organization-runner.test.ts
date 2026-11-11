@@ -255,6 +255,27 @@ it('does not retry integrity or rendering errors as media interruptions', async 
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'failed' });
 });
 
+it('runs a publication build once more when build storage refused its artifact, and fails the second refusal', async () => {
+  const { key } = await prepare('publication', 2);
+  const path = `${buildTasksPath(org)}/${key}`;
+  const first = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  // Media was prepared before the upload failed; the retry keeps it.
+  expect((await request('media-checkpoint', first.token, { key, lease_id: first.lease_id, cursor: 2, continue_build: true, keep_lease: true })).status).toBe(200);
+  expect((await request('fail', first.token, { key, lease_id: first.lease_id, stage: 'artifact', code: 'artifact_upload_failed' })).status).toBe(200);
+  expect(await getStore().getDoc(path)).toMatchObject({ status: 'queued', artifact_upload_retried: true, media_cursor: 2, error_code: 'artifact_artifact_upload_failed' });
+  const second = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect(second).toMatchObject({ key, media_cursor: 2, media_total: 2 });
+  expect((await request('fail', second.token, { key, lease_id: second.lease_id, stage: 'artifact', code: 'artifact_upload_failed' })).status).toBe(200);
+  expect(await getStore().getDoc(path)).toMatchObject({ status: 'failed', error_code: 'artifact_artifact_upload_failed' });
+});
+
+it.each([['qualification', 'artifact_upload_failed'], ['publication', 'artifact_format_unsupported']])('does not retry a %s build that failed uploading with %s', async (kind, code) => {
+  const { key } = await prepare(kind);
+  const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, stage: 'artifact', code })).status).toBe(200);
+  expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'failed' });
+});
+
 it('keeps the redacted cause a build engine reports with a failure', async () => {
   const { key } = await prepare('publication', 1);
   const claim = await (await request('claim', runnerToken, { protocol: 1, diagnostics: true })).json();

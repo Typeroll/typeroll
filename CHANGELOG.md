@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+- A build that build storage (R2) refused to accept at the end
+  (`artifact_artifact_upload_failed`, typically HTTP 5xx during a short storage
+  outage) is run once more automatically, on every build engine revision; its
+  prepared media is reused and a second refusal fails the publication as
+  before. Updated build engines also repeat the artifact upload up to three
+  times within a few seconds, report what storage answered as the failure's
+  cause, and name the reason on the optional `TYPEROLL_RENDER_CACHE` and
+  `TYPEROLL_MEDIA_CACHE` "unavailable" log lines. The failure message says the
+  live site is unchanged and to publish again; the code is documented in the
+  customer publishing guide.
+
 ## 0.3.27 (candidate, MCP 0.45.135)
 
 - App contracts (Extension runtime 0.46.0, template capabilities 0.58.0) let

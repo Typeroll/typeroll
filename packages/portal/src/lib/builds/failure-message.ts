@@ -62,7 +62,8 @@ const REASONS: Array<[RegExp, (match: RegExpMatchArray) => Reason]> = [
   [/^build_lease_lost$/, () => ({ text: 'the build lost its connection to Typeroll.' })],
   [/^coordinator_(\d{3})$/, match => ({ text: `Typeroll’s build coordinator answered HTTP ${match[1]}.` })],
   [/^build_transfer_(?:failed|limit)$/, () => ({ text: 'a build input could not be downloaded.' })],
-  [/^artifact_upload_failed$/, () => ({ text: 'the built site could not be uploaded to build storage.' })],
+  // Build storage (R2) refused the finished artifact: a temporary storage outage, not the site's content.
+  [/^artifact_upload_failed$/, () => ({ text: 'build storage did not accept the built site.', action: 'This is usually a temporary storage outage; the build is retried once automatically. Publish again in a few minutes; the live site is unchanged.' })],
   [/^static_output_size_limit$/, () => ({ text: 'the finished site exceeds the static output limit or contains a file larger than 25 MiB.', action: 'The provider log line TYPEROLL_OUTPUT_LIMIT names the limit, the totals and the largest files. Reduce those files, then retry publishing.' })],
   [/^(?:invalid_static_path|invalid_static_file|unsafe_build_output)$/, () => ({ text: 'the build produced a file that cannot be published.' })],
   [/^publication_validation_failed$/, () => ({ text: 'the built pages failed publication validation.', action: 'Fix the reported pages, then publish again.' })],
