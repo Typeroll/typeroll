@@ -210,6 +210,12 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'The cookie banner\'s buttons use the site\'s body font at weight 600 instead of the browser\'s default button font.',
     ],
   },
+  {
+    version: 18, core_version: '0.3.25', title: 'A page that opens with a heading',
+    changes: [
+      'A Heading, Rich heading or Text block that opens the page has no space above its heading, like the first heading in a section, column or container. Before, it got the 1.6em space of a heading in running text, and that space moved the whole page down.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;
