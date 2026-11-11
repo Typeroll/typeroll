@@ -18,7 +18,7 @@ import { activateDomain, getDomainState, pollDomainStatus, removeDomain, request
 import { publicUrlsFor } from '../../lib/site-public-urls';
 import { liveBaseFor } from '../../lib/site-urls';
 
-const mocks = vi.hoisted(() => ({ enqueue: vi.fn(), built: vi.fn(), probe: vi.fn(), source: vi.fn(), engine: vi.fn(), prepare: vi.fn() }));
+const mocks = vi.hoisted(() => ({ enqueue: vi.fn(), built: vi.fn(), probe: vi.fn(), source: vi.fn(), engine: vi.fn(), prepare: vi.fn(), runtime: null as any }));
 vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completedBuild: mocks.built }));
 vi.mock('../../lib/builds/auto-update', async original => ({ ...await original<object>(), prepareEngineForBuild: mocks.prepare }));
 vi.mock('../../lib/builds/selection', async original => ({ ...await original<object>(), selectedBuildProvider: async () => 'cloudflare' }));
@@ -27,7 +27,7 @@ vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe 
 vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source }));
 // Publications freeze theme fonts from Google; tests never reach the network.
 vi.mock('../../lib/publishing/theme-font-freeze', () => ({ freezeSiteFonts: async () => ({ plan: { render_version: 1, families: [], google_css_url: null, service_stylesheets: [] }, theme_fonts: null }) }));
-vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => ({ forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] }) }));
+vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => mocks.runtime ?? ({ forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] }) }));
 
 const ORG = 'org', SITE = 'bakery';
 const args = (jobId: string, extra: Record<string, unknown> = {}) => ({ orgId: ORG, siteId: SITE, versionId: 'main', jobId, environment: 'production' as const, ...extra });
@@ -231,6 +231,25 @@ describe('with a bound hosting service', () => {
     // A publication in progress holds the lease: a restore waits for it.
     await getStore().updateDoc(`${paths.site(ORG, SITE)}/publishing_targets/main`, { job_id: 'running', lease_until: Date.now() + 60_000 });
     await expect(restoreHostedPublication(ORG, SITE)).rejects.toMatchObject({ code: 'publication_in_progress' });
+  });
+
+  it('records the app versions live pages call, through publication and rollback', async () => {
+    const runtime = (version: string) => ({ forms: [], apps: { apps: {} }, dependencies: [], extensions: { runtime_version: '1', protocol_version: 1,
+      installations: [{ installation_id: 'inst_events', extension_id: 'se.vendor.events', version, public_config: {}, components: [] }] } });
+    await getStore().setDoc(paths.extensionInstallation(ORG, SITE, 'inst_events'), { extension_id: 'se.vendor.events', developer_org_id: 'dev', owner_org_id: ORG, status: 'enabled', granted_scopes: [] });
+    for (const version of ['1.0.0', '2.0.0']) await getStore().setDoc(paths.extensionVersion('dev', 'se.vendor.events', version), { version, status: 'published', manifest: { id: 'se.vendor.events', version } });
+    const live = async () => (await getStore().getDoc<any>(`${paths.site(ORG, SITE)}/publishing_targets/main`)).last_publication.extension_versions;
+    try {
+      await seedSite();
+      mocks.runtime = runtime('1.0.0');
+      expect((await publish('first')).status).toBe('succeeded');
+      expect(await live()).toEqual({ inst_events: '1.0.0' });
+      mocks.runtime = runtime('2.0.0');
+      expect((await publish('second')).status).toBe('succeeded');
+      expect(await live()).toEqual({ inst_events: '2.0.0' });
+      await restoreHostedPublication(ORG, SITE);
+      expect(await live()).toEqual({ inst_events: '1.0.0' });
+    } finally { mocks.runtime = null; }
   });
 
   it('refuses version and staging publications', async () => {

@@ -80,10 +80,11 @@ export const PATCH: APIRoute = async ({ request, cookies, params, locals }) => {
       config: body.config && typeof body.config === 'object' && !Array.isArray(body.config)
         ? body.config as Record<string, unknown>
         : undefined,
+      confirmFormTargets: body.confirm_form_targets === true,
     });
     return json({ installation: { ...installation, private_config: undefined, secret_config_enc: undefined } });
   } catch (error) {
-    if (error instanceof ExtensionRegistryError) return json({ error: error.message }, error.status);
+    if (error instanceof ExtensionRegistryError) return json({ error: error.message, ...(error.code ? { code: error.code } : {}), ...error.details }, error.status);
     return json({ error: 'Failed to update Extension installation' }, 500);
   }
 };

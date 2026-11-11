@@ -13,6 +13,7 @@ import { verifyManagedProject } from './migrated-project';
 import { capturePublicationImpact } from './impact-preview';
 import { compareImpact } from './impact';
 import { readSnapshot, saveSnapshot } from './publication-snapshot';
+import { publicationExtensionVersions } from '../extensions/published-version';
 import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
 import { hostingDns } from './hosting-dns';
 import { purgePublicationHost } from './publication-cache';
@@ -78,6 +79,8 @@ interface GitPublication extends CustomerVerification {
   release_branch?: 'main' | null; snapshot_job_id?: string; cache_purged_deployment?: string; cache_purged_hosts?: string[];
   /** Hosts frozen with this publication that must answer 301 to website_host before it is live. */
   redirect_hosts?: string[]; redirect_preparations?: RedirectPreparation[] | null;
+  /** App version per installation frozen into this publication; `GET /extensions/self` reports it as `published_version`. */
+  extension_versions?: Record<string, string>;
 }
 function projectCreationMessage(error: ProviderError, publication?: GitPublication) {
   const detail = `Cloudflare could not create the Pages project${publication ? ` in hosting account ${publication.account_id}` : ''}: HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''}.`;
@@ -474,7 +477,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: site?.git_repository ?? generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domainPublicationRevision(domains), destination: {hosts: domains.desired, dns_mode: domains.dns_mode},
-        ...(job.source_publication ? {source_publication_id: job.source_publication.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}), ...await saveSnapshot(args, frozen) };
+        ...(job.source_publication ? {source_publication_id: job.source_publication.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}),
+        // A domain-only candidate is cloned from the live snapshot, so it keeps the app versions live pages already call.
+        extension_versions: publicationExtensionVersions(frozen), ...await saveSnapshot(args, frozen) };
       const selectedProvider = await selectedBuildProvider(args.orgId);
       const engine = await readEngineConfiguration(args.orgId, selectedProvider);
       // An engine update in progress (by another publication or an admin) is awaited before the build, not refused.

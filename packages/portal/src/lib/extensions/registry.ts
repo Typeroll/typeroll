@@ -12,6 +12,7 @@ import {
   type ExtensionManifest,
   type ExtensionScope,
   type ExtensionVersion,
+  type Form,
   type InstallationCredential,
 } from '@typeroll/shared';
 import { getStore, generateDocId } from '../datastore';
@@ -21,7 +22,8 @@ import { provisionExtensionBlocks } from './provision';
 import { isForwardRelease, requiresExplicitActivation, resolveExtensionVersion } from './resolution';
 
 export class ExtensionRegistryError extends Error {
-  constructor(message: string, readonly status = 400) {
+  /** `details` is returned beside the message to the caller; never secrets. */
+  constructor(message: string, readonly status = 400, readonly code?: string, readonly details?: Record<string, unknown>) {
     super(message);
     this.name = 'ExtensionRegistryError';
   }
@@ -590,6 +592,8 @@ export async function updateExtensionInstallation(args: {
   version?: string;
   grantedScopes?: ExtensionScope[];
   config?: Record<string, unknown>;
+  /** Change the version although forms post to endpoints it does not declare; their publication then fails until fixed. */
+  confirmFormTargets?: boolean;
 }): Promise<ExtensionInstallation> {
   const store = getStore();
   const installationPath = paths.extensionInstallation(args.ownerOrgId, args.siteId, args.installationId);
@@ -650,6 +654,21 @@ export async function updateExtensionInstallation(args: {
     ...config,
     updated_at: now,
   };
+  if (args.version !== undefined && current.version !== nextVersionName && args.confirmFormTargets !== true) {
+    // A form whose endpoint the new version does not declare fails every later publication. The
+    // version the change resolves to (it can follow automatic releases) is the one checked.
+    const effective = (await resolveExtensionVersion(next)).version ?? nextVersion;
+    const { declaresAppFormRoute } = await import('../apps/form-endpoint');
+    const forms = await store.listDocs<Form>(paths.forms(args.ownerOrgId, args.siteId));
+    const affected = forms.filter(form => form.target?.installation_id === current.id && !declaresAppFormRoute(effective.manifest.api, form.target.path))
+      .map(form => ({ form_id: form.id, name: form.name, path: form.target!.path ?? null }));
+    if (affected.length) {
+      throw new ExtensionRegistryError(`Version ${effective.version} does not declare the endpoint that ${affected.length === 1 ? 'form' : 'forms'} ` +
+        `${affected.map(form => `${form.form_id} (${form.path ?? 'no path'})`).join(', ')} ${affected.length === 1 ? 'posts' : 'post'} to, so publishing would fail. ` +
+        'Install a version that declares it, change the form target, or repeat with confirm_form_targets: true.', 409, 'form_targets_undeclared',
+      { requires_confirmation: true, version: effective.version, affected_forms: affected });
+    }
+  }
   if (current.version !== nextVersionName) {
     const oldVersion = await store.getDoc<ExtensionVersion>(
       paths.extensionVersion(current.developer_org_id, current.extension_id, current.version),
