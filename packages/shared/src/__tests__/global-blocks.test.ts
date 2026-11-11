@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { expandExtensionIncludes, expandFormIncludes, expandIncludes } from '../global-blocks.js';
+import { EXTENSION_PLACEHOLDER_HIDDEN_CSS, hasExtensionBlockTypes } from '../extensions-runtime.js';
 import type { Partial as PartialDoc } from '../types.js';
 
 function block(id: string, html: string, status: 'draft' | 'published' = 'published'): PartialDoc {
@@ -84,6 +85,20 @@ describe('expandExtensionIncludes', () => {
     expect(html).toContain('data-tr-extension-component="portal"');
     expect(html).toContain('data-block-data="{&quot;heading&quot;:&quot;My quote&quot;}"');
     expect(html).not.toContain('customer_token');
+  });
+
+  it('places the editor placeholder where the published-site CSS hides it', () => {
+    const html = expandExtensionIncludes('<x-extension block="known" />', () => ({
+      extension_id: 'se.vendor.events', installation_id: 'install', component_id: 'next', label: 'Next occurrence',
+    }));
+    // The placeholder is the mount's direct child, the element the CSS hides.
+    expect(html).toMatch(/^<div class="tr-extension-mount"[^>]*><p class="tr-extension-placeholder">Next occurrence loads on the published site\.<\/p><\/div>$/);
+    expect(EXTENSION_PLACEHOLDER_HIDDEN_CSS).toBe('.tr-extension-mount>.tr-extension-placeholder{display:none}');
+  });
+
+  it('detects block types that render Extension mounts', () => {
+    expect(hasExtensionBlockTypes([{}, { extension: { extension_id: 'se.vendor.events' } }])).toBe(true);
+    expect(hasExtensionBlockTypes(new Map([['core/heading', {}]]).values())).toBe(false);
   });
 
   it('fails inertly for unknown blocks and invalid props', () => {

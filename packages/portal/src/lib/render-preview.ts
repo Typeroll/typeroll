@@ -46,6 +46,7 @@ import {
   styleElementText,
   resolveBreakpointWidths,
   expandExtensionIncludes,
+  EXTENSION_PLACEHOLDER_HIDDEN_CSS,
   expandFormIncludes,
   expandIncludes,
   globalBlockSourceFromPartials,
@@ -389,6 +390,11 @@ export async function renderPreview(
           : {}),
       }, versionId)
     : '';
+  // The site preview runs the Extension runtime as the published page does,
+  // so it hides the mounts' editor placeholder as the published page does.
+  // The script-free editor canvas keeps it: there it marks the component.
+  const hideExtensionPlaceholders = !opts.editorCanvasId && opts.allowScripts === true
+    && mountedHtml.includes('tr-extension-placeholder');
   const previewNavigationBridge = buildPreviewNavigationBridgeScript(opts);
   const cookieConsentHtml = opts.allowScripts === true
     ? rewriteIf(renderPreviewCookieConsent(settings, page.language || settings.language, opts.consentChoice))
@@ -418,6 +424,7 @@ export async function renderPreview(
     editorCanvasInteractive: opts.annotate === true,
     extensionRuntime,
     editorExtensionRuntime,
+    hideExtensionPlaceholders,
     previewNavigationBridge,
     cookieConsentHtml,
     consentPreset: Boolean(opts.consentChoice),
@@ -625,6 +632,8 @@ function buildHtml(args: {
   editorCanvasInteractive?: boolean;
   extensionRuntime?: string;
   editorExtensionRuntime?: string;
+  /** Hide Extension mount placeholders, as the published page does. */
+  hideExtensionPlaceholders?: boolean;
   previewNavigationBridge?: string;
   cookieConsentHtml?: string;
   consentPreset?: boolean;
@@ -634,7 +643,7 @@ function buildHtml(args: {
   /** The page's identity contract on `<body>`, the same attributes the published build writes. */
   bodyAttributes?: Record<string, string>;
 }): string {
-  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, previewNavigationBridge, cookieConsentHtml, consentPreset, robotsBlocked, banner } = args;
+  const { page, settings, headerHtml, footerHtml, bodyHtml, blocksBody, blockCss, blockJs, allowScripts, editorCanvasId, editorCanvasInteractive, extensionRuntime, editorExtensionRuntime, hideExtensionPlaceholders, previewNavigationBridge, cookieConsentHtml, consentPreset, robotsBlocked, banner } = args;
   const direction = languageDirection(page.language || settings.language || 'en');
   const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
   const { fonts } = args;
@@ -675,6 +684,7 @@ ${fonts.googleCdn ? '<link rel="preconnect" href="https://fonts.googleapis.com">
         : `<link rel="stylesheet" href="${escapeAttr(url)}">`).join('')
     }${fonts.services.map(url => `<link rel="stylesheet" href="${escapeAttr(url)}">`).join('')}${fonts.plan.families.length ? `<style>${webfontFallbackCss(renderVersion, fonts.plan)}</style>` : ''}
 ${blockCss ? `<style data-blocks="1">${blockCss}</style>` : ''}
+${hideExtensionPlaceholders ? `<style data-tr-extension-mounts="1">${EXTENSION_PLACEHOLDER_HIDDEN_CSS}</style>` : ''}
 ${direction === 'rtl' ? `<style data-direction>${directionCss(direction, renderVersion)}</style>` : ''}
 ${siteStyles ? `<style data-site-styles="1">${platformLayer('styles', siteStyles, renderVersion)}</style>` : ''}
 ${settings.custom_css ? `<style data-site-css="1">${styleElementText(settings.custom_css)}</style>` : ''}
