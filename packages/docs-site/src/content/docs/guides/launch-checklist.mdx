@@ -55,6 +55,18 @@ For each warning or suggestion, either fix it or record why it stays open, for
 example in your [agent workspace](../../getting-started/agent-workspace/)'s
 `decisions.md`. A suggestion you decide against is a valid outcome.
 
+Before the publication itself, run a dry run and read the publication impact
+(`trigger_deploy` with `dry_run: true`, then `get_publication_impact`). A
+publication ships everything saved on the site, including changes by other
+people and other agent sessions. If the list has changes you did not make,
+stop and find out whose they are. See
+[before you publish](../../tools/deploy/#before-you-publish).
+
+Checking a whole site sends many requests. On your own computer, run page
+checks, URL parity and screenshot runs slowly: home ISPs, routers and DNS
+resolvers can throttle or block rapid requests from one machine. The workspace
+starter's scripts pace themselves; prefer a cloud session for full-site checks.
+
 ## Share image
 
 The image social networks and chat apps show when someone shares a page that
@@ -275,7 +287,9 @@ rules on the platform's block classes.
 **Fix:** ask your agent to run `lint_design_tokens`. Each finding names the
 [named style](../../tools/styles/), [design token](../design-tokens/) or block
 setting that replaces the rule. A hero image set in the block's own image
-field loads early; one set in CSS cannot.
+field loads early; one set in CSS cannot. Rules on platform markup, such as
+`.block-section-inner` or the inside of a `[data-block=...]` element, can change
+with a render version: re-check them after every rendering upgrade.
 
 ## AI crawler zone conflict
 

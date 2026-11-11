@@ -66,6 +66,17 @@ text and design/images separately: each preserved dimension against the source,
 each renewed dimension against its approved brief. Check long pages and unusual content as well
 as a simple sample; import completion is not launch approval.
 
+A migration is not finished while its status shows failed media or Pages
+(`read_organization_media_migration` lists them under `failed_media`), unless
+each failure has been reviewed and accepted. After the first publication,
+check the live pages' images once.
+
+Crawling the old site and copying its media send many requests. On your own
+computer, have the agent work slowly: home ISPs, routers and DNS resolvers can
+throttle or block rapid requests from one machine, and the failures look like
+a broken source. Run large crawls, media copies and full-site checks in a
+cloud session, such as Claude Code on the web or GitHub Codespaces.
+
 ## Every old public URL needs a destination
 
 Every combination keeps old URLs working, either at the same path or through a

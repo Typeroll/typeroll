@@ -43,7 +43,10 @@ So, always:
 1. Get a URL for the version under review. While iterating, use the DB-live
    `get_preview_link` (mint once, reuse — defaults to a 24h TTL) — it renders
    from the DB with no build, so fixes show on reload without re-deploying, and
-   it's the loop for content and layout review (screenshots, reading). It is
+   it's the loop for content and layout review (screenshots, reading). To see
+   your own unsaved edits, mint it with `include_working_copy: true` and the
+   changed page (`page_id` or `slug`, so its path is in the link); screenshot
+   its `frame_url`, the rendered page without the wrapper. It is
    NOT a measurement surface: it serves the page from the portal origin as a
    nested frame in an opaque-origin sandbox, so evaluate/DOM/computed-style
    reads from your browser tool do not reach it reliably, the same-origin
@@ -61,6 +64,9 @@ So, always:
 3. If you run several variants with one shared browser profile, do them
    SEQUENTIALLY — parallel browser agents on one profile contaminate each other's
    tabs/screenshots.
+4. On the user's own computer, load pages slowly (a pause between page loads,
+   back off on 429/503): home ISPs, routers and DNS resolvers can throttle or
+   block many rapid requests. Run full-site sweeps in a cloud session.
 
 ## The dimensions — run each, record the result
 

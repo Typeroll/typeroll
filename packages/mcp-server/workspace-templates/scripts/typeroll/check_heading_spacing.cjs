@@ -1,5 +1,6 @@
 // Read-only component rhythm QA. Deliberate exceptions require visual review.
-const { chromium } = require('playwright');
+const qa = require('./browser.cjs');
+const { chromium } = qa;
 const fs = require('node:fs');
 async function main() {
   const origin = new URL(process.argv[2]);
@@ -21,7 +22,7 @@ async function main() {
     for (const width of [375,768,1280]) {
       await page.setViewportSize({width,height:900});
       for (const path of [...new Set(paths)]) {
-        await page.goto(new URL(path,origin).href,{waitUntil:'domcontentloaded'});
+        await qa.navigate(page,new URL(path,origin).href,{timeout:30000});
         await page.evaluate(()=>document.fonts.ready);
         const findings=await page.evaluate(()=>{
           const found=[];

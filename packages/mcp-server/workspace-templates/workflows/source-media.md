@@ -17,7 +17,10 @@ the CMS. Do not delete source files or cancel old hosting as part of this routin
 4. Copy with bounded concurrency and bounded reads, stream large files and use
    resumable transfers when supported. Preserve a collision-safe key derived from
    the full source host/path, not just the filename. Never overwrite a different
-   object merely because the basename matches.
+   object merely because the basename matches. On your own computer, copy one
+   or two files at a time with pauses and back off on 429/503: an ISP, router or
+   DNS resolver can throttle or block many rapid requests to the old host. Run
+   large copies in a cloud session (see scripts/README.md, request pace).
 5. Record source URL, destination key, source ID, byte count, SHA-256, media type,
    title/alt/caption, copy time and verification state in a private manifest.
    ETag is not universally MD5 (multipart objects and providers differ). Use a

@@ -42,6 +42,10 @@ This is the `tr-edit-site` recipe exactly as the Typeroll MCP server gives it to
    user has authorized saving. `save: true` or `commit_working_copy` makes the
    draft durable; saving and deploying are different actions. Publish only
    when authorized and readiness passes. Report the actual result and URL.
+7. Before a real deploy, run `trigger_deploy` with `dry_run: true` and read
+   `get_publication_impact`. A publication ships everything saved on the
+   site, including changes by other people and other agent sessions. If the
+   impact lists changes you did not make, stop and ask whose they are.
 
 ## Everyday requests
 
@@ -53,7 +57,9 @@ page's `url` (its path). The public address is `get_site` → `urls.production`
 plus that path, and it serves the page only after it is published and
 deployed. Never invent a domain; when there is none, say why and offer a
 preview instead: `get_preview_link page_id=… include_working_copy:true` shows
-drafts and unpublished pages. Mint one link and reuse it while iterating.
+drafts and unpublished pages, with the page's path in the link. Mint one link
+and reuse it while iterating. For screenshots and rendering checks, open its
+`frame_url` (the rendered page without the preview wrapper).
 
 **Images the user provides.** Upload first: a URL with `upload_media_from_url`,
 a local file with `create_upload_url` (see `tr-images`); `list_media` finds
@@ -94,7 +100,10 @@ publish again once the engine is idle. `retry_deploy_verification` only
 retries public verification of an already-served publication
 (`publication_observation_timeout`, `publication_cache_refresh_*`); a build or
 engine-side static verification failure needs a new publish after fixing the
-reported cause.
+reported cause. After switching an app's version (for example
+`activate_extension_release`), dry-run and publish soon, with approval: the
+live pages keep the version they were published with until the next
+publication.
 
 **Site-wide changes are composition, not a series of page edits.** "Change
 every hero", "a CTA on every product page", "our phone number in every

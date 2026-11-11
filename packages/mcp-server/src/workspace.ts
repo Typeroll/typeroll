@@ -68,6 +68,19 @@ Public documentation: https://typeroll.com/docs/llms.txt
   explicitly; the hosted server cannot read this workspace file.
 - Distinguish working copies, saved CMS content and deployed output. Save within
   the user's scope, review previews and deploy only when explicitly authorized.
+- Preview your edits with get_preview_link include_working_copy: true for the
+  changed Page (page_id or slug); use frame_url for rendering checks and
+  screenshots. Save working copies before publishing.
+- Before publishing, run trigger_deploy dry_run: true and read
+  get_publication_impact. A publication ships everything saved on the Site,
+  including other people's and other sessions' changes. If it lists changes you
+  did not make, stop and find out whose they are. After an app version switch,
+  dry-run and publish soon: live keeps the published version until then.
+- Before a render_version upgrade, compare previews at the current and target
+  version (tr-upgrade-rendering), not the live site afterwards.
+- On your own computer, run request-heavy steps slowly: ISPs, routers and DNS
+  can throttle rapid requests. Prefer a cloud session for large crawls, media
+  copies and full-site checks (scripts/README.md).
 - Check get_import_readiness before any import. For new uploads use signed direct
   upload/finalization. Never put image bytes or customer secrets in Git.
 - Inspect desktop/mobile layouts and interaction states. Read changes back.
@@ -87,7 +100,8 @@ tr-import-url, tr-migrate-astro or tr-migrate-multisite). Record text_intent and
 in brief/migration.md; design includes images. Ask if either is unclear. Standard blocks first, reviewed
 custom types next, documented HTML exceptions last. Preserve or meaningfully
 redirect every old public URL. Import completion is not block reconstruction
-or launch acceptance. Compare text and design/images separately: preserved dimensions to the source,
+or launch acceptance. A migration is finished only when no media or Page has
+failed, or each failure is reviewed and accepted. Compare text and design/images separately: preserved dimensions to the source,
 renewed dimensions to their approved brief. New design never permits rewriting preserved text. Start with workflows/migration.md for the kickoff
 prompt. The agent rebuilds imported HTML using ordinary block tools; the owner
 does not need to manually convert each Page. No automatic converter is available.

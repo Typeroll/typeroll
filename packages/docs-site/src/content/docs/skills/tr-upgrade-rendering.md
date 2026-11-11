@@ -33,20 +33,29 @@ comparison first.
    the home page, one page per content type and template, and every page
    whose blocks use a component named in `upgrades[].changes`.
 
-3. **Mint two links per page set.** One `get_preview_link` without
-   `render_version` (current) and one with `render_version: latest` (target).
-   Both show saved content. Mint each once and reuse it; internal links keep
-   the token.
+3. **Mint two links per page set, before upgrading.** One `get_preview_link`
+   without `render_version` (current) and one with `render_version: latest`
+   (target). Both show saved content. Mint each once and reuse it; internal
+   links keep the token. Put the page's path in each link (`page_id` or
+   `slug`) and capture its `frame_url`, the rendered page without the preview
+   wrapper. Compare these two, never the live site after the upgrade: once
+   upgraded and published, the old look is gone and regressions hide in it.
 
 4. **Screenshot both** at 390, 768 and 1440 px wide, full page, after fonts
    and images have loaded (`document.fonts.ready`, scroll to the end to
    trigger lazy images, then back to the top). Use a headless browser with a
-   fixed viewport and `reducedMotion: 'reduce'`.
+   fixed viewport and `reducedMotion: 'reduce'`. Also record computed boxes
+   (top, height, margin, padding, gap) of each section and heading, for
+   example with the starter's `layout_trace.cjs`. On your own computer, load
+   pages slowly; home connections can throttle many rapid requests (the
+   starter's browser tools pace page loads). Use a cloud session for large sites.
 
 5. **Compare.** Pixel-diff each pair (same size, small per-pixel tolerance)
    and record the changed area and the bounding boxes of changed regions.
-   Crop each region from both versions. Ignore differences confined to
-   embedded third-party frames (maps, booking widgets, video).
+   Crop each region from both versions. Compare the computed boxes too: a
+   vertical shift (content moved up or down) is a difference even when each
+   block looks the same. Ignore differences confined to embedded third-party
+   frames (maps, booking widgets, video).
 
 6. **Report** per page and width: unchanged, or the cropped before/after
    regions with a one-line description ("links in body text are underlined",
@@ -61,7 +70,10 @@ comparison first.
    the button in the form grid targets `form > .form-actions`. Version 17
    loads weights written in CSS: propose removing `fonts.load` entries that
    only existed for them, and element rules that were scoped only to keep
-   them off the cookie banner.
+   them off the cookie banner. Any rule that targets platform markup
+   (`.block-section-inner`, `[data-block=...]` internals) can change with a
+   render version: prefer block settings and named styles, and re-check such
+   rules at all three widths after the upgrade.
 
 7. **Ask before upgrading.** Never upgrade on your own. If the user wants to
    keep a specific old look, solve it with a site style or page CSS first and
@@ -69,7 +81,9 @@ comparison first.
 
 8. **Upgrade** with `update_site_settings render_version: <latest>` (pass
    `version` to do it on a branch first). The preview changes at once; the
-   live site changes at the next deploy. To undo, write the previous number.
+   live site changes at the next deploy. Run `trigger_deploy` with
+   `dry_run: true` and read `get_publication_impact` first: the deploy also
+   ships every other saved change. To undo, write the previous number.
 
 ## Platform fixes behind a newer version
 
@@ -86,5 +100,7 @@ paddings or custom CSS); those workarounds outlive the fix and fight it.
 - Lazy images and web fonts cause false differences. Wait for them in both
   screenshots.
 - Comparing only the home page misses changes in components it doesn't use.
+- Comparing against the live site after upgrading hides regressions: the
+  baseline is gone. Capture both previews before the upgrade.
 - Don't encode a workaround in custom CSS to resist an upgrade without
   telling the user; it becomes a hidden fork of the platform styles.

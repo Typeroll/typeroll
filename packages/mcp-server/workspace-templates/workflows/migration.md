@@ -41,12 +41,20 @@ WordPress REST + HTML covers the source; use tr-migrate-wp's access decision
 table before asking for a helper plugin. Inventory both Pages and posts plus
 internal links and known old slugs. A sitemap alone is not complete.
 
+Crawl and copy slowly on your own computer: an ISP, router or DNS resolver can
+throttle or block many rapid requests to the old site. Fetch a few pages at a
+time with pauses, back off on 429/503, and prefer a cloud session (Claude Code on
+the web, Codespaces) for large crawls and media copies. See scripts/README.md.
+
 Discard HTML comments before extracting text, resolve relative links against
 the source, and keep an explicit old URL map. Do not redirect deleted content
 to the home page merely to get a 200. Preserve/renew text and design separately.
 Use capture_text.cjs + compare_text.py for preserved text with explicit selectors.
 
-Before every authorized test deployment run check_unsaved.py (Pages and partials).
+Before every authorized test deployment run check_unsaved.py (Pages and partials),
+then `trigger_deploy` with `dry_run: true` and read `get_publication_impact`. A
+publication ships everything saved on the Site, including other people's and
+other sessions' changes; stop and ask about any change you did not make.
 Deploy saved content to the agreed protected test host, then run check_url_parity.py,
 check_assets.py and shoot_hosted.cjs. Check whole-card targets with
 card-stacking-check.cjs and inspect actual desktop/mobile screenshots. Record a
@@ -54,6 +62,12 @@ QA round and platform findings. Review on the owner's phone when possible.
 Domain preparation/cutover and production indexing follow their own explicit
 approval scope and the platform's current guided flow; do not bypass readiness.
 Do not request a second approval for a step the owner has already authorized.
+
+The migration is finished only when its status has no failed media or Pages:
+`read_organization_media_migration` lists no `failed_media` for the Site, and
+no import or inventory row has failed. Otherwise review each failure and record
+its acceptance in brief/migration.md. After the first publication, check the
+live Pages' images once (check_assets.py, shoot_hosted.cjs).
 
 
 ## Native controls and publication checks

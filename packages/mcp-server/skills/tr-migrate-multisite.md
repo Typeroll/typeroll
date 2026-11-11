@@ -245,6 +245,11 @@ A cluster of one is meaningless markup.
 ## Phase 7 — Verify BEFORE touching DNS
 
 Deploy each site (`trigger_deploy`), then check what it actually serves.
+Dry-run first (`dry_run: true`) and read `get_publication_impact`: a
+publication ships everything saved on that site, including other sessions'
+changes. Stop and ask about any change you did not make. On the user's own
+computer, run the per-site checks slowly; home connections throttle many rapid
+requests, so prefer a cloud session for full-site checks.
 
 **Publish one site at a time.** All sites in an organization share one
 organization build engine, and its runners claim the oldest task in the
