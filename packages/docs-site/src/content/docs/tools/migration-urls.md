@@ -134,7 +134,23 @@ script and follows it, so the URL counts as `ok_redirect` with
 (200 or 404). Browsers and Google follow these redirects, but they are not a
 301; a rule on a plain path is, so prefer one when the query adds nothing.
 
-A timeout, network error, 429 or 5xx, including one on a later hop of a redirect, is retried up to twice more at a slower pace with a longer timeout; `attempts` appears only on a result that took more than one request and shows how many it took. When more than 60 URLs and more than a quarter of all URLs fail, the host is treated as down and the errors are reported without retries.
+The check runs 4 requests at a time by default (`concurrency`, at most 12):
+hosts, CDNs and firewalls often throttle or block a faster crawler, so raise it
+only for a host you know accepts it. A timeout, network error, 429 or 5xx,
+including one on a later hop of a redirect, is retried up to twice more at a
+slower pace (3 requests at a time) with a longer timeout. A host that answered
+429 or 503 gets a short pause before a retry round, and within the round such
+an answer is retried once after the wait its `Retry-After` header asks for (at
+most 10 seconds). `attempts` appears only on a result that took more than one
+request and shows how many it took. When more than 60 URLs and more than a
+quarter of all URLs fail, the host is treated as down and the errors are
+reported without retries.
+
+The old site is read just as politely when Typeroll imports or inventories it
+(WordPress REST, the helper plugin, sitemaps, public pages): a 429 or 503 is
+retried up to three times after the host's `Retry-After` (at most 30 seconds
+per wait) or a growing delay, and consecutive pages of one listing are a
+quarter of a second apart.
 
 By default it tests the site's live domain. **While your real domain still points at the old host**, pass the temporary address the site publishes to as `target_origin`. That's the point: you find and fix the gaps before anything is switched over, with the old site still serving.
 

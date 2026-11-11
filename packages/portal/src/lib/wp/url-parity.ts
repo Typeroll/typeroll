@@ -1,5 +1,6 @@
 import { publicationResponse } from '../deploy/public-response';
 import { safeFetch as guardedFetch } from '../net/safe-fetch';
+import { defaultSleep, politeDelayMs, POLITE_RETRY_STATUSES, type PoliteRetryOptions } from '../net/polite-fetch';
 // Pre-cutover URL parity check.
 //
 // `analyzeCoverage` answers "does the DATA say this URL is handled?" — it
@@ -21,6 +22,13 @@ import { safeFetch as guardedFetch } from '../net/safe-fetch';
 //
 // Every network call goes through the injected `fetchImpl` so the classifier
 // is testable without a network.
+//
+// Hosts (the old one with check_source, and the CDN or WAF in front of the
+// new one) throttle rapid crawlers, so the first pass runs at modest
+// concurrency (4 by default) and retry rounds back off: a round that retries
+// rate-limited results (429, 503) starts after an exponential, jittered
+// delay, and within a round a 429 or 503 is retried once after the host's
+// `Retry-After` (lib/net/polite-fetch).
 
 import { applyTrailingSlash, embeddedQueryRedirectTarget, paths } from '@typeroll/shared';
 import type { DeployJob, Redirect } from '@typeroll/shared';
@@ -106,18 +114,35 @@ export interface CheckParityOptions {
   trailingSlashPolicy?: TrailingSlashPolicy;
   fetchImpl?: typeof fetch;
   onProgress?: (done: number, total: number) => void;
+  /** Backoff of retry rounds; tests inject `sleep`. */
+  polite?: PoliteRetryOptions;
 }
 
 const publicationFetch: typeof fetch = (...args) => fetch(...args);
 
+/** Parallel requests of the first pass, polite to throttling hosts and CDNs. */
+export const PARITY_DEFAULT_CONCURRENCY = 4;
+
 const DEFAULTS = {
-  concurrency: 6,
+  concurrency: PARITY_DEFAULT_CONCURRENCY,
   timeoutMs: 15_000,
   retryRounds: 2,
   retryConcurrency: 3,
   retryLimit: 60,
   maxHops: 5,
 };
+
+/**
+ * Backoff in retry rounds: one polite retry per request, and short enough
+ * waits for a synchronous verify call. A round waits base·2^(round-1).
+ */
+const RETRY_POLITE = { retries: 1, baseDelayMs: 2_000, maxDelayMs: 10_000 } as const;
+
+/** Result of a host refusing for now (429, 503), as opposed to failing. */
+function isRateLimited(result: ParityResult): boolean {
+  const status = result.hops ? result.final_status ?? null : result.status;
+  return status !== null && POLITE_RETRY_STATUSES.has(status);
+}
 
 /** One request to make: an inventory entry expanded to one observed path. */
 export type ParityCheck = Pick<AnalyzedUrl, 'path' | 'excluded' | 'gsc_clicks'>;
@@ -204,6 +229,7 @@ export async function advanceParity(state: ParityProgress, opts: AdvanceParityOp
   // A busy host times out a few requests under parallel load and answers them
   // at once when asked again. Retry only inconclusive results, more gently.
   const retryRounds = Math.max(0, opts.retryRounds ?? DEFAULTS.retryRounds);
+  const polite: PoliteRetryOptions = { ...RETRY_POLITE, ...opts.polite };
   while (state.round <= retryRounds) {
     if (state.pending === null) {
       const pending = results.flatMap((result, index) => result && isRetryable(result) ? [index] : []);
@@ -211,6 +237,8 @@ export async function advanceParity(state: ParityProgress, opts: AdvanceParityOp
       if (!pending.length || pending.length > Math.max(DEFAULTS.retryLimit, checks.length / 4)) break;
       state.pending = pending;
       state.pending_next = 0;
+      // A host that asked us to slow down gets a pause before it is asked again.
+      if (pending.some((index) => isRateLimited(results[index]!))) await (polite.sleep ?? defaultSleep)(politeDelayMs(state.round, null, polite), polite.signal);
     }
     const pending = state.pending;
     const round = state.round;
@@ -219,7 +247,9 @@ export async function advanceParity(state: ParityProgress, opts: AdvanceParityOp
         if (state.pending_next >= pending.length || stop()) return;
         const index = pending[state.pending_next++];
         started++;
-        results[index] = { ...await checkOne(checks[index], { doFetch, targetOrigin, timeoutMs: timeoutMs * 2, maxHops, opts }), attempts: round + 1 };
+        const retried = { count: 0 };
+        const result = await checkOne(checks[index], { doFetch, targetOrigin, timeoutMs: timeoutMs * 2, maxHops, opts, polite: { ...polite, onRetry: (info) => { retried.count++; polite.onRetry?.(info); } } });
+        results[index] = { ...result, attempts: round + 1 + retried.count };
       }
     };
     await Promise.all(Array.from({ length: Math.min(DEFAULTS.retryConcurrency, pending.length - state.pending_next) }, retryWorker));
@@ -274,13 +304,15 @@ async function checkOne(
     timeoutMs: number;
     maxHops: number;
     opts: CheckParityOptions;
+    /** Retry rounds only: wait out 429 and 503 as the host asks. */
+    polite?: PoliteRetryOptions;
   },
 ): Promise<ParityResult> {
-  const { doFetch, targetOrigin, timeoutMs, maxHops, opts } = args;
+  const { doFetch, targetOrigin, timeoutMs, maxHops, opts, polite } = args;
   const base: ParityResult = { path: entry.path, verdict: 'error', status: null, gsc_clicks: entry.gsc_clicks };
 
   if (opts.checkSource && opts.sourceOrigin) {
-    const src = await safeFetch(doFetch, join(stripTrailingSlash(opts.sourceOrigin), entry.path), timeoutMs, 'follow');
+    const src = await safeFetch(doFetch, join(stripTrailingSlash(opts.sourceOrigin), entry.path), timeoutMs, 'follow', false, polite);
     if (src.ok) base.source_status = src.response.status;
   }
 
@@ -292,7 +324,7 @@ async function checkOne(
   for (;;) {
     // Query-string rules are published as an inline script in the document
     // that answers the path (or 404.html), so read the body for those URLs.
-    const attempt = await safeFetch(doFetch, current, timeoutMs, 'manual', hasQuery(current));
+    const attempt = await safeFetch(doFetch, current, timeoutMs, 'manual', hasQuery(current), polite);
     if (!attempt.ok) {
       // A failed later hop keeps the first status (a redirect) and has no
       // final_status; isRetryable treats it as the transient failure it is.
@@ -608,12 +640,31 @@ async function readLimited(res: Response): Promise<string | undefined> {
   return text;
 }
 
+/** One request, retried while the host answers 429 or 503 when `polite` is given. */
 async function safeFetch(
   doFetch: typeof fetch,
   url: string,
   timeoutMs: number,
   redirect: RequestRedirect,
   readBody = false,
+  polite?: PoliteRetryOptions,
+): Promise<FetchAttempt> {
+  const retries = polite ? Math.max(0, polite.retries ?? 0) : 0;
+  for (let attempt = 1; ; attempt++) {
+    const result = await fetchOnce(doFetch, url, timeoutMs, redirect, readBody);
+    if (!polite || !result.ok || attempt > retries || !POLITE_RETRY_STATUSES.has(result.response.status)) return result;
+    const delayMs = politeDelayMs(attempt, result.response.headers.get('retry-after'), polite);
+    polite.onRetry?.({ attempt, status: result.response.status, delayMs });
+    await (polite.sleep ?? defaultSleep)(delayMs, polite.signal);
+  }
+}
+
+async function fetchOnce(
+  doFetch: typeof fetch,
+  url: string,
+  timeoutMs: number,
+  redirect: RequestRedirect,
+  readBody: boolean,
 ): Promise<FetchAttempt> {
   const finish = async (res: Response): Promise<FetchAttempt> => {
     if (readBody && !isRedirect(res.status)) return { ok: true, response: res, body: await readLimited(res) };

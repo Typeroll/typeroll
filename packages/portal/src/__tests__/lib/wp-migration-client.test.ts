@@ -10,8 +10,9 @@ it.each(['rest', 'helper'])('reads every declared %s page beyond the former sile
     return Response.json([{ id: page }], { headers: { 'X-WP-TotalPages': '101' } });
   });
   vi.stubGlobal('fetch', fetchMock);
-  const items = kind === 'rest' ? await new WPClient('https://source.example').listPosts()
-    : await new WPHelperClient('https://source.example', 'test-only-key').listItems('post');
+  // No gap between pages here; pacing itself is covered in polite-fetch.test.ts.
+  const items = kind === 'rest' ? await new WPClient('https://source.example', { paceMs: 0 }).listPosts()
+    : await new WPHelperClient('https://source.example', 'test-only-key', { paceMs: 0 }).listItems('post');
   expect(items).toHaveLength(101);
   expect(items.at(-1)?.id).toBe(101);
   expect(fetchMock).toHaveBeenCalledTimes(101);
