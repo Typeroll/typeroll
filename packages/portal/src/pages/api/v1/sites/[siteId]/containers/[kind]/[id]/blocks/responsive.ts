@@ -15,7 +15,7 @@ import {
   type BlockContainerKind,
 } from '../../../../../../../../../lib/block-containers';
 import { setBlockResponsiveField, BlockMutationError } from '../../../../../../../../../lib/block-mutations';
-import { blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
+import { blockWriteAnswer, blockWriteResponse } from '../../../../../../../../../lib/block-write-response';
 import { siteBlockRegistry, unknownFieldsBody, updateBlockUnknownFields, updatedBlockInvalidFields } from '../../../../../../../../../lib/block-write-warnings';
 import { invalidFieldValuesBody } from '@typeroll/shared';
 
@@ -58,7 +58,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const invalid = updatedBlockInvalidFields(loaded.blocks, blocks, body.block_id, registry);
     if (invalid.length) return apiResponse(ctx, invalidFieldValuesBody(invalid), 400, body);
     const written = await writeContainer(target, blocks, ctx, loaded.raw);
-    return apiResponse(ctx, mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks });
+    return apiResponse(ctx, blockWriteAnswer(mode, blocks, body.block_id, written.has_unsaved_changes));
   } catch (e) {
     if (e instanceof ContainerError) return apiError(e.message, e.status);
     if (e instanceof BlockMutationError) {

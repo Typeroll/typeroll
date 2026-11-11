@@ -41,7 +41,7 @@ import {
 } from '../../../../../../../../../lib/block-mutations';
 import { blockTreeError, invalidFieldValuesBody, type Block, type HeadingAnchorChangedWarning, type Page } from '@typeroll/shared';
 import { headingAnchorWarnings } from '../../../../../../../../../lib/heading-anchor-warnings';
-import { blockLocation, blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
+import { blockLocation, blockWriteAnswer, blockWriteResponse } from '../../../../../../../../../lib/block-write-response';
 import {
   addBlockInvalidFields,
   addBlockUnknownFields,
@@ -153,7 +153,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const anchors = await anchorWarnings(ctx, loaded, result.blocks);
     return apiResponse(ctx, {
       added_id: result.added_id,
-      ...(mode === 'summary' ? blockWriteSummary(result.blocks, result.added_id, written.has_unsaved_changes) : { blocks: result.blocks }),
+      ...blockWriteAnswer(mode, result.blocks, result.added_id, written.has_unsaved_changes),
       ...(warnings.length || anchors.length ? { warnings: [...warnings, ...anchors] } : {}),
     });
   } catch (e) {
@@ -220,7 +220,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings, ...await anchorWarnings(ctx, loaded, blocks)];
     return apiResponse(ctx, {
       ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}),
-      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks }),
+      ...blockWriteAnswer(mode, blocks, body.block_id, written.has_unsaved_changes),
     });
   } catch (e) {
     return mutError(e);
@@ -262,7 +262,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     const written = await writeContainer(t.target, blocks, ctx, loaded.raw);
     const warnings = await anchorWarnings(ctx, loaded, blocks);
     return apiResponse(ctx, {
-      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, written.has_unsaved_changes) : { blocks }),
+      ...blockWriteAnswer(mode, blocks, body.block_id, written.has_unsaved_changes),
       ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {
@@ -290,7 +290,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     const written = await writeContainer(t.target, blocks, ctx, loaded.raw);
     const warnings = await anchorWarnings(ctx, loaded, blocks);
     return apiResponse(ctx, {
-      ...(mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: written.has_unsaved_changes } : { blocks }),
+      removed_id: blockId, ...location, has_unsaved_changes: written.has_unsaved_changes, ...(mode === 'tree' ? { blocks } : {}),
       ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {

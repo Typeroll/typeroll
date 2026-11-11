@@ -2,6 +2,18 @@
 
 ## 0.3.28 (candidate, MCP 0.45.136)
 
+- The REST reference shows the bodies REST takes. A block in a partial or
+  PageTemplate is changed at `/api/v1/sites/{site}/containers/{kind}/{id}/blocks`
+  (for example `PATCH .../containers/partial/footer/blocks` with
+  `{ "block_id", "data" }`); the reference listed the MCP `target` argument as
+  a body key of `/pages/{id}/blocks`, which refused it as an unknown key. That
+  address now refuses `target` with `400` naming the containers address.
+  `PATCH /partials/{id}`, `/pages/{id}` and `/forms/{id}` take their fields at
+  the top level, as the reference now lists them; a body that wraps them in
+  `patch` is told so instead of "No writable fields in body". Single-block
+  write answers without `response` keep the tree and now also carry `block`,
+  `parent_id`, `slot_index`, `position` and `has_unsaved_changes`. Reported
+  by Moveria on Core 0.3.27.
 - Publication impact (`GET /api/v1/sites/{site}/publishing/impact`, MCP
   `get_publication_impact`, a job's `build_impact`) lists what Typeroll itself
   changed in a new `platform_changes` list (`core_commit`, `extension_runtime`

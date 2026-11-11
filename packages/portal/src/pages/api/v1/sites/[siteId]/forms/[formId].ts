@@ -5,6 +5,7 @@ import { resolveAppFormEndpoint, installedFormEmbedInfo, validInstallationFormTa
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { noWritableFieldsError } from '../../../../../../lib/api-body';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
 import { paths, fieldsToSteps, formStepWarnings, safeFormRedirectUrl } from '@typeroll/shared';
@@ -98,7 +99,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
   const navigation = validateFormNavigation(body as Record<string, unknown>);
   if (typeof navigation === 'string') return apiError(navigation);
-  if (Object.keys(update).length === 0 && Object.keys(navigation).length === 0) return apiError('No writable fields in body');
+  if (Object.keys(update).length === 0 && Object.keys(navigation).length === 0) return apiError(noWritableFieldsError(body));
 
   if(body.option_sources!==undefined) {
     if(formActionsPermission(ctx) !== 'admin') return apiError('Admin permission required',403);

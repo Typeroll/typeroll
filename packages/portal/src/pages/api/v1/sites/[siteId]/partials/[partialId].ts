@@ -8,6 +8,7 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { noWritableFieldsError } from '../../../../../../lib/api-body';
 import { apiStructureLockRefusal } from '../../../../../../lib/structure-lock';
 import { vstore } from '../../../../../../lib/version-store';
 import { applyContentWrite, type ContentWriteResult } from '../../../../../../lib/content-write';
@@ -112,7 +113,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return apiError('content_mode cannot be changed with PATCH; use POST /partials/{partialId}/mode', 400);
   }
   const update = pickWritable(body);
-  if (Object.keys(update).length === 0) return apiError('No writable fields in body');
+  if (Object.keys(update).length === 0) return apiError(noWritableFieldsError(body));
   try {
     const result = await applyContentWrite(
       ctx, { kind: 'partial', id: partialId }, update,

@@ -15,11 +15,11 @@
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../../lib/api-auth';
-import { bodyShapeError } from '../../../../../../../../lib/api-body';
+import { bodyShapeError, containerTargetError } from '../../../../../../../../lib/api-body';
 import { vstore } from '../../../../../../../../lib/version-store';
 import { setBlockResponsiveField, BlockMutationError } from '../../../../../../../../lib/block-mutations';
 import { mergeWorkingCopy, readWorkingCopy, workingCopyDiffers } from '../../../../../../../../lib/working-copy';
-import { blockWriteResponse, blockWriteSummary } from '../../../../../../../../lib/block-write-response';
+import { blockWriteAnswer, blockWriteResponse } from '../../../../../../../../lib/block-write-response';
 import { siteBlockRegistry, unknownFieldsBody, updateBlockUnknownFields, updatedBlockInvalidFields } from '../../../../../../../../lib/block-write-warnings';
 import { invalidFieldValuesBody, type Block } from '@typeroll/shared';
 import { headingAnchorWarnings } from '../../../../../../../../lib/heading-anchor-warnings';
@@ -36,6 +36,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     value?: unknown;
     response?: string;
   } | null;
+  const targetError = containerTargetError(ctx.siteId, (body as { target?: unknown } | null)?.target, '/responsive');
+  if (targetError) return apiError(targetError, 400);
   if (!body?.block_id) return apiError('block_id is required');
   if (!body.field) return apiError('field is required');
   const shapeError = bodyShapeError(body, ['block_id', 'field', 'value', 'response']);
@@ -67,7 +69,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     // A scalar value can set any declared field, the heading text included.
     const warnings = await headingAnchorWarnings(ctx, page, { content_mode: 'blocks', blocks: source }, { content_mode: 'blocks', blocks });
     return apiResponse(ctx, {
-      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks }),
+      ...blockWriteAnswer(mode, blocks, body.block_id, unsaved),
       ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {

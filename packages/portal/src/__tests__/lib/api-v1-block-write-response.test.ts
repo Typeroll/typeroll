@@ -3,7 +3,8 @@
 // add_block, update_block and duplicate_block answered with the container's
 // whole block tree, 68 kB for one add_block on an article page. With
 // `response: "summary"` they answer with the changed block, where it sits and
-// whether the container has unsaved changes. "tree" stays the HTTP default.
+// whether the container has unsaved changes. "tree" stays the HTTP default
+// and carries the same fields beside the tree.
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -75,7 +76,7 @@ describe('page block writes', () => {
     const tree = await call(pageRoute(), 'POST', pageUrl, pageParams, token, { block: heading('a') });
     expect(tree.status).toBe(200);
     expect(tree.body.blocks).toHaveLength(43);
-    expect(tree.body).not.toHaveProperty('block');
+    expect(tree.body).toMatchObject({ added_id: 'a', block: heading('a'), parent_id: null, slot_index: null, position: 42, has_unsaved_changes: true });
 
     const summary = await call(pageRoute(), 'POST', pageUrl, pageParams, token, {
       block: { type: 'core/heading', data: { text: 'Right 3', level: 'h3' } }, parent_id: 'cols', slot_index: 1, position: 1, response: 'summary',
@@ -173,5 +174,86 @@ describe('container block writes', () => {
     // Undoing the edit brings the draft back to the saved header.
     const reverted = await call(containerRoute(), 'PATCH', containerUrl('partial', 'header'), containerParams('partial', 'header'), token, { block_id: 'logo', data: { text: 'logo', font_size_px: null }, response: 'summary' });
     expect(reverted.body.has_unsaved_changes).toBe(false);
+  });
+});
+
+// Moveria (Core 0.3.27): the REST reference showed `target` as a body key of
+// /pages/{id}/blocks and `patch` as a body key of PATCH /partials/{id}, and a
+// PATCH answer without `response` lacked the block and has_unsaved_changes.
+// Over REST a partial or PageTemplate is addressed by the containers path.
+describe('one block in a partial or template over REST', () => {
+  beforeEach(async () => { await resetDatastore(); });
+
+  const footer = (): Block[] => [
+    { id: 'links', type: 'core/section', data: {}, children: [heading('about', 'About'), heading('contact', 'Contact')] },
+    heading('legal', 'Legal'),
+  ];
+  const partialRoute = () => import('../../pages/api/v1/sites/[siteId]/partials/[partialId]');
+
+  it('PATCH /containers/partial/footer/blocks changes one block and answers with it', async () => {
+    const token = await setup();
+    await (await store()).setDoc(paths.partial(ORG, SITE, 'footer', MAIN_VERSION_ID), { name: 'Footer', kind: 'footer', status: 'published', content_mode: 'blocks', blocks: footer() });
+    const res = await call(containerRoute(), 'PATCH', containerUrl('partial', 'footer'), containerParams('partial', 'footer'), token, { block_id: 'contact', data: { text: 'Contact us' } });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({
+      block: { id: 'contact', type: 'core/heading', data: { text: 'Contact us', level: 'h2' } },
+      parent_id: 'links', slot_index: null, position: 1, has_unsaved_changes: true,
+    });
+    // The rest of the footer is untouched.
+    const expected = footer();
+    expected[0]!.children![1]!.data.text = 'Contact us';
+    expect(res.body.blocks).toEqual(expected);
+    // The change is in the partial's draft; the saved footer is unchanged until it is saved.
+    const read = await call(containerRoute(), 'GET', containerUrl('partial', 'footer'), containerParams('partial', 'footer'), token);
+    expect(read.body.blocks).toEqual(expected);
+    const saved = await (await store()).getDoc<{ blocks: Block[] }>(paths.partial(ORG, SITE, 'footer', MAIN_VERSION_ID));
+    expect(saved?.blocks).toEqual(footer());
+
+    const added = await call(containerRoute(), 'POST', containerUrl('partial', 'footer'), containerParams('partial', 'footer'), token, { block: heading('press', 'Press'), parent_id: 'links', response: 'summary' });
+    expect(added.body).toMatchObject({ added_id: 'press', parent_id: 'links', position: 2, has_unsaved_changes: true });
+  });
+
+  it('PATCH /containers/template/{id}/blocks changes one block of a PageTemplate', async () => {
+    const token = await setup();
+    await (await store()).setDoc(paths.pageTemplate(ORG, SITE, 'post', MAIN_VERSION_ID), { name: 'post', label: 'Post', status: 'published', created_at: '', blocks: [heading('t', 'Title')] });
+    const res = await call(containerRoute(), 'PATCH', containerUrl('template', 'post'), containerParams('template', 'post'), token, { block_id: 't', data: { text: 'Post title' } });
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ block: { id: 't', data: { text: 'Post title' } }, position: 0, has_unsaved_changes: false });
+    const saved = await (await store()).getDoc<{ blocks: Block[] }>(paths.pageTemplate(ORG, SITE, 'post', MAIN_VERSION_ID));
+    expect(saved?.blocks[0]!.data.text).toBe('Post title');
+  });
+
+  it('a target sent to /pages/{id}/blocks is refused with the containers address', async () => {
+    const token = await setup();
+    await seedPage([heading('a')]);
+    const patch = await call(pageRoute(), 'PATCH', pageUrl, pageParams, token, { target: { kind: 'partial', id: 'footer' }, block_id: 'contact', data: { text: 'x' } });
+    expect(patch.status).toBe(400);
+    expect(patch.body.error).toContain(`/api/v1/sites/${SITE}/containers/partial/footer/blocks`);
+    const add = await call(pageRoute(), 'POST', pageUrl, pageParams, token, { target: { kind: 'template', id: 'post' }, block: heading('b') });
+    expect(add.body.error).toContain('/containers/template/post/blocks');
+    const read = await call(pageRoute(), 'GET', `${pageUrl}?target[kind]=partial&target[id]=footer`, pageParams, token);
+    expect(read.status).toBe(400);
+    expect(read.body.error).toContain('/containers/partial/footer/blocks');
+    const remove = await call(pageRoute(), 'DELETE', `${pageUrl}?block_id=a&target=footer`, pageParams, token);
+    expect(remove.body.error).toContain('/containers/{kind}/{id}/blocks');
+    const copy = await call(pageDuplicate(), 'POST', `${pageUrl}/duplicate`, pageParams, token, { target: { kind: 'partial', id: 'footer' }, block_id: 'a' });
+    expect(copy.body.error).toContain('/containers/partial/footer/blocks/duplicate');
+    // Nothing was written to the page.
+    expect((await call(pageRoute(), 'GET', pageUrl, pageParams, token)).body.blocks).toEqual([heading('a')]);
+  });
+
+  it('PATCH /partials/{id} takes its fields at the top level and explains a patch wrapper', async () => {
+    const token = await setup();
+    await (await store()).setDoc(paths.partial(ORG, SITE, 'footer', MAIN_VERSION_ID), { name: 'Footer', kind: 'footer', status: 'published', content_mode: 'blocks', blocks: footer() });
+    const params = { siteId: SITE, partialId: 'footer' };
+    const url = `http://localhost/api/v1/sites/${SITE}/partials/footer`;
+    const wrapped = await call(partialRoute(), 'PATCH', url, params, token, { patch: { blocks: [heading('only')] }, save: true });
+    expect(wrapped.status).toBe(400);
+    expect(wrapped.body.error).toContain('top level of the body, not inside "patch"');
+    expect(wrapped.body.error).toContain('"blocks"');
+    const flat = await call(partialRoute(), 'PATCH', url, params, token, { name: 'Site footer', save: true });
+    expect(flat.status).toBe(200);
+    const saved = await (await store()).getDoc<{ name: string; blocks: Block[] }>(paths.partial(ORG, SITE, 'footer', MAIN_VERSION_ID));
+    expect(saved).toMatchObject({ name: 'Site footer', blocks: footer() });
   });
 });

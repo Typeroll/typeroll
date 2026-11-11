@@ -19,6 +19,7 @@ import { pageAddress } from '../../../../../../lib/page-fields';
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { noWritableFieldsError } from '../../../../../../lib/api-body';
 import { apiStructureLockRefusal } from '../../../../../../lib/structure-lock';
 import { vstore } from '../../../../../../lib/version-store';
 import { pageUrlFromDoc } from '../../../../../../lib/page-paths';
@@ -179,7 +180,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   // null clears the cluster; the canonicalized array replaces whatever the
   // caller sent so stored tags are uniform.
   if (alt.present) update.alternates = alt.value;
-  if (Object.keys(update).length === 0) return apiError('No writable fields in body');
+  if (Object.keys(update).length === 0) return apiError(noWritableFieldsError(body));
   const authority = apiWriteAuthority(body);
   if ('error' in authority) return apiError(authority.error);
 

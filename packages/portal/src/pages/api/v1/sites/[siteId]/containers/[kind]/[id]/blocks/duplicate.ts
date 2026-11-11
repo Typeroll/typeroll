@@ -13,7 +13,7 @@ import {
   type BlockContainerKind,
 } from '../../../../../../../../../lib/block-containers';
 import { duplicateBlock, BlockMutationError } from '../../../../../../../../../lib/block-mutations';
-import { blockWriteResponse, blockWriteSummary } from '../../../../../../../../../lib/block-write-response';
+import { blockWriteAnswer, blockWriteResponse } from '../../../../../../../../../lib/block-write-response';
 
 export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
@@ -46,7 +46,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const written = await writeContainer(target, tree, ctx, loaded.raw);
     return apiResponse(ctx, {
       duplicate_id,
-      ...(mode === 'summary' ? blockWriteSummary(tree, duplicate_id, written.has_unsaved_changes) : { blocks: tree }),
+      ...blockWriteAnswer(mode, tree, duplicate_id, written.has_unsaved_changes),
     });
   } catch (e) {
     if (e instanceof ContainerError) return apiError(e.message, e.status);
