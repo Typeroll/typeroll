@@ -54,6 +54,7 @@ import { publicationDemoMediaWarnings } from '../packages/demo-media';
 import { publicationPlaceholderWarnings } from '../placeholder-content';
 import { assertPublishingReady } from './readiness';
 import { publicationRuntime } from './runtime-projection';
+import { prepareExtensionMarkup } from '../extensions/contract-markup';
 import { recordPublishingOrigin } from './runtime-origins';
 import { publicationSourceTree } from './source-tree';
 import { freezeSiteFonts } from './theme-font-freeze';
@@ -199,13 +200,17 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       if (derivation.receipts.length > 0 || derivation.skipped.length > 0) {
         frozen.derivation = { receipts: derivation.receipts, cache_keys: derivation.cache_keys, ...(derivation.skipped.length > 0 ? { skipped: derivation.skipped } : {}) };
       }
+      // App contract default markup: asked once per build, frozen (the next build's fallback), never fatal.
+      const appMarkup = await prepareExtensionMarkup({ orgId: args.orgId, siteId: args.siteId, frozen, snapshot: publicRuntime.extensions, prior });
+      if (appMarkup.markup) frozen.extension_markup = appMarkup.markup;
+      const markupWarnings = appMarkup.warnings;
       const [domains, organization] = await Promise.all([getSiteDomains(args.orgId, args.siteId), getOrganizationDomains(args.orgId)]);
       const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, undefined, { deferReferences: true, domains, dryRun: args.dryRun === true, acceptMissingMedia: job.accept_missing_media === true });
       // Images travel with the site; an organization media host lives in a Cloudflare account hosted sites do not have.
       if (mapped.manifest && mapped.manifest.delivery !== 'static') {
         throw new ConnectionError('Images of a hosted site are published with the site. Remove the organization media host in Publishing, then publish again.', 409, 'hosted_media_host_unsupported');
       }
-      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationCookieReopenWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
+      const warnings = [...mapped.warnings, ...markupWarnings, ...publicationLanguageWarnings(frozen), ...publicationCookieReopenWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       const impactSnapshot = await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
       // Absolute links to earlier addresses of the site are frozen as links to its canonical host.

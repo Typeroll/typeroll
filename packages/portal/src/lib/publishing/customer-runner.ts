@@ -45,6 +45,7 @@ import { moveWebsiteMediaToMediaHost, retainDistinctMediaManifests, replacedMedi
 import { customerBuildMediaAccess } from './r2-build-credentials';
 import { mediaPreparationStatus } from '../media/preparation';
 import { publicationRuntime } from './runtime-projection';
+import { prepareExtensionMarkup } from '../extensions/contract-markup';
 import { DerivationError, runBuildDerivations } from './build-derivation';
 import { indexableSettings } from './launch-robots';
 import { derivationApps, derivationReceipt } from './preview-derivation';
@@ -370,6 +371,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       // Redirect hosts belong to the live website host only, never to version addresses.
       const redirectHosts = args.versionId === 'main' && domains.desired.website_host === host ? domains.desired.redirect_hosts ?? [] : [];
       let frozen: Record<string, any>;
+      let markupWarnings: string[] = [];
       if (job.publication_intent === 'domain_prepare') {
         if (!prior) throw new ConnectionError('The last public snapshot is missing. Publish the site before preparing domains.', 409);
         frozen = structuredClone(prior);
@@ -422,6 +424,10 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
           frozen.derivation = { receipts: derivation.receipts, cache_keys: derivation.cache_keys,
             ...(derivation.skipped.length > 0 ? { skipped: derivation.skipped } : {}) };
         }
+        // App contract default markup: asked once per build, frozen (the next build's fallback), never fatal.
+        const appMarkup = await prepareExtensionMarkup({ orgId: args.orgId, siteId: args.siteId, frozen, snapshot: publicRuntime.extensions, prior });
+        if (appMarkup.markup) frozen.extension_markup = appMarkup.markup;
+        markupWarnings = appMarkup.warnings;
       }
       // Media originals and metadata for a domain-only build come from the public snapshot too.
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
@@ -429,7 +435,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         // A domain change rebuilds the last publication and never drops a file.
         acceptMissingMedia: job.publication_intent !== 'domain_prepare' && job.accept_missing_media === true });
       // Non-blocking findings (for example media left out of this publication) stay on the job for users and agents.
-      const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationCookieReopenWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
+      const warnings = [...mapped.warnings, ...markupWarnings, ...publicationLanguageWarnings(frozen), ...publicationCookieReopenWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
       const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
