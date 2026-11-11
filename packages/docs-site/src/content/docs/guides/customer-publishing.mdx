@@ -719,7 +719,12 @@ retry after fixing the reported problem. Verified preparation is retained.
 For an existing organization, after upgrading Core, go to **Publishing → Builds**
 and select **Update build engine** when no build is running. From Core 0.2.74 the
 Builds card says **Build engine update available** when the engine runs older
-generated code than the installed Core; publishing keeps working until you update. Wait for verification
+generated code than the installed Core; publishing keeps working until you update.
+`GET /api/v1/publishing/builds` (MCP `read_organization_build_engine`) reports
+the same for every engine as `update_available` with `update_reason`:
+`engine_source_changed` (older code; publishing works) or `capability_missing`
+(publishing is blocked until the update). With automatic engine updates on, the
+card says the next publication installs the update first. Wait for verification
 before publishing again. Updating the engine does not require reconnecting GitHub
 or Cloudflare when the existing connections still have the required permissions.
 Since November 2026 Cloudflare's build hosts refuse the private `/proc` that

@@ -30,6 +30,13 @@
   with the publication it was built from (reason
   `baseline_predates_domain_change`) instead of answering
   `verified_source_baseline_unavailable` until their next publication.
+- `GET /api/v1/publishing/builds` (MCP `read_organization_build_engine`)
+  reports `update_available` (now always a boolean) and `update_reason`
+  (`engine_source_changed`, `capability_missing` or `null`) for every engine and
+  the selected one, computed the same way a publication decides to update the
+  engine. The Builds card shows **Build engine update available** for both
+  reasons and, with automatic updates on, that the next publication installs it
+  first.
 
 ## 0.3.27 (candidate, MCP 0.45.135)
 

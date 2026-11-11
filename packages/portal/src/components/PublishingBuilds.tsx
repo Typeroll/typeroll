@@ -161,7 +161,15 @@ export default function PublishingBuilds({ refreshAfterCloudflareReturn = false 
     {readyToSetUp && <div className="publishing-builds__setup"><h3>Next: {setupLabel.toLowerCase()}</h3><p>Click <strong>{setupLabel}</strong> below. Typeroll will prepare the build environment and run a test build automatically. The status here will update when it finishes.</p><p>This sets up builds for your organization. It does not publish or change any live site.</p></div>}
     {verifying && <p>Typeroll is running a test build. You can leave this page; setup continues in the background. The status updates automatically.</p>}
     {state === 'ready' && <p>{active ? 'Shared builds are active. New publications build in this account and upload static files to the site’s Hosting Group.' : 'This engine is ready. Select it below to use it for new publications.'}</p>}
-    {state === 'ready' && engine?.update_available && <p role="status"><strong>Build engine update available.</strong> This engine runs older code than this version of Typeroll. Publishing still works; {settings?.selection.auto_update ? 'the next publication updates it first.' : <>select <strong>Update build engine</strong> when no build is running to get the newest fixes, including the cause of a failed build in the deploy status.</>}</p>}
+    {engine?.update_available && (state === 'ready' || engine.update_reason === 'capability_missing') && <p role="status" data-reason={engine.update_reason ?? undefined}>
+      <strong>Build engine update available.</strong>{' '}
+      {engine.update_reason === 'capability_missing'
+        ? 'This engine lacks a capability this version of Typeroll needs, so sites cannot be published until it is updated.'
+        : 'This engine runs older code than this version of Typeroll. Publishing still works.'}{' '}
+      {settings?.selection.auto_update
+        ? 'Automatic updates are on: the next publication installs the new engine and runs a test build first.'
+        : <>Select <strong>Update build engine</strong> when no build is running to get the newest fixes, including the cause of a failed build in the deploy status.</>}
+    </p>}
     {settings && engine && !['not_configured', 'approval_required'].includes(state ?? '') && <div className="field">
       <label><input type="checkbox" checked={settings.selection.auto_update} disabled={busy} onChange={event => void autoUpdate(event.target.checked)} /> Keep the build engine updated automatically</label>
       <p className="muted">When a newer engine is available, the next publication installs it and runs a test build before building the site. If the test build fails, the previous engine is put back and the publication continues on it. A build that fails in a way the newer engine fixes is updated and built once more.</p>

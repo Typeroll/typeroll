@@ -32,7 +32,7 @@ it('blocks an outdated engine even when its saved visible status says ready', as
   const result = await publishingReadiness('org', 'site');
   expect(result.ready).toBe(false);
   expect(result.required).toEqual([{ code: 'build_engine_update_required', message: expect.stringContaining('Update the build engine'), settings_url: '/app/settings/publishing#publishing-builds' }]);
-  expect(await readBuildSettings('org')).toMatchObject({ enabled: false, state: 'setup_required' });
+  expect(await readBuildSettings('org')).toMatchObject({ enabled: false, state: 'setup_required', update_available: true, update_reason: 'capability_missing' });
 });
 it('offers an update to a ready engine running older generated code without blocking publishing', async () => {
   const { CLOUDFLARE_ENGINE_SOURCE } = await import('../../lib/builds/setup');
@@ -40,10 +40,16 @@ it('offers an update to a ready engine running older generated code without bloc
   expect(CLOUDFLARE_ENGINE_SOURCE).toMatch(/^[a-f0-9]{64}$/);
   expect(GITHUB_ENGINE_SOURCE).not.toBe(CLOUDFLARE_ENGINE_SOURCE);
   // Engines set up before the digest was recorded are older by definition.
-  expect(await readBuildSettings('org')).toMatchObject({ state: 'ready', enabled: true, update_available: true });
+  const outdated = await readBuildSettings('org');
+  expect(outdated).toMatchObject({ state: 'ready', enabled: true, update_available: true, update_reason: 'engine_source_changed' });
+  expect(outdated.engines.cloudflare).toMatchObject({ update_available: true, update_reason: 'engine_source_changed' });
+  // An engine that is not set up has nothing to update.
+  expect(outdated.engines.github).toMatchObject({ update_available: false, update_reason: null });
   expect((await publishingReadiness('org', 'site')).ready).toBe(true);
   await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE });
-  expect((await readBuildSettings('org')).update_available).toBeUndefined();
+  const current = await readBuildSettings('org');
+  expect(current).toMatchObject({ update_available: false, update_reason: null });
+  expect(JSON.stringify(current)).not.toMatch(/token_hash|api_token|secret/);
 });
 it.each(['preparing', 'qualifying', 'disabled'])('blocks an engine in %s state', async status => {
   await engine('cloudflare', { status });
