@@ -70,7 +70,12 @@ comparison first.
    the button in the form grid targets `form > .form-actions`. Version 17
    loads weights written in CSS: propose removing `fonts.load` entries that
    only existed for them, and element rules that were scoped only to keep
-   them off the cookie banner. Any rule that targets platform markup
+   them off the cookie banner. Version 19 moves the cookie banner's reopen
+   control from the floating "Cookies" button to a "Cookie settings" link at
+   the end of the footer, unless the footer already links to
+   `#cookie-settings`: check the footer bottom at every width, remove CSS that
+   only moved or hid `.tr-consent__manage`, and ask whether the user wants
+   `cookie_consent.manage_button: "floating"` to keep the button. Any rule that targets platform markup
    (`.block-section-inner`, `[data-block=...]` internals) can change with a
    render version: prefer block settings and named styles, and re-check such
    rules at all three widths after the upgrade.

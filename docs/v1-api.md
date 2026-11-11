@@ -265,11 +265,14 @@ Native cookie consent is configured through `PATCH /settings` or
 `update_site_settings` under `cookie_consent`. The nested object is
 shallow-merged, so omitted keys remain unchanged. Supported keys are
 `enabled`, `text`, `privacy_policy_url`, `scripts_necessary`,
-`scripts_optional`, `reload_after_consent`, and `labels`. Script fields execute
-in the visitor's browser and require an admin-capable API key. The banner's
-built-in wording follows the page language (Swedish, German, otherwise
-English); `labels` (`title`, `reject`, `necessary`, `accept_all`,
-`privacy_link`, `manage`) replaces it with plain text of at most 120
+`scripts_optional`, `reload_after_consent`, `manage_button` and `labels`.
+Script fields execute in the visitor's browser and require an admin-capable API
+key. `manage_button` is `footer` (a "Cookie settings" link at the end of the
+footer, the default from render version 19), `floating` (the bottom-left
+button, the default before) or `none`; `null` restores the default. The
+banner's built-in wording follows the page language; `labels` (`title`,
+`reject`, `necessary`, `accept_all`, `privacy_link`, `manage`,
+`manage_button`, `footer_link`) replaces it with plain text of at most 120
 characters.
 
 ## Versioned rendering dependencies

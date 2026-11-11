@@ -300,11 +300,11 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
   };
   const manageButton = input.settings?.cookie_consent?.manage_button;
   if (manageButton !== undefined && manageButton !== null) {
-    if (manageButton !== 'floating' && manageButton !== 'none') throw new Error('Invalid public settings: cookie_consent.manage_button');
+    if (!['footer', 'floating', 'none'].includes(manageButton)) throw new Error('Invalid public settings: cookie_consent.manage_button');
     settings.cookie_consent.manage_button = manageButton;
   }
   // Saved banner wording; without it every non-Swedish, non-German page falls back to English.
-  if (input.settings?.cookie_consent?.labels) settings.cookie_consent.labels = projectStrings(input.settings.cookie_consent.labels, ['title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button']);
+  if (input.settings?.cookie_consent?.labels) settings.cookie_consent.labels = projectStrings(input.settings.cookie_consent.labels, ['title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button', 'footer_link']);
   if (input.settings?.organization) {
     settings.organization = projectStrings(input.settings.organization, ['name', 'logo']);
     if (input.settings.organization.same_as !== undefined) settings.organization.same_as = projectStringArray(input.settings.organization.same_as, 'organization.same_as');
@@ -317,7 +317,7 @@ export function projectStaticPublication(input, { siteUrl, coreCommit, published
       if (!projected.language || !/^\/(?:[a-z0-9][a-z0-9._~-]*\/)+$/i.test(projected.home_path ?? '')) throw new Error('Invalid public settings: language_sections');
       if (section.cookie_consent) {
         projected.cookie_consent = projectStrings(section.cookie_consent, ['text', 'privacy_policy_url']);
-        if (section.cookie_consent.labels) projected.cookie_consent.labels = projectStrings(section.cookie_consent.labels, ['title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button']);
+        if (section.cookie_consent.labels) projected.cookie_consent.labels = projectStrings(section.cookie_consent.labels, ['title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button', 'footer_link']);
       }
       return projected;
     });

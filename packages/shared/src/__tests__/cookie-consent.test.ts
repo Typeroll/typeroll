@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cookieConsentLanguage, cookieConsentManageButtonError, cookieReopenLinkWarning, hasCookieReopenControl, renderCookieConsent } from '../cookie-consent';
+import { cookieConsentLanguage, cookieConsentManageButtonError, cookieConsentReopenMode, cookieFooterLinkHtml, cookieReopenLinkWarning, hasCookieReopenControl, renderCookieConsent, withCookieFooterLink } from '../cookie-consent';
 
 describe('renderCookieConsent', () => {
   it('renders one complete, consent-gated fragment', () => {
@@ -91,14 +91,24 @@ describe('renderCookieConsent', () => {
 });
 
 describe('cookie_consent.manage_button', () => {
-  it('accepts floating, none and null only', () => {
+  it('accepts footer, floating, none and null only', () => {
     expect(cookieConsentManageButtonError(undefined)).toBeNull();
     expect(cookieConsentManageButtonError(null)).toBeNull();
+    expect(cookieConsentManageButtonError('footer')).toBeNull();
     expect(cookieConsentManageButtonError('floating')).toBeNull();
     expect(cookieConsentManageButtonError('none')).toBeNull();
     for (const value of ['hidden', '', 'None', false, 0, {}]) {
-      expect(cookieConsentManageButtonError(value)).toBe('cookie_consent.manage_button must be one of: floating, none');
+      expect(cookieConsentManageButtonError(value)).toBe('cookie_consent.manage_button must be one of: footer, floating, none');
     }
+  });
+
+  it('defaults to the footer link from render version 19 and to the floating button before', () => {
+    expect(cookieConsentReopenMode({}, 18)).toBe('floating');
+    expect(cookieConsentReopenMode(undefined, undefined)).toBe('floating');
+    expect(cookieConsentReopenMode({}, 19)).toBe('footer');
+    expect(cookieConsentReopenMode({ manage_button: 'floating' }, 19)).toBe('floating');
+    expect(cookieConsentReopenMode({ manage_button: 'footer' }, 1)).toBe('footer');
+    expect(cookieConsentReopenMode({ manage_button: 'none' }, 19)).toBe('none');
   });
 
   it('finds reopen links in partial HTML, block data and menus', () => {
@@ -116,8 +126,67 @@ describe('cookie_consent.manage_button', () => {
     expect(cookieReopenLinkWarning({ enabled: true, manage_button: 'none' }, [footer])).toBeNull();
     expect(cookieReopenLinkWarning({ enabled: true }, [])).toBeNull();
     expect(cookieReopenLinkWarning({ enabled: true, manage_button: 'floating' }, [])).toBeNull();
+    expect(cookieReopenLinkWarning({ enabled: true, manage_button: 'footer' }, [])).toBeNull();
     expect(cookieReopenLinkWarning({ enabled: false, manage_button: 'none' }, [])).toBeNull();
     expect(cookieReopenLinkWarning(undefined, [])).toBeNull();
   });
 });
 
+
+describe('the footer reopen link', () => {
+  const ROW = '<p class="tr-consent-footer-link"><a href="#cookie-settings" data-tr-open-consent>Cookie settings</a></p>';
+
+  it('replaces the floating button from render version 19 and for "footer"', () => {
+    for (const [consent, version] of [[{ enabled: true }, 19], [{ enabled: true, manage_button: 'footer' as const }, 1], [{ enabled: true, manage_button: 'footer' as const }, 18]] as const) {
+      const html = renderCookieConsent(consent, undefined, 'en', { renderVersion: version });
+      expect(html).not.toContain('class="tr-consent__manage"');
+      expect(html).not.toMatch(/\.tr-consent__manage[{:\s]/);
+      expect(html).toContain('id="tr-consent"');
+      expect(cookieFooterLinkHtml(consent, { renderVersion: version })).toContain(ROW);
+    }
+    // "floating" keeps the button at render version 19; older versions are unchanged.
+    expect(renderCookieConsent({ enabled: true, manage_button: 'floating' }, undefined, 'en', { renderVersion: 19 })).toContain('class="tr-consent__manage"');
+    expect(renderCookieConsent({ enabled: true }, undefined, 'en', { renderVersion: 18 })).toContain('class="tr-consent__manage"');
+    expect(cookieFooterLinkHtml({ enabled: true, manage_button: 'floating' }, { renderVersion: 19 })).toBe('');
+    expect(cookieFooterLinkHtml({ enabled: true }, { renderVersion: 18 })).toBe('');
+    expect(cookieFooterLinkHtml({ enabled: true, manage_button: 'none' }, { renderVersion: 19 })).toBe('');
+    expect(cookieFooterLinkHtml({ enabled: false }, { renderVersion: 19 })).toBe('');
+  });
+
+  it('keeps the floating button on a page without a footer', () => {
+    const html = renderCookieConsent({ enabled: true }, undefined, 'en', { renderVersion: 19, hasFooter: false });
+    expect(html).toContain('class="tr-consent__manage"');
+    expect(renderCookieConsent({ enabled: true, manage_button: 'none' }, undefined, 'en', { renderVersion: 19, hasFooter: false })).not.toContain('class="tr-consent__manage"');
+  });
+
+  it('follows the page language and the site label', () => {
+    expect(cookieFooterLinkHtml({ enabled: true }, { language: 'sv-SE', renderVersion: 19 })).toContain('>Cookie-inställningar</a>');
+    expect(cookieFooterLinkHtml({ enabled: true }, { language: 'de', renderVersion: 19 })).toContain('>Cookie-Einstellungen</a>');
+    expect(cookieFooterLinkHtml({ enabled: true, labels: { footer_link: 'Kakor <i>' } }, { language: 'sv', renderVersion: 19 })).toContain('>Kakor &lt;i&gt;</a>');
+  });
+
+  it('styles the row from the base layer with low specificity', () => {
+    const row = cookieFooterLinkHtml({ enabled: true }, { renderVersion: 19 });
+    expect(row).toMatch(/^<style data-tr-consent-footer-link="1">@layer typeroll\.base\{\np:where\(\.tr-consent-footer-link\)\{/);
+    expect(row).toContain(':where(.tr-consent-footer-link) a{color:inherit;');
+    expect(row).not.toContain('!important');
+  });
+
+  it('goes inside a footer element, or at the end for a caller that wraps it', () => {
+    const consent = { enabled: true };
+    expect(withCookieFooterLink('<footer class="f"><p>A</p><blockquote><footer>B</footer></blockquote></footer>\n', consent, { renderVersion: 19 }))
+      .toMatch(/<footer>B<\/footer><\/blockquote><style[^>]*>[\s\S]*<\/style><p class="tr-consent-footer-link">[\s\S]*<\/p><\/footer>\n$/);
+    expect(withCookieFooterLink('<!-- f --><FOOTER><p>A</p></FOOTER>', consent, { renderVersion: 19 })).toMatch(/<p class="tr-consent-footer-link">.*<\/p><\/FOOTER>$/);
+    expect(withCookieFooterLink('<div><p>A</p></div>', consent, { renderVersion: 19 })).toMatch(/^<div><p>A<\/p><\/div><style[\s\S]*<\/p>$/);
+    expect(withCookieFooterLink('<div><p>A</p></div>', consent, { renderVersion: 18 })).toBe('<div><p>A</p></div>');
+  });
+
+  it('adds nothing to a footer that already reopens the banner', () => {
+    for (const footer of [
+      '<footer><a href="#cookie-settings">Cookies</a></footer>',
+      '<footer><nav><a href="/privacy/#cookie-settings">Kakor</a></nav></footer>',
+      '<div><button type="button" data-tr-open-consent>Cookies</button></div>',
+    ]) expect(withCookieFooterLink(footer, { enabled: true }, { renderVersion: 19 })).toBe(footer);
+    expect(withCookieFooterLink('<footer><a href="#cookie-settings-old">x</a></footer>', { enabled: true }, { renderVersion: 19 })).toContain('tr-consent-footer-link');
+  });
+});

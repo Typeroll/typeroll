@@ -202,7 +202,7 @@ describe('cookie consent — settings POST handler', () => {
     expect(persisted.cookie_consent?.manage_button).toBeUndefined();
   });
 
-  it('stores manage_button "none" from the Reopen button choice and nothing for floating', async () => {
+  it('stores the reopen choice and nothing for the render version default', async () => {
     await seedSite();
     const { vstore } = await import('../../lib/version-store');
     const save = async (value: string) => {
@@ -214,7 +214,9 @@ describe('cookie consent — settings POST handler', () => {
       return ((await vstore.settings(ORG, SITE, MAIN_VERSION_ID)) as SiteSettings).cookie_consent?.manage_button;
     };
     expect(await save('none')).toBe('none');
-    expect(await save('floating')).toBeUndefined();
+    expect(await save('footer')).toBe('footer');
+    expect(await save('floating')).toBe('floating');
+    expect(await save('')).toBeUndefined();
     expect(await save('bogus')).toBeUndefined();
   });
 });

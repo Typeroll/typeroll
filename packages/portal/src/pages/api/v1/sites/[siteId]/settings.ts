@@ -329,7 +329,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       const before = (existing[k] as Record<string, unknown> | undefined) ?? {};
       update[k] = { ...before, ...(v as Record<string, unknown>) };
       // null removes an optional nested value (fonts.smoothing, colors.on_*) instead of storing null.
-      // So does cookie_consent.manage_button, which then shows the floating button again.
+      // So does cookie_consent.manage_button, which then follows the render version's default again.
       for (const [field, value] of Object.entries(update[k] as Record<string, unknown>)) if (value === null && (k === 'fonts' || k === 'colors' || (k === 'cookie_consent' && field === 'manage_button'))) delete (update[k] as Record<string, unknown>)[field];
     } else if (TOP_LEVEL.has(k)) {
       // null clears an optional field; the store drops undefined values.

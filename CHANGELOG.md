@@ -2,6 +2,18 @@
 
 ## 0.3.28 (candidate, MCP 0.45.136)
 
+- Render version 19: with the cookie banner on, visitors reopen it from a
+  small "Cookie settings" link ("Cookie-inställningar" on Swedish pages) at the
+  end of the site footer instead of the floating "Cookies" button, which could
+  cover forms and buttons on phones. The link sits inside the `<footer>`, takes
+  the footer's colour and font from layered base CSS, and site CSS restyles it
+  through `.tr-consent-footer-link`. A footer that already links to
+  `#cookie-settings` or has a `data-tr-open-consent` element gets no second
+  link. `cookie_consent.manage_button` takes `"footer"` for this link on any
+  render version; `"floating"` keeps the button and `"none"` still leaves both
+  out. `cookie_consent.labels.footer_link` replaces the link text. A preview
+  without a footer partial keeps the floating button. Sites on render version
+  18 or older are unchanged until they upgrade.
 - The REST reference shows the bodies REST takes. A block in a partial or
   PageTemplate is changed at `/api/v1/sites/{site}/containers/{kind}/{id}/blocks`
   (for example `PATCH .../containers/partial/footer/blocks` with

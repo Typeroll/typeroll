@@ -1,6 +1,6 @@
 ---
 import type { ExtensionIncludeDescriptor, Partial as PartialDoc, RenderContext, SiteSettings } from '@typeroll/shared';
-import { platformLayer, resolveRenderVersion } from '@typeroll/shared';
+import { cookieFooterLinkHtml, platformLayer, resolveRenderVersion, withCookieFooterLink } from '@typeroll/shared';
 import { getBuildYear, renderPartialHtml } from '../lib/content';
 
 interface Props {
@@ -17,15 +17,20 @@ const { partial, settings, context, freeBlocks, extensionSource } = Astro.props;
 
 // Rendered + sanitized once per distinct partial content, unless the partial
 // can vary by route — see renderPartialHtml.
-const html: string | null = partial
+const rendered: string | null = partial
   ? await renderPartialHtml(partial, context, { freeBlocks, extensionSource, iframeAllowedHosts: settings.iframe_allowed_hosts })
   : null;
 
-const startsWithFooter = !!html && /^\s*(?:<!--[\s\S]*?-->\s*)*<footer(?:\s|>)/i.test(html);
+const startsWithFooter = !!rendered && /^\s*(?:<!--[\s\S]*?-->\s*)*<footer(?:\s|>)/i.test(rendered);
 const year = getBuildYear();
 // From render version 16 the default footer's styles sit in the base layer,
 // so site CSS restyles it without !important. Older versions keep the scoped styles.
 const renderVersion = resolveRenderVersion(settings.render_version);
+// The cookie banner's "Cookie settings" link (manage_button "footer", the default
+// from render version 19) ends the footer unless the footer already has one.
+const language = (context?.page as { language?: string } | undefined)?.language || settings.language;
+const html = rendered ? withCookieFooterLink(rendered, settings.cookie_consent, { language, renderVersion }) : null;
+const defaultFooterLink = rendered ? '' : cookieFooterLinkHtml(settings.cookie_consent, { language, renderVersion });
 const layered = renderVersion >= 16;
 const defaultFooterCss = `.site-footer--layered { border-top:1px solid var(--color-surface); background:var(--color-background); color:var(--color-text-light); margin-top:var(--spacing-xl); }
 .site-footer--layered .site-footer__inner { max-width:var(--container-wide); margin:0 auto; padding:var(--spacing-lg) var(--spacing-md); text-align:center; font-size:0.875rem; }`;
@@ -40,6 +45,7 @@ const defaultFooterCss = `.site-footer--layered { border-top:1px solid var(--col
     <div class="site-footer__inner">
       <p>&copy; {year} {settings.site_name}</p>
     </div>
+    {defaultFooterLink && <Fragment set:html={defaultFooterLink} />}
   </footer>
 )}
 

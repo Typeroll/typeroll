@@ -53,6 +53,7 @@ import {
   MAIN_VERSION_ID,
   renderBlocks,
   renderCookieConsent,
+  withCookieFooterLink,
   settingsForLanguage,
   createPageSource,
   DEFAULT_CONTENT_TYPE,
@@ -358,7 +359,11 @@ export async function renderPreview(
     bodyHtml += `<style>${platformLayer('blocks', formShellCss(formsVersion), formsVersion)}</style><script>${FORMS_RUNTIME_JS}</script>`;
   }
   const headerHtml = rewriteIf(renderPartial(header));
-  const footerHtml = rewriteIf(renderPartial(footer));
+  // The cookie banner's "Cookie settings" link ends the footer as on the published site (Footer.astro).
+  const renderedFooter = rewriteIf(renderPartial(footer));
+  const footerHtml = renderedFooter
+    ? withCookieFooterLink(renderedFooter, settings.cookie_consent, { language: page.language || settings.language, renderVersion })
+    : '';
   const assets = collectBlockAssets(assetBlocks, blockRegistry, {
     includeScripts: opts.allowScripts === true,
     renderVersion,
@@ -398,7 +403,7 @@ export async function renderPreview(
     && mountedHtml.includes('tr-extension-placeholder');
   const previewNavigationBridge = buildPreviewNavigationBridgeScript(opts);
   const cookieConsentHtml = opts.allowScripts === true
-    ? rewriteIf(renderPreviewCookieConsent(settings, page.language || settings.language, opts.consentChoice))
+    ? rewriteIf(renderPreviewCookieConsent(settings, page.language || settings.language, opts.consentChoice, Boolean(footerHtml)))
     : '';
   // The fonts this page loads once published: its blocks, template, header,
   // footer and the global blocks they place, and the text of an HTML page.
@@ -733,10 +738,11 @@ ${cookieConsentHtml ?? ''}
 </html>`;
 }
 
-function renderPreviewCookieConsent(settings: SiteSettings, language?: string, initialChoice?: 'all' | 'necessary'): string {
+function renderPreviewCookieConsent(settings: SiteSettings, language?: string, initialChoice?: 'all' | 'necessary', hasFooter = true): string {
   const text = settings.cookie_consent?.text;
   const bodyHtml = text ? sanitizeBody(text, settings.iframe_allowed_hosts) : undefined;
-  return renderCookieConsent(settings.cookie_consent, bodyHtml, language, { initialChoice, renderVersion: resolveRenderVersion(settings.render_version) });
+  // A preview without a footer partial has no footer for the "Cookie settings" link, so it keeps the floating button.
+  return renderCookieConsent(settings.cookie_consent, bodyHtml, language, { initialChoice, renderVersion: resolveRenderVersion(settings.render_version), hasFooter });
 }
 
 function renderBanner(b: BannerArgs): string {

@@ -1072,6 +1072,33 @@ await (async function headerBehaviorScenario() {
   });
 })();
 
+// Scenario: render version 19 reopens the cookie banner from a "Cookie
+// settings" link at the end of the footer instead of the floating button, on
+// content pages and the 404 page alike.
+await (async function cookieFooterLinkScenario() {
+  const tmpFixtures = mkdtempSync(join(tmpdir(), 'tr-smoke-fx-cookie-footer-'));
+  process.on('exit', () => {
+    try { rmSync(tmpFixtures, { recursive: true, force: true }); } catch { /* ignore */ }
+  });
+  cpSync(FIXTURES_DIR, tmpFixtures, { recursive: true });
+  const settingsPath = join(tmpFixtures, 'organizations', 'default', 'sites', 'default', 'versions', 'main', 'settings', 'default.json');
+  const settings = JSON.parse(readFileSync(settingsPath, 'utf8'));
+  settings.render_version = 19;
+  settings.language = 'sv';
+  settings.cookie_consent = { enabled: true, text: 'Vi använder cookies.' };
+  writeFileSync(settingsPath, JSON.stringify(settings));
+  await build('cookie-footer-link', { TYPEROLL_FIXTURES_DIR: tmpFixtures }, (outDir) => {
+    for (const file of ['index.html', '404.html']) {
+      const html = readFileSync(join(outDir, file), 'utf8');
+      if (!/<footer class="site-footer"[^>]*>[\s\S]*<p class="tr-consent-footer-link"><a href="#cookie-settings" data-tr-open-consent>Cookie-inställningar<\/a><\/p>\s*<\/footer>/.test(html)) {
+        fail(`[cookie-footer-link] ${file}: the footer does not end with the Cookie settings link`);
+      }
+      if (html.includes('class="tr-consent__manage"')) fail(`[cookie-footer-link] ${file}: the floating button is still rendered`);
+    }
+    log('[cookie-footer-link] ✓ footer link instead of the floating button on pages and the 404 page');
+  });
+})();
+
 // Scenario: route_overrides. One header block, secondary everywhere and primary
 // on the home page, with no site CSS. The header partial is cached across
 // routes in a production build, so this also pins that the cache keeps one

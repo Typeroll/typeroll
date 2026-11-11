@@ -3,7 +3,7 @@ import { SITE_SETTINGS_SECTIONS, isDesignSettingsSection, isSiteSettingsSection 
 import AppLayout from '../../../../layouts/AppLayout.astro';
 import { vstore } from '../../../../lib/version-store';
 import { loadSiteContext } from '../../../../lib/access';
-import { CONTENT_WIDTH_DEFAULTS, CONTENT_WIDTH_LIMITS, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, usesCustomerPublishing, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS, siteTimeZone } from '@typeroll/shared';
+import { CONTENT_WIDTH_DEFAULTS, CONTENT_WIDTH_LIMITS, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, defaultSiteSettings, usesCustomerPublishing, resolveBreakpointWidths, BREAKPOINTS_ABOVE_MOBILE, isArchivedSite, renderVersionStatus, resolveRenderVersion, RENDER_VERSIONS, siteTimeZone, COOKIE_FOOTER_LINK_RENDER_VERSION } from '@typeroll/shared';
 import RenderVersionSettings from '../../../../components/RenderVersionSettings';
 import TypographyPreview from '../../../../components/TypographyPreview';
 import SiteFontSettings from '../../../../components/SiteFontSettings';
@@ -346,12 +346,14 @@ const domainBlocksArchiving =
         "Optional scripts".
       </p>
       <p class="muted text-sm" style="margin-top: -0.5rem;">
-        A small floating "Cookies" button appears bottom-left once the visitor
-        has chosen, so they can change their mind. Want the link in the footer
-        instead? Add a link to <code>#cookie-settings</code> (for example a
-        "Cookie settings" item in the footer menu) and set "Reopen button"
-        below to "None". Visitors must always be able to change or withdraw
-        their choice, so keep that link on every page.
+        Once the visitor has chosen, a small "Cookie settings" link at the end
+        of the footer (render version 19 and later) or a floating "Cookies"
+        button bottom-left (earlier versions) lets them change their mind.
+        Want the link somewhere else in the footer? Add a link to
+        <code>#cookie-settings</code> (for example a "Cookie settings" item in
+        the footer menu); the platform link is then left out. Visitors must
+        always be able to change or withdraw their choice, so keep that link
+        on every page.
       </p>
       </details>
       <div class="field">
@@ -380,12 +382,14 @@ const domainBlocksArchiving =
         <p class="muted text-sm">When set, a "Read our privacy policy" link appears under the text.</p>
       </div>
       <div class="field">
-        <label for="setting-cookie_consent-manage_button">Reopen button</label>
+        <label for="setting-cookie_consent-manage_button">How visitors reopen the banner</label>
         <select id="setting-cookie_consent-manage_button" name="cookie_consent.manage_button">
-          <option value="floating" selected={settings.cookie_consent?.manage_button !== 'none'}>Floating "Cookies" button, bottom-left</option>
+          <option value="" selected={!settings.cookie_consent?.manage_button}>Default for the render version ({resolveRenderVersion(settings.render_version) >= COOKIE_FOOTER_LINK_RENDER_VERSION ? '"Cookie settings" link in the footer' : 'floating "Cookies" button'})</option>
+          <option value="footer" selected={settings.cookie_consent?.manage_button === 'footer'}>"Cookie settings" link at the end of the footer</option>
+          <option value="floating" selected={settings.cookie_consent?.manage_button === 'floating'}>Floating "Cookies" button, bottom-left</option>
           <option value="none" selected={settings.cookie_consent?.manage_button === 'none'}>None: the site links to #cookie-settings</option>
         </select>
-        <p class="muted text-sm">With "None", put a link to <code>#cookie-settings</code> in the footer so visitors can still reopen the banner.</p>
+        <p class="muted text-sm">The footer link is left out when the footer already links to <code>#cookie-settings</code>. With "None", put such a link in the footer so visitors can still reopen the banner.</p>
       </div>
       <details class="field">
         <summary>Banner wording</summary>
@@ -402,6 +406,7 @@ const domainBlocksArchiving =
           ['privacy_link', 'Privacy policy link', 'Read our privacy policy →'],
           ['manage', 'Settings button label (screen readers)', 'Manage cookie settings'],
           ['manage_button', 'Settings button text', 'Cookies'],
+          ['footer_link', 'Footer link text', 'Cookie settings'],
         ].map(([key, label, placeholder]) => (
           <div class="field">
             <label for={`setting-cookie_consent-labels-${key}`}>{label}</label>

@@ -128,7 +128,7 @@ export const settingsTools: ToolDef[] = [
         scripts_necessary: z.string().optional().describe('Trusted script markup that runs before consent.'),
         scripts_optional: z.string().optional().describe('Trusted script markup activated only after full consent.'),
         reload_after_consent: z.boolean().optional(),
-        manage_button: z.enum(['floating', 'none']).nullable().optional().describe('How visitors reopen the banner after choosing. `floating` (default) shows the "Cookies" button fixed bottom-left; `none` leaves it out, for example where it covers forms on mobile. With `none`, link to `#cookie-settings` from the footer (a menu `url` item with href "#cookie-settings" works): withdrawing consent must stay as easy as giving it, and the write returns a `cookie_reopen_link_missing` warning while no partial or menu has such a link. null restores the default.'),
+        manage_button: z.enum(['footer', 'floating', 'none']).nullable().optional().describe('How visitors reopen the banner after choosing. `footer` (the default from render version 19) adds a small "Cookie settings" link at the end of the site footer that takes the footer\'s colour and font; it is left out when the footer already links to `#cookie-settings`, so a site\'s own link keeps its look. `floating` (the default before render version 19) shows the "Cookies" button fixed bottom-left. `none` leaves both out: then link to `#cookie-settings` from the footer yourself (a menu `url` item with href "#cookie-settings" works), because withdrawing consent must stay as easy as giving it; the write returns a `cookie_reopen_link_missing` warning while no partial or menu has such a link. null restores the render version\'s default.'),
         labels: z.object({
           title: z.string().optional(),
           reject: z.string().optional(),
@@ -137,7 +137,8 @@ export const settingsTools: ToolDef[] = [
           privacy_link: z.string().optional(),
           manage: z.string().optional(),
           manage_button: z.string().optional(),
-        }).optional().describe('Plain-text replacements for the banner heading, buttons and links (max 120 characters each). `manage` is the accessible name and `manage_button` the visible text of the floating button that reopens the banner (not the `manage_button` setting beside `labels`). Omitted or blank labels follow the page language: Swedish, Norwegian Bokmål, German, Dutch, Finnish, French, Polish, Italian, Spanish, otherwise English. Replaces the whole labels object.'),
+          footer_link: z.string().optional(),
+        }).optional().describe('Plain-text replacements for the banner heading, buttons and links (max 120 characters each). `manage` is the accessible name and `manage_button` the visible text of the floating button that reopens the banner (not the `manage_button` setting beside `labels`); `footer_link` is the text of the footer link ("Cookie settings"). Omitted or blank labels follow the page language: Swedish, Norwegian Bokmål, German, Dutch, Finnish, French, Polish, Italian, Spanish, otherwise English. Replaces the whole labels object.'),
       }).optional().describe('Native consent banner configuration. Partial updates preserve omitted fields. Script fields execute in visitor browsers and are accepted under the API key authority.'),
       language_sections: z.array(z.object({
         language: z.string().describe('BCP 47 tag matched against Page.language, such as "sv-SE". Not the site language.'),
@@ -155,6 +156,7 @@ export const settingsTools: ToolDef[] = [
             privacy_link: z.string().optional(),
             manage: z.string().optional(),
             manage_button: z.string().optional(),
+            footer_link: z.string().optional(),
           }).optional(),
         }).optional().describe('Banner wording for this language. Without text or labels the banner uses the built-in wording in this language; scripts and enabled stay site-wide.'),
       })).nullable().optional().describe('One site, several languages: each section is a language whose pages (Page.language) live under home_path. Pages in a section get its home link in breadcrumbs, a 404 page at <home_path>404.html, and its tagline, fallback description and banner wording. Pages in the site language keep the top-level settings. Replaces the whole list; null or [] clears it. Use template/show_if on page.language in the header and footer for per-language menus.'),

@@ -216,6 +216,13 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A Heading, Rich heading or Text block that opens the page has no space above its heading, like the first heading in a section, column or container. Before, it got the 1.6em space of a heading in running text, and that space moved the whole page down.',
     ],
   },
+  {
+    version: 19, core_version: '0.3.28', title: 'Cookie settings in the footer',
+    changes: [
+      'With the cookie banner on, visitors reopen it from a small "Cookie settings" link ("Cookie-inställningar" on Swedish pages) at the end of the site footer instead of the floating "Cookies" button in the bottom-left corner, which could cover forms and buttons on phones. The link takes the footer\'s colour and font, and site CSS restyles it through .tr-consent-footer-link.',
+      'A footer that already links to #cookie-settings (or has an element with data-tr-open-consent) gets no second link, so a site\'s own link keeps its look. To keep the floating button, set cookie_consent.manage_button to "floating"; "none" still leaves both out.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;
