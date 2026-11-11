@@ -75,6 +75,42 @@ describe('settings endpoints', () => {
     expect((await callRoute(auditEndpoint,'GET','http://localhost/api/v1/sites/other/design-token-audit',{siteId:'other'},{headers:bearer(token)})).status).not.toBe(200);
   });
 
+  it('merges typography and design_scales per control; null resets one', async () => {
+    const { token } = await setup();
+    const endpoint = import('../../pages/api/v1/sites/[siteId]/settings');
+    const patch = (body: unknown) => callRoute(endpoint, 'PATCH', `http://localhost/api/v1/sites/${SITE}/settings`, { siteId: SITE }, { headers: bearer(token), body });
+    const { vstore } = await import('../../lib/version-store');
+    const stored = async () => (await vstore.settings(ORG, SITE, MAIN_VERSION_ID)) as SiteSettings;
+
+    expect((await patch({ typography: { ratio_mobile: 1.25, ratio_desktop: 1.333, rhythm: 1.2 } })).status).toBe(200);
+    // One control changes; the others keep their values instead of resetting to defaults.
+    const one = await patch({ typography: { line_length: 'none' } });
+    expect(one.status).toBe(200);
+    expect(((await one.json()) as { updated_fields: string[] }).updated_fields).toEqual(['typography']);
+    expect((await stored()).typography).toEqual({ ratio_mobile: 1.25, ratio_desktop: 1.333, rhythm: 1.2, line_length: 'none' });
+    // null returns that control to its default.
+    expect((await patch({ typography: { rhythm: null } })).status).toBe(200);
+    expect((await stored()).typography).toEqual({ ratio_mobile: 1.25, ratio_desktop: 1.333, line_length: 'none' });
+    expect((await patch({ typography: { rhythm: 3 } })).status).toBe(400);
+    expect((await patch({ typography: { leading: null } })).status).toBe(400);
+    expect((await stored()).typography).toEqual({ ratio_mobile: 1.25, ratio_desktop: 1.333, line_length: 'none' });
+
+    expect((await patch({ design_scales: { space: { lg: '2rem', xl: '4rem' }, leading: { tight: '1.1' } } })).status).toBe(200);
+    expect((await patch({ design_scales: { space: { md: { mobile: '1rem', desktop: '1.5rem' }, xl: null } } })).status).toBe(200);
+    expect((await stored()).design_scales).toEqual({ space: { lg: '2rem', md: { mobile: '1rem', desktop: '1.5rem' } }, leading: { tight: '1.1' } });
+    // A responsive step is one control: a new value replaces its breakpoint map.
+    expect((await patch({ design_scales: { space: { md: '1.25rem' }, leading: null } })).status).toBe(200);
+    expect((await stored()).design_scales).toEqual({ space: { lg: '2rem', md: '1.25rem' } });
+    expect((await patch({ design_scales: { space: { huge: null } } })).status).toBe(400);
+    expect((await patch({ design_scales: { margin: null } })).status).toBe(400);
+
+    // null for the whole field clears every override.
+    expect((await patch({ typography: null, design_scales: null })).status).toBe(200);
+    const cleared = await stored();
+    expect(cleared.typography).toBeUndefined();
+    expect(cleared.design_scales).toBeUndefined();
+  });
+
   it('GET returns scripts_* and custom_css (API caller is trusted)', async () => {
     const { token } = await setup();
     const { vstore } = await import('../../lib/version-store');

@@ -328,7 +328,15 @@ columns.
 
 Set these fields at the top level of `update_site_settings` alongside `fonts`.
 `design_scales.type_size`, `.space` and `.leading` customize named steps.
-A length step accepts a length, a bounded `clamp`, or a responsive map:
+A length step accepts a length, a bounded `clamp`, or a responsive map.
+
+Both objects are merged into the saved value, so a write changes only the
+controls it names: `{"typography": {"line_length": "none"}}` keeps the saved
+ratios and rhythm. `typography` merges per control and `design_scales` per
+scale step; a responsive map is one step's value and replaces that step's
+previous value. Set a control or a step to `null` to return it to the platform
+default, a whole scale (`"space": null`) to reset that scale, and
+`"typography": null` or `"design_scales": null` to reset every override.
 
 ```json
 {
@@ -758,6 +766,7 @@ deploy. Sites created before render versions existed render with version 1.
 | 15      | Menus with submenus and fonts in use. `core/navigation_links` can show a site menu (`source: "menu"`, `menu: "location:primary"` or a menu id); page items follow renames, and items with children get a dropdown or accordion submenu (`submenus`). See [Menus](../menus/#showing-a-menu-in-the-header-or-footer). Fonts load only the weights and italics the site uses (plus `fonts.load`) instead of a fixed 400–700; a variable family loads as one file for the range in use, and the body font is preloaded. A self-hosted or uploaded family gets a metric-matched fallback face, so text keeps its place while the font loads. Two more font roles, `display` (large headings and heroes) and `accent` (eyebrows and quotes). See [Fonts](../fonts/#weights-in-use). Authored text can use `{{site.name}}` and `{{site.fields.<name>}}`, so a template names the site it is inserted into; see [Packages](../packages/#text-that-names-the-site). |
 | 16      | Clearer groups and compact controls: plain site CSS changes every platform value without `!important` (block settings reach CSS as data attributes, and only custom properties are written inline), platform media queries follow the site's responsive widths, and many blocks gain alignment, size, colour and layout settings. A form's Back and Submit buttons sit together in a `.form-actions` row, so CSS that placed the button in the form grid targets `form > .form-actions`. The cookie banner's styles sit in a cascade layer. The full list is in `read_site_settings` → `render.upgrades`.                                                                                                                                                                                                                                                                                                                                                  |
 | 17      | Fonts from site CSS and a steady cookie banner. Weights and italics written in CSS count as in use (see [weights in use](../fonts/#weights-in-use)), so `fonts.load` is only needed for weights the planner cannot see. Bare element rules in site CSS (`h2`, `p`, `a`, `button`) no longer restyle the cookie banner, and its buttons use the body font at weight 600. See [Styling the banner](#styling-the-cookie-banner).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 18      | A page that opens with a heading: a Heading, Rich heading or Text block that is the first block on the page has no space above its heading, like the first heading in a section, column or container. Before, its 1.6em space moved the whole page down.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ## Site-specific responsive widths (Core 0.2.28)
 
