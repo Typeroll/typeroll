@@ -11,7 +11,7 @@ import { createGithubRepository } from './github-user';
 import { siteRepositoryName, generatedRepositoryDescription } from './site-repository';
 import { verifyManagedProject } from './migrated-project';
 import { capturePublicationImpact, domainChangeImpact } from './impact-preview';
-import { compareImpact } from './impact';
+import { compareImpact, legacyBaseline } from './impact';
 import { readSnapshot, saveSnapshot } from './publication-snapshot';
 import { publicationExtensionVersions } from '../extensions/published-version';
 import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
@@ -444,6 +444,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const impactSnapshot = job.publication_intent === 'domain_prepare'
         ? job.clear_authored_noindex === true ? null : domainChangeImpact(prior?.source_impact_snapshot, `https://${host}`, domains, organization)
         : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
+      const impactLegacy = legacyBaseline(prior, frozen);
       // Links to a redirect host (for example https://www.example.com/page) are frozen as links to the website host.
       const previousOrigins = [site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? '', ...(prior?.reference_mapping?.website_origins ?? []),
         ...redirectHosts.map(redirect => `https://${redirect}`)].filter(Boolean);
@@ -452,7 +453,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       frozen = { ...frozen, site_url: `https://${host}`, site: { ...frozen.site, domain: host }, media: mapped.media, media_manifest: mapped.manifest };
       if (impactSnapshot) {
         frozen.source_impact_snapshot = impactSnapshot;
-        await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot) });
+        await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot, false, null, impactLegacy) });
       } else {
         delete frozen.source_impact_snapshot;
       }

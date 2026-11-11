@@ -41,7 +41,7 @@ import { derivationProvidersFor, publicationConfigDigest, publicationContentDige
 import { getOrganizationDomains, getSiteDomains } from './domain-config';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
 import { redactFailureText } from './http';
-import { compareImpact } from './impact';
+import { compareImpact, legacyBaseline } from './impact';
 import { capturePublicationImpact } from './impact-preview';
 import { collapseMediaHostChains, moveWebsiteMediaToMediaHost, publicationMediaManifest, replacedMediaRedirects, retainDistinctMediaManifests } from './media-manifest';
 import { digest } from './providers.mjs';
@@ -217,7 +217,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       const previousOrigins = [`https://${platformHost}`, site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? '', ...(prior?.reference_mapping?.website_origins ?? [])].filter(Boolean);
       frozen = { ...mapped.content, reference_mapping: { format: 1, media: (mapped.content as any).reference_mapping?.media ?? [], website_origins: [...new Set(previousOrigins)] } };
       frozen = { ...frozen, site_url: `https://${host}`, site: { ...frozen.site, domain: host }, media: mapped.media, media_manifest: mapped.manifest, source_impact_snapshot: impactSnapshot };
-      await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot) });
+      await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot, false, null, legacyBaseline(prior, frozen)) });
       const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
       frozen.media_replacement_redirects = replacedMediaRedirects(retained, frozen.media_manifest, frozen.redirects, prior?.media_replacement_redirects);
       frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_replacement_redirects.filter((rule: any) => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path))];

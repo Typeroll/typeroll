@@ -4,10 +4,26 @@ export interface ImpactEntry {
   kind: string; id: string; title: string; content_type?: string;
   fields: Record<string, string>; metadata: string; date_updated: string;
 }
+/**
+ * Versions the platform puts into a publication, recorded in plain text so a
+ * comparison can say what changed. They are not the site's own content: a
+ * Typeroll release changes them on every site at once.
+ */
+export interface ImpactPlatform {
+  extension_runtime_version: string | null;
+  extension_protocol_version: number | null;
+  /** The runtime versions reach the built pages only when the site has installations. */
+  extension_installations: number;
+}
 export interface ImpactSnapshot {
   protocol: 2; org_id: string; site_id: string; version_id: string;
   core_commit: string; entries: ImpactEntry[];
+  /** From Core 0.3.28. Snapshots without it fingerprinted the extension runtime versions inside configuration/extensions. */
+  platform?: ImpactPlatform;
 }
+/** What a comparison needs to read a baseline captured before `platform` existed (see legacyBaseline). */
+export interface LegacyBaseline { platform: ImpactPlatform; extensions: string }
+export interface PlatformChange { id: 'core_commit' | 'extension_runtime'; name: string; before: string | null; after: string | null; affects_output: boolean }
 /**
  * Why there was nothing to compare with:
  * - not_published: this version has no recorded publication yet;
@@ -30,6 +46,8 @@ export interface PublicationImpact {
   changed_pages: number; added_pages: number; removed_pages: number;
   metadata_only: number; total: number;
   changes: Array<{ kind: string; id: string; title: string; content_type?: string; action: 'added' | 'changed' | 'removed'; fields: string[]; date_updated: string; will_deploy: true }>;
+  /** What the platform changed since the baseline (a Typeroll release), never counted in total or changes. */
+  platform_changes: PlatformChange[];
   reasons: string[];
 }
 
@@ -51,6 +69,31 @@ function impactEntry(kind: string, value: any, content_type?: string): ImpactEnt
   };
 }
 const ORIGINS = { id: 'impact_origins', name: 'Publication addresses' } as const;
+const EXTENSIONS = { id: 'extensions', name: 'Extensions' } as const;
+
+function platformOf(extensions: any): ImpactPlatform {
+  return { extension_runtime_version: typeof extensions?.runtime_version === 'string' ? extensions.runtime_version : null,
+    extension_protocol_version: typeof extensions?.protocol_version === 'number' ? extensions.protocol_version : null,
+    extension_installations: Array.isArray(extensions?.installations) ? extensions.installations.length : 0 };
+}
+/** The site's own Extension configuration: its installations, without the runtime versions a release sets. */
+const siteExtensions = (extensions: any) => ({ installations: extensions?.installations ?? [] });
+
+/**
+ * A baseline captured before Core 0.3.28 hashed `extensions` whole, runtime
+ * versions included, so every release that raised them (0.3.27: runtime 0.45.0
+ * to 0.46.0) showed configuration/extensions as changed on every site, also on
+ * sites without a single installation. The baseline's own frozen publication
+ * still holds those versions in plain text: hash the current installations the
+ * old way with the baseline's versions, and an equal hash means the site's
+ * installations did not change.
+ */
+export function legacyBaseline(baselinePublication: any, currentPublication: any): LegacyBaseline {
+  const before = baselinePublication?.extensions ?? null;
+  const current = currentPublication?.extensions ?? { installations: [] };
+  const oldShape = before ? { ...current, runtime_version: before.runtime_version, protocol_version: before.protocol_version } : current;
+  return { platform: platformOf(before), extensions: impactEntry('configuration', { ...EXTENSIONS, value: oldShape }).fields.value };
+}
 
 /** Fingerprint only the public projection. Working copies and private fields never enter this snapshot. */
 export function captureImpact(publication: any, orgId: string, siteId: string, media: any[] = []): ImpactSnapshot {
@@ -59,7 +102,8 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
   for (const [kind, values] of Object.entries({ page: publication.pages, partial: publication.partials, menu: publication.menus, template: publication.pageTemplates, block_type: publication.blockTypes, redirect: publication.redirects, form: publication.forms, content_type: publication.contentTypes })) {
     for (const value of (values ?? []) as any[]) add(kind, value);
   }
-  for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', extensions: 'Extensions', runtime_dependencies: 'Runtime connections', [ORIGINS.id]: ORIGINS.name })) add('configuration', { id: key, name: title, value: publication[key] ?? null });
+  for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', runtime_dependencies: 'Runtime connections', [ORIGINS.id]: ORIGINS.name })) add('configuration', { id: key, name: title, value: publication[key] ?? null });
+  add('configuration', { ...EXTENSIONS, value: siteExtensions(publication.extensions) });
   // Only a publication with site fields lists them, so earlier snapshots compare unchanged.
   if (publication.siteFields) add('configuration', { id: 'siteFields', name: 'Site fields', value: publication.siteFields });
   const content = JSON.stringify(publication);
@@ -73,7 +117,7 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
   }
   entries.sort((a, b) => entryKey(a).localeCompare(entryKey(b)));
   if (new Set(entries.map(entryKey)).size !== entries.length) throw Error('Duplicate impact identity');
-  return { protocol: 2, org_id: orgId, site_id: siteId, version_id: publication.version_id, core_commit: publication.core_commit, entries };
+  return { protocol: 2, org_id: orgId, site_id: siteId, version_id: publication.version_id, core_commit: publication.core_commit, entries, platform: platformOf(publication.extensions) };
 }
 
 /**
@@ -87,16 +131,24 @@ export function withImpactOrigins(snapshot: ImpactSnapshot, origins: unknown): I
 }
 
 /** Observe net source changes, never authorize reuse without an output dependency graph. */
-export function compareImpact(previous: ImpactSnapshot | null | undefined, current: ImpactSnapshot, provisional = false, unavailable: BaselineUnavailableReason | null = null): PublicationImpact {
+export function compareImpact(previous: ImpactSnapshot | null | undefined, current: ImpactSnapshot, provisional = false, unavailable: BaselineUnavailableReason | null = null, legacy?: LegacyBaseline): PublicationImpact {
   const result: PublicationImpact = { comparison: 'baseline_unavailable', changes_known: false, baseline: { state: 'unavailable', reason: unavailable, message: BASELINE_UNAVAILABLE_MESSAGE },
     provisional, execution: 'automatic', reuse_verified: false,
-    classification: 'unknown', changed_pages: 0, added_pages: 0, removed_pages: 0, metadata_only: 0, total: 0, changes: [], reasons: [] };
+    classification: 'unknown', changed_pages: 0, added_pages: 0, removed_pages: 0, metadata_only: 0, total: 0, changes: [], platform_changes: [], reasons: [] };
   if (!previous || previous.protocol !== 2 || ['org_id', 'site_id', 'version_id'].some(key => previous[key as keyof ImpactSnapshot] !== current[key as keyof ImpactSnapshot])) {
     if (previous && !unavailable) result.baseline = { state: 'unavailable', reason: previous.protocol !== 2 ? 'snapshot_without_source_baseline' : 'baseline_identity_mismatch', message: BASELINE_UNAVAILABLE_MESSAGE };
     result.reasons.push('verified_source_baseline_unavailable'); return result;
   }
   result.comparison = 'verified_snapshot'; result.changes_known = true; result.baseline = { state: 'verified' };
-  const before = new Map(previous.entries.map(entry => [entryKey(entry), entry]));
+  const extensionsKey = entryKey({ kind: 'configuration', id: EXTENSIONS.id });
+  let previousPlatform = previous.platform ?? legacy?.platform;
+  let baselineEntries = previous.entries;
+  if (!previous.platform && legacy) {
+    // An older baseline: its extensions hash matches the current installations hashed the old way only when they are unchanged.
+    const now = current.entries.find(entry => entryKey(entry) === extensionsKey);
+    baselineEntries = previous.entries.map(entry => entryKey(entry) === extensionsKey && now && entry.fields.value === legacy.extensions ? { ...entry, fields: now.fields } : entry);
+  } else if (!previous.platform) previousPlatform = undefined;
+  const before = new Map(baselineEntries.map(entry => [entryKey(entry), entry]));
   const after = new Map(current.entries.map(entry => [entryKey(entry), entry]));
   for (const key of [...new Set([...before.keys(), ...after.keys()])].sort()) {
     const a = before.get(key), b = after.get(key), entry = (b ?? a)!;
@@ -107,10 +159,20 @@ export function compareImpact(previous: ImpactSnapshot | null | undefined, curre
     if (entry.kind === 'page') result[`${action}_pages`]++;
   }
   result.total = result.changes.length;
-  if (previous.core_commit !== current.core_commit) result.reasons.push('toolchain_changed');
+  if (previous.core_commit !== current.core_commit) {
+    result.reasons.push('toolchain_changed');
+    result.platform_changes.push({ id: 'core_commit', name: 'Typeroll Core release', before: previous.core_commit || null, after: current.core_commit || null, affects_output: true });
+  }
+  const runtime = (platform: ImpactPlatform | undefined) => platform?.extension_runtime_version == null ? null : `${platform.extension_runtime_version} (protocol ${platform.extension_protocol_version ?? 'unknown'})`;
+  if (previousPlatform && current.platform && runtime(previousPlatform) !== runtime(current.platform)) {
+    // The runtime script and its versions reach the pages only on a site with installations.
+    const affects = previousPlatform.extension_installations > 0 || current.platform.extension_installations > 0;
+    result.platform_changes.push({ id: 'extension_runtime', name: 'Extension runtime', before: runtime(previousPlatform), after: runtime(current.platform), affects_output: affects });
+    if (affects) result.reasons.push('extension_runtime_changed');
+  }
   if (result.metadata_only) result.reasons.push('publication_metadata_changed');
   const pageOnly = result.total > 0 && result.changes.every(change => change.kind === 'page' && change.action === 'changed' && change.fields.every(field => ['html_content', 'blocks', 'custom_css'].includes(field)));
-  result.classification = result.reasons.includes('toolchain_changed') ? 'site_wide' : !result.total ? 'none' : pageOnly ? 'page_content_only' : 'site_wide';
+  result.classification = result.reasons.some(reason => ['toolchain_changed', 'extension_runtime_changed'].includes(reason)) ? 'site_wide' : !result.total ? 'none' : pageOnly ? 'page_content_only' : 'site_wide';
   result.reasons.push(result.total ? 'saved_public_source_changed' : 'no_public_content_changes', 'output_dependencies_not_verified');
   // Keep responses bounded, but compute every count before truncation.
   result.changes = result.changes.slice(0, 50);

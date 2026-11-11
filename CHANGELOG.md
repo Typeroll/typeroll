@@ -2,6 +2,16 @@
 
 ## 0.3.28 (candidate, MCP 0.45.136)
 
+- Publication impact (`GET /api/v1/sites/{site}/publishing/impact`, MCP
+  `get_publication_impact`, a job's `build_impact`) lists what Typeroll itself
+  changed in a new `platform_changes` list (`core_commit`, `extension_runtime`
+  with `before`, `after` and `affects_output`), never in `changes` or `total`.
+  The Extension runtime version no longer enters the site's
+  `configuration/extensions` fingerprint, which now covers only its
+  installations: after Core 0.3.27 raised the runtime to 0.46.0, every site
+  listed that entry as changed, also sites without installations. Baselines
+  recorded before this release are read with their own runtime versions, so
+  the entry appears only when the installations changed.
 - A build whose request to Typeroll or build storage timed out while it handed
   over the built site (`artifact_transfer_timeout`; engines before this release
   report `artifact_build_failed` with `TimeoutError: The operation was aborted

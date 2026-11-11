@@ -169,6 +169,40 @@ once to record a baseline for later comparisons. Until then, run
 `trigger_deploy` with `dry_run: true` to validate the full build without
 publishing (a dry run does not record a baseline).
 
+`platform_changes` lists what Typeroll itself changed since the baseline, for
+example after a Typeroll release. These entries are never counted in `total` or
+listed in `changes`, so they do not look like edits to the site:
+
+```json
+{
+  "total": 0,
+  "changes": [],
+  "platform_changes": [
+    {
+      "id": "extension_runtime",
+      "name": "Extension runtime",
+      "before": "0.45.0 (protocol 1)",
+      "after": "0.46.0 (protocol 1)",
+      "affects_output": false
+    }
+  ]
+}
+```
+
+- `core_commit`: the publication is built with another Typeroll Core release
+  (`before` and `after` are its source commits). `reasons` also contains
+  `toolchain_changed`, and every page is rebuilt.
+- `extension_runtime`: the Extension runtime version or protocol changed.
+  `affects_output` is `true` only when the site has Extension installations,
+  because only those pages load the runtime; `reasons` then also contains
+  `extension_runtime_changed`. On a site without installations it is listed
+  for information and changes nothing.
+
+Before Core 0.3.28, a release that raised the Extension runtime version listed
+`configuration/extensions` as changed on every site. A baseline recorded by such
+a release is now read correctly: `configuration/extensions` appears only when
+the site's own installations changed.
+
 A domain change republishes the previous publication's content at the new
 addresses. From Core 0.3.28 it records that publication's source as its own
 baseline. For a domain change prepared by an earlier release, the comparison

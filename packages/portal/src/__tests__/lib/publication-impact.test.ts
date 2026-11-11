@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest';
-import { captureImpact, compareImpact, withImpactOrigins } from '../../lib/publishing/impact';
+import { captureImpact, compareImpact, legacyBaseline, withImpactOrigins } from '../../lib/publishing/impact';
+import { digest } from '../../lib/publishing/providers.mjs';
 
 const page = (id: string) => ({ id, title: id, status: 'published', html_content: `<p>${id}</p>`, date_updated: '2026-01-01' });
 const source = () => ({ version_id: 'main', core_commit: 'a'.repeat(40), pages: [page('one'), page('two')], settings: {}, contentTypes: [] as any[] });
@@ -69,4 +70,40 @@ it('canonicalizes object ordering while retaining array order and full counts be
 it('uses safe labels for malformed Page titles', () => {
   const input = { ...source(), pages: [{ id: 'article', content_type: 'news', title: { en: 'Article' }, status: 'published' }] };
   expect(snapshot(input).entries.find(entry => entry.id === 'article')?.title).toBe('article');
+});
+
+// Core 0.3.27 raised the Extension runtime 0.45.0 → 0.46.0; every Moveria site showed configuration/extensions
+// changed, also moveria-it with no installations (2026-11-11).
+const runtime = (version: string, installations: any[] = []) => ({ runtime_version: version, protocol_version: 1, installations });
+const installation = { installation_id: 'inst', extension_id: 'se.vendor.events', version: '1.0.0', public_config: {}, components: [] };
+it('reports a platform version change apart from the site changes, and only as affecting output with installations', () => {
+  const without = compareImpact(snapshot({ ...source(), extensions: runtime('0.45.0') }), snapshot({ ...source(), extensions: runtime('0.46.0') }));
+  expect(without).toMatchObject({ total: 0, changes: [], classification: 'none',
+    platform_changes: [{ id: 'extension_runtime', before: '0.45.0 (protocol 1)', after: '0.46.0 (protocol 1)', affects_output: false }] });
+  expect(without.reasons).not.toContain('extension_runtime_changed');
+  const withInstallations = compareImpact(snapshot({ ...source(), extensions: runtime('0.45.0', [installation]) }), snapshot({ ...source(), extensions: runtime('0.46.0', [installation]) }));
+  expect(withInstallations).toMatchObject({ total: 0, classification: 'site_wide', platform_changes: [{ id: 'extension_runtime', affects_output: true }] });
+  expect(withInstallations.reasons).toContain('extension_runtime_changed');
+  const core = compareImpact(snapshot(source()), snapshot({ ...source(), core_commit: 'b'.repeat(40) }));
+  expect(core).toMatchObject({ total: 0, platform_changes: [{ id: 'core_commit', before: 'a'.repeat(40), after: 'b'.repeat(40), affects_output: true }] });
+  expect(core.reasons).toContain('toolchain_changed');
+  // An installation the site added is a site change.
+  expect(compareImpact(snapshot({ ...source(), extensions: runtime('0.46.0') }), snapshot({ ...source(), extensions: runtime('0.46.0', [installation]) })))
+    .toMatchObject({ total: 1, changes: [{ kind: 'configuration', id: 'extensions' }], platform_changes: [] });
+});
+
+it('reads a baseline captured before platform versions were recorded without a spurious extensions change', () => {
+  const before = { ...source(), extensions: runtime('0.45.0') };
+  const after = { ...source(), extensions: runtime('0.46.0') };
+  // What Core 0.3.27 and earlier recorded: extensions hashed whole, runtime versions included, no platform field.
+  const old = snapshot(before);
+  const legacyEntries = old.entries.map(entry => entry.kind === 'configuration' && entry.id === 'extensions'
+    ? { ...entry, fields: { ...entry.fields, value: digest(JSON.stringify({ installations: [], protocol_version: 1, runtime_version: '0.45.0' })) } } : entry);
+  const legacy = { ...old, entries: legacyEntries, platform: undefined };
+  expect(compareImpact(legacy, snapshot(after)).changes).toEqual([expect.objectContaining({ id: 'extensions' })]);
+  const read = compareImpact(legacy, snapshot(after), false, null, legacyBaseline(before, after));
+  expect(read).toMatchObject({ total: 0, changes: [], platform_changes: [{ id: 'extension_runtime', before: '0.45.0 (protocol 1)', after: '0.46.0 (protocol 1)', affects_output: false }] });
+  // Installations that did change still show.
+  const added = { ...source(), extensions: runtime('0.46.0', [installation]) };
+  expect(compareImpact(legacy, snapshot(added), false, null, legacyBaseline(before, added)).changes).toEqual([expect.objectContaining({ id: 'extensions' })]);
 });

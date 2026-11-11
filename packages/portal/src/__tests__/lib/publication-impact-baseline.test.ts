@@ -16,14 +16,14 @@ beforeEach(async () => { makeTmpFixtures(); await resetDatastore(); snapshots.cl
 
 it('compares with the last normal publication', async () => {
   await job('normal', { status: 'succeeded' }); snapshots.set('normal', { version_id: 'main', source_impact_snapshot: fingerprint });
-  expect(await verifiedBaseline('org', 'site', 'main', reference('normal'))).toEqual({ snapshot: fingerprint, publication_id: 'publication-normal', via_domain_change: false });
+  expect(await verifiedBaseline('org', 'site', 'main', reference('normal'))).toMatchObject({ snapshot: fingerprint, publication_id: 'publication-normal', via_domain_change: false });
 });
 
 // A domain switch prepared before this release recorded no fingerprint; it republished its source publication's content.
 it('follows a domain change without a fingerprint to the publication it republished', async () => {
   await job('normal', { status: 'succeeded' }); snapshots.set('normal', { version_id: 'main', source_impact_snapshot: fingerprint });
   await job('domain', { status: 'succeeded', publication_intent: 'domain_prepare', source_publication: reference('normal') }); snapshots.set('domain', { version_id: 'main' });
-  expect(await verifiedBaseline('org', 'site', 'main', reference('domain'))).toEqual({ snapshot: fingerprint, publication_id: 'publication-normal', via_domain_change: true });
+  expect(await verifiedBaseline('org', 'site', 'main', reference('domain'))).toMatchObject({ snapshot: fingerprint, publication_id: 'publication-normal', via_domain_change: true });
   // While it waits for DNS approval its job is still running, but it already serves main.
   await getStore().updateDoc(paths.deploy('org', 'site', 'domain'), { status: 'running', phase: 'awaiting domain cutover approval' });
   expect(await verifiedBaseline('org', 'site', 'main', reference('domain'))).toMatchObject({ publication_id: 'publication-normal' });

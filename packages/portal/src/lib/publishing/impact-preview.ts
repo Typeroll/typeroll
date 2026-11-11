@@ -6,7 +6,7 @@ import { siteHostingGroup } from './hosting-groups';
 import { resolvePublicationVersion } from './publication-version';
 import { publicationRuntime } from './runtime-projection';
 import { readSnapshot } from './publication-snapshot';
-import { captureImpact, compareImpact, withImpactOrigins, type BaselineUnavailableReason, type ImpactSnapshot } from './impact';
+import { captureImpact, compareImpact, legacyBaseline, withImpactOrigins, type BaselineUnavailableReason, type ImpactSnapshot } from './impact';
 import { digest } from './providers.mjs';
 
 /** The addresses a publication's fingerprint records. */
@@ -37,7 +37,7 @@ const MAX_DOMAIN_HOPS = 5;
  * that publication's fingerprint is the baseline.
  */
 export async function verifiedBaseline(orgId: string, siteId: string, versionId: string, reference: any):
-  Promise<{ snapshot: ImpactSnapshot; publication_id: string; via_domain_change: boolean } | { snapshot: null; reason: BaselineUnavailableReason }> {
+  Promise<{ snapshot: ImpactSnapshot; publication_id: string; via_domain_change: boolean; publication: any } | { snapshot: null; reason: BaselineUnavailableReason }> {
   const store = getStore();
   let viaDomainChange = false;
   for (let hop = 0; reference?.snapshot_job_id; hop++) {
@@ -47,7 +47,7 @@ export async function verifiedBaseline(orgId: string, siteId: string, versionId:
     let frozen;
     try { frozen = await readSnapshot({ orgId, siteId, jobId: reference.snapshot_job_id }, reference); }
     catch (error) { if (hop === 0) throw error; return { snapshot: null, reason: 'baseline_snapshot_unreadable' }; }
-    if (frozen.source_impact_snapshot && frozen.version_id === versionId) return { snapshot: frozen.source_impact_snapshot, publication_id: reference.publication_id, via_domain_change: viaDomainChange };
+    if (frozen.source_impact_snapshot && frozen.version_id === versionId) return { snapshot: frozen.source_impact_snapshot, publication_id: reference.publication_id, via_domain_change: viaDomainChange, publication: frozen };
     if (!domainChange || !job.source_publication?.snapshot_job_id || hop >= MAX_DOMAIN_HOPS) return { snapshot: null, reason: 'snapshot_without_source_baseline' };
     reference = job.source_publication; viaDomainChange = true;
   }
@@ -73,7 +73,7 @@ export async function previewPublicationImpact(orgId: string, siteId: string, ve
     siteUrl: `https://${host}`, coreCommit: process.env.TYPEROLL_SOURCE_SHA ?? '', publishedAt: new Date().toISOString(),
     noindex: versionId !== 'main' || host === `site-${prefix}.${group.sites_domain}`, coreBlockTypes: CORE_BLOCK_TYPES,
   });
-  const impact = compareImpact(baseline.snapshot, await capturePublicationImpact(current, orgId, siteId, domains, organization, media), true);
+  const impact = compareImpact(baseline.snapshot, await capturePublicationImpact(current, orgId, siteId, domains, organization, media), true, null, legacyBaseline(baseline.publication, current));
   // The addresses of a domain change already serve; the fingerprint predates them.
   if (baseline.via_domain_change) impact.reasons.push('baseline_predates_domain_change');
   return { ...impact, baseline_publication_id: baseline.publication_id, compared_at: new Date().toISOString() };
