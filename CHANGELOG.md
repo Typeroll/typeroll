@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.25 (candidate, MCP 0.45.134)
 
 - The media transfer Worker in the customer's Cloudflare account hashes each
   file once, on the way into R2, and no longer downloads the stored copy to hash
