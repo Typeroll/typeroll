@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.26 (candidate, MCP 0.45.134)
 
 - Transient storage errors from R2 (HTTP 5xx, `InternalError`, `SlowDown`,
   network errors) are retried up to three times with backoff instead of
