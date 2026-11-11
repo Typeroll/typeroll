@@ -66,3 +66,10 @@ it('tells the reader that a storage refusal is temporary, retried once and leave
   expect(message).toContain('the live site is unchanged');
   expect(message).toMatch(/\(artifact_artifact_upload_failed\)$/);
 });
+
+it('tells the reader that a timed-out hand-over is temporary and retried once', () => {
+  const message = buildFailureMessage('artifact_transfer_timeout', { cause: 'TimeoutError: The operation was aborted due to timeout', lines: [] });
+  expect(message).toMatch(/^The build failed while uploading the built site: a request to Typeroll or to build storage did not answer in time\./);
+  expect(message).toContain('retried once automatically');
+  expect(message).toMatch(/\(artifact_transfer_timeout\)$/);
+});

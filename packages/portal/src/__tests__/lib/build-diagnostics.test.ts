@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { buildDiagnostic, diagnosticCause, normalizeDiagnostic, secretValues, DIAGNOSTIC_LINES, mediaFailureCode } from '../../lib/builds/diagnostics.mjs';
+import { buildDiagnostic, diagnosticCause, normalizeDiagnostic, secretValues, DIAGNOSTIC_LINES, mediaFailureCode, transientFailureCode } from '../../lib/builds/diagnostics.mjs';
 import { failureDiagnostic, reportBuildFailure } from '../../lib/builds/executor.mjs';
 
 // What Node prints when the media step of Core 0.2.73 met a receipt from an earlier sharp release.
@@ -98,3 +98,12 @@ it('classifies real timeout exceptions without retrying cancellation or integrit
   expect(diagnostic.cause).toContain('step=read_object');
   expect(diagnostic.cause).toContain('file="/photo.webp"');
  });
+
+it('recovers a timed-out request of the artifact stage, and only that', () => {
+  const timedOut = { cause: 'TimeoutError: The operation was aborted due to timeout', lines: [] };
+  expect(transientFailureCode('artifact', 'build_failed', timedOut)).toBe('transfer_timeout');
+  expect(transientFailureCode('artifact', 'build_failed', { cause: 'Error: unsafe_build_output', lines: [] })).toBe('build_failed');
+  expect(transientFailureCode('rendering', 'build_failed', timedOut)).toBe('build_failed');
+  expect(transientFailureCode('artifact', 'build_process_timeout', timedOut)).toBe('build_process_timeout');
+  expect(transientFailureCode('media', 'build_failed', timedOut)).toBe('media_transfer_interrupted');
+});

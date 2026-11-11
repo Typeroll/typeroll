@@ -17,7 +17,7 @@ export interface BuildTask {
   media_total?: number;
   media_cursor?: number;
   media_batches?: number;
-  /** Set once the coordinator ran the task again after build storage refused its artifact. */
+  /** Set once the coordinator ran the task again after handing over its artifact failed (refused or timed out). */
   artifact_upload_retried?: boolean;
   media_checkpoint_attempt?: number;
   /** Background work nobody waits on. Claims take interactive work first. */

@@ -2,6 +2,17 @@
 
 ## 0.3.28 (candidate, MCP 0.45.136)
 
+- A build whose request to Typeroll or build storage timed out while it handed
+  over the built site (`artifact_transfer_timeout`; engines before this release
+  report `artifact_build_failed` with `TimeoutError: The operation was aborted
+  due to timeout`) is run once more automatically, like a refused artifact
+  upload. Other `artifact_build_failed` causes are not retried.
+- A publication stores its frozen renderer before its source snapshot is saved.
+  During a gradual Typeroll Cloud rollout the previous release could take the
+  next step of a job the new release had frozen and failed it with
+  `publication_internal_error` ("The original publication renderer is
+  unavailable"). That case is now `publication_renderer_unavailable`, which the
+  publication waits out and retries (up to five times) instead of failing.
 - A build that build storage (R2) refused to accept at the end
   (`artifact_artifact_upload_failed`, typically HTTP 5xx during a short storage
   outage) is run once more automatically, on every build engine revision; its

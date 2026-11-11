@@ -1237,6 +1237,38 @@ produces the same site. From Core 0.3.28 the lines name the reason, for
 example `TYPEROLL_RENDER_CACHE unavailable (HTTP 503)`. A cache that has
 expired reports HTTP 404 instead, which is harmless.
 
+### A request timed out while the built site was handed over
+
+`job.failure.code` `artifact_transfer_timeout` ("a request to Typeroll or to
+build storage did not answer in time") means the build finished rendering, but
+a request the build engine made while handing over the result, to Typeroll or
+to build storage, did not answer within its time limit. Build engines from
+before Core 0.3.28 report the same event as `artifact_build_failed` with the
+cause `TimeoutError: The operation was aborted due to timeout`. It says nothing
+about the site's content, and the live site is unchanged.
+
+From Core 0.3.28, Typeroll runs the same frozen build once more when this
+happens, on every build engine revision; prepared media is reused. A second
+timeout fails the publication: publish again after a few minutes. Other
+`artifact_build_failed` causes are not retried automatically; read the cause
+before publishing again.
+
+### Publishing stopped during an update of Typeroll
+
+While Typeroll Cloud rolls out a new release, two releases serve requests for a
+short time, and either may run the next step of a publication. A publication
+frozen by the new release used to fail with `publication_internal_error` when
+the previous release took its next step ("The original publication renderer
+is unavailable"). From Core 0.3.28 a publication stores its renderer before
+its frozen source is saved, so either release can continue it. If a step still
+reaches a release without the renderer, the job reports
+`publication_renderer_unavailable` only after waiting and retrying the step
+five times; publish again a few minutes later. The live site is unchanged.
+
+`publication_internal_error` itself always means an unexpected error in
+Typeroll, never a problem with the site's content. Retry the publication once;
+if it fails again, report the deployment ID.
+
 ### A queued build that does not start
 
 The build provider (Cloudflare Workers Builds or GitHub Actions in the
