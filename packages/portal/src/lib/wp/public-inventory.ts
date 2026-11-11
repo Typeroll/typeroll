@@ -1,24 +1,34 @@
 import { Parser } from 'htmlparser2';
 import { fetchPublicAsset, parsePublicHttpsUrl } from '../extensions/public-http';
 import { createSafeFetch } from '../net/safe-fetch';
+import { politeFetchImpl, RequestPacer, type PoliteOptions } from '../net/polite-fetch';
 
 // Pins each request to the address that passed the public-destination check.
 const inventoryFetch = createSafeFetch({ label: 'Source URL', timeoutMs: 15_000, maxBytes: 2_000_000 });
 
-/** Bounded, read-only discovery. Public REST cannot prove private types or old-slug completeness. */
+/**
+ * Bounded, read-only discovery. Public REST cannot prove private types or old-slug completeness.
+ * Requests are sequential with a small gap, and 429/503 are waited out as the
+ * host asks while the 45-second discovery budget allows (lib/net/polite-fetch).
+ */
 export async function discoverPublicWordPress(origin: string, options: {
   crawlPages?: number; maxRequests?: number; read?: (url: string) => Promise<string>;
+  /** Backoff and pacing; tests inject `sleep` or `paceMs: 0`. */
+  polite?: PoliteOptions;
 } = {}) {
   const base = parsePublicHttpsUrl(origin).origin;
-  const read = options.read ?? (async url => new TextDecoder().decode(await fetchPublicAsset(url, 2_000_000, inventoryFetch, { 'User-Agent':'Typeroll-Migration-Inventory/1.0' })));
   const limit = Math.min(50, Math.max(1, options.maxRequests ?? 30));
   const deadline = Date.now() + 45_000;
+  const polite = options.polite ?? {};
+  const politeInventoryFetch = politeFetchImpl(inventoryFetch, { ...polite, deadlineAt: deadline });
+  const read = options.read ?? (async url => new TextDecoder().decode(await fetchPublicAsset(url, 2_000_000, politeInventoryFetch, { 'User-Agent':'Typeroll-Migration-Inventory/1.0' })));
+  const pacer = RequestPacer.for(polite);
   let requests = 0, truncated = false;
   const warnings: string[] = [], urls = new Set<string>();
   const get = async (url: string) => {
     if (requests >= limit || Date.now() > deadline) { truncated = true; throw Error('Discovery limit reached'); }
     if (new URL(url).origin !== base) throw Error('Discovery must stay on the source origin');
-    requests++; return read(url);
+    requests++; await pacer.wait(); return read(url);
   };
   const add = (raw: string, relative = base) => {
     try {

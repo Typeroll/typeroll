@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const state = vi.hoisted(() => ({
   installation: { id: 'installed', status: 'enabled' } as any,
-  version: { manifest: { api: { base_url: 'https://provider.example/v1', routes: [{ path: '/session', methods: ['POST', 'GET'] }] } } } as any,
+  version: { version: '1.4.0', manifest: { api: { base_url: 'https://provider.example/v1', routes: [{ path: '/session', methods: ['POST', 'GET'] }] } } } as any,
 }));
 const getDoc = vi.hoisted(() => vi.fn(async (_path: string) => state.installation));
 vi.mock('../../lib/datastore', () => ({ getStore: () => ({ getDoc }) }));
@@ -29,6 +29,19 @@ describe('installed native form endpoints', () => {
     state.installation = { id: 'installed', status: 'enabled' };
     await expect(resolveAppFormEndpoint({ target: { installation_id: 'installed', path: '/other' } }, args)).rejects.toThrow('not declared');
     await expect(resolveAppFormEndpoint({ target: { app: 'legacy' } } as any, args)).rejects.toThrow('migration');
+  });
+  it('names the form, installation, path and active version when the endpoint is not declared, with a code publications report', async () => {
+    const { ConnectionError } = await import('../../lib/publishing/connections');
+    const error = await resolveAppFormEndpoint({ id: 'booking', name: 'Booking', target: { installation_id: 'installed', path: '/book' } } as any, args).catch(value => value);
+    expect(error).toBeInstanceOf(ConnectionError);
+    expect(error).toMatchObject({ status: 409, code: 'form_app_endpoint_unavailable', details: { form_id: 'booking', installation_id: 'installed', path: '/book', active_version: '1.4.0' } });
+    for (const part of ['"Booking" (booking)', '/book', 'installed', 'active version 1.4.0', 'install a version that declares it', "change the form's target"]) expect(error.message).toContain(part);
+    // A GET-only route is not a form endpoint either.
+    state.version.manifest.api.routes.push({ path: '/status', methods: ['GET'] });
+    await expect(resolveAppFormEndpoint({ target: { installation_id: 'installed', path: '/status' } }, args)).rejects.toMatchObject({ code: 'form_app_endpoint_unavailable' });
+    state.version.manifest.api.routes.pop();
+    state.installation.status = 'disabled';
+    await expect(resolveAppFormEndpoint(form, args)).rejects.toMatchObject({ status: 409, code: 'form_app_installation_unavailable' });
   });
   it('accepts only a declared installation target shape and rejects authority/URL injection', () => {
     expect(validInstallationFormTarget(form.target)).toBe(true);

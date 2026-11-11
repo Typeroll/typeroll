@@ -1,5 +1,120 @@
 # Changelog
 
+## 0.3.25 (candidate, MCP 0.45.134)
+
+- The media transfer Worker in the customer's Cloudflare account hashes each
+  file once, on the way into R2, and no longer downloads the stored copy to hash
+  it a second time. It reads the source in 256 KiB pieces instead of passing
+  every 4 KiB network chunk through JavaScript. A 4 MiB copy used about 24 ms of
+  CPU in local workerd and now uses about 2 ms; on Workers Free (10 ms per
+  request) Moveria's 3–6 MB images were stopped with error 1102 and 99 files
+  were left uncopied. The integrity guarantee is unchanged: the hashed bytes
+  are the uploaded bytes, the PUT has an exact length, and the digest and size
+  are checked before a receipt is issued. The portal redeploys the Worker on
+  its next use; older Workers keep working until then.
+- A 503 from the transfer Worker without its own error code (Cloudflare
+  stopping it at the plan's CPU limit) is now `media_transfer_resources_exceeded`.
+  Typeroll retries it once after a pause and copies that organization's files
+  one at a time until copies succeed again, instead of retrying three times at
+  full concurrency. If it persists, the file's error says that the Workers plan
+  stopped the copy and that Workers Paid raises the limit.
+- Publishing checks once per publication, dry runs included, that every
+  referenced media file is in the site's media storage. Files whose copy failed
+  and was set aside (`migration_failed`), rejected imports and files with no
+  stored copy fail the job with `media_missing`; `job.failure.missing_media`
+  lists them (`media_id`, `filename`, `source_host`, `code`, `reason`; at most
+  100) and `missing_media_total` counts them all. `POST
+  /api/v1/sites/{siteId}/deploy` and MCP `trigger_deploy` accept
+  `accept_missing_media: true` to publish without those files: their
+  references are left empty and each one is reported in `job.warnings`. Files
+  still uploading or migrating keep failing with `media_migration_pending`,
+  which now gives their count.
+- A media migration that set files aside no longer reports `complete`: the
+  site and the overall status report `complete_with_failures`, and both carry
+  `ok` (`true` only for `complete` without set-aside files), so a client that
+  knows only `complete` can check `ok` or `failed_files`. `failed_media` now
+  lists every set-aside file of every site, 100 per call with
+  `failed_media_total` and a `failed_media_next` cursor (`failed_after` in
+  `GET /publishing/media-migration` and `read_organization_media_migration`),
+  with `source_host` and `source_url` without its query. Counts and the list are
+  both read from the media records. Before, job counters (including that of an
+  organization-wide pass from before per-site jobs) could report skipped files
+  that `failed_media`, at most 50 per site and 100 in all, did not list: Moveria
+  saw 99 skipped files and 12 listed. A copy of a stored file
+  that fails for a passing reason (Workers plan CPU limit, 5xx, timeout) is
+  retried after 1, 5, 15, 30 and 60 minutes like a pending import, instead of
+  three times within seconds; only then is it set aside, marked
+  `transient: true`. Refused sources and integrity failures are still set aside
+  at once. Publishing → Media storage lists the files and offers a retry.
+
+- The www counterpart of a site's website host now redirects to it by default:
+  with `www.example.com` as the website host, `example.com` answers 301 (path
+  and query kept), and the other way round. Before, the counterpart had to be
+  added as a redirect host by hand; on autopilot.se nobody had, so the apex
+  served the site directly, every app call from it got 403 (app backends allow
+  only `https://www.autopilot.se`), and search engines saw duplicate content.
+  Other subdomains get nothing implicit; a domain such as `example.co.uk` is
+  paired through its Cloudflare zone.
+- It is derived, not stored, so existing sites get it without a settings
+  change. Reads add `www_redirect` (default `true`), `implicit_redirect_hosts`
+  beside `redirect_hosts` in `desired` and `active` (omitted when empty), and
+  `implicit_redirects` with `source: "default"`, `status` and any `issue`; the
+  domain guide shows `www_redirect:<host>` and issues also appear as
+  `host_checks` warnings. Save `www_redirect: false` to opt out (portal,
+  `set_publishing_domains`, guide `save`); it changes no revision or approval,
+  and the next publication or repair removes the host from Typeroll's rule.
+- With automatic DNS, the next publication of a live site (also an unchanged
+  one, without a rebuild) or `repair_previous_host_redirects` adds the
+  counterpart to the website host's existing Single Redirect rule
+  (`typeroll_previous_t_…`), journaled, idempotent and quota-checked, and never
+  changes DNS. It does so only while the counterpart is proxied to the site's
+  own Pages project or to `192.0.2.1`; a counterpart serving anything else is
+  reported as `www_redirect_host_in_use` and left alone. With external DNS the
+  301 is verified and otherwise reported with instructions. Every problem is a
+  warning; a publication never fails because of it, and nothing is checked in
+  the background.
+
+- Changing an app installation's version no longer breaks the live site until
+  the next publication. Each publication records the app versions it was built
+  with (`extension_versions`), and `GET /extensions/self` returns
+  `published_version`, so an app backend can keep serving the published pages
+  until the next publication activates. Found on autopilot.se, whose event box
+  failed for minutes after an app upgrade.
+
+- A form that posts to an app endpoint the installed app version does not
+  declare now fails publication with `form_app_endpoint_unavailable` and a
+  message naming the form, path and version, instead of an unclassified
+  internal error. Changing the installation to such a version is refused with
+  `form_targets_undeclared` and `affected_forms` unless `confirm_form_targets:
+  true` is sent.
+
+- Render version 18: a Heading, Rich heading or Text block that opens the page
+  has no space above its heading. Before, its 1.6em space collapsed through
+  `<main>` and moved the whole page down.
+
+- Frame previews (`frame_url`) no longer insert the "content changed" or
+  derivation notices into the page, so they never shift the layout of a
+  screenshot. The frame reports them in an `X-Typeroll-Preview-State` header
+  and meta tags; the full preview shows them as an overlay.
+
+- `typography` and `design_scales` in a settings update merge with the saved
+  values, as colors and fonts already did. Before, `{ "typography": {
+  "line_length": "none" } }` silently reset every other typography control.
+  `null` resets one control, or all of them.
+
+- Migration fetches from the old site honour `Retry-After` and back off on 429
+  and 503, and sequential crawls pause briefly between requests. URL parity
+  checks default to 4 parallel requests instead of 6.
+
+- The site starter's check scripts run at a slow, polite pace on your own
+  computer (2 at a time, 300 ms apart per host) and faster in cloud sessions
+  and CI, retry 429 and 5xx with backoff, and say which pace they use
+  (`TYPEROLL_REQUEST_PROFILE`, `TYPEROLL_REQUEST_CONCURRENCY`). Home internet
+  providers can throttle or block many rapid requests. The docs, starter and
+  skills now also say to dry-run before publishing, compare render upgrades
+  against captures from before the upgrade, and check failed media before
+  calling a migration done.
+
 ## 0.3.24 (candidate, MCP 0.45.133)
 
 - A link to `#cookie-settings` now opens the cookie banner even after another
@@ -16,6 +131,17 @@
   part reads `label (url)`. A backslash escapes brackets. Without `format`
   nothing changes. Asked for by autopilot.se, whose event emails showed a long
   unsubscribe address.
+
+- Published pages and the site preview no longer show an app component's
+  editor placeholder ("Next occurrence loads on the published site.") to
+  visitors. The text, always in English, showed until the Extension runtime
+  replaced it, and for good when the script did not load. Pages with an
+  Extension mount, as a block or an `<x-extension>` in a partial, now hide
+  it with platform CSS, which also covers block types provisioned by
+  existing installations. The mount takes no space until the component
+  renders; what the component renders is unchanged. The editor canvas still
+  shows the placeholder where the component sits. A bug fix of leaked editor
+  UI, so it applies on every render version. Found on autopilot.se.
 
 ## 0.3.23 (candidate, MCP 0.45.132)
 

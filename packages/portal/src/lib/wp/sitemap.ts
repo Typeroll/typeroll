@@ -7,9 +7,12 @@
 //
 // This module walks the sitemap graph and returns every URL it can find,
 // with the depth capped at a reasonable level to defend against pathological
-// or malicious recursion.
+// or malicious recursion. Reads are polite to the source host: 429 and 503
+// are waited out as the host asks, and child sitemaps are read with a small
+// gap between requests (lib/net/polite-fetch).
 
 import { createSafeFetch, migrationSourcePolicy } from '../net/safe-fetch';
+import { politeFetch, RequestPacer, type PoliteOptions } from '../net/polite-fetch';
 
 const CANDIDATE_PATHS = [
   '/sitemap.xml',
@@ -48,15 +51,20 @@ export interface SitemapReadOptions {
   /** Optional SSRF guard run for the root, every child index and every HTTP
    * redirect before a request is sent. */
   validateUrl?: (url: URL) => void | Promise<void>;
+  /** Backoff and pacing; tests inject `sleep` or `paceMs: 0`. */
+  polite?: PoliteOptions;
+  /** Shared pacer, so consecutive reads of one host stay apart across calls. */
+  pacer?: RequestPacer;
 }
 
 /** Find a working sitemap on the source site and return every URL it lists. */
-export async function discoverSitemap(siteBaseUrl: string): Promise<SitemapUrl[]> {
+export async function discoverSitemap(siteBaseUrl: string, polite: PoliteOptions = {}): Promise<SitemapUrl[]> {
   const base = siteBaseUrl.replace(/\/$/, '');
+  const pacer = RequestPacer.for(polite);
   for (const path of CANDIDATE_PATHS) {
     const url = `${base}${path}`;
     try {
-      const result = await readSitemap(url);
+      const result = await readSitemap(url, { polite, pacer });
       if (result.urls.length > 0) return result.urls;
     } catch {
       /* try next */
@@ -77,6 +85,8 @@ export async function readSitemap(
   const seenSitemaps = new Set<string>();
   const byLocation = new Map<string, SitemapUrl>();
   let sitemapLimitReached = false;
+  const polite = opts.polite ?? {};
+  const pacer = opts.pacer ?? RequestPacer.for(polite);
 
   let root: URL;
   try {
@@ -90,7 +100,8 @@ export async function readSitemap(
     if (depth > maxDepth || byLocation.size >= maxUrls || seenSitemaps.has(url)) return;
     if (seenSitemaps.size >= MAX_SITEMAPS) { sitemapLimitReached = true; return; }
     seenSitemaps.add(url);
-    const loaded = await fetchXml(url, fetchImpl, opts.validateUrl);
+    await pacer.wait();
+    const loaded = await fetchXml(url, fetchImpl, opts.validateUrl, polite);
     if (!loaded.ok) {
       errors.push({ url, error: loaded.error });
       return;
@@ -154,17 +165,19 @@ async function fetchXml(
   url: string,
   fetchImpl: typeof fetch = sitemapFetch,
   validateUrl?: (url: URL) => void | Promise<void>,
+  polite: PoliteOptions = {},
 ): Promise<{ ok: true; xml: string } | { ok: false; error: string }> {
   try {
     let current = new URL(url);
     let res: Response | undefined;
     for (let redirects = 0; redirects <= 5; redirects++) {
       await validateUrl?.(current);
-      res = await fetchImpl(current, {
+      const target = current;
+      res = await politeFetch(() => fetchImpl(target, {
         headers: { Accept: 'application/xml,text/xml;q=0.9' },
         signal: AbortSignal.timeout(15_000),
         redirect: 'manual',
-      });
+      }), polite);
       if (res.status < 300 || res.status >= 400) break;
       const location = res.headers.get('location');
       if (!location) return { ok: false, error: 'redirect without Location' };

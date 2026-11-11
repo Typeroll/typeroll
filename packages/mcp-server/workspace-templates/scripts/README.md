@@ -21,6 +21,27 @@ shared media operations instead. It is a small hosted MCP helper for API keys,
 not a replacement OAuth client or a new general CRUD CLI. REST is also supported
 by Typeroll if your integration already uses it.
 
+## Request pace: your computer or a cloud session
+
+Home connections throttle. An ISP, router or DNS resolver can slow down or block
+many rapid requests from one machine, both to the old website during a migration
+and to the new site during checks. The network tools therefore pace themselves
+(`pacing.py` for the Python checks, `browser.cjs` between browser page loads):
+
+| Profile | When | Concurrency | Between requests per host |
+| --- | --- | --- | --- |
+| `local` | default | 2 | 300 ms |
+| `cloud` | `CLAUDE_CODE_REMOTE=true`, `CODESPACES`, `GITHUB_ACTIONS` or `CI` is set | 5 | 100 ms |
+
+Each tool prints the profile it uses. Set `TYPEROLL_REQUEST_PROFILE=local|cloud`
+to choose one and `TYPEROLL_REQUEST_CONCURRENCY=N` (1–16) to change concurrency.
+429 and 5xx answers and network errors are retried up to three times with
+backoff, honouring `Retry-After`; a host that asks for more than a minute is
+reported, not hammered. On your own computer, keep the local profile and check
+a few pages first. Run large crawls, media copies and full-site checks in a
+cloud session (Claude Code on the web, Codespaces, CI). Do the same for your
+own crawling or copying of the old site.
+
 ## Before publication
 
 ```sh
@@ -30,6 +51,11 @@ python3 scripts/typeroll/check_unsaved.py
 Exit 1 lists unsaved Pages **and partials**. Review those changes; save only the
 work authorized for this publication, then run again. Templates save immediately.
 A working-copy preview is not proof of saved output. Never auto-save other work.
+
+Then run `trigger_deploy` with `dry_run: true` and read `get_publication_impact`.
+A publication ships everything saved on the Site, including changes by other
+people and other agent sessions. If the list has changes you did not make, stop
+and find out whose they are before publishing.
 
 ## After an authorized publication
 
@@ -46,8 +72,8 @@ detects loops and flags chains beyond a single redirect (one initial slash
 normalization is allowed). This does **not** prove the final destination is the
 editorially correct page: compare with the approved URL map too. No inventory
 is a failure, not a passing zero-row check. Asset QA uses resolved routes,
-checks published/unlisted Pages, relative URLs, srcset and downloads, uses four
-concurrent HEAD requests and falls back to GET when HEAD is unsupported. CSS
+checks published/unlisted Pages, relative URLs, srcset and downloads, sends HEAD
+requests at the request profile's concurrency and falls back to GET when HEAD is unsupported. CSS
 backgrounds, authenticated assets and dynamically loaded resources need browser QA.
 Neither tool spoofs a search crawler. A 403/DNS/network failure is unverified;
 inspect access policy rather than treating it as a broken migration or a pass.
@@ -64,9 +90,11 @@ inspect access policy rather than treating it as a broken migration or a pass.
   It is not transactional: a failure can leave a partial draft; inspect before retry.
 - `shootframe.cjs OUT-PREFIX SIGNED-PREVIEW-URL [widths...]`: selects only the
   Typeroll preview iframe, reports fonts/hosts/overflow. Signed URLs are secrets;
-  pass privately, never paste into committed reports or shell history. Direct-frame
-  capture checks rendering only; test Extension storage/navigation/handoffs in
-  the original wrapper because those features depend on its parent bridge.
+  pass privately, never paste into committed reports or shell history. For your
+  own changes, mint the link with `include_working_copy: true` and the changed
+  Page (`page_id` or `slug`), and pass its `frame_url`. Direct-frame capture
+  checks rendering only; test Extension storage/navigation/handoffs in the
+  original wrapper because those features depend on its parent bridge.
 - `layout_trace.cjs URL [width] [selector]`: computed spacing of ancestors and
   next section. Works with a direct page or Typeroll preview.
 - `contact_sheet.py OUT-PREFIX COLS TILE-WIDTH PNG...`: Pillow contact sheets.
@@ -80,9 +108,9 @@ inspect access policy rather than treating it as a broken migration or a pass.
 
 Browser reports exit nonzero for missing images, overflow, unexpected H1 count,
 failed requests or incomplete scrolling. They keep third-party failures visible.
-Network checks retry only a bounded read. All reports, screenshots and source
-exports stay under ignored qa/reports/ or sources/private/. Do not commit signed
-URLs, personal data or customer assets. Adapt scripts deliberately and run tests
+Network checks retry only bounded reads, paced per host. All reports, screenshots
+and source exports stay under ignored qa/reports/ or sources/private/. Do not
+commit signed URLs, personal data or customer assets. Adapt scripts deliberately and run tests
 before applying broad changes. The workspace updater preserves your edits.
 
 ## Palette migration (Core 0.2.106 / MCP 0.45.80+)

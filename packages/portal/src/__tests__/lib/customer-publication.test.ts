@@ -31,7 +31,7 @@ const fonts = vi.hoisted(() => ({ freeze: vi.fn() }));
 const fontPlan = { render_version: 1, families: [], google_css_url: null, service_stylesheets: [] };
 // Publications freeze theme fonts from Google; tests never reach the network.
 vi.mock('../../lib/publishing/theme-font-freeze', () => ({ freezeSiteFonts: fonts.freeze }));
-vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => mocks.runtime }));
+vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => { if (mocks.runtime instanceof Error) throw mocks.runtime; return mocks.runtime; } }));
 vi.mock('../../lib/extensions/auth', async original => ({ ...await original<object>(), signInstallationAssertion: () => 'synthetic-proof' }));
 vi.mock('../../lib/extensions/admin-request', async original => ({ ...await original<object>(), requestApprovedAdmin: mocks.derive }));
 vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completedBuild: mocks.built }));
@@ -878,6 +878,47 @@ it('publishes without an SVG that cannot be made safe and reports it on the job'
   expect(JSON.stringify(resolved.pages)).toContain('<img src=\\"\\">');
 });
 
+describe('media missing from storage', () => {
+  const privateUrl = 'https://cms.example.com/api/sites/site/media/lost/content';
+  beforeEach(async () => {
+    const store = getStore();
+    await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
+    await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: `<img src="${privateUrl}"><img src="https://media.example.com/photo.png">` });
+    await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12,
+      storage: { provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'originals', key: 'photo.png' } });
+    // The media migration set the copy aside after the transfer Worker failed every attempt.
+    await store.setDoc(`${paths.media('org', 'site')}/lost`, { filename: 'lost.png', mime_type: 'image/png', cdn_url: privateUrl, r2_key: 'legacy/lost.png', source_url: 'https://old.example.com/wp-content/uploads/lost.png?token=secret',
+      migration_failed: true, migration_error: { code: 'media_transfer_unavailable', message: 'The transfer Worker exceeded its CPU limit.', at: '2026-11-01T00:00:00Z' } });
+    const domains = await getSiteDomains('org', 'site');
+    await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', media_host: 'media.example.com', media_path_prefix: '', dns_mode: 'automatic' });
+    await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'www.example.com', media_host: 'media.example.com', media_path_prefix: '' } });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('fails a dry run with the list of missing files on the job, before any source is produced', async () => {
+    await executeCustomerPublication({ ...args, dryRun: true });
+    const job = await getStore().getDoc<any>(jobPath);
+    expect(job).toMatchObject({ status: 'failed', failure: { code: 'media_missing', missing_media_total: 1,
+      missing_media: [{ media_id: 'lost', filename: 'lost.png', source_host: 'old.example.com', code: 'media_transfer_unavailable', reason: 'The transfer Worker exceeded its CPU limit.' }] } });
+    expect(job.error).toContain('accept_missing_media: true');
+    expect(JSON.stringify(job)).not.toContain('token=secret');
+    expect(mocks.source).not.toHaveBeenCalled();
+  });
+
+  it('publishes without the missing files when the job accepts it, and warns', async () => {
+    await getStore().updateDoc(jobPath, { accept_missing_media: true });
+    await executeCustomerPublication({ ...args, dryRun: true });
+    const job = await getStore().getDoc<any>(jobPath);
+    expect(job).toMatchObject({ status: 'succeeded', dry_run: true });
+    expect(job.warnings).toEqual(expect.arrayContaining([expect.stringContaining('Media lost (lost.png) was not published: it is missing')]));
+    const frozen = mocks.source.mock.calls[0][0];
+    expect(frozen.media_manifest.entries.map((entry: any) => entry.id)).toEqual(['photo']);
+    const resolved = resolvePublicationReferences(frozen);
+    expect(JSON.stringify(resolved.pages)).not.toContain('/api/sites/site/media/lost/content');
+    expect(JSON.stringify(resolved.pages)).toContain('<img src=\\"\\">');
+  });
+});
+
 it('keeps direct publication waiting for customer verification, then runs only bounded coordinator probes', async () => {
   await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
   const provider = mocks.cloudflare.getMockImplementation()!;
@@ -1434,6 +1475,68 @@ it('finishes legacy previous-host redirects through normal publication after pub
   expect(mocks.push).toHaveBeenCalledTimes(pushes);
 });
 
+it('makes the www counterpart of the live website host redirect on a normal publication, without a rebuild or DNS change', async () => {
+  // As on autopilot.se: the apex is a custom domain of the same Pages project and serves the site directly.
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  const rules: any[] = [];
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/rulesets')) {
+      if (!options?.method) return { id: 'ruleset', rules: structuredClone(rules) };
+      rules.push({ ...(options.body.rules?.[0] ?? options.body), id: `rule-${rules.length}` });
+      return {};
+    }
+    return provider(route, options);
+  });
+  redirectProbe.mockImplementation(async (...probe: unknown[]) => probe[0] === 'example.com' && !rules.some(item => item.expression.includes('"example.com"'))
+    ? { ok: false, status: 200, location: null } : { ok: true, status: 301, location: null });
+  await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'succeeded' });
+  expect(rules).toEqual([expect.objectContaining({ ref: expect.stringMatching(/^typeroll_previous_t_/), expression: 'http.host in {"example.com"}',
+    action_parameters: { from_value: { target_url: { expression: 'concat("https://www.example.com", http.request.uri.path)' }, status_code: 301, preserve_query_string: true } } })]);
+  expect((await getSiteDomains('org', 'site')).implicit_redirects).toMatchObject([{ host: 'example.com', target_host: 'www.example.com', source: 'default', status: 'verified' }]);
+  expect(mocks.cloudflare.mock.calls.some(([route, options]) => route.includes('/dns_records') && options?.method)).toBe(false);
+  // Later publications write nothing; once verified, an unchanged publication stays unchanged.
+  let unchanged = false;
+  for (let i = 0; i < 3 && !unchanged; i++) {
+    const next = { ...args, jobId: `again-${i}` };
+    await getStore().setDoc(paths.deploy('org', 'site', next.jobId), { version_id: 'main', status: 'queued', environment: 'production', started_at: new Date().toISOString() });
+    await executeCustomerPublication(next);
+    unchanged = (await getStore().getDoc<any>(paths.deploy('org', 'site', next.jobId))).phase === 'unchanged';
+  }
+  expect(unchanged).toBe(true);
+  expect(rules).toHaveLength(1);
+});
+
+it('finishes the www redirect of an unchanged publication and never fails it when the counterpart serves something else', async () => {
+  const provider = mocks.cloudflare.getMockImplementation()!;
+  mocks.cloudflare.mockImplementation(async (route, options) => {
+    if (route.includes('/dns_records') && !options?.method && route.includes('name=example.com')) return [{ id: 'dns', name: 'example.com', type: 'A', content: '203.0.113.7', proxied: false }];
+    if (route.includes('/rulesets')) { if (options?.method) throw new Error('No rule may be written'); return { id: 'ruleset', rules: [] }; }
+    return provider(route, options);
+  });
+  redirectProbe.mockImplementation(async (...probe: unknown[]) => probe[0] === 'example.com' ? { ok: false, status: 200, location: null } : { ok: true, status: 301, location: null });
+  await executeCustomerPublication(args);
+  complete(); mocks.probe.mockResolvedValue(true);
+  await executeCustomerPublication(args);
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'succeeded' });
+  const [warning] = (await getSiteDomains('org', 'site')).implicit_redirects!;
+  expect(warning).toMatchObject({ host: 'example.com', status: 'warning', issue: { code: 'www_redirect_host_in_use' } });
+  // Each later publication checks once and succeeds; an unchanged one finishes without rebuilding.
+  let unchanged = false;
+  for (let i = 0; i < 3 && !unchanged; i++) {
+    const pushes = mocks.push.mock.calls.length, checks = redirectProbe.mock.calls.length;
+    const next = { ...args, jobId: `again-${i}` };
+    await getStore().setDoc(paths.deploy('org', 'site', next.jobId), { version_id: 'main', status: 'queued', environment: 'production', started_at: new Date().toISOString() });
+    await executeCustomerPublication(next);
+    expect((await getStore().getDoc<any>(paths.deploy('org', 'site', next.jobId))).status).toBe('succeeded');
+    expect(redirectProbe.mock.calls.slice(checks).filter(call => (call as unknown[])[0] === 'example.com')).toHaveLength(1);
+    unchanged = mocks.push.mock.calls.length === pushes;
+  }
+  expect(unchanged).toBe(true);
+});
+
 it('records the actual replaced origins even if future settings change during the provider request', async () => {
   const store=getStore();
   await store.updateDoc(siteDomainConfigPath('org','site'),{active:{website_host:'old.example.com',media_host:null,media_path_prefix:''}});
@@ -1554,4 +1657,46 @@ it('tells the publication that background image preparation stopped and why (SE-
   expect(await executeCustomerPublication(args)).toBe('waiting');
   expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ media_preparation: { state: 'failed', error_code: 'build_timeout', failed_build_task: 'old-task' },
     warnings: expect.arrayContaining([expect.stringContaining('Background image preparation stopped (build_timeout)')]) });
+});
+
+// The private app host compares an app Worker's version with the one live pages were built with (2026-11-11).
+const appRuntime = (version: string) => ({ forms: [], apps: { apps: {} }, dependencies: [], extensions: { runtime_version: '1', protocol_version: 1,
+  installations: [{ installation_id: 'inst_events', extension_id: 'se.vendor.events', version, public_config: {}, components: [] }] } });
+const mainTarget = () => getStore().getDoc<any>(`${paths.site('org', 'site')}/publishing_targets/main`);
+async function seedAppInstallation() {
+  await getStore().setDoc(paths.extensionInstallation('org', 'site', 'inst_events'), { extension_id: 'se.vendor.events', developer_org_id: 'dev', owner_org_id: 'org', status: 'enabled', granted_scopes: [] });
+  for (const version of ['1.4.0', '2.0.0']) await getStore().setDoc(paths.extensionVersion('dev', 'se.vendor.events', version), { version, status: 'published', manifest: { id: 'se.vendor.events', version } });
+}
+
+it('records the app version of every installation on the live publication', async () => {
+  const { publishedExtensionVersion } = await import('../../lib/extensions/published-version');
+  expect(await publishedExtensionVersion('org', 'site', 'inst_events')).toBeNull();
+  await seedAppInstallation(); mocks.runtime = appRuntime('1.4.0');
+  await executeCustomerPublication(args); complete(); mocks.probe.mockResolvedValue(true);
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect((await mainTarget()).last_publication.extension_versions).toEqual({ inst_events: '1.4.0' });
+  expect(await publishedExtensionVersion('org', 'site', 'inst_events')).toBe('1.4.0');
+  expect(await publishedExtensionVersion('org', 'site', 'inst_other')).toBeNull();
+});
+
+it('keeps the live app versions on a domain-only candidate after the installation version changed', async () => {
+  await seedAppInstallation(); mocks.runtime = appRuntime('1.4.0');
+  await getStore().updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
+  await prepareFromCurrentPublication();
+  // The candidate is cloned from the live snapshot; the changed installation reaches visitors only with the next content publication.
+  mocks.runtime = appRuntime('2.0.0');
+  await executeCustomerPublication(args);
+  complete(mocks.push.mock.calls[0][1].branch); mocks.probe.mockResolvedValue(true);
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ phase: 'awaiting domain cutover approval' });
+  expect((await mainTarget()).last_publication).toMatchObject({ source_publication_id: expect.any(String), extension_versions: { inst_events: '1.4.0' } });
+});
+
+it('fails a publication whose form posts to an undeclared app endpoint with that reason, not publication_internal_error', async () => {
+  const message = 'Form "Booking" (booking) posts to /book on app installation inst_events, but that endpoint is not declared by the installation\'s active version 1.4.0.';
+  mocks.runtime = new ConnectionError(message, 409, 'form_app_endpoint_unavailable');
+  expect(await executeCustomerPublication(args)).toBe('ran');
+  expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: message, failure: { code: 'form_app_endpoint_unavailable' } });
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect((await mainTarget())?.last_publication).toBeUndefined();
 });

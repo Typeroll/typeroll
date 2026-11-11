@@ -62,6 +62,11 @@ Parse `<a href>` links to discover internal pages. Build a list:
 Exclude private/session/admin URLs deliberately. Inventory public pagination and
 query routes and keep them working or map relevant redirects. Do not silently retire public routes.
 
+Fetch slowly when you run on the user's own computer: one or two pages at a
+time with a pause, and back off on 429/503. An ISP, router or DNS resolver can
+throttle or block many rapid requests to one host. Prefer a cloud session for
+large crawls.
+
 **Map source styling to named styles.** A class the source uses for a
 recurring treatment (`.eyebrow`, `.lead`, `.btn-outline`, `.section-dark`)
 becomes a site style with `create_style` and is applied with `style_id`. A
@@ -161,7 +166,10 @@ Walk through every imported page with the user. Common issues:
 
 ### 7. Publish + deploy
 
-After approval, save working copies and confirm publishing readiness:
+After approval, save working copies and confirm publishing readiness. Run
+`trigger_deploy dry_run=true` and read `get_publication_impact` first: the
+publication ships everything saved on the site, including other sessions'
+changes; stop and ask about any you did not make.
 ```
 batch_update_pages updates=[
   {page_id: "om-oss",  patch: {status: "published"}},
@@ -174,7 +182,9 @@ get_migration_launch_report
 ```
 
 This is candidate verification, not permission to change traffic DNS. Every old
-public URL must serve its content or a relevant redirect before cutover.
+public URL must serve its content or a relevant redirect before cutover. The
+migration is finished only when no media or page has failed, or each failure is
+reviewed and accepted; check the live pages' images once after publication.
 
 ## Platform-specific notes
 

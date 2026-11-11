@@ -30,14 +30,14 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
     if (!guide) return;
     setBusy(true); setError(''); setNotice('');
     try {
-      let result: { reused_candidate?: boolean; already_running?: boolean; repaired?: string[]; remaining?: unknown[] } = {};
+      let result: { reused_candidate?: boolean; already_running?: boolean; repaired?: string[]; remaining?: unknown[]; implicit_redirects?: Array<{ status: string }> } = {};
       if (action !== 'check') {
         const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action, revision: guide.revision, candidate_id: guide.candidate?.id, ...(action === 'approve' ? { accept_validation_window: accept, validation_timeout_minutes: 15 } : {}), ...extra }) });
         const body = await response.json(); if (!response.ok) throw new Error(body.error || 'The domain action failed.');
         result = body;
       }
       await load(); setReview(false); setAccept(false);
-      setNotice(action === 'check' ? 'Checks refreshed. Review the current status below.' : action === 'prepare' ? result.reused_candidate ? 'Domain setup refreshed. The same main publication is retained; no build or DNS change was started.' : result.already_running ? 'Publication is already in progress. Follow its status here; no duplicate build was started.' : 'Publishing for the new domain started. This replaces the site at its current address. DNS is unchanged.' : action === 'rollback' ? 'Restoration requested. Typeroll checks for intervening DNS edits before restoring.' : action === 'retry_validation' ? 'Cloudflare Pages validation was checked and retried where needed. Review the current status below.' : action === 'repair_previous_host_redirects' ? (result.remaining?.length ? 'Some previous addresses still have no redirect. Follow the steps shown for each one, then repair again.' : 'Previous addresses now redirect to the website. No build or DNS change was made.') : 'Switch approved. This is not live until public verification succeeds.');
+      setNotice(action === 'check' ? 'Checks refreshed. Review the current status below.' : action === 'prepare' ? result.reused_candidate ? 'Domain setup refreshed. The same main publication is retained; no build or DNS change was started.' : result.already_running ? 'Publication is already in progress. Follow its status here; no duplicate build was started.' : 'Publishing for the new domain started. This replaces the site at its current address. DNS is unchanged.' : action === 'rollback' ? 'Restoration requested. Typeroll checks for intervening DNS edits before restoring.' : action === 'retry_validation' ? 'Cloudflare Pages validation was checked and retried where needed. Review the current status below.' : action === 'repair_previous_host_redirects' ? (result.remaining?.length || result.implicit_redirects?.some(item => item.status !== 'verified') ? 'Some previous or www addresses still have no redirect. Follow the steps shown for each one, then repair again.' : 'Previous and www addresses now redirect to the website. No build or DNS change was made.') : 'Switch approved. This is not live until public verification succeeds.');
     } catch (err) { setError(err instanceof Error ? err.message : 'The domain action failed.'); }
     finally { setBusy(false); }
   }
@@ -71,7 +71,7 @@ export default function PublishingDomainGuide({ siteId }: { siteId: string }) {
         </div>
       </div>}
       {guide?.next_action === 'retry_validation' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void action('retry_validation')}>Retry validation</button>}
-      {guide?.next_action === 'repair_previous_host_redirects' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void action('repair_previous_host_redirects')}>Repair previous address redirects</button>}
+      {guide?.next_action === 'repair_previous_host_redirects' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => void action('repair_previous_host_redirects')}>Repair address redirects</button>}
       {guide?.next_action === 'approve' && <button type="button" className="btn btn-primary" disabled={busy} onClick={() => setReview(true)}>Review traffic switch</button>}
       {guide?.cutover && guide.cutover.state !== 'rolled_back' && <button type="button" className="btn" disabled={busy} onClick={() => { if (window.confirm('Restore the DNS records saved before this traffic switch? Later external edits will be reported instead of overwritten.')) void action('rollback'); }}>Restore previous traffic</button>}
     </div>

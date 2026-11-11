@@ -19,7 +19,7 @@ describe('migration feedback safeguards', () => {
       if (url.includes('/pages?') || url.includes('/posts?')) return '[]';
       return '<script>var fake="<a href=/script-only>";</script><!-- <a href="/hidden">x</a> --><a href="/linked?q=1&amp;x=2">yes</a><a href="https://other.example/">no</a>';
     });
-    const result = await discoverPublicWordPress('https://source.example', { read, crawlPages:1 });
+    const result = await discoverPublicWordPress('https://source.example', { read, crawlPages:1, polite:{ paceMs:0 } });
     expect(result.urls).toEqual(['https://source.example/events/one', 'https://source.example/', 'https://source.example/linked?q=1&x=2']);
     expect(result.requests).toBe(5);
     expect(result.truncated).toBe(false);

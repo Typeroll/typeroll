@@ -47,6 +47,7 @@ import { collapseMediaHostChains, moveWebsiteMediaToMediaHost, publicationMediaM
 import { digest } from './providers.mjs';
 import { recordPublishedMedia } from './published-media';
 import { readSnapshot, saveSnapshot, type SnapshotReference } from './publication-snapshot';
+import { publicationExtensionVersions } from '../extensions/published-version';
 import { resolvePublicationVersion } from './publication-version';
 import { publicationCookieReopenWarnings, publicationSiteFieldWarnings, publicationSnippetWarnings } from './content-preflight';
 import { publicationDemoMediaWarnings } from '../packages/demo-media';
@@ -80,6 +81,8 @@ export interface HostedPublication extends SnapshotReference {
   /** The live publication before this one replaced it: what a failed verification restores. Recorded before the upload. */
   rollback_to?: string | null;
   deployed?: { digest: string; uploaded_files: number; deployed_at: string };
+  /** App version per installation frozen into this publication; `GET /extensions/self` reports it as `published_version`. */
+  extension_versions?: Record<string, string>;
 }
 
 export interface HostedVerification { host: string | null; attempts: number; ready: boolean; checked_at: string }
@@ -197,7 +200,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
         frozen.derivation = { receipts: derivation.receipts, cache_keys: derivation.cache_keys, ...(derivation.skipped.length > 0 ? { skipped: derivation.skipped } : {}) };
       }
       const [domains, organization] = await Promise.all([getSiteDomains(args.orgId, args.siteId), getOrganizationDomains(args.orgId)]);
-      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, undefined, { deferReferences: true, domains, dryRun: args.dryRun === true });
+      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, undefined, { deferReferences: true, domains, dryRun: args.dryRun === true, acceptMissingMedia: job.accept_missing_media === true });
       // Images travel with the site; an organization media host lives in a Cloudflare account hosted sites do not have.
       if (mapped.manifest && mapped.manifest.delivery !== 'static') {
         throw new ConnectionError('Images of a hosted site are published with the site. Remove the organization media host in Publishing, then publish again.', 409, 'hosted_media_host_unsupported');
@@ -242,7 +245,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       const usable = engine?.status === 'ready' || (!!engine?.previous && (engine.status === 'preparing' || engine.status === 'qualifying'));
       if (!engine || !usable) throw new ConnectionError('Finish build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
       publication = { provider: HOSTED_MODE, publication_id: frozen.publication_id, content_cutoff: contentCutoff, website_host: host,
-        commit: hostedSourceCommit(frozen.publication_id), branch: 'main', snapshot_job_id: args.jobId, ...await saveSnapshot(args, frozen),
+        commit: hostedSourceCommit(frozen.publication_id), branch: 'main', snapshot_job_id: args.jobId, extension_versions: publicationExtensionVersions(frozen), ...await saveSnapshot(args, frozen),
         build_provider: engine.provider ?? 'cloudflare', build_engine_revision: engine.revision };
       await assertLease();
       await store.updateDoc(jobPath, { git_publication: publication, execution_backend: publication.build_provider === 'github' ? 'organization_github' : 'organization_cloudflare' });
@@ -354,6 +357,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       code: error instanceof DerivationError ? 'publication_derivation_failed' : error instanceof ConnectionError ? error.code ?? 'hosted_publication_failed' : 'publication_internal_error',
       ...(error instanceof DerivationError ? { provider: error.provider } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
+      ...(error instanceof ConnectionError && Array.isArray(error.details?.missing_media) ? { missing_media: error.details.missing_media, missing_media_total: error.details.missing_media_total } : {}),
       ...(error instanceof ConnectionError && error.details?.cloudflare_errors ? { provider: 'Cloudflare', provider_operation: error.details.operation, http_status: error.details.http_status } : {}) };
     const internal = failure.code === 'publication_internal_error' && error instanceof Error
       ? { error_name: error.name, error_message: redactFailureText(error.message) } : {};

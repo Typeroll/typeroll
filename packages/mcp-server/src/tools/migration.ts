@@ -224,7 +224,7 @@ export const migrationTools: ToolDef[] = [
         .optional()
         .describe('Return all rows when verdicts is omitted. Default false: successful/excluded rows are summarized but omitted.'),
       limit: z.number().int().positive().max(500).optional().describe('Max URLs per run (default 150). `truncated: true` in the response means there are more.'),
-      concurrency: z.number().int().positive().max(12).optional(),
+      concurrency: z.number().int().positive().max(12).optional().describe('Parallel requests (default 4, max 12). Hosts and CDNs throttle faster crawlers; 429 and 503 answers are retried with backoff.'),
     },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.post(siteId, 'migration-urls/verify', args);

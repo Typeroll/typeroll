@@ -6,7 +6,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { MAIN_VERSION_ID, paths, groupQueryRedirects, injectQueryRedirectScript } from '@typeroll/shared';
 import type { Redirect } from '@typeroll/shared';
-import { checkUrlParity, recordRedirectVerification, runSiteParityCheck } from '../../lib/wp/url-parity';
+import { checkUrlParity, PARITY_DEFAULT_CONCURRENCY, recordRedirectVerification, runSiteParityCheck } from '../../lib/wp/url-parity';
 import type { Site } from '@typeroll/shared';
 
 const ORG = 'orgone';
@@ -198,8 +198,10 @@ describe('checkUrlParity', () => {
 
   it('retries timeouts and 5xx at a gentler pace, but not a real 404', async () => {
     const calls: Record<string, number> = {};
+    const waits: number[] = [];
     const { results, summary } = await checkUrlParity([{ path: '/slow' }, { path: '/busy' }, { path: '/gone' }, { path: '/down' }], {
       targetOrigin: TARGET,
+      polite: { sleep: async (ms) => { waits.push(ms); }, random: () => 0 },
       fetchImpl: (async (input: RequestInfo | URL) => {
         const path = new URL(String(input)).pathname;
         calls[path] = (calls[path] ?? 0) + 1;
@@ -214,6 +216,44 @@ describe('checkUrlParity', () => {
       '/slow': ['ok', 2], '/busy': ['ok', 3], '/gone': ['missing', undefined], '/down': ['error', 3],
     });
     expect(summary).toMatchObject({ ok: 2, missing: 1, error: 1 });
+    // The 503 paused the first retry round, then was retried once in it after a backoff.
+    expect(waits).toEqual([1000, 1000]);
+  });
+
+  it('waits out a 429 as the host asks in retry rounds', async () => {
+    const calls: Record<string, number> = {};
+    const waits: number[] = [];
+    const { results } = await checkUrlParity([{ path: '/limited' }, { path: '/fine' }], {
+      targetOrigin: TARGET,
+      polite: { sleep: async (ms) => { waits.push(ms); }, random: () => 0 },
+      fetchImpl: (async (input: RequestInfo | URL) => {
+        const path = new URL(String(input)).pathname;
+        calls[path] = (calls[path] ?? 0) + 1;
+        if (path === '/limited' && calls[path] < 3) return new Response(null, { status: 429, headers: { 'Retry-After': '4' } });
+        return new Response(null, { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    expect(calls).toEqual({ '/limited': 3, '/fine': 1 });
+    expect(Object.fromEntries(results.map(result => [result.path, [result.verdict, result.attempts]]))).toEqual({ '/limited': ['ok', 3], '/fine': ['ok', undefined] });
+    // Round pause (no header to go on), then the host's 4 s inside the round.
+    expect(waits).toEqual([1000, 4000]);
+  });
+
+  it('runs at most four requests at once by default', async () => {
+    expect(PARITY_DEFAULT_CONCURRENCY).toBe(4);
+    let inFlight = 0;
+    let peak = 0;
+    await checkUrlParity(Array.from({ length: 12 }, (_, i) => ({ path: `/p${i}` })), {
+      targetOrigin: TARGET,
+      fetchImpl: (async () => {
+        inFlight++;
+        peak = Math.max(peak, inFlight);
+        await new Promise((resolve) => setTimeout(resolve, 1));
+        inFlight--;
+        return new Response(null, { status: 200 });
+      }) as unknown as typeof fetch,
+    });
+    expect(peak).toBe(4);
   });
 
   it('retries a redirect whose next hop timed out, but not a redirect to a real 404', async () => {

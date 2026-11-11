@@ -7,8 +7,47 @@ import { getConnection, ConnectionError } from './connections';
 import { getSiteDomains, getOrganizationDomains, markOrganizationMediaHostUsed, publicMediaPath, type DomainConfiguration } from './domain-config';
 import { siteMediaPrefix } from '../media-keys';
 import { allowedMediaExtensions, isScriptableMediaType, mediaNameMatchesType, mediaTypeEssence, passiveTypeForName, SVG_MEDIA_TYPE } from '../media/file-types';
+import type { ImportingMedia } from '../media/import-retry';
 
 type MarkedMedia = Media & { svg_sanitized?: { sha256?: string } };
+
+/** A referenced file whose bytes will not reach organization storage without someone acting. */
+export interface MissingMedia { media_id: string; filename: string; source_host: string | null; code: string; reason: string }
+/** `missing_media` lists at most this many files; `missing_media_total` always counts them all. */
+export const MISSING_MEDIA_LIST_LIMIT = 100;
+/** Up to this many accepted missing files get a warning each; more get one summary. */
+const MISSING_MEDIA_WARNING_LIMIT = 20;
+
+/** Only the host of a source address: the full URL may carry a token. */
+export function sourceHost(url: unknown): string | null {
+  if (typeof url !== 'string' || !url) return null;
+  try { return new URL(url).host || null; } catch { return null; }
+}
+/** Addresses in a recorded failure are reduced to their host for the same reason. */
+export const hostOnly = (text: string) => text.replace(/\bhttps?:\/\/[^\s"'`<>)]+/g, url => sourceHost(url) ?? '[address]').slice(0, 500);
+
+/**
+ * Classifies referenced media that is not ready in the connected organization
+ * storage. It is missing when nothing will copy it without someone acting:
+ * - `migration_failed`: the media migration set the copy aside after its
+ *   attempts (or the automatic import retries) were used up, or the source or
+ *   file was refused. A retry from Publishing clears the flag.
+ * - `import_rejected`: the imported source was rejected (for example an SVG
+ *   that is not a usable image).
+ * - no stored copy (`storage`, `r2_key`) and no pending import exists that
+ *   could provide the bytes.
+ * Everything else is still on its way (an upload, a copy the migration has not
+ * made yet, or a pending import waiting for its next retry) and returns null.
+ * The same rule as `importStatus()` in lib/media/import-retry.ts.
+ */
+export function missingMediaReason(media: Media): { code: string; reason: string } | null {
+  const item = media as ImportingMedia;
+  if (item.migration_failed) return { code: item.migration_error?.code || item.import_error_code || 'media_transfer_unavailable',
+    reason: hostOnly(item.migration_error?.message || item.import_error || 'Copying the file to organization storage failed and was set aside.') };
+  if (item.import_rejected) return { code: item.import_error_code || 'media_svg_invalid', reason: hostOnly(item.import_error || 'The imported file was rejected.') };
+  if (!item.storage && !item.r2_key && !(item.import_pending && item.source_url)) return { code: 'media_file_missing', reason: 'No stored copy of this file exists.' };
+  return null;
+}
 /** Only SVG bytes written by the sanitizer may be published (lib/media/svg-media.ts). */
 const sanitizedSvg = (item: MarkedMedia | undefined, sha256: string | undefined) => !!item && !!sha256 && item.svg_sanitized?.sha256 === sha256;
 
@@ -60,7 +99,7 @@ export function replacePublicationReferences<T>(value: T, replacements: Map<stri
 }
 
 /** Image bytes and temporary credentials are excluded; Git contains identity, hashes and public routing only. */
-export async function publicationMediaManifest<T extends Record<string, any>>(orgId: string, siteId: string, content: T, websiteHost: string, previousPublication?: Record<string, any>, options: { deferReferences?: boolean; domains?: DomainConfiguration; dryRun?: boolean } = {}) {
+export async function publicationMediaManifest<T extends Record<string, any>>(orgId: string, siteId: string, content: T, websiteHost: string, previousPublication?: Record<string, any>, options: { deferReferences?: boolean; domains?: DomainConfiguration; dryRun?: boolean; acceptMissingMedia?: boolean } = {}) {
   const [all, connection, storedDomains, organization, prefix] = await Promise.all([
     getStore().listDocs<Media>(paths.media(orgId, siteId)), getConnection(orgId, 'cloudflare'), getSiteDomains(orgId, siteId),
     getOrganizationDomains(orgId), siteMediaPrefix(orgId, siteId),
@@ -99,10 +138,38 @@ export async function publicationMediaManifest<T extends Record<string, any>>(or
   const replacements = new Map<string, string>();
   const pathsSeen = new Set<string>();
   const warnings: string[] = [];
+  // The one media preflight of a publication (dry runs included): every
+  // referenced file must be ready in the connected organization storage.
+  const missing: Array<MissingMedia & { item: MarkedMedia }> = [];
+  let pending = 0;
   for (const item of media) {
-    if (item.storage?.provider !== 'organization_r2' || item.storage.state !== 'ready' || !/^[a-f0-9]{64}$/.test(item.sha256 ?? '') ||
-        item.storage.account_id !== connection.cloudflare!.account_id || item.storage.bucket !== connection.cloudflare!.bucket) {
-      throw new ConnectionError('Some referenced media is still uploading or migrating to your R2 account. Wait for media setup to finish, then deploy again.', 409, 'media_migration_pending');
+    if (item.storage?.provider === 'organization_r2' && item.storage.state === 'ready' && /^[a-f0-9]{64}$/.test(item.sha256 ?? '') &&
+        item.storage.account_id === connection.cloudflare!.account_id && item.storage.bucket === connection.cloudflare!.bucket) continue;
+    const failure = fromPrevious ? null : missingMediaReason(item);
+    if (failure) missing.push({ media_id: item.id, filename: item.filename, source_host: sourceHost((item as ImportingMedia).source_url), ...failure, item });
+    else pending++;
+  }
+  const stillCopying = pending ? ` ${pending} more referenced media file(s) are still uploading or migrating.` : '';
+  if (missing.length && options.acceptMissingMedia !== true) {
+    const first = missing[0];
+    throw new ConnectionError(`Cannot publish: ${missing.length} referenced media file(s) are missing from this site's media storage because their copy failed and was set aside (first: ${first.media_id} ${first.filename}, ${first.code}).${stillCopying} ` +
+      'Retry the media migration in Publishing or import those files again, or publish with accept_missing_media: true to leave their references empty. missing_media lists the files.', 409, 'media_missing',
+    { missing_media: missing.slice(0, MISSING_MEDIA_LIST_LIMIT).map(({ item: _item, ...entry }) => entry), missing_media_total: missing.length });
+  }
+  if (pending) throw new ConnectionError(`${pending} referenced media file(s) are still uploading or migrating to your R2 account. Wait for media setup to finish, then deploy again.`, 409, 'media_migration_pending');
+  if (missing.length) {
+    // Accepted: the files are left out like an unsafe SVG. Never publish a
+    // private Typeroll address; an empty reference renders as no file.
+    for (const { item } of missing) {
+      for (const url of references(item)) replacements.set(url, '');
+      media.splice(media.indexOf(item), 1);
+    }
+    const left = 'References to it were left empty because this publication accepts missing media (accept_missing_media).';
+    if (missing.length <= MISSING_MEDIA_WARNING_LIMIT) {
+      for (const entry of missing) warnings.push(`Media ${entry.media_id} (${entry.filename}) was not published: it is missing from this site's media storage (${entry.code}). ${left}`);
+    } else {
+      const ids = missing.slice(0, MISSING_MEDIA_LIST_LIMIT).map(entry => entry.media_id).join(', ');
+      warnings.push(`${missing.length} media files were not published because they are missing from this site's media storage: ${ids}${missing.length > MISSING_MEDIA_LIST_LIMIT ? `, and ${missing.length - MISSING_MEDIA_LIST_LIMIT} more` : ''}. References to them were left empty because this publication accepts missing media (accept_missing_media).`);
     }
   }
   // SVG stored before sanitizing existed is sanitized now, before anything is

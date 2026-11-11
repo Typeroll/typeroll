@@ -4,6 +4,7 @@ import concurrent.futures
 from html.parser import HTMLParser
 import json
 import urllib.parse
+import pacing
 import trlib
 from check_url_parity import origin, fetch, probe
 
@@ -43,6 +44,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('origin', type=origin)
     args = parser.parse_args()
+    request_profile = pacing.profile()
     pages = [p for p in trlib.all_pages() if p.get('status') in ('published', 'unlisted')]
     errors, assets = [], set()
     for page in pages:
@@ -62,7 +64,7 @@ def main():
         parser = Assets(evidence['final_url'])
         parser.feed(body.decode('utf8', 'replace'))
         assets.update(parser.urls)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=request_profile['concurrency']) as pool:
         results = list(pool.map(check, sorted(assets)))
     print(json.dumps({'pages': len(pages), 'page_errors': errors, 'assets': results}, indent=2))
     return 1 if not pages or errors or any(not item['ok'] for item in results) else 0

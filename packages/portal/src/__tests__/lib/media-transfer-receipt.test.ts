@@ -54,26 +54,49 @@ async function settle<T>(promise: Promise<T>) {
 }
 const failureLogs = () => vi.mocked(console.info).mock.calls.map(([line]) => JSON.parse(String(line)));
 
-it('retries a Cloudflare HTML error page over 2 KB and fails with a code that keeps the upstream status', async () => {
+it('treats a Cloudflare 503 page without a Worker code as the plan limit: one retry, one copy at a time, then a clear failure', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout'] });
   try {
-    const { remoteMediaTransfers } = await import('../../lib/media/transfer');
+    const { organizationTransfers, remoteMediaTransfers } = await import('../../lib/media/transfer');
     const congested = vi.spyOn(remoteMediaTransfers, 'congested');
     const page = `<!DOCTYPE html><html><head><title>Worker exceeded resource limits | Cloudflare</title></head><body>${'Error 1102 '.repeat(800)}</body></html>`;
     expect(page.length).toBeGreaterThan(2048);
     vi.stubGlobal('fetch', vi.fn(async () => new Response(page, { status: 503, headers: { 'content-type': 'text/html' } })));
     const { error } = await settle(copy());
-    expect(fetch).toHaveBeenCalledTimes(3);
-    expect(error).toMatchObject({ status: 503, code: 'media_transfer_unavailable', details: { upstream_status: 503, worker_code: null } });
-    expect(error.message).toContain('HTTP 503');
-    expect(congested).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(error).toMatchObject({ status: 503, code: 'media_transfer_resources_exceeded', details: { upstream_status: 503, worker_code: null } });
+    expect(error.message).toContain('Workers Paid raises the limit');
+    // Only this organization's copies slow down; other organizations keep their concurrency.
+    expect(congested).not.toHaveBeenCalled();
+    expect(organizationTransfers('org').limit).toBe(1);
+    expect(organizationTransfers('other-org').limit).toBe(8);
     const logs = failureLogs();
     expect(logs.filter(log => log.event === 'media_transfer_retry')).toEqual([
-      expect.objectContaining({ attempt: 1, reason: 'http_503', upstream_status: 503, worker_code: null }),
-      expect.objectContaining({ attempt: 2, reason: 'http_503', upstream_status: 503, worker_code: null }),
+      expect.objectContaining({ attempt: 1, reason: 'http_503:resources_exceeded', upstream_status: 503, worker_code: null, concurrency: 1 }),
     ]);
-    expect(logs.find(log => log.event === 'media_transfer_failed')).toMatchObject({ attempts: 3, upstream_status: 503, code: 'media_transfer_unavailable' });
+    expect(logs.find(log => log.event === 'media_transfer_failed')).toMatchObject({ attempts: 2, upstream_status: 503, code: 'media_transfer_resources_exceeded' });
   } finally { vi.useRealTimers(); }
+});
+
+it('retries other Cloudflare 5xx pages without a Worker code three times', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout'] });
+  try {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('<html>'.padEnd(4096, 'x'), { status: 500 })));
+    const { error } = await settle(copy());
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(error).toMatchObject({ status: 503, code: 'media_transfer_unavailable', details: { upstream_status: 500, worker_code: null } });
+    expect(error.message).toContain('HTTP 500');
+  } finally { vi.useRealTimers(); }
+});
+
+it('sends copies to the Worker one at a time after it was stopped, and recovers concurrency after healthy copies', async () => {
+  const { TransferPool } = await import('../../lib/media/transfer');
+  const pool = new TransferPool(8, 8, 8); let active = 0, maximum = 0;
+  pool.throttle();
+  await Promise.all(Array.from({ length: 6 }, () => pool.run('worker', 1, async () => { active++; maximum = Math.max(maximum, active); await new Promise(resolve => setImmediate(resolve)); active--; })));
+  expect(maximum).toBe(1);
+  await Promise.all(Array.from({ length: 10 }, () => pool.run('worker', 1, async () => {})));
+  expect(pool.limit).toBe(2);
 });
 
 it.each(['media_source_temporarily_unavailable', 'media_transfer_interrupted', 'media_transfer_timeout', 'media_transfer_busy', 'media_destination_unavailable'])(

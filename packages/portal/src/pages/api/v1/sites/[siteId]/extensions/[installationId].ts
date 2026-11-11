@@ -90,10 +90,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
       config: body.config && typeof body.config === 'object' && !Array.isArray(body.config)
         ? body.config as Record<string, unknown>
         : undefined,
+      confirmFormTargets: body.confirm_form_targets === true,
     });
     return withApiIdentity(guard.value, json(await safeInstallation(installation, guard.value.versionId)));
   } catch (error) {
-    if (error instanceof ExtensionRegistryError) return withApiIdentity(guard.value, json({ error: error.message }, error.status));
+    if (error instanceof ExtensionRegistryError) return withApiIdentity(guard.value, json({ error: error.message, ...(error.code ? { code: error.code } : {}), ...error.details }, error.status));
     return withApiIdentity(guard.value, json({ error: 'Failed to update Extension installation' }, 500));
   }
 };

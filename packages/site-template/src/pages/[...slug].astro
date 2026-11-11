@@ -43,6 +43,7 @@ import { FORMS_RUNTIME_JS, formShellCss,
   pageBodyContext,
   composePageWithTemplate,
   expandExtensionIncludes,
+  hasExtensionBlockTypes,
   expandFormIncludes,
   expandIncludes,
   globalBlockSourceFromPartials,
@@ -302,7 +303,7 @@ const preloadImage = leadingBackgroundImage(bodyHtml);
 if (bodyHtml) bodyHtml = prepareHeadingOutline(normalizePageH1s(bodyHtml)).html;
 
 ---
-<BaseLayout contentType={contentType} identity={identity} breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd} mediaByUrl={mediaLookup.byUrl} preloadImage={preloadImage}>
+<BaseLayout contentType={contentType} identity={identity} breadcrumbs={props.breadcrumbs} page={props.page} settings={settings} apps={appsPublic} extensions={extensionsPublic} extensionMounts={hasExtensionBlockTypes(blockRegistry.values())} blockCss={blockCss} blockJs={blockJs} clientCapabilities={clientCapabilities} extraJsonLd={extraJsonLd} mediaByUrl={mediaLookup.byUrl} preloadImage={preloadImage}>
   <Header partial={header} settings={settings} context={renderCtx} freeBlocks={freeBlocks} extensionSource={extensionSource} />
 
   {bodyHtml ? (

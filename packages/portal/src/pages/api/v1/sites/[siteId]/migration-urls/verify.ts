@@ -11,7 +11,7 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
-import { runSiteParityCheck } from '../../../../../../lib/wp/url-parity';
+import { PARITY_DEFAULT_CONCURRENCY as DEFAULT_CONCURRENCY, runSiteParityCheck } from '../../../../../../lib/wp/url-parity';
 import type { ParityVerdict } from '../../../../../../lib/wp/url-parity';
 import type { UrlStatus } from '../../../../../../lib/wp/url-inventory';
 import { migrationSourcePolicy, parseOutboundUrl } from '../../../../../../lib/net/safe-fetch';
@@ -70,7 +70,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     MAX_LIMIT,
   );
   const concurrency = Math.min(
-    Math.max(1, Math.floor(Number(body.concurrency ?? 6)) || 6),
+    Math.max(1, Math.floor(Number(body.concurrency ?? DEFAULT_CONCURRENCY)) || DEFAULT_CONCURRENCY),
     MAX_CONCURRENCY,
   );
 

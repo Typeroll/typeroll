@@ -57,8 +57,8 @@ it('does not switch an original whose destination fails byte verification', asyn
   vi.mocked(copyWithTransferService).mockRejectedValue(new ConnectionError('The copied file does not match the original.', 422, 'media_integrity_failed'));
   await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
   expect((await getStore().getDoc<any>(mediaPath)).storage.provider).toBe('draft_r2');
-  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', copied_files: 0, failed_files: 1,
-    failed_media: [{ site_id: 'site', media_id: 'image', code: 'media_integrity_failed' }] });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete_with_failures', ok: false, copied_files: 0, failed_files: 1,
+    failed_media: [{ site_id: 'site', media_id: 'image', code: 'media_integrity_failed', transient: false }], failed_media_total: 1, failed_media_next: null });
 });
 
 it('rewrites branch references without overwriting a concurrent content edit', async () => {
@@ -299,13 +299,13 @@ it('retries an interrupted transfer automatically and pauses after three unsucce
     const job = (await store.listDocs<any>('publishing_media_migrations'))[0];
     await store.updateDoc(`publishing_media_migrations/${job.id}`, { retry_at: 0 });
     await runMediaMigrationBatch('org', 'site');
-    expect((await mediaMigrationStatus('org'))?.state).toBe(attempt === 3 ? 'complete' : 'queued');
+    expect((await mediaMigrationStatus('org'))?.state).toBe(attempt === 3 ? 'complete_with_failures' : 'queued');
   }
   // The third attempt sets the file aside with its own reason instead of blaming R2 access.
   const status = await mediaMigrationStatus('org');
   expect(status?.error).toContain('1 file could not be copied');
-  expect(status).toMatchObject({ failed_files: 1, updated_at: expect.any(String),
-    sites: [{ site_id: 'site', state: 'complete', failed_files: 1 }], failed_media: [{ media_id: 'image', code: 'media_transfer_interrupted' }] });
+  expect(status).toMatchObject({ failed_files: 1, ok: false, updated_at: expect.any(String),
+    sites: [{ site_id: 'site', state: 'complete_with_failures', ok: false, failed_files: 1 }], failed_media: [{ media_id: 'image', code: 'media_transfer_interrupted' }] });
 });
 
 it('lets only one worker copy while a duplicate delivery observes the active lease', async () => {
@@ -501,7 +501,7 @@ it('sets aside a source the transfer service refuses, finishes the rest, and ret
   await requestMediaMigration('org', 'site'); await runMediaMigrationBatch('org', 'site');
   const status = await mediaMigrationStatus('org');
   // Set-aside files are listed with their reason; they do not leave the migration failed (FI-10).
-  expect(status).toMatchObject({ state: 'complete', failed_files: 1, copied_files: 1, failed_media: [{ media_id: 'dead', filename: 'q.jpg', code: 'media_source_unavailable', message: 'The original file could not be downloaded.' }] });
+  expect(status).toMatchObject({ state: 'complete_with_failures', ok: false, failed_files: 1, copied_files: 1, failed_media: [{ media_id: 'dead', filename: 'q.jpg', code: 'media_source_unavailable', message: 'The original file could not be downloaded.' }] });
   expect(status?.error).toContain('1 file could not be copied');
   // A later upload on the Site does not retry the refused file.
   const { enqueueMediaMigration } = await import('../../lib/publishing/media-migration-queue');
@@ -513,7 +513,7 @@ it('sets aside a source the transfer service refuses, finishes the rest, and ret
   expect(vi.mocked(enqueueMediaMigration).mock.calls).toEqual([['org', 0, 'site']]);
   expect(await store.getDoc<any>(`${paths.media('org', 'site')}/dead`)).toMatchObject({ migration_failed: false, migration_error: null });
   await runMediaMigrationBatch('org', 'site');
-  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', failed_files: 0, copied_files: 2, failed_media: [] });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', ok: true, failed_files: 0, copied_files: 2, failed_media: [] });
 });
 
 it('hands a failed organization-wide request from before site jobs to every site on retry', async () => {
@@ -564,7 +564,8 @@ it('retries a pending import after 1, 5, 15, 30 and 60 minutes instead of settin
   expect(await executeMediaMigration('org', 'site')).toBeNull();
   expect(copyWithTransferService).toHaveBeenCalledTimes(6);
   expect(await store.getDoc<any>(mediaPath)).toMatchObject({ migration_failed: true, migration_error: { code: 'media_source_temporarily_unavailable' } });
-  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', failed_files: 1, failed_media: [{ media_id: 'imported', code: 'media_source_temporarily_unavailable' }] });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete_with_failures', ok: false, failed_files: 1,
+    failed_media: [{ media_id: 'imported', code: 'media_source_temporarily_unavailable', transient: true, source_host: 'source.example.com', source_url: 'https://source.example.com/imported.png' }] });
   // A retry from Publishing starts the schedule again.
   vi.mocked(copyWithTransferService).mockResolvedValue({ protocol: 1, id: '00000000-0000-0000-0000-000000000000', sha256: sha, size: 3, etag: '"verified"' });
   await retryMediaMigration('org');
@@ -589,4 +590,76 @@ it('does not report a stored file with a stale set-aside flag as skipped', async
   expect(copyWithTransferService).not.toHaveBeenCalled();
   expect(await store.getDoc<any>(mediaPath)).toMatchObject({ migration_failed: false, migration_error: null });
   expect(await store.getDoc<any>(`publishing_media_migrations/${job.id}`)).toMatchObject({ state: 'complete', failed_files: 0, error: null });
+});
+
+it('retries a stored file stopped by the transfer Worker plan limit on the delayed schedule, then sets it aside as transient', async () => {
+  const store = getStore(), mediaPath = `${paths.media('org', 'site')}/image`;
+  await store.setDoc(mediaPath, fixtureMedia('image'));
+  vi.spyOn(S3Client.prototype, 'send').mockImplementation(async () => goodBody());
+  vi.mocked(copyWithTransferService).mockRejectedValue(new ConnectionError('The Cloudflare account’s Workers plan stopped the copy.', 503, 'media_transfer_resources_exceeded'));
+  await requestMediaMigration('org', 'site');
+  const job = async () => (await store.listDocs<any>('publishing_media_migrations'))[0];
+  for (const [index, minutes] of [1, 5, 15, 30, 60].entries()) {
+    const started = Date.now();
+    const delay = await executeMediaMigration('org', 'site');
+    expect(copyWithTransferService).toHaveBeenCalledTimes(index + 1);
+    const media = await store.getDoc<any>(mediaPath);
+    expect(media).toMatchObject({ migration_failures: index + 1, storage: { provider: 'draft_r2' } });
+    expect(media.migration_failed).toBeFalsy();
+    expect(Date.parse(media.migration_retry_at)).toBeGreaterThanOrEqual(started + minutes * 60_000);
+    // The Site waits for the planned retry instead of ending with the file skipped.
+    expect(await job()).toMatchObject({ state: 'queued', pending_files: 1 });
+    expect(delay).toBeGreaterThan(minutes * 60_000 - 1_000);
+    expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'queued', ok: false, failed_files: 0, failed_media: [] });
+    // An early delivery does not try the copy again.
+    await store.updateDoc(`publishing_media_migrations/${(await job()).id}`, { retry_at: 0 });
+    await runMediaMigrationBatch('org', 'site');
+    expect(copyWithTransferService).toHaveBeenCalledTimes(index + 1);
+    await store.updateDoc(mediaPath, { migration_retry_at: new Date(Date.now() - 1).toISOString() });
+    await store.updateDoc(`publishing_media_migrations/${(await job()).id}`, { retry_at: 0 });
+  }
+  expect(await executeMediaMigration('org', 'site')).toBeNull();
+  expect(await store.getDoc<any>(mediaPath)).toMatchObject({ migration_failed: true, migration_error: { code: 'media_transfer_resources_exceeded', transient: true } });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete_with_failures', ok: false, failed_files: 1,
+    sites: [{ site_id: 'site', state: 'complete_with_failures', ok: false }], failed_media: [{ media_id: 'image', code: 'media_transfer_resources_exceeded', transient: true }] });
+  // A retry from Publishing starts again and a successful copy clears the schedule.
+  vi.mocked(copyWithTransferService).mockResolvedValue({ protocol: 1, id: '00000000-0000-0000-0000-000000000000', sha256: sha, size: 3, etag: '"verified"' });
+  await retryMediaMigration('org');
+  await runMediaMigrationBatch('org', 'site');
+  expect(await store.getDoc<any>(mediaPath)).toMatchObject({ migration_failed: false, migration_failures: 0, migration_retry_at: null, storage: { provider: 'organization_r2', state: 'ready' } });
+  expect(await mediaMigrationStatus('org')).toMatchObject({ state: 'complete', ok: true, failed_files: 0 });
+});
+
+it('lists every set-aside file of every site with its host only, pages through them, and ignores stale counters', async () => {
+  const store = getStore();
+  const set = async (site: string, count: number) => {
+    await store.setDoc(paths.site('org', site), { media_id: `${site}xxxxxx`.slice(0, 10), publishing_mode: 'customer_git' });
+    for (let index = 0; index < count; index++) {
+      const id = `${site}-${String(index).padStart(3, '0')}`;
+      await store.setDoc(`${paths.media('org', site)}/${id}`, { ...fixtureMedia(id), source_url: `https://wp.example.com/uploads/${id}.png?token=secret`, migration_failed: true,
+        migration_error: { code: 'media_transfer_resources_exceeded', message: `Copy of https://wp.example.com/uploads/${id}.png?token=secret stopped.`, at: '2026-11-09T00:00:00.000Z', transient: true } });
+    }
+  };
+  await set('moveria-at', 12); await set('moveria-de', 99);
+  const base = { org_id: 'org', scope: 'site', state: 'complete', copied_files: 0, copied_bytes: 0, pending_files: 0, lease_id: null, lease_until: 0 };
+  // Stored counters disagree with the records: the records decide.
+  await store.setDoc(`publishing_media_migrations/${createHash('sha256').update('org\0moveria-at').digest('hex')}`, { ...base, site_id: 'moveria-at', failed_files: 3 });
+  await store.setDoc(`publishing_media_migrations/${createHash('sha256').update('org\0moveria-de').digest('hex')}`, { ...base, site_id: 'moveria-de', failed_files: 0 });
+  // A pass over every site from before per-site jobs left its own counter behind.
+  await store.setDoc(`publishing_media_migrations/${createHash('sha256').update('org').digest('hex')}`, { ...base, scope: 'organization', failed_files: 99, error: 'stale' });
+  const first = (await mediaMigrationStatus('org'))!;
+  expect(first).toMatchObject({ state: 'complete_with_failures', ok: false, failed_files: 111, failed_media_total: 111 });
+  expect(first.error).toContain('111 files could not be copied');
+  expect(first.sites).toEqual([
+    expect.objectContaining({ site_id: 'moveria-at', state: 'complete_with_failures', ok: false, failed_files: 12 }),
+    expect.objectContaining({ site_id: 'moveria-de', state: 'complete_with_failures', ok: false, failed_files: 99 }),
+  ]);
+  expect(first.failed_media).toHaveLength(100);
+  expect(first.failed_media[0]).toEqual({ site_id: 'moveria-at', media_id: 'moveria-at-000', filename: 'moveria-at-000.png', source_url: 'https://wp.example.com/uploads/moveria-at-000.png',
+    source_host: 'wp.example.com', code: 'media_transfer_resources_exceeded', message: 'Copy of wp.example.com stopped.', at: '2026-11-09T00:00:00.000Z', transient: true });
+  expect(JSON.stringify(first)).not.toContain('token=secret');
+  expect(first.failed_media_next).toBe('moveria-de/moveria-de-087');
+  const second = (await mediaMigrationStatus('org', { failedAfter: first.failed_media_next }))!;
+  expect(second.failed_media.map(file => file.media_id)).toEqual(Array.from({ length: 11 }, (_, index) => `moveria-de-${String(88 + index).padStart(3, '0')}`));
+  expect(second.failed_media_next).toBeNull();
 });

@@ -24,6 +24,7 @@ import type { ContentType, Page, Redirect } from '@typeroll/shared';
 import { vstore } from './version-store';
 import { getStore } from './datastore';
 import { getSiteDomains } from './publishing/domain-config';
+import { implicitRedirectHosts } from './publishing/www-redirect';
 import { isLivePageStatus } from './redirect-hygiene';
 
 export type RedirectWarning = { code: 'redirect_chain' | 'redirect_loop'; from_path: string; via: string[]; final_target: string };
@@ -121,7 +122,9 @@ export async function loadRedirectWriteContext(orgId: string, siteId: string, ve
     getSiteDomains(orgId, siteId).catch(() => null),
   ]);
   // An absolute target on the site's own hosts is the same page as its path.
-  const ownHosts = [site?.domain, site?.domain_alias, domains?.desired.website_host, domains?.active?.website_host, ...(domains?.desired.redirect_hosts ?? [])]
+  // The implicit www counterpart redirects to the website host too, so it is one of the site's own hosts.
+  const ownHosts = [site?.domain, site?.domain_alias, domains?.desired.website_host, domains?.active?.website_host, ...(domains?.desired.redirect_hosts ?? []),
+    ...(domains ? [...implicitRedirectHosts(domains, domains.desired), ...implicitRedirectHosts(domains, domains.active)] : [])]
     .filter((host): host is string => typeof host === 'string' && host.length > 0).map(host => host.toLowerCase());
   const types = new Map<string, ContentType>([[DEFAULT_CONTENT_TYPE.id, DEFAULT_CONTENT_TYPE], ...contentTypes.map((type) => [type.id, type] as [string, ContentType])]);
   const liveUrls = pages

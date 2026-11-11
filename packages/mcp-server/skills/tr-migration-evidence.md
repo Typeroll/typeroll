@@ -113,6 +113,12 @@ copying prose: retain decoded labels, href paths, query parameters, fragments,
 `target` and meaningful `rel` tokens. A source CSS class may identify a CTA
 whose appearance would disappear when copied into prose.
 
+Capture and crawl the source slowly when you run on the user's own computer:
+an ISP, router or DNS resolver can throttle or block many rapid requests to one
+host, and the failures look like a broken source. Load a few pages at a time
+with pauses, back off on 429/503 (honour `Retry-After`), and prefer a cloud
+session for large crawls, media copies and full-site screenshot runs.
+
 Before removing builder wrappers/classes, preserve the information they carry:
 anchors, lazy/srcset/background images, captions, tables, ordering, downloads,
 embeds and interactions. Content modernization is a separate decision.
@@ -302,6 +308,11 @@ approved design/content for renew. It requires zero uncovered required surfaces
 and zero unexplained regressions against that reference. `FAIL` or `UNVERIFIED` blocks that signoff, even when a separately scoped
 technical publication has approval. An intentional deviation needs exact before/
 after evidence, specific user benefit and accepted scope; “cleaner” is not a reason.
+
+Do not call the migration finished while its status shows failed media or
+Pages (`read_organization_media_migration` → `failed_media`, failed imports or
+inventory rows), unless each failure is reviewed and its acceptance recorded.
+After the first publication, check the live pages' images once.
 
 Preserve-mode examples from a moving-services migration:
 

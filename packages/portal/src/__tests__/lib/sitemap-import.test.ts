@@ -12,7 +12,7 @@ describe('readSitemap', () => {
       const value = responses[String(input)];
       return value ? new Response(value, { status: 200 }) : new Response('', { status: 404 });
     }) as typeof fetch;
-    const result = await readSitemap('https://old.example.com/sitemap.xml', { fetchImpl });
+    const result = await readSitemap('https://old.example.com/sitemap.xml', { fetchImpl, polite: { paceMs: 0 } });
     expect(result.sitemaps_read).toBe(3);
     expect(result.urls).toEqual([
       { loc: 'https://old.example.com/a', lastmod: undefined },

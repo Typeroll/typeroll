@@ -578,6 +578,16 @@ describe('migration feedback inputs', () => {
     await tool.handler(parsed,ctx);
     expect(JSON.parse(ctx.calls[0].body!)).toEqual({allow_unsaved:true});
   });
+  it('forwards accepting missing media only as an explicit boolean and explains media_missing', async () => {
+    const ctx = setup(() => jsonResponse({ job_id:'job', accept_missing_media:true }));
+    const tool = find(deployTools,'trigger_deploy');
+    const schema = z.object(tool.inputSchema!);
+    expect(schema.safeParse({accept_missing_media:'true'}).success).toBe(false);
+    expect(String((tool.inputSchema!.accept_missing_media as z.ZodTypeAny).description)).toMatch(/media_missing[\s\S]*missing_media[\s\S]*dry_run/);
+    expect(find(deployTools,'get_deploy_status').description).toContain('job.failure.missing_media');
+    await tool.handler(schema.parse({accept_missing_media:true}),ctx);
+    expect(JSON.parse(ctx.calls[0].body!)).toEqual({accept_missing_media:true});
+  });
   it('forwards the live-domain acknowledgement only as an explicit boolean', async () => {
     const ctx = setup(() => jsonResponse({ job_id:'job', production:true, live_domains:['https://moveria.es'], targets:['https://moveria.es','https://site-0.sites.moveria.com'] }));
     const tool = find(deployTools,'trigger_deploy');

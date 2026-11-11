@@ -13,6 +13,7 @@ import type { WPTaxonomy, WPTerm } from './client';
 // WPClient against /wp-json/wp/v2/.
 
 import { migrationSourcePolicy, safeFetch } from '../net/safe-fetch';
+import { politeFetch, RequestPacer, type PoliteOptions } from '../net/polite-fetch';
 import { WP_MAX_COLLECTION_BYTES, WP_MAX_PAGES } from './client';
 
 const HELPER_POLICY = migrationSourcePolicy({ label: 'Helper URL', timeoutMs: 60_000, maxBytes: 32 * 1024 * 1024 });
@@ -168,7 +169,9 @@ export class WPHelperClient {
   private base: string;
   constructor(
     siteUrl: string,
-    private apiKey: string
+    private apiKey: string,
+    /** Backoff on 429/503 and the gap between pages (lib/net/polite-fetch). */
+    private readonly polite: PoliteOptions = {},
   ) {
     this.base = siteUrl.replace(/\/$/, '') + '/wp-json/typeroll/v1';
   }
@@ -238,9 +241,9 @@ export class WPHelperClient {
   // ─── Internals ─────────────────────────────────────────────────────────
 
   private async get<T>(path: string): Promise<T> {
-    const res = await safeFetch(`${this.base}${path}`, {
+    const res = await politeFetch(() => safeFetch(`${this.base}${path}`, {
       headers: { 'X-Typeroll-Key': this.apiKey, Accept: 'application/json' },
-    }, { ...HELPER_POLICY, timeoutMs: 30_000 });
+    }, { ...HELPER_POLICY, timeoutMs: 30_000 }), this.polite);
     if (!res.ok) {
       throw new Error(`Helper ${path} → ${res.status} ${res.statusText}`);
     }
@@ -251,10 +254,12 @@ export class WPHelperClient {
     const out: T[] = [];
     let page = 1;
     let bytes = 0;
+    const pacer = RequestPacer.for(this.polite);
     while (true) {
-      const res = await safeFetch(`${this.base}${path}?page=${page}&per_page=100`, {
+      await pacer.wait();
+      const res = await politeFetch(() => safeFetch(`${this.base}${path}?page=${page}&per_page=100`, {
         headers: { 'X-Typeroll-Key': this.apiKey, Accept: 'application/json' },
-      }, HELPER_POLICY);
+      }, HELPER_POLICY), this.polite);
       if (!res.ok) {
         throw new Error(`Helper ${path} page ${page} → ${res.status}`);
       }

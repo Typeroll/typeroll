@@ -3,6 +3,13 @@
 - Confirm Organization, Site, Version and deployed/source identity.
 - Run `python3 scripts/typeroll/check_unsaved.py` before trigger_deploy. Review
   and explicitly save authorized Pages and partials; templates save immediately.
+- Then run `trigger_deploy` with `dry_run: true` and read `get_publication_impact`.
+  A publication ships everything saved on the Site, including other people's and
+  other sessions' changes. Stop and find out about any change you did not make.
+- Review your own edits with `get_preview_link` `include_working_copy: true` for
+  the changed Page (`page_id` or `slug`); use its `frame_url` for screenshots.
+- After switching an app version, dry-run and publish soon: the live site keeps
+  the version it was published with until the next publication.
 - Publish one Site at a time per Organization (shared build engine): start the
   next only when the previous job finished and read_organization_build_engine
   shows no active_jobs.
@@ -20,6 +27,12 @@
 - Check home title/suffix, metadata, canonical/indexing policy and JSON-LD.
 - Run check_url_parity.py and check_assets.py on the deployed candidate; compare
   final targets with the approved URL map and flatten accidental redirect chains.
+- On your own computer, keep the scripts' local request profile: home ISPs,
+  routers and DNS can throttle rapid requests. Run full-site checks, URL parity
+  and screenshot runs on large sites in a cloud session (scripts/README.md).
+- A migration is finished only when no media or Page has failed, or each failure
+  is reviewed and accepted in brief/migration.md. After publication, check the
+  live Pages' images once.
 - Treat 403/network/DNS failures as unverified. Do not claim search-bot access
   from a user-agent string or turn off customer protection without approval.
 - Record tested pages, viewports, revision, results and unresolved issues per QA
@@ -83,6 +96,11 @@ read before edits, update afterward, check external links at each editorial revi
 and archive notes for confirmed removed Pages under pages/archived/. Refreshing
 generated facts never counts as a completed review. Keep notes out of public output.
 
+- Before a render-version upgrade, screenshot 390, 768 and 1440px and record
+  computed boxes from a preview at the current version and one at the target
+  `render_version`. Compare those two; comparing the live site after the upgrade
+  hides regressions. Vertical shifts count as differences. Re-check site or Page
+  CSS that targets platform markup (`.block-section-inner`, `[data-block]` internals).
 - After a Core rendering upgrade, compare typography and spacing at 375, 768
   and 1280px. Opening headings in cards, boxes and sections must not add the
   editorial heading's top margin. Check actual fonts as well as the Site settings

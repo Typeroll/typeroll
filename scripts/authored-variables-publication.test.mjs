@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createStaticPublicationProject, projectStaticPublication, sealPublicationProject } from './lib/static-publication.mjs';
 
@@ -29,6 +30,10 @@ test('a publication expands {{site.name}} and {{site.fields.*}} from render vers
     };
     const publication = projectStaticPublication(input, { siteUrl: 'https://bistro.test', coreCommit: 'b'.repeat(40), publishedAt: '2026-11-07T00:00:00Z', noindex: false,
       coreBlockTypes: [{ id: 'core/prose', schema: [{ name: 'html', type: 'richtext' }] }] });
+    // Frozen font files, as Typeroll freezes them with a publication: the build must not download Inter.
+    const bytes = Buffer.from('frozen font bytes'), name = `${'f'.repeat(32)}.woff2`;
+    publication.theme_fonts = { css_url: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap', css: `@font-face{font-family:'Inter';src:url(/_typeroll/fonts/${name}) format('woff2')}\n`,
+      files: [{ name, sha256: createHash('sha256').update(bytes).digest('hex'), data: bytes.toString('base64') }] };
     const destination = path.join(temp, `v${renderVersion}`);
     await createStaticPublicationProject(publication, destination);
     await fs.symlink(fileURLToPath(new URL('../node_modules', import.meta.url)), path.join(destination, 'node_modules'), 'dir');

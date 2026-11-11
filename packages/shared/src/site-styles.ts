@@ -586,6 +586,7 @@ export const STYLE_DEFAULT_ROLE_CLASSES: readonly StyleClassRole[] = ['eyebrow',
 // These selectors follow the block that owns the heading, not every ancestor.
 const EDITORIAL_HEADING = ':where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"]) :is(h1,h2,h3,h4,h5,h6)';
 const OPENING_HEADING = ':where([data-block="container"],[data-block="semantic-container"],.block-section-inner,.block-columns-col) > :is(h1,h2,h3,h4,h5,h6):first-child, :where([data-block="container"],[data-block="semantic-container"],.block-section-inner,.block-columns-col) > :where([data-block="heading"],[data-block="rich_heading"]):first-child :is(h1,h2,h3,h4,h5,h6), :where([data-block="container"],[data-block="semantic-container"],.block-section-inner,.block-columns-col) > [data-block="prose"]:first-child > :is(h1,h2,h3,h4,h5,h6):first-child';
+const PAGE_OPENING_HEADING = '.page-content--blocks > :where([data-block="heading"],[data-block="rich_heading"]):first-child :is(h1,h2,h3,h4,h5,h6), .page-content--blocks > [data-block="prose"]:first-child > :is(h1,h2,h3,h4,h5,h6):first-child';
 
 /**
  * CSS for a site's style library and its on_* text colours. Empty for a
@@ -616,6 +617,11 @@ export function siteStylesCss(input: readonly unknown[] | undefined, opts: SiteS
     `${EDITORIAL_HEADING}:not(#\\#){margin-block:var(--heading_before_px,calc(${renderVersion >= 14 ? '1.6em' : '1em'} * var(--type-rhythm,1))) var(--heading_after_px,calc(${renderVersion >= 14 ? '.35em' : '.5em'} * var(--type-rhythm,1)))}`,
     `[data-block]:not(:where([data-block="heading"],[data-block="rich_heading"],[data-block="prose"],[data-block="container"],[data-block="semantic-container"],[data-block="section"],[data-block="template_content_slot"])) :where(h1,h2,h3,h4,h5,h6):not(:where([data-block="heading"] *,[data-block="rich_heading"] *,[data-block="prose"] *)){margin-block:0}`,
     `:where(${OPENING_HEADING}):is(h1,h2,h3,h4,h5,h6):not(#\\#){margin-block-start:0}`,
+  );
+  // From version 18 a heading that opens the page itself has no space above it either:
+  // its 1.6em top margin collapsed through <main> and moved the whole page down.
+  if (renderVersion >= 18) rules.push(
+    `:where(${PAGE_OPENING_HEADING}):is(h1,h2,h3,h4,h5,h6):not(#\\#){margin-block-start:0}`,
   );
 
   const media = (bp: StyleBreakpoint) => `@media (min-width:${opts.breakpoints[bp]}px)`;

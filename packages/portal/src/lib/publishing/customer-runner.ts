@@ -13,6 +13,7 @@ import { verifyManagedProject } from './migrated-project';
 import { capturePublicationImpact } from './impact-preview';
 import { compareImpact } from './impact';
 import { readSnapshot, saveSnapshot } from './publication-snapshot';
+import { publicationExtensionVersions } from '../extensions/published-version';
 import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
 import { hostingDns } from './hosting-dns';
 import { purgePublicationHost } from './publication-cache';
@@ -26,6 +27,7 @@ import { cloudflareClient } from './cloudflare-oauth';
 import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError, githubFailureHint, ProviderTransportError } from './providers.mjs';
 import { getSiteDomains, activePublicationDomains, hasPendingPublishedDomains, samePublicationHosts, sameRedirectHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { prepareRedirectHosts, redirectApprovalBlocker, ensureApprovedRedirectRule, applyRedirectTraffic, verifyRedirectHost, type RedirectPreparation } from './redirect-hosts';
+import { maintainImplicitRedirects, implicitRedirectsPending } from './www-redirect';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
 import { publicationSourceTree } from './source-tree';
@@ -78,6 +80,8 @@ interface GitPublication extends CustomerVerification {
   release_branch?: 'main' | null; snapshot_job_id?: string; cache_purged_deployment?: string; cache_purged_hosts?: string[];
   /** Hosts frozen with this publication that must answer 301 to website_host before it is live. */
   redirect_hosts?: string[]; redirect_preparations?: RedirectPreparation[] | null;
+  /** App version per installation frozen into this publication; `GET /extensions/self` reports it as `published_version`. */
+  extension_versions?: Record<string, string>;
 }
 function projectCreationMessage(error: ProviderError, publication?: GitPublication) {
   const detail = `Cloudflare could not create the Pages project${publication ? ` in hosting account ${publication.account_id}` : ''}: HTTP ${error.status}${error.codes.length ? ` (code ${error.codes.join(', ')})` : ''}.`;
@@ -233,6 +237,15 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { phase: 'verifying previous website addresses', verification_message: error.message });
       return await waitForPublicationCondition(jobPath, 'verifying previous website addresses');
     }
+    // The www counterpart of the live website host redirects to it by default: one check per
+    // publication, and with automatic DNS only the zone's redirect rule is written. Never fails the job.
+    const liveWebsiteHost = args.versionId === 'main' && !job.verification_retry && (preparingDomain
+      ? domains.candidate?.id === publication.publication_id && domains.cutover_approved_revision === domains.revision
+      : domains.active?.website_host === publication.website_host);
+    const implicitRedirects = liveWebsiteHost ? await maintainImplicitRedirects({ org: args.orgId, site: args.siteId, group: publication.hosting_group_id ?? 'default',
+      publicationId: publication.publication_id, target: publication.website_host, dnsMode: domains.dns_mode, project: publication.project, config: domains,
+      hosts: { ...domains.desired, website_host: publication.website_host }, jobPath,
+      exclude: [...new Set([...(frozen.previous_website_hosts ?? []), ...previousHosts.map(item => item.host)])] }) : null;
     await recordPublishingOrigin(args.orgId, args.siteId, `https://${publication.website_host}`);
     const finished = new Date().toISOString();
     const stillOwned = await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 60_000 });
@@ -245,7 +258,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const outdated = !preparingDomain && currentDomains.candidate && currentDomains.candidate.source_publication_id !== publication.publication_id;
       const becameLive = preparingDomain || matchesDesired;
       const savedDomains = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === currentDomains.revision,
-        { active, previous_hosts: previousHosts, active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
+        { active, previous_hosts: previousHosts, ...(implicitRedirects ? { implicit_redirects: implicitRedirects } : {}), active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
           ...(becameLive ? {state: 'live'} : outdated ? {state:'outdated', cutover_approved_revision:null} : {}),
           media_aliases: [...currentDomains.media_aliases, ...(currentDomains.active && !currentDomains.media_aliases.some(alias => samePublicationHosts(alias, currentDomains.active!)) ? [currentDomains.active] : [])] });
       if (outdated && currentDomains.candidate?.job_id) await store.compareAndUpdateDoc<any>(paths.deploy(args.orgId, args.siteId, currentDomains.candidate.job_id),
@@ -412,7 +425,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
       // Media originals and metadata for a domain-only build come from the public snapshot too.
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
-      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true });
+      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true,
+        // A domain change rebuilds the last publication and never drops a file.
+        acceptMissingMedia: job.publication_intent !== 'domain_prepare' && job.accept_missing_media === true });
       // Non-blocking findings (for example media left out of this publication) stay on the job for users and agents.
       const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationCookieReopenWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
@@ -463,9 +478,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (acquired.last_publication && acquired.last_publication.publication_id === frozen.publication_id &&
           await probePublication(`https://${servedHost}`, '/.well-known/typeroll/publication.json', frozen.publication_id)) {
         if (frozen.previous_website_hosts?.some((host: string) => !savedDomains.previous_hosts?.some(previous =>
-          previous.host === host && previous.target_host === servedHost && previous.mode === 'redirect' && previous.status === 'verified'))) {
+          previous.host === host && previous.target_host === servedHost && previous.mode === 'redirect' && previous.status === 'verified')) ||
+          (!preparingDomain && args.versionId === 'main' && savedDomains.active?.website_host === servedHost &&
+            implicitRedirectsPending(savedDomains, { ...domains.desired, website_host: servedHost }, [...(frozen.previous_website_hosts ?? []), ...(savedDomains.previous_hosts ?? []).map(item => item.host)]))) {
           // Permission may have been approved since an unchanged publication's
-          // noindex fallback. Finish retirement without rebuilding its artifact.
+          // noindex fallback, or the www redirect is not verified yet. Finish
+          // retirement and the redirect without rebuilding its artifact.
           return await finishPublication(acquired.last_publication, domains, frozen);
         }
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });
@@ -474,7 +492,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: site?.git_repository ?? generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domainPublicationRevision(domains), destination: {hosts: domains.desired, dns_mode: domains.dns_mode},
-        ...(job.source_publication ? {source_publication_id: job.source_publication.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}), ...await saveSnapshot(args, frozen) };
+        ...(job.source_publication ? {source_publication_id: job.source_publication.publication_id} : {}), website_host: host, snapshot_job_id: args.jobId, ...(redirectHosts.length ? { redirect_hosts: redirectHosts } : {}),
+        // A domain-only candidate is cloned from the live snapshot, so it keeps the app versions live pages already call.
+        extension_versions: publicationExtensionVersions(frozen), ...await saveSnapshot(args, frozen) };
       const selectedProvider = await selectedBuildProvider(args.orgId);
       const engine = await readEngineConfiguration(args.orgId, selectedProvider);
       // An engine update in progress (by another publication or an admin) is awaited before the build, not refused.
@@ -944,6 +964,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       ...(error instanceof DerivationError ? { provider: error.provider } : {}),
       ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes, provider_reason: error.reason, provider_operation: error.operation, provider_error_types: error.errorTypes } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
+      ...(error instanceof ConnectionError && Array.isArray(error.details?.missing_media) ? { missing_media: error.details.missing_media, missing_media_total: error.details.missing_media_total } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
     // An unclassified error reaches the job only as publication_internal_error: log what it was (ECH7F4UqvST8aaG2uMrB).
     const errorCode = (error as { code?: unknown } | null)?.code;

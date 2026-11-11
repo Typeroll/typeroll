@@ -1185,6 +1185,14 @@ Cloudflare account), `not_offered` (this installation does not request the
 scope; use the fallback in `next_step`), `unknown` (API token, checked on use)
 or `connection_required`, with the exact `missing_scopes`.
 
+Do not add the www counterpart of the website host (`example.com` for
+`www.example.com`, and the other way round) to `redirect_hosts` just to get
+the usual apex/www redirect: it redirects by default (`www_redirect`,
+reported in `implicit_redirects` with `source: "default"`). List it explicitly
+only when it still points at another host and must be switched with the
+reviewed domain change. Save `www_redirect: false` only when the user says the
+counterpart is used for something else.
+
 ## Safety boundaries
 
 - **HTML is sanitized at save.** No `<script>`, no `onclick`, no

@@ -19,6 +19,12 @@
 // presentational settings, but never the fields that run code on or change
 // the indexing and origins of every published page: see INSTALLATION_REFUSED.
 //
+// `typography` and `design_scales` merge into the stored value like the
+// nested objects: `{typography:{line_length:"none"}}` changes that control
+// alone. A control set to null (a typography key, a scale step or a whole
+// scale) returns to the platform default; the whole field set to null clears
+// every override.
+//
 // `handover` (shared/src/site-handover.ts: checklist, start page, structure
 // lock) is replaced whole, and null removes it; it needs design rights (an
 // administrator or builder). An app installation writes it only with the
@@ -36,7 +42,7 @@ import { setSubmissionRetention, siteSubmissionRetentionDays, submissionRetentio
 import { normalizeStagingUrl, normalizeTwitterHandle, parseOrganizationInput } from '../../../../../lib/site-settings-fields';
 import { fontSettingsWarnings, listSiteFonts } from '../../../../../lib/fonts/font-library';
 import { handoverWriteErrors, normalizedHandover } from '../../../../../lib/site-handover-write';
-import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, cookieConsentManageButtonError, cookieReopenLinkWarning, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, siteFontsErrors, type SiteSettings } from '@typeroll/shared';
+import { dateFormatError, siteTimeZone, timeZoneError, contentWidthsError, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, normalizeIframeAllowedHosts, renderVersionStatus, isRenderVersion, isFontSmoothing, FONT_SMOOTHING_VALUES, LATEST_RENDER_VERSION, paths, isOnColorValue, onColorContrasts, onColorWarnings, ON_COLOR_TOKENS, normalizeCookieConsentLabels, cookieConsentManageButtonError, cookieReopenLinkWarning, normalizeLanguageSections, isAiCrawlerPolicy, isHeaderBehavior, HEADER_BEHAVIORS, AI_CRAWLER_POLICIES, siteFontsErrors, TYPOGRAPHY_DEFAULTS, TOKEN_SCALES, type SiteSettings } from '@typeroll/shared';
 
 const TOP_LEVEL = new Set([
   'typography', 'design_scales', 'agent_instructions', 'responsive_breakpoints', 'site_name', 'tagline', 'logo', 'favicon', 'apple_touch_icon', 'icon_192', 'trailing_slash', 'iframe_allowed_hosts', 'default_seo_suffix',
@@ -54,6 +60,56 @@ const SITE_LEVEL = new Set(['staging_url', 'form_submission_retention_days']);
 /** Optional string fields where an empty string clears the value. */
 const CLEARABLE_STRINGS = ['default_og_image', 'twitter_handle'] as const;
 const NESTED = new Set(['colors', 'fonts', 'contact', 'social', 'cookie_consent']);
+/** Design controls merged per control (and per scale step), not replaced whole. */
+const MERGED_DESIGN = new Set(['typography', 'design_scales']);
+
+type Patch = Record<string, unknown>;
+const isObject = (value: unknown): value is Patch => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+const withoutNulls = (value: Patch): Patch => Object.fromEntries(Object.entries(value).filter(([, v]) => v !== null));
+
+/** A typography patch: known controls, each a valid value or null (the default). */
+function typographyPatchError(value: unknown): string | null {
+  if (!isObject(value)) return 'typography must be an object, or null to reset every control';
+  const unknown = Object.keys(value).find((key) => value[key] === null && !Object.hasOwn(TYPOGRAPHY_DEFAULTS, key));
+  if (unknown) return `typography.${unknown} must be a supported setting`;
+  return typographyError(withoutNulls(value));
+}
+
+/** A design_scales patch: known scales and steps; null resets a step or a whole scale. */
+function designScalesPatchError(value: unknown): string | null {
+  if (!isObject(value)) return 'design_scales must be an object, or null to reset every scale';
+  const checked: Patch = {};
+  for (const [scale, steps] of Object.entries(value)) {
+    if (!Object.hasOwn(TOKEN_SCALES, scale)) return `Unknown design scale: ${scale}`;
+    if (steps === null) continue;
+    if (!isObject(steps)) return `design_scales.${scale} must be an object, or null to reset the scale`;
+    const unknown = Object.keys(steps).find((step) => steps[step] === null && !Object.hasOwn(TOKEN_SCALES[scale as keyof typeof TOKEN_SCALES], step));
+    if (unknown) return `Unknown ${scale} step: ${unknown}`;
+    checked[scale] = withoutNulls(steps);
+  }
+  return designScalesError(checked);
+}
+
+/** Stored typography after a patch; undefined when no control is left. */
+function mergedTypography(before: unknown, patch: Patch): Patch | undefined {
+  const merged = withoutNulls({ ...(isObject(before) ? before : {}), ...patch });
+  return Object.keys(merged).length ? merged : undefined;
+}
+
+/**
+ * Stored design scales after a patch. Steps are independent controls, so a
+ * patch merges per scale and step; a responsive step value (a breakpoint map)
+ * is one control and replaces the step's previous value.
+ */
+function mergedDesignScales(before: unknown, patch: Patch): Patch | undefined {
+  const merged: Patch = { ...(isObject(before) ? before : {}) };
+  for (const [scale, steps] of Object.entries(patch)) {
+    const next = steps === null ? {} : withoutNulls({ ...(isObject(merged[scale]) ? merged[scale] as Patch : {}), ...(steps as Patch) });
+    if (Object.keys(next).length) merged[scale] = next;
+    else delete merged[scale];
+  }
+  return Object.keys(merged).length ? merged : undefined;
+}
 /**
  * Settings an Extension installation credential may not change, whatever
  * scopes it holds. Scripts and CSS run on every published page; robots and
@@ -182,8 +238,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.render_version !== undefined && !isRenderVersion(body.render_version)) {
     return apiError(`render_version must be an integer from 1 to ${LATEST_RENDER_VERSION}`, 400);
   }
-  if (body.typography !== undefined) { const error = typographyError(body.typography); if (error) return apiError(error, 400); }
-  if (body.design_scales !== undefined) { const error = designScalesError(body.design_scales); if (error) return apiError(error, 400); }
+  if (body.typography !== undefined && body.typography !== null) { const error = typographyPatchError(body.typography); if (error) return apiError(error, 400); }
+  if (body.design_scales !== undefined && body.design_scales !== null) { const error = designScalesPatchError(body.design_scales); if (error) return apiError(error, 400); }
   if (body.fonts !== undefined) {
     if (!body.fonts || typeof body.fonts !== 'object' || Array.isArray(body.fonts)) return apiError('fonts must be an object', 400);
     const fonts = body.fonts as Record<string, unknown>;
@@ -261,6 +317,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     if (v === undefined) continue;
     // Replaced whole (not merged like fonts); null removes it.
     if (k === 'handover') { update.handover = normalizedHandover(v); continue; }
+    // Merged per control; null resets every override (the store drops undefined).
+    if (MERGED_DESIGN.has(k)) {
+      update[k] = v === null ? undefined : k === 'typography' ? mergedTypography(existing.typography, v as Patch) : mergedDesignScales(existing.design_scales, v as Patch);
+      continue;
+    }
     if (NESTED.has(k) && v && typeof v === 'object') {
       // For contact specifically, the `address` field accepts either a
       // string (legacy) or a PostalAddress object. We pass whatever the
@@ -288,7 +349,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     return apiError(
       `No recognized fields in body. Unknown keys: ${unknown_keys.join(', ')}. ` +
       `Top-level fields: ${[...TOP_LEVEL, ...SITE_LEVEL].join(', ')}. ` +
-      `Nested objects: ${[...NESTED].join(', ')}.`,
+      `Nested objects: ${[...NESTED, ...MERGED_DESIGN].join(', ')}.`,
       400,
     );
   }

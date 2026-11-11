@@ -1,9 +1,11 @@
 """Read-only URL continuity check on an explicitly supplied deployed origin."""
 import argparse
 import json
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import pacing
 import trlib
 
 UA = 'Typeroll-Starter-QA/1.0 (+https://typeroll.com/docs/)'
@@ -11,17 +13,23 @@ UA = 'Typeroll-Starter-QA/1.0 (+https://typeroll.com/docs/)'
 
 def fetch(url, method='GET'):
     request = urllib.request.Request(url, method=method, headers={'User-Agent': UA})
-    for attempt in range(2):
+    attempt = 0
+    while True:
+        # Paced per host; 429/5xx and network errors get a bounded, backed-off retry.
+        pacing.pace(url)
         try:
             with urllib.request.build_opener(trlib.NoRedirect).open(request, timeout=30) as response:
                 return response.status, response.headers.get('Location'), response.read() if method == 'GET' else b''
         except urllib.error.HTTPError as error:
-            if error.code in (502, 503, 504) and attempt == 0:
-                continue
-            return error.code, error.headers.get('Location'), b''
+            delay = pacing.retry_delay(attempt, error.code, error.headers.get('Retry-After'))
+            if delay is None:
+                return error.code, error.headers.get('Location'), b''
         except (OSError, TimeoutError):
-            if attempt:
+            delay = pacing.retry_delay(attempt)
+            if delay is None:
                 return 0, None, b''
+        time.sleep(delay)
+        attempt += 1
 
 
 def origin(value):
@@ -56,6 +64,7 @@ def main():
     parser.add_argument('origin', type=origin)
     parser.add_argument('--show-excluded', action='store_true')
     args = parser.parse_args()
+    pacing.profile()
     report = []
     for row in trlib.all_migration_urls():
         if row.get('status') == 'excluded' and not args.show_excluded:

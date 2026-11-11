@@ -295,9 +295,14 @@ permission):
 ```
 read_site_readiness                       # on the branch, before the merge
 merge_branch version_id="<branch>"        # branch's diffs land on main
+trigger_deploy dry_run=true               # then read get_publication_impact
 trigger_deploy
 get_deploy_status job_id=<id>             # poll until succeeded
 ```
+
+A deploy ships everything saved on main, including other people's and other
+sessions' changes. If `get_publication_impact` lists changes that are not in
+the branch, stop and ask whose they are before the real deploy.
 
 Optionally, after a successful deploy:
 

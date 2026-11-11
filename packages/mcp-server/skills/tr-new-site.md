@@ -449,10 +449,15 @@ deployment.
 
 ```
 read_site_readiness
+trigger_deploy dry_run=true      # read get_publication_impact before the real deploy
 trigger_deploy
 get_deploy_status job_id=<id>
 read_site_readiness
 ```
+
+A publication ships everything saved on the site, including changes by other
+people and other agent sessions. If the impact lists changes you did not make,
+stop and ask whose they are.
 
 Run `read_site_readiness` again after the publication. It reads saved content
 and settings, so confirm the rest on the live site: the AI crawler zone check

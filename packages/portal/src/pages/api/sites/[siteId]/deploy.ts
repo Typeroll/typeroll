@@ -35,7 +35,7 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
   if (!adminCheck.ok) return adminCheck.response;
   const { session, site, versionId, owner_org_id } = guard.value;
 
-  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; allow_unsaved?: boolean; retry_verification_job_id?: string; approve_cache_zone_id?: string; confirm_live_domains?: boolean };
+  const body = (await request.json().catch(() => ({}))) as { environment?: DeployEnvironment; allow_unsaved?: boolean; retry_verification_job_id?: string; approve_cache_zone_id?: string; confirm_live_domains?: boolean; accept_missing_media?: boolean };
   if (body.retry_verification_job_id !== undefined) {
     try {
       if (typeof body.retry_verification_job_id !== 'string') return json({ error: 'Provide a deployment ID.' }, 400);
@@ -95,6 +95,8 @@ export const POST: APIRoute = async ({ cookies, params, request, locals }) => {
     targets: targets.targets,
     production: targets.production,
     ...(targets.production ? { live_domains_confirmed: true } : {}),
+    // Publish without referenced media whose copy failed; their references stay empty.
+    ...(body.accept_missing_media === true ? { accept_missing_media: true } : {}),
   });
 
   try {
