@@ -11,7 +11,7 @@ export {
 } from './network-address.js';
 
 export const EXTENSION_MANIFEST_SCHEMA_VERSION = 3 as const;
-export const EXTENSION_RUNTIME_VERSION = '0.45.0';
+export const EXTENSION_RUNTIME_VERSION = '0.46.0';
 export const EXTENSION_HOST_PROTOCOL_VERSION = 3 as const;
 /**
  * Block data field in which the page author binds an Extension block instance
@@ -34,7 +34,31 @@ export type ExtensionInstallationStatus =
   | 'disabled'
   | 'revoked'
   | 'uninstalling';
-export type ExtensionRenderMode = 'bundled_component' | 'embedded_app';
+export type ExtensionRenderMode = 'bundled_component' | 'embedded_app' | 'contract_component';
+
+/**
+ * App contracts (runtime 0.46.0). A contract component's block instance
+ * stores a named variant instead of props; the app decides which variants
+ * exist. Without a variant the component renders `standard`.
+ */
+export const EXTENSION_DEFAULT_VARIANT = 'standard';
+export const EXTENSION_VARIANT_PROP = 'variant';
+/** Optional approximate height in px, written as the mount's min-height. */
+export const EXTENSION_RESERVE_PROP = 'reserve_px';
+/** Variant ids the host accepts; anything else renders `standard`. */
+export const EXTENSION_VARIANT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const VARIANT_ID = EXTENSION_VARIANT_PATTERN;
+
+/** The variant a mount renders: a stored id when valid, else `standard`. */
+export function extensionContractVariant(value: unknown): string {
+  return typeof value === 'string' && VARIANT_ID.test(value.trim()) ? value.trim() : EXTENSION_DEFAULT_VARIANT;
+}
+
+/** A bounded reserved height, or undefined when none (or an invalid one) is set. */
+export function extensionContractReservePx(value: unknown): number | undefined {
+  const number = typeof value === 'string' && value.trim() ? Number(value) : value;
+  return typeof number === 'number' && Number.isInteger(number) && number > 0 && number <= 4000 ? number : undefined;
+}
 
 export type ExtensionScope =
   | 'content:read'
@@ -99,6 +123,11 @@ export const EXTENSION_SCOPE_REGISTRY: Readonly<Record<ExtensionScope, Extension
 export interface ExtensionPermissionRequest {
   scope: ExtensionScope;
   reason: string;
+  /**
+   * Contract manifests only: the app works without this scope. It is never
+   * granted on install; a site administrator turns it on later.
+   */
+  optional?: boolean;
 }
 
 export interface ExtensionJsonSchemaProperty {
@@ -158,6 +187,20 @@ export interface ExtensionEmbeddedEntry {
   sandbox?: Array<'allow-forms' | 'allow-modals' | 'allow-popups' | 'allow-downloads'>;
 }
 
+/**
+ * A stable ES module on the contract address that always exports the current
+ * release's `mount`. Without it the component is static: nothing loads in the
+ * browser and the default markup written at build is the whole component.
+ */
+export interface ExtensionContractEntry {
+  module_url?: string;
+}
+
+/** A server-side call Core makes to the app, relative to `api.base_url`. */
+export interface ExtensionComponentCall {
+  path: string;
+}
+
 export interface ExtensionFormBinding {
   /** Stable component-local name used by context.forms.submit(). */
   id: string;
@@ -182,7 +225,11 @@ export interface ExtensionFrontendComponent {
    * to a navigation form's defaults key by the page author.
    */
   page_handoff?: boolean;
-  entry: ExtensionBundledEntry | ExtensionEmbeddedEntry;
+  entry: ExtensionBundledEntry | ExtensionEmbeddedEntry | ExtensionContractEntry;
+  /** Contract components: `POST {api.base_url}{path}` lists the variants (`component_variants`). */
+  variants?: ExtensionComponentCall;
+  /** Contract components: `POST {api.base_url}{path}` returns each mount's default markup at build (`default_markup`). */
+  default_markup?: ExtensionComponentCall;
   unavailable_message?: string;
 }
 
@@ -254,6 +301,12 @@ export interface ExtensionManifest {
   name: string;
   version: string;
   runtime_compatibility: string;
+  /**
+   * App contract version (trusted developers only). Installations follow the
+   * newest published release of their contract; moving to another contract is
+   * the only explicit activation.
+   */
+  contract?: number;
   /** Explicit releases form an upgrade boundary until a site administrator selects one. */
   activation_policy?: 'automatic' | 'explicit';
   distribution: ExtensionDistribution;
@@ -364,6 +417,8 @@ export interface ExtensionInstallation {
   initial_version?: string;
   /** Current control-plane release pointer; runtime resolution is authoritative. */
   version: string;
+  /** App contract the installation is bound to; absent for apps without a contract. */
+  contract?: number;
   release_policy?: 'automatic';
   owner_org_id: string;
   site_id: string;
@@ -484,6 +539,8 @@ export interface PublicExtensionInstallation {
   installation_id: string;
   extension_id: string;
   version: string;
+  /** Contract apps: components load from their stable `entry.module_url`. */
+  contract?: number;
   /** True only for request-time isolated previews, never deployed snapshots. */
   preview?: true;
   public_config: Record<string, unknown>;
@@ -738,8 +795,12 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
   rejectUnknown(manifest, [
     'schema_version', 'id', 'name', 'version', 'runtime_compatibility', 'distribution',
     'developer', 'permissions', 'auth', 'config_schema', 'frontend', 'admin',
-    'api', 'events', 'data_handling', 'documentation', 'activation_policy', 'build_derivation', 'forms',
+    'api', 'events', 'data_handling', 'documentation', 'activation_policy', 'build_derivation', 'forms', 'contract',
   ], 'manifest', errors);
+  // App contracts: who may publish one is a host decision (trusted developers), checked by the registry.
+  const contract = manifest.contract !== undefined;
+  if (contract && (!Number.isSafeInteger(manifest.contract) || (manifest.contract as number) < 1)) errors.push('contract must be an integer of at least 1');
+  if (contract && !(isRecord(manifest.api) && typeof manifest.api.base_url === 'string')) errors.push('contract requires api.base_url, the contract\'s stable address');
   if (manifest.schema_version !== EXTENSION_MANIFEST_SCHEMA_VERSION) {
     errors.push(`schema_version must be ${EXTENSION_MANIFEST_SCHEMA_VERSION}`);
   }
@@ -832,6 +893,8 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
   permissions.forEach((entry, index) => {
     const permission = asRecord(entry, `permissions[${index}]`, errors);
     const scope = requireString(permission.scope, `permissions[${index}].scope`, errors);
+    if (permission.optional !== undefined && typeof permission.optional !== 'boolean') errors.push(`permissions[${index}].optional must be a boolean`);
+    if (permission.optional === true && !contract) errors.push(`permissions[${index}].optional requires a contract`);
     if (!(scope in EXTENSION_SCOPE_REGISTRY)) errors.push(`permissions[${index}].scope is unknown`);
     if (requestedScopes.has(scope)) errors.push(`permissions contains duplicate scope "${scope}"`);
     requestedScopes.add(scope);
@@ -855,7 +918,19 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
     componentIds.add(componentId);
     requireString(component.label, `frontend.components[${index}].label`, errors);
     const mode = component.render_mode;
-    if (mode !== 'bundled_component' && mode !== 'embedded_app') errors.push(`frontend.components[${index}].render_mode is invalid`);
+    if (mode !== 'bundled_component' && mode !== 'embedded_app' && mode !== 'contract_component') errors.push(`frontend.components[${index}].render_mode is invalid`);
+    if (mode === 'contract_component' && !contract) errors.push(`frontend.components[${index}].render_mode contract_component requires a contract`);
+    for (const call of ['variants', 'default_markup'] as const) {
+      if (component[call] === undefined) continue;
+      if (mode !== 'contract_component') { errors.push(`frontend.components[${index}].${call} requires render_mode contract_component`); continue; }
+      const declared = asRecord(component[call], `frontend.components[${index}].${call}`, errors);
+      rejectUnknown(declared, ['path'], `frontend.components[${index}].${call}`, errors);
+      if (typeof declared.path !== 'string' || !/^\/[a-zA-Z0-9_/-]+$/.test(declared.path) || declared.path.includes('//'))
+        errors.push(`frontend.components[${index}].${call}.path must be an unencoded relative API path`);
+    }
+    // Settings live in the app and the markup names a variant, so a contract component has no props.
+    if (mode === 'contract_component' && component.props_schema !== undefined) errors.push(`frontend.components[${index}].props_schema is not supported by contract components; use variants`);
+    if (mode === 'contract_component' && component.page_handoff !== undefined) errors.push(`frontend.components[${index}].page_handoff is not supported by contract components`);
     validateUrlInputs(component.url_context as ExtensionUrlContextDeclaration | undefined, `frontend.components[${index}].url_context`, errors);
     const formBindings = component.form_bindings === undefined
       ? []
@@ -916,6 +991,11 @@ export function validateExtensionManifest(input: unknown): ExtensionManifestVali
         validatePublicHttps(entryData.style_url, `frontend.components[${index}].entry.style_url`, errors);
         validateDigest(entryData.style_sha256, `frontend.components[${index}].entry.style_sha256`, errors);
       }
+    } else if (mode === 'contract_component') {
+      // No digest: the module is the contract's stable address and serves the current release.
+      // Without module_url the component is static: its default markup is the whole component.
+      rejectUnknown(entryData, ['module_url'], `frontend.components[${index}].entry`, errors);
+      if (entryData.module_url !== undefined) validatePublicHttps(entryData.module_url, `frontend.components[${index}].entry.module_url`, errors);
     } else if (mode === 'embedded_app') {
       const frameUrl = validatePublicHttps(entryData.frame_url, `frontend.components[${index}].entry.frame_url`, errors);
       if (frameUrl && entryData.frame_origin) {

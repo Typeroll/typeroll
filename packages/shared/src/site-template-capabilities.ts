@@ -296,16 +296,22 @@ export interface SiteTemplateCapabilities {
    * through preview links.
    */
   supports_extension_page_handoff: boolean;
+  /**
+   * Extension runtime 0.46.0: app contracts. A `contract_component` mount
+   * names a variant instead of props, loads the contract's stable module and
+   * holds the app's default markup, written at build.
+   */
+  supports_extension_contracts: boolean;
   /** Extension host protocol understood by this renderer. */
   extension_protocol_version: typeof EXTENSION_HOST_PROTOCOL_VERSION;
   /** Semver of the browser Extension runtime. */
   extension_runtime_version: string;
   /** Render modes accepted by this renderer. */
-  extension_render_modes: readonly ['bundled_component', 'embedded_app'];
+  extension_render_modes: readonly ['bundled_component', 'embedded_app', 'contract_component'];
 }
 
 export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
-  template_capabilities_version: '0.57.0',
+  template_capabilities_version: '0.58.0',
 
   draft_layer_writes: true,
   forms_steps_only: true,
@@ -327,9 +333,10 @@ export const SITE_TEMPLATE_CAPABILITIES: SiteTemplateCapabilities = {
   supports_extension_form_bindings: true,
   supports_extension_form_actions: true,
   supports_extension_page_handoff: true,
+  supports_extension_contracts: true,
   extension_protocol_version: EXTENSION_HOST_PROTOCOL_VERSION,
   extension_runtime_version: EXTENSION_RUNTIME_VERSION,
-  extension_render_modes: ['bundled_component', 'embedded_app'],
+  extension_render_modes: ['bundled_component', 'embedded_app', 'contract_component'],
 
   supports_blocks_mode: true,
   supports_block_palette_tokens: true,

@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.3.27 (candidate, MCP 0.45.135)
+
+- App contracts (Extension runtime 0.46.0, template capabilities 0.58.0) let
+  official apps update without publishing sites. A manifest may declare
+  `contract` (an integer) when its developer organization is listed in the new
+  host setting `TYPEROLL_TRUSTED_APP_DEVELOPER_ORGS`; otherwise save and publish
+  answer 403 `contract_developer_untrusted`, and contract releases stop running
+  for an organization removed from the list. An installation stores its
+  `contract` and always runs the newest published release of it; moving to
+  another contract (including an app's first) is the only explicit activation,
+  and `GET /extensions/self` returns `contract`. Every assertion and token
+  Core signs for a contract installation carries a `contract` claim next to
+  the resolved `version`. A release that removes a
+  component or requires a new permission of its contract is refused with 409
+  `contract_broken`; permissions may be `optional: true` and are then not
+  granted on install.
+- Components with `render_mode: "contract_component"` load `entry.module_url`
+  (no hash, no vendoring) live in the browser, on published sites and in
+  previews, and call `mount(element, { variant }, context)` with
+  `context.variant`. Without `module_url` a component is static. Their blocks
+  store a `variant` (default `standard`) and optional `reserve_px` instead of
+  props; the mount carries `data-tr-extension-variant`, an optional
+  `min-height` and no `data-block-data`, also for `<x-extension variant="…">`.
+  The app lists variants through `variants` (`component_variants` assertion);
+  `GET /api/v1/sites/{siteId}/extensions/{installationId}/variants` and MCP
+  `list_extension_variants` return them, and the editor's variant field is a
+  select fed by it.
+- Each publication asks every contract app once for the default markup of all
+  its mounts (`default_markup`, by component, variant and page language) and
+  writes it, unfiltered, inside the mounts of the built pages, together with
+  returned files under `/_assets/apps/…` (`{{asset:name}}` placeholders) and
+  stylesheets linked before the site's CSS. When an app does not answer, the
+  previous publication's markup, files and styles are reused, else the mounts
+  stay empty; the publication records an `extension_default_markup_unavailable`
+  warning and never fails on it. Apps without a contract behave as before.
+
 ## 0.3.26 (candidate, MCP 0.45.134)
 
 - Transient storage errors from R2 (HTTP 5xx, `InternalError`, `SlowDown`,

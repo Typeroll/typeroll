@@ -205,6 +205,191 @@ labels with `enum_labels` in matching order:
 The validator rejects `enum_labels` unless it is a string array with exactly
 the same length as `enum`.
 
+## App contracts
+
+Runtime 0.46.0 adds app contracts for official apps (the decision record is
+[app contracts and live updates](plans/app-contracts-and-live-updates.md)).
+An app with a contract is updated without publishing sites: the published page
+holds only a mount that never changes within the contract, the component loads
+from the contract's stable address, and the app's default markup is written
+into the mount at every build. Apps without `contract` keep the behaviour
+described above unchanged.
+
+### Trusted developers
+
+Only developer organizations named in the host setting
+`TYPEROLL_TRUSTED_APP_DEVELOPER_ORGS` (comma-separated organization ids) may
+save or publish a manifest with `contract` (`403 contract_developer_untrusted`
+otherwise). The list is also checked whenever a release is resolved: a contract
+release of an organization that leaves the list stops running everywhere (the
+installation is reported as having no compatible release). An empty or missing
+setting allows no contract at all. A contract component runs the app's code and
+markup on every site without a publication, and its default markup is not
+filtered, which is why this is a host decision and not a manifest field.
+
+### Manifest
+
+```json
+{
+  "contract": 1,
+  "permissions": [
+    { "scope": "content:read", "reason": "Reads event pages." },
+    { "scope": "email:send", "reason": "Optional reminders.", "optional": true }
+  ],
+  "api": { "base_url": "https://events-production-c1.example.workers.dev/v1", "routes": [] },
+  "frontend": { "components": [{
+    "id": "next-occurrence",
+    "label": "Next occurrence",
+    "render_mode": "contract_component",
+    "entry": { "module_url": "https://events-production-c1.example.workers.dev/v1/next-occurrence.js" },
+    "variants": { "path": "/variants" },
+    "default_markup": { "path": "/default-markup" }
+  }] }
+}
+```
+
+- `contract`: an integer ≥ 1; requires `api.base_url`, the contract's stable
+  address. Forms, build derivations, the variants and default-markup calls and
+  `context.api` all use it.
+- `render_mode: "contract_component"` requires `contract`. `entry.module_url`
+  is an HTTPS ES module that always exports the current release's `mount`; it
+  has no digest (serve immutable, content-hashed files behind it) and its origin
+  must be a registered execution origin. It is optional: a component without it
+  is static, nothing loads in the browser and its default markup is the whole
+  component. Contract components have no `props_schema` and no `page_handoff`.
+- `variants` and `default_markup`: optional `{ "path" }` below `api.base_url`.
+- `permissions[].optional: true` (contract manifests only): the app works
+  without the scope. It is never granted on install; a site administrator turns
+  it on later with the ordinary grant update (`PATCH
+  /extensions/{installationId}` with `granted_scopes`).
+
+Publishing a release checks it against the earlier published releases of the
+same contract and refuses (`409 contract_broken`) one that removes a component
+or requires a permission the contract did not require. Such a change is a new
+contract.
+
+### Installation and resolution
+
+An installation stores the `contract` of the release it was installed with.
+Runtime resolution picks the newest published release with that contract,
+automatically; `activation_policy` does not apply within a contract. A release
+with a different contract (including the first contract for an installation
+made before the app had one) is reported as `pending_activation_version`, and
+moving to it with `PATCH /extensions/{installationId}` and `version` (MCP
+`activate_extension_release`) is the only explicit activation; asking for
+another release of the same contract is refused. `GET /extensions/self`
+returns `contract` (`null` without one) next to `version` and
+`published_version`.
+
+Every proof Core signs for a contract installation carries a `contract`
+claim next to `version`, which stays the resolved release: the installation
+assertions (form actions and options, build derivation, documentation,
+`component_variants`, `default_markup`), the credential provisioning
+assertion, admin launch and native admin tokens, and public browser tokens.
+Installations without a contract get no `contract` claim. One contract address
+serves every installation of the contract, so use the claim (not the URL) to
+tell which contract a request belongs to.
+
+### Variants
+
+The block type of a contract component has a `variant` field (default
+`standard`) and an optional `reserve_px`, never props. The app decides which
+variants exist and holds their settings, so a variant changed in the app is
+live on every page that uses it. Core asks the app server side:
+
+```http
+POST {api.base_url}{variants.path}
+Authorization: Bearer <assertion, token_use "component_variants">
+
+{ "component_id": "next-occurrence" }
+→ { "variants": [{ "id": "lunch-talks", "label": "Lunch talks" }] }
+```
+
+Variant ids match `^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`; an invalid or missing
+id renders `standard`. Without `variants` the list is `[{ "id": "standard" }]`.
+`GET /api/v1/sites/{siteId}/extensions/{installationId}/variants?component_id=…`
+(MCP `list_extension_variants`) returns `{ variants, source }`; the page
+editor's variant field is a select fed by the same call and becomes a text
+field when the app does not answer. In HTML mode write
+`<x-extension block="…" variant="lunch-talks" reserve="160" />`.
+
+### Mount markup
+
+```html
+<div class="tr-extension-mount"
+  data-tr-extension="com.typeroll.recurring-events"
+  data-tr-extension-installation="inst_…"
+  data-tr-extension-component="next-occurrence"
+  data-tr-extension-variant="lunch-talks"
+  style="min-height:160px">…default markup…</div>
+```
+
+There is no `data-block-data`. `style` is written only when `reserve_px` is set.
+
+### Default markup
+
+Once per publication, after build derivations, Core collects every contract
+mount of the site (component, variant and page language; mounts in partials and
+templates are asked for every site language) and calls each app once per
+declared path:
+
+```http
+POST {api.base_url}{default_markup.path}
+Authorization: Bearer <assertion, token_use "default_markup", body_sha256>
+
+{ "mounts": [{ "key": "next-occurrence|lunch-talks|sv", "component_id": "next-occurrence", "variant": "lunch-talks", "language": "sv" }] }
+→ {
+  "markup": { "next-occurrence|lunch-talks|sv": "<a href=\"#anmalan\">Anmäl dig</a><script type=\"module\" src=\"{{asset:lottie.js}}\"></script>" },
+  "assets": [{ "name": "lottie.js", "content_type": "text/javascript", "body_base64": "…" },
+             { "name": "events.css", "content_type": "text/css", "body_base64": "…" }],
+  "styles": ["events.css"]
+}
+```
+
+- `markup` is written inside each mount of the built pages, unfiltered (only
+  trusted developers can declare a contract). Keys are opaque; answer with the
+  keys you were sent. A page whose language was not asked for uses the site's
+  default language. Up to 256 KiB per mount.
+- `assets` (optional) are files written into the publication at
+  `/_assets/apps/{extension_id}/{sha256 prefix}/{name}` (immutable caching like
+  other publication assets); `{{asset:name}}` in the markup is replaced by that
+  path. `name` is a simple file name; `content_type` is one of
+  `text/javascript`, `application/javascript`, `text/css`, `application/json`,
+  `image/svg+xml`, `image/png`, `image/webp`, `font/woff2`; at most 2 MiB per
+  file and 10 MiB per app per build. A name returned twice with the same content
+  is kept once; with different content the answer is invalid.
+- `styles` (optional) names returned `text/css` assets. Core links them in the
+  `<head>` of every page with a mount of that app, once per page, before the
+  page's first stylesheet so platform and site CSS can override them. CSS for
+  features that load later is the app's own business at runtime.
+
+The answer is frozen with the publication (`extension_markup`), so default
+markup changes reach a site at its next ordinary build and never trigger one.
+When the app does not answer, answers with an error or answers something
+invalid, the previous publication's markup for those mounts is reused together
+with its assets and styles, else the mounts stay empty. The publication never
+fails on it: each fallback is a non-blocking `extension_default_markup_unavailable`
+warning in `job.warnings`. Previews and the editor canvas do not call the app:
+their mounts are empty until the component loads.
+
+### Runtime
+
+```js
+export async function mount(element, { variant }, context) {}
+```
+
+The browser host imports `entry.module_url` directly (nothing is vendored into
+the publication, and the snapshot carries no per-release paths) and calls
+`mount` with `context.variant` equal to the variant; everything else in
+`context` is as described in the frontend contract. `element` holds the default
+markup until the component replaces it, and keeps it when the module cannot
+load. A static component (no `module_url`) is never mounted. The module is a
+cross-origin module script on published sites and an opaque-origin import in
+previews and the editor canvas, so serve it, and every file it imports, with
+`Access-Control-Allow-Origin: *`. Previews load the module the same way as
+published sites; the editor canvas imports it inside its nested opaque-origin
+frame instead of running verified bundle bytes.
+
 ## Admin SSO
 
 Typeroll posts a 60-second launch code, issuer, installation id and page id to
@@ -321,6 +506,10 @@ During signing-key rotation, set `EXTENSION_SIGNING_PREVIOUS_PUBLIC_JWKS` to a
 JWKS document containing the previous public key(s). The discovery endpoint
 publishes both new and overlapping old keys while all new tokens use the new
 private key. Remove old keys after the longest token/pairing validity window.
+
+`TYPEROLL_TRUSTED_APP_DEVELOPER_ORGS` (comma-separated organization ids)
+names the developer organizations that may publish and run
+[app contracts](#app-contracts); leave it unset to allow none.
 
 `PLATFORM_ADMIN_EMAILS` enables the hosted-only public review surface. With no
 platform admin and no locally imported catalog entries, self-hosting remains a

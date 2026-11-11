@@ -54,6 +54,40 @@ receive the values a visitor typed into a native navigation form on the
 previous page through `context.handoff`. It requires the `page_handoff:read`
 permission; see [Receive values from a navigation form](../frontend/#receive-values-from-a-navigation-form).
 
+## App contracts (runtime 0.46.0)
+
+Official apps from a trusted developer organization (the host setting
+`TYPEROLL_TRUSTED_APP_DEVELOPER_ORGS`) can declare `"contract": 1`. An
+installation then follows the newest published release of that contract
+without any site being published, and moving to another contract is the only
+explicit activation. A contract component uses
+`render_mode: "contract_component"`:
+
+```json
+{
+  "id": "next-occurrence",
+  "label": "Next occurrence",
+  "render_mode": "contract_component",
+  "entry": {
+    "module_url": "https://events-c1.example.workers.dev/v1/next-occurrence.js"
+  },
+  "variants": { "path": "/variants" },
+  "default_markup": { "path": "/default-markup" }
+}
+```
+
+`module_url` has no hash: it is the contract's stable address and always
+serves the current release. Without it the component is static and its default
+markup is the whole component. `variants` and `default_markup` are paths below
+`api.base_url`, which must be the contract's stable address. Block instances
+store a `variant` (default `standard`) instead of props, so contract
+components have no `props_schema`. A permission may set `"optional": true`:
+it is not granted on install, and the app must work without it until a site
+administrator grants it. A release that removes a component or requires a new
+permission is refused as a contract break. The calls Core makes are described in the
+[backend guide](../backend/#app-contracts-runtime-0460) and the runtime in
+[contract components](../frontend/#contract-components-runtime-0460).
+
 ## Installation configuration
 
 `config_schema` is an object schema whose properties become installation

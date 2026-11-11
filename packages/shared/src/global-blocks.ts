@@ -1,4 +1,5 @@
 import type { Partial as PartialDoc } from './types.js';
+import { extensionContractReservePx, extensionContractVariant } from './extensions.js';
 
 /**
  * Replace `<x-include name="…" />` (and the long form
@@ -63,6 +64,8 @@ export interface ExtensionIncludeDescriptor {
   installation_id: string;
   component_id: string;
   label?: string;
+  /** Contract components take `variant` (and `reserve`) instead of props. */
+  render_mode?: 'bundled_component' | 'embedded_app' | 'contract_component';
 }
 
 function decodeHtmlAttribute(value: string): string {
@@ -107,6 +110,14 @@ export function expandExtensionIncludes(
       const safeId = blockTypeId.replace(/[^a-zA-Z0-9_.-]/g, '').slice(0, 128);
       return `<!-- x-extension: unknown block ${safeId || 'invalid'} -->`;
     }
+    const label = descriptor.label?.trim() || 'Extension';
+    const identity = `class="tr-extension-mount" data-tr-extension="${escapeAttribute(descriptor.extension_id)}" data-tr-extension-installation="${escapeAttribute(descriptor.installation_id)}" data-tr-extension-component="${escapeAttribute(descriptor.component_id)}"`;
+    const placeholder = `<p class="tr-extension-placeholder">${escapeAttribute(label)} loads on the published site.</p>`;
+    if (descriptor.render_mode === 'contract_component') {
+      const variant = extensionContractVariant(attributes.get('variant'));
+      const reserve = extensionContractReservePx(attributes.get('reserve'));
+      return `<div ${identity} data-tr-extension-variant="${escapeAttribute(variant)}"${reserve ? ` style="min-height:${reserve}px"` : ''}>${placeholder}</div>`;
+    }
     let props: Record<string, unknown> = {};
     const rawProps = attributes.get('props');
     if (rawProps) {
@@ -119,7 +130,6 @@ export function expandExtensionIncludes(
         return '<!-- x-extension: invalid props -->';
       }
     }
-    const label = descriptor.label?.trim() || 'Extension';
-    return `<div class="tr-extension-mount" data-tr-extension="${escapeAttribute(descriptor.extension_id)}" data-tr-extension-installation="${escapeAttribute(descriptor.installation_id)}" data-tr-extension-component="${escapeAttribute(descriptor.component_id)}" data-block-data="${escapeAttribute(JSON.stringify(props))}"><p class="tr-extension-placeholder">${escapeAttribute(label)} loads on the published site.</p></div>`;
+    return `<div ${identity} data-block-data="${escapeAttribute(JSON.stringify(props))}">${placeholder}</div>`;
   });
 }

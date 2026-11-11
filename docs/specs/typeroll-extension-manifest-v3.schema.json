@@ -34,6 +34,11 @@
       "type": "string",
       "minLength": 1
     },
+    "contract": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "App contract version (trusted developer organizations only). Installations follow the newest published release of their contract; moving to another contract is an explicit activation. Requires api.base_url, the contract's stable address."
+    },
     "distribution": {
       "enum": [
         "private",
@@ -107,6 +112,10 @@
           "reason": {
             "type": "string",
             "minLength": 1
+          },
+          "optional": {
+            "type": "boolean",
+            "description": "Contract manifests only: the app works without this scope. It is not granted on install; a site administrator turns it on later."
           }
         },
         "additionalProperties": false
@@ -168,7 +177,8 @@
               "render_mode": {
                 "enum": [
                   "bundled_component",
-                  "embedded_app"
+                  "embedded_app",
+                  "contract_component"
                 ]
               },
               "props_schema": {
@@ -194,8 +204,19 @@
                   },
                   {
                     "$ref": "#/$defs/embeddedEntry"
+                  },
+                  {
+                    "$ref": "#/$defs/contractEntry"
                   }
                 ]
+              },
+              "variants": {
+                "$ref": "#/$defs/componentCall",
+                "description": "contract_component only: POST {api.base_url}{path} with { component_id } returns { variants: [{ id, label }] }. Without it the component has the single variant standard."
+              },
+              "default_markup": {
+                "$ref": "#/$defs/componentCall",
+                "description": "contract_component only: POST {api.base_url}{path} with { mounts: [{ key, component_id, variant, language }] } returns { markup: { [key]: html }, assets?: [{ name, content_type, body_base64 }] }, once per build. Assets are written to /_assets/apps/{extension_id}/{digest}/{name} and {{asset:name}} in the markup is replaced by that path."
               },
               "unavailable_message": {
                 "type": "string"
@@ -805,6 +826,32 @@
               "allow-downloads"
             ]
           }
+        }
+      },
+      "additionalProperties": false
+    },
+    "contractEntry": {
+      "type": "object",
+      "description": "Contract component entry. Without module_url the component is static: the browser loads nothing and the default markup written at build is the whole component.",
+      "properties": {
+        "module_url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://",
+          "description": "Stable ES module on the contract address that always exports the current release's mount(element, { variant }, context). No digest; serve immutable, content-hashed files behind it."
+        }
+      },
+      "additionalProperties": false
+    },
+    "componentCall": {
+      "type": "object",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "pattern": "^/[a-zA-Z0-9_/-]+$"
         }
       },
       "additionalProperties": false

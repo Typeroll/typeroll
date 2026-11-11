@@ -22,7 +22,7 @@ export const GlobalBlocksContext = createContext<{ siteId: string; blocks: Globa
  * (one style picker per part an instance may style). Null outside a block's
  * field form; the field then shows nothing.
  */
-export const EditedBlockTypeContext = createContext<Pick<BlockType, 'id' | 'parts'> | null>(null);
+export const EditedBlockTypeContext = createContext<Pick<BlockType, 'id' | 'parts' | 'extension'> | null>(null);
 
 /**
  * The site's font roles, so a block's font setting names each role's family

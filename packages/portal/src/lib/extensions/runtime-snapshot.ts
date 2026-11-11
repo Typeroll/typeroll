@@ -98,6 +98,8 @@ export async function buildExtensionRuntimeSnapshot(
       installation_id: installation.id,
       extension_id: installation.extension_id,
       version: version.version,
+      // Contract components import entry.module_url, the contract's stable address: no per-release paths.
+      ...(version.manifest.contract !== undefined ? { contract: version.manifest.contract } : {}),
       public_config: config.public_config,
       ...(version.manifest.api
         ? {

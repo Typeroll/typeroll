@@ -1,4 +1,4 @@
-import { EXTENSION_PAGE_HANDOFF_PROP, type ExtensionRuntimeHostConfig, type ExtensionRuntimeSnapshot } from './extensions.js';
+import { EXTENSION_DEFAULT_VARIANT, EXTENSION_PAGE_HANDOFF_PROP, EXTENSION_VARIANT_PATTERN, type ExtensionRuntimeHostConfig, type ExtensionRuntimeSnapshot } from './extensions.js';
 import {
   PAGE_HANDOFF_STORAGE_PREFIX,
   groupPageHandoffParts,
@@ -68,6 +68,8 @@ var resolveSiteUrl=${siteUrlResolver};
 var readHandoffPacket=${parsePageHandoffPacket.toString()};
 var groupHandoffParts=${groupPageHandoffParts.toString()};
 var handoffPrefix=${JSON.stringify(PAGE_HANDOFF_STORAGE_PREFIX)};
+var variantPattern=new RegExp(${JSON.stringify(EXTENSION_VARIANT_PATTERN.source)});
+var defaultVariant=${JSON.stringify(EXTENSION_DEFAULT_VARIANT)};
 var handoffs=new Map();
 var mounts=[];
 var previewBridgeReady=false;
@@ -256,7 +258,9 @@ function unavailable(el,component){
   el.replaceChildren();var message=document.createElement("p");message.className="tr-extension-unavailable";message.textContent=component.unavailable_message||(/^sv/i.test(document.documentElement.lang||"")?"Den här funktionen är inte tillgänglig just nu.":"This feature is temporarily unavailable.");el.appendChild(message);
 }
 function contextFor(entry){
-  return {protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component,entry.descriptor.installation.preview===true),handoff:handoffRuntime(entry)};
+  var context={protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component,entry.descriptor.installation.preview===true),handoff:handoffRuntime(entry)};
+  if(entry.variant!==undefined)context.variant=entry.variant;
+  return context;
 }
 async function mountBundle(entry,context){
   var component=entry.descriptor.component;loadStyle(component.local_style_url);
@@ -264,6 +268,17 @@ async function mountBundle(entry,context){
   if(typeof module.mount!=="function")throw new Error("Extension bundle must export mount(element, props, context)");
   await module.mount(entry.el,entry.props,context);
 }
+// App contracts: the module is the contract's stable address, imported live
+// rather than vendored. The mount keeps the app's default markup until the
+// component replaces it, and keeps it when the module cannot load.
+async function mountContract(entry,context){
+  var component=entry.descriptor.component;
+  var module=await import(component.entry.module_url);
+  if(typeof module.mount!=="function")throw new Error("Contract module must export mount(element, { variant }, context)");
+  await module.mount(entry.el,{variant:entry.variant},context);
+}
+function holdsDefaultMarkup(el){return Array.prototype.some.call(el.childNodes,function(node){return node.nodeType===1?!node.classList.contains("tr-extension-placeholder"):node.nodeType===3&&node.textContent.trim()!=="";});}
+function variantOf(el){var value=(el.getAttribute("data-tr-extension-variant")||"").trim();return variantPattern.test(value)?value:defaultVariant;}
 function mountFrame(entry,context){
   var component=entry.descriptor.component;var frame=document.createElement("iframe");var target=new URL(component.entry.frame_url);
   frame.src=target.href;frame.title=component.label;frame.loading="lazy";frame.referrerPolicy="no-referrer";
@@ -310,6 +325,9 @@ async function start(){
   previewBridgeReady=await initializePreviewBridge();
   document.querySelectorAll("[data-tr-extension-installation][data-tr-extension-component]").forEach(function(el){
     var descriptor=findDescriptor(el);if(!descriptor)return;
+    // A static contract component (no module) is its default markup: nothing loads or mounts.
+    if(descriptor.component.render_mode==="contract_component"&&!(descriptor.component.entry&&descriptor.component.entry.module_url))return;
+    if(descriptor.component.render_mode==="contract_component"){var variant=variantOf(el);mounts.push({el:el,descriptor:descriptor,props:{variant:variant},variant:variant,capture:capture(descriptor.component)});return;}
     var props={};try{props=JSON.parse(el.getAttribute("data-block-data")||"{}");}catch(_){}
     mounts.push({el:el,descriptor:descriptor,props:props,capture:capture(descriptor.component)});
   });
@@ -317,6 +335,7 @@ async function start(){
   mounts.forEach(function(entry){
     var context=contextFor(entry);
     if(entry.descriptor.component.render_mode==="embedded_app")mountFrame(entry,context);
+    else if(entry.descriptor.component.render_mode==="contract_component")mountContract(entry,context).catch(function(){if(!holdsDefaultMarkup(entry.el))unavailable(entry.el,entry.descriptor.component);});
     else mountBundle(entry,context).catch(function(){unavailable(entry.el,entry.descriptor.component);});
   });
 }

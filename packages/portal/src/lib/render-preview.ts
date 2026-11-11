@@ -219,6 +219,7 @@ export async function renderPreview(
       installation_id: blockType.extension.installation_id,
       component_id: blockType.extension.component_id,
       label: blockType.label,
+      render_mode: blockType.extension.render_mode,
     } : undefined;
   };
 

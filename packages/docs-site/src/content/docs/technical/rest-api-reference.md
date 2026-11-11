@@ -1544,6 +1544,19 @@ Read an installation's diagnostics: status, health, release resolution, credenti
 | --- | --- | --- | --- | --- |
 | `installation_id` | path | string | yes |  |
 
+### `list_extension_variants`
+
+`GET /api/v1/sites/{siteId}/extensions/{installation_id}/variants`
+
+Permission: `read`
+
+List the variants of an installed app contract component (render_mode contract_component) as { variants: [{ id, label }], source }. The app defines them and their settings; a block instance stores only the variant id in its `variant` field (default `standard`) and changing a variant in the app is live on every page that uses it. Without a declared variants call the list is [{ id: "standard" }]. Fails with 502 when the app does not answer. Read permission is enough.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `installation_id` | path | string | yes |  |
+| `component_id` | query | string | yes | Component id from the installation manifest (frontend.components[].id). |
+
 ### `launch_extension_admin_page`
 
 `POST /api/v1/sites/{siteId}/extensions/{installation_id}/launch`

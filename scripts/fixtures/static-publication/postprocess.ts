@@ -2,14 +2,16 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { bundleBlockAssets } from './source/bundle-blocks';
 import { buildSearchIndexIfUsed } from './source/search-index';
-import { aiContentSignal, applyQueryRedirects, markdownRoutesShadowedByRedirects, pagesRedirectsFile, pagesShadowedByRedirect, pageRobots, withoutMarkdownAlternate } from '@typeroll/shared';
+import { aiContentSignal, applyQueryRedirects, injectExtensionMarkup, isExtensionAssetPath, markdownRoutesShadowedByRedirects, pagesRedirectsFile, pagesShadowedByRedirect, pageRobots, withoutMarkdownAlternate } from '@typeroll/shared';
 import type { Redirect, TrailingSlashPolicy } from '@typeroll/shared';
 import { buildPagesHeaders, withGlobalHeaders } from './source/pages-headers';
 import { vendorExtensionAssets } from './source/extensions/assets';
 import { vendorThemeFonts, writeFrozenThemeFonts, type FrozenThemeFonts } from './source/extensions/theme-fonts';
-import type { ExtensionRuntimeSnapshot } from '@typeroll/shared';
+import type { ExtensionRuntimeSnapshot, FrozenExtensionMarkup } from '@typeroll/shared';
 
-export async function postprocess(dist: string, publication: { publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; ai_crawler_policy?: string; trailing_slash?: TrailingSlashPolicy; fonts?: { heading?: string; body?: string; mono?: string; delivery?: 'self_hosted' | 'google' } }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot; theme_fonts?: FrozenThemeFonts }) {
+export async function postprocess(dist: string, publication: { publication_id: string; previous_website_hosts?: string[]; robots_blocked?: boolean; site: { domain?: string; domain_alias?: string }; settings: { sitewide_noindex?: boolean; sitewide_nofollow?: boolean; ai_crawler_policy?: string; trailing_slash?: TrailingSlashPolicy; fonts?: { heading?: string; body?: string; mono?: string; delivery?: 'self_hosted' | 'google' } }; redirects?: Redirect[]; extensions?: ExtensionRuntimeSnapshot; theme_fonts?: FrozenThemeFonts; extension_markup?: FrozenExtensionMarkup }) {
+  // App contract default markup was frozen with the publication: write it (and its files) before search indexing.
+  if (publication.extension_markup) await writeExtensionMarkup(dist, publication.extension_markup);
   await bundleBlockAssets(dist);
   await buildSearchIndexIfUsed(dist);
   if (publication.extensions?.installations?.length) await vendorExtensionAssets(dist, publication.extensions);
@@ -66,4 +68,27 @@ export async function postprocess(dist: string, publication: { publication_id: s
     read: relative => fs.readFile(path.join(dist, relative), 'utf8'),
     write: (relative, text) => fs.writeFile(path.join(dist, relative), text),
   });
+}
+
+async function writeExtensionMarkup(dist: string, frozen: FrozenExtensionMarkup) {
+  for (const app of Object.values(frozen.apps ?? {})) {
+    for (const asset of app.assets ?? []) {
+      if (!isExtensionAssetPath(asset.path)) throw new Error('Invalid app asset path');
+      const file = path.join(dist, asset.path.slice(1));
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(file, Buffer.from(asset.body_base64, 'base64'));
+    }
+  }
+  async function walk(directory: string): Promise<void> {
+    for (const entry of await fs.readdir(directory, { withFileTypes: true })) {
+      const file = path.join(directory, entry.name);
+      if (entry.isDirectory()) await walk(file);
+      else if (entry.isFile() && entry.name.endsWith('.html')) {
+        const html = await fs.readFile(file, 'utf8');
+        const next = injectExtensionMarkup(html, frozen);
+        if (next !== html) await fs.writeFile(file, next);
+      }
+    }
+  }
+  await walk(dist);
 }

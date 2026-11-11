@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { contractClaim } from './contract-claim';
 import {
   EXTENSION_HOST_PROTOCOL_VERSION,
   effectiveExtensionScopes,
@@ -139,6 +140,8 @@ export interface DelegatedExtensionClaims {
   token_use?: 'portal_admin';
   page_id?: string;
   version?: string;
+  /** App contract of the installation; absent without one. */
+  contract?: number;
   iss: string;
   aud: string;
   sub: string;
@@ -162,6 +165,8 @@ export interface PublicExtensionClaims {
   aud: string;
   sub: string;
   token_use: 'public_extension';
+  /** App contract of the installation; absent without one. */
+  contract?: number;
   org_id: string;
   site_id: string;
   installation_id: string;
@@ -193,6 +198,7 @@ export function signPublicExtensionToken(args: {
     aud: args.installation.extension_id,
     sub: args.installation.id,
     token_use: 'public_extension',
+    ...contractClaim(args.installation),
     org_id: args.installation.owner_org_id,
     site_id: args.installation.site_id,
     installation_id: args.installation.id,
@@ -293,6 +299,8 @@ export function verifyDelegatedExtensionToken(
   return claims;
 }
 
+export { contractClaim };
+
 export function signInstallationAssertion(args: {
   installation: ExtensionInstallation;
   scopes: ExtensionScope[];
@@ -301,7 +309,7 @@ export function signInstallationAssertion(args: {
    * Narrows what the proof may be used for. A derivation token must not be
    * replayable as a documentation read, or the reverse.
    */
-  purpose?: 'documentation' | 'build_derivation' | 'form_action' | 'form_options';
+  purpose?: 'documentation' | 'build_derivation' | 'form_action' | 'form_options' | 'component_variants' | 'default_markup';
   bodySha256?: string;
   version?: string;
   now?: Date;
@@ -316,6 +324,7 @@ export function signInstallationAssertion(args: {
     token_use: args.purpose ?? 'installation',
     ...(args.bodySha256 ? { body_sha256: args.bodySha256 } : {}),
     ...(args.version ? { version: args.version } : {}),
+    ...contractClaim(args.installation),
     org_id: args.installation.owner_org_id,
     site_id: args.installation.site_id,
     installation_id: args.installation.id,
@@ -382,6 +391,7 @@ export function signCredentialProvisioningAssertion(args: {
     sub: args.installation.id,
     token_use: 'credential_provisioning',
     version: args.version,
+    ...contractClaim(args.installation),
     org_id: args.installation.owner_org_id,
     site_id: args.installation.site_id,
     installation_id: args.installation.id,
@@ -483,6 +493,7 @@ export async function exchangeExtensionLaunchCode(args: {
     site_id: grant!.site_id,
     installation_id: grant!.installation_id,
     developer_org_id: installation!.developer_org_id,
+    ...contractClaim(installation!),
     permission: grant!.permission,
     scopes: grant!.scopes,
   }, now);

@@ -113,19 +113,20 @@ available with a site administrator API key (an owned Site, a site-scoped key
 or an admin share) and through MCP. Paths are relative to
 `/api/v1/sites/{siteId}/extensions`.
 
-| Action                            | MCP tool                                                      | REST route                               |
-| --------------------------------- | ------------------------------------------------------------- | ---------------------------------------- |
-| List and read installations       | `list_extension_installations`, `read_extension_installation` | `GET /`, `GET /{installationId}`         |
-| Install                           | `install_extension`                                           | `POST /`                                 |
-| Update configuration              | `update_extension_installation_config`                        | `PATCH /{installationId}` with `config`  |
-| Activate a pending release        | `activate_extension_release`                                  | `PATCH /{installationId}` with `version` |
-| Enable or disable                 | `set_extension_installation_status`                           | `PATCH /{installationId}` with `status`  |
-| Uninstall                         | `uninstall_extension`                                         | `DELETE /{installationId}`               |
-| Diagnostics                       | `read_extension_diagnostics`                                  | `GET /{installationId}/diagnostics`      |
-| Pair the token issuer             | `pair_extension_issuer`                                       | `POST /{installationId}/pair`            |
-| Connect the provider              | `connect_extension`                                           | `POST /{installationId}/connect`         |
-| Open an admin page                | `launch_extension_admin_page`                                 | `POST /{installationId}/launch`          |
-| Call an approved native admin API | `call_extension_admin`                                        | `POST /{installationId}/admin-request`   |
+| Action                               | MCP tool                                                      | REST route                                      |
+| ------------------------------------ | ------------------------------------------------------------- | ----------------------------------------------- |
+| List and read installations          | `list_extension_installations`, `read_extension_installation` | `GET /`, `GET /{installationId}`                |
+| Install                              | `install_extension`                                           | `POST /`                                        |
+| Update configuration                 | `update_extension_installation_config`                        | `PATCH /{installationId}` with `config`         |
+| Activate a pending release           | `activate_extension_release`                                  | `PATCH /{installationId}` with `version`        |
+| Enable or disable                    | `set_extension_installation_status`                           | `PATCH /{installationId}` with `status`         |
+| Uninstall                            | `uninstall_extension`                                         | `DELETE /{installationId}`                      |
+| Diagnostics                          | `read_extension_diagnostics`                                  | `GET /{installationId}/diagnostics`             |
+| List a contract component's variants | `list_extension_variants`                                     | `GET /{installationId}/variants?component_id=…` |
+| Pair the token issuer                | `pair_extension_issuer`                                       | `POST /{installationId}/pair`                   |
+| Connect the provider                 | `connect_extension`                                           | `POST /{installationId}/connect`                |
+| Open an admin page                   | `launch_extension_admin_page`                                 | `POST /{installationId}/launch`                 |
+| Call an approved native admin API    | `call_extension_admin`                                        | `POST /{installationId}/admin-request`          |
 
 Notes:
 
