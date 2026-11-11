@@ -469,6 +469,14 @@ Its `error` then names the cause and the code, and `failed_build_task` names
 the build. Prepared variants are kept, so the next round or a publication
 reuses them.
 
+A job that stopped under Core 0.2.149 or earlier stays stopped until the next
+upload or `prepare_media`, and those releases recorded no code. Its
+`error_code` is read from the build that stopped it, for example
+`build_queue_timeout` (the build waited too long for a runner) or
+`build_cancelled`. When that build never ended or no longer exists, the code
+is `media_preparation_cause_unrecorded`. Run `prepare_media` to start the job
+again; a publication meanwhile prepares the images it needs itself.
+
 ## Responsive image resolution (Core 0.2.37+)
 
 Static publishing and explicit variant generation create AVIF and WebP images

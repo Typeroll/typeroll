@@ -12,6 +12,12 @@
   `TYPEROLL_MEDIA_CACHE` "unavailable" log lines. The failure message says the
   live site is unchanged and to publish again; the code is documented in the
   customer publishing guide.
+- A background image preparation that stopped under Core 0.2.149 or earlier
+  no longer reports "Background image preparation stopped (unknown)" on every
+  publication. `GET media/preparation` and the publication warning read the
+  code from the build that stopped it (for example `build_queue_timeout` or
+  `build_cancelled`), name its cause in `error` and `failed_build_task`, and
+  say `media_preparation_cause_unrecorded` when that build never ended.
 
 ## 0.3.27 (candidate, MCP 0.45.135)
 
