@@ -20,6 +20,7 @@ import { saveExtensionPublicConfig, versionedExtensionInstallation } from './ver
 import { buildExtensionConfig } from './config';
 import { provisionExtensionBlocks } from './provision';
 import { isForwardRelease, requiresExplicitActivation, resolveExtensionVersion } from './resolution';
+import { isTrustedAppDeveloper } from './trusted-developers';
 
 export class ExtensionRegistryError extends Error {
   /** `details` is returned beside the message to the caller; never secrets. */
@@ -69,6 +70,7 @@ function manifestExecutionOrigins(manifest: ExtensionManifest): string[] {
       urls.push(component.entry.script_url);
       if (component.entry.style_url) urls.push(component.entry.style_url);
     } else if ('frame_url' in component.entry) urls.push(component.entry.frame_url);
+    else if ('module_url' in component.entry && component.entry.module_url) urls.push(component.entry.module_url);
   }
   for (const page of manifest.admin?.pages ?? []) {
     urls.push(page.launch_url);
@@ -79,6 +81,37 @@ function manifestExecutionOrigins(manifest: ExtensionManifest): string[] {
   if (manifest.auth?.pairing_url) urls.push(manifest.auth.pairing_url);
   if (manifest.auth?.provisioning_url) urls.push(manifest.auth.provisioning_url);
   return [...new Set(urls.map((value) => new URL(value).origin))];
+}
+
+/** Only a trusted developer organization may save, publish or run a contract manifest. */
+function assertContractDeveloper(manifest: ExtensionManifest, developerOrgId: string): void {
+  if (manifest.contract !== undefined && !isTrustedAppDeveloper(developerOrgId)) {
+    throw new ExtensionRegistryError('App contracts are available to trusted developer organizations only', 403, 'contract_developer_untrusted');
+  }
+}
+
+/**
+ * A release must keep what published sites of its contract depend on: every
+ * component id, and no permission the app cannot work without beyond those
+ * the contract already required. A breaking change is a new contract.
+ */
+function assertKeepsContract(manifest: ExtensionManifest, versions: ExtensionVersion[]): void {
+  const earlier = versions.filter((release) => release.version !== manifest.version && release.manifest.contract === manifest.contract &&
+    ['published', 'deprecated'].includes(release.status));
+  if (!earlier.length) return;
+  const components = new Set((manifest.frontend?.components ?? []).map((component) => `${component.id}:${component.render_mode}`));
+  const required = (release: ExtensionManifest) => new Set(release.permissions.filter((permission) => permission.optional !== true).map((permission) => permission.scope));
+  const allowed = new Set(earlier.flatMap((release) => [...required(release.manifest)]));
+  for (const release of earlier) {
+    const missing = (release.manifest.frontend?.components ?? []).filter((component) => !components.has(`${component.id}:${component.render_mode}`));
+    if (missing.length) {
+      throw new ExtensionRegistryError(`Release ${manifest.version} removes component ${missing.map((component) => component.id).join(', ')} of contract ${manifest.contract}; publish it as a new contract`, 409, 'contract_broken');
+    }
+  }
+  const added = [...required(manifest)].filter((scope) => !allowed.has(scope));
+  if (added.length) {
+    throw new ExtensionRegistryError(`Release ${manifest.version} requires ${added.join(', ')}, which contract ${manifest.contract} did not; declare it optional or publish a new contract`, 409, 'contract_broken');
+  }
 }
 
 export async function recordExtensionAudit(args: {
@@ -214,6 +247,7 @@ export async function saveExtensionVersion(args: {
   const manifest = validation.manifest;
   if (manifest.id !== args.extensionId) throw new ExtensionRegistryError('Manifest id does not match extension id');
   if (manifest.distribution !== extension.distribution) throw new ExtensionRegistryError('Manifest distribution does not match extension distribution');
+  assertContractDeveloper(manifest, args.developerOrgId);
   const untrustedOrigins = manifestExecutionOrigins(manifest)
     .filter((origin) => !extension.trusted_origins.includes(origin));
   if (untrustedOrigins.length) {
@@ -308,6 +342,10 @@ export async function publishExtensionVersion(args: {
   await claimExtensionIdReservation(args.developerOrgId, args.extensionId);
   if (current.status === 'published' || current.status === 'review') return current;
   if (current.status !== 'draft') throw new ExtensionRegistryError('Extension version cannot be published from its current state', 409);
+  assertContractDeveloper(current.manifest, args.developerOrgId);
+  if (current.manifest.contract !== undefined) {
+    assertKeepsContract(current.manifest, await getStore().listDocs<ExtensionVersion>(paths.extensionVersions(args.developerOrgId, args.extensionId)));
+  }
   await args.verifyAssets(current.manifest);
   const now = new Date().toISOString();
   const requiresReview = current.manifest.distribution === 'public';
@@ -503,6 +541,9 @@ export async function installExtension(args: {
   }
   const requested = new Set(version.manifest.permissions.map((entry) => entry.scope));
   if (args.grantedScopes.some((scope) => !requested.has(scope))) throw new ExtensionRegistryError('Granted scopes must be requested by the manifest');
+  // Optional scopes are never part of the install grant; a site administrator turns them on later.
+  const optional = new Set(version.manifest.permissions.filter((entry) => entry.optional === true).map((entry) => entry.scope));
+  const grantedScopes = args.grantedScopes.filter((scope) => !optional.has(scope));
   const config = buildExtensionConfig(version.manifest.config_schema, args.config ?? {});
   if (typeof config === 'string') throw new ExtensionRegistryError(config);
   const existing = (await store.listDocs<ExtensionInstallation>(paths.extensionInstallations(args.ownerOrgId, args.siteId)))
@@ -515,11 +556,12 @@ export async function installExtension(args: {
     developer_org_id: args.developerOrgId,
     initial_version: args.version,
     version: args.version,
+    ...(version.manifest.contract !== undefined ? { contract: version.manifest.contract } : {}),
     release_policy: 'automatic',
     owner_org_id: args.ownerOrgId,
     site_id: args.siteId,
     status: 'enabled',
-    granted_scopes: [...new Set(args.grantedScopes)],
+    granted_scopes: [...new Set(grantedScopes)],
     ...config,
     installed_by: args.actorId,
     installed_at: now,
@@ -630,11 +672,18 @@ export async function updateExtensionInstallation(args: {
       !isRuntimeCompatible(nextVersion.manifest.runtime_compatibility, EXTENSION_RUNTIME_VERSION)) {
     throw new ExtensionRegistryError('This release requires a different Extension runtime version', 409);
   }
-  if (args.version && !developerOwned) {
+  // Moving to another contract (or onto or off contracts) is the explicit activation of contract apps.
+  const contractChange = args.version !== undefined && nextVersion.manifest.contract !== current.contract;
+  if (args.version && !developerOwned && !contractChange) {
     const versions = await store.listDocs<ExtensionVersion>(paths.extensionVersions(current.developer_org_id, current.extension_id));
-    if (!isForwardRelease(current.version, args.version) || !requiresExplicitActivation(current, nextVersion, versions)) {
-      throw new ExtensionRegistryError('Customer installations follow compatible published releases automatically', 409);
+    if (current.contract !== undefined || !isForwardRelease(current.version, args.version) || !requiresExplicitActivation(current, nextVersion, versions)) {
+      throw new ExtensionRegistryError(current.contract !== undefined
+        ? `This installation follows the newest release of contract ${current.contract} automatically; only another contract needs activation`
+        : 'Customer installations follow compatible published releases automatically', 409);
     }
+  }
+  if (contractChange && nextVersion.manifest.contract !== undefined && !isTrustedAppDeveloper(current.developer_org_id)) {
+    throw new ExtensionRegistryError('App contracts are available to trusted developer organizations only', 403, 'contract_developer_untrusted');
   }
   const scopes = args.grantedScopes ?? current.granted_scopes;
   const requested = new Set(nextVersion.manifest.permissions.map((entry) => entry.scope));
@@ -654,6 +703,10 @@ export async function updateExtensionInstallation(args: {
     ...config,
     updated_at: now,
   };
+  if (contractChange) {
+    if (nextVersion.manifest.contract === undefined) delete next.contract;
+    else next.contract = nextVersion.manifest.contract;
+  }
   if (args.version !== undefined && current.version !== nextVersionName && args.confirmFormTargets !== true) {
     // A form whose endpoint the new version does not declare fails every later publication. The
     // version the change resolves to (it can follow automatic releases) is the one checked.

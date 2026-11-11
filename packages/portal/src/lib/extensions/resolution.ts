@@ -8,6 +8,7 @@ import {
 } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { buildExtensionConfig } from './config';
+import { isTrustedAppDeveloper } from './trusted-developers';
 
 export interface ExtensionVersionResolution {
   version: ExtensionVersion | null;
@@ -40,8 +41,11 @@ function compareVersions(left: ExtensionVersion, right: ExtensionVersion): numbe
 }
 
 export function requiresExplicitActivation(installation: ExtensionInstallation, target: ExtensionVersion, versions: ExtensionVersion[]): boolean {
+  // Within a contract every release is automatic; another contract is always explicit.
+  if (target.manifest.contract !== installation.contract) return true;
+  if (installation.contract !== undefined) return false;
   const selected = { version: installation.version } as ExtensionVersion;
-  return versions.some(release => ['published', 'deprecated', 'revoked'].includes(release.status) &&
+  return versions.some(release => release.manifest.contract === undefined && ['published', 'deprecated', 'revoked'].includes(release.status) &&
     release.manifest.activation_policy === 'explicit' && compareVersions(release, selected) > 0 && compareVersions(release, target) <= 0);
 }
 
@@ -62,6 +66,8 @@ function canRunVersion(
     !isRuntimeCompatible(version.manifest.runtime_compatibility, EXTENSION_RUNTIME_VERSION)) {
     return false;
   }
+  // A contract release runs only for a trusted developer, also after one is removed from the list.
+  if (version.manifest.contract !== undefined && !isTrustedAppDeveloper(installation.developer_org_id)) return false;
   return typeof buildExtensionConfig(version.manifest.config_schema, {}, installation) !== 'string';
 }
 
@@ -83,8 +89,11 @@ export async function resolveExtensionVersion(
     return (released || selectedPreview) && !requiresExplicitActivation(installation, version, versions) && canRunVersion(installation, version);
   });
   const version = candidates.sort(compareVersions).at(-1) ?? null;
+  // A newer contract (or the first one, for an installation without) waits for an explicit activation.
   const pending = versions.filter(release => release.status === 'published' &&
     requiresExplicitActivation(installation, release, versions) &&
+    (release.manifest.contract === undefined ? installation.contract === undefined
+      : release.manifest.contract > (installation.contract ?? 0) && isTrustedAppDeveloper(installation.developer_org_id)) &&
     isRuntimeCompatible(release.manifest.runtime_compatibility, EXTENSION_RUNTIME_VERSION)).sort(compareVersions).at(-1);
   const initialVersion = installation.initial_version ?? installation.version;
   return {
