@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.28 (candidate, MCP 0.45.136)
 
 - A build that build storage (R2) refused to accept at the end
   (`artifact_artifact_upload_failed`, typically HTTP 5xx during a short storage
