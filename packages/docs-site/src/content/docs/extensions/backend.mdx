@@ -260,6 +260,62 @@ your own release with `version` alone breaks the live site in the window
 between a version change and the next publication. A domain-only
 republication keeps the published versions.
 
+## App contracts (runtime 0.46.0)
+
+A contract app (see [App contracts](../manifest/#app-contracts-runtime-0460))
+serves one stable address per contract instead of one per release, and every
+release of a contract shares its data. Core calls it server to server, with a
+60-second installation assertion bound to the request body (`body_sha256`),
+the resolved `version` and empty `scopes`. Verify it like any other assertion
+and check `token_use`.
+
+**Variants** (`token_use: "component_variants"`), for the editor picker and MCP
+`list_extension_variants`:
+
+```http
+POST {api.base_url}{variants.path}
+
+{ "component_id": "next-occurrence" }
+→ { "variants": [{ "id": "lunch-talks", "label": "Lunch talks" }] }
+```
+
+Ids match `^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`. A variant's settings live in
+your app; a change is live on every page that uses the variant, so preview it
+before saving.
+
+**Default markup** (`token_use: "default_markup"`), once per publication with
+every mount of the site:
+
+```http
+POST {api.base_url}{default_markup.path}
+
+{ "mounts": [{ "key": "next-occurrence|lunch-talks|sv", "component_id": "next-occurrence", "variant": "lunch-talks", "language": "sv" }] }
+→ {
+  "markup": { "next-occurrence|lunch-talks|sv": "<a href=\"#anmalan\">Anmäl dig</a>" },
+  "assets": [{ "name": "events.css", "content_type": "text/css", "body_base64": "…" }],
+  "styles": ["events.css"]
+}
+```
+
+- Answer with the keys you were sent. The markup (at most 256 KiB per mount) is
+  written into the mount unfiltered and is what visitors without JavaScript and
+  search engines see. It can be a loading state, an empty control or content
+  worth indexing.
+- `assets` are written to `/_assets/apps/{extension_id}/{sha256 prefix}/{name}`
+  with immutable caching; `{{asset:name}}` in the markup becomes that path.
+  Names are simple file names; types are `text/javascript`,
+  `application/javascript`, `text/css`, `application/json`, `image/svg+xml`,
+  `image/png`, `image/webp` and `font/woff2`; at most 2 MiB per file and 10 MiB
+  per app per build.
+- `styles` names returned `text/css` assets. They are linked in the head of
+  every page with a mount of your app, before the site's own CSS, so the base
+  look is in place before any JavaScript runs.
+
+If you do not answer (or answer something invalid) the previous publication's
+markup, files and styles are reused, else the mounts stay empty, and the
+publication records an `extension_default_markup_unavailable` warning. It never
+fails. New default markup reaches a site at its next ordinary publication.
+
 ## Authenticated product guides (Core 0.2.9)
 
 Declare `documentation.access: "installation"` and a HTTPS guide URL on the

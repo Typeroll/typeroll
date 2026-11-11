@@ -300,6 +300,27 @@ provider API. Responses above 1 MiB fail closed.
 
 Next, implement the [provider backend and admin SSO](../backend/).
 
+## Contract components (runtime 0.46.0)
+
+A `contract_component` exports the same function, but receives a variant
+instead of props:
+
+```ts
+export async function mount(element, { variant }, context) {
+  // context.variant === variant. element already holds the default markup.
+}
+```
+
+The runtime imports `entry.module_url` live (nothing is vendored into the
+publication) on published sites and in previews; the editor canvas imports it
+inside its opaque-origin frame. Serve the module and everything it imports with
+`Access-Control-Allow-Origin: *`. The mount holds the default markup the app
+returned at the last build until the component replaces it, and keeps it when
+the module cannot load; a component without `module_url` is never mounted.
+The mount carries `data-tr-extension-variant` and an optional
+`style="min-height:…px"`, never `data-block-data`. In HTML mode write
+`<x-extension block="…" variant="lunch-talks" reserve="160" />`.
+
 ## First-party Analytics context (runtime 0.40.0)
 
 Bundled components receive `context.analytics`, either null or an object with
