@@ -202,8 +202,12 @@ export function transferFailureReason(error) {
   const message = typeof error?.message === 'string' ? error.message : '';
   if (/^HTTP \d{3}$/.test(message) || /^[a-z0-9_]{1,80}$/.test(message)) return message;
   if (error?.name === 'TimeoutError') return 'timed out';
-  const code = typeof error?.cause?.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(error.cause.code) ? ` ${error.cause.code}` : '';
-  return `network error${code}`;
+  if (error?.name === 'TypeError') {
+    // What fetch throws when the connection fails; its cause code (ECONNRESET, …) is safe.
+    const code = typeof error?.cause?.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(error.cause.code) ? ` ${error.cause.code}` : '';
+    return `network error${code}`;
+  }
+  return typeof error?.name === 'string' && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : 'unknown error';
 }
 
 /** A response a storage outage produces, worth repeating unchanged. */

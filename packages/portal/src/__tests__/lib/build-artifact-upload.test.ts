@@ -55,6 +55,7 @@ it('names only a status, a bare code or the error class for an optional cache re
   expect(transferFailureReason(Error('render_cache_integrity'))).toBe('render_cache_integrity');
   expect(transferFailureReason(Object.assign(Error('The operation was aborted due to timeout'), { name: 'TimeoutError' }))).toBe('timed out');
   expect(transferFailureReason(new TypeError(`fetch failed ${url}`))).toBe('network error');
+  expect(transferFailureReason(new SyntaxError('Unexpected token < in JSON at position 0'))).toBe('SyntaxError');
 });
 
 it('tells the reader that a storage refusal is temporary, retried once and leaves the live site unchanged', () => {
