@@ -122,6 +122,7 @@ or an admin share) and through MCP. Paths are relative to
 | Enable or disable                 | `set_extension_installation_status`                           | `PATCH /{installationId}` with `status`  |
 | Uninstall                         | `uninstall_extension`                                         | `DELETE /{installationId}`               |
 | Diagnostics                       | `read_extension_diagnostics`                                  | `GET /{installationId}/diagnostics`      |
+| List a contract component's variants | `list_extension_variants`                                 | `GET /{installationId}/variants?component_id=…` |
 | Pair the token issuer             | `pair_extension_issuer`                                       | `POST /{installationId}/pair`            |
 | Connect the provider              | `connect_extension`                                           | `POST /{installationId}/connect`         |
 | Open an admin page                | `launch_extension_admin_page`                                 | `POST /{installationId}/launch`          |

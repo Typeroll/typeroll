@@ -49,6 +49,11 @@ export default function FieldInput({
   const editedType = useContext(EditedBlockTypeContext);
   const renderVersion = useContext(RenderVersionContext);
   const siteFonts = useContext(SiteFontsContext);
+  // App contract variant: a select of the app's variants, typed by hand when the app does not answer.
+  if (field.extension_variants && siteId && editedType?.extension) {
+    return <div style={fieldGroup}>{label}<VariantInput id={fieldId} siteId={siteId} installationId={editedType.extension.installation_id}
+      componentId={editedType.extension.component_id} value={v} onChange={onChange} describedBy={describedBy} /></div>;
+  }
   switch (field.type) {
     case 'part_styles':
       // Generated for block types with parts; never a free-text value.
@@ -422,6 +427,32 @@ function JsonFieldInput({
       {error && <span role="alert" style={{ color: '#fca5a5', fontSize: '.75rem' }}>{error}</span>}
     </div>
   );
+}
+
+function VariantInput({ id, siteId, installationId, componentId, value, onChange, describedBy }: {
+  id: string; siteId: string; installationId: string; componentId: string; value: string; onChange: (value: unknown) => void; describedBy?: string;
+}) {
+  const [variants, setVariants] = useState<Array<{ id: string; label: string }> | null>(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/sites/${encodeURIComponent(siteId)}/extensions/${encodeURIComponent(installationId)}/variants?component_id=${encodeURIComponent(componentId)}`)
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('Variants unavailable')))
+      .then((payload) => { if (active) setVariants(Array.isArray(payload.variants) ? payload.variants : []); })
+      .catch(() => { if (active) setFailed(true); });
+    return () => { active = false; };
+  }, [siteId, installationId, componentId]);
+  const current = value || 'standard';
+  if (failed || !variants) {
+    return <>
+      <input id={id} type="text" value={value} placeholder="standard" aria-describedby={describedBy} onChange={(e) => onChange(e.target.value)} style={textInput} />
+      {failed && <p className="field-help" style={fieldHelp}>The app did not list its variants. Type a variant id.</p>}
+    </>;
+  }
+  const options = variants.some((variant) => variant.id === current) ? variants : [...variants, { id: current, label: `${current} (not listed by the app)` }];
+  return <select id={id} value={current} aria-describedby={describedBy} onChange={(e) => onChange(e.target.value)} style={selectInput}>
+    {options.map((variant) => <option key={variant.id} value={variant.id}>{variant.label}</option>)}
+  </select>;
 }
 
 function UrlFieldInput({

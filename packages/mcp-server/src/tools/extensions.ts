@@ -147,6 +147,18 @@ export const extensionTools: ToolDef[] = [
     }),
   },
   {
+    name: 'list_extension_variants',
+    description:
+      'List the variants of an installed app contract component (render_mode contract_component) as { variants: [{ id, label }], source }. The app defines them and their settings; a block instance stores only the variant id in its `variant` field (default `standard`) and changing a variant in the app is live on every page that uses it. Without a declared variants call the list is [{ id: "standard" }]. Fails with 502 when the app does not answer. Read permission is enough.',
+    inputSchema: {
+      installation_id: z.string().min(1),
+      component_id: z.string().min(1).describe('Component id from the installation manifest (frontend.components[].id).'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => {
+      return ok(await client.get(siteId, `extensions/${encodeURIComponent(args.installation_id)}/variants`, { component_id: args.component_id }));
+    }),
+  },
+  {
     name: 'launch_extension_admin_page',
     description:
       'Issue a single-use, short-lived launch grant for one of the Extension\'s admin pages (manifest admin.pages), as opening the page in the portal does. Returns { launch_url, method, form, expires_at }: a browser tool must POST the `form` fields to launch_url before expires_at. The provider sees the caller as api-key:{prefix}. Treat the code as a credential. For approved native pages prefer call_extension_admin. The page\'s minimum_permission applies.',
