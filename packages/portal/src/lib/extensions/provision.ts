@@ -1,5 +1,8 @@
 import {
+  EXTENSION_DEFAULT_VARIANT,
   EXTENSION_PAGE_HANDOFF_PROP,
+  EXTENSION_RESERVE_PROP,
+  EXTENSION_VARIANT_PROP,
   extensionPropsToFields,
   paths,
   type BlockType,
@@ -24,7 +27,13 @@ export function extensionBlockType(
   component: NonNullable<ExtensionManifest['frontend']>['components'][number],
 ): BlockType {
   const blockId = extensionBlockTypeId(installation.id, component.id);
-  const schema = extensionPropsToFields(component.props_schema);
+  // A contract component stores a named variant, never settings: the app owns them.
+  const schema = component.render_mode === 'contract_component' ? [
+    { name: EXTENSION_VARIANT_PROP, type: 'text' as const, label: 'Variant', default: EXTENSION_DEFAULT_VARIANT, extension_variants: true,
+      help: 'Which of the app\'s variants this block shows. The app defines the variants and their settings.' },
+    { name: EXTENSION_RESERVE_PROP, type: 'number' as const, label: 'Reserved height (px)', min: 0, max: 4000, editor_group: 'advanced' as const,
+      help: 'Optional. Holds this much height until the component has loaded, so the page does not jump.' },
+  ] : extensionPropsToFields(component.props_schema);
   // The page author binds each instance to a navigation form's defaults key;
   // without that binding context.handoff.read() resolves null.
   if (

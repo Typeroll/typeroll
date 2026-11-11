@@ -58,6 +58,7 @@ import { columnStackCss } from './column-layout.js';
 import { formPresentationOptions } from './render-form.js';
 import { DATA_ATTRIBUTE_RENDER_VERSION, IMAGE_INSTANCE_CSS_V16, INSTANCE_RUNTIME_CSS_V16, mapMediaBreakpoints, rewriteSettingSelectors, settingDataAttributes, takeInlineCustomProperties } from './render-v16.js';
 import type { Block, BlockType, FieldDefinition } from './types.js';
+import { EXTENSION_RESERVE_PROP, EXTENSION_VARIANT_PROP, extensionContractReservePx, extensionContractVariant } from './extensions.js';
 import type { RouteKind } from './page-identity.js';
 import { applyRouteOverrides, applyRouteOverridesToTree } from './route-overrides.js';
 import { renderIconHtml } from './icons.js';
@@ -762,7 +763,15 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     rootAttrs['data-tr-extension'] = blockType.extension.extension_id;
     rootAttrs['data-tr-extension-installation'] = blockType.extension.installation_id;
     rootAttrs['data-tr-extension-component'] = blockType.extension.component_id;
-    rootAttrs['data-block-data'] = JSON.stringify(effectiveBlock.data ?? {});
+    if (blockType.extension.render_mode === 'contract_component') {
+      // App contracts: the mount names a variant and never carries settings;
+      // the app's default markup is written inside it at build.
+      rootAttrs['data-tr-extension-variant'] = extensionContractVariant(effectiveBlock.data?.[EXTENSION_VARIANT_PROP]);
+      const reserve = extensionContractReservePx(effectiveBlock.data?.[EXTENSION_RESERVE_PROP]);
+      if (reserve) html = mergeAttrsIntoFirstTag(html, { style: `min-height:${reserve}px` }) ?? html;
+    } else {
+      rootAttrs['data-block-data'] = JSON.stringify(effectiveBlock.data ?? {});
+    }
   }
   if (Object.keys(rootAttrs).length > 0) {
     html = injectAttrsIntoFirstTag(html, rootAttrs);
