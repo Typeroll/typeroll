@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.27 (candidate, MCP 0.45.135)
 
 - App contracts (Extension runtime 0.46.0, template capabilities 0.58.0) let
   official apps update without publishing sites. A manifest may declare
