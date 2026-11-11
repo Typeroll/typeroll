@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Transient storage errors from R2 (HTTP 5xx, `InternalError`, `SlowDown`,
+  network errors) are retried up to three times with backoff instead of
+  failing the request. On moveria.nl a publication failed with
+  `media_coordinator_500` because R2 answered "internal connectivity issue"
+  while the build's media grants were written. Conditional writes and
+  streamed bodies are not repeated.
+
 ## 0.3.24 (candidate, MCP 0.45.133)
 
 - A link to `#cookie-settings` now opens the cookie banner even after another
