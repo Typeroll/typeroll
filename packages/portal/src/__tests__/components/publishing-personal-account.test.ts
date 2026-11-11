@@ -49,3 +49,25 @@ it('reports verified media progress and automatically shows completion without a
     expect(container.textContent).not.toContain('Refresh migration status');
   } finally { vi.useRealTimers(); }
 });
+
+it('never shows a migration that set files aside as moved, lists those files and offers a retry', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const data = { github: { status: 'disconnected' }, github_choices: [], github_setup: { available: false },
+    cloudflare: { status: 'connected', revision: 'one', media_ready: true,
+      cloudflare: { account_id: 'a'.repeat(32), account_name: 'Test account', bucket: 'private', public_bucket: 'public' } },
+    media_migration: { state: 'complete_with_failures', ok: false, phase: 'copying', copied_files: 40, pending_files: 0, failed_files: 99, failed_media_total: 99,
+      error: '99 files could not be copied and were skipped. Fix or delete them, then retry media migration.',
+      failed_media: [{ site_id: 'moveria-de', media_id: 'm1', filename: 'hero.jpg', source_host: 'moveria.de', code: 'media_transfer_resources_exceeded', message: 'The Workers plan stopped the copy.', transient: true }] } };
+  const request = vi.fn(async (_url: string, _init?: RequestInit) => Response.json(data));
+  vi.stubGlobal('fetch', request);
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingConnections)));
+  expect(container.textContent).not.toContain('Originals moved to your R2 storage');
+  expect(container.textContent).toContain('Some media could not be moved');
+  expect(container.textContent).toContain('99 could not be copied');
+  expect(container.textContent).toContain('hero.jpg (moveria-de, from moveria.de)');
+  expect(container.textContent).toContain('The first 1 are shown');
+  const retry = [...container.querySelectorAll('button')].find(node => node.textContent === 'Retry files that could not be copied')!;
+  await act(async () => retry.click());
+  expect(request.mock.calls.some(([url, init]) => url === '/api/orgs/publishing/media-migration' && init?.method === 'POST')).toBe(true);
+});

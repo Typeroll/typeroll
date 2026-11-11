@@ -13,7 +13,8 @@ type Connection = {
   github: { owner: string; account_type?: 'Organization' | 'User'; repository_creation_state?: 'ready' | 'reconnect_required' } | null;
   cloudflare: { account_id: string; account_name: string; bucket: string; public_bucket?: string } | null;
 };
-type Connections = Omit<GithubPublishingData, 'github'> & { media_transfer?: { state: string; code?: string; message?: string }; media_migration?: { state: string; phase?: string; copied_files: number; pending_files: number; error: string | null } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_diagnosis?: CloudflareConnectionDiagnosis; cloudflare_permissions?: CloudflarePermissionReport; cloudflare_setup?: { available: boolean }; github: Connection; cloudflare: Connection; encryption_available: boolean };
+type Connections = Omit<GithubPublishingData, 'github'> & { media_transfer?: { state: string; code?: string; message?: string }; media_migration?: { state: string; ok?: boolean; phase?: string; copied_files: number; pending_files: number; failed_files?: number; error: string | null;
+    failed_media?: Array<{ site_id: string; media_id: string; filename: string; source_host?: string | null; code: string; message: string; transient?: boolean }>; failed_media_total?: number } | null; cloudflare_choices?: Array<{ id: string; name: string }>; cloudflare_diagnosis?: CloudflareConnectionDiagnosis; cloudflare_permissions?: CloudflarePermissionReport; cloudflare_setup?: { available: boolean }; github: Connection; cloudflare: Connection; encryption_available: boolean };
 const API = '/api/orgs/publishing';
 
 class PublishingRequestError extends Error {
@@ -255,8 +256,8 @@ export default function PublishingConnections() {
         <details><summary>About this connection</summary><p>Disconnecting removes saved Cloudflare credentials. Your repositories, deployments and media remain in your accounts. Other Organizations that use the same Cloudflare account stay connected. Media storage uses standard R2 buckets on the account’s global S3 endpoint.</p></details>
       </PublishingCard>
       <PublishingCard id="media" title="Media storage"
-        state={checkingMedia ? 'waiting' : mediaError || !mediaReady || data.media_migration?.state === 'failed' ? 'error' : ['queued', 'running'].includes(data.media_migration?.state ?? '') ? 'waiting' : 'ready'}
-        status={checkingMedia ? 'Checking storage…' : data.cloudflare.status !== 'connected' ? 'Cloudflare connection required' : mediaError ? 'Storage needs attention' : !mediaReady ? 'Setup required' : data.media_migration?.state === 'failed' ? 'Migration needs attention' : ['queued', 'running'].includes(data.media_migration?.state ?? '') ? 'Moving media to R2…' : 'R2 connected'}>
+        state={checkingMedia ? 'waiting' : mediaError || !mediaReady || ['failed', 'complete_with_failures'].includes(data.media_migration?.state ?? '') ? 'error' : ['queued', 'running'].includes(data.media_migration?.state ?? '') ? 'waiting' : 'ready'}
+        status={checkingMedia ? 'Checking storage…' : data.cloudflare.status !== 'connected' ? 'Cloudflare connection required' : mediaError ? 'Storage needs attention' : !mediaReady ? 'Setup required' : data.media_migration?.state === 'failed' ? 'Migration needs attention' : data.media_migration?.state === 'complete_with_failures' ? 'Some media could not be moved' : ['queued', 'running'].includes(data.media_migration?.state ?? '') ? 'Moving media to R2…' : 'R2 connected'}>
         {data.cloudflare.status === 'connected' ? <div className="stack">
           {(mediaError || mediaNotice) && <div ref={mediaFeedback} tabIndex={-1} role={mediaError ? 'alert' : 'status'} className="stack" style={{ padding: 16, border: `2px solid var(${mediaError ? '--color-danger' : '--color-success'})`, borderRadius: 8, scrollMarginTop: 72 }}>
             {mediaError?.code === 'r2_activation_required' ? <>
@@ -279,15 +280,19 @@ export default function PublishingConnections() {
             <details><summary>Storage details</summary><p>Private originals bucket: <strong style={{ overflowWrap: 'anywhere' }}>{mediaBucket}</strong></p>
             <p>Public images bucket: <strong style={{ overflowWrap: 'anywhere' }}>{cloudflareAccount?.public_bucket}</strong></p></details>
             {data.media_migration && <div role="status">
-              <p>{data.media_migration.state === 'complete' ? data.media_migration.copied_files === 0 ? 'No existing media to move. New uploads go directly to R2.' : 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `${data.media_migration.state === 'failed' ? 'Media migration paused' : data.media_migration.phase === 'updating_references' ? 'Updating image references' : 'Moving existing originals to R2'}: ${data.media_migration.copied_files.toLocaleString()} ${data.media_migration.copied_files === 1 ? 'file' : 'files'} copied and verified.`}</p>
+              <p>{data.media_migration.state === 'complete_with_failures' ? `${data.media_migration.copied_files.toLocaleString()} ${data.media_migration.copied_files === 1 ? 'file' : 'files'} copied and verified. ${(data.media_migration.failed_files ?? 0).toLocaleString()} could not be copied and ${data.media_migration.failed_files === 1 ? 'was' : 'were'} set aside; pages that use them must not be published until they are fixed.` : data.media_migration.state === 'complete' ? data.media_migration.copied_files === 0 ? 'No existing media to move. New uploads go directly to R2.' : 'Originals moved to your R2 storage. Existing published image URLs are retained.' : `${data.media_migration.state === 'failed' ? 'Media migration paused' : data.media_migration.phase === 'updating_references' ? 'Updating image references' : 'Moving existing originals to R2'}: ${data.media_migration.copied_files.toLocaleString()} ${data.media_migration.copied_files === 1 ? 'file' : 'files'} copied and verified.`}</p>
               {['queued', 'running'].includes(data.media_migration.state) && <p>The transfer continues automatically. You can close this page. New uploads go directly to R2; existing images remain available.</p>}
-              {data.media_migration.error && <><p>{data.media_migration.state === 'failed' ? 'Media migration needs attention. Review the details below, then retry.' : 'Retrying the transfer automatically.'}</p><details><summary>Migration error details</summary><p>{data.media_migration.error}</p></details></>}
+              {data.media_migration.error && data.media_migration.state !== 'complete_with_failures' && <><p>{data.media_migration.state === 'failed' ? 'Media migration needs attention. Review the details below, then retry.' : 'Retrying the transfer automatically.'}</p><details><summary>Migration error details</summary><p>{data.media_migration.error}</p></details></>}
+              {!!data.media_migration.failed_media?.length && <details><summary>Files that could not be copied ({(data.media_migration.failed_media_total ?? data.media_migration.failed_media.length).toLocaleString()})</summary>
+                <ul>{data.media_migration.failed_media.map(file => <li key={`${file.site_id}/${file.media_id}`}>{file.filename} ({file.site_id}{file.source_host ? `, from ${file.source_host}` : ''}): {file.message || file.code}{file.transient ? ' Retrying may succeed.' : ''}</li>)}</ul>
+                {(data.media_migration.failed_media_total ?? 0) > data.media_migration.failed_media.length && <p>The first {data.media_migration.failed_media.length} are shown. The API and MCP list every file.</p>}
+              </details>}
               {data.media_migration.state !== 'complete' && <button type="button" className="btn" disabled={busy} onClick={async () => {
                 setBusy(true); setError('');
-                try { if (data.media_migration?.state === 'failed') await request('/media-migration', 'POST', {}); await refresh(); }
+                try { if (['failed', 'complete_with_failures'].includes(data.media_migration?.state ?? '')) await request('/media-migration', 'POST', {}); await refresh(); }
                 catch (error) { setError(error instanceof Error ? error.message : 'Could not check migration.'); }
                 finally { setBusy(false); }
-              }}>{data.media_migration.state === 'failed' ? 'Retry media migration' : 'Refresh migration status'}</button>}
+              }}>{data.media_migration.state === 'failed' ? 'Retry media migration' : data.media_migration.state === 'complete_with_failures' ? 'Retry files that could not be copied' : 'Refresh migration status'}</button>}
             </div>}
             {data.cloudflare.auth_method === 'oauth' && <details><summary>Replace R2 access keys</summary>{mediaAccessForm}</details>}
           </> : mediaBucket ? <>

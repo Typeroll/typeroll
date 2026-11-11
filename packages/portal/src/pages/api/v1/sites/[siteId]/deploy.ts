@@ -15,6 +15,11 @@ import { publicationTargets, requireLiveDomainConfirmation } from '../../../../.
 // A site cut over to a live custom domain publishes to that domain. A real
 // deploy then needs confirm_live_domains: true; without it the call returns
 // 409 live_domain_confirmation_required with the live URLs and targets.
+//
+// Publication checks once that every referenced media file is in the site's
+// media storage (dry runs too). Files whose copy failed fail the job with
+// media_missing and failure.missing_media; accept_missing_media: true
+// publishes without them and leaves their references empty.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey, requireAnyApiKey } from '../../../../../lib/api-auth';
@@ -35,7 +40,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     environment?: DeployEnvironment;
     dry_run?: boolean;
     allow_unsaved?: boolean; retry_verification_job_id?: string; approve_cache_zone_id?: string;
-    confirm_live_domains?: boolean;
+    confirm_live_domains?: boolean; accept_missing_media?: boolean;
   };
   if (body.retry_verification_job_id !== undefined) {
     try {
@@ -57,6 +62,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (body.approve_cache_zone_id !== undefined) return privateJson({ error: 'Cache approval requires an existing failed deployment ID.' }, 400);
   const environment: DeployEnvironment = body.environment === 'staging' ? 'staging' : 'production';
   const dryRun = body.dry_run === true;
+  const acceptMissingMedia = body.accept_missing_media === true;
   if (!dryRun) {
     const readiness = await publishingReadiness(ctx.orgId, ctx.siteId, ctx.versionId);
     if (!readiness.ready) return privateJson({ error: 'Set up Publishing before deploying this site.', code: 'publishing_setup_required', required: readiness.required }, 409);
@@ -85,6 +91,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     targets: targets.targets,
     production: targets.production,
     ...(targets.production && !dryRun ? { live_domains_confirmed: true } : {}),
+    ...(acceptMissingMedia ? { accept_missing_media: true } : {}),
   });
 
   try {
@@ -111,6 +118,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     version_id: ctx.versionId,
     environment,
     dry_run: dryRun,
+    ...(acceptMissingMedia ? { accept_missing_media: true } : {}),
     production: targets.production,
     live_domains: targets.live_domains,
     targets: targets.targets,

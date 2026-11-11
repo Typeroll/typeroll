@@ -1,5 +1,52 @@
 # Changelog
 
+## Unreleased
+
+- The media transfer Worker in the customer's Cloudflare account hashes each
+  file once, on the way into R2, and no longer downloads the stored copy to hash
+  it a second time. It reads the source in 256 KiB pieces instead of passing
+  every 4 KiB network chunk through JavaScript. A 4 MiB copy used about 24 ms of
+  CPU in local workerd and now uses about 2 ms; on Workers Free (10 ms per
+  request) Moveria's 3–6 MB images were stopped with error 1102 and 99 files
+  were left uncopied. The integrity guarantee is unchanged: the hashed bytes
+  are the uploaded bytes, the PUT has an exact length, and the digest and size
+  are checked before a receipt is issued. The portal redeploys the Worker on
+  its next use; older Workers keep working until then.
+- A 503 from the transfer Worker without its own error code (Cloudflare
+  stopping it at the plan's CPU limit) is now `media_transfer_resources_exceeded`.
+  Typeroll retries it once after a pause and copies that organization's files
+  one at a time until copies succeed again, instead of retrying three times at
+  full concurrency. If it persists, the file's error says that the Workers plan
+  stopped the copy and that Workers Paid raises the limit.
+- Publishing checks once per publication, dry runs included, that every
+  referenced media file is in the site's media storage. Files whose copy failed
+  and was set aside (`migration_failed`), rejected imports and files with no
+  stored copy fail the job with `media_missing`; `job.failure.missing_media`
+  lists them (`media_id`, `filename`, `source_host`, `code`, `reason`; at most
+  100) and `missing_media_total` counts them all. `POST
+  /api/v1/sites/{siteId}/deploy` and MCP `trigger_deploy` accept
+  `accept_missing_media: true` to publish without those files: their
+  references are left empty and each one is reported in `job.warnings`. Files
+  still uploading or migrating keep failing with `media_migration_pending`,
+  which now gives their count.
+- A media migration that set files aside no longer reports `complete`: the
+  site and the overall status report `complete_with_failures`, and both carry
+  `ok` (`true` only for `complete` without set-aside files), so a client that
+  knows only `complete` can check `ok` or `failed_files`. `failed_media` now
+  lists every set-aside file of every site, 100 per call with
+  `failed_media_total` and a `failed_media_next` cursor (`failed_after` in
+  `GET /publishing/media-migration` and `read_organization_media_migration`),
+  with `source_host` and `source_url` without its query. Counts and the list are
+  both read from the media records. Before, job counters (including that of an
+  organization-wide pass from before per-site jobs) could report skipped files
+  that `failed_media`, at most 50 per site and 100 in all, did not list: Moveria
+  saw 99 skipped files and 12 listed. A copy of a stored file
+  that fails for a passing reason (Workers plan CPU limit, 5xx, timeout) is
+  retried after 1, 5, 15, 30 and 60 minutes like a pending import, instead of
+  three times within seconds; only then is it set aside, marked
+  `transient: true`. Refused sources and integrity failures are still set aside
+  at once. Publishing → Media storage lists the files and offers a retry.
+
 ## 0.3.24 (candidate, MCP 0.45.133)
 
 - A link to `#cookie-settings` now opens the cookie banner even after another

@@ -586,21 +586,36 @@ or choosing retry restarts only sites whose migration stopped.
 **Publishing → Media storage** shows the totals over all sites.
 
 A file whose source cannot be fetched, for example an image on a host that no
-longer exists, does not hold back the rest of its site. After three attempts, or
-at once when the source refuses it, the file is set aside with its reason. A
-file still being imported from a URL whose copy failed for a passing reason (a
-busy source, an interrupted transfer) is instead retried after 1, 5, 15, 30 and
-60 minutes; the site's job stays `queued` with the file in `pending_files` until
-then, and the file is set aside only after the last retry. A file that is
-copied after it was set aside, for example by importing it again, is no longer
-counted in `failed_files`. The
-site's job then ends `complete`, with `failed_files` and an `error` naming how many
-files need attention. `read_organization_media_migration` (or
-`GET /publishing/media-migration`) then lists it under `failed_media` with its
-site, filename, source URL and error, and shows each site's state and
-`updated_at`. Delete or replace those files, or fix their source, then retry: a
-retry gives set-aside files new attempts and restarts only sites that stopped or
-set files aside.
+longer exists, does not hold back the rest of its site. When the source refuses
+it (a 4xx such as `media_source_unavailable`) or the copy fails verification
+(`media_integrity_failed`), the file is set aside at once with its reason. A
+copy that fails for a passing reason (the transfer Worker stopped by its
+Cloudflare plan's CPU limit, `media_transfer_resources_exceeded`; a busy
+source; a 5xx; an interrupted or timed-out transfer) is retried after 1, 5, 15,
+30 and 60 minutes, both for files already in storage and for files still being
+imported from a URL. Until then the site's job stays `queued` with the file in
+`pending_files`, and the file is set aside only after the last retry, marked
+`transient: true`. A file that is copied after it was set aside, for example by
+importing it again, is no longer counted in `failed_files`.
+
+A site whose job finished with files set aside reports the state
+`complete_with_failures`, never `complete`, together with `failed_files` and an
+`error` naming how many files need attention. The Organization's overall
+`state` is `complete_with_failures` as soon as one site is. Both the overall
+status and each site carry `ok`, which is `true` only for `complete` with no
+set-aside files; a client that knows only `complete`
+must check `ok` or `failed_files`. `read_organization_media_migration` (or
+`GET /publishing/media-migration`) lists every set-aside file under
+`failed_media`, 100 per call in site and media order, with its site, media ID,
+filename, source host (`source_url` without its query, which may carry a
+token), code, message and `transient`. `failed_media_total` counts all of them;
+when `failed_media_next` is not null, pass it as `failed_after` to read the next
+page. Counts and the list are read from the media records, so they always agree.
+Delete or replace those files, or fix their source, then retry: a retry gives
+set-aside files new attempts and restarts only sites that stopped or set files
+aside. A publication that references a set-aside file fails with
+`media_missing` unless it explicitly accepts publishing without it
+(`accept_missing_media`).
 Set-aside files are never published from the old source, and live pages are not
 changed.
 

@@ -63,6 +63,62 @@ compilation succeeds or that the rendered pages pass every other check. Other se
 locally without uploading. Inspect the reported phase; a successful dry run has
 `dry_run: true` and no `deploy_url`.
 
+### Missing media
+
+Every publication checks once, before anything goes live, that each media file
+its content references is in the site's media storage. Dry runs make the same
+check. It reads the media records only; nothing is downloaded and nothing keeps
+checking afterwards.
+
+A file counts as missing when nothing will copy it without someone acting:
+
+- the media migration set its copy aside after its attempts were used up or the
+  source was refused (the media migration reports it among its failed files),
+- an imported source was rejected (for example an SVG that is not a usable
+  image), or
+- no stored copy and no pending import exists.
+
+Missing files fail the deploy job with `job.failure.code` `media_missing`.
+`job.failure.missing_media` lists them (at most 100) and
+`job.failure.missing_media_total` counts them all:
+
+```json
+{
+  "status": "failed",
+  "error": "Cannot publish: 99 referenced media file(s) are missing from this site's media storage because their copy failed and was set aside (…). Retry the media migration in Publishing or import those files again, or publish with accept_missing_media: true to leave their references empty. missing_media lists the files.",
+  "failure": {
+    "stage": "freezing source",
+    "code": "media_missing",
+    "missing_media_total": 99,
+    "missing_media": [
+      {
+        "media_id": "m_123",
+        "filename": "hero.jpg",
+        "source_host": "old.example.com",
+        "code": "media_transfer_unavailable",
+        "reason": "The transfer was interrupted."
+      }
+    ]
+  }
+}
+```
+
+`source_host` is only the host of the file's original address, never the full
+URL, which may carry a token. `code` and `reason` are the recorded copy
+failure. Fix the files first: retry the media migration in Publishing, or
+import or upload them again. If the site owner accepts publishing without
+them, deploy again with `accept_missing_media: true`. Their references are
+then left empty (an image renders as no file, never as a private Typeroll
+address), and `job.warnings` names each file, or summarizes them when there
+are more than 20. The job records `accept_missing_media: true`.
+
+Files that are still uploading, waiting to be copied or waiting for an
+automatic import retry are not missing. They fail the deploy with
+`media_migration_pending` and their count, with or without
+`accept_missing_media`: wait for the media migration to finish, then deploy
+again. A domain change rebuilds the last publication and never accepts
+missing media.
+
 ## `get_publication_impact`
 
 Reports where a deploy lands and which saved public content changed since the
@@ -93,6 +149,10 @@ under `job`, so read the status from `job.status`, not the top level:
   "site_urls": { "production": "https://www.example.com" }
 }
 ```
+
+A job that failed with `job.failure.code` `media_missing` lists the referenced
+files whose copy to media storage failed in `job.failure.missing_media`; see
+[Missing media](#missing-media).
 
 ### Queued builds
 

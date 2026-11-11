@@ -878,6 +878,47 @@ it('publishes without an SVG that cannot be made safe and reports it on the job'
   expect(JSON.stringify(resolved.pages)).toContain('<img src=\\"\\">');
 });
 
+describe('media missing from storage', () => {
+  const privateUrl = 'https://cms.example.com/api/sites/site/media/lost/content';
+  beforeEach(async () => {
+    const store = getStore();
+    await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
+    await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: `<img src="${privateUrl}"><img src="https://media.example.com/photo.png">` });
+    await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12,
+      storage: { provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'originals', key: 'photo.png' } });
+    // The media migration set the copy aside after the transfer Worker failed every attempt.
+    await store.setDoc(`${paths.media('org', 'site')}/lost`, { filename: 'lost.png', mime_type: 'image/png', cdn_url: privateUrl, r2_key: 'legacy/lost.png', source_url: 'https://old.example.com/wp-content/uploads/lost.png?token=secret',
+      migration_failed: true, migration_error: { code: 'media_transfer_unavailable', message: 'The transfer Worker exceeded its CPU limit.', at: '2026-11-01T00:00:00Z' } });
+    const domains = await getSiteDomains('org', 'site');
+    await saveSiteDomains('org', 'site', { revision: domains.revision, website_host: 'www.example.com', media_host: 'media.example.com', media_path_prefix: '', dns_mode: 'automatic' });
+    await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'www.example.com', media_host: 'media.example.com', media_path_prefix: '' } });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+
+  it('fails a dry run with the list of missing files on the job, before any source is produced', async () => {
+    await executeCustomerPublication({ ...args, dryRun: true });
+    const job = await getStore().getDoc<any>(jobPath);
+    expect(job).toMatchObject({ status: 'failed', failure: { code: 'media_missing', missing_media_total: 1,
+      missing_media: [{ media_id: 'lost', filename: 'lost.png', source_host: 'old.example.com', code: 'media_transfer_unavailable', reason: 'The transfer Worker exceeded its CPU limit.' }] } });
+    expect(job.error).toContain('accept_missing_media: true');
+    expect(JSON.stringify(job)).not.toContain('token=secret');
+    expect(mocks.source).not.toHaveBeenCalled();
+  });
+
+  it('publishes without the missing files when the job accepts it, and warns', async () => {
+    await getStore().updateDoc(jobPath, { accept_missing_media: true });
+    await executeCustomerPublication({ ...args, dryRun: true });
+    const job = await getStore().getDoc<any>(jobPath);
+    expect(job).toMatchObject({ status: 'succeeded', dry_run: true });
+    expect(job.warnings).toEqual(expect.arrayContaining([expect.stringContaining('Media lost (lost.png) was not published: it is missing')]));
+    const frozen = mocks.source.mock.calls[0][0];
+    expect(frozen.media_manifest.entries.map((entry: any) => entry.id)).toEqual(['photo']);
+    const resolved = resolvePublicationReferences(frozen);
+    expect(JSON.stringify(resolved.pages)).not.toContain('/api/sites/site/media/lost/content');
+    expect(JSON.stringify(resolved.pages)).toContain('<img src=\\"\\">');
+  });
+});
+
 it('keeps direct publication waiting for customer verification, then runs only bounded coordinator probes', async () => {
   await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
   const provider = mocks.cloudflare.getMockImplementation()!;

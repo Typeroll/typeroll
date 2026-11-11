@@ -412,7 +412,9 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       }
       // Media originals and metadata for a domain-only build come from the public snapshot too.
       const deferReferences = job.publication_intent !== 'domain_prepare' || Boolean(prior?.reference_mapping);
-      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true });
+      const mapped = await publicationMediaManifest(args.orgId, args.siteId, frozen, host, job.publication_intent === 'domain_prepare' ? prior : undefined, { deferReferences, domains, dryRun: args.dryRun === true,
+        // A domain change rebuilds the last publication and never drops a file.
+        acceptMissingMedia: job.publication_intent !== 'domain_prepare' && job.accept_missing_media === true });
       // Non-blocking findings (for example media left out of this publication) stay on the job for users and agents.
       const warnings = [...mapped.warnings, ...publicationLanguageWarnings(frozen), ...publicationCookieReopenWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
@@ -944,6 +946,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       ...(error instanceof DerivationError ? { provider: error.provider } : {}),
       ...(error instanceof ProviderError ? { provider: error.provider, http_status: error.status, provider_codes: error.codes, provider_reason: error.reason, provider_operation: error.operation, provider_error_types: error.errorTypes } : {}),
       ...(error instanceof ConnectionError && error.details?.build_diagnostic ? { diagnostic: error.details.build_diagnostic } : {}),
+      ...(error instanceof ConnectionError && Array.isArray(error.details?.missing_media) ? { missing_media: error.details.missing_media, missing_media_total: error.details.missing_media_total } : {}),
       ...(failedJob?.git_publication ? { hosting_group_id: failedJob.git_publication.hosting_group_id ?? 'default', hosting_account_id: failedJob.git_publication.account_id, project: failedJob.git_publication.project } : {}) };
     // An unclassified error reaches the job only as publication_internal_error: log what it was (ECH7F4UqvST8aaG2uMrB).
     const errorCode = (error as { code?: unknown } | null)?.code;

@@ -11,6 +11,9 @@ export class TransferPool {
   private healthy = 0;
   constructor(private maximum = 4, private byteLimit = 200 * 1024 * 1024, private perHost = 2) { this.capacity = maximum; }
   congested() { this.capacity = Math.max(1, Math.floor(this.capacity / 2)); this.healthy = 0; }
+  /** One at a time until 16 copies in a row succeed; capacity then grows back by one per 16. */
+  throttle() { this.capacity = 1; this.healthy = 0; }
+  get limit() { return this.capacity; }
   async run<T>(host: string, bytes: number, operation: () => Promise<T>): Promise<T> {
     if (!Number.isSafeInteger(bytes) || bytes < 1 || bytes > this.byteLimit) throw Error('media_transfer_budget_exceeded');
     await new Promise<void>(resolve => {
@@ -34,6 +37,16 @@ export class TransferPool {
 export const mediaTransfers = new TransferPool();
 /** Copies the customer's transfer Worker makes: no file bytes pass through the portal, so only slots count. */
 export const remoteMediaTransfers = new TransferPool(8, 8, 4);
+const accountTransfers = new Map<string, TransferPool>();
+/**
+ * Requests to one organization's transfer Worker. A Worker stopped by its Cloudflare plan's limits
+ * (error 1102) throttles only that organization's copies, not everyone's.
+ */
+export function organizationTransfers(org: string) {
+  let pool = accountTransfers.get(org);
+  if (!pool) { pool = new TransferPool(8, 8, 8); accountTransfers.set(org, pool); }
+  return pool;
+}
 export const transferReservation = 50 * 1024 * 1024;
 export function retryDelay(value: string | null, attempt: number, now = Date.now()) {
   const seconds = value === null ? NaN : Number(value);

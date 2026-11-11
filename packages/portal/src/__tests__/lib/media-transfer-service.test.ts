@@ -69,3 +69,21 @@ it('automatically retries setup after the user updates Cloudflare approval', asy
   await customerTransferService('org');
   expect(await transferServiceStatus('org')).toMatchObject({ state: 'ready' });
 });
+
+it('redeploys a Worker from an older script on its next use, keeps its secret and checks the new script answers', async () => {
+  const first = await customerTransferService('org');
+  const path = 'organizations/org/publishing_private/media_transfer';
+  const current = (await getStore().getDoc<{ source_hash: string }>(path))!.source_hash;
+  // A Worker deployed by an earlier Typeroll release records that release's script hash.
+  await getStore().updateDoc(path, { source_hash: 'b'.repeat(64) });
+  expect(await transferServiceStatus('org')).toMatchObject({ state: 'automatic' });
+  const uploads = () => api.mock.calls.filter(([, options]) => options?.body instanceof FormData).length;
+  const before = uploads();
+  expect(await customerTransferService('org')).toEqual(first);
+  expect(uploads()).toBe(before + 1);
+  expect(metadata.bindings).toEqual(expect.arrayContaining([{ type: 'plain_text', name: 'WORKER_SHA', text: current }]));
+  expect(await getStore().getDoc(path)).toMatchObject({ state: 'ready', source_hash: current });
+  // Ready with the current script: later copies do not touch Cloudflare.
+  await customerTransferService('org');
+  expect(uploads()).toBe(before + 1);
+});
