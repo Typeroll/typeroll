@@ -98,6 +98,8 @@ describe('trusted developer gate', () => {
     expect((await buildExtensionRuntimeSnapshot(OWNER, SITE, { reconcileBlocks: false })).installations).toHaveLength(1);
     process.env[TRUSTED_APP_DEVELOPERS_ENV] = '';
     expect((await resolveExtensionVersion(installation)).version).toBeNull();
+    await expect(installExtension({ developerOrgId: DEV, ownerOrgId: OWNER, siteId: 'site-two', actorId: 'admin', extensionId: ID, version: '0.2.0', grantedScopes: [] }))
+      .rejects.toMatchObject({ code: 'contract_developer_untrusted' });
     expect((await buildExtensionRuntimeSnapshot(OWNER, SITE, { reconcileBlocks: false })).installations).toHaveLength(0);
   });
 

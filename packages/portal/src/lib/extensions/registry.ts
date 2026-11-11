@@ -534,6 +534,7 @@ export async function installExtension(args: {
   if (!version || !installableStatus || version.manifest.distribution !== extension.distribution) {
     throw new ExtensionRegistryError('Installable extension version not found', 404);
   }
+  assertContractDeveloper(version.manifest, args.developerOrgId);
   if (extension.distribution === 'private') {
     const orgAllowed = extension.allowed_org_ids?.includes(args.ownerOrgId) ?? false;
     const siteAllowed = privateExtensionSiteAllowed(extension, args.developerOrgId, args.ownerOrgId, args.siteId);
