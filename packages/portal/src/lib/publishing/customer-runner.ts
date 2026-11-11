@@ -10,7 +10,7 @@ import { ensureGithubMainBranch } from './providers.mjs';
 import { createGithubRepository } from './github-user';
 import { siteRepositoryName, generatedRepositoryDescription } from './site-repository';
 import { verifyManagedProject } from './migrated-project';
-import { capturePublicationImpact } from './impact-preview';
+import { capturePublicationImpact, domainChangeImpact } from './impact-preview';
 import { compareImpact } from './impact';
 import { readSnapshot, saveSnapshot } from './publication-snapshot';
 import { publicationExtensionVersions } from '../extensions/published-version';
@@ -438,7 +438,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const warnings = [...mapped.warnings, ...markupWarnings, ...publicationLanguageWarnings(frozen), ...publicationCookieReopenWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
-      const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
+      // A domain change republishes the prior content at new addresses: it keeps that fingerprint with
+      // only its addresses replaced, so the next comparison has a baseline. Clearing authored noindex
+      // changes settings the fingerprint cannot replay, so that candidate records none.
+      const impactSnapshot = job.publication_intent === 'domain_prepare'
+        ? job.clear_authored_noindex === true ? null : domainChangeImpact(prior?.source_impact_snapshot, `https://${host}`, domains, organization)
+        : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
       // Links to a redirect host (for example https://www.example.com/page) are frozen as links to the website host.
       const previousOrigins = [site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? '', ...(prior?.reference_mapping?.website_origins ?? []),
         ...redirectHosts.map(redirect => `https://${redirect}`)].filter(Boolean);

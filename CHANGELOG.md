@@ -18,6 +18,18 @@
   code from the build that stopped it (for example `build_queue_timeout` or
   `build_cancelled`), name its cause in `error` and `failed_build_task`, and
   say `media_preparation_cause_unrecorded` when that build never ended.
+- `GET /api/v1/sites/{site}/publishing/impact` (MCP `get_publication_impact`)
+  and each job's `build_impact` say when nothing was compared: `changes_known`
+  is `false` and `baseline` gives `reason` (`not_published`,
+  `publication_not_verified`, `snapshot_without_source_baseline`,
+  `baseline_snapshot_unreadable`, `baseline_identity_mismatch`) and a message
+  with what to do; `total` stays `0` for older clients. A domain change now
+  records the source of the publication it republishes, with only its
+  addresses replaced, so the next comparison has a baseline. Sites whose last
+  publication was a domain change prepared by an earlier release are compared
+  with the publication it was built from (reason
+  `baseline_predates_domain_change`) instead of answering
+  `verified_source_baseline_unavailable` until their next publication.
 
 ## 0.3.27 (candidate, MCP 0.45.135)
 

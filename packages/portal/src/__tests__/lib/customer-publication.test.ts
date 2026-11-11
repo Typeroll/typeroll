@@ -318,6 +318,11 @@ it('a domain-only preparation reuses the public snapshot and does not publish la
   expect(source.pages[0].canonical_url).toBe('https://new.example.com/');
   expect(JSON.stringify(source)).not.toContain('Unpublished edit');
   expect((await getStore().getDoc<any>(paths.site('org', 'site'))).domain).toBe('www.example.com');
+  // It keeps the prior source fingerprint with only its addresses replaced, so the next impact has a baseline.
+  const origins = source.source_impact_snapshot.entries.find((entry: any) => entry.id === 'impact_origins');
+  expect(origins).toBeDefined();
+  expect((await getStore().getDoc<any>(paths.deploy('org', 'site', 'domain-job'))).build_impact).toMatchObject({ comparison: 'verified_snapshot', changes_known: true, total: 1,
+    changes: [{ kind: 'configuration', id: 'impact_origins', action: 'changed' }] });
 });
 
 

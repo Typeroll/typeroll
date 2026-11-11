@@ -143,6 +143,39 @@ last verified publication. `production` is `true` when the site is cut over;
 `live_domains` lists its live URLs and `targets` every public URL the
 publication serves, live domains first. It never builds or publishes.
 
+The comparison needs a baseline: the saved source recorded by the version's
+last verified publication. `changes_known` says whether there was one.
+
+- `changes_known: true` (`comparison: "verified_snapshot"`): `total`,
+  `changed_pages`, `added_pages`, `removed_pages` and `changes` are the net
+  saved public changes since that publication, which `baseline_publication_id`
+  names. `total: 0` means nothing public changed.
+- `changes_known: false` (`comparison: "baseline_unavailable"`,
+  `classification: "unknown"`): nothing was compared. `total` stays `0` and
+  `changes` empty for older clients, but the changes are **unknown, not
+  none**. `baseline.reason` says why and `baseline.message` what to do.
+
+| `baseline.reason`                  | Meaning                                                                                                        |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `not_published`                    | This version has not been published yet.                                                                       |
+| `publication_not_verified`         | Its last publication did not succeed or was a dry run.                                                         |
+| `snapshot_without_source_baseline` | Its last publication records no saved source: it is from before Core 0.2.0, or a domain change built from one. |
+| `baseline_snapshot_unreadable`     | The publication a domain change was built from can no longer be read.                                          |
+| `baseline_identity_mismatch`       | The recorded source belongs to another organization, site or version.                                          |
+
+Without a baseline, the next publication still builds and publishes every
+saved public page, exactly as with one; only the preview is missing. Publish
+once to record a baseline for later comparisons. Until then, run
+`trigger_deploy` with `dry_run: true` to validate the full build without
+publishing (a dry run does not record a baseline).
+
+A domain change republishes the previous publication's content at the new
+addresses. From Core 0.3.28 it records that publication's source as its own
+baseline. For a domain change prepared by an earlier release, the comparison
+uses the publication it was built from and adds `baseline_predates_domain_change`
+to `reasons`; the publication addresses are then listed as changed, because
+that baseline predates them.
+
 ## `get_deploy_status`
 
 Polls the deploy job for status. The AI agent calls this in a loop until the deploy completes or fails.

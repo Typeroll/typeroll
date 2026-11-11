@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { captureImpact, compareImpact } from '../../lib/publishing/impact';
+import { captureImpact, compareImpact, withImpactOrigins } from '../../lib/publishing/impact';
 
 const page = (id: string) => ({ id, title: id, status: 'published', html_content: `<p>${id}</p>`, date_updated: '2026-01-01' });
 const source = () => ({ version_id: 'main', core_commit: 'a'.repeat(40), pages: [page('one'), page('two')], settings: {}, contentTypes: [] as any[] });
@@ -24,6 +24,25 @@ it('requires the same organization, site and version and a verified source basel
   const current = snapshot(source());
   for (const key of ['org_id', 'site_id', 'version_id']) expect(compareImpact({ ...current, [key]: 'other' }, current).comparison).toBe('baseline_unavailable');
   expect(compareImpact(null, current).reasons).toContain('verified_source_baseline_unavailable');
+});
+// Six Moveria sites answered total 0 without a baseline although 33–168 pages had been saved (2026-11-11).
+it('says the changes are unknown, not none, when there is no baseline, and why', () => {
+  const current = snapshot(source());
+  const missing = compareImpact(null, current, true, 'not_published');
+  expect(missing).toMatchObject({ comparison: 'baseline_unavailable', changes_known: false, classification: 'unknown', total: 0, changes: [],
+    baseline: { state: 'unavailable', reason: 'not_published', message: expect.stringContaining('changes are unknown, not none') } });
+  expect(missing.baseline).toMatchObject({ message: expect.stringContaining('Publish once to record a baseline') });
+  expect(compareImpact({ ...current, site_id: 'other' }, current).baseline).toMatchObject({ reason: 'baseline_identity_mismatch' });
+  expect(compareImpact({ ...current, protocol: 1 as any }, current).baseline).toMatchObject({ reason: 'snapshot_without_source_baseline' });
+  expect(compareImpact(current, current)).toMatchObject({ comparison: 'verified_snapshot', changes_known: true, baseline: { state: 'verified' }, total: 0, classification: 'none' });
+});
+it('replaces only the publication addresses of a fingerprint for a domain change', () => {
+  const before = { ...source(), impact_origins: { website: 'https://old.example.com', media: null } };
+  const after = { ...before, impact_origins: { website: 'https://new.example.com', media: null } };
+  const moved = withImpactOrigins(snapshot(before), after.impact_origins);
+  expect(moved).toEqual(snapshot(after));
+  expect(compareImpact(moved, snapshot(after))).toMatchObject({ total: 0, classification: 'none' });
+  expect(compareImpact(snapshot(before), moved)).toMatchObject({ total: 1, changes: [{ kind: 'configuration', id: 'impact_origins' }] });
 });
 it('widens shared definitions, query membership, origins and toolchain changes', () => {
   const before = source();

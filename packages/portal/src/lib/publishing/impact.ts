@@ -8,8 +8,23 @@ export interface ImpactSnapshot {
   protocol: 2; org_id: string; site_id: string; version_id: string;
   core_commit: string; entries: ImpactEntry[];
 }
+/**
+ * Why there was nothing to compare with:
+ * - not_published: this version has no recorded publication yet;
+ * - publication_not_verified: its last publication did not succeed, was a dry run or belongs to another version;
+ * - snapshot_without_source_baseline: its snapshot records no source fingerprint in the current format (a
+ *   publication from before Core 0.2.0, or a domain change built from one);
+ * - baseline_snapshot_unreadable: the snapshot a domain change was built from can no longer be read;
+ * - baseline_identity_mismatch: the recorded fingerprint belongs to another organization, site or version.
+ */
+export type BaselineUnavailableReason = 'not_published' | 'publication_not_verified' | 'snapshot_without_source_baseline' | 'baseline_snapshot_unreadable' | 'baseline_identity_mismatch';
+export const BASELINE_UNAVAILABLE_MESSAGE = 'No verified publication of this version records its saved source, so nothing was compared: changes are unknown, not none, and total 0 with an empty changes list means "not compared". The next publication builds and publishes every saved public page as usual. Publish once to record a baseline for later comparisons; until then a dry run (trigger_deploy with dry_run: true) validates the full build without publishing.';
+
 export interface PublicationImpact {
   comparison: 'verified_snapshot' | 'baseline_unavailable';
+  /** False when there was no baseline: the counts and changes below are then empty because nothing was compared. */
+  changes_known: boolean;
+  baseline: { state: 'verified' } | { state: 'unavailable'; reason: BaselineUnavailableReason | null; message: string };
   provisional: boolean; execution: 'automatic'; reuse_verified: false;
   classification: 'none' | 'page_content_only' | 'site_wide' | 'unknown';
   changed_pages: number; added_pages: number; removed_pages: number;
@@ -27,21 +42,24 @@ function canonical(value: any): any {
 const fingerprint = (value: any) => digest(JSON.stringify(canonical(value)));
 const entryKey = (entry: { kind: string; id: string; content_type?: string }) => JSON.stringify([entry.kind, entry.id]);
 
+function impactEntry(kind: string, value: any, content_type?: string): ImpactEntry {
+  const { date_updated, updated_at, ...content } = value;
+  return { kind, id: value.id, title: [value.title, value.name, value.id].find(label => typeof label === 'string' && label.length > 0) ?? String(value.id),
+    ...(content_type ? { content_type } : {}), date_updated: date_updated ?? updated_at ?? '',
+    metadata: fingerprint({ date_updated, updated_at }),
+    fields: Object.fromEntries(Object.entries(content).filter(([, v]) => v !== undefined).map(([key, value]) => [key, fingerprint(value)])),
+  };
+}
+const ORIGINS = { id: 'impact_origins', name: 'Publication addresses' } as const;
+
 /** Fingerprint only the public projection. Working copies and private fields never enter this snapshot. */
 export function captureImpact(publication: any, orgId: string, siteId: string, media: any[] = []): ImpactSnapshot {
   const entries: ImpactEntry[] = [];
-  const add = (kind: string, value: any, content_type?: string) => {
-    const { date_updated, updated_at, ...content } = value;
-    entries.push({ kind, id: value.id, title: [value.title, value.name, value.id].find(label => typeof label === 'string' && label.length > 0) ?? String(value.id),
-      ...(content_type ? { content_type } : {}), date_updated: date_updated ?? updated_at ?? '',
-      metadata: fingerprint({ date_updated, updated_at }),
-      fields: Object.fromEntries(Object.entries(content).filter(([, v]) => v !== undefined).map(([key, value]) => [key, fingerprint(value)])),
-    });
-  };
+  const add = (kind: string, value: any, content_type?: string) => { entries.push(impactEntry(kind, value, content_type)); };
   for (const [kind, values] of Object.entries({ page: publication.pages, partial: publication.partials, menu: publication.menus, template: publication.pageTemplates, block_type: publication.blockTypes, redirect: publication.redirects, form: publication.forms, content_type: publication.contentTypes })) {
     for (const value of (values ?? []) as any[]) add(kind, value);
   }
-  for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', extensions: 'Extensions', runtime_dependencies: 'Runtime connections', impact_origins: 'Publication addresses' })) add('configuration', { id: key, name: title, value: publication[key] ?? null });
+  for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', extensions: 'Extensions', runtime_dependencies: 'Runtime connections', [ORIGINS.id]: ORIGINS.name })) add('configuration', { id: key, name: title, value: publication[key] ?? null });
   // Only a publication with site fields lists them, so earlier snapshots compare unchanged.
   if (publication.siteFields) add('configuration', { id: 'siteFields', name: 'Site fields', value: publication.siteFields });
   const content = JSON.stringify(publication);
@@ -58,14 +76,26 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
   return { protocol: 2, org_id: orgId, site_id: siteId, version_id: publication.version_id, core_commit: publication.core_commit, entries };
 }
 
+/**
+ * The same source fingerprint, served at other addresses. A domain change
+ * republishes the last publication's content unchanged with new origins, so its
+ * baseline is that publication's fingerprint with only the addresses replaced.
+ */
+export function withImpactOrigins(snapshot: ImpactSnapshot, origins: unknown): ImpactSnapshot {
+  const entry = impactEntry('configuration', { ...ORIGINS, value: origins ?? null });
+  return { ...snapshot, entries: snapshot.entries.map(item => item.kind === 'configuration' && item.id === ORIGINS.id ? entry : item) };
+}
+
 /** Observe net source changes, never authorize reuse without an output dependency graph. */
-export function compareImpact(previous: ImpactSnapshot | null | undefined, current: ImpactSnapshot, provisional = false): PublicationImpact {
-  const result: PublicationImpact = { comparison: 'baseline_unavailable', provisional, execution: 'automatic', reuse_verified: false,
+export function compareImpact(previous: ImpactSnapshot | null | undefined, current: ImpactSnapshot, provisional = false, unavailable: BaselineUnavailableReason | null = null): PublicationImpact {
+  const result: PublicationImpact = { comparison: 'baseline_unavailable', changes_known: false, baseline: { state: 'unavailable', reason: unavailable, message: BASELINE_UNAVAILABLE_MESSAGE },
+    provisional, execution: 'automatic', reuse_verified: false,
     classification: 'unknown', changed_pages: 0, added_pages: 0, removed_pages: 0, metadata_only: 0, total: 0, changes: [], reasons: [] };
   if (!previous || previous.protocol !== 2 || ['org_id', 'site_id', 'version_id'].some(key => previous[key as keyof ImpactSnapshot] !== current[key as keyof ImpactSnapshot])) {
+    if (previous && !unavailable) result.baseline = { state: 'unavailable', reason: previous.protocol !== 2 ? 'snapshot_without_source_baseline' : 'baseline_identity_mismatch', message: BASELINE_UNAVAILABLE_MESSAGE };
     result.reasons.push('verified_source_baseline_unavailable'); return result;
   }
-  result.comparison = 'verified_snapshot';
+  result.comparison = 'verified_snapshot'; result.changes_known = true; result.baseline = { state: 'verified' };
   const before = new Map(previous.entries.map(entry => [entryKey(entry), entry]));
   const after = new Map(current.entries.map(entry => [entryKey(entry), entry]));
   for (const key of [...new Set([...before.keys(), ...after.keys()])].sort()) {
