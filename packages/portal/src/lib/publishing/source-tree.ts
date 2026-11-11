@@ -31,7 +31,10 @@ async function templateFor(coreCommit: string): Promise<PublicationTemplate> {
   const root = `publishing_templates/${coreCommit}`;
   let metadata = await store.getDoc<{ count: number; digest: string }>(root);
   if (!metadata) {
-    if (coreCommit !== process.env.TYPEROLL_SOURCE_SHA) throw new Error('The original publication renderer is unavailable. Restore its frozen template before preparing this publication.');
+    // Only the Worker release built from this commit can store its renderer. During a gradual
+    // rollout another release can pick up the next step of a job the new one froze (moveria-de,
+    // 2026-11-11): that is a passing condition, and the runner waits and retries it.
+    if (coreCommit !== process.env.TYPEROLL_SOURCE_SHA) throw new ConnectionError('The original publication renderer is unavailable on this Typeroll release, usually while Typeroll is being updated. Retry publishing in a few minutes; the live site is unchanged.', 503, 'publication_renderer_unavailable', { retryable: true });
     const text = await loadBundledTemplate();
     const count = Math.ceil(text.length / 120000);
     if (count > 200) throw new Error('Publication renderer exceeds the template limit');
@@ -51,6 +54,17 @@ async function templateFor(coreCommit: string): Promise<PublicationTemplate> {
   if (template.format !== 'typeroll-publication-template' || !template.files?.['package-lock.json'] || !template.files?.['scripts/build.mjs']) throw new Error('A frozen Core publication template is required');
   templates.set(coreCommit, template);
   return template;
+}
+
+/**
+ * Store this release's renderer before a publication frozen with it is
+ * saved. Every later step reads the renderer by commit from the datastore, so
+ * any Worker release, including an older one still serving part of a gradual
+ * rollout, can continue the job. Before, the renderer was stored on first use,
+ * after the source was already frozen.
+ */
+export async function freezePublicationRenderer(coreCommit: string): Promise<void> {
+  await templateFor(coreCommit);
 }
 
 /** No package resolution or Astro build runs on the CMS publication request. */

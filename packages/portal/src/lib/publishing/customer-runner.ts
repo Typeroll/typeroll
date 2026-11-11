@@ -30,7 +30,7 @@ import { prepareRedirectHosts, redirectApprovalBlocker, ensureApprovedRedirectRu
 import { maintainImplicitRedirects, implicitRedirectsPending } from './www-redirect';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
-import { publicationSourceTree } from './source-tree';
+import { publicationSourceTree, freezePublicationRenderer } from './source-tree';
 import { projectStaticPublication } from '../../../../../scripts/lib/static-publication.mjs';
 import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
@@ -500,6 +500,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });
         terminal = true; return 'ran';
       }
+      // Any Worker release may run the next step; store the renderer it will need first.
+      await freezePublicationRenderer(frozen.core_commit);
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: site?.git_repository ?? generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domainPublicationRevision(domains), destination: {hosts: domains.desired, dns_mode: domains.dns_mode},
@@ -947,6 +949,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const transportCode = (error as any)?.code;
     const temporary = error instanceof ProviderTransportError ||
       (error instanceof ProviderError && (error.status === 429 || error.status >= 500)) ||
+      // Another Worker release than the one that froze the job took this step (a gradual rollout).
+      (error instanceof ConnectionError && error.code === 'publication_renderer_unavailable') ||
       [4, 8, 10, 13, 14, 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(transportCode);
     if (temporary && (failedJob?.coordinator_retries ?? 0) < 5) {
       await assertLease();

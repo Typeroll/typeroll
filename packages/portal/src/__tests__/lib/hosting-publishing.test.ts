@@ -18,13 +18,13 @@ import { activateDomain, getDomainState, pollDomainStatus, removeDomain, request
 import { publicUrlsFor } from '../../lib/site-public-urls';
 import { liveBaseFor } from '../../lib/site-urls';
 
-const mocks = vi.hoisted(() => ({ enqueue: vi.fn(), built: vi.fn(), probe: vi.fn(), source: vi.fn(), engine: vi.fn(), prepare: vi.fn(), runtime: null as any }));
+const mocks = vi.hoisted(() => ({ enqueue: vi.fn(), built: vi.fn(), probe: vi.fn(), source: vi.fn(), freezeRenderer: vi.fn(async (_commit: string) => {}), engine: vi.fn(), prepare: vi.fn(), runtime: null as any }));
 vi.mock('../../lib/builds/jobs', () => ({ enqueueBuild: mocks.enqueue, completedBuild: mocks.built }));
 vi.mock('../../lib/builds/auto-update', async original => ({ ...await original<object>(), prepareEngineForBuild: mocks.prepare }));
 vi.mock('../../lib/builds/selection', async original => ({ ...await original<object>(), selectedBuildProvider: async () => 'cloudflare' }));
 vi.mock('../../lib/builds/state', async original => ({ ...await original<object>(), readEngineConfiguration: mocks.engine }));
 vi.mock('../../lib/deploy/availability', () => ({ probePublication: mocks.probe }));
-vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source }));
+vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source, freezePublicationRenderer: mocks.freezeRenderer }));
 // Publications freeze theme fonts from Google; tests never reach the network.
 vi.mock('../../lib/publishing/theme-font-freeze', () => ({ freezeSiteFonts: async () => ({ plan: { render_version: 1, families: [], google_css_url: null, service_stylesheets: [] }, theme_fonts: null }) }));
 vi.mock('../../lib/publishing/runtime-projection', () => ({ publicationRuntime: async () => mocks.runtime ?? ({ forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] }) }));

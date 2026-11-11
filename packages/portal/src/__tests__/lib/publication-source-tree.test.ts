@@ -42,6 +42,22 @@ it('does not substitute the current renderer when the old frozen template is mis
   await expect(publicationSourceTree({ core_commit: 'c'.repeat(40) })).rejects.toThrow('original publication renderer is unavailable');
 });
 
+it('reports a missing renderer of another release as a passing condition with its own code', async () => {
+  await writeFile(location, template('current renderer'));
+  await expect(publicationSourceTree({ core_commit: 'c'.repeat(40) })).rejects.toMatchObject({ code: 'publication_renderer_unavailable', status: 503, details: { retryable: true } });
+});
+
+// A gradual rollout serves two releases at once; either may take the next step of a job (moveria-de, 2026-11-11).
+it('lets an older release continue a publication the new release froze', async () => {
+  await writeFile(location, template('new renderer'));
+  vi.resetModules();
+  await (await import('../../lib/publishing/source-tree')).freezePublicationRenderer(commit);
+  vi.stubEnv('TYPEROLL_SOURCE_SHA', 'b'.repeat(40));
+  vi.resetModules();
+  const older = await import('../../lib/publishing/source-tree');
+  expect((await older.publicationSourceTree({ core_commit: commit }))['scripts/build.mjs']).toBe('new renderer');
+});
+
 it('rejects an altered stored renderer before producing a source tree', async () => {
   const original = template('trusted renderer');
   const root = `publishing_templates/${commit}`;

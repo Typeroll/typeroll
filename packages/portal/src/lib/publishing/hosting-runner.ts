@@ -56,7 +56,7 @@ import { assertPublishingReady } from './readiness';
 import { publicationRuntime } from './runtime-projection';
 import { prepareExtensionMarkup } from '../extensions/contract-markup';
 import { recordPublishingOrigin } from './runtime-origins';
-import { publicationSourceTree } from './source-tree';
+import { publicationSourceTree, freezePublicationRenderer } from './source-tree';
 import { freezeSiteFonts } from './theme-font-freeze';
 import { artifactFiles, ensureHostedPlatformHost, hostedDomains, hostedServingHost, hostedWebsiteHost, hostingSiteRef, HOSTED_MODE, isHostedSite,
   isTemporaryHostingFailure, siteHosting, siteHostingAvailable, SITE_HOSTING_UNAVAILABLE, type ArtifactFiles } from './site-hosting';
@@ -249,6 +249,8 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       // An engine update in progress is awaited before the build, not refused.
       const usable = engine?.status === 'ready' || (!!engine?.previous && (engine.status === 'preparing' || engine.status === 'qualifying'));
       if (!engine || !usable) throw new ConnectionError('Finish build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
+      // Any Worker release may run the next step; store the renderer it will need first.
+      await freezePublicationRenderer(frozen.core_commit);
       publication = { provider: HOSTED_MODE, publication_id: frozen.publication_id, content_cutoff: contentCutoff, website_host: host,
         commit: hostedSourceCommit(frozen.publication_id), branch: 'main', snapshot_job_id: args.jobId, extension_versions: publicationExtensionVersions(frozen), ...await saveSnapshot(args, frozen),
         build_provider: engine.provider ?? 'cloudflare', build_engine_revision: engine.revision };
