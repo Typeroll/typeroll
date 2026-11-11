@@ -176,8 +176,9 @@ describe('preview links and the preview route', () => {
     expect(res.status).toBe(200);
     const html = await res.text();
     expect(html).toContain('<p class="fact">training:false</p>');
-    expect(html).not.toContain('data-tr-derivation-error');
-    expect(html).not.toContain('data-tr-content-changed');
+    expect(res.headers.get('x-typeroll-preview-state')).toBeNull();
+    expect(html).not.toContain('typeroll-preview-state');
+    expect(html).toContain('"action":"preview.notices","notices":[]');
     const dataUrl = html.match(/data-dataset="([^"]+)"/)?.[1]?.replaceAll('&amp;', '&');
     expect(dataUrl).toContain(`/preview/${SITE}/_typeroll/derived/${current.derivation.data_digest}.json?t=`);
 
@@ -196,9 +197,16 @@ describe('preview links and the preview route', () => {
     const current = await link(apiKey);
     const { getStore } = await import('../../lib/datastore');
     await getStore().updateDoc(paths.page(ORG, SITE, 'acme'), { fields: { support: { training: true } } });
-    const html = await (await frame(current.url)).text();
-    expect(html).toContain('data-tr-content-changed');
+    const res = await frame(current.url);
+    const html = await res.text();
+    expect(res.headers.get('x-typeroll-preview-state')).toBe('content-changed');
+    expect(html).toContain('<meta name="typeroll-preview-state" content="content-changed">');
     expect(html).toContain('<p class="fact">training:true</p>');
+    // Nothing in the page's flow: the notice must not shift frame screenshots.
+    const body = html.slice(html.search(/<body[^>]*>/i));
+    expect(body).not.toContain('Content changed since');
+    expect(body).not.toMatch(/position:\s*sticky/);
+    expect(html.slice(0, html.search(/<\/head>/i))).toContain('"kind":"content-changed"');
   });
 
   it('shows a failed derivation instead of empty listings', async () => {
@@ -206,8 +214,10 @@ describe('preview links and the preview route', () => {
     state.providers = [provider([], { fail: true })];
     const current = await link(apiKey);
     expect(current.derivation).toMatchObject({ status: 'failed', error: { provider: 'synthetic-install' } });
-    const html = await (await frame(current.url)).text();
-    expect(html).toContain('data-tr-derivation-error');
-    expect(html).toContain('provider is down');
+    const res = await frame(current.url);
+    const html = await res.text();
+    expect(res.headers.get('x-typeroll-preview-state')).toBe('derivation-failed');
+    expect(html).toMatch(/<meta name="typeroll-preview-notice" data-kind="derivation-failed" content="[^"]*provider is down/);
+    expect(html.slice(html.search(/<body[^>]*>/i))).not.toContain('provider is down');
   });
 });

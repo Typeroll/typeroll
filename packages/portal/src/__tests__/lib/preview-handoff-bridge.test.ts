@@ -92,6 +92,41 @@ describe('preview shell navigation history', () => {
   });
 });
 
+describe('preview shell notices', () => {
+  it('floats frame notices over the frame and clears them on the next page', () => {
+    const { browser, send } = shell();
+    const frameEl = browser.document.getElementById('preview')!;
+    send({ action: 'preview.notices', notices: [
+      { kind: 'content-changed', message: 'Content changed <b>since</b>' },
+      { kind: 'derivation-failed', message: 'provider is down' },
+      { kind: 'unknown', message: 'ignored' },
+    ] });
+    const box = browser.document.querySelector('[data-tr-preview-notices]') as unknown as HTMLElement;
+    expect(box).not.toBeNull();
+    // An overlay in the shell, outside the frame: the frame's layout is untouched.
+    expect(box.style.position).toBe('fixed');
+    expect(box.parentElement).toBe(browser.document.body);
+    expect(frameEl.contains(box as never)).toBe(false);
+    const items = Array.from(box.children) as HTMLElement[];
+    expect(items.map((item) => item.getAttribute('data-kind'))).toEqual(['content-changed', 'derivation-failed']);
+    expect(items[0]!.textContent).toContain('Content changed <b>since</b>');
+    expect(box.querySelector('b')).toBeNull();
+
+    // A page without notices replaces them.
+    send({ action: 'preview.notices', notices: [] });
+    expect(browser.document.querySelector('[data-tr-preview-notices]')).toBeNull();
+
+    // Navigation clears them before the next page reports its own.
+    send({ action: 'preview.notices', notices: [{ kind: 'content-changed', message: 'stale' }] });
+    send({ action: 'site.navigate', path: '/pricing/' });
+    expect(browser.document.querySelector('[data-tr-preview-notices]')).toBeNull();
+
+    // Only the frame itself can raise them.
+    send({ action: 'preview.notices', notices: [{ kind: 'content-changed', message: 'spoofed' }] }, { origin: 'https://evil.example' });
+    expect(browser.document.querySelector('[data-tr-preview-notices]')).toBeNull();
+  });
+});
+
 function frame() {
   const browser = new Window({ url: `${ORIGIN}/preview/site/start/?t=ticket&frame=1&bridge=${BRIDGE_ID}` });
   windows.push(browser);
