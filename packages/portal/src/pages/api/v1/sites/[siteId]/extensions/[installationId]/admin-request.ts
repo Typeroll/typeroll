@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
+import { contractClaim } from '../../../../../../../lib/extensions/contract-claim';
 import { effectiveExtensionScopes, paths, type ExtensionInstallation } from '@typeroll/shared';
 import { requireApiKey, apiError, apiResponse } from '../../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../../lib/datastore';
 import { approvedNativeAdmin } from '../../../../../../../lib/extensions/native-admin';
 import { resolveExtensionVersion } from '../../../../../../../lib/extensions/resolution';
-import { extensionIssuer, signDelegatedExtensionToken, contractClaim } from '../../../../../../../lib/extensions/auth';
+import { extensionIssuer, signDelegatedExtensionToken } from '../../../../../../../lib/extensions/auth';
 import { adminDestination, requestApprovedAdmin, type AdminRequest } from '../../../../../../../lib/extensions/admin-request';
 
 /** The app's own admin API, with the same approved release and identity as the portal. */

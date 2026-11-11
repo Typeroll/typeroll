@@ -1,8 +1,9 @@
 import type { APIRoute } from 'astro';
+import { contractClaim } from '../../../../../../lib/extensions/contract-claim';
 import { effectiveExtensionScopes, paths, type ExtensionInstallation } from '@typeroll/shared';
 import { json, requirePermission, requireSiteAccess } from '../../../../../../lib/access';
 import { getStore } from '../../../../../../lib/datastore';
-import { signDelegatedExtensionToken, contractClaim, extensionIssuer } from '../../../../../../lib/extensions/auth';
+import { signDelegatedExtensionToken, extensionIssuer } from '../../../../../../lib/extensions/auth';
 import { approvedNativeAdmin } from '../../../../../../lib/extensions/native-admin';
 import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
 
