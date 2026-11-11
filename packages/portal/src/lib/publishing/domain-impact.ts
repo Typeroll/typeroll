@@ -1,7 +1,7 @@
 import { paths } from '@typeroll/shared';
 import { getStore } from '../datastore';
 import { ConnectionError } from './connections';
-import { getSiteDomains, parsePublicationHosts, samePublicationHosts, sameRedirectHosts } from './domain-config';
+import { getSiteDomains, parsePublicationHosts, parseWwwRedirect, samePublicationHosts, sameRedirectHosts } from './domain-config';
 
 /** Preview uses the same parser and revision as save; it never changes a candidate or DNS. */
 export async function domainChangeImpact(orgId: string, siteId: string, input: Record<string, unknown>) {
@@ -9,7 +9,9 @@ export async function domainChangeImpact(orgId: string, siteId: string, input: R
   if (input.revision !== current.revision) throw new ConnectionError('Domain settings changed. Reload before reviewing the change.', 409, 'domain_revision_conflict');
   const desired = parsePublicationHosts(input);
   const outputChanged = !samePublicationHosts(current.desired, desired);
-  const changed = outputChanged || !sameRedirectHosts(current.desired, desired) || current.dns_mode !== input.dns_mode;
+  const hostsChanged = outputChanged || !sameRedirectHosts(current.desired, desired) || current.dns_mode !== input.dns_mode;
+  const wwwChanged = parseWwwRedirect(input.www_redirect, current.www_redirect !== false) !== (current.www_redirect !== false);
+  const changed = hostsChanged || wwwChanged;
   const durations = outputChanged ? (await getStore().listDocs<any>(paths.deploys(orgId, siteId)))
     .filter(job => job.publication_intent === 'domain_prepare' && job.status === 'succeeded')
     .map(job => ({ time: Date.parse(job.finished_at), duration: Date.parse(job.git_publication?.candidate_prepared_at ?? '') - Date.parse(job.started_at) }))
@@ -20,7 +22,9 @@ export async function domainChangeImpact(orgId: string, siteId: string, input: R
     candidate_preserved: Boolean(current.candidate && !outputChanged),
     confirmation_required: false,
     estimate_seconds: estimate, estimate_samples: durations.length,
-    message: !changed ? 'No settings have changed.' : outputChanged
+    message: !changed ? 'No settings have changed.' : !hostsChanged
+      ? 'Only the www redirect setting changes. No build, DNS change or new approval is needed; the next publication or repair_previous_host_redirects applies it.'
+      : outputChanged
       ? `Saving these addresses does not change the deployed site. Choose Publish for the new domain to apply them to main. ${estimate == null ? 'There are not enough completed preparations to estimate the duration.' : `Recent preparations took about ${Math.ceil(estimate / 60)} minutes.`} That publication replaces the site at its current address before DNS is switched.`
       : 'The main publication is retained. DNS and redirect checks must be refreshed and traffic approval renewed; no content rebuild is required.' };
 }

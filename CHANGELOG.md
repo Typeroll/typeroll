@@ -47,6 +47,33 @@
   `transient: true`. Refused sources and integrity failures are still set aside
   at once. Publishing → Media storage lists the files and offers a retry.
 
+- The www counterpart of a site's website host now redirects to it by default:
+  with `www.example.com` as the website host, `example.com` answers 301 (path
+  and query kept), and the other way round. Before, the counterpart had to be
+  added as a redirect host by hand; on autopilot.se nobody had, so the apex
+  served the site directly, every app call from it got 403 (app backends allow
+  only `https://www.autopilot.se`), and search engines saw duplicate content.
+  Other subdomains get nothing implicit; a domain such as `example.co.uk` is
+  paired through its Cloudflare zone.
+- It is derived, not stored, so existing sites get it without a settings
+  change. Reads add `www_redirect` (default `true`), `implicit_redirect_hosts`
+  beside `redirect_hosts` in `desired` and `active` (omitted when empty), and
+  `implicit_redirects` with `source: "default"`, `status` and any `issue`; the
+  domain guide shows `www_redirect:<host>` and issues also appear as
+  `host_checks` warnings. Save `www_redirect: false` to opt out (portal,
+  `set_publishing_domains`, guide `save`); it changes no revision or approval,
+  and the next publication or repair removes the host from Typeroll's rule.
+- With automatic DNS, the next publication of a live site (also an unchanged
+  one, without a rebuild) or `repair_previous_host_redirects` adds the
+  counterpart to the website host's existing Single Redirect rule
+  (`typeroll_previous_t_…`), journaled, idempotent and quota-checked, and never
+  changes DNS. It does so only while the counterpart is proxied to the site's
+  own Pages project or to `192.0.2.1`; a counterpart serving anything else is
+  reported as `www_redirect_host_in_use` and left alone. With external DNS the
+  301 is verified and otherwise reported with instructions. Every problem is a
+  warning; a publication never fails because of it, and nothing is checked in
+  the background.
+
 ## 0.3.24 (candidate, MCP 0.45.133)
 
 - A link to `#cookie-settings` now opens the cookie banner even after another

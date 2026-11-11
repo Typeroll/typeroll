@@ -10,13 +10,16 @@ type Preparation = { hostname?: string; validation_blocker?: { code: string; mes
 type RedirectPreparation = Preparation & { hostname: string; target_host: string; action: string; zone_id?: string; blocker?: { code: string; message: string } | null;
   rule: { zone_name: string | null; expression: string; target_url_expression: string; status: string; managed: boolean } };
 type HostCheckItem = { code: string; severity: 'blocking' | 'warning'; host: string; message: string; remedy?: string };
+type ImplicitRedirect = { host: string; target_host: string; source: 'default'; status: 'planned' | 'verified' | 'pending' | 'warning'; message: string; issue?: { code: string; message: string; remedy: string } | null };
 type DomainData = {
   domain_status?: DomainStatus;
   media_host_change_allowed?: boolean;
   sites_domain?: string | null; media_host?: string | null;
   revision: string; default_domain?: string | null; dns_mode: 'automatic' | 'external'; verified_at?: string | null;
-  desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string; redirect_hosts?: string[] };
-  active?: { website_host: string | null; redirect_hosts?: string[] }; state?: string;
+  desired?: { website_host: string | null; media_host: string | null; media_path_prefix: string; redirect_hosts?: string[]; implicit_redirect_hosts?: string[] };
+  active?: { website_host: string | null; redirect_hosts?: string[]; implicit_redirect_hosts?: string[] }; state?: string;
+  www_redirect?: boolean;
+  implicit_redirects?: ImplicitRedirect[];
   candidate?: { id: string; sitewide_noindex?: boolean; robots_blocked?: boolean } | null;
   preparation?: Preparation | null;
   media_preparation?: Preparation | null;
@@ -141,6 +144,9 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
     </div>}
     {siteId && hostWarnings.length > 0 && <div className="muted"><strong>Check before preparing</strong><ul>{hostWarnings.map(item => <li key={item.code + item.host}>{item.message}{item.remedy ? ` ${item.remedy}` : ''}</li>)}</ul></div>}
     {siteId && data?.next_publication && <p role="status">{data.next_publication.message}</p>}
+    {siteId && (data?.implicit_redirects ?? []).map(item => <p key={`www-${item.host}`} className={item.status === 'warning' ? undefined : 'muted'}>
+      <strong>{item.host}</strong> → {item.target_host} (automatic www redirect, {item.status === 'verified' ? 'active' : item.status === 'pending' ? 'waiting for Cloudflare' : item.status === 'planned' ? 'set up on the next publication' : 'needs attention'}). {item.status === 'verified' ? '' : item.message}{item.issue?.remedy ? ` ${item.issue.remedy}` : ''}
+    </p>)}
     {data?.preparation && <details className="stack"><summary>Detailed DNS and redirect instructions</summary>
       <h3>Domain verification</h3>
       {validationBlocker && <div role="alert" style={alertStyle}><strong>{windowRequired ? 'The switch has a short validation window' : 'Domain transition needs a DNS change outside Typeroll'}</strong><p>{validationBlocker.message}</p></div>}
@@ -184,6 +190,9 @@ export default function PublishingDomains({ siteId }: { siteId?: string }) {
         <label className="field">Website host<input name="website_host" defaultValue={data.desired?.website_host ?? ''} placeholder="www.example.com" autoCapitalize="none" spellCheck={false} /></label>
         <label className="field">Redirect hosts<input name="redirect_hosts" defaultValue={(data.desired?.redirect_hosts ?? []).join(', ')} placeholder="www.example.com when the website host is example.com" autoCapitalize="none" spellCheck={false} /></label>
         <p className="muted">Each redirect host answers with a permanent redirect to the website host and keeps the path and query. It needs an active Cloudflare zone; a website host on the domain itself, such as example.com, must be an active zone in the hosting account.</p>
+        <input type="hidden" name="www_redirect" value="false" />
+        <label className="field" style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}><input type="checkbox" name="www_redirect" value="true" defaultChecked={data.www_redirect !== false} />Redirect the www counterpart automatically</label>
+        <p className="muted">With example.com as the website host, www.example.com redirects to it, and the other way round; you do not need to list it above. Typeroll adds only the zone's redirect rule, on the next publication, and never takes over a host that serves something else. Turn this off only when the counterpart is used for another purpose.</p>
         <label className="field">Media host<input name="media_host" defaultValue={data.desired?.media_host ?? ''} placeholder={data.desired?.website_host ? `media.${data.desired.website_host.replace(/^www\./, '')}` : 'media.example.com'} autoCapitalize="none" spellCheck={false} /></label>
         <p className="muted">Leave empty to serve images from the organization’s shared media host{data.media_host ? ` (${data.media_host})` : ''}. To keep the organization’s domain out of image addresses, use a host on this site’s own domain, such as media.{(data.desired?.website_host ?? 'example.com').replace(/^www\./, '')}. Its domain must be in the organization’s connected Cloudflare account; images are then served from the same storage.</p>
         <label className="field">Media path prefix<input name="media_path_prefix" defaultValue={data.desired?.media_path_prefix ?? ''} placeholder="/media when using the website host" autoCapitalize="none" spellCheck={false} /></label>

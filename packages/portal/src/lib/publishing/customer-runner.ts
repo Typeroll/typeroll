@@ -26,6 +26,7 @@ import { cloudflareClient } from './cloudflare-oauth';
 import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError, githubFailureHint, ProviderTransportError } from './providers.mjs';
 import { getSiteDomains, activePublicationDomains, hasPendingPublishedDomains, samePublicationHosts, sameRedirectHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { prepareRedirectHosts, redirectApprovalBlocker, ensureApprovedRedirectRule, applyRedirectTraffic, verifyRedirectHost, type RedirectPreparation } from './redirect-hosts';
+import { maintainImplicitRedirects, implicitRedirectsPending } from './www-redirect';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
 import { publicationSourceTree } from './source-tree';
@@ -233,6 +234,15 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       await store.updateDoc(jobPath, { phase: 'verifying previous website addresses', verification_message: error.message });
       return await waitForPublicationCondition(jobPath, 'verifying previous website addresses');
     }
+    // The www counterpart of the live website host redirects to it by default: one check per
+    // publication, and with automatic DNS only the zone's redirect rule is written. Never fails the job.
+    const liveWebsiteHost = args.versionId === 'main' && !job.verification_retry && (preparingDomain
+      ? domains.candidate?.id === publication.publication_id && domains.cutover_approved_revision === domains.revision
+      : domains.active?.website_host === publication.website_host);
+    const implicitRedirects = liveWebsiteHost ? await maintainImplicitRedirects({ org: args.orgId, site: args.siteId, group: publication.hosting_group_id ?? 'default',
+      publicationId: publication.publication_id, target: publication.website_host, dnsMode: domains.dns_mode, project: publication.project, config: domains,
+      hosts: { ...domains.desired, website_host: publication.website_host }, jobPath,
+      exclude: [...new Set([...(frozen.previous_website_hosts ?? []), ...previousHosts.map(item => item.host)])] }) : null;
     await recordPublishingOrigin(args.orgId, args.siteId, `https://${publication.website_host}`);
     const finished = new Date().toISOString();
     const stillOwned = await store.compareAndUpdateDoc<Target>(targetPath, target => target.lease_id === lease && target.lease_until > Date.now(), { lease_until: Date.now() + 60_000 });
@@ -245,7 +255,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const outdated = !preparingDomain && currentDomains.candidate && currentDomains.candidate.source_publication_id !== publication.publication_id;
       const becameLive = preparingDomain || matchesDesired;
       const savedDomains = await store.compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(args.orgId, args.siteId), current => current.revision === currentDomains.revision,
-        { active, previous_hosts: previousHosts, active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
+        { active, previous_hosts: previousHosts, ...(implicitRedirects ? { implicit_redirects: implicitRedirects } : {}), active_dns_mode: domains.dns_mode, published: { hosts: active, dns_mode: domains.dns_mode, publication_id: publication.publication_id, job_id: args.jobId },
           ...(becameLive ? {state: 'live'} : outdated ? {state:'outdated', cutover_approved_revision:null} : {}),
           media_aliases: [...currentDomains.media_aliases, ...(currentDomains.active && !currentDomains.media_aliases.some(alias => samePublicationHosts(alias, currentDomains.active!)) ? [currentDomains.active] : [])] });
       if (outdated && currentDomains.candidate?.job_id) await store.compareAndUpdateDoc<any>(paths.deploy(args.orgId, args.siteId, currentDomains.candidate.job_id),
@@ -465,9 +475,12 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (acquired.last_publication && acquired.last_publication.publication_id === frozen.publication_id &&
           await probePublication(`https://${servedHost}`, '/.well-known/typeroll/publication.json', frozen.publication_id)) {
         if (frozen.previous_website_hosts?.some((host: string) => !savedDomains.previous_hosts?.some(previous =>
-          previous.host === host && previous.target_host === servedHost && previous.mode === 'redirect' && previous.status === 'verified'))) {
+          previous.host === host && previous.target_host === servedHost && previous.mode === 'redirect' && previous.status === 'verified')) ||
+          (!preparingDomain && args.versionId === 'main' && savedDomains.active?.website_host === servedHost &&
+            implicitRedirectsPending(savedDomains, { ...domains.desired, website_host: servedHost }, [...(frozen.previous_website_hosts ?? []), ...(savedDomains.previous_hosts ?? []).map(item => item.host)]))) {
           // Permission may have been approved since an unchanged publication's
-          // noindex fallback. Finish retirement without rebuilding its artifact.
+          // noindex fallback, or the www redirect is not verified yet. Finish
+          // retirement and the redirect without rebuilding its artifact.
           return await finishPublication(acquired.last_publication, domains, frozen);
         }
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });

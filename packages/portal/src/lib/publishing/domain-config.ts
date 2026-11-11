@@ -53,6 +53,13 @@ export interface DomainConfiguration {
   approved_validation_window?: boolean | null;
   /** Follow-up checks of who serves the live website host; an alarm stands until a check proves it served again. */
   serving_check?: import('./serving-check').ServingCheck | null;
+  /**
+   * The www counterpart of the website host (example.com ↔ www.example.com) redirects to it by default.
+   * `false` is an explicit opt-out; absent means enabled, so existing sites get it without a settings change.
+   */
+  www_redirect?: boolean;
+  /** Result of the last check of the implicit www redirect, recorded once per publication or repair. Never user input. */
+  implicit_redirects?: import('./www-redirect').ImplicitRedirect[] | null;
 }
 
 /** Effective output origins. Saving future settings is inert; explicit publication selects them. */
@@ -119,6 +126,14 @@ export function parsePublicationHosts(input: Record<string, unknown>): Publicati
   }
   const redirect_hosts = parseRedirectHosts(input.redirect_hosts, website_host, media_host);
   return { website_host, media_host, media_path_prefix, ...(redirect_hosts.length ? { redirect_hosts } : {}) };
+}
+
+/** The www redirect opt-out: `false` (or "false") disables it, `true` enables it, anything absent keeps the saved value. */
+export function parseWwwRedirect(input: unknown, previous: boolean): boolean {
+  if (input === undefined || input === null || input === '') return previous;
+  if (input === true || input === 'true' || input === 'on') return true;
+  if (input === false || input === 'false') return false;
+  throw new ConnectionError('Set www_redirect to true or false.', 400, 'invalid_www_redirect');
 }
 
 /** Accept an array or a comma/space separated list of hostnames that redirect to the website host. */
@@ -211,14 +226,22 @@ export async function saveSiteDomains(orgId: string, siteId: string, input: Reco
   const desired = parsePublicationHosts(input);
   if (!['automatic', 'external'].includes(String(input.dns_mode))) throw new ConnectionError('Select automatic or external DNS management.', 400);
   if (previous.revision !== input.revision) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
+  const wwwRedirect = parseWwwRedirect(input.www_redirect, previous.www_redirect !== false);
+  // The opt-out is not a traffic setting: it never touches the revision, preparation or an approval in progress.
+  const wwwChange = wwwRedirect !== (previous.www_redirect !== false) ? { www_redirect: wwwRedirect } : null;
   const sameOutput = samePublicationHosts(previous.desired, desired);
-  if (sameOutput && sameRedirectHosts(previous.desired, desired) && previous.dns_mode === input.dns_mode) return previous;
+  if (sameOutput && sameRedirectHosts(previous.desired, desired) && previous.dns_mode === input.dns_mode) {
+    if (!wwwChange) return previous;
+    const saved = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId), current => current.revision === input.revision, wwwChange);
+    if (!saved) throw new ConnectionError('Domain settings changed. Reload before saving.', 409, 'domain_revision_conflict');
+    return getSiteDomains(orgId, siteId);
+  }
   if (previous.state === 'distributing') throw new ConnectionError('A traffic switch is in progress. Wait for it to finish before changing domain settings.', 409, 'domain_cutover_in_progress');
   const revision = randomUUID();
   const preserveCandidate = sameOutput && Boolean(previous.candidate) && !['live', 'failed'].includes(previous.state);
   const changed = await getStore().compareAndUpdateDoc<DomainConfiguration>(siteDomainConfigPath(orgId, siteId),
     current => current.revision === input.revision && current.state !== 'distributing',
-    { revision, publication_revision: sameOutput ? domainPublicationRevision(previous) : revision, desired, dns_mode: input.dns_mode,
+    { revision, publication_revision: sameOutput ? domainPublicationRevision(previous) : revision, desired, dns_mode: input.dns_mode, ...wwwChange,
       ...(previous.active ? { active_dns_mode: previous.active_dns_mode ?? previous.dns_mode } : {}),
       state: previous.state === 'outdated' && preserveCandidate ? 'outdated' : preserveCandidate ? 'preparing' : 'declared',
       ...(!preserveCandidate ? { candidate: null } : {}),

@@ -14,7 +14,7 @@ type Provider = (route: string, options?: { method?: string; body?: unknown; mis
 export interface HostCheckItem {
   code: 'apex_zone_required' | 'apex_zone_in_other_account' | 'zone_not_active' | 'domain_zone_required' |
     'redirect_zone_required' | 'redirect_host_certificate_unavailable' | 'zone_check_unavailable' | 'redirect_outside_cloudflare' |
-    'previous_host_saas_hostname' | import('./previous-hosts').PreviousHostIssueCode;
+    'previous_host_saas_hostname' | import('./previous-hosts').PreviousHostIssueCode | import('./www-redirect').ImplicitRedirectIssueCode;
   severity: 'blocking' | 'warning';
   host: string;
   message: string;
@@ -154,6 +154,7 @@ export function withPreviousHostChecks(checks: HostChecks, config: Pick<DomainCo
   return items.length ? { ...checks, warnings: [...checks.warnings, ...items] } : checks;
 }
 
+
 const cache = new Map<string, { expires: number; value: HostChecks }>();
 
 /** Connected Cloudflare accounts that can show this site's zones, hosting account first. */
@@ -188,15 +189,17 @@ export async function siteHostChecks(orgId: string, siteId: string, config: Doma
 
 /** The saved domain settings with structured host checks, as returned by the UI, API and MCP. */
 export async function siteDomainsWithChecks(orgId: string, siteId: string, config: DomainConfiguration, versionId = 'main') {
+  // Loaded on use: www-redirect depends on redirect-hosts, which depends on this module.
+  const { withImplicitRedirectChecks, withImplicitRedirects } = await import('./www-redirect');
   let host_checks: HostChecks | null = null;
-  try { const checks = await siteHostChecks(orgId, siteId, config); host_checks = checks && withPreviousHostChecks(checks, config); }
+  try { const checks = await siteHostChecks(orgId, siteId, config); host_checks = checks && withImplicitRedirectChecks(withPreviousHostChecks(checks, config), config); }
   catch (error) {
     // Reading settings must keep working when Cloudflare is unreachable or a grant expired.
     console.warn(JSON.stringify({ event: 'publishing_host_checks_unavailable', org_id: orgId, site_id: siteId, code: error instanceof ConnectionError ? error.code : 'provider_unavailable' }));
   }
   // A standing "served by another host" alarm is re-checked on read, so a fixed host clears.
   const current = await refreshServingAlarm(orgId, siteId, config);
-  return { ...current, previous_hosts: await readPreviousHosts(current), host_checks, next_publication: versionId === 'main' ? domainPublicationIntent(current) : null };
+  return { ...withImplicitRedirects(current), previous_hosts: await readPreviousHosts(current), host_checks, next_publication: versionId === 'main' ? domainPublicationIntent(current) : null };
 }
 
 /** Stop before building a candidate that Cloudflare cannot serve. */

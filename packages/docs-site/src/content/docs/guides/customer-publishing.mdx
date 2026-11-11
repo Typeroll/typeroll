@@ -524,6 +524,14 @@ each redirect rule exists before it changes any record, switches the website hos
 then makes each redirect record proxied. The deployment is marked live only after
 every redirect host answers `301` with the same path and query on the website host.
 
+The www counterpart of the website host (`example.com` for `www.example.com`,
+and the other way round) redirects by default without being listed. It is not
+part of the approval: after the site is live, its publications add the
+counterpart to the zone's redirect rule when the counterpart is a custom domain
+of the same Pages project or a redirect placeholder, and only report a warning
+when it serves anything else. See
+[the www counterpart](../../publishing/domains/#the-www-counterpart-redirects-automatically).
+
 ### Switch an apex from an existing host
 
 Cloudflare Pages validates a hostname that already serves another website only
@@ -548,7 +556,10 @@ redirecting to it, moving from another host:
    24 hours after activation, and keeps it unused while records are DNS only.
 4. Publish the site once on its generated site address if it has never been
    published, so the change can be prepared and approved. Save `example.com` as
-   the website host and `www.example.com` as a redirect host. Resolve any
+   the website host and `www.example.com` as a redirect host. Listing `www`
+   explicitly makes it part of the reviewed switch, because it still points at
+   the current host; the automatic www redirect never takes over a host that
+   serves something else. Resolve any
    blockers shown, then prepare the domain change. Typeroll
    builds the candidate with the new addresses and, with automatic DNS, adds the
    `www` redirect rule, which does nothing while `www` is DNS only.
@@ -983,7 +994,11 @@ Domain writes include the current `revision`. Cutover also includes `candidate_i
 A stale revision returns 409. Use the normal deploy-status API to inspect build
 progress and `read_publishing_domains` for structured DNS requirements.
 
-Site domain settings accept `redirect_hosts`, a list of hostnames. Reads and saves
+Site domain settings accept `redirect_hosts`, a list of hostnames, and
+`www_redirect` (default `true`; `false` opts out of the automatic redirect of the
+www counterpart). Reads add `implicit_redirect_hosts` beside `redirect_hosts` in
+`desired` and `active` and report status in `implicit_redirects` with
+`source: "default"`; never send them back as input. Reads and saves
 return `host_checks` with `blockers` and `warnings`, each with `code`, `host` and
 `message`: for example `apex_zone_required`, `apex_zone_in_other_account`,
 `zone_not_active` (with the zone's nameservers), `redirect_zone_required` or

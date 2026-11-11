@@ -7,13 +7,14 @@ Different settings own different addresses. You can use only the selected
 subdomains for Typeroll while keeping the root website, email and unrelated
 subdomains on other services.
 
-| Scope         | Setting             | Example                                     |
-| ------------- | ------------------- | ------------------------------------------- |
-| Organization  | Shared media host   | `media.example.com`                         |
-| Hosting Group | Site address base   | `sites.example.com` or `sites2.example.com` |
-| Site          | Website host        | `www.customer.example`                      |
-| Site          | Redirect hosts      | `customer.example` → `www.customer.example` |
-| Site          | Optional media host | `images.customer.example`                   |
+| Scope         | Setting                   | Example                                          |
+| ------------- | ------------------------- | ------------------------------------------------ |
+| Organization  | Shared media host         | `media.example.com`                              |
+| Hosting Group | Site address base         | `sites.example.com` or `sites2.example.com`      |
+| Site          | Website host              | `www.customer.example`                           |
+| Site          | www redirect (automatic)  | `customer.example` → `www.customer.example`      |
+| Site          | Additional redirect hosts | `shop.customer.example` → `www.customer.example` |
+| Site          | Optional media host       | `images.customer.example`                        |
 
 A site address base is a parent for generated site and version addresses. It does
 not itself serve a website. Default's base is configured in organization setup;
@@ -163,7 +164,66 @@ exists and adds only what is missing; it never replaces a working configuration.
 **Redirect hosts** answer every request with a permanent redirect (301) to the
 website host and keep the path and query, for example
 `https://www.example.com/about?ref=1` → `https://example.com/about?ref=1`.
-Enter them separated by commas.
+Enter them separated by commas. The www counterpart of the website host
+redirects without being listed; see below.
+
+### The www counterpart redirects automatically
+
+Available from the Core release after 0.3.24. The apex and `www` of a website
+host belong together: with `www.example.com` as the website host,
+`example.com` answers 301 to it, and with `example.com` as the website host,
+`www.example.com` does. Path and query are kept. Other subdomains, such as
+`shop.example.com`, get nothing automatically; list them as redirect hosts. A
+domain under a multi-label suffix, such as `example.co.uk`, is paired using its
+Cloudflare zone.
+
+This matters beyond search engines: app components on a page call their app
+backend, which accepts only the site's verified origins. On a counterpart that
+served the site directly, every app call failed.
+
+The counterpart is derived from the website host, not saved as input, so every
+site gets it without editing settings. Reads mark it separately from the hosts
+you entered:
+
+- `www_redirect`: `true` unless the site opted out.
+- `desired.implicit_redirect_hosts` and `active.implicit_redirect_hosts`: the
+  derived host, beside `redirect_hosts`. Omitted when empty. Never send it back
+  when saving.
+- `implicit_redirects`: one entry per derived host with `source: "default"`,
+  `target_host`, `status` (`planned`, `verified`, `pending` or `warning`),
+  `message`, `issue` (`code`, `message`, `remedy`) and `next_action`.
+
+The domain guide lists it as `www_redirect:<host>`, and an `issue` also appears
+as a `host_checks` warning. None of these ever blocks preparing or switching a
+domain.
+
+**When it is applied.** The counterpart is checked once per publication of the
+live site, after the website itself is verified, and when you run
+`repair_previous_host_redirects`. There are no background checks. A publication
+that changes no content still finishes this step, without a rebuild, until the
+redirect is verified. With automatic DNS, Typeroll adds the counterpart to the
+same Single Redirect rule it uses for previous website addresses
+(`typeroll_previous_t_…`, `http.host in {…}`), so it usually needs no extra rule
+slot. It never changes DNS. It writes the rule only when the counterpart's
+records are proxied to this site's own Cloudflare Pages project (a custom domain
+of the same project) or to the redirect placeholder `192.0.2.1`; the rule then
+replaces the direct response. A problem is a warning and never fails or delays
+the publication:
+
+| Code                                                                                                     | Meaning and remedy                                                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `www_redirect_host_in_use`                                                                               | The counterpart serves something else (another provider, another Pages project, DNS only). Typeroll leaves it alone. Add it as a redirect host to switch it with approval, or opt out. |
+| `www_redirect_record_missing`                                                                            | The counterpart has no DNS record. Add it as a redirect host, or create a proxied `A` record with `192.0.2.1`, then publish or repair.                                                 |
+| `www_redirect_zone_unavailable`                                                                          | The counterpart is not in an active zone Typeroll can manage, or is not the zone's apex/`www` pair.                                                                                    |
+| `www_redirect_external_dns`                                                                              | External DNS: create the 301 at your DNS provider (in Cloudflare, a proxied record and the Single Redirect rule shown in the remedy). Typeroll verifies it.                            |
+| `redirect_rule_quota`, `redirect_permission_missing`, `redirect_rule_conflict`, `redirect_rule_rejected` | As for previous addresses below. Apply the remedy, then repair.                                                                                                                        |
+
+**Opting out.** Turn off **Redirect the www counterpart automatically** in the
+site's address settings, or save `www_redirect: false` with
+`set_publishing_domains` or the guide's `save` action. Do this only when the
+counterpart is used for something else. The setting changes no revision,
+preparation or approval. If Typeroll had added the counterpart to its rule, the
+next publication or repair removes it again; other hosts in the rule stay.
 
 ### Apex domains and www
 
@@ -398,12 +458,13 @@ under `previous:<host>`, and `next_action` becomes
 
 To repair, apply the remedy first: free a rule in Cloudflare → the zone → Rules →
 Redirect Rules, upgrade the zone's plan, or approve the permission update. Then
-select **Repair previous address redirects** in the guide, or call
+select **Repair address redirects** in the guide, or call
 `guide_publishing_domain_change` with `action: "repair_previous_host_redirects"`
 (`POST /api/v1/sites/{siteId}/publishing/domain-guide`). The repair works on a
 live site only, without a build or DNS change, and not while a publication runs.
 It reuses an existing rule, so repeating it writes nothing. Hosts that still
-cannot redirect are listed under `remaining` with their issue.
+cannot redirect are listed under `remaining` with their issue. The same action
+creates the automatic www redirect; its result is in `implicit_redirects`.
 
 Instead of a zone rule, you can also create a Cloudflare Bulk Redirect yourself:
 source URL `<old host>/`, target URL `https://<new host>/`, status 301 with
