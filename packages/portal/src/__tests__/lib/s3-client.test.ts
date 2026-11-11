@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { CopyObjectCommand, DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client, S3ServiceError, getSignedUrl } from '../../lib/net/s3';
 
 const credentials = { accessKeyId: 'AKIDEXAMPLE', secretAccessKey: 'wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY' };
-const client = (forcePathStyle = false) => new S3Client({ region: 'auto', endpoint: 'https://acct.r2.cloudflarestorage.com', credentials, forcePathStyle });
+const client = (forcePathStyle = false, retry: { maxAttempts?: number } = {}) => new S3Client({ region: 'auto', endpoint: 'https://acct.r2.cloudflarestorage.com', credentials, forcePathStyle, retryBaseMs: 0, ...retry });
 
 // Presigned URLs the AWS SDK (client-s3 + s3-request-presigner 3.1123) made for
 // the same input at 2026-11-08T10:00:00Z. Build engines that are already
@@ -80,7 +80,7 @@ describe('requests', () => {
 
   it('reports an error inside a 200 copy answer', async () => {
     storage(() => new Response('<Error><Code>InternalError</Code><Message>try again</Message></Error>'));
-    await expect(client().send(new CopyObjectCommand({ Bucket: 'b', Key: 'k', CopySource: 'b/s' }))).rejects.toMatchObject({ name: 'InternalError' });
+    await expect(client(false, { maxAttempts: 1 }).send(new CopyObjectCommand({ Bucket: 'b', Key: 'k', CopySource: 'b/s' }))).rejects.toMatchObject({ name: 'InternalError' });
   });
 
   it('turns an S3 error response into a named error with its status', async () => {
@@ -98,5 +98,46 @@ describe('requests', () => {
   it('uses path style for a bucket with dots and Amazon S3 when no endpoint is given', () => {
     expect(client().url('my.bucket', 'k').toString()).toBe('https://acct.r2.cloudflarestorage.com/my.bucket/k');
     expect(new S3Client({ region: 'eu-north-1', credentials }).url('inbound', 'mail/1').toString()).toBe('https://inbound.s3.eu-north-1.amazonaws.com/mail/1');
+  });
+});
+
+describe('transient storage errors', () => {
+  const internal = () => new Response('<Error><Code>InternalError</Code><Message>We encountered an internal connectivity issue. Please try again.</Message></Error>', { status: 500 });
+
+  it('retries a transient R2 error and returns the later answer', async () => {
+    let calls = 0;
+    const requests = storage(() => (++calls === 1 ? internal() : new Response(null, { headers: { etag: '"e"' } })));
+    await expect(client().send(new PutObjectCommand({ Bucket: 'b', Key: 'k', Body: '{"a":1}' }))).resolves.toMatchObject({ ETag: '"e"' });
+    expect(requests).toHaveLength(2);
+    expect(await requests[1]!.text()).toBe('{"a":1}');
+  });
+
+  it('retries a network error and 503 SlowDown, then gives up after three attempts', async () => {
+    let calls = 0;
+    const requests = storage(() => {
+      calls++;
+      if (calls === 1) throw new TypeError('fetch failed');
+      return new Response('<Error><Code>SlowDown</Code></Error>', { status: 503 });
+    });
+    await expect(client().send(new GetObjectCommand({ Bucket: 'b', Key: 'k' }))).rejects.toMatchObject({ name: 'SlowDown', $metadata: { httpStatusCode: 503 } });
+    expect(requests).toHaveLength(3);
+  });
+
+  it('retries a copy whose 200 answer carries an InternalError', async () => {
+    let calls = 0;
+    storage(() => new Response(++calls === 1 ? '<Error><Code>InternalError</Code></Error>' : '<CopyObjectResult><ETag>"c"</ETag></CopyObjectResult>'));
+    await expect(client().send(new CopyObjectCommand({ Bucket: 'b', Key: 'k', CopySource: 'b/s' }))).resolves.toMatchObject({ CopyObjectResult: { ETag: '"c"' } });
+    expect(calls).toBe(2);
+  });
+
+  it('does not repeat conditional writes, streamed bodies, client errors or maxAttempts 1', async () => {
+    const requests = storage(internal);
+    await expect(client().send(new PutObjectCommand({ Bucket: 'b', Key: 'k', Body: 'x', IfNoneMatch: '*' }))).rejects.toMatchObject({ name: 'InternalError' });
+    await expect(client().send(new PutObjectCommand({ Bucket: 'b', Key: 'k', Body: new Blob(['x']).stream() }))).rejects.toMatchObject({ name: 'InternalError' });
+    await expect(client(false, { maxAttempts: 1 }).send(new DeleteObjectCommand({ Bucket: 'b', Key: 'k' }))).rejects.toMatchObject({ name: 'InternalError' });
+    expect(requests).toHaveLength(3);
+    const denied = storage(() => new Response('<Error><Code>AccessDenied</Code></Error>', { status: 403 }));
+    await expect(client().send(new GetObjectCommand({ Bucket: 'b', Key: 'k' }))).rejects.toMatchObject({ name: 'AccessDenied' });
+    expect(denied).toHaveLength(1);
   });
 });

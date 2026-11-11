@@ -21,8 +21,15 @@ export interface S3ClientConfig {
   /** Accepted for compatibility with SDK configuration objects; this client never adds checksums. */
   requestChecksumCalculation?: string;
   responseChecksumValidation?: string;
+  /** Attempts per request for transient storage errors (default 3; 1 turns retries off). */
   maxAttempts?: number;
+  /** First retry delay in ms, doubled per attempt with jitter (default 250). */
+  retryBaseMs?: number;
 }
+
+/** Storage answers that mean "try again": R2 returns these during short internal outages. */
+const TRANSIENT_STATUS = new Set([500, 502, 503, 504]);
+const TRANSIENT_CODES = new Set(['InternalError', 'ServiceUnavailable', 'SlowDown', 'RequestTimeout']);
 
 interface ObjectInput { Bucket: string; Key: string }
 export interface PutObjectInput extends ObjectInput {
@@ -160,6 +167,28 @@ export class S3Client {
   // Callers and test doubles see the SDK's loose shape.
   send(command: Command, options?: SendOptions): Promise<any>;
   async send<C extends Command>(command: C, options: SendOptions = {}): Promise<Output<C>> {
+    // A transient R2 error (for example "We encountered an internal connectivity issue") is retried
+    // here, so a publication does not fail on it. Only requests that are safe to repeat: a streamed
+    // body cannot be sent twice, and a conditional write could succeed and then report a conflict.
+    const input = command.input as Partial<PutObjectInput & CopyObjectInput>;
+    const conditional = input.IfNoneMatch !== undefined || input.IfMatch !== undefined || input.CopySourceIfMatch !== undefined;
+    const replayable = !conditional && !(typeof ReadableStream !== 'undefined' && input.Body instanceof ReadableStream);
+    const attempts = replayable ? Math.max(1, this.config.maxAttempts ?? 3) : 1;
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.sendOnce(command, options);
+      } catch (error) {
+        const transient = error instanceof S3ServiceError
+          ? TRANSIENT_STATUS.has(error.$metadata.httpStatusCode) || TRANSIENT_CODES.has(error.name)
+          : error instanceof TypeError;
+        if (!transient || attempt >= attempts || options.abortSignal?.aborted) throw error;
+        const base = this.config.retryBaseMs ?? 250;
+        if (base > 0) await new Promise(resolve => setTimeout(resolve, base * 2 ** (attempt - 1) * (0.5 + Math.random())));
+      }
+    }
+  }
+
+  private async sendOnce<C extends Command>(command: C, options: SendOptions): Promise<Output<C>> {
     const { method, url, headers, body } = this.request(command);
     const response = await this.aws.fetch(url.toString(), { method, headers, body: body as BodyInit | undefined, signal: options.abortSignal });
     if (!response.ok) {
