@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Transient storage errors from R2 (HTTP 5xx, `InternalError`, `SlowDown`,
+  network errors) are retried up to three times with backoff instead of
+  failing the request. On moveria.nl a publication failed with
+  `media_coordinator_500` because R2 answered "internal connectivity issue"
+  while the build's media grants were written. Conditional writes and
+  streamed bodies are not repeated.
+
 ## 0.3.25 (candidate, MCP 0.45.134)
 
 - The media transfer Worker in the customer's Cloudflare account hashes each
@@ -114,15 +123,6 @@
   skills now also say to dry-run before publishing, compare render upgrades
   against captures from before the upgrade, and check failed media before
   calling a migration done.
-
-## Unreleased
-
-- Transient storage errors from R2 (HTTP 5xx, `InternalError`, `SlowDown`,
-  network errors) are retried up to three times with backoff instead of
-  failing the request. On moveria.nl a publication failed with
-  `media_coordinator_500` because R2 answered "internal connectivity issue"
-  while the build's media grants were written. Conditional writes and
-  streamed bodies are not repeated.
 
 ## 0.3.24 (candidate, MCP 0.45.133)
 
