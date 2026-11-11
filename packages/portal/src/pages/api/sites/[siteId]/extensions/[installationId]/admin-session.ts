@@ -2,7 +2,7 @@ import type { APIRoute } from 'astro';
 import { effectiveExtensionScopes, paths, type ExtensionInstallation } from '@typeroll/shared';
 import { json, requirePermission, requireSiteAccess } from '../../../../../../lib/access';
 import { getStore } from '../../../../../../lib/datastore';
-import { signDelegatedExtensionToken, extensionIssuer } from '../../../../../../lib/extensions/auth';
+import { signDelegatedExtensionToken, contractClaim, extensionIssuer } from '../../../../../../lib/extensions/auth';
 import { approvedNativeAdmin } from '../../../../../../lib/extensions/native-admin';
 import { resolveExtensionVersion } from '../../../../../../lib/extensions/resolution';
 
@@ -22,7 +22,7 @@ export const POST: APIRoute = async ({ cookies, params, locals, request }) => {
   const signed = signDelegatedExtensionToken({
     token_use: 'portal_admin', page_id: page.id, version: version.version,
     aud: installation.extension_id, sub: session.userId, org_id: orgId, site_id: site.id,
-    developer_org_id: installation.developer_org_id, installation_id: installation.id, permission, scopes: effectiveExtensionScopes(installation.granted_scopes, permission),
+    developer_org_id: installation.developer_org_id, ...contractClaim(installation), installation_id: installation.id, permission, scopes: effectiveExtensionScopes(installation.granted_scopes, permission),
   });
   const response = json({ token: signed.token, expires_at: signed.claims.exp * 1000,
     issuer: extensionIssuer(), org_id: orgId, site_id: site.id, installation_id: installation.id,

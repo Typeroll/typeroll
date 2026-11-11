@@ -10,7 +10,9 @@
   for an organization removed from the list. An installation stores its
   `contract` and always runs the newest published release of it; moving to
   another contract (including an app's first) is the only explicit activation,
-  and `GET /extensions/self` returns `contract`. A release that removes a
+  and `GET /extensions/self` returns `contract`. Every assertion and token
+  Core signs for a contract installation carries a `contract` claim next to
+  the resolved `version`. A release that removes a
   component or requires a new permission of its contract is refused with 409
   `contract_broken`; permissions may be `optional: true` and are then not
   granted on install.

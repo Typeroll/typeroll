@@ -31,6 +31,7 @@ import { extensionBlockType } from '../../lib/extensions/provision';
 import { resolveAppFormEndpoint } from '../../lib/apps/form-endpoint';
 import { publicationConfigDigest } from '../../lib/publishing/derivation-providers';
 import { TRUSTED_APP_DEVELOPERS_ENV } from '../../lib/extensions/trusted-developers';
+import { signCredentialProvisioningAssertion, signDelegatedExtensionToken, signInstallationAssertion, signPublicExtensionToken, contractClaim } from '../../lib/extensions/auth';
 
 const DEV = 'typeroll-apps';
 const OWNER = 'customer';
@@ -201,7 +202,7 @@ describe('variants', () => {
     expect(transport.calls[0]!.url).toBe(`${BASE}/variants`);
     expect(transport.calls[0]!.body).toEqual({ component_id: 'next-occurrence' });
     const claims = JSON.parse(Buffer.from(transport.calls[0]!.token.split('.')[1]!, 'base64url').toString());
-    expect(claims).toMatchObject({ token_use: 'component_variants', installation_id: installation.id, version: '0.2.0', scopes: [] });
+    expect(claims).toMatchObject({ token_use: 'component_variants', installation_id: installation.id, version: '0.2.0', contract: 1, scopes: [] });
   });
 
   it('lists standard without a declared call and fails clearly when the app does not answer', async () => {
@@ -299,6 +300,29 @@ describe('default markup at publication', () => {
     const { snapshot } = await site();
     expect(await prepareExtensionMarkup({ orgId: OWNER, siteId: SITE, frozen: { pages: [] }, snapshot })).toEqual({ warnings: [] });
     expect(transport.calls).toHaveLength(0);
+  });
+});
+
+describe('contract claim', () => {
+  const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString());
+  const base = { id: 'inst', extension_id: ID, developer_org_id: DEV, owner_org_id: OWNER, site_id: SITE, granted_scopes: [] } as unknown as ExtensionInstallation;
+
+  it('names the contract next to the resolved version in every installation proof, and only for contract installations', () => {
+    for (const [installation, expected] of [[{ ...base, contract: 2 }, 2], [base, undefined]] as const) {
+      const proofs = [
+        signInstallationAssertion({ installation, scopes: [], correlationId: 'c', purpose: 'form_action', version: '1.4.0' }),
+        signInstallationAssertion({ installation, scopes: [], correlationId: 'c', purpose: 'build_derivation', version: '1.4.0' }),
+        signCredentialProvisioningAssertion({ installation, version: '1.4.0', credentialSha256: 'a'.repeat(64) }),
+        signPublicExtensionToken({ installation, origin: 'https://site.example' }).token,
+        signDelegatedExtensionToken({ token_use: 'portal_admin', version: '1.4.0', aud: ID, sub: 'u', org_id: OWNER, site_id: SITE,
+          developer_org_id: DEV, installation_id: 'inst', permission: 'admin', scopes: [], ...contractClaim(installation) }).token,
+      ].map(claims);
+      for (const proof of proofs) {
+        if (expected === undefined) expect(proof).not.toHaveProperty('contract');
+        else expect(proof.contract).toBe(expected);
+      }
+      expect(proofs[0]!.version).toBe('1.4.0');
+    }
   });
 });
 

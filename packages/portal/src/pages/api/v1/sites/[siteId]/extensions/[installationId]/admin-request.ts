@@ -4,7 +4,7 @@ import { requireApiKey, apiError, apiResponse } from '../../../../../../../lib/a
 import { getStore } from '../../../../../../../lib/datastore';
 import { approvedNativeAdmin } from '../../../../../../../lib/extensions/native-admin';
 import { resolveExtensionVersion } from '../../../../../../../lib/extensions/resolution';
-import { extensionIssuer, signDelegatedExtensionToken } from '../../../../../../../lib/extensions/auth';
+import { extensionIssuer, signDelegatedExtensionToken, contractClaim } from '../../../../../../../lib/extensions/auth';
 import { adminDestination, requestApprovedAdmin, type AdminRequest } from '../../../../../../../lib/extensions/admin-request';
 
 /** The app's own admin API, with the same approved release and identity as the portal. */
@@ -25,7 +25,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   catch (error) { return apiError(error instanceof Error ? error.message : 'Invalid app request', 400); }
   const signed = signDelegatedExtensionToken({ token_use: 'portal_admin', page_id: page.id, version: version.version,
     aud: installation.extension_id, sub: `api-key:${ctx.keyPrefix}`, org_id: ctx.orgId, site_id: ctx.siteId,
-    developer_org_id: installation.developer_org_id, installation_id: installation.id, permission: ctx.permission, scopes: effectiveExtensionScopes(installation.granted_scopes, ctx.permission) });
+    developer_org_id: installation.developer_org_id, ...contractClaim(installation), installation_id: installation.id, permission: ctx.permission, scopes: effectiveExtensionScopes(installation.granted_scopes, ctx.permission) });
   try {
     const result = await requestApprovedAdmin(url, input!, signed.token, extensionIssuer());
     const response = apiResponse(ctx, result.data, result.status);

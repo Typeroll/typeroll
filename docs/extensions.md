@@ -281,6 +281,15 @@ another release of the same contract is refused. `GET /extensions/self`
 returns `contract` (`null` without one) next to `version` and
 `published_version`.
 
+Every proof Core signs for a contract installation carries a `contract`
+claim next to `version`, which stays the resolved release: the installation
+assertions (form actions and options, build derivation, documentation,
+`component_variants`, `default_markup`), the credential provisioning
+assertion, admin launch and native admin tokens, and public browser tokens.
+Installations without a contract get no `contract` claim. One contract address
+serves every installation of the contract, so use the claim (not the URL) to
+tell which contract a request belongs to.
+
 ### Variants
 
 The block type of a contract component has a `variant` field (default

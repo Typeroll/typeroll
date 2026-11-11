@@ -266,8 +266,12 @@ A contract app (see [App contracts](../manifest/#app-contracts-runtime-0460))
 serves one stable address per contract instead of one per release, and every
 release of a contract shares its data. Core calls it server to server, with a
 60-second installation assertion bound to the request body (`body_sha256`),
-the resolved `version` and empty `scopes`. Verify it like any other assertion
-and check `token_use`.
+the resolved `version`, the installation's `contract` and empty `scopes`.
+Verify it like any other assertion and check `token_use`. Every other proof
+for a contract installation (form and derivation assertions, credential
+provisioning, admin launch, native admin and public browser tokens) also
+carries `contract` next to `version`; proofs for installations without a
+contract have no `contract` claim.
 
 **Variants** (`token_use: "component_variants"`), for the editor picker and MCP
 `list_extension_variants`:
