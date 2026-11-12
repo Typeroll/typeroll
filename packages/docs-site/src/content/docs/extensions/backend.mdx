@@ -797,8 +797,23 @@ identifiers and outcomes. Never return recipient identity, private answers or
 credentials there: it is delivered to the browser. Core emits a bubbling
 `typeroll:form-success` CustomEvent with `{form_id, results: [{type,result}]}` only
 after successful completion, before any success redirect. Previews do not emit
-real success events. This event does not send analytics; callers must enforce
-consent before invoking external advertising or analytics services.
+real success events. This event itself sends nothing.
+
+To have Core report the submission as an ad-platform conversion, put a
+`conversion` descriptor in `public_result`:
+`{meta_event, ga4_event, content_name?, params?: {series_id?, occurrence_id?, interest_only?}}`.
+Event names come from fixed lists (`Lead`, `CompleteRegistration`, … /
+`generate_lead`, `sign_up`, …), and any other key is dropped. Core then fires it
+through the site's Integrations app after cookie consent, and optionally sends
+it to Meta's Conversions API (see Integrations → Form conversions). A
+`redirect` string in `public_result` that is a path on the site (`/thanks/`)
+becomes the success redirect from render version 20, when the form has none of
+its own.
+
+The completed-action body also carries `attribution` when the visitor arrived
+with campaign values: `{utm_source?, utm_medium?, utm_campaign?, utm_content?,
+utm_term?}`, outside `data` and the field map. Use it for campaign fields the
+mapping leaves empty.
 
 ## Calendar confirmations
 

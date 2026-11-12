@@ -1,4 +1,4 @@
-import { paths, type Form } from "@typeroll/shared";
+import { paths, sanitizeAttribution, type Form } from "@typeroll/shared";
 import { getStore } from "../datastore";
 import { runFormActions, RequiredFormActionError } from "./actions";
 
@@ -39,6 +39,7 @@ export async function completeRequiredActions(
     status: string;
     data: Record<string, unknown>;
     updated_at: string;
+    attribution?: unknown;
     required_completion: RequiredCompletion;
   };
   const saved = await store.getDoc<Saved>(path);
@@ -68,6 +69,7 @@ export async function completeRequiredActions(
     data: saved.data,
     submittedAt: saved.updated_at,
     subject: { kind: "submission" as const, id: submissionId },
+    attribution: sanitizeAttribution(saved.attribution),
   };
   let results: NonNullable<RequiredCompletion["results"]>;
   try {

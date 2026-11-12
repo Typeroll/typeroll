@@ -209,6 +209,15 @@ it("forwards only mapped answers with a stable submission identity and proof of 
     }),
   );
 });
+it("hands campaign values to the app as attribution, outside the mapped answers", async () => {
+  state.send.mockResolvedValue({ status: 200, data: { public_result: { interest_only: true } } });
+  const [action] = await extensionActions("org", "site");
+  const base = { orgId: "org", siteId: "site", formId: "form", form, data: { email: "synthetic@example.test" }, subject: { kind: "submission" as const, id: "submission" }, submittedAt: "2026-10-28T12:00:00Z" };
+  await action!.run(form.actions![0]!, { ...base, attribution: { utm_campaign: "nov", utm_content: "ad-1" } });
+  expect(state.send.mock.calls.at(-1)![1].body).toMatchObject({ data: { email: "synthetic@example.test" }, attribution: { utm_campaign: "nov", utm_content: "ad-1" } });
+  await action!.run(form.actions![0]!, { ...base, attribution: {} });
+  expect(state.send.mock.calls.at(-1)![1].body).not.toHaveProperty("attribution");
+});
 it("rejects broken notices and duplicate choice IDs instead of serving stale defaults", async () => {
   const result = await liveOptions("org", "site", form);
   expect(result.choice).toMatchObject({

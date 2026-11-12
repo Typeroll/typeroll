@@ -1,7 +1,7 @@
 import { paths } from '@typeroll/shared';
 import type { AppSetupStatus, AppState, Site, SiteApps } from '@typeroll/shared';
 import { getStore } from '../datastore';
-import { isSecretCryptoConfigured } from '../secret-crypto';
+import { isSecretCryptoConfigured, SECRET_MASK } from '../secret-crypto';
 import { appSetupView, buildAppState } from './config';
 import { reconcileWebAnalytics } from './provision-analytics';
 import { provisionApp } from './provision';
@@ -45,7 +45,14 @@ export async function saveAppState(args: SaveAppStateArgs): Promise<{
 }> {
   const def = getAppDef(args.appId);
   if (!def) throw new AppManagementError('Unknown app', 404);
-  if (def.fields.some((field) => field.secret) && !isSecretCryptoConfigured()) {
+  // Only a new secret value needs the key: Integrations has an optional secret
+  // (the Conversions API token), and saving its provider IDs must keep working
+  // on an installation without INTEGRATIONS_SECRET_KEY.
+  const writesSecret = def.fields.some((field) => {
+    const value = args.config?.[field.key];
+    return field.secret && (def.id !== 'integrations' || (typeof value === 'string' && value !== '' && value !== SECRET_MASK));
+  });
+  if (writesSecret && !isSecretCryptoConfigured()) {
     throw new AppManagementError(
       'App secrets cannot be saved: INTEGRATIONS_SECRET_KEY is not configured on the server.',
       503,

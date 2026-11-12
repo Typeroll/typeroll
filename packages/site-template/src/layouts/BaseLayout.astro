@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, EXTENSION_PLACEHOLDER_HIDDEN_CSS, renderClientCapabilityScripts, renderIntegrationTags, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
+import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, EXTENSION_PLACEHOLDER_HIDDEN_CSS, renderClientCapabilityScripts, renderIntegrationTags, conversionPageConfig, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 // Inlined rather than imported: from render version 14 they go into cascade
@@ -128,6 +128,11 @@ const f = {
   mono: settings.fonts?.mono,
 };
 const renderVersion = resolveRenderVersion(settings.render_version);
+// Form conversions (form-conversions.ts): which Integrations providers the
+// forms runtime calls after a successful submission. Absent when off.
+const conversions = apps?.apps?.integrations?.enabled
+  ? conversionPageConfig(apps.apps.integrations.config, renderVersion)
+  : null;
 const layered = usesCascadeLayers(renderVersion);
 const themeStyle = platformLayer('tokens', siteThemeCss(settings), renderVersion);
 const headerBehavior = activeHeaderBehavior(settings.header_behavior);
@@ -171,7 +176,7 @@ const direction = languageDirection(page.language || settings.language || 'en');
 const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpointWidths(settings.responsive_breakpoints), colors: settings.colors ?? {}, renderVersion: resolveRenderVersion(settings.render_version) });
 ---
 <!doctype html>
-<html lang={page.language || settings.language || 'en'} dir={direction === 'rtl' ? 'rtl' : undefined} data-tr-render={resolveRenderVersion(settings.render_version)}>
+<html lang={page.language || settings.language || 'en'} dir={direction === 'rtl' ? 'rtl' : undefined} data-tr-render={resolveRenderVersion(settings.render_version)} data-tr-conversions={conversions ? JSON.stringify(conversions) : undefined}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />

@@ -8,6 +8,21 @@ export const appTools: ToolDef[] = [
     handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'apps/documentation'))),
   },
   {
+    name: 'read_conversion_status',
+    description:
+      'Form conversions (Integrations app): the mode, which of Meta Pixel, GA4 and Google Tag Manager are set up, whether the Meta Conversions API token, test event code and email matching are set, and the last 50 outcomes. Each outcome names the form, event names, event id, the cookie choice at submit, what the browser fires or holds until consent ("fires", "waits_for_consent", "not_configured") and what the server sent to Meta ("sent", "skipped" with a reason, "failed" with Meta\'s message, "off"). No contact data. The browser\'s own firing is not reported back; the log says what the runtime does for that consent state. Admin permission required.',
+    handler: withErrorBoundary(async (_args, { client, siteId }) => ok(await client.get(siteId, 'integrations/conversions'))),
+  },
+  {
+    name: 'send_test_conversion',
+    description:
+      'Send one synthetic Meta Conversions API event with the site\'s test event code (Integrations app), so it appears under Events Manager → Test events. Creates no submission and no registration; no visitor data is involved. The outcome is added to read_conversion_status. Needs the Meta Pixel ID, a Conversions API access token and a test event code. Admin permission required.',
+    inputSchema: {
+      meta_event: z.enum(['Lead', 'CompleteRegistration']).optional().describe('Event name to test. Default Lead.'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'integrations/conversions/test', args.meta_event ? { meta_event: args.meta_event } : {}))),
+  },
+  {
     name: 'list_apps',
     description:
       'List every Typeroll app available to this site, including its field schema, build impact, and masked enabled/config state. For setup guidance without admin access, use read_app_documentation. Admin permission required.',

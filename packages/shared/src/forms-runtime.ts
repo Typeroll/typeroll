@@ -17,6 +17,9 @@
 //   - fills hidden utm_* fields from the page URL (see "Campaign parameters")
 //   - preview mode (data-tr-preview): simulates the submit endpoint in the
 //     browser and sends nothing (see "Preview mode" below)
+//   - posts campaign values (URL, then the Attribution cookies) as _tr_utm_*
+//     and fires the submission's ad-platform conversion through the
+//     Integrations app's providers, after consent (see "Conversions" below)
 //
 // Anti-abuse (forms.typeroll.com is very public):
 //   - Proof-of-work: the form carries data-pow-bits + the token; the
@@ -27,7 +30,7 @@
 //     no-JS visitors keep working, bulk bots pay either CPU or throttle.
 //   - The runtime only ever posts to the form's baked action URL.
 
-export const FORMS_RUNTIME_VERSION = 3;
+export const FORMS_RUNTIME_VERSION = 4;
 
 export const FORMS_RUNTIME_JS = String.raw`(function(){
 "use strict";
@@ -254,6 +257,53 @@ async function loadOptions(form){
   }catch(e){topError(form,"Live choices could not be loaded. Reload this page to try again.");}
   finally{form.__optionsLoading=false;}
 }
+// ── Conversions ─────────────────────────────────────────────────────────
+// <html data-tr-conversions='{"meta":true,"ga4":true,"gtm":true}'> turns
+// them on (form-conversions.ts decides per site and render version). After
+// a successful submission the endpoint answers a validated conversion:
+// event names, an event id from the submission id and identifier/campaign
+// parameters, never answers. It fires once per event id per page view:
+// Meta fbq('track', …, {eventID}), GA4 gtag('event', …, {event_id}), GTM a
+// dataLayer push named typeroll_conversion. Without consent it waits in
+// memory and fires if the visitor accepts on this page view (the consent
+// runtime's typeroll:consent-activated, after the gated tags exist); it is
+// never stored. Every outcome is announced as typeroll:conversion on
+// document, for site scripts and tests.
+//
+// Campaign values: utm_* from this page's URL, else the Attribution app's
+// last-touch, then first-touch cookie (tr_attr_last_v1, tr_attr_first_v1).
+// They go with every post as _tr_utm_*; the server keeps them on the
+// submission and hands them to app actions. Meta's _fbp/_fbc (or an fbc
+// built from ?fbclid=) are added only with consent, for the Conversions API.
+var CONV=null,FIRED={},PENDING=[],UTM=["utm_source","utm_medium","utm_campaign","utm_content","utm_term"];
+function convCfg(){if(CONV===null){CONV=false;try{var a=document.documentElement.getAttribute("data-tr-conversions");if(a)CONV=JSON.parse(a)||false}catch(e){CONV=false}}return CONV}
+function consentState(){try{var c=window.typerollConsent;if(!c||typeof c.get!=="function")return "none";return c.get()||"unset"}catch(e){return "unset"}}
+function granted(){var s=consentState();return s==="none"||s==="all"}
+function cookieVal(name){try{var m=document.cookie.match(new RegExp("(?:^|;\\s*)"+name+"=([^;]+)"));return m?decodeURIComponent(m[1]):""}catch(e){return ""}}
+function attrCookie(name){var raw=cookieVal(name);if(!raw)return null;try{var x=JSON.parse(raw);return x&&x.v===1&&x.expires_at>Date.now()&&x.values&&typeof x.values==="object"?x.values:null}catch(e){return null}}
+function campaign(){var q,out={},fromUrl=false;try{q=new URLSearchParams(location.search)}catch(e){q=new URLSearchParams()}
+  UTM.forEach(function(k){var v=(q.get(k)||"").trim();if(v){out[k]=v.slice(0,255);fromUrl=true}});
+  if(!fromUrl){var s=attrCookie("tr_attr_last_v1")||attrCookie("tr_attr_first_v1")||{};UTM.forEach(function(k){var v=typeof s[k]==="string"?s[k].trim():"";if(v)out[k]=v.slice(0,255)})}
+  return out}
+function adIds(){var o={};if(!granted())return o;var fbp=cookieVal("_fbp"),fbc=cookieVal("_fbc"),fbclid="";try{fbclid=(new URLSearchParams(location.search).get("fbclid")||"").trim()}catch(e){}
+  if(/^fb\.\d\.\d+\.\d+$/.test(fbp))o._tr_fbp=fbp;
+  if(/^fb\.\d\.\d+\.[A-Za-z0-9_-]{1,500}$/.test(fbc))o._tr_fbc=fbc;else if(/^[A-Za-z0-9_-]{1,500}$/.test(fbclid))o._tr_fbc="fb.1."+Date.now()+"."+fbclid;
+  return o}
+function coreSubmit(form){try{return /\/api\/forms\/submit\/?$/.test(new URL(form.action,location.href).pathname)}catch(e){return false}}
+// Only posts to Core's own submit endpoint carry these fields: a form that
+// posts to an app endpoint keeps exactly the fields its app declared.
+function convFields(form,fd){if(!coreSubmit(form))return;var c=campaign();Object.keys(c).forEach(function(k){fd.set("_tr_"+k,c[k])});var cfg=convCfg();if(!cfg)return;fd.set("_tr_consent",consentState());fd.set("_tr_page",location.origin+location.pathname);if(cfg.meta){var ids=adIds();Object.keys(ids).forEach(function(k){fd.set(k,ids[k])})}if(form.__trNotice)fd.set("_tr_notice","1")}
+function convNotice(form){var cfg=convCfg();if(!cfg||!cfg.notice||form.__trNotice||!$('input[type="email"]',form))return;var p=document.createElement("p");p.className="form-conversion-notice";p.textContent=cfg.notice;var row=$(".form-actions",form)||$('[type="submit"]',form);if(row&&row.parentNode)row.parentNode.insertBefore(p,row);else form.appendChild(p);form.__trNotice=true}
+function sendConversion(c){var cfg=convCfg(),sent=[],p={};if(!cfg)return sent;Object.keys(c.params||{}).forEach(function(k){p[k]=c.params[k]});
+  if(cfg.meta&&c.meta_event&&typeof window.fbq==="function"){try{window.fbq("track",c.meta_event,p,{eventID:c.event_id});sent.push("meta")}catch(e){}}
+  if(cfg.ga4&&c.ga4_event&&typeof window.gtag==="function"){try{window.gtag("event",c.ga4_event,Object.assign({},p,{event_id:c.event_id}));sent.push("ga4")}catch(e){}}
+  if(cfg.gtm&&Array.isArray(window.dataLayer)){window.dataLayer.push({event:"typeroll_conversion",typeroll_conversion:Object.assign({},p,{event_id:c.event_id,meta_event:c.meta_event,ga4_event:c.ga4_event})});sent.push("gtm")}
+  FIRED[c.event_id]=1;return sent}
+function convAnnounce(c,sent,queued){try{document.dispatchEvent(new CustomEvent("typeroll:conversion",{detail:{event_id:c.event_id,meta_event:c.meta_event,ga4_event:c.ga4_event,consent:consentState(),sent:sent,queued:queued}}))}catch(e){}}
+function conversion(c){if(!convCfg()||!c||typeof c.event_id!=="string"||FIRED[c.event_id])return false;
+  if(!granted()){if(!PENDING.some(function(x){return x.event_id===c.event_id}))PENDING.push(c);convAnnounce(c,[],true);return false}
+  var sent=sendConversion(c);convAnnounce(c,sent,false);return sent.length>0}
+document.addEventListener("typeroll:consent-activated",function(){if(!granted())return;var q=PENDING;PENDING=[];q.forEach(function(c){if(!FIRED[c.event_id])convAnnounce(c,sendConversion(c),false)})});
 function init(form){
   $all("[data-required]",form).forEach(function(el){el.required=el.getAttribute("data-required")==="true"});
   // A required checkbox group needs one checked box: every box is required
@@ -262,6 +312,7 @@ function init(form){
   $all('[data-block="form_slider"]',form).forEach(function(w){var inp=$("input[type=range]",w),out=$(".form-slider-value",w),unit=w.getAttribute("data-unit")||"";if(!inp||!out||w.__trReady)return;w.__trReady=true;var upd=function(){out.textContent=inp.value+(unit?" "+unit:"")};inp.addEventListener("input",upd);upd()});
   $all('[data-clear-answer]',form).forEach(function(button){if(button.__trReady)return;button.__trReady=true;button.addEventListener("click",function(){var name=button.getAttribute("data-clear-answer");$all('input[type=radio]',button.parentElement).forEach(function(input){input.checked=false});form.__cleared=form.__cleared||{};form.__cleared[name]=true;form.dispatchEvent(new Event("input",{bubbles:true}))})});
   fillCampaign(form);
+  convNotice(form);
   loadOptions(form);
   syncSteps(form);
   // init runs again after a dynamic step is injected so its new fields get
@@ -290,7 +341,7 @@ function init(form){
       // With Back, a visitor may send an earlier step again: name the step,
       // so the server updates the same partial submission.
       if(back){var trail=stepTrail(form);fd.set("_step",trail[trail.length-1].id)}
-      var renderVersion=form.getAttribute("data-render-version");if(renderVersion)fd.set("_rv",renderVersion);
+      var renderVersion=form.getAttribute("data-render-version")||document.documentElement.getAttribute("data-tr-render");if(renderVersion)fd.set("_rv",renderVersion);
       if(remote)$all('[data-block="form_checkbox_group"]',form).forEach(function(group){var input=$('input[type="checkbox"]',group);if(input&&!input.disabled&&!fd.has(input.name))fd.set(input.name,"")});
       $all('[data-block="form_boolean"]',form).forEach(function(group){var first=$("input[type=radio]",group);if(first&&!fd.has(first.name)&&form.__cleared&&form.__cleared[first.name])fd.set(first.name,"null")});
       if(remote&&form.__remoteFields){
@@ -306,6 +357,7 @@ function init(form){
           else fd.set(f.name,value===null?"null":typeof value==="object"?JSON.stringify(value):String(value));
         });
       }
+      convFields(form,fd);
       if(powP){try{fd.set("_pow",await powP)}catch(e){}}
       if(ts&&firstStep){var answer=await ts.get();if(answer)fd.set("cf-turnstile-response",answer)}
       var hdrs=Object.assign({Accept:"application/json"},sessParam?authHeaders(form):{});
@@ -322,9 +374,15 @@ function init(form){
       if(out.state&&form.elements._state){form.elements._state.value=out.state;if(ts)ts.done()}
       powP=null;if(bits>0)powStart();
       if(out.done){
-        if(out.form_id)form.dispatchEvent(new CustomEvent("typeroll:form-success",{bubbles:true,detail:{form_id:out.form_id,results:out.results||[]}}));
+        if(out.form_id){var detail={form_id:out.form_id,results:out.results||[]};if(out.conversion&&out.conversion.event_id)detail.event_id=out.conversion.event_id;form.dispatchEvent(new CustomEvent("typeroll:form-success",{bubbles:true,detail:detail}))}
+        var fired=out.conversion?conversion(out.conversion):false;
         var redirect=form.getAttribute("data-redirect")||"";
-        if(/^(https?:\/\/|\/(?![\/\\]))/i.test(redirect)){location.assign(redirect);return}
+        // A form action's redirect (a Recurring Events thank-you page) applies
+        // from render version 20, only as a path on this site and only when
+        // the form names none of its own.
+        if(!redirect&&typeof out.redirect==="string"&&parseInt(document.documentElement.getAttribute("data-tr-render")||form.getAttribute("data-render-version")||"0",10)>=20&&/^\/(?![\/\\])[^\s]*$/.test(out.redirect))redirect=out.redirect;
+        // Give a provider call made just now a moment to leave before navigating.
+        if(/^(https?:\/\/|\/(?![\/\\]))/i.test(redirect)){if(fired)await new Promise(function(r){setTimeout(r,600)});location.assign(redirect);return}
         var region=form.closest("[data-tr-form]")||form;
         if(out.message){region.replaceChildren();var message=document.createElement("div");message.className="form-done";message.setAttribute("role","status");message.textContent=out.message;region.append(message)}else if(out.html){region.innerHTML=out.html}else{region.innerHTML='<div class="form-done" role="status">'+msg(form,"done","Thanks!")+"</div>"}
         revealDone(region);

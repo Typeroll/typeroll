@@ -7,8 +7,8 @@ import { formActionsPermission, formActionsView, validateFormActionsInput } from
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
-import { paths, collectStepFields, fieldsToSteps, formStepWarnings, safeFormRedirectUrl } from '@typeroll/shared';
-import type { Form, FormStep } from '@typeroll/shared';
+import { paths, collectStepFields, fieldsToSteps, formStepWarnings, safeFormRedirectUrl, validateFormConversionSetting, formConversionWarnings, resolveRenderVersion } from '@typeroll/shared';
+import type { Form, FormStep, SiteApps } from '@typeroll/shared';
 import { FORM_ID_RE as ID_RE, applyFormNavigation, STEPS_ERROR, validateFields, validateFormNavigation, validSteps } from '../../../../../../lib/forms-admin';
 
 export const GET: APIRoute = async ({ request, params }) => {
@@ -84,6 +84,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   if (body.success_redirect_url && !redirect) return apiError('success_redirect_url must be an http(s) URL or a path starting with /');
   const navigation = validateFormNavigation(body as Record<string, unknown>);
   if (typeof navigation === 'string') return apiError(navigation);
+  const conversionError = validateFormConversionSetting(body.conversion);
+  if (conversionError) return apiError(conversionError);
   let actions: Form['actions'] = [];
   if (body.actions !== undefined) {
     if (formActionsPermission(ctx) !== 'admin') return apiError('Admin permission required to set form actions', 403);
@@ -99,6 +101,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     submit_text: body.submit_text ?? 'Submit',
     success_message: body.success_message ?? 'Thanks — your message has been received.',
     ...(redirect ? { success_redirect_url: redirect } : {}),
+    ...(body.conversion ? { conversion: body.conversion } : {}),
     steps,
     ...(typeof body.styles === 'string' ? { styles: body.styles } : {}),
     ...(typeof body.kind === 'string' ? { kind: body.kind } : {}),
@@ -111,7 +114,14 @@ export const POST: APIRoute = async ({ request, params }) => {
   if(contractError)return apiError(contractError);
   await store.setDoc(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`, applyFormNavigation(doc, navigation));
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${id}`);
-  const warnings = formStepWarnings(steps);
+  const [conversionSettings, conversionApps] = await Promise.all([
+    getStore().getDoc<{ render_version?: number }>(paths.settings(ctx.orgId, ctx.siteId)),
+    getStore().getDoc<SiteApps>(paths.apps(ctx.orgId, ctx.siteId)),
+  ]);
+  const warnings = [
+    ...formStepWarnings(steps),
+    ...(fresh ? formConversionWarnings(fresh, conversionApps?.apps?.integrations, resolveRenderVersion(conversionSettings?.render_version)) : []),
+  ];
   // Embed info up front so create→embed is one round-trip; see [formId].ts GET.
   return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, formActionsPermission(ctx)) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!), ...(warnings.length ? { warnings } : {}) }, 201, body);
 };

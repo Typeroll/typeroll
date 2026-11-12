@@ -8,8 +8,8 @@ import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-
 import { noWritableFieldsError } from '../../../../../../lib/api-body';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
-import { paths, fieldsToSteps, formStepWarnings, safeFormRedirectUrl } from '@typeroll/shared';
-import type { Form, FormField } from '@typeroll/shared';
+import { paths, fieldsToSteps, formStepWarnings, safeFormRedirectUrl, validateFormConversionSetting, formConversionWarnings, resolveRenderVersion } from '@typeroll/shared';
+import type { Form, FormField, SiteApps } from '@typeroll/shared';
 
 import { applyFormNavigation, STEPS_ERROR, validateFields, validateFormNavigation, validSteps } from '../../../../../../lib/forms-admin';
 import { formActionsPermission, formActionsView, validateFormActionsInput } from '../../../../../../lib/form-actions-api';
@@ -66,6 +66,12 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   if (body.name !== undefined) update.name = String(body.name);
   if (body.submit_text !== undefined) update.submit_text = String(body.submit_text);
   if (body.success_message !== undefined) update.success_message = String(body.success_message);
+  if (body.conversion !== undefined) {
+    // null clears it; see shared/form-conversions.ts.
+    const conversionError = validateFormConversionSetting(body.conversion);
+    if (conversionError) return apiError(conversionError);
+    update.conversion = body.conversion ?? {};
+  }
   if (body.success_redirect_url !== undefined) {
     // Empty or null clears the redirect; anything else must be http(s) or root-relative.
     const redirect = body.success_redirect_url ? safeFormRedirectUrl(body.success_redirect_url) : '';
@@ -113,7 +119,14 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     applyFormNavigation({ ...existing, ...update }, navigation),
   );
   const fresh = await store.getDoc<Form>(`${paths.forms(ctx.orgId, ctx.siteId)}/${formId}`);
-  const warnings = formStepWarnings(fresh?.steps);
+  const [conversionSettings, conversionApps] = await Promise.all([
+    getStore().getDoc<{ render_version?: number }>(paths.settings(ctx.orgId, ctx.siteId)),
+    getStore().getDoc<SiteApps>(paths.apps(ctx.orgId, ctx.siteId)),
+  ]);
+  const warnings = [
+    ...formStepWarnings(fresh?.steps),
+    ...(fresh ? formConversionWarnings(fresh, conversionApps?.apps?.integrations, resolveRenderVersion(conversionSettings?.render_version)) : []),
+  ];
   return apiResponse(ctx, { form: fresh ? { ...fresh, actions: formActionsView(fresh, formActionsPermission(ctx)) } : fresh, ...await installedFormEmbedInfo(ctx.orgId, ctx.siteId, fresh!), ...(warnings.length ? { warnings } : {}) }, 200, body);
 };
 

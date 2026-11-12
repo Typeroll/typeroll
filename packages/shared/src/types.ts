@@ -1628,6 +1628,13 @@ export interface Form {
    * root-relative only; see safeFormRedirectUrl.
    */
   success_redirect_url?: string;
+  /**
+   * Ad-platform events this form sends after a successful submission, when
+   * no form action describes the conversion itself (Recurring Events does).
+   * Fired through the Integrations app's Meta Pixel, GA4 and Google Tag
+   * Manager; see form-conversions.ts.
+   */
+  conversion?: import('./form-conversions.js').FormConversionSetting;
   created_at: string;
   /** Forms 2.0: 'form' (default). Apps register their own kinds (quiz, …). */
   kind?: string;
