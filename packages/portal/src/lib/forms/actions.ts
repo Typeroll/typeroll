@@ -82,6 +82,11 @@ export interface ActionContext {
    */
   submittedAt?: string;
   syncWebhooks?: { remaining: number; deadline: number };
+  /**
+   * Campaign values posted with the submission (utm_* only), outside the
+   * form's fields. App actions receive them as `attribution`.
+   */
+  attribution?: Partial<Record<'utm_source' | 'utm_medium' | 'utm_campaign' | 'utm_content' | 'utm_term', string>>;
 }
 
 /** Webhooks of one run that may make their first attempt inside the request. */

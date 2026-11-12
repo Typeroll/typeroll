@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.3.29 (candidate, MCP 0.45.137)
+
+- Render version 20, form conversions: with Meta Pixel, Google Analytics 4 or
+  Google Tag Manager set up in the Integrations app, a successful form
+  submission sends one conversion event with no site script. Meta gets
+  `fbq('track', …, {eventID})`, GA4 `gtag('event', …, {event_id})` and GTM a
+  `typeroll_conversion` dataLayer push. `event_id` is `tr_` plus the submission
+  id, so a retry counts once and a second sign-up counts again. Recurring
+  Events registrations send `CompleteRegistration` / `sign_up`, and an
+  interest-only sign-up sends `Lead` / `generate_lead`. Other forms send what
+  their new `conversion` setting names. Parameters are identifiers and `utm_*`
+  values, never answers. With the cookie banner on, the event waits in memory
+  and fires once if the visitor accepts on the same page view. The banner
+  dispatches `typeroll:consent-activated` after starting the gated tags. The
+  Integrations setting `form_conversions` (`auto`, `on`, `off`) turns this on
+  at any render version. Remove custom `typeroll:form-success` tracking
+  scripts in the same publication, or conversions count twice.
+- `window.typerollConversions.report(descriptor)`, with
+  `context.conversions.report()` for Extension components, is the one way
+  apps, components and site scripts report conversions with the same consent
+  and dedup rules. Forms that post to an app endpoint report the `conversion`
+  in the app's reply, and `context.forms.submit()` reports its own.
+- Every submission to Core's Forms endpoint carries the page's `utm_*` values,
+  or else the Attribution app's last- or first-touch cookie values. They are
+  stored on the submission as `attribution` and passed to app actions outside
+  the field map.
+- Optional Meta Conversions API in the Integrations app (an encrypted access
+  token). After a submission is saved, its conversion is sent server-side with
+  the same `event_id`, once. `fbp`, `fbc`, IP and user agent are added only
+  under cookie consent. Matching by hashed email is a separate opt-in that
+  needs a notice shown on the forms. `send_test_conversion` sends a synthetic
+  event with the test event code. `read_conversion_status` (and the
+  Integrations card) shows the last 50 outcomes without contact data. Saving
+  Integrations without a new secret no longer needs `INTEGRATIONS_SECRET_KEY`.
+- A form action's `redirect` path (a Recurring Events thank-you page) becomes
+  the success redirect from render version 20 when the form has none.
+
 ## 0.3.28 (candidate, MCP 0.45.136)
 
 - Render version 19: with the cookie banner on, visitors reopen it from a

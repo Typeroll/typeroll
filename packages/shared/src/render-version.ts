@@ -223,6 +223,14 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A footer that already links to #cookie-settings (or has an element with data-tr-open-consent) gets no second link, so a site\'s own link keeps its look. To keep the floating button, set cookie_consent.manage_button to "floating"; "none" still leaves both out.',
     ],
   },
+  {
+    version: 20, core_version: '0.3.29', title: 'Conversions from forms',
+    changes: [
+      'With Meta Pixel, Google Analytics 4 or Google Tag Manager set up in the Integrations app, a successful form submission sends one conversion event: Meta fbq(\'track\'), GA4 gtag(\'event\') and a dataLayer push named typeroll_conversion, each with an event id taken from the submission. A Recurring Events registration sends CompleteRegistration / sign_up and an interest-only sign-up Lead / generate_lead (each Series can choose); other forms send what their conversion setting names. The events carry identifiers and campaign (utm_*) values, never answers.',
+      'With the cookie banner on, the event waits until the visitor accepts all cookies and fires then, once, if that happens on the same page. Remove any script of your own that fires a conversion from typeroll:form-success, or each sign-up counts twice. The Integrations setting form_conversions ("on" or "off") overrides this default at any render version.',
+      'A form action may name a thank-you page on this site (a Recurring Events Series\' thank-you page). The visitor goes there after a successful submission when the form has no redirect of its own.',
+    ],
+  },
 ];
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;

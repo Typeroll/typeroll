@@ -126,6 +126,11 @@ export const formTools: ToolDef[] = [
       submit_text: z.string().optional(),
       success_message: z.string().optional().describe('Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized.'),
       success_redirect_url: z.string().optional().describe('After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear.'),
+      conversion: z.object({
+  meta_event: z.enum(['Lead', 'CompleteRegistration', 'Contact', 'Schedule', 'SubmitApplication', 'Subscribe', 'StartTrial', 'none']).optional(),
+  ga4_event: z.enum(['generate_lead', 'sign_up', 'contact', 'schedule', 'submit_application', 'subscribe', 'start_trial', 'none']).optional(),
+  content_name: z.string().max(100).optional(),
+}).nullable().optional().describe('Ad-platform conversion this form sends after a successful submission (Meta Pixel, GA4, Google Tag Manager from the Integrations app, after cookie consent; on by default from render version 20). Not needed for forms whose app action describes the conversion itself (Recurring Events). Parameters are the form id, content_name and utm_* values, never answers. null clears.'),
       actions: z.array(actionSchema).optional().describe(actionsDescription),
       option_sources: z.array(optionSourceSchema).max(20).optional().describe("Live select/radio options from an installed app. Discover types with get_form_capabilities; admin permission required."),
       allow_back: allowBackSchema,
@@ -153,6 +158,11 @@ export const formTools: ToolDef[] = [
         submit_text: z.string().optional(),
         success_message: z.string().optional().describe('Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized.'),
         success_redirect_url: z.string().optional().describe('After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear.'),
+        conversion: z.object({
+  meta_event: z.enum(['Lead', 'CompleteRegistration', 'Contact', 'Schedule', 'SubmitApplication', 'Subscribe', 'StartTrial', 'none']).optional(),
+  ga4_event: z.enum(['generate_lead', 'sign_up', 'contact', 'schedule', 'submit_application', 'subscribe', 'start_trial', 'none']).optional(),
+  content_name: z.string().max(100).optional(),
+}).nullable().optional().describe('Ad-platform conversion this form sends after a successful submission (Meta Pixel, GA4, Google Tag Manager from the Integrations app, after cookie consent; on by default from render version 20). Not needed for forms whose app action describes the conversion itself (Recurring Events). Parameters are the form id, content_name and utm_* values, never answers. null clears.'),
         actions: z.array(actionSchema).optional().describe(actionsDescription),
         option_sources: z.array(optionSourceSchema).max(20).optional().describe("Live select/radio options from an installed app. Discover types with get_form_capabilities; admin permission required."),
         allow_back: allowBackSchema,

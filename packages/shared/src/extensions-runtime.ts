@@ -239,12 +239,16 @@ function forms(component,preview){
       // component's whole flow can be reviewed without creating submissions.
       if(preview)return {v:1,ok:true,done:true,preview:true};
       if(!binding.submit_token)throw new Error("Extension form submissions are not configured");
-      var payload=Object.assign({},data,{_protocol:"1",_hp:""});
+      // Where the page reports conversions, the submission carries campaign
+      // values like a core/form, and a completed one reports its conversion.
+      var conversions=window.typerollConversions;
+      var payload=Object.assign({},data,conversions?conversions.fields():{},{_protocol:"1",_hp:""});
       if(binding.pow_bits>0)payload._pow=await formProof(binding.submit_token,binding.pow_bits);
       var response=await fetch(binding.submit_url,{method:"POST",headers:{accept:"application/json","content-type":"application/json"},credentials:"omit",body:JSON.stringify({token:binding.submit_token,data:payload})});
       var result=await response.json().catch(function(){return null;});
       if(!result||typeof result!=="object")throw new Error("Invalid Forms response");
       if(!response.ok&&result.ok!==false)throw new Error("Form submission failed");
+      if(conversions&&result.done&&result.conversion)try{conversions.report(result.conversion)}catch(e){}
       return result;
     }
   };
@@ -257,8 +261,12 @@ function loadStyle(url){
 function unavailable(el,component){
   el.replaceChildren();var message=document.createElement("p");message.className="tr-extension-unavailable";message.textContent=component.unavailable_message||(/^sv/i.test(document.documentElement.lang||"")?"Den här funktionen är inte tillgänglig just nu.":"This feature is temporarily unavailable.");el.appendChild(message);
 }
+/* A conversion the component reports (a booking, a claim) goes through the
+   page's conversion API: consent, campaign values and once per event id are
+   handled there. Previews report nothing. See form-conversions.ts. */
+function conversionsRuntime(preview){return {report:function(descriptor){if(preview)return {status:"off",sent:[]};var api=window.typerollConversions;return api?api.report(descriptor):{status:"off",sent:[]}}}}
 function contextFor(entry){
-  var context={protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component,entry.descriptor.installation.preview===true),handoff:handoffRuntime(entry)};
+  var context={protocol_version:snapshot.protocol_version,runtime_version:snapshot.runtime_version,preview:entry.descriptor.installation.preview===true,installation_id:entry.descriptor.installation.installation_id,extension_id:entry.descriptor.installation.extension_id,component_id:entry.descriptor.component.id,config:entry.descriptor.installation.public_config,analytics:host.analytics||null,url:urlRuntime(entry.capture.values),navigation:navigation(),site:siteRuntime(),storage:storageRuntime(entry),api:apiClient(entry.descriptor.installation),forms:forms(entry.descriptor.component,entry.descriptor.installation.preview===true),handoff:handoffRuntime(entry),conversions:conversionsRuntime(entry.descriptor.installation.preview===true)};
   if(entry.variant!==undefined)context.variant=entry.variant;
   return context;
 }

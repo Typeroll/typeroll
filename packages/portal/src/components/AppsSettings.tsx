@@ -2,6 +2,7 @@
 // use "apps" for backward compatibility; this UI must not call these modules
 // "Typeroll Apps", which is the separate premium product family.
 
+import ConversionStatus from './ConversionStatus';
 import { useEffect, useState } from 'react';
 
 const MASK = '••••••••';
@@ -15,6 +16,7 @@ interface AppField {
   placeholder?: string;
   help?: string;
   options?: string[];
+  default?: unknown;
 }
 interface AppSetup {
   status: 'ready' | 'action_required';
@@ -180,6 +182,15 @@ export default function AppsSettings({ siteId }: { siteId: string }) {
                         }
                         style={{ fontFamily: 'var(--font-mono, monospace)' }}
                       />
+                    ) : f.type === 'select' ? (
+                      <select
+                        value={values[app.id]?.[f.key] || String(f.default ?? '')}
+                        onChange={(e) =>
+                          setValues((prev) => ({ ...prev, [app.id]: { ...prev[app.id], [f.key]: e.target.value } }))
+                        }
+                      >
+                        {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
                     ) : f.type === 'boolean' ? (
                       <input
                         type="checkbox"
@@ -240,6 +251,8 @@ export default function AppsSettings({ siteId }: { siteId: string }) {
                 )}
               </div>
             )}
+
+            {enabled && app.id === 'integrations' && <ConversionStatus siteId={siteId} />}
 
             {enabled && app.id === 'analytics' && (
               <p className="text-sm muted" style={{ margin: 0 }}>

@@ -1672,6 +1672,7 @@ Create a form. Steps are the ONLY stored model — a Block[] tree of form/* fiel
 | `submit_text` | body | string | no |  |
 | `success_message` | body | string | no | Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized. |
 | `success_redirect_url` | body | string | no | After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear. |
+| `conversion` | body | object \| null | no | Ad-platform conversion this form sends after a successful submission (Meta Pixel, GA4, Google Tag Manager from the Integrations app, after cookie consent; on by default from render version 20). Not needed for forms whose app action describes the conversion itself (Recurring Events). Parameters are the form id, content_name and utm_* values, never answers. null clears. |
 | `actions` | body | object[] | no | The complete list of actions after a submission (replaces the current list): email notifications, webhooks, app actions (get_form_capabilities lists the types and their config). Read the form first and send back the actions you keep. Emails send through the provider set with set_email_settings. Requires admin permission, like the portal. |
 | `option_sources` | body | object[] | no | Live select/radio options from an installed app. Discover types with get_form_capabilities; admin permission required. |
 | `allow_back` | body | boolean \| null | no | Multi-step forms: show a Back button from the second step; it returns to the previous step in the browser with the answers kept. Default (omitted or null): on from render version 5, off before. |
@@ -1695,6 +1696,7 @@ Patch a form. Provide only what you want to change. Passing `steps` replaces the
 | `submit_text` | body | string | no |  |
 | `success_message` | body | string | no | Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized. |
 | `success_redirect_url` | body | string | no | After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear. |
+| `conversion` | body | object \| null | no | Ad-platform conversion this form sends after a successful submission (Meta Pixel, GA4, Google Tag Manager from the Integrations app, after cookie consent; on by default from render version 20). Not needed for forms whose app action describes the conversion itself (Recurring Events). Parameters are the form id, content_name and utm_* values, never answers. null clears. |
 | `actions` | body | object[] | no | The complete list of actions after a submission (replaces the current list): email notifications, webhooks, app actions (get_form_capabilities lists the types and their config). Read the form first and send back the actions you keep. Emails send through the provider set with set_email_settings. Requires admin permission, like the portal. |
 | `option_sources` | body | object[] | no | Live select/radio options from an installed app. Discover types with get_form_capabilities; admin permission required. |
 | `allow_back` | body | boolean \| null | no | Multi-step forms: show a Back button from the second step; it returns to the previous step in the browser with the answers kept. Default (omitted or null): on from render version 5, off before. |
@@ -1880,6 +1882,26 @@ Send a test email through the stored email connector to check it works, like "Se
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `to` | body | string | yes | Recipient address for the test message. |
+
+### `read_conversion_status`
+
+`GET /api/v1/sites/{siteId}/integrations/conversions`
+
+Permission: `read`
+
+Form conversions (Integrations app): the mode, which of Meta Pixel, GA4 and Google Tag Manager are set up, whether the Meta Conversions API token, test event code and email matching are set, and the last 50 outcomes. Each outcome names the form, event names, event id, the cookie choice at submit, what the browser fires or holds until consent ("fires", "waits_for_consent", "not_configured") and what the server sent to Meta ("sent", "skipped" with a reason, "failed" with Meta's message, "off"). No contact data. The browser's own firing is not reported back; the log says what the runtime does for that consent state. Admin permission required.
+
+### `send_test_conversion`
+
+`POST /api/v1/sites/{siteId}/integrations/conversions/test`
+
+Permission: `write`
+
+Send one synthetic Meta Conversions API event with the site's test event code (Integrations app), so it appears under Events Manager → Test events. Creates no submission and no registration; no visitor data is involved. The outcome is added to read_conversion_status. Needs the Meta Pixel ID, a Conversions API access token and a test event code. Admin permission required.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `meta_event` | body | "Lead" \| "CompleteRegistration" | no | Event name to test. Default Lead. |
 
 ## Site: Internal links
 

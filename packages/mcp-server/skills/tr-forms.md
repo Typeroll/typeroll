@@ -136,8 +136,16 @@ choices; its `field` and optional hidden `notice_field` must already be declared
 Set `config.field_map` explicitly on completion actions: only mapped answers go
 to that provider. Verify a fresh date/choice without republishing. Required action
 failure must display a retry, not success; inspect submission `action_status`.
-Use `typeroll:form-success` for consent-aware success integration, never a
-MutationObserver or CSS class. Do not include contact identity in public results.
+Do not write ad-tracking scripts for forms. With Meta Pixel, GA4 or Google Tag
+Manager set up in the Integrations app, form conversions (render version 20, or
+Integrations `form_conversions: "on"`) send one consent-gated event per
+successful submission, with campaign values and an `event_id`. App forms such as
+Recurring Events describe their own event; set `conversion` on other forms. When
+you switch a site over, remove any custom script that fires on
+`typeroll:form-success` in the same publication, or conversions count twice. Check
+the outcome with `read_conversion_status` and `send_test_conversion`. For other
+success integrations use `typeroll:form-success`, never a MutationObserver or CSS
+class. Do not include contact identity in public results.
 
 Email actions send through the site's email provider. Check it with
 `get_email_settings`; if `email` is null, connect one with `set_email_settings`

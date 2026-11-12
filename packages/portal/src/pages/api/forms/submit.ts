@@ -1,5 +1,6 @@
 import {completeRequiredActions,hasRequiredActions,pendingCompletion} from '../../../lib/forms/required-completion';
 import {liveOptions} from '../../../lib/extensions/form-contract';
+import { recordFormConversion } from '../../../lib/forms/conversions';
 import { assertOrganizationAccess, OrganizationAccessError } from '../../../lib/organization-access';
 // Public form submission endpoint.
 //
@@ -42,7 +43,7 @@ import { assertOrganizationAccess, OrganizationAccessError } from '../../../lib/
 
 import type { APIRoute } from 'astro';
 import { getStore } from '../../../lib/datastore';
-import { paths, safeFormRedirectUrl, FORM_PREVIEW_FIELD, formMessage, languageDirection } from '@typeroll/shared';
+import { paths, safeFormRedirectUrl, FORM_PREVIEW_FIELD, formMessage, languageDirection, buildFormConversion, postedAttribution, sanitizeAttribution } from '@typeroll/shared';
 import type { Form, Site } from '@typeroll/shared';
 import { completedRetentionFields, siteSubmissionRetentionDays } from '../../../lib/form-submissions';
 import {
@@ -289,7 +290,7 @@ export const POST: APIRoute = async (context) => {
       } else if (turnstile.enforced) return refuse('spam_check_required');
     }
   }
-  return handleStepsMode({ request, form, orgId, siteId, formId, data, wantsHtml, wantsProtocol, backUrl, lang });
+  return handleStepsMode({ request, form, orgId, siteId, formId, data, wantsHtml, wantsProtocol, backUrl, lang, ip: ip ?? null, userAgent: request.headers.get('user-agent') });
 };
 
 /** True for forms that post to an installed app or Extension instead of the submissions collector. */
@@ -503,6 +504,9 @@ interface StepsCtx {
   backUrl: string | null;
   /** The site's language for visitor-facing messages. */
   lang: string;
+  /** For the optional Conversions API send only; never stored. */
+  ip?: string | null;
+  userAgent?: string | null;
 }
 
 async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
@@ -515,7 +519,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     const retry=verifyFormState(data._retry);
     if(!retry||retry.step!=='$actions'||retry.orgId!==orgId||retry.siteId!==siteId||retry.formId!==formId||Date.now()-retry.iat>86_400_000)
       return protocolJson({ok:false,errors:[{field:null,code:'bad_retry',message:formMessage('bad_state',lang)}]},403);
-    try { const results=await completeRequiredActions(orgId,siteId,formId,retry.submissionId);return protocolJson({ok:true,done:true,form_id:formId,results}); }
+    try { const results=await completeRequiredActions(orgId,siteId,formId,retry.submissionId);const saved=await store.getDoc<{data?:Record<string,unknown>;attribution?:unknown}>(`${paths.submissions(orgId,siteId)}/${retry.submissionId}`);return protocolJson({ok:true,done:true,form_id:formId,results,...await completionExtras(ctx,retry.submissionId,results,saved?.attribution,saved?.data??{})}); }
     catch {return protocolJson({ok:false,retry:data._retry,errors:[{field:null,code:'action_incomplete',message:'Your answers are saved, but the connected app has not completed your submission. Try again or contact the organizer.'}]},409);}
   }
   // Continuation: absent → this POST is for the first step.
@@ -605,6 +609,10 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
 
   const next = nextStep(form, current);
   const acceptedData = { ...((existing?.data as Record<string, unknown>) ?? {}), ...accepted };
+  // Campaign values the runtime posted (_tr_utm_*): kept with the submission,
+  // the first ones that arrive, and handed to app actions as `attribution`.
+  const posted = postedAttribution(data);
+  const attribution = Object.keys(sanitizeAttribution(existing?.attribution)).length ? null : (Object.keys(posted).length ? posted : null);
   // A completed submission is kept until deleted unless the site opted into
   // a retention period (lib/form-submissions).
   const completion = next ? null : completedRetentionFields(
@@ -621,6 +629,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
         status: next ? 'partial' : 'complete',
         ...(completion ?? {}),
         ...(!next?pendingCompletion(form):{}),
+        ...(attribution ? { attribution } : {}),
         updated_at: now.toISOString(),
       },
     );
@@ -634,6 +643,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       status: next ? 'partial' : 'complete',
       step: current.id,
       ...(!next?pendingCompletion(form):{}),
+      ...(attribution ? { attribution } : {}),
       // No IP address or user agent: abuse limits use them in memory only.
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
@@ -673,7 +683,8 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       if (redirect) return new Response(null, { status: 303, headers: { Location: redirect, 'Cache-Control': 'no-store', ...corsHeaders } });
       return respond(true, { success: true, message: form.success_message ?? formMessage('thanks', lang) }, 200, ctx.backUrl, lang);
     }
-    return protocolJson({ ok: true, done: true, form_id: formId, results });
+    const savedAttribution = attribution ?? existing?.attribution;
+    return protocolJson({ ok: true, done: true, form_id: formId, results, ...await completionExtras(ctx, submissionId, results, savedAttribution, acceptedData) });
   }
 
   const newState = signFormState({ orgId, siteId, formId, submissionId, step: current.id });
@@ -699,6 +710,33 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
     return protocolJson({ ok: true, html, state: newState, step: next.id, submit_label: next.submit_label?.trim() || null, final: !nextStep(form, next) });
   }
   return protocolJson({ ok: true, next_step: next.id, state: newState });
+}
+
+/**
+ * The conversion and thank-you page that go with a completed submission.
+ * The conversion (form-conversions.ts) comes from an action's descriptor or
+ * the form's own setting, with the campaign values stored on the submission;
+ * the runtime fires it only where the page turned conversions on. A redirect
+ * is an action's same-site path. The optional Conversions API send happens
+ * here too, once per submission, and never fails the submission.
+ */
+async function completionExtras(
+  ctx: StepsCtx,
+  submissionId: string,
+  results: Array<{ type: string; result: Record<string, unknown> }>,
+  attribution: unknown,
+  answers: Record<string, unknown>,
+): Promise<{ conversion?: ReturnType<typeof buildFormConversion>; redirect?: string }> {
+  const conversion = buildFormConversion({ form: ctx.form, results, submissionId, attribution });
+  const redirect = results.map((r) => r.result?.redirect).find((v): v is string =>
+    typeof v === 'string' && v.length <= 300 && /^\/(?![\/\\])[^\s]*$/.test(v));
+  if (conversion) {
+    await recordFormConversion({
+      orgId: ctx.orgId, siteId: ctx.siteId, submissionId, form: ctx.form, conversion,
+      posted: ctx.data, answers, ip: ctx.ip ?? null, userAgent: ctx.userAgent ?? null,
+    });
+  }
+  return { ...(conversion ? { conversion } : {}), ...(redirect ? { redirect } : {}) };
 }
 
 /**

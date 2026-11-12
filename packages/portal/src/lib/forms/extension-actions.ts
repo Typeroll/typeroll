@@ -55,6 +55,9 @@ export async function extensionActions(
             submission_id: ctx.subject.id,
             submitted_at: ctx.submittedAt,
             data,
+            // Campaign values outside the field map; the app uses them for
+            // utm_* fields the mapping leaves empty.
+            ...(ctx.attribution && Object.keys(ctx.attribution).length ? { attribution: ctx.attribution } : {}),
           });
           const value = response.public_result;
           if (value === undefined) return;
