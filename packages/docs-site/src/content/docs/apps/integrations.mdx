@@ -40,10 +40,10 @@ With Meta Pixel, Google Analytics 4 or Google Tag Manager set up here, a
 successful form submission sends one conversion event, with no script of your
 own:
 
-| Provider | Call |
-| --- | --- |
-| Meta Pixel | `fbq('track', <event>, params, { eventID })` |
-| GA4 | `gtag('event', <event>, { ...params, event_id })` |
+| Provider           | Call                                                                                                                    |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| Meta Pixel         | `fbq('track', <event>, params, { eventID })`                                                                            |
+| GA4                | `gtag('event', <event>, { ...params, event_id })`                                                                       |
 | Google Tag Manager | `dataLayer.push({ event: 'typeroll_conversion', typeroll_conversion: { ...params, event_id, meta_event, ga4_event } })` |
 
 **Which event.** A Recurring Events registration for a date sends
@@ -90,7 +90,7 @@ values and the once-per-event-id rule the same way for every caller:
 
 ```js
 window.typerollConversions.report({
-  event_id: "cal_" + booking.uid,      // stable for what happened, 4–100 of A–Z a–z 0–9 _ -
+  event_id: "cal_" + booking.uid, // stable for what happened, 4–100 of A–Z a–z 0–9 _ -
   meta_event: "Schedule",
   ga4_event: "schedule",
   content_name: "Intro call",
@@ -109,12 +109,12 @@ sent server-side.
 
 ### What fires under each cookie choice
 
-| Choice at submit | In the browser | Conversions API (if set up) |
-| --- | --- | --- |
-| No cookie banner on the site | Fires at once | Sent with `fbp`/`fbc`, IP and user agent |
-| `all` | Fires at once | Sent with `fbp`/`fbc`, IP and user agent |
-| Not chosen yet, `necessary` or `rejected` | Waits in memory; fires once if the visitor accepts all on the same page view | Sent only with email matching on, with the hashed email alone |
-| The visitor leaves, reloads or is redirected before accepting | Never fires | As above |
+| Choice at submit                                              | In the browser                                                               | Conversions API (if set up)                                   |
+| ------------------------------------------------------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| No cookie banner on the site                                  | Fires at once                                                                | Sent with `fbp`/`fbc`, IP and user agent                      |
+| `all`                                                         | Fires at once                                                                | Sent with `fbp`/`fbc`, IP and user agent                      |
+| Not chosen yet, `necessary` or `rejected`                     | Waits in memory; fires once if the visitor accepts all on the same page view | Sent only with email matching on, with the hashed email alone |
+| The visitor leaves, reloads or is redirected before accepting | Never fires                                                                  | As above                                                      |
 
 The runtime listens for `typeroll:consent-activated`, which the cookie banner
 dispatches after it has started the gated tags. Every outcome is also
