@@ -21,6 +21,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Läs vår integritetspolicy →',
     manage: 'Hantera cookie-inställningar',
     manage_button: 'Cookies',
+    footer_link: 'Cookie-inställningar',
   },
   de: {
     text: 'Wir verwenden Cookies, damit die Website funktioniert und um zu verstehen, wie sie genutzt wird. Sie können alle Cookies akzeptieren, nur die notwendigen zulassen oder ablehnen.',
@@ -31,6 +32,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Datenschutzerklärung lesen →',
     manage: 'Cookie-Einstellungen verwalten',
     manage_button: 'Cookies',
+    footer_link: 'Cookie-Einstellungen',
   },
   nl: {
     text: 'We gebruiken cookies om deze website te laten werken en om te begrijpen hoe die wordt gebruikt. Je kunt alle cookies accepteren, alleen de noodzakelijke toestaan of weigeren.',
@@ -41,6 +43,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Lees ons privacybeleid →',
     manage: 'Cookie-instellingen beheren',
     manage_button: 'Cookies',
+    footer_link: 'Cookie-instellingen',
   },
   nb: {
     text: 'Vi bruker informasjonskapsler for at nettstedet skal fungere og for å forstå hvordan det brukes. Du kan godta alle informasjonskapsler, bare de nødvendige, eller avslå.',
@@ -51,6 +54,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Les personvernerklæringen vår →',
     manage: 'Administrer innstillinger for informasjonskapsler',
     manage_button: 'Cookies',
+    footer_link: 'Innstillinger for informasjonskapsler',
   },
   fi: {
     text: 'Käytämme evästeitä, jotta sivusto toimii ja jotta ymmärrämme, miten sitä käytetään. Voit hyväksyä kaikki evästeet, sallia vain välttämättömät tai kieltäytyä.',
@@ -61,6 +65,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Lue tietosuojaselosteemme →',
     manage: 'Hallitse evästeasetuksia',
     manage_button: 'Evästeet',
+    footer_link: 'Evästeasetukset',
   },
   fr: {
     text: 'Nous utilisons des cookies pour faire fonctionner ce site et comprendre comment il est utilisé. Vous pouvez accepter tous les cookies, n’autoriser que les cookies nécessaires ou les refuser.',
@@ -71,6 +76,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Lire notre politique de confidentialité →',
     manage: 'Gérer les paramètres des cookies',
     manage_button: 'Cookies',
+    footer_link: 'Paramètres des cookies',
   },
   pl: {
     text: 'Używamy plików cookie, aby strona działała i aby zrozumieć, jak jest używana. Możesz zaakceptować wszystkie pliki cookie, zezwolić tylko na niezbędne lub odmówić.',
@@ -81,6 +87,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Przeczytaj naszą politykę prywatności →',
     manage: 'Zarządzaj ustawieniami plików cookie',
     manage_button: 'Cookies',
+    footer_link: 'Ustawienia plików cookie',
   },
   it: {
     text: 'Utilizziamo i cookie per far funzionare questo sito e per capire come viene utilizzato. Puoi accettare tutti i cookie, consentire solo quelli necessari o rifiutarli.',
@@ -91,6 +98,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Leggi la nostra informativa sulla privacy →',
     manage: 'Gestisci le impostazioni dei cookie',
     manage_button: 'Cookie',
+    footer_link: 'Impostazioni dei cookie',
   },
   es: {
     text: 'Usamos cookies para que este sitio web funcione y para entender cómo se utiliza. Puedes aceptar todas las cookies, permitir solo las necesarias o rechazarlas.',
@@ -101,6 +109,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Lee nuestra política de privacidad →',
     manage: 'Gestionar la configuración de cookies',
     manage_button: 'Cookies',
+    footer_link: 'Configuración de cookies',
   },
   da: {
     text: 'Vi bruger cookies for at få hjemmesiden til at fungere og for at forstå, hvordan den bliver brugt. Du kan acceptere alle cookies, kun tillade de nødvendige eller afvise.',
@@ -111,6 +120,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Læs vores privatlivspolitik →',
     manage: 'Administrer cookieindstillinger',
     manage_button: 'Cookies',
+    footer_link: 'Cookieindstillinger',
   },
   pt: {
     text: 'Utilizamos cookies para garantir o funcionamento deste site e compreender como é utilizado. Escolha entre aceitar todos os cookies, permitir apenas os necessários ou recusar.',
@@ -121,6 +131,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Leia a nossa política de privacidade →',
     manage: 'Preferências de cookies',
     manage_button: 'Cookies',
+    footer_link: 'Preferências de cookies',
   },
   ru: {
     text: 'Мы используем файлы cookie, чтобы сайт работал, и чтобы понимать, как им пользуются. Вы можете принять все файлы cookie, разрешить только необходимые или отказаться.',
@@ -131,6 +142,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Ознакомиться с политикой конфиденциальности →',
     manage: 'Настройки файлов cookie',
     manage_button: 'Cookie',
+    footer_link: 'Настройки файлов cookie',
   },
   uk: {
     text: 'Ми використовуємо файли cookie, щоб забезпечити роботу цього вебсайту й розуміти, як ним користуються. Ви можете прийняти всі файли cookie, дозволити лише необхідні або відхилити їх.',
@@ -141,6 +153,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Ознайомитися з політикою конфіденційності →',
     manage: 'Керувати налаштуваннями файлів cookie',
     manage_button: 'Файли cookie',
+    footer_link: 'Налаштування файлів cookie',
   },
   cs: {
     text: 'Používáme soubory cookie, aby tento web fungoval a abychom rozuměli tomu, jak se používá. Můžete přijmout všechny soubory cookie, povolit jen nezbytné, nebo je odmítnout.',
@@ -151,6 +164,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Přečtěte si zásady ochrany osobních údajů →',
     manage: 'Spravovat nastavení souborů cookie',
     manage_button: 'Cookies',
+    footer_link: 'Nastavení souborů cookie',
   },
   sk: {
     text: 'Používame súbory cookie, aby táto webová stránka fungovala a aby sme rozumeli, ako sa používa. Môžete prijať všetky súbory cookie, povoliť len nevyhnutné alebo ich odmietnuť.',
@@ -161,6 +175,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Prečítajte si zásady ochrany osobných údajov →',
     manage: 'Spravovať nastavenia súborov cookie',
     manage_button: 'Cookies',
+    footer_link: 'Nastavenia súborov cookie',
   },
   hu: {
     text: 'Sütiket használunk a weboldal működéséhez, és hogy megértsük, hogyan használják. Elfogadhatja az összes sütit, engedélyezheti csak a szükségeseket, vagy elutasíthatja őket.',
@@ -171,6 +186,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Olvassa el adatkezelési tájékoztatónkat →',
     manage: 'Sütibeállítások kezelése',
     manage_button: 'Sütik',
+    footer_link: 'Sütibeállítások',
   },
   ro: {
     text: 'Folosim cookie-uri pentru ca acest site să funcționeze și pentru a înțelege cum este utilizat. Puteți accepta toate cookie-urile, le puteți permite doar pe cele necesare sau le puteți refuza.',
@@ -181,6 +197,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Citiți politica noastră de confidențialitate →',
     manage: 'Gestionați setările pentru cookie-uri',
     manage_button: 'Cookie-uri',
+    footer_link: 'Setări cookie-uri',
   },
   bg: {
     text: 'Използваме бисквитки, за да работи този уебсайт и за да разберем как се използва. Можете да приемете всички бисквитки, да разрешите само необходимите или да откажете.',
@@ -191,6 +208,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Прочетете нашата политика за поверителност →',
     manage: 'Управление на настройките за бисквитки',
     manage_button: 'Бисквитки',
+    footer_link: 'Настройки за бисквитки',
   },
   hr: {
     text: 'Koristimo kolačiće kako bi ova web-stranica radila i kako bismo razumjeli kako se koristi. Možete prihvatiti sve kolačiće, dopustiti samo nužne ili ih odbiti.',
@@ -201,6 +219,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Pročitajte našu politiku privatnosti →',
     manage: 'Upravljanje postavkama kolačića',
     manage_button: 'Kolačići',
+    footer_link: 'Postavke kolačića',
   },
   sr: {
     text: 'Користимо колачиће да би овај веб-сајт функционисао и да бисмо разумели како се користи. Можете прихватити све колачиће, дозволити само неопходне или их одбити.',
@@ -211,6 +230,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Прочитајте нашу политику приватности →',
     manage: 'Управљање подешавањима колачића',
     manage_button: 'Колачићи',
+    footer_link: 'Подешавања колачића',
   },
   bs: {
     text: 'Koristimo kolačiće kako bi ova web stranica radila i kako bismo razumjeli kako se koristi. Možete prihvatiti sve kolačiće, dozvoliti samo neophodne ili ih odbiti.',
@@ -221,6 +241,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Pročitajte našu politiku privatnosti →',
     manage: 'Upravljaj postavkama kolačića',
     manage_button: 'Kolačići',
+    footer_link: 'Postavke kolačića',
   },
   sl: {
     text: 'Piškotke uporabljamo za delovanje tega spletnega mesta in za razumevanje, kako se uporablja. Sprejmete lahko vse piškotke, dovolite samo nujne ali jih zavrnete.',
@@ -231,6 +252,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Preberite našo politiko zasebnosti →',
     manage: 'Upravljanje nastavitev piškotkov',
     manage_button: 'Piškotki',
+    footer_link: 'Nastavitve piškotkov',
   },
   mk: {
     text: 'Користиме колачиња за да функционира веб-страницата и за да разбереме како се користи. Може да ги прифатите сите колачиња, да ги дозволите само неопходните или да ги одбиете.',
@@ -241,6 +263,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Прочитајте ја нашата политика за приватност →',
     manage: 'Управувај со поставките за колачиња',
     manage_button: 'Колачиња',
+    footer_link: 'Поставки за колачиња',
   },
   sq: {
     text: 'Ne përdorim cookies që kjo faqe interneti të funksionojë dhe për të kuptuar se si përdoret. Mund t\'i pranoni të gjitha cookies, të lejoni vetëm ato të nevojshme ose t\'i refuzoni.',
@@ -251,6 +274,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Lexoni politikën tonë të privatësisë →',
     manage: 'Menaxho cilësimet e cookies',
     manage_button: 'Cookies',
+    footer_link: 'Cilësimet e cookies',
   },
   el: {
     text: 'Χρησιμοποιούμε cookies για τη λειτουργία αυτού του ιστότοπου και για να κατανοούμε πώς χρησιμοποιείται. Μπορείτε να αποδεχτείτε όλα τα cookies, να επιτρέψετε μόνο τα απαραίτητα ή να τα απορρίψετε.',
@@ -261,6 +285,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Διαβάστε την πολιτική απορρήτου μας →',
     manage: 'Διαχείριση ρυθμίσεων cookies',
     manage_button: 'Cookies',
+    footer_link: 'Ρυθμίσεις cookies',
   },
   lt: {
     text: 'Naudojame slapukus, kad ši svetainė veiktų ir kad suprastume, kaip ja naudojamasi. Galite priimti visus slapukus, leisti tik būtinuosius arba atsisakyti.',
@@ -271,6 +296,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Skaitykite mūsų privatumo politiką →',
     manage: 'Tvarkyti slapukų nustatymus',
     manage_button: 'Slapukai',
+    footer_link: 'Slapukų nustatymai',
   },
   lv: {
     text: 'Mēs izmantojam sīkdatnes, lai šī tīmekļa vietne darbotos un lai saprastu, kā tā tiek izmantota. Varat pieņemt visas sīkdatnes, atļaut tikai nepieciešamās vai atteikties.',
@@ -281,6 +307,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Izlasiet mūsu privātuma politiku →',
     manage: 'Pārvaldīt sīkdatņu iestatījumus',
     manage_button: 'Sīkdatnes',
+    footer_link: 'Sīkdatņu iestatījumi',
   },
   et: {
     text: 'Kasutame küpsiseid, et see veebisait töötaks ja et mõista, kuidas seda kasutatakse. Võite nõustuda kõigi küpsistega, lubada ainult vajalikud või keelduda.',
@@ -291,6 +318,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Loe meie privaatsuspoliitikat →',
     manage: 'Halda küpsiste seadeid',
     manage_button: 'Küpsised',
+    footer_link: 'Küpsiste seaded',
   },
   is: {
     text: 'Við notum vafrakökur til að vefsíðan virki og til að skilja hvernig hún er notuð. Þú getur samþykkt allar vafrakökur, leyft aðeins nauðsynlegar eða hafnað þeim.',
@@ -301,6 +329,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Lestu persónuverndarstefnu okkar →',
     manage: 'Stjórna stillingum vafrakaka',
     manage_button: 'Vafrakökur',
+    footer_link: 'Stillingar vafrakaka',
   },
   tr: {
     text: 'Bu web sitesinin çalışmasını sağlamak ve nasıl kullanıldığını anlamak için çerezler kullanıyoruz. Tüm çerezleri kabul edebilir, yalnızca gerekli olanlara izin verebilir veya reddedebilirsiniz.',
@@ -311,6 +340,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Gizlilik politikamızı okuyun →',
     manage: 'Çerez ayarlarını yönet',
     manage_button: 'Çerezler',
+    footer_link: 'Çerez ayarları',
   },
   az: {
     text: 'Bu veb-saytın işləməsi və onun necə istifadə olunduğunu anlamaq üçün kukilərdən istifadə edirik. Bütün kukiləri qəbul edə, yalnız zəruri olanlara icazə verə və ya imtina edə bilərsiniz.',
@@ -321,6 +351,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Məxfilik siyasətimizi oxuyun →',
     manage: 'Kuki ayarlarını idarə et',
     manage_button: 'Kukilər',
+    footer_link: 'Kuki ayarları',
   },
   kk: {
     text: 'Біз сайттың жұмыс істеуі және оның қалай пайдаланылатынын түсіну үшін cookie файлдарын қолданамыз. Барлық cookie файлдарын қабылдай, тек қажеттілеріне рұқсат бере немесе бас тарта аласыз.',
@@ -331,6 +362,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Құпиялық саясатымызбен танысыңыз →',
     manage: 'Cookie баптауларын басқару',
     manage_button: 'Cookie',
+    footer_link: 'Cookie баптаулары',
   },
   ka: {
     text: 'ჩვენ ვიყენებთ ქუქი-ფაილებს, რათა ვებსაიტმა იმუშაოს და გავიგოთ, როგორ გამოიყენება ის. შეგიძლიათ მიიღოთ ყველა ქუქი-ფაილი, დაუშვათ მხოლოდ აუცილებელი ან უარი თქვათ.',
@@ -341,6 +373,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'გაეცანით ჩვენს კონფიდენციალურობის პოლიტიკას →',
     manage: 'ქუქი-ფაილების პარამეტრების მართვა',
     manage_button: 'ქუქი-ფაილები',
+    footer_link: 'ქუქი-ფაილების პარამეტრები',
   },
   ar: {
     text: 'نستخدم ملفات تعريف الارتباط لكي يعمل هذا الموقع ولفهم كيفية استخدامه. يمكنك قبول جميع ملفات تعريف الارتباط، أو السماح بالضرورية منها فقط، أو رفضها.',
@@ -351,6 +384,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'اطّلع على سياسة الخصوصية ←',
     manage: 'إدارة إعدادات ملفات تعريف الارتباط',
     manage_button: 'الكوكيز',
+    footer_link: 'إعدادات ملفات تعريف الارتباط',
   },
   he: {
     text: 'אנחנו משתמשים בעוגיות כדי שהאתר יפעל וכדי להבין איך משתמשים בו. אפשר לאשר את כל העוגיות, לאפשר רק את ההכרחיות או לדחות אותן.',
@@ -361,6 +395,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'למדיניות הפרטיות שלנו ←',
     manage: 'ניהול הגדרות עוגיות',
     manage_button: 'עוגיות',
+    footer_link: 'הגדרות עוגיות',
   },
   fa: {
     text: 'ما از کوکی‌ها استفاده می‌کنیم تا این وب‌سایت به‌درستی کار کند و بفهمیم چگونه از آن استفاده می‌شود. می‌توانید همه کوکی‌ها را بپذیرید، فقط کوکی‌های ضروری را مجاز کنید یا آن‌ها را رد کنید.',
@@ -371,6 +406,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'سیاست حفظ حریم خصوصی ما را بخوانید ←',
     manage: 'مدیریت تنظیمات کوکی',
     manage_button: 'کوکی‌ها',
+    footer_link: 'تنظیمات کوکی',
   },
   ur: {
     text: 'ہم یہ ویب سائٹ چلانے اور یہ سمجھنے کے لیے کوکیز استعمال کرتے ہیں کہ اسے کیسے استعمال کیا جاتا ہے۔ آپ تمام کوکیز قبول کر سکتے ہیں، صرف ضروری کوکیز کی اجازت دے سکتے ہیں، یا انکار کر سکتے ہیں۔',
@@ -381,6 +417,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'ہماری رازداری کی پالیسی پڑھیں ←',
     manage: 'کوکی کی ترتیبات کا نظم کریں',
     manage_button: 'کوکیز',
+    footer_link: 'کوکی کی ترتیبات',
   },
   hi: {
     text: 'हम इस वेबसाइट को चलाने और यह समझने के लिए कुकीज़ का उपयोग करते हैं कि इसका उपयोग कैसे होता है। आप सभी कुकीज़ स्वीकार कर सकते हैं, केवल ज़रूरी कुकीज़ की अनुमति दे सकते हैं या उन्हें अस्वीकार कर सकते हैं।',
@@ -391,6 +428,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'हमारी गोपनीयता नीति पढ़ें →',
     manage: 'कुकी सेटिंग्स प्रबंधित करें',
     manage_button: 'कुकीज़',
+    footer_link: 'कुकी सेटिंग्स',
   },
   bn: {
     text: 'এই ওয়েবসাইটটি সচল রাখতে এবং এটি কীভাবে ব্যবহৃত হয় তা বুঝতে আমরা কুকি ব্যবহার করি। আপনি সব কুকি গ্রহণ করতে পারেন, শুধু প্রয়োজনীয়গুলোর অনুমতি দিতে পারেন, অথবা প্রত্যাখ্যান করতে পারেন।',
@@ -401,6 +439,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'আমাদের গোপনীয়তা নীতি পড়ুন →',
     manage: 'কুকি সেটিংস পরিচালনা করুন',
     manage_button: 'কুকি',
+    footer_link: 'কুকি সেটিংস',
   },
   ta: {
     text: 'இந்த இணையதளம் செயல்படவும், அது எவ்வாறு பயன்படுத்தப்படுகிறது என்பதைப் புரிந்துகொள்ளவும் நாங்கள் குக்கீகளைப் பயன்படுத்துகிறோம். நீங்கள் எல்லா குக்கீகளையும் ஏற்கலாம், தேவையானவற்றை மட்டும் அனுமதிக்கலாம் அல்லது நிராகரிக்கலாம்.',
@@ -411,6 +450,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'எங்கள் தனியுரிமைக் கொள்கையைப் படிக்கவும் →',
     manage: 'குக்கீ அமைப்புகளை நிர்வகிக்கவும்',
     manage_button: 'குக்கீகள்',
+    footer_link: 'குக்கீ அமைப்புகள்',
   },
   th: {
     text: 'เราใช้คุกกี้เพื่อให้เว็บไซต์นี้ทำงานได้และเพื่อทำความเข้าใจว่ามีการใช้งานเว็บไซต์อย่างไร คุณสามารถยอมรับคุกกี้ทั้งหมด อนุญาตเฉพาะคุกกี้ที่จำเป็น หรือปฏิเสธได้',
@@ -421,6 +461,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'อ่านนโยบายความเป็นส่วนตัว →',
     manage: 'จัดการการตั้งค่าคุกกี้',
     manage_button: 'คุกกี้',
+    footer_link: 'การตั้งค่าคุกกี้',
   },
   vi: {
     text: 'Chúng tôi sử dụng cookie để trang web hoạt động và để hiểu cách trang web được sử dụng. Bạn có thể chấp nhận tất cả cookie, chỉ cho phép cookie cần thiết hoặc từ chối.',
@@ -431,6 +472,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Đọc chính sách quyền riêng tư của chúng tôi →',
     manage: 'Quản lý cài đặt cookie',
     manage_button: 'Cookie',
+    footer_link: 'Cài đặt cookie',
   },
   id: {
     text: 'Kami menggunakan cookie agar situs web ini berfungsi dan untuk memahami cara situs ini digunakan. Anda dapat menerima semua cookie, hanya mengizinkan cookie yang diperlukan, atau menolaknya.',
@@ -441,6 +483,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Baca kebijakan privasi kami →',
     manage: 'Kelola pengaturan cookie',
     manage_button: 'Cookie',
+    footer_link: 'Pengaturan cookie',
   },
   ms: {
     text: 'Kami menggunakan kuki untuk memastikan laman web ini berfungsi dan untuk memahami cara ia digunakan. Anda boleh menerima semua kuki, membenarkan kuki yang perlu sahaja atau menolak.',
@@ -451,6 +494,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Baca dasar privasi kami →',
     manage: 'Urus tetapan kuki',
     manage_button: 'Kuki',
+    footer_link: 'Tetapan kuki',
   },
   ja: {
     text: '当サイトでは、サイトを正しく機能させ、利用状況を把握するためにCookieを使用しています。すべてのCookieを許可するか、必要なCookieのみを許可するか、拒否するかを選択できます。',
@@ -461,6 +505,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'プライバシーポリシーを見る →',
     manage: 'Cookie設定を管理',
     manage_button: 'Cookie',
+    footer_link: 'Cookie設定',
   },
   ko: {
     text: '이 웹사이트는 사이트 운영과 이용 현황 파악을 위해 쿠키를 사용합니다. 모든 쿠키를 허용하거나, 필수 쿠키만 허용하거나, 거부할 수 있습니다.',
@@ -471,6 +516,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: '개인정보 처리방침 보기 →',
     manage: '쿠키 설정 관리',
     manage_button: '쿠키',
+    footer_link: '쿠키 설정',
   },
   zh: {
     text: '我们使用 Cookie 来确保本网站正常运行，并了解网站的使用情况。您可以接受所有 Cookie、仅允许必要的 Cookie，或全部拒绝。',
@@ -481,6 +527,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: '阅读我们的隐私政策 →',
     manage: '管理 Cookie 设置',
     manage_button: 'Cookie',
+    footer_link: 'Cookie 设置',
   },
   'zh-Hant': {
     text: '我們使用 Cookie 來維持本網站正常運作，並了解網站的使用情形。您可以接受所有 Cookie、僅允許必要的 Cookie，或全部拒絕。',
@@ -491,6 +538,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: '閱讀我們的隱私權政策 →',
     manage: '管理 Cookie 設定',
     manage_button: 'Cookie',
+    footer_link: 'Cookie 設定',
   },
   ca: {
     text: 'Utilitzem galetes perquè aquest lloc web funcioni i per entendre com s\'utilitza. Podeu acceptar totes les galetes, permetre només les necessàries o rebutjar-les.',
@@ -501,6 +549,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Llegiu la nostra política de privadesa →',
     manage: 'Gestiona la configuració de galetes',
     manage_button: 'Galetes',
+    footer_link: 'Configuració de galetes',
   },
   en: {
     text: 'We use cookies to make this website work and to understand how it is used. You can accept all cookies, allow only the necessary ones, or decline.',
@@ -511,6 +560,7 @@ const CONSENT_STRINGS: Record<CookieConsentLanguage, ConsentStrings> = {
     privacy_link: 'Read our privacy policy →',
     manage: 'Manage cookie settings',
     manage_button: 'Cookies',
+    footer_link: 'Cookie settings',
   },
 };
 
@@ -534,7 +584,7 @@ export function cookieConsentManageLabel(language: unknown, labels?: unknown): s
 }
 
 export const COOKIE_CONSENT_LABEL_KEYS = [
-  'title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button',
+  'title', 'reject', 'necessary', 'accept_all', 'privacy_link', 'manage', 'manage_button', 'footer_link',
 ] as const;
 export const COOKIE_CONSENT_LABEL_MAX_LENGTH = 120;
 
@@ -562,7 +612,10 @@ export function normalizeCookieConsentLabels(value: unknown): { labels?: CookieC
   return Object.keys(labels).length ? { labels } : {};
 }
 
-export const COOKIE_CONSENT_MANAGE_BUTTONS: readonly CookieConsentManageButton[] = ['floating', 'none'];
+export const COOKIE_CONSENT_MANAGE_BUTTONS: readonly CookieConsentManageButton[] = ['footer', 'floating', 'none'];
+
+/** First render version whose default reopen control is the footer link instead of the floating button. */
+export const COOKIE_FOOTER_LINK_RENDER_VERSION = 19;
 
 /** Fragment of an ordinary link that reopens the banner: `<a href="#cookie-settings">`. */
 export const COOKIE_SETTINGS_FRAGMENT = 'cookie-settings';
@@ -576,9 +629,31 @@ export function cookieConsentManageButtonError(value: unknown): string | null {
     : `cookie_consent.manage_button must be one of: ${COOKIE_CONSENT_MANAGE_BUTTONS.join(', ')}`;
 }
 
-/** Whether the floating "Cookies" button is rendered (everything but `none`). */
-export function cookieConsentFloatingButton(consent: Pick<CookieConsentSettings, 'manage_button'> | undefined): boolean {
-  return consent?.manage_button !== 'none';
+/**
+ * How visitors reopen the banner: the stored manage_button, else the render
+ * version's default (the footer link from version 19, the floating button
+ * before).
+ */
+export function cookieConsentReopenMode(
+  consent: Pick<CookieConsentSettings, 'manage_button'> | undefined,
+  renderVersion: number | undefined,
+): CookieConsentManageButton {
+  const stored = consent?.manage_button;
+  if ((COOKIE_CONSENT_MANAGE_BUTTONS as readonly unknown[]).includes(stored)) return stored as CookieConsentManageButton;
+  return (renderVersion ?? 1) >= COOKIE_FOOTER_LINK_RENDER_VERSION ? 'footer' : 'floating';
+}
+
+/**
+ * Whether the floating "Cookies" button is rendered. In footer mode it stands
+ * in for the footer link on a page without a footer (`hasFooter: false`).
+ */
+export function cookieConsentFloatingButton(
+  consent: Pick<CookieConsentSettings, 'manage_button'> | undefined,
+  renderVersion?: number,
+  options: { hasFooter?: boolean } = {},
+): boolean {
+  const mode = cookieConsentReopenMode(consent, renderVersion);
+  return mode === 'floating' || (mode === 'footer' && options.hasFooter === false);
 }
 
 const REOPEN_CONTROL = /data-tr-open-consent|#cookie-settings(?![\w-])/;
@@ -595,17 +670,61 @@ export function hasCookieReopenControl(documents: readonly unknown[]): boolean {
 }
 
 /**
- * The warning for a site whose banner is on without the floating button and
- * without a reopen link in its partials or menus, or null.
+ * The warning for a site whose banner is on with manage_button "none" (no
+ * floating button and no platform footer link) and without a reopen link in
+ * its partials or menus, or null.
  */
 export function cookieReopenLinkWarning(
   consent: CookieConsentSettings | undefined,
   documents: readonly unknown[],
 ): string | null {
-  if (consent?.enabled !== true || cookieConsentFloatingButton(consent) || hasCookieReopenControl(documents)) return null;
+  if (consent?.enabled !== true || consent.manage_button !== 'none' || hasCookieReopenControl(documents)) return null;
   return 'cookie_reopen_link_missing: cookie_consent.manage_button is "none" and no header, footer or menu links to #cookie-settings, '
     + 'so visitors cannot change or withdraw their cookie choice. Add a "Cookie settings" link with href "#cookie-settings" '
-    + 'to the footer menu or footer partial, or set manage_button to "floating".';
+    + 'to the footer menu or footer partial, or set manage_button to "footer" for the platform\'s footer link.';
+}
+
+/**
+ * The platform's "Cookie settings" row at the end of the footer. Its rules sit
+ * in the base layer with the specificity of one element, so it takes the
+ * footer's colour and font and any site rule restyles it.
+ */
+export const COOKIE_FOOTER_LINK_CSS = 'p:where(.tr-consent-footer-link){margin:0;padding:var(--spacing-sm,.5rem) var(--spacing-md,1rem);text-align:center;font-size:.8125rem;line-height:1.5}\n'
+  + ':where(.tr-consent-footer-link) a{color:inherit;font-weight:inherit;text-decoration:underline;text-underline-offset:.2em}';
+
+const STARTS_WITH_FOOTER = /^\s*(?:<!--[\s\S]*?-->\s*)*<footer(?:\s|>)/i;
+
+/**
+ * The "Cookie settings" row the footer gets in footer mode, or '' when the
+ * banner is off, another mode applies or `footerHtml` already holds a
+ * reopen control (a site's own link keeps its look).
+ */
+export function cookieFooterLinkHtml(
+  consent: CookieConsentSettings | undefined,
+  options: { language?: string; renderVersion?: number; footerHtml?: string },
+): string {
+  if (consent?.enabled !== true || cookieConsentReopenMode(consent, options.renderVersion) !== 'footer') return '';
+  if (options.footerHtml && REOPEN_CONTROL.test(options.footerHtml)) return '';
+  const label = consentLabels(consent, options.language).footer_link;
+  return `<style data-tr-consent-footer-link="1">${platformLayer('base', COOKIE_FOOTER_LINK_CSS, options.renderVersion)}</style>`
+    + `<p class="tr-consent-footer-link"><a href="${COOKIE_SETTINGS_HREF}" data-tr-open-consent>${escapeText(label)}</a></p>`;
+}
+
+/**
+ * Footer HTML with the "Cookie settings" row (cookieFooterLinkHtml) placed
+ * inside it: before the last `</footer>` when the HTML is its own `<footer>`
+ * element, otherwise at the end, for a caller that wraps it in one. The
+ * published site and the preview both use it, so they render the same row.
+ */
+export function withCookieFooterLink(
+  footerHtml: string,
+  consent: CookieConsentSettings | undefined,
+  options: { language?: string; renderVersion?: number },
+): string {
+  const row = cookieFooterLinkHtml(consent, { ...options, footerHtml });
+  if (!row) return footerHtml;
+  const close = STARTS_WITH_FOOTER.test(footerHtml) ? footerHtml.toLowerCase().lastIndexOf('</footer>') : -1;
+  return close < 0 ? footerHtml + row : footerHtml.slice(0, close) + row + footerHtml.slice(close);
 }
 
 function consentLabels(consent: CookieConsentSettings, language: unknown): ConsentStrings {
@@ -624,6 +743,7 @@ function consentLabels(consent: CookieConsentSettings, language: unknown): Conse
     privacy_link: pick('privacy_link'),
     manage: pick('manage'),
     manage_button: pick('manage_button'),
+    footer_link: pick('footer_link'),
   };
 }
 
@@ -710,12 +830,17 @@ export function renderCookieConsent(
   consent: CookieConsentSettings | undefined,
   bodyHtml?: string,
   language?: string,
-  options: { initialChoice?: 'all' | 'necessary'; renderVersion?: number } = {},
+  options: {
+    initialChoice?: 'all' | 'necessary';
+    renderVersion?: number;
+    /** False on a page without a footer: footer mode then keeps the floating button, so the banner stays reachable. */
+    hasFooter?: boolean;
+  } = {},
 ): string {
   if (consent?.enabled !== true) return '';
   // From render version 16 the banner styles sit in the base layer, so site CSS restyles them without !important.
   const version = options.renderVersion ?? 1;
-  const floating = cookieConsentFloatingButton(consent);
+  const floating = cookieConsentFloatingButton(consent, version, { hasFooter: options.hasFooter });
   const allCss = version >= CONSENT_SHIELD_RENDER_VERSION ? COOKIE_CONSENT_STYLES_V17 : COOKIE_CONSENT_STYLES;
   // Without the floating button its rules are left out; every one of them names it.
   const css = floating ? allCss : allCss.split('\n').filter((line) => !line.includes('.tr-consent__manage')).join('\n');

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { describeStaticOutput, validateDirectReceipt, availablePagesAssets, retainPagesAssets, reusedMediaReceipt, mergeDirectReceipt, planUploadChunks, withUploadChunk, DIRECT_RECEIPT } from './direct-upload.mjs';
-import { buildDiagnostic, secretValues, mediaFailureCode } from './diagnostics.mjs';
+import { buildDiagnostic, secretValues, transientFailureCode } from './diagnostics.mjs';
 import { BUILD_RUNTIME, MAX_SOURCE_BYTES, MAX_ARTIFACT_BYTES, MAX_RENDER_CACHE_BYTES, MAX_SEO_REPORT_BYTES, decodeSource, decodeArtifact, encodeArtifact, sha256, assertFilePath, renderReport, seoReport, outputDigest } from './contract.mjs';
 
 // The rolling package pool removes superseded packages; retain this exact verified binary.
@@ -194,6 +194,66 @@ export async function acquireSandbox(fetchImpl, sources = BWRAP_SOURCES, digest 
 }
 
 /**
+ * Why an optional build-storage read failed, safe for a log line: an HTTP
+ * status, a bare code this file throws, or only the error's class. Never the
+ * message of a network error, which can carry the signed storage URL.
+ */
+export function transferFailureReason(error) {
+  const message = typeof error?.message === 'string' ? error.message : '';
+  if (/^HTTP \d{3}$/.test(message) || /^[a-z0-9_]{1,80}$/.test(message)) return message;
+  if (error?.name === 'TimeoutError') return 'timed out';
+  if (error?.name === 'TypeError') {
+    // What fetch throws when the connection fails; its cause code (ECONNRESET, …) is safe.
+    const code = typeof error?.cause?.code === 'string' && /^[A-Z0-9_]{1,40}$/.test(error.cause.code) ? ` ${error.cause.code}` : '';
+    return `network error${code}`;
+  }
+  return typeof error?.name === 'string' && /^[A-Za-z]{1,40}$/.test(error.name) ? error.name : 'unknown error';
+}
+
+/** A response a storage outage produces, worth repeating unchanged. */
+const transientStorageStatus = status => status === 408 || status === 429 || status >= 500;
+
+/**
+ * PUT the finished artifact to its build storage grant. R2 occasionally answers
+ * HTTP 5xx or drops the connection for a few seconds ("We encountered an
+ * internal connectivity issue"); the whole build used to fail on the first such
+ * answer although an identical PUT a moment later succeeds. The grant is valid
+ * for 15 minutes and the object is written whole, so repeating the same PUT is
+ * safe. Attempts and total time are bounded; a 4xx other than 408/429 is not
+ * repeated. Each failed attempt logs its HTTP status, never the URL.
+ * @param {typeof fetch} fetchImpl
+ * @param {URL} url
+ * @param {{ contentType: string, body: Uint8Array, timeout: number }} request
+ */
+export async function putArtifact(fetchImpl, url, { contentType, body, timeout }, {
+  attempts = 3, delays = [2000, 5000], budget = 300_000, log = message => console.log(message),
+  sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now,
+} = {}) {
+  const started = now();
+  let reason = '';
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    let retryable = true;
+    try {
+      const response = await fetchImpl(url, { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(timeout), headers: { 'Content-Type': contentType }, body });
+      if (response.ok) {
+        if (attempt > 1) log(`TYPEROLL_ARTIFACT_UPLOAD succeeded on attempt ${attempt}/${attempts}`);
+        return;
+      }
+      reason = `HTTP ${response.status}`;
+      retryable = transientStorageStatus(response.status);
+    } catch (error) { reason = transferFailureReason(error); }
+    const delay = delays[Math.min(attempt - 1, delays.length - 1)] ?? 0;
+    if (!retryable || attempt === attempts || now() - started + delay + timeout > budget) break;
+    log(`TYPEROLL_ARTIFACT_UPLOAD attempt ${attempt}/${attempts} failed (${reason}); retrying in ${Math.round(delay / 1000)} s`);
+    await sleep(delay);
+  }
+  const error = Error('artifact_upload_failed');
+  // The cause travels with the reported code, so the job says what storage answered.
+  error.output = `Error: build storage refused the artifact upload (${reason}).`;
+  throw error;
+}
+
+/**
  * Run one build step in its own process group. A failed step rejects with its
  * reported code and keeps the tail of what it printed on `error.output`.
  */
@@ -281,8 +341,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
         'verification.json': Buffer.from(JSON.stringify({ publication_id: job.identity.publication_id, source_sha256: job.identity.source_sha256, completed: job.media_total })),
       });
       const upload = await request('upload', job.token, { ...attempt, artifact_format: 2 });
-      const response = await fetchImpl(storageUrl(upload.artifact_url), { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(60000), headers: { 'Content-Type': upload.content_type }, body: artifact });
-      if (!response.ok) throw Error('artifact_upload_failed');
+      await putArtifact(fetchImpl, storageUrl(upload.artifact_url), { contentType: upload.content_type, body: artifact, timeout: 60000 });
       await request('complete', job.token, { ...attempt, sha256: sha256(artifact) });
       console.log('TYPEROLL_BUILD_RESULT ' + JSON.stringify({ status: 'verified', job: job.identity.job_id, completed: cursor, total: job.media_total, downloaded_bytes: downloaded, peak_rss_kib: process.resourceUsage().maxRSS }));
       return;
@@ -293,20 +352,30 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     }
     if (job.kind === 'publication' && job.render_cache) {
       try {
-        const cached = await responseBytes(await fetchImpl(storageUrl(job.render_cache.url), { redirect: 'error', signal: AbortSignal.timeout(30000) }), MAX_RENDER_CACHE_BYTES);
+        const response = await fetchImpl(storageUrl(job.render_cache.url), { redirect: 'error', signal: AbortSignal.timeout(30000) });
+        if (!response.ok) throw Error(`HTTP ${response.status}`);
+        const cached = await responseBytes(response, MAX_RENDER_CACHE_BYTES);
         if (sha256(cached) !== job.render_cache.sha256) throw Error('render_cache_integrity');
         await fs.writeFile(path.join(work, '.publication-cache.json'), cached, { flag: 'wx' });
-      } catch { console.log('TYPEROLL_RENDER_CACHE unavailable; rendering without a baseline'); }
+      } catch (error) {
+        // Optional: every page is rendered instead. The reason tells a storage outage from an expired cache.
+        console.log(`TYPEROLL_RENDER_CACHE unavailable (${transferFailureReason(error)}); rendering every page without a baseline`);
+      }
     }
     if (job.kind === 'publication' && job.direct_upload && job.asset_cache) {
       try {
         if (!['org_id', 'site_id', 'version_id'].every(key => job.asset_cache.identity?.[key] === job.identity[key])) throw Error('asset_cache_scope');
-        const bytes = await responseBytes(await fetchImpl(storageUrl(job.asset_cache.url), { redirect: 'error', signal: AbortSignal.timeout(30000) }), 8 * 1024 * 1024);
+        const response = await fetchImpl(storageUrl(job.asset_cache.url), { redirect: 'error', signal: AbortSignal.timeout(30000) });
+        if (!response.ok) throw Error(`HTTP ${response.status}`);
+        const bytes = await responseBytes(response, 8 * 1024 * 1024);
         const cached = decodeArtifact(bytes, job.asset_cache.identity, job.asset_cache.sha256);
         previousAssets = validateDirectReceipt(JSON.parse(cached[DIRECT_RECEIPT].toString('utf8')));
         const grant = await request('direct-upload', job.token, attempt);
         reusableFiles = await availablePagesAssets(previousAssets, grant, fetchImpl);
-      } catch { previousAssets = undefined; reusableFiles = {}; console.log('TYPEROLL_MEDIA_CACHE unavailable; downloading required media'); }
+      } catch (error) {
+        previousAssets = undefined; reusableFiles = {};
+        console.log(`TYPEROLL_MEDIA_CACHE unavailable (${transferFailureReason(error)}); downloading every required media file instead of reusing the previous publication's`);
+      }
     }
     stage = 'sandbox';
     const deb = await acquireSandbox(fetchImpl);
@@ -468,9 +537,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     const artifact = encodeArtifact(job.identity, artifactFiles);
     const upload = await request('upload', job.token, { ...attempt, artifact_format: 2 });
     if (upload.content_type !== 'application/octet-stream') throw Error('artifact_format_unsupported');
-    const uploaded = await fetchImpl(storageUrl(upload.artifact_url), { method: 'PUT', redirect: 'error', signal: AbortSignal.timeout(120000),
-      headers: { 'Content-Type': upload.content_type }, body: artifact });
-    if (!uploaded.ok) throw Error('artifact_upload_failed');
+    await putArtifact(fetchImpl, storageUrl(upload.artifact_url), { contentType: upload.content_type, body: artifact, timeout: 120000 });
     let cacheHash, report;
     if (job.kind === 'publication') {
       try {
@@ -498,7 +565,7 @@ export async function executeBuild(config, runnerToken, fetchImpl = fetch) {
     if (job.kind === 'publication') { try { validation = await readSeoReport(work, job.identity.publication_id); } catch { /* A renderer may fail before validation. */ } }
     const reportedCode = validation && !validation.passed ? 'publication_validation_failed' : artifactFailureCode(error.message);
     const diagnostic = failureDiagnostic(error, reportedCode, secrets);
-    const code = mediaFailureCode(stage, reportedCode, diagnostic);
+    const code = transientFailureCode(stage, reportedCode, diagnostic);
     // The provider's build log is the one record a reader can always open.
     for (const line of diagnostic?.lines ?? []) console.error(`TYPEROLL_BUILD_LOG ${line}`);
     if (diagnostic?.cause) console.error(`TYPEROLL_BUILD_CAUSE ${diagnostic.cause}`);

@@ -59,6 +59,42 @@ describe('renderPreview — branch cookie consent parity', () => {
     expect(html).toContain(`href="/preview/${SITE}/privacy/?t=test"`);
   });
 
+  it('puts the Cookie settings link in the footer from render version 19, as the published footer does', async () => {
+    await seed();
+    const { getStore } = await import('../../lib/datastore');
+    const { renderPreview } = await import('../../lib/render-preview');
+    const ROW = '<p class="tr-consent-footer-link"><a href="#cookie-settings" data-tr-open-consent>Cookie settings</a></p>';
+    const preview = (renderVersion?: number, allowScripts = true) => renderPreview(ORG, SITE, 'home', BRANCH, { allowScripts, renderVersion });
+
+    // Without a footer partial there is no footer, so the floating button stays.
+    const bare = await preview(19);
+    expect(bare).not.toContain('tr-consent-footer-link"');
+    expect(bare).toContain('class="tr-consent__manage"');
+
+    await getStore().setDoc(paths.partial(ORG, SITE, 'footer', BRANCH), {
+      name: 'Footer', kind: 'footer', status: 'published', content_mode: 'html', html_content: '<p>Footer text</p>',
+    });
+    const linked = await preview(19);
+    expect(linked).toMatch(new RegExp(`<footer class="site-footer"><p>Footer text</p><style data-tr-consent-footer-link="1">[\\s\\S]*?</style>${ROW}</footer>`));
+    expect(linked).not.toContain('class="tr-consent__manage"');
+    // The script-free editor canvas shows the same footer.
+    expect(await preview(19, false)).toContain(ROW);
+
+    // Render version 18 keeps the floating button and the footer as it was.
+    const older = await preview(18);
+    expect(older).toContain('<footer class="site-footer"><p>Footer text</p></footer>');
+    expect(older).toContain('class="tr-consent__manage"');
+
+    // A footer with its own reopen link keeps exactly its look.
+    await getStore().setDoc(paths.partial(ORG, SITE, 'footer', BRANCH), {
+      name: 'Footer', kind: 'footer', status: 'published', content_mode: 'html', html_content: '<footer class="own"><a href="#cookie-settings">Cookies</a></footer>',
+    });
+    const own = await preview(19);
+    expect(own).toContain('<footer class="own"><a href="#cookie-settings">Cookies</a></footer>');
+    expect(own).not.toContain('tr-consent-footer-link"');
+    expect(own).not.toContain('class="tr-consent__manage"');
+  });
+
   it('does not emit executable consent content in the script-disabled editor canvas', async () => {
     await seed();
     const { renderPreview } = await import('../../lib/render-preview');

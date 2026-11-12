@@ -41,7 +41,7 @@ import { derivationProvidersFor, publicationConfigDigest, publicationContentDige
 import { getOrganizationDomains, getSiteDomains } from './domain-config';
 import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
 import { redactFailureText } from './http';
-import { compareImpact } from './impact';
+import { compareImpact, legacyBaseline } from './impact';
 import { capturePublicationImpact } from './impact-preview';
 import { collapseMediaHostChains, moveWebsiteMediaToMediaHost, publicationMediaManifest, replacedMediaRedirects, retainDistinctMediaManifests } from './media-manifest';
 import { digest } from './providers.mjs';
@@ -56,7 +56,7 @@ import { assertPublishingReady } from './readiness';
 import { publicationRuntime } from './runtime-projection';
 import { prepareExtensionMarkup } from '../extensions/contract-markup';
 import { recordPublishingOrigin } from './runtime-origins';
-import { publicationSourceTree } from './source-tree';
+import { publicationSourceTree, freezePublicationRenderer } from './source-tree';
 import { freezeSiteFonts } from './theme-font-freeze';
 import { artifactFiles, ensureHostedPlatformHost, hostedDomains, hostedServingHost, hostedWebsiteHost, hostingSiteRef, HOSTED_MODE, isHostedSite,
   isTemporaryHostingFailure, siteHosting, siteHostingAvailable, SITE_HOSTING_UNAVAILABLE, type ArtifactFiles } from './site-hosting';
@@ -217,7 +217,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       const previousOrigins = [`https://${platformHost}`, site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? '', ...(prior?.reference_mapping?.website_origins ?? [])].filter(Boolean);
       frozen = { ...mapped.content, reference_mapping: { format: 1, media: (mapped.content as any).reference_mapping?.media ?? [], website_origins: [...new Set(previousOrigins)] } };
       frozen = { ...frozen, site_url: `https://${host}`, site: { ...frozen.site, domain: host }, media: mapped.media, media_manifest: mapped.manifest, source_impact_snapshot: impactSnapshot };
-      await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot) });
+      await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot, false, null, legacyBaseline(prior, frozen)) });
       const retained = [...(prior?.retained_media_manifests ?? []), ...((prior?.media_manifest?.delivery === 'static' || prior?.media_manifest?.media_host === prior?.media_manifest?.website_host) && prior?.media_manifest ? [prior.media_manifest] : [])];
       frozen.media_replacement_redirects = replacedMediaRedirects(retained, frozen.media_manifest, frozen.redirects, prior?.media_replacement_redirects);
       frozen.redirects = [...frozen.redirects ?? [], ...frozen.media_replacement_redirects.filter((rule: any) => !frozen.redirects?.some((existing: any) => existing.from_path === rule.from_path))];
@@ -249,6 +249,8 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       // An engine update in progress is awaited before the build, not refused.
       const usable = engine?.status === 'ready' || (!!engine?.previous && (engine.status === 'preparing' || engine.status === 'qualifying'));
       if (!engine || !usable) throw new ConnectionError('Finish build setup in Publishing → Builds before deploying.', 409, 'shared_build_setup_required');
+      // Any Worker release may run the next step; store the renderer it will need first.
+      await freezePublicationRenderer(frozen.core_commit);
       publication = { provider: HOSTED_MODE, publication_id: frozen.publication_id, content_cutoff: contentCutoff, website_host: host,
         commit: hostedSourceCommit(frozen.publication_id), branch: 'main', snapshot_job_id: args.jobId, extension_versions: publicationExtensionVersions(frozen), ...await saveSnapshot(args, frozen),
         build_provider: engine.provider ?? 'cloudflare', build_engine_revision: engine.revision };

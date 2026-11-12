@@ -3,7 +3,7 @@ import { isDesignSettingsSection, isSiteSettingsSection, scopedSettings } from '
 import { vstore } from '../../../../lib/version-store';
 import { requireSiteAccess, requirePermission, requireDesign } from '../../../../lib/access';
 import { getStore } from '../../../../lib/datastore';
-import { siteFontsErrors, contentWidthsError, siteTimeZone, timeZoneError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, normalizeCookieConsentLabels } from '@typeroll/shared';
+import { siteFontsErrors, contentWidthsError, siteTimeZone, timeZoneError, TOKEN_SCALES, TYPOGRAPHY_DEFAULTS, typographyError, designScalesError, responsiveBreakpointsError, seoReviewError, externalRoutesError, defaultSiteSettings, normalizeIframeAllowedHosts, paths, isOnColorValue, ON_COLOR_TOKENS, COOKIE_CONSENT_LABEL_KEYS, COOKIE_CONSENT_MANAGE_BUTTONS, normalizeCookieConsentLabels } from '@typeroll/shared';
 import type { SiteSettings } from '@typeroll/shared';
 import { normalizeOrganization, normalizeStagingUrl, normalizeTwitterHandle } from '../../../../lib/site-settings-fields';
 import { fontSettingsWarnings, listSiteFonts } from '../../../../lib/fonts/font-library';
@@ -54,8 +54,9 @@ export const POST: APIRoute = async ({ request, cookies, params, redirect, local
         scripts_necessary: String(form.get('cookie_consent.scripts_necessary') ?? '') || undefined,
         scripts_optional: String(form.get('cookie_consent.scripts_optional') ?? '') || undefined,
         reload_after_consent: form.get('cookie_consent.reload_after_consent') === 'on',
-        // Only `none` is stored; the floating button is the default.
-        manage_button: form.get('cookie_consent.manage_button') === 'none' ? 'none' as const : undefined,
+        // An empty choice stores nothing, so the render version's default applies
+        // (the footer link from render version 19, the floating button before).
+        manage_button: COOKIE_CONSENT_MANAGE_BUTTONS.find((value) => value === form.get('cookie_consent.manage_button')),
         labels: normalizeCookieConsentLabels(Object.fromEntries(
           COOKIE_CONSENT_LABEL_KEYS.map((key) => [key, String(form.get(`cookie_consent.labels.${key}`) ?? '')]),
         )).labels,

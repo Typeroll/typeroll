@@ -10,8 +10,8 @@ import { ensureGithubMainBranch } from './providers.mjs';
 import { createGithubRepository } from './github-user';
 import { siteRepositoryName, generatedRepositoryDescription } from './site-repository';
 import { verifyManagedProject } from './migrated-project';
-import { capturePublicationImpact } from './impact-preview';
-import { compareImpact } from './impact';
+import { capturePublicationImpact, domainChangeImpact } from './impact-preview';
+import { compareImpact, legacyBaseline } from './impact';
 import { readSnapshot, saveSnapshot } from './publication-snapshot';
 import { publicationExtensionVersions } from '../extensions/published-version';
 import { siteHostingGroup, lockSiteHostingGroup } from './hosting-groups';
@@ -30,7 +30,7 @@ import { prepareRedirectHosts, redirectApprovalBlocker, ensureApprovedRedirectRu
 import { maintainImplicitRedirects, implicitRedirectsPending } from './www-redirect';
 import { resolvePublicationVersion } from './publication-version';
 import { assertPublishingReady } from './readiness';
-import { publicationSourceTree } from './source-tree';
+import { publicationSourceTree, freezePublicationRenderer } from './source-tree';
 import { projectStaticPublication } from '../../../../../scripts/lib/static-publication.mjs';
 import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
@@ -438,7 +438,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       const warnings = [...mapped.warnings, ...markupWarnings, ...publicationLanguageWarnings(frozen), ...publicationCookieReopenWarnings(frozen), ...publicationMenuWarnings(frozen), ...publicationSiteFieldWarnings(frozen), ...publicationSnippetWarnings(frozen), ...publicationDemoMediaWarnings(mapped.sourceMedia), ...publicationPlaceholderWarnings(frozen)];
       if (warnings.length) await store.updateDoc(jobPath, { warnings });
       // Compare the exact media records frozen into the manifest, without a second datastore read.
-      const impactSnapshot = job.publication_intent === 'domain_prepare' ? null : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
+      // A domain change republishes the prior content at new addresses: it keeps that fingerprint with
+      // only its addresses replaced, so the next comparison has a baseline. Clearing authored noindex
+      // changes settings the fingerprint cannot replay, so that candidate records none.
+      const impactSnapshot = job.publication_intent === 'domain_prepare'
+        ? job.clear_authored_noindex === true ? null : domainChangeImpact(prior?.source_impact_snapshot, `https://${host}`, domains, organization)
+        : await capturePublicationImpact(frozen, args.orgId, args.siteId, domains, organization, mapped.sourceMedia);
+      const impactLegacy = legacyBaseline(prior, frozen);
       // Links to a redirect host (for example https://www.example.com/page) are frozen as links to the website host.
       const previousOrigins = [site?.domain ? `https://${site.domain}` : '', prior?.site_url ?? '', ...(prior?.reference_mapping?.website_origins ?? []),
         ...redirectHosts.map(redirect => `https://${redirect}`)].filter(Boolean);
@@ -447,7 +453,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       frozen = { ...frozen, site_url: `https://${host}`, site: { ...frozen.site, domain: host }, media: mapped.media, media_manifest: mapped.manifest };
       if (impactSnapshot) {
         frozen.source_impact_snapshot = impactSnapshot;
-        await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot) });
+        await store.updateDoc(jobPath, { build_impact: compareImpact(prior?.source_impact_snapshot, impactSnapshot, false, null, impactLegacy) });
       } else {
         delete frozen.source_impact_snapshot;
       }
@@ -495,6 +501,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await store.updateDoc(jobPath, { status: 'succeeded', phase: 'unchanged', finished_at: contentCutoff, deploy_url: `https://${servedHost}` });
         terminal = true; return 'ran';
       }
+      // Any Worker release may run the next step; store the renderer it will need first.
+      await freezePublicationRenderer(frozen.core_commit);
       publication = { hosting_group_id: group.id, hosting_group_revision: group.revision, owner: identity.owner, repo: site?.git_repository ?? generated.pages_project!, project: site?.publishing_migration?.project ?? generated.pages_project!, account_id: cfConnection.cloudflare!.account_id,
         branch: frozen.git_branch, publication_id: frozen.publication_id, content_cutoff: contentCutoff,
         domain_revision: domainPublicationRevision(domains), destination: {hosts: domains.desired, dns_mode: domains.dns_mode},
@@ -942,6 +950,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
     const transportCode = (error as any)?.code;
     const temporary = error instanceof ProviderTransportError ||
       (error instanceof ProviderError && (error.status === 429 || error.status >= 500)) ||
+      // Another Worker release than the one that froze the job took this step (a gradual rollout).
+      (error instanceof ConnectionError && error.code === 'publication_renderer_unavailable') ||
       [4, 8, 10, 13, 14, 'ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(transportCode);
     if (temporary && (failedJob?.coordinator_retries ?? 0) < 5) {
       await assertLease();

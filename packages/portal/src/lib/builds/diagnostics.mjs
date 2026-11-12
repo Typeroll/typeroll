@@ -83,8 +83,23 @@ export function normalizeDiagnostic(value) {
  * cancelled operations, integrity errors or a different build stage. The queue
  * still enforces attempt/deadline limits and the original publication identity.
  */
+const TIMED_OUT = /^TimeoutError: (?:The operation was aborted due to timeout|The operation timed out)\.?$/;
 export function mediaFailureCode(stage, code, diagnostic) {
   if (stage === 'media' && ['build_failed', 'shared_build_failed', 'build_process_exit_1'].includes(code) &&
-      /^TimeoutError: (?:The operation was aborted due to timeout|The operation timed out)\.?$/.test(diagnostic?.cause ?? '')) return 'media_transfer_interrupted';
+      TIMED_OUT.test(diagnostic?.cause ?? '')) return 'media_transfer_interrupted';
   return code;
+}
+
+/**
+ * The same recovery for the artifact stage. Every request the supervisor
+ * itself makes there (to the coordinator, 30 s; to build storage, 120 s) is a
+ * transfer with a time limit, and a timed-out one was reported as
+ * `artifact_build_failed` "the step failed" (moveria-fr, 2026-11-11: the
+ * coordinator took longer than 30 s to answer, and the same frozen build
+ * succeeded minutes later). The Wrangler upload runs as a step and times out
+ * as build_process_timeout instead, which this does not touch.
+ */
+export function transientFailureCode(stage, code, diagnostic) {
+  if (stage === 'artifact' && code === 'build_failed' && TIMED_OUT.test(diagnostic?.cause ?? '')) return 'transfer_timeout';
+  return mediaFailureCode(stage, code, diagnostic);
 }

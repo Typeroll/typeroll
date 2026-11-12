@@ -206,16 +206,24 @@ Norwegian Bokmål (`nb`, `no`), German (`de`), Dutch (`nl`), Finnish (`fi`),
 French (`fr`), Polish (`pl`), Italian (`it`) and Spanish (`es`), otherwise
 English. For any other language, write `text` and set `labels` (`title`,
 `reject`, `necessary`, `accept_all`, `privacy_link`, `manage`,
-`manage_button`) in that language. `manage` is the accessible name and
-`manage_button` the visible text of the floating button that reopens the
-banner.
+`manage_button`, `footer_link`) in that language. `manage` is the accessible
+name and `manage_button` the visible text of the floating button that reopens
+the banner; `footer_link` is the text of the footer link.
 
-To leave out the floating button (it can cover form fields on a phone), set
-`cookie_consent.manage_button: "none"` and add a "Cookie settings" item to the
-footer menu: `type: "url"`, `href: "#cookie-settings"`. Any link to
-`#cookie-settings` opens the banner, so visitors can still change or withdraw
-their choice; the settings write warns with `cookie_reopen_link_missing`
-while no partial or menu has one. Do not hide `.tr-consent__manage` with CSS. The publication's job `warnings`
+Visitors reopen the banner from the footer by default (render version 19 and
+later, or `cookie_consent.manage_button: "footer"`): Typeroll adds a small
+"Cookie settings" link at the end of the site footer, inside its `<footer>`,
+in the footer's own colour and font. Do not build that link yourself. To
+place it somewhere specific instead, add a "Cookie settings" item to the
+footer menu (`type: "url"`, `href: "#cookie-settings"`) or a link in the
+footer partial: a footer that already links to `#cookie-settings` gets no
+second link, so the site's own link keeps its look. `"floating"` keeps the
+"Cookies" button fixed bottom-left (the default before render version 19; it
+can cover form fields on a phone). `"none"` renders neither; then the footer
+must link to `#cookie-settings` itself, so visitors can still change or
+withdraw their choice, and the settings write warns with
+`cookie_reopen_link_missing` while no partial or menu has one. Do not hide
+`.tr-consent__manage` or `.tr-consent-footer-link` with CSS. The publication's job `warnings`
 list any banner wording and built-in control labels that fall back to English.
 
 Use `update_site_settings`, then read settings back. `scripts_necessary` and

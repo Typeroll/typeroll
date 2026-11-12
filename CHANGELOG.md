@@ -1,5 +1,88 @@
 # Changelog
 
+## 0.3.28 (candidate, MCP 0.45.136)
+
+- Render version 19: with the cookie banner on, visitors reopen it from a
+  small "Cookie settings" link ("Cookie-inställningar" on Swedish pages) at the
+  end of the site footer instead of the floating "Cookies" button, which could
+  cover forms and buttons on phones. The link sits inside the `<footer>`, takes
+  the footer's colour and font from layered base CSS, and site CSS restyles it
+  through `.tr-consent-footer-link`. A footer that already links to
+  `#cookie-settings` or has a `data-tr-open-consent` element gets no second
+  link. `cookie_consent.manage_button` takes `"footer"` for this link on any
+  render version; `"floating"` keeps the button and `"none"` still leaves both
+  out. `cookie_consent.labels.footer_link` replaces the link text. A preview
+  without a footer partial keeps the floating button. Sites on render version
+  18 or older are unchanged until they upgrade.
+- The REST reference shows the bodies REST takes. A block in a partial or
+  PageTemplate is changed at `/api/v1/sites/{site}/containers/{kind}/{id}/blocks`
+  (for example `PATCH .../containers/partial/footer/blocks` with
+  `{ "block_id", "data" }`); the reference listed the MCP `target` argument as
+  a body key of `/pages/{id}/blocks`, which refused it as an unknown key. That
+  address now refuses `target` with `400` naming the containers address.
+  `PATCH /partials/{id}`, `/pages/{id}` and `/forms/{id}` take their fields at
+  the top level, as the reference now lists them; a body that wraps them in
+  `patch` is told so instead of "No writable fields in body". Single-block
+  write answers without `response` keep the tree and now also carry `block`,
+  `parent_id`, `slot_index`, `position` and `has_unsaved_changes`. Reported
+  by Moveria on Core 0.3.27.
+- Publication impact (`GET /api/v1/sites/{site}/publishing/impact`, MCP
+  `get_publication_impact`, a job's `build_impact`) lists what Typeroll itself
+  changed in a new `platform_changes` list (`core_commit`, `extension_runtime`
+  with `before`, `after` and `affects_output`), never in `changes` or `total`.
+  The Extension runtime version no longer enters the site's
+  `configuration/extensions` fingerprint, which now covers only its
+  installations: after Core 0.3.27 raised the runtime to 0.46.0, every site
+  listed that entry as changed, also sites without installations. Baselines
+  recorded before this release are read with their own runtime versions, so
+  the entry appears only when the installations changed.
+- A build whose request to Typeroll or build storage timed out while it handed
+  over the built site (`artifact_transfer_timeout`; engines before this release
+  report `artifact_build_failed` with `TimeoutError: The operation was aborted
+  due to timeout`) is run once more automatically, like a refused artifact
+  upload. Other `artifact_build_failed` causes are not retried.
+- A publication stores its frozen renderer before its source snapshot is saved.
+  During a gradual Typeroll Cloud rollout the previous release could take the
+  next step of a job the new release had frozen and failed it with
+  `publication_internal_error` ("The original publication renderer is
+  unavailable"). That case is now `publication_renderer_unavailable`, which the
+  publication waits out and retries (up to five times) instead of failing.
+- A build that build storage (R2) refused to accept at the end
+  (`artifact_artifact_upload_failed`, typically HTTP 5xx during a short storage
+  outage) is run once more automatically, on every build engine revision; its
+  prepared media is reused and a second refusal fails the publication as
+  before. Updated build engines also repeat the artifact upload up to three
+  times within a few seconds, report what storage answered as the failure's
+  cause, and name the reason on the optional `TYPEROLL_RENDER_CACHE` and
+  `TYPEROLL_MEDIA_CACHE` "unavailable" log lines. The failure message says the
+  live site is unchanged and to publish again; the code is documented in the
+  customer publishing guide.
+- A background image preparation that stopped under Core 0.2.149 or earlier
+  no longer reports "Background image preparation stopped (unknown)" on every
+  publication. `GET media/preparation` and the publication warning read the
+  code from the build that stopped it (for example `build_queue_timeout` or
+  `build_cancelled`), name its cause in `error` and `failed_build_task`, and
+  say `media_preparation_cause_unrecorded` when that build never ended.
+- `GET /api/v1/sites/{site}/publishing/impact` (MCP `get_publication_impact`)
+  and each job's `build_impact` say when nothing was compared: `changes_known`
+  is `false` and `baseline` gives `reason` (`not_published`,
+  `publication_not_verified`, `snapshot_without_source_baseline`,
+  `baseline_snapshot_unreadable`, `baseline_identity_mismatch`) and a message
+  with what to do; `total` stays `0` for older clients. A domain change now
+  records the source of the publication it republishes, with only its
+  addresses replaced, so the next comparison has a baseline. Sites whose last
+  publication was a domain change prepared by an earlier release are compared
+  with the publication it was built from (reason
+  `baseline_predates_domain_change`) instead of answering
+  `verified_source_baseline_unavailable` until their next publication.
+- `GET /api/v1/publishing/builds` (MCP `read_organization_build_engine`)
+  reports `update_available` (now always a boolean) and `update_reason`
+  (`engine_source_changed`, `capability_missing` or `null`) for every engine and
+  the selected one, computed the same way a publication decides to update the
+  engine. The Builds card shows **Build engine update available** for both
+  reasons and, with automatic updates on, that the next publication installs it
+  first.
+
 ## 0.3.27 (candidate, MCP 0.45.135)
 
 - App contracts (Extension runtime 0.46.0, template capabilities 0.58.0) let

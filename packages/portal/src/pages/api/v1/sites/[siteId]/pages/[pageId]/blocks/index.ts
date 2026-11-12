@@ -16,7 +16,7 @@ import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../../lib/api-auth';
 import { WorkingCopyError } from '../../../../../../../../lib/working-copy';
 import { apiStructureLockRefusal } from '../../../../../../../../lib/structure-lock';
-import { bodyShapeError } from '../../../../../../../../lib/api-body';
+import { bodyShapeError, containerTargetError, queryTarget } from '../../../../../../../../lib/api-body';
 import { vstore } from '../../../../../../../../lib/version-store';
 import {
   addBlock,
@@ -31,7 +31,7 @@ import {
   readWorkingCopy,
   workingCopyDiffers,
 } from '../../../../../../../../lib/working-copy';
-import { blockLocation, blockWriteResponse, blockWriteSummary } from '../../../../../../../../lib/block-write-response';
+import { blockLocation, blockWriteAnswer, blockWriteResponse } from '../../../../../../../../lib/block-write-response';
 import { blockTreeError, invalidFieldValuesBody, type Block, type Page } from '@typeroll/shared';
 import {
   addBlockInvalidFields,
@@ -81,6 +81,8 @@ export const GET: APIRoute = async ({ request, params }) => {
   const ctx = guard.value;
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
+  const targetError = containerTargetError(ctx.siteId, queryTarget(new URL(request.url)));
+  if (targetError) return apiError(targetError, 400);
   const draft = await loadDraft(ctx, pageId);
   if (!draft) return apiError('Not found', 404);
   // HTML-mode pages return their body too — useful for an agent picking
@@ -107,6 +109,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     position?: number;
     response?: string;
   } | null;
+  const addTargetError = containerTargetError(ctx.siteId, (body as { target?: unknown } | null)?.target);
+  if (addTargetError) return apiError(addTargetError, 400);
   if (!body?.block?.type) return apiError('block.type is required');
   if (body.block.responsive !== undefined) {
     return apiError('block.responsive is not a rendered field. Put breakpoint values in block.data (for example data.cols={mobile:1,tablet:2,desktop:3}) or use the /responsive endpoint.', 400);
@@ -145,7 +149,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const anchors = await anchorWarnings(ctx, draft, result.blocks);
     return apiResponse(ctx, {
       added_id: result.added_id,
-      ...(mode === 'summary' ? blockWriteSummary(result.blocks, result.added_id, unsaved) : { blocks: result.blocks }),
+      ...blockWriteAnswer(mode, result.blocks, result.added_id, unsaved),
       ...(warnings.length || anchors.length ? { warnings: [...warnings, ...anchors] } : {}),
     });
   } catch (e) {
@@ -166,6 +170,8 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     route_overrides?: Block['route_overrides'] | null;
     response?: string;
   } | null;
+  const targetError = containerTargetError(ctx.siteId, (body as { target?: unknown } | null)?.target);
+  if (targetError) return apiError(targetError, 400);
   if (!body?.block_id) return apiError('block_id is required');
   if (body && 'responsive' in body) {
     return apiError('responsive is not writable here. Put breakpoint values in data or use the /responsive endpoint.', 400);
@@ -213,7 +219,7 @@ export const PATCH: APIRoute = async ({ request, params }) => {
     const overrideWarnings = [...await singleBlockWriteWarnings(ctx, blocks, body.block_id, body, registry), ...partStyles.warnings, ...await anchorWarnings(ctx, draft, blocks)];
     return apiResponse(ctx, {
       ...(overrideWarnings.length ? { warnings: overrideWarnings } : {}),
-      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks }),
+      ...blockWriteAnswer(mode, blocks, body.block_id, unsaved),
     });
   } catch (e) {
     return mutError(e);
@@ -235,6 +241,8 @@ export const PUT: APIRoute = async ({ request, params }) => {
     target_position?: number;
     response?: string;
   } | null;
+  const targetError = containerTargetError(ctx.siteId, (body as { target?: unknown } | null)?.target);
+  if (targetError) return apiError(targetError, 400);
   if (!body?.block_id) return apiError('block_id is required');
   const shapeError = bodyShapeError(
     body,
@@ -256,7 +264,7 @@ export const PUT: APIRoute = async ({ request, params }) => {
     const unsaved = await persistDraft(ctx, pageId, blocks, draft.saved);
     const warnings = await anchorWarnings(ctx, draft, blocks);
     return apiResponse(ctx, {
-      ...(mode === 'summary' ? blockWriteSummary(blocks, body.block_id, unsaved) : { blocks }),
+      ...blockWriteAnswer(mode, blocks, body.block_id, unsaved),
       ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {
@@ -273,6 +281,8 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
   const url = new URL(request.url);
+  const targetError = containerTargetError(ctx.siteId, queryTarget(url));
+  if (targetError) return apiError(targetError, 400);
   const blockId = url.searchParams.get('block_id');
   if (!blockId) return apiError('block_id query param required');
   const mode = blockWriteResponse(request);
@@ -286,7 +296,7 @@ export const DELETE: APIRoute = async ({ request, params }) => {
     const unsaved = await persistDraft(ctx, pageId, blocks, draft.saved);
     const warnings = await anchorWarnings(ctx, draft, blocks);
     return apiResponse(ctx, {
-      ...(mode === 'summary' ? { removed_id: blockId, ...location, has_unsaved_changes: unsaved } : { blocks }),
+      removed_id: blockId, ...location, has_unsaved_changes: unsaved, ...(mode === 'tree' ? { blocks } : {}),
       ...(warnings.length ? { warnings } : {}),
     });
   } catch (e) {

@@ -4,8 +4,10 @@
 // Every one of them answered with the container's whole block tree: 68 kB
 // for one add_block on an article page, most of it unrelated to the write.
 // `response: "summary"` answers with the changed block and where it sits
-// instead. "tree" stays the HTTP default so existing callers see no change;
-// MCP asks for "summary".
+// instead. "tree" stays the HTTP default so existing callers keep the tree;
+// it carries the summary's fields too, so a caller that did not ask for the
+// summary still learns where the block sits and has_unsaved_changes. MCP asks
+// for "summary".
 //
 // The mode is read from the `response` query parameter or body key. MCP sends
 // the query parameter, which an older Core ignores (it answers with the
@@ -56,4 +58,15 @@ export function blockWriteSummary(
     ...(found ? { parent_id: found.parent?.id ?? null, slot_index: found.parentSlotIndex, position: found.index } : {}),
     has_unsaved_changes: hasUnsavedChanges,
   };
+}
+
+/** The answer for `mode`: the summary, and for "tree" the whole tree beside it as `blocks`. */
+export function blockWriteAnswer(
+  mode: BlockWriteResponse,
+  tree: Block[],
+  blockId: string,
+  hasUnsavedChanges: boolean,
+): ReturnType<typeof blockWriteSummary> & { blocks?: Block[] } {
+  const summary = blockWriteSummary(tree, blockId, hasUnsavedChanges);
+  return mode === 'summary' ? summary : { ...summary, blocks: tree };
 }

@@ -14,7 +14,7 @@ import { OrganizationBuildQueue, buildTasksPath, buildAttemptLimit, type BuildTa
 import { authorizeEngine, assertEngineConnections, readEngineConfiguration, buildInputPath, engineConfigurationPath, renderCachePath, assetCachePath, type AssetCachePointer, type RenderCachePointer, type BuildInput, type EngineConfiguration } from './state';
 import { buildStorage } from './storage';
 import { inspectArtifact, retainNamed } from './artifact-stream';
-import { normalizeDiagnostic, mediaFailureCode } from './diagnostics.mjs';
+import { normalizeDiagnostic, transientFailureCode } from './diagnostics.mjs';
 import { decodeSource, MAX_SOURCE_BYTES, MAX_RUNNER_RESULT_BYTES, sha256, renderReport, seoReport, outputDigest } from './contract.mjs';
 import { publicationStillRunning } from './jobs';
 import { qualificationFiles } from './qualification';
@@ -148,13 +148,24 @@ export async function runnerRequest(request: Request, org: string, action: strin
       const stage = typeof input.stage === 'string' && /^[a-z_]{1,30}$/.test(input.stage) ? input.stage : 'build';
       const validation = input.seo_report ? seoReport(input.seo_report, task.identity.publication_id) : undefined;
       const diagnostic = normalizeDiagnostic(input.diagnostic) ?? null;
-      const code = mediaFailureCode(stage, reportedCode, diagnostic);
+      const code = transientFailureCode(stage, reportedCode, diagnostic);
       const retryMedia = ((metadata.kind !== 'qualification' && stage === 'media' && ['build_process_timeout', 'media_transfer_interrupted'].includes(code)) ||
         (metadata.kind === 'static_verification' && stage === 'verification' && code === 'static_verification_pending')) && task.attempt < buildAttemptLimit(task);
+      // Build storage refusing the finished artifact (R2 HTTP 5xx or a dropped
+      // connection, after the engine's own retries; older engines do not retry),
+      // or a request to the coordinator or storage timing out while the built
+      // site is handed over, says nothing about the site. Run the same frozen
+      // build once more: it keeps its prepared media, the live site changes only
+      // when a build completes, and a second failure fails the publication.
+      const retryUpload = !retryMedia && metadata.kind !== 'qualification' && stage === 'artifact' && ['artifact_upload_failed', 'transfer_timeout'].includes(code) &&
+        !task.artifact_upload_retried && task.attempt < buildAttemptLimit(task);
+      const retry = retryMedia || retryUpload;
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),
         // A retry waits its own queue window; keeping the first attempt's queue time
         // expired it within minutes and replaced the cause with a queue timeout.
-        { ...(validation ? { seo_report: validation } : {}), status: retryMedia ? 'queued' : 'failed', ...(retryMedia ? { queued_at: Date.now() } : {}), token_hash: null, error_code: `${stage}_${code}`, error_detail: diagnostic, lease_until: 0 });
+        { ...(validation ? { seo_report: validation } : {}), status: retry ? 'queued' : 'failed', ...(retry ? { queued_at: Date.now() } : {}), ...(retryUpload ? { artifact_upload_retried: true } : {}),
+          token_hash: null, error_code: `${stage}_${code}`, error_detail: diagnostic, lease_until: 0 });
+      if (retryUpload) console.warn(JSON.stringify({ event: 'build_artifact_upload_retry', org_id: org, task: key, kind: metadata.kind, attempt: task.attempt }));
       if (metadata.kind === 'qualification') {
         const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
         if (disabled) {

@@ -398,7 +398,7 @@ Prepare or update the organization Cloudflare or GitHub build engine and start i
 
 Permission: `read`
 
-Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization (each with job_id, site_id, kind and status: queued, running, or publishing while a built publication uploads and verifies; image preparation jobs are media-…). A queued job also has queue (the same object as get_deploy_status build_progress.queue: waiting_for_provider while the provider has not started a runner yet, waiting_for_other_builds while other jobs in this organization go first) and phase, its message; queueing is normal, do not retrigger. A job stays listed until its deploy reaches a final status, except a domain switch that is built and verified and only waits for DNS approval: it is listed under awaiting_approval, uses no build capacity, and does not block other sites from publishing. selection.auto_update says whether outdated engines are updated by the next publication (set_organization_build_auto_update); an engine with update_available runs older code than this Typeroll. Requires an organization API key; REST: GET /api/v1/publishing/builds. No provider credentials are returned.
+Read the selected provider, saved Cloudflare and GitHub build engines, and active jobs for the organization (each with job_id, site_id, kind and status: queued, running, or publishing while a built publication uploads and verifies; image preparation jobs are media-…). A queued job also has queue (the same object as get_deploy_status build_progress.queue: waiting_for_provider while the provider has not started a runner yet, waiting_for_other_builds while other jobs in this organization go first) and phase, its message; queueing is normal, do not retrigger. A job stays listed until its deploy reaches a final status, except a domain switch that is built and verified and only waits for DNS approval: it is listed under awaiting_approval, uses no build capacity, and does not block other sites from publishing. selection.auto_update says whether outdated engines are updated by the next publication (set_organization_build_auto_update); each engine (and the selected one at the top level) has update_available (boolean) and update_reason: engine_source_changed (older code than this Typeroll; publishing still works) or capability_missing (publishing is blocked until the engine is updated), else null. With selection.auto_update on, the next publication applies the update first; otherwise an organization admin updates it with setup_organization_build_engine when no build is running. Requires an organization API key; REST: GET /api/v1/publishing/builds. No provider credentials are returned.
 
 ### `check_organization_build_access`
 
@@ -1164,7 +1164,21 @@ Update a Page content type. Changes affect all its pages at the next publication
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `name` | path | string | yes |  |
-| `patch` | body | object | yes |  |
+| `label_singular` | body | string | no |  |
+| `label_plural` | body | string | no |  |
+| `fields` | body | object[] | no |  |
+| `page_field_rules` | body | object | no |  |
+| `allowed_templates` | body | string[] \| null | no | Allowed Page template IDs, including the default. Null allows all compatible templates; an empty list permits no template. |
+| `route_template` | body | string | no |  |
+| `template` | body | string | no |  |
+| `schema_type` | body | string | no | Schema.org type each Page of this type represents, such as BlogPosting, Product or SoftwareApplication. |
+| `schema_field_mode` | body | "all" \| "mapped" | no | Use mapped to emit only explicitly mapped fields. Resolve typed references in Page json_ld for complex graphs. |
+| `schema_field_map` | body | object | no | Field name to a direct Schema.org property, e.g. {"cover":"image","os":"operatingSystem"}. For Product and SoftwareApplication types, price, priceCurrency, availability and priceValidUntil are published inside offers (an Offer), ratingValue with ratingCount or reviewCount inside aggregateRating, and a brand name as a Brand. A field mapped to image is also the share image. |
+| `icon` | body | string | no |  |
+| `sort_field` | body | string | no |  |
+| `sort_dir` | body | "asc" \| "desc" | no |  |
+| `facets` | body | object[] | no |  |
+| `facet_combinations` | body | any[][] | no | Pairs of configured facet field names, not values. Use editable Pages for a curated subset of combinations. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `delete_content_type`
@@ -1675,7 +1689,17 @@ Patch a form. Provide only what you want to change. Passing `steps` replaces the
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `form_id` | path | string | yes |  |
-| `patch` | body | object | yes |  |
+| `name` | body | string | no |  |
+| `fields` | body | object[] | no |  |
+| `steps` | body | object[] | no |  |
+| `submit_text` | body | string | no |  |
+| `success_message` | body | string | no | Shown after the final step. May contain basic HTML (links, emphasis); it is sanitized. |
+| `success_redirect_url` | body | string | no | After the final step, send the visitor to this absolute http(s) URL or root-relative path (for example a booking or thank-you page) instead of showing success_message. Pass an empty string to clear. |
+| `actions` | body | object[] | no | The complete list of actions after a submission (replaces the current list): email notifications, webhooks, app actions (get_form_capabilities lists the types and their config). Read the form first and send back the actions you keep. Emails send through the provider set with set_email_settings. Requires admin permission, like the portal. |
+| `option_sources` | body | object[] | no | Live select/radio options from an installed app. Discover types with get_form_capabilities; admin permission required. |
+| `allow_back` | body | boolean \| null | no | Multi-step forms: show a Back button from the second step; it returns to the previous step in the browser with the answers kept. Default (omitted or null): on from render version 5, off before. |
+| `show_progress` | body | boolean \| "text" \| "bar" | no | Multi-step forms: true or "text" shows "Step X of Y", "bar" a slim progress bar (with the same text for screen readers). Off by default; false turns it off. |
+| `target` | body | object | no | Admin-only: bind to a declared POST route of an enabled app installation. Read its authenticated guide first. |
 
 ### `delete_form`
 
@@ -2606,7 +2630,11 @@ Update a reusable Page template. The change is saved immediately and affects its
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `template_id` | path | string | yes |  |
-| `patch` | body | object | yes |  |
+| `label` | body | string | no |  |
+| `icon` | body | string | no |  |
+| `applies_to` | body | string | no |  |
+| `blocks` | body | any[] | no |  |
+| `status` | body | "draft" \| "published" | no |  |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `delete_page_template`
@@ -2770,7 +2798,40 @@ Shallow-merge update on a page, including its short breadcrumb label and excerpt
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `page_id` | path | string | yes |  |
-| `patch` | body | object | yes |  |
+| `title` | body | string | no |  |
+| `fields` | body | object | no |  |
+| `slug` | body | string | no |  |
+| `html_content` | body | string | no |  |
+| `blocks` | body | any[] | no | Block tree, only used when content_mode="blocks". A select value the write sets or changes outside the field's options (e.g. level 2 instead of "h2") is refused with 400 invalid_field_value; one a block already held is only warned about (field_type_mismatch). Retitling a published heading without anchor_id warns heading_anchor_changed with old_id and new_id. |
+| `status` | body | "draft" \| "review" \| "unlisted" \| "published" | no |  |
+| `publish_at` | body | string \| null | no | Scheduled publishing (0.29.0+): ISO datetime at which the platform flips status → published AND deploys the site. Applies immediately (publish state, never drafted); null clears the schedule. Requires the SAVED content to be ready — schedule after save_changes/commit. |
+| `unpublish_at` | body | string \| null | no | Scheduled unpublish: ISO datetime at which status flips back to draft (+ deploy). Null clears. |
+| `kind` | body | "page" \| "article" | no |  |
+| `author` | body | string | no |  |
+| `language` | body | string | no |  |
+| `breadcrumb_label` | body | string \| null | no | Optional short breadcrumb label. Leaves Page title, SEO title and route unchanged; null/empty uses the title. |
+| `excerpt` | body | string \| null | no | Plain-text summary (up to 1000 characters) shown by template/page_excerpt and Page cards. Lands in the draft like other content; null clears it. |
+| `seo_title` | body | string | no |  |
+| `append_seo_suffix` | body | boolean | no | Set false to use seo_title/page title verbatim without the site suffix. |
+| `seo_description` | body | string | no |  |
+| `og_title` | body | string | no | Sharing title for OpenGraph/Twitter. Empty uses the SEO title. |
+| `og_description` | body | string | no | Sharing description for OpenGraph/Twitter. Empty uses the SEO description. |
+| `og_image` | body | string | no |  |
+| `seo_image_alt` | body | string | no | Alt text for og:image/twitter:image. Uses the public mapped image alt when that image is selected; explicit images retain the HTML alt fallback. |
+| `canonical_url` | body | string | no |  |
+| `path` | body | string | no | Explicit URL path for nested pages (e.g. "/erbjudanden/sommar-2026"). Takes precedence over slug for routing; changing it auto-creates a 301 from the old URL on save. |
+| `noindex` | body | boolean | no |  |
+| `nofollow` | body | boolean | no |  |
+| `alternates` | body | object[] \| null | no | Cross-domain hreflang cluster: the equivalents of THIS page on sister language sites, as [{ hreflang, href }]. One Typeroll site owns one domain, so a multi-language family (example.se / example.de / example.co.uk) is several sites and the mapping can't be derived — declare it here. List only the OTHER variants; the renderer injects this page's self-reference automatically. hreflang is a BCP-47 tag ("sv", "en-GB") or "x-default"; href must be an absolute http(s) URL. Invalid entries are rejected at write time with the reason, so a half-written cluster never ships. Every page in a cluster must link every other one — write all sides. Pass null to clear the cluster. |
+| `lastmod_override` | body | string | no | Override the sitemap &lt;lastmod&gt;. Empty string suppresses lastmod for this page entirely. |
+| `image_sizes_default` | body | string | no | Per-page default `sizes` for responsive images (e.g. "(max-width: 640px) 360px, 560px"). Overrides the site setting; a per-&lt;img&gt; `sizes` attr still wins. Set when this page's images render narrower than the generic default so the browser stops over-fetching the larger variant. |
+| `custom_css` | body | string | no | Per-page CSS, injected into &lt;head&gt; as a &lt;style&gt; AFTER the site-level custom_css (so it overrides site styling). The RIGHT home for page-specific styling — put a page's &lt;style&gt; here instead of stuffing it into a core/html block. |
+| `json_ld` | body | string | no |  |
+| `schema_type` | body | string | no | Free-form Schema.org type ("Service", "Course", "Product", …) used for auto JSON-LD emission. Use service.* for Service-specific fields. |
+| `service` | body | object | no |  |
+| `sort_order` | body | number \| null | no |  |
+| `template` | body | string \| null | no | Allowed template ID; null restores the content type default. |
+| `…` | body | any | no | Other writable fields, also at the top level of the body. |
 | `answer_sources` | body | object | no | Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed. |
 | `override_reason` | body | string | no | Why a value the listed business set itself (through its edit link) is being replaced. Required only for those values, as in the portal; the write otherwise returns 409 naming the field. |
 | `save` | body | boolean | no | Also SAVE (commit) the draft in the same call — use for pre-approved or batch changes. Without it, changes stay in the unsaved draft until commit_working_copy. |
@@ -2787,7 +2848,8 @@ Full replace of a page's writable content fields (PUT) — omitted fields are cl
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `page_id` | path | string | yes |  |
-| `page` | body | object | yes |  |
+| `title` | body | string | yes |  |
+| `…` | body | any | no | Other writable fields, also at the top level of the body. |
 | `answer_sources` | body | object | no | Evidence per schema leaf path. Actor and timestamp are always assigned by the server; unchanged answers are not confirmed. |
 | `override_reason` | body | string | no | Why a value the listed business set itself (through its edit link) is being replaced. Required only for those values, as in the portal; the write otherwise returns 409 naming the field. |
 | `save` | body | boolean | no | Also SAVE (commit) the draft in the same call — use for pre-approved or batch changes. Without it, changes stay in the unsaved draft until commit_working_copy. |
@@ -2921,123 +2983,237 @@ Add Event JSON-LD to a page about one upcoming event: name and ISO 8601 start_da
 
 ### `get_page_blocks`
 
-`GET /api/v1/sites/{siteId}/pages/{id}/blocks`
+`GET /api/v1/sites/{siteId}/pages/{page_id}/blocks`
+
+`GET /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`
 
 Permission: `read`
 
 Read the block tree of a container (page, partial, or page template). Use `target: { kind, id }` for partials/templates. For pages, `page_id` is the back-compat shorthand. Returns the DRAFT VIEW — the tree with any unsaved edits (yours or the editor's) included, i.e. exactly what the next mutation operates on. Empty array for HTML-mode pages. Always call this before any block mutation so you know what you're modifying.
 
+Over REST the container is part of the path: a page at the first address, a partial or PageTemplate (or a page) at the `containers` address. The MCP `target: { kind, id }` argument chooses that address; it is not a body key.
+
+Parameters of `GET /api/v1/sites/{siteId}/pages/{page_id}/blocks`:
+
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | query | object | no | Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type. |
-| `page_id` | query | string | no | Shorthand for target={kind:"page", id:page_id}. |
+| `page_id` | path | string | yes | Shorthand for target={kind:"page", id:page_id}. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+Parameters of `GET /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`:
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | path | "page" \| "partial" \| "template" | yes | Container kind. All content uses kind=page; the same block editor applies to every content type. |
+| `id` | path | string | yes | The page, partial (e.g. "header", "footer") or PageTemplate id. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `add_block`
 
-`POST /api/v1/sites/{siteId}/pages/{id}/blocks`
+`POST /api/v1/sites/{siteId}/pages/{page_id}/blocks`
+
+`POST /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`
 
 Permission: `write`
 
 Insert a block into a container (page, partial, or page template). BUFFER MODEL: block mutations on pages/partials edit the unsaved DRAFT — commit_working_copy is the explicit save. With no parent_id, inserts at the top level of the container. Otherwise inserts as a child (or into a slot for slot-containers). Position defaults to "end". Slot containers (core/columns, core/tabs — container: "slots"): slot_index picks the slot (0-based; defaults to 0) and works even if the parent instance has no slots array yet; a freshly added slot container gets its slots initialised to the type's arity. You can also pass the whole subtree inline via block.slots: [[...],[...]]. Pass `target: { kind: "partial", id: "header" }` to drop a block into the header on every page, etc. `page_id` is the legacy shorthand. A `data` key that no field of the block's type declares (read_block_type) is rejected with 400 `unknown_field`, for the block and every child; nothing is written, and `unknown_fields[].suggestions` says where it belongs (e.g. `item_overrides.<key>` for an item-block field on a repeater or its aliases, or the closest field names). A select value outside the field's options is rejected with 400 `invalid_field_value` (`details.invalid_fields[]`: block_id, path, field, value, allowed). `data.part_styles` ({ "&lt;part&gt;": "&lt;style id&gt;" }) gives named parts of the block a style on this block only, replacing a site-wide part style; read_block_type lists the type's `parts` and their targets (parts with a style_field, such as core/heading eyebrow → eyebrow_style_id, use that field instead). The map is replaced whole on update; null removes it. A part the block cannot style is 400 `unknown_field` at data.part_styles.&lt;part&gt; with suggestions; a value that is not a style id is `field_type_mismatch`; a style the site lacks (`unknown_style`) or of the wrong kind (`style_target_mismatch`) is refused with the styles that fit, as is text that fails both APCA and WCAG 2 AA on the part's background (`part_style_contrast`; an APCA-only miss is a warning). `route_overrides` ({ home | item | page | facet: { data_overrides } }) varies any setting of the block by route kind without duplicating it or writing site CSS, e.g. a header section with background secondary and { "home": { "data_overrides": { "background": "primary" } } }. Override keys are checked like data keys (400 `unknown_field` and `invalid_field_value`, `field_type_mismatch` warnings); a route that is not a route kind is 400. Answers with the changed block, `parent_id`, `slot_index`, `position` and `has_unsaved_changes` (the working copy differs from the saved content); pass `response: "tree"` for the whole tree, or call get_page_blocks. `added_id` is the new block's id.
 
+Over REST the container is part of the path: a page at the first address, a partial or PageTemplate (or a page) at the `containers` address. The MCP `target: { kind, id }` argument chooses that address; it is not a body key.
+
+Parameters of `POST /api/v1/sites/{siteId}/pages/{page_id}/blocks`:
+
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | body | object | no | Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type. |
-| `page_id` | body | string | no |  |
+| `page_id` | path | string | yes |  |
 | `block` | body | object | yes |  |
 | `parent_id` | body | string \| null | no |  |
 | `slot_index` | body | integer | no |  |
 | `position` | body | integer | no |  |
-| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree": the whole block tree of the container. |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+Parameters of `POST /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`:
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | path | "page" \| "partial" \| "template" | yes | Container kind. All content uses kind=page; the same block editor applies to every content type. |
+| `id` | path | string | yes | The page, partial (e.g. "header", "footer") or PageTemplate id. |
+| `block` | body | object | yes |  |
+| `parent_id` | body | string \| null | no |  |
+| `slot_index` | body | integer | no |  |
+| `position` | body | integer | no |  |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `update_block`
 
-`PATCH /api/v1/sites/{siteId}/pages/{id}/blocks`
+`PATCH /api/v1/sites/{siteId}/pages/{page_id}/blocks`
+
+`PATCH /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`
 
 Permission: `write`
 
 Update a block's data fields (shallow merge), style overrides, per-route settings (route_overrides), or responsive settings. Works on pages, partials, and page templates — use `target` to address non-page containers. Does not modify children or slots; use move/add/remove for structural changes. For appearance, prefer a named style (`data.style_id`, see list_styles) over custom_class or custom_css. From render version 2, custom_class lands on the heading or button link element itself instead of the block wrapper. Send values in the field's type (numbers as numbers); a value the block will not render comes back in `warnings` (`field_type_mismatch`) with its path. A select value outside the field's options (e.g. `level: 2` instead of "h2") is refused with 400 `invalid_field_value` naming the block, field and allowed values; one the block already held is left alone and only warned about. Changing the text of a heading without `anchor_id` on a published page changes its generated id; the answer then carries a `heading_anchor_changed` warning with `old_id` and `new_id` (set `anchor_id` to `old_id` to keep inbound links). A `null` value removes that key from data (the field renders its default); use it to clean up a key stored by mistake. A written key that no field of the block's type declares is rejected with 400 `unknown_field` and nothing is written; `unknown_fields[].suggestions` says where it belongs: on core/repeater and its aliases (core/testimonials, core/page_list, ...) a field of the item block goes in `item_overrides.<key>`, otherwise the closest field names. `data.part_styles` ({ "&lt;part&gt;": "&lt;style id&gt;" }) gives named parts of the block a style on this block only, replacing a site-wide part style; read_block_type lists the type's `parts` and their targets (parts with a style_field, such as core/heading eyebrow → eyebrow_style_id, use that field instead). The map is replaced whole on update; null removes it. A part the block cannot style is 400 `unknown_field` at data.part_styles.&lt;part&gt; with suggestions; a value that is not a style id is `field_type_mismatch`; a style the site lacks (`unknown_style`) or of the wrong kind (`style_target_mismatch`) is refused with the styles that fit, as is text that fails both APCA and WCAG 2 AA on the part's background (`part_style_contrast`; an APCA-only miss is a warning). `route_overrides` ({ home | item | page | facet: { data_overrides } }) varies any setting of the block by route kind without duplicating it or writing site CSS, e.g. a header section with background secondary and { "home": { "data_overrides": { "background": "primary" } } }. Override keys are checked like data keys (400 `unknown_field` and `invalid_field_value`, `field_type_mismatch` warnings); a route that is not a route kind is 400. On update, `route_overrides` replaces the block's route overrides whole; null removes them. Answers with the changed block, `parent_id`, `slot_index`, `position` and `has_unsaved_changes` (the working copy differs from the saved content); pass `response: "tree"` for the whole tree, or call get_page_blocks.
 
+Over REST the container is part of the path: a page at the first address, a partial or PageTemplate (or a page) at the `containers` address. The MCP `target: { kind, id }` argument chooses that address; it is not a body key.
+
+Parameters of `PATCH /api/v1/sites/{siteId}/pages/{page_id}/blocks`:
+
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | body | object | no | Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type. |
-| `page_id` | body | string | no |  |
+| `page_id` | path | string | yes |  |
 | `block_id` | body | string | yes |  |
 | `data` | body | object | no | Field values to merge into block.data. null removes the key. |
 | `style_overrides` | body | object | no |  |
 | `route_overrides` | body | object \| null | no | Per-route settings: { home \| item \| page \| facet: { data_overrides } }. Replaces the block's route overrides whole; null removes them. |
-| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree": the whole block tree of the container. |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+Parameters of `PATCH /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`:
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | path | "page" \| "partial" \| "template" | yes | Container kind. All content uses kind=page; the same block editor applies to every content type. |
+| `id` | path | string | yes | The page, partial (e.g. "header", "footer") or PageTemplate id. |
+| `block_id` | body | string | yes |  |
+| `data` | body | object | no | Field values to merge into block.data. null removes the key. |
+| `style_overrides` | body | object | no |  |
+| `route_overrides` | body | object \| null | no | Per-route settings: { home \| item \| page \| facet: { data_overrides } }. Replaces the block's route overrides whole; null removes them. |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `move_block`
 
-`PUT /api/v1/sites/{siteId}/pages/{id}/blocks`
+`PUT /api/v1/sites/{siteId}/pages/{page_id}/blocks`
+
+`PUT /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`
 
 Permission: `write`
 
 Reparent or reorder a block inside its container. target_parent_id=null moves to top level. For slot containers, target_slot_index picks the slot. Cycles (moving a block into its own descendant) are rejected. Works for pages, partials, and templates. Answers with the changed block, `parent_id`, `slot_index`, `position` and `has_unsaved_changes` (the working copy differs from the saved content); pass `response: "tree"` for the whole tree, or call get_page_blocks. The location is where the block now sits.
 
+Over REST the container is part of the path: a page at the first address, a partial or PageTemplate (or a page) at the `containers` address. The MCP `target: { kind, id }` argument chooses that address; it is not a body key.
+
+Parameters of `PUT /api/v1/sites/{siteId}/pages/{page_id}/blocks`:
+
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | body | object | no | Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type. |
-| `page_id` | body | string | no |  |
+| `page_id` | path | string | yes |  |
 | `block_id` | body | string | yes |  |
 | `target_parent_id` | body | string \| null | no |  |
 | `target_slot_index` | body | integer | no |  |
 | `target_position` | body | integer | no |  |
-| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree": the whole block tree of the container. |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+Parameters of `PUT /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`:
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | path | "page" \| "partial" \| "template" | yes | Container kind. All content uses kind=page; the same block editor applies to every content type. |
+| `id` | path | string | yes | The page, partial (e.g. "header", "footer") or PageTemplate id. |
+| `block_id` | body | string | yes |  |
+| `target_parent_id` | body | string \| null | no |  |
+| `target_slot_index` | body | integer | no |  |
+| `target_position` | body | integer | no |  |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `remove_block`
 
-`DELETE /api/v1/sites/{siteId}/pages/{id}/blocks`
+`DELETE /api/v1/sites/{siteId}/pages/{page_id}/blocks`
+
+`DELETE /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`
 
 Permission: `write`
 
 Remove a block and everything inside it from its container. Works for pages, partials, and templates. Answers with `removed_id`, the `parent_id`, `slot_index` and `position` it was removed from and `has_unsaved_changes`; pass `response: "tree"` for the whole remaining tree.
 
+Over REST the container is part of the path: a page at the first address, a partial or PageTemplate (or a page) at the `containers` address. The MCP `target: { kind, id }` argument chooses that address; it is not a body key.
+
+Parameters of `DELETE /api/v1/sites/{siteId}/pages/{page_id}/blocks`:
+
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | query | object | no | Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type. |
-| `page_id` | query | string | no |  |
+| `page_id` | path | string | yes |  |
 | `block_id` | query | string | yes |  |
-| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree": the whole block tree of the container. |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+Parameters of `DELETE /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks`:
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | path | "page" \| "partial" \| "template" | yes | Container kind. All content uses kind=page; the same block editor applies to every content type. |
+| `id` | path | string | yes | The page, partial (e.g. "header", "footer") or PageTemplate id. |
+| `block_id` | query | string | yes |  |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `duplicate_block`
 
-`POST /api/v1/sites/{siteId}/pages/{id}/blocks/duplicate`
+`POST /api/v1/sites/{siteId}/pages/{page_id}/blocks/duplicate`
+
+`POST /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks/duplicate`
 
 Permission: `write`
 
 Clone a block (subtree included) and insert the copy directly after the original within the same container. Returns the duplicate's new id. Useful for "add another card to this feature grid" — duplicate the existing one and then `update_block` on the new id to change its data. Works for pages, partials, and templates. Answers with the changed block, `parent_id`, `slot_index`, `position` and `has_unsaved_changes` (the working copy differs from the saved content); pass `response: "tree"` for the whole tree, or call get_page_blocks. `duplicate_id` is the copy's id; `block` is the copy.
 
+Over REST the container is part of the path: a page at the first address, a partial or PageTemplate (or a page) at the `containers` address. The MCP `target: { kind, id }` argument chooses that address; it is not a body key.
+
+Parameters of `POST /api/v1/sites/{siteId}/pages/{page_id}/blocks/duplicate`:
+
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | body | object | no | Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type. |
-| `page_id` | body | string | no |  |
+| `page_id` | path | string | yes |  |
 | `block_id` | body | string | yes |  |
-| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree": the whole block tree of the container. |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+Parameters of `POST /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks/duplicate`:
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | path | "page" \| "partial" \| "template" | yes | Container kind. All content uses kind=page; the same block editor applies to every content type. |
+| `id` | path | string | yes | The page, partial (e.g. "header", "footer") or PageTemplate id. |
+| `block_id` | body | string | yes |  |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `set_block_responsive`
 
-`POST /api/v1/sites/{siteId}/pages/{id}/blocks/responsive`
+`POST /api/v1/sites/{siteId}/pages/{page_id}/blocks/responsive`
+
+`POST /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks/responsive`
 
 Permission: `write`
 
 Set a per-breakpoint value on one responsive field of a block (in any container — page, partial, or template). The renderer reads { mobile, tablet, laptop, desktop, wide } objects on any field marked responsive in the BlockType schema (use read_block_type to see which). Mobile-first inheritance: missing breakpoints inherit upward. Pass a scalar value to clear responsive back to a single value. Example: setting `cols` on a feature_grid to { mobile: 1, tablet: 2, desktop: 3 } renders 1-col on phones, 2-col on tablets, 3-col on desktop+. A field the block type does not declare is rejected with 400 `unknown_field`, and a value outside a select field's options with 400 `invalid_field_value`. Answers with the changed block, `parent_id`, `slot_index`, `position` and `has_unsaved_changes` (the working copy differs from the saved content); pass `response: "tree"` for the whole tree, or call get_page_blocks.
 
+Over REST the container is part of the path: a page at the first address, a partial or PageTemplate (or a page) at the `containers` address. The MCP `target: { kind, id }` argument chooses that address; it is not a body key.
+
+Parameters of `POST /api/v1/sites/{siteId}/pages/{page_id}/blocks/responsive`:
+
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | body | object | no | Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type. |
-| `page_id` | body | string | no |  |
+| `page_id` | path | string | yes |  |
 | `block_id` | body | string | yes |  |
 | `field` | body | string | yes | Field name (must be marked responsive in the BlockType schema). |
 | `value` | body | any | yes | Scalar (applies to all BPs) or { mobile?, tablet?, laptop?, desktop?, wide? }. |
-| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree": the whole block tree of the container. |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
+Parameters of `POST /api/v1/sites/{siteId}/containers/{kind}/{id}/blocks/responsive`:
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `kind` | path | "page" \| "partial" \| "template" | yes | Container kind. All content uses kind=page; the same block editor applies to every content type. |
+| `id` | path | string | yes | The page, partial (e.g. "header", "footer") or PageTemplate id. |
+| `block_id` | body | string | yes |  |
+| `field` | body | string | yes | Field name (must be marked responsive in the BlockType schema). |
+| `value` | body | any | yes | Scalar (applies to all BPs) or { mobile?, tablet?, laptop?, desktop?, wide? }. |
+| `response` | query | "summary" \| "tree" | no | Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `set_page_mode`
@@ -3228,7 +3404,12 @@ Shallow-merge update on a global block. Use partial_id "header" or "footer" for 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
 | `partial_id` | path | string | yes |  |
-| `patch` | body | object | yes |  |
+| `name` | body | string | no |  |
+| `html_content` | body | string | no |  |
+| `blocks` | body | any[] | no | Block tree to stage before switching the partial to blocks mode. |
+| `status` | body | "draft" \| "published" | no |  |
+| `kind` | body | "header" \| "footer" \| "free" | no |  |
+| `…` | body | any | no | Other writable fields, also at the top level of the body. |
 | `save` | body | boolean | no | Also SAVE (commit) the draft in the same call. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
@@ -3388,7 +3569,7 @@ Returns url (normal wrapper) and frame_url (signed sandboxed frame for rendering
 
 Permission: `read`
 
-Read where a deploy lands and provisional net saved public-source changes against the selected version’s last verified publication. targets lists every public URL the publication serves (live domains first, then the temporary address); production: true means the site is cut over and a deploy publishes to live_domains. Reports additions, removals, shared inputs, metadata-only changes and unavailable baselines. Does not build or deploy. execution is automatic and reuse_verified is false before the build; inspect job.render_report afterwards for actual rendered/reused counts; source-level classification does not prove output reuse or cost savings.
+Read where a deploy lands and provisional net saved public-source changes against the selected version’s last verified publication. targets lists every public URL the publication serves (live domains first, then the temporary address); production: true means the site is cut over and a deploy publishes to live_domains. Reports additions, removals, shared inputs, metadata-only changes and unavailable baselines. changes_known: false (comparison baseline_unavailable) means nothing was compared: total 0 and an empty changes list then mean UNKNOWN, not no changes; baseline.reason says why (not_published, publication_not_verified, snapshot_without_source_baseline, baseline_snapshot_unreadable, baseline_identity_mismatch) and baseline.message what to do: the next publication still publishes every saved page; publish once to record a baseline, and use trigger_deploy dry_run: true meanwhile to validate the full build. platform_changes lists what Typeroll itself changed since the baseline (id core_commit or extension_runtime, with before, after and affects_output), never counted in total or changes: it is not an edit to the site; extension_runtime affects output only on a site with Extension installations. Does not build or deploy. execution is automatic and reuse_verified is false before the build; inspect job.render_report afterwards for actual rendered/reused counts; source-level classification does not prove output reuse or cost savings.
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
@@ -4107,7 +4288,7 @@ Cancel a run that is pending, running or paused_for_review; it is recorded as st
 
 ### `read_working_copy`
 
-`GET /api/v1/sites/{siteId}/working-copy/page/{id}`
+`GET /api/v1/sites/{siteId}/working-copy/{kind}/{id}`
 
 Permission: `read`
 
@@ -4115,12 +4296,13 @@ Templates save immediately and do not use this tool. Use target: {kind: page|par
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | query | object | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
+| `kind` | path | "page" \| "partial" | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
+| `id` | path | string | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `commit_working_copy`
 
-`POST /api/v1/sites/{siteId}/working-copy/page/{id}`
+`POST /api/v1/sites/{siteId}/working-copy/{kind}/{id}`
 
 Permission: `write`
 
@@ -4128,13 +4310,14 @@ SAVE a doc's unsaved draft: promote it onto the saved doc through the canonical 
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | body | object | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
+| `kind` | path | "page" \| "partial" | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
+| `id` | path | string | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
 | `override_reason` | body | string | no | Why a value the listed business set itself (through its edit link) is being replaced. Required only for those values, as in the portal; the write otherwise returns 409 naming the field. |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ### `discard_working_copy`
 
-`DELETE /api/v1/sites/{siteId}/working-copy/page/{id}`
+`DELETE /api/v1/sites/{siteId}/working-copy/{kind}/{id}`
 
 Permission: `write`
 
@@ -4142,7 +4325,8 @@ Throw away a doc's unsaved draft — the saved doc is untouched. Use when the us
 
 | Parameter | In | Type | Required | Description |
 | --- | --- | --- | --- | --- |
-| `target` | query | object | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
+| `kind` | path | "page" \| "partial" | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
+| `id` | path | string | yes | Which doc's draft: page {id} or partial {id}. Templates have no drafts (their writes apply directly). |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
 ## Sites

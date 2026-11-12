@@ -213,11 +213,42 @@ it('turns automatic engine updates on with the current selection revision', asyn
   vi.stubGlobal('fetch', request);
   const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
   await act(async () => root.render(createElement(PublishingBuilds)));
-  expect(container.textContent).toContain('select Update build engine when no build is running');
+  expect(container.textContent).toContain('Select Update build engine when no build is running');
   const toggle = container.querySelector<HTMLInputElement>('input[type="checkbox"]')!;
   expect(toggle.checked).toBe(false);
   await act(async () => { toggle.click(); });
   expect(JSON.parse(request.mock.calls.find(([, init]) => init?.method === 'POST')![1]!.body as string)).toEqual({ action: 'auto_update', enabled: true, revision: 'selection-1' });
   expect(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.checked).toBe(true);
-  expect(container.textContent).toContain('the next publication updates it first');
+  expect(container.textContent).toContain('Automatic updates are on: the next publication installs the new engine');
+});
+
+it.each([
+  [{ state: 'ready', enabled: true, issue: null, update_reason: 'engine_source_changed' }, 'Publishing still works.'],
+  [{ state: 'setup_required', enabled: false, issue: { code: 'build_engine_update_required', message: 'Update the build engine before publishing.' }, update_reason: 'capability_missing' }, 'cannot be published until it is updated'],
+])('shows that a build engine update is available (%#)', async (state, sentence) => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const engine = { provider: 'cloudflare', revision: 'engine', worker_name: 'builder', update_available: true, ...state };
+  const settings = (auto_update: boolean) => ({ ...engine, selection: { provider: 'cloudflare', revision: 'selection', auto_update }, engines: { cloudflare: engine, github: { provider: 'github', state: 'not_configured', revision: 'initial', enabled: false, worker_name: '', update_available: false, update_reason: null } }, active_jobs: [], awaiting_approval: [] });
+  for (const auto of [false, true]) {
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(settings(auto))));
+    const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+    await act(async () => root.render(createElement(PublishingBuilds)));
+    const notice = container.querySelector<HTMLElement>('[data-reason]');
+    expect(notice?.textContent).toContain('Build engine update available.');
+    expect(notice?.dataset.reason).toBe(state.update_reason);
+    expect(notice?.textContent).toContain(sentence);
+    expect(notice?.textContent).toContain(auto ? 'Automatic updates are on: the next publication installs the new engine' : 'Select Update build engine');
+    expect([...container.querySelectorAll('button')].some(button => button.textContent === 'Update build engine')).toBe(true);
+    await act(async () => root.unmount()); container.remove();
+  }
+});
+
+it('shows no update notice for a current engine', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const engine = { provider: 'cloudflare', state: 'ready', revision: 'engine', enabled: true, worker_name: 'builder', issue: null, update_available: false, update_reason: null };
+  vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ...engine, selection: { provider: 'cloudflare', revision: 'selection', auto_update: true }, engines: { cloudflare: engine, github: { provider: 'github', state: 'not_configured', revision: 'initial', enabled: false, worker_name: '' } }, active_jobs: [], awaiting_approval: [] })));
+  const container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  await act(async () => root.render(createElement(PublishingBuilds)));
+  expect(container.textContent).toContain('Shared build engine ready');
+  expect(container.textContent).not.toContain('Build engine update available');
 });

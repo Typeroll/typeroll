@@ -2,10 +2,9 @@ import { getStore } from '../datastore';
 import { ConnectionError } from '../publishing/connections';
 import { readBuildEngine } from './cloudflare';
 import { readGithubEngine, configureGithubEngine } from './github';
-import { GITHUB_ENGINE_SOURCE } from './github-source';
 import { buildTasksPath, type BuildTask } from './queue';
-import { readBuildSelection } from './selection';
-import { configureBuildEngine, CLOUDFLARE_ENGINE_SOURCE } from './setup';
+import { readBuildSelection, engineUpdateReason } from './selection';
+import { configureBuildEngine } from './setup';
 import { readEngineConfiguration, type BuildProvider, type EngineConfiguration } from './state';
 import { engineUpdateFixes } from './failure-message';
 import type { BuildDiagnostic } from './diagnostics.mjs';
@@ -30,9 +29,7 @@ export type EngineStep =
 
 /** The engine runs an older generated source than this Core, or lacks a required capability. */
 export function engineOutdated(config: EngineConfiguration | null | undefined): boolean {
-  if (!config || config.status !== 'ready') return false;
-  const source = (config.provider ?? 'cloudflare') === 'github' ? GITHUB_ENGINE_SOURCE : CLOUDFLARE_ENGINE_SOURCE;
-  return config.engine_source_sha256 !== source || !config.static_verification || !config.media_preparation || config.publication_validation !== 1;
+  return engineUpdateReason(config) !== null;
 }
 
 async function otherBuildsActive(org: string) {

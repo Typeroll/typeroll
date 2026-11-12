@@ -96,6 +96,17 @@ engine. Site keys are rejected. Requests cannot select another organization thro
 body. Responses contain safe status and numeric provider diagnostics, never
 provider tokens. Reads and writes disable response caching.
 
+Each engine in `engines`, and the selected one at the top level, carries
+`update_available` (boolean) and `update_reason`: `engine_source_changed` when
+a ready engine runs older generated code than this Core installs (publishing
+still works), `capability_missing` when it lacks a capability this Core requires
+(the engine then also reads `state: "setup_required"` with issue
+`build_engine_update_required`), or `null`. Both come from `engineUpdateReason`
+in `builds/selection.ts`, which `engineOutdated` uses when a publication decides
+whether to update the engine, so the read and the publication agree. With
+`selection.auto_update` on, the next publication applies either update first.
+The Builds card shows the same as **Build engine update available**.
+
 MCP exposes `read_organization_build_engine` and
 `check_organization_build_access` and `setup_organization_build_engine`. None requires an existing site.
 

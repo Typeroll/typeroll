@@ -22,11 +22,11 @@ async function executeCustomerPublication(args: Parameters<typeof executePublica
   throw new Error('Publication did not yield to its build provider');
 }
 
-const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), enqueue: vi.fn(), built: vi.fn(), verify: vi.fn(), candidateVerification: vi.fn(), verificationPlan: vi.fn(), direct: vi.fn(), runtime: { forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] } as any, derive: vi.fn(), deployment: null as any }));
+const mocks = vi.hoisted(() => ({ github: vi.fn(), cloudflare: vi.fn(), push: vi.fn(), probe: vi.fn(), source: vi.fn(), freezeRenderer: vi.fn(async (_commit: string) => {}), enqueue: vi.fn(), built: vi.fn(), verify: vi.fn(), candidateVerification: vi.fn(), verificationPlan: vi.fn(), direct: vi.fn(), runtime: { forms: [], apps: { apps: {} }, extensions: { installations: [] }, dependencies: [] } as any, derive: vi.fn(), deployment: null as any }));
 vi.mock('../../lib/publishing/github-connection', () => ({ githubConfiguration: () => ({ appId: '12', privateKey: 'synthetic-only' }) }));
 vi.mock('../../lib/publishing/cloudflare-oauth', () => ({ cloudflareClient: async () => mocks.cloudflare }));
 vi.mock('../../lib/publishing/providers.mjs', async importOriginal => ({ ...await importOriginal<object>(), githubInstallationClient: async () => mocks.github, publishTree: mocks.push }));
-vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source }));
+vi.mock('../../lib/publishing/source-tree', () => ({ publicationSourceTree: mocks.source, freezePublicationRenderer: mocks.freezeRenderer }));
 const fonts = vi.hoisted(() => ({ freeze: vi.fn() }));
 const fontPlan = { render_version: 1, families: [], google_css_url: null, service_stylesheets: [] };
 // Publications freeze theme fonts from Google; tests never reach the network.
@@ -318,6 +318,11 @@ it('a domain-only preparation reuses the public snapshot and does not publish la
   expect(source.pages[0].canonical_url).toBe('https://new.example.com/');
   expect(JSON.stringify(source)).not.toContain('Unpublished edit');
   expect((await getStore().getDoc<any>(paths.site('org', 'site'))).domain).toBe('www.example.com');
+  // It keeps the prior source fingerprint with only its addresses replaced, so the next impact has a baseline.
+  const origins = source.source_impact_snapshot.entries.find((entry: any) => entry.id === 'impact_origins');
+  expect(origins).toBeDefined();
+  expect((await getStore().getDoc<any>(paths.deploy('org', 'site', 'domain-job'))).build_impact).toMatchObject({ comparison: 'verified_snapshot', changes_known: true, total: 1,
+    changes: [{ kind: 'configuration', id: 'impact_origins', action: 'changed' }] });
 });
 
 
@@ -1115,6 +1120,23 @@ it('retries temporary provider failures from the saved source instead of accepti
   expect(await executePublicationPhase(args)).toBe('continue');
   expect(mocks.push.mock.calls.at(-1)![1].files['publication.json']).not.toContain('Must not leak');
   expect(await getStore().getDoc(jobPath)).toMatchObject({ coordinator_retries: 0, git_publication: { snapshot_digest: frozen.git_publication.snapshot_digest } });
+});
+
+// moveria-de (2026-11-11, mwcbqz21w1hzdd): a new Worker release froze the job, the release it
+// replaced took the next step and did not have the new renderer: publication_internal_error.
+it('stores the renderer before the frozen source is saved, so any Worker release can continue the job', async () => {
+  await executePublicationPhase(args);
+  const frozen = await getStore().getDoc<any>(jobPath);
+  expect(frozen.git_publication.snapshot_digest).toBeDefined();
+  expect(mocks.freezeRenderer).toHaveBeenCalledWith('a'.repeat(40));
+});
+it('waits and retries a step that reached a Worker release without the frozen renderer', async () => {
+  await executePublicationPhase(args);
+  mocks.source.mockRejectedValueOnce(new ConnectionError('The original publication renderer is unavailable.', 503, 'publication_renderer_unavailable', { retryable: true }));
+  expect(await executePublicationPhase(args)).toBe('waiting');
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'running', coordinator_retries: 1 });
+  expect(await executePublicationPhase(args)).toBe('continue');
+  expect(await getStore().getDoc(jobPath)).toMatchObject({ status: 'running', coordinator_retries: 0 });
 });
 
 it('resumes a timed-out public verification through the same job without provider mutations or a new build', async () => {

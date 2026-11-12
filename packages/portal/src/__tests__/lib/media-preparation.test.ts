@@ -259,3 +259,27 @@ it('never ends the job for a passing stop; each later round waits longer, up to 
   expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ error_code: null });
   expect(await mediaPreparationStatus('org', 'site')).not.toHaveProperty('retry');
 });
+
+// moveria-es (2026-11-11): a job stopped under Core 0.2.149 or earlier has no error_code,
+// so every publication warned "Background image preparation stopped (unknown)".
+it('reports why a job that stopped before causes were recorded stopped, from its build task', async () => {
+  const store = getStore();
+  const legacy = { org: 'org', site: 'site', state: 'failed', request: 'request', lease: null, lease_until: 0, next_at: 0, task: 'old-task',
+    error: 'Image preparation stopped. The originals are safe. Retry preparation or publish to prepare the required images.' };
+  const path = `media_preparations/${(await import('node:crypto')).createHash('sha256').update('org\0site').digest('hex')}`;
+  await store.setDoc(path, legacy);
+  await store.setDoc(`${buildTasksPath('org')}/old-task`, { status: 'failed', error_code: 'build_queue_timeout', media_total: 4, media_cursor: 0 });
+  const queued = await mediaPreparationStatus('org', 'site');
+  expect(queued).toMatchObject({ state: 'failed', error_code: 'build_queue_timeout', failed_build_task: 'old-task' });
+  expect(queued?.error).toMatch(/^Image preparation stopped\. .* Cause: The build provider never started a runner/);
+  await store.setDoc(`${buildTasksPath('org')}/old-task`, { status: 'cancelled', error_code: null });
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ error_code: 'build_cancelled', error: expect.stringContaining('cancelled the preparation build') });
+  // A task that never ended, or no longer exists, cannot say why: report that, not "unknown".
+  await store.deleteDoc(`${buildTasksPath('org')}/old-task`);
+  const unrecorded = await mediaPreparationStatus('org', 'site');
+  expect(unrecorded).toMatchObject({ error_code: 'media_preparation_cause_unrecorded', failed_build_task: 'old-task' });
+  expect(unrecorded?.error).toContain('Core 0.2.149 or earlier, which did not record why');
+  // A recorded code is never replaced.
+  await store.updateDoc(path, { error_code: 'media_build_process_exit_1', failed_task: 'newer-task' });
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ error_code: 'media_build_process_exit_1', failed_build_task: 'newer-task', error: legacy.error });
+});

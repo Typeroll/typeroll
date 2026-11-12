@@ -48,8 +48,8 @@ const blockSchema = z.object({
  * `{ kind: 'page', id: page_id }`.
  */
 const targetSchema = z.object({
-  kind: z.enum(['page', 'partial', 'template']),
-  id: z.string(),
+  kind: z.enum(['page', 'partial', 'template']).describe('Container kind. All content uses kind=page; the same block editor applies to every content type.'),
+  id: z.string().describe('The page, partial (e.g. "header", "footer") or PageTemplate id.'),
 }).describe('Address a page, partial or PageTemplate by its ID. All content uses kind=page; the same block editor applies to every content type.');
 
 function v(version?: string): Record<string, string | undefined> | undefined {
@@ -64,7 +64,7 @@ function v(version?: string): Record<string, string | undefined> | undefined {
  * and answers with the tree, where an unknown body key would be refused.
  */
 const responseParam = z.enum(['summary', 'tree']).optional().describe(
-  'Answer shape. "summary" (default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree": the whole block tree of the container.',
+  'Answer shape. "summary" (the MCP default): the changed block, parent_id, slot_index, position, has_unsaved_changes and warnings. "tree" (the REST default when omitted): the same fields plus the whole block tree of the container as `blocks`.',
 );
 
 function writeQuery(version: string | undefined, response: 'summary' | 'tree' | undefined): Record<string, string | undefined> {

@@ -1,6 +1,6 @@
 // @ts-ignore -- the validator is plain JavaScript shared with the frozen publication build.
 import { unnamedImageLinks } from '../../../../site-template/src/lib/publication-validation.mjs';
-import { COOKIE_CONSENT_LABEL_KEYS, lacksUiTranslation } from '@typeroll/shared';
+import { COOKIE_CONSENT_LABEL_KEYS, cookieConsentReopenMode, lacksUiTranslation, resolveRenderVersion, type CookieConsentManageButton } from '@typeroll/shared';
 import { ConnectionError } from './connections';
 
 export interface DryRunValidationIssue { code: 'image_link_unnamed'; page: string; href: string; source: 'image_block' | 'html' }
@@ -42,6 +42,13 @@ export function assertDryRunValidation(pages: Array<Record<string, any>>) {
   throw new ConnectionError(`Publication validation failed: Image link has no accessible name: ${first.href} (${first.page})${issues.length > 1 ? ` and ${issues.length - 1} more` : ''}. Supply meaningful image alt text or link text.`, 422, 'publication_validation_failed', { issues: issues.slice(0, 50) });
 }
 
+/** Whether the banner shows a label: the reopen control's labels only with that control. */
+function cookieConsentLabelShown(key: (typeof COOKIE_CONSENT_LABEL_KEYS)[number], mode: CookieConsentManageButton): boolean {
+  if (key === 'manage' || key === 'manage_button') return mode === 'floating';
+  if (key === 'footer_link') return mode === 'footer';
+  return true;
+}
+
 /**
  * Built-in wording that falls back to English because Typeroll has no
  * translation for a language the publication uses. Non-blocking: the job
@@ -58,8 +65,8 @@ export function publicationLanguageWarnings(publication: { settings?: Record<str
     if (consent?.enabled !== true) continue;
     const missing = [
       ...(String(consent.text ?? '').trim() ? [] : ['cookie_consent.text']),
-      // Without the floating button its two labels are not shown.
-      ...COOKIE_CONSENT_LABEL_KEYS.filter(key => !(consent.manage_button === 'none' && key.startsWith('manage')))
+      // Only the shown reopen control's labels: the floating button's two, or the footer link's.
+      ...COOKIE_CONSENT_LABEL_KEYS.filter(key => cookieConsentLabelShown(key, cookieConsentReopenMode(consent, resolveRenderVersion(publication.settings?.render_version))))
         .filter(key => !String(consent.labels?.[key] ?? '').trim()).map(key => `cookie_consent.labels.${key}`),
     ];
     if (missing.length) warnings.push(`The cookie banner shows English on ${language} pages for ${missing.join(', ')}. Save ${language} wording for them in the site settings.`);

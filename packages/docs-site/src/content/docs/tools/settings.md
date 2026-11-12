@@ -394,7 +394,7 @@ settings route and MCP tool:
     "scripts_necessary": "",
     "scripts_optional": "<script>startAnalytics()</script>",
     "reload_after_consent": false,
-    "manage_button": "floating",
+    "manage_button": "footer",
     "labels": {
       "title": "Cookies auf dieser Website",
       "accept_all": "Alle akzeptieren"
@@ -411,8 +411,10 @@ follows the same rule. A publication for another language reports the wording
 that falls back to English in its job `warnings`. Set `labels` only to replace that wording, for example for another
 language. Its keys are `title`, `reject`, `necessary`, `accept_all`,
 `privacy_link`, `manage` (the accessible name of the floating button that
-reopens the banner) and `manage_button` (its visible text, "Cookies" by
-default). Values are plain text of at most 120 characters,
+reopens the banner), `manage_button` (its visible text, "Cookies" by
+default) and `footer_link` (the text of the footer link that reopens it,
+"Cookie settings" by default, "Cookie-inställningar" on Swedish pages).
+Values are plain text of at most 120 characters,
 and blank values use the built-in wording. `labels` is replaced as a whole.
 
 #### Reopening the banner
@@ -421,9 +423,18 @@ Visitors must be able to change or withdraw their choice as easily as they
 gave it, so the banner always needs a way back. `manage_button` decides what
 Typeroll renders for that:
 
-- `"floating"` (the default): the "Cookies" button fixed bottom-left.
-- `"none"`: no floating button, for example where it covers form fields on a
-  phone. The site then links to the banner itself.
+- `"footer"` (the default from render version 19): a small "Cookie settings"
+  link at the end of the site footer, inside its `<footer>` element. It takes
+  the footer's text colour and font, so it reads on light and dark footers,
+  and site CSS restyles it through `.tr-consent-footer-link` without
+  `!important`. A footer that already links to `#cookie-settings` or has an
+  element with `data-tr-open-consent` gets no second link, so a site's own
+  link keeps its look. A preview without a footer partial has no footer and
+  shows the floating button instead.
+- `"floating"` (the default before render version 19): the "Cookies" button
+  fixed bottom-left.
+- `"none"`: neither, for example where the site places its own control. The
+  site then links to the banner itself.
 
 Any link to `#cookie-settings` opens the banner: a footer menu item
 (`type: "url"`, `href: "#cookie-settings"`, label "Cookie settings"), a link
@@ -433,15 +444,18 @@ shows the banner as well. Any element with `data-tr-open-consent` also opens
 it. Without the banner the link does nothing.
 
 ```json
-{ "cookie_consent": { "manage_button": "none" } }
+{ "cookie_consent": { "manage_button": "floating" } }
 ```
+
+keeps the floating button on render version 19 and later.
 
 A write that leaves the banner on with `manage_button: "none"` while no
 header, footer or other partial and no menu has a `#cookie-settings` link or
 `data-tr-open-consent` element returns the warning
 `cookie_reopen_link_missing`; the publication's job `warnings` repeat it.
-`null` restores `"floating"`. The setting needs no new render version: the
-default output is unchanged.
+`null` restores the render version's default: `"footer"` from render version
+19, `"floating"` before. An explicit `"footer"` or `"floating"` applies on
+every render version.
 
 The object is shallow-merged, so omitted fields keep their saved values. In a
 signed hosted preview the banner and optional-script gate work, but the frame
@@ -454,8 +468,10 @@ uses the normal `tr_consent` cookie.
 The banner's parts carry classes for site CSS: `.tr-consent` (the overlay),
 `.tr-consent__panel`, `.tr-consent__title`, `.tr-consent__body`,
 `.tr-consent__link`, `.tr-consent__actions`, `.tr-consent__btn` with
-`--ghost` and `--primary`, and `.tr-consent__manage` (the floating button that
-reopens it; to remove it, set `manage_button: "none"` rather than hiding it in CSS). It takes `--color-primary`, `--font-body` and `--font-heading`
+`--ghost` and `--primary`, `.tr-consent__manage` (the floating button that
+reopens it; to remove it, set `manage_button` to `"footer"` or `"none"` rather
+than hiding it in CSS) and `.tr-consent-footer-link` (the paragraph holding the
+footer link). It takes `--color-primary`, `--font-body` and `--font-heading`
 from the theme. From render version 16 its styles sit in a cascade layer, so a
 class rule such as `.tr-consent__title { font-weight: 700 }` changes it
 without `!important`. In version 16 a bare element rule in site CSS (`h2`, `p`,
@@ -767,6 +783,7 @@ deploy. Sites created before render versions existed render with version 1.
 | 16      | Clearer groups and compact controls: plain site CSS changes every platform value without `!important` (block settings reach CSS as data attributes, and only custom properties are written inline), platform media queries follow the site's responsive widths, and many blocks gain alignment, size, colour and layout settings. A form's Back and Submit buttons sit together in a `.form-actions` row, so CSS that placed the button in the form grid targets `form > .form-actions`. The cookie banner's styles sit in a cascade layer. The full list is in `read_site_settings` → `render.upgrades`.                                                                                                                                                                                                                                                                                                                                                  |
 | 17      | Fonts from site CSS and a steady cookie banner. Weights and italics written in CSS count as in use (see [weights in use](../fonts/#weights-in-use)), so `fonts.load` is only needed for weights the planner cannot see. Bare element rules in site CSS (`h2`, `p`, `a`, `button`) no longer restyle the cookie banner, and its buttons use the body font at weight 600. See [Styling the banner](#styling-the-cookie-banner).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | 18      | A page that opens with a heading: a Heading, Rich heading or Text block that is the first block on the page has no space above its heading, like the first heading in a section, column or container. Before, its 1.6em space moved the whole page down.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| 19      | Cookie settings in the footer: with the cookie banner on, visitors reopen it from a small "Cookie settings" link at the end of the site footer instead of the floating "Cookies" button, which could cover forms on phones. The link takes the footer's colour and font; a footer that already links to `#cookie-settings` gets no second link. `cookie_consent.manage_button: "floating"` keeps the button. See [Reopening the banner](#reopening-the-banner).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## Site-specific responsive widths (Core 0.2.28)
 

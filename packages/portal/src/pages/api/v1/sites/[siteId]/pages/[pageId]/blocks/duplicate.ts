@@ -9,11 +9,11 @@
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../../../lib/api-auth';
 import { apiStructureLockRefusal } from '../../../../../../../../lib/structure-lock';
-import { bodyShapeError } from '../../../../../../../../lib/api-body';
+import { bodyShapeError, containerTargetError } from '../../../../../../../../lib/api-body';
 import { vstore } from '../../../../../../../../lib/version-store';
 import { duplicateBlock, BlockMutationError } from '../../../../../../../../lib/block-mutations';
 import { mergeWorkingCopy, readWorkingCopy, workingCopyDiffers } from '../../../../../../../../lib/working-copy';
-import { blockWriteResponse, blockWriteSummary } from '../../../../../../../../lib/block-write-response';
+import { blockWriteAnswer, blockWriteResponse } from '../../../../../../../../lib/block-write-response';
 import type { Block } from '@typeroll/shared';
 
 export const POST: APIRoute = async ({ request, params }) => {
@@ -25,6 +25,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const pageId = params.pageId;
   if (!pageId) return apiError('Missing pageId');
   const body = await request.json().catch(() => null) as { block_id?: string; response?: string } | null;
+  const targetError = containerTargetError(ctx.siteId, (body as { target?: unknown } | null)?.target, '/duplicate');
+  if (targetError) return apiError(targetError, 400);
   if (!body?.block_id) return apiError('block_id is required');
   const shapeError = bodyShapeError(body, ['block_id', 'response']);
   if (shapeError) return apiError(shapeError, 400);
@@ -45,7 +47,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     const unsaved = workingCopyDiffers(page, await mergeWorkingCopy(ctx, wcTarget, { blocks: tree }));
     return apiResponse(ctx, {
       duplicate_id,
-      ...(mode === 'summary' ? blockWriteSummary(tree, duplicate_id, unsaved) : { blocks: tree }),
+      ...blockWriteAnswer(mode, tree, duplicate_id, unsaved),
     });
   } catch (e) {
     if (e instanceof BlockMutationError) {

@@ -50,6 +50,21 @@ target: { kind: "page" | "partial" | "template", id: string }
 
 For pages, `page_id: "<id>"` is a shorthand for `target: { kind: "page", id: "<id>" }`. Older prompts still work; new patterns should prefer `target`.
 
+Over REST the container is part of the path, not a body key.
+`/api/v1/sites/{siteId}/containers/{kind}/{id}/blocks` takes the same bodies
+as `/api/v1/sites/{siteId}/pages/{pageId}/blocks`, for every kind. To change
+one block of the footer:
+
+```
+PATCH /api/v1/sites/{siteId}/containers/partial/footer/blocks
+{ "block_id": "...", "data": { "text": "Contact us" } }
+```
+
+Partial edits land in the partial's draft like page edits; save them with
+`POST /api/v1/sites/{siteId}/working-copy/partial/footer`. A `target` sent to
+the `/pages/{pageId}/blocks` address is refused with `400`, naming the address
+that takes it.
+
 ```
 "Add a feature_grid in the header that appears on every page."
   → add_block target={kind:"partial", id:"header"} block={type:"core/feature_grid", ...}
@@ -126,9 +141,11 @@ where the block now sits.
 MCP asks for this by default. Pass `response: "tree"` to get the whole tree
 instead, or read it with `get_page_blocks`.
 
-Over HTTP the default stays the tree, so existing callers see no change. Ask
-for the compact answer with `response: "summary"` as a body key (`POST`,
-`PATCH`, `PUT`) or a query parameter (any method, including `DELETE`):
+Over HTTP the default stays the tree, so existing callers keep it. From Core
+0.3.28 the tree answer carries the same fields beside `blocks` (`block`,
+`parent_id`, `slot_index`, `position`, `has_unsaved_changes`). Ask for the
+compact answer with `response: "summary"` as a body key (`POST`, `PATCH`,
+`PUT`) or a query parameter (any method, including `DELETE`):
 
 ```
 POST   /api/v1/sites/{siteId}/pages/{pageId}/blocks?response=summary

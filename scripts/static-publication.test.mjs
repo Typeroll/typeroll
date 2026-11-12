@@ -234,7 +234,7 @@ const FULL_SETTINGS = {
   styles: [], language: 'sv',
   cookie_consent: {
     enabled: true, text: 'Consent', privacy_policy_url: '/privacy', scripts_necessary: '<meta name="n">', scripts_optional: '<meta name="o">', reload_after_consent: true, manage_button: 'none',
-    labels: { title: 'Cookies', reject: 'Reject', necessary: 'Necessary', accept_all: 'All', privacy_link: 'Privacy', manage: 'Manage', manage_button: 'Settings' },
+    labels: { title: 'Cookies', reject: 'Reject', necessary: 'Necessary', accept_all: 'All', privacy_link: 'Privacy', manage: 'Manage', manage_button: 'Settings', footer_link: 'Cookie settings' },
   }, twitter_handle: '@site',
   default_seo_suffix: ' | Site', default_meta_description: 'Description', image_sizes_default: '100vw', default_og_image: '/og.png',
   organization: { name: 'Org', logo: '/org.png', same_as: ['https://example.invalid/org'] },
@@ -291,8 +291,13 @@ test('every cookie banner setting and label is published', () => {
 });
 
 test('publication keeps a valid cookie reopen button choice and rejects others', () => {
-  const value = input(); value.settings.cookie_consent = { enabled: true, manage_button: 'none' };
-  assert.equal(projectStaticPublication(value, identity).settings.cookie_consent.manage_button, 'none');
+  const value = input();
+  for (const choice of ['footer', 'floating', 'none']) {
+    value.settings.cookie_consent = { enabled: true, manage_button: choice };
+    assert.equal(projectStaticPublication(value, identity).settings.cookie_consent.manage_button, choice);
+  }
+  value.settings.cookie_consent = { enabled: true, labels: { footer_link: 'Kakinställningar' } };
+  assert.equal(projectStaticPublication(value, identity).settings.cookie_consent.labels.footer_link, 'Kakinställningar');
   value.settings.cookie_consent.manage_button = 'sticky';
   assert.throws(() => projectStaticPublication(value, identity), /cookie_consent\.manage_button/);
 });

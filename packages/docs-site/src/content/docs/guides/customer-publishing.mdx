@@ -719,7 +719,12 @@ retry after fixing the reported problem. Verified preparation is retained.
 For an existing organization, after upgrading Core, go to **Publishing → Builds**
 and select **Update build engine** when no build is running. From Core 0.2.74 the
 Builds card says **Build engine update available** when the engine runs older
-generated code than the installed Core; publishing keeps working until you update. Wait for verification
+generated code than the installed Core; publishing keeps working until you update.
+`GET /api/v1/publishing/builds` (MCP `read_organization_build_engine`) reports
+the same for every engine as `update_available` with `update_reason`:
+`engine_source_changed` (older code; publishing works) or `capability_missing`
+(publishing is blocked until the update). With automatic engine updates on, the
+card says the next publication installs the update first. Wait for verification
 before publishing again. Updating the engine does not require reconnecting GitHub
 or Cloudflare when the existing connections still have the required permissions.
 Since November 2026 Cloudflare's build hosts refuse the private `/proc` that
@@ -1199,6 +1204,70 @@ already frozen with an older release retains its original media code; retrying
 that exact snapshot does not upgrade it. If a failure remains after retries,
 report the deployment ID and diagnostic. A failed build does not activate a new
 live artifact.
+
+### The built site could not be uploaded to build storage
+
+`job.failure.code` `artifact_artifact_upload_failed` ("the build failed while
+uploading the built site: build storage did not accept the built site") means
+the build finished, but the Organization's private build storage (Cloudflare
+R2) refused the finished artifact, usually with HTTP 5xx during a short storage
+outage. It says nothing about the site's content. The live site keeps serving
+the previous publication and prepared images are kept.
+
+What happens automatically:
+
+- From Core 0.3.28, Typeroll runs the same frozen build once more when the build
+  engine reports this failure. Media prepared by the first attempt is reused.
+  This applies to every build engine revision, without an engine update.
+- A build engine updated to Core 0.3.28 or later also repeats the upload itself
+  up to three times within a few seconds before it reports a failure, and the
+  failure's cause names what storage answered, for example
+  `build storage refused the artifact upload (HTTP 503)`. Older engines report
+  the failure after the first refused upload.
+
+If the publication still fails with this code, publish again after a few
+minutes; nothing needs to be changed first. If it keeps failing, check the
+Cloudflare status page for R2 and report the deployment ID and diagnostic.
+
+The same storage outage can also print `TYPEROLL_RENDER_CACHE unavailable` and
+`TYPEROLL_MEDIA_CACHE unavailable` in the build log. Both caches are optional:
+without them the build renders every page and downloads every required media
+file instead of reusing the previous publication's, which takes longer but
+produces the same site. From Core 0.3.28 the lines name the reason, for
+example `TYPEROLL_RENDER_CACHE unavailable (HTTP 503)`. A cache that has
+expired reports HTTP 404 instead, which is harmless.
+
+### A request timed out while the built site was handed over
+
+`job.failure.code` `artifact_transfer_timeout` ("a request to Typeroll or to
+build storage did not answer in time") means the build finished rendering, but
+a request the build engine made while handing over the result, to Typeroll or
+to build storage, did not answer within its time limit. Build engines from
+before Core 0.3.28 report the same event as `artifact_build_failed` with the
+cause `TimeoutError: The operation was aborted due to timeout`. It says nothing
+about the site's content, and the live site is unchanged.
+
+From Core 0.3.28, Typeroll runs the same frozen build once more when this
+happens, on every build engine revision; prepared media is reused. A second
+timeout fails the publication: publish again after a few minutes. Other
+`artifact_build_failed` causes are not retried automatically; read the cause
+before publishing again.
+
+### Publishing stopped during an update of Typeroll
+
+While Typeroll Cloud rolls out a new release, two releases serve requests for a
+short time, and either may run the next step of a publication. A publication
+frozen by the new release used to fail with `publication_internal_error` when
+the previous release took its next step ("The original publication renderer
+is unavailable"). From Core 0.3.28 a publication stores its renderer before
+its frozen source is saved, so either release can continue it. If a step still
+reaches a release without the renderer, the job reports
+`publication_renderer_unavailable` only after waiting and retrying the step
+five times; publish again a few minutes later. The live site is unchanged.
+
+`publication_internal_error` itself always means an unexpected error in
+Typeroll, never a problem with the site's content. Retry the publication once;
+if it fails again, report the deployment ID.
 
 ### A queued build that does not start
 

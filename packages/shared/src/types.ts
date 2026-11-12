@@ -661,11 +661,13 @@ export interface CookieConsentSettings {
    */
   reload_after_consent?: boolean;
   /**
-   * How visitors reopen the banner after choosing. `floating` (the default)
-   * renders the "Cookies" button fixed bottom-left. `none` leaves it out; the
-   * site then links to `#cookie-settings` (or an element with
-   * `data-tr-open-consent`) from its footer, so withdrawing consent stays as
-   * easy as giving it.
+   * How visitors reopen the banner after choosing. `footer` (the default from
+   * render version 19) adds a "Cookie settings" link at the end of the site
+   * footer, unless the footer already links to `#cookie-settings`. `floating`
+   * (the default before render version 19) renders the "Cookies" button fixed
+   * bottom-left. `none` leaves both out; the site then links to
+   * `#cookie-settings` (or an element with `data-tr-open-consent`) from its
+   * footer, so withdrawing consent stays as easy as giving it.
    */
   manage_button?: CookieConsentManageButton;
   /**
@@ -676,7 +678,7 @@ export interface CookieConsentSettings {
   labels?: CookieConsentLabels;
 }
 
-export type CookieConsentManageButton = 'floating' | 'none';
+export type CookieConsentManageButton = 'footer' | 'floating' | 'none';
 
 export interface CookieConsentLabels {
   title?: string;
@@ -688,6 +690,8 @@ export interface CookieConsentLabels {
   manage?: string;
   /** Visible text of that button; "Cookies" by default. */
   manage_button?: string;
+  /** Text of the platform's footer link that reopens the banner; "Cookie settings" by default. */
+  footer_link?: string;
 }
 
 // ─── Global blocks (header / footer / free) ──────────────────────────────

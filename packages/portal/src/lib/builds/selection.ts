@@ -5,7 +5,7 @@ import { ConnectionError } from '../publishing/connections';
 import { readBuildEngine } from './cloudflare';
 import { readGithubEngine, configureGithubEngine } from './github';
 import { configureBuildEngine } from './setup';
-import { readEngineConfiguration, assertEngineConnections, selectionPath, type BuildProvider, type BuildSelection } from './state';
+import { readEngineConfiguration, assertEngineConnections, selectionPath, type BuildProvider, type BuildSelection, type EngineConfiguration } from './state';
 import { CLOUDFLARE_ENGINE_SOURCE } from './setup';
 import { GITHUB_ENGINE_SOURCE } from './github-source';
 
@@ -15,17 +15,34 @@ export async function readBuildSelection(org: string): Promise<BuildSelection & 
   return { ...selection, auto_update: selection.auto_update === true };
 }
 export async function selectedBuildProvider(org: string) { return (await readBuildSelection(org)).provider; }
+/**
+ * Why a ready engine should be updated, or null when it is current (or not
+ * ready, when setup decides instead):
+ * - capability_missing: it lacks a capability this Typeroll requires to publish;
+ * - engine_source_changed: it runs older generated code than this Typeroll installs.
+ * Engines in customer accounts never update themselves; with auto_update on,
+ * the next publication updates an engine with either reason first.
+ */
+export type EngineUpdateReason = 'capability_missing' | 'engine_source_changed';
+export function engineUpdateReason(config: EngineConfiguration | null | undefined): EngineUpdateReason | null {
+  if (!config || config.status !== 'ready') return null;
+  if (!config.static_verification || !config.media_preparation || config.publication_validation !== 1) return 'capability_missing';
+  const source = (config.provider ?? 'cloudflare') === 'github' ? GITHUB_ENGINE_SOURCE : CLOUDFLARE_ENGINE_SOURCE;
+  return config.engine_source_sha256 !== source ? 'engine_source_changed' : null;
+}
+
 export async function readBuildSettings(org: string) {
   const [selection, cloudflare, github] = await Promise.all([readBuildSelection(org), readBuildEngine(org), readGithubEngine(org)]);
   const engines = { cloudflare, github };
   for (const provider of ['cloudflare', 'github'] as const) {
-    const engine = await readEngineConfiguration(org, provider);
-    if (engine?.status === 'ready' && (!engine.static_verification || !engine.media_preparation || engine.publication_validation !== 1)) {
+    // The saved configuration may predate the provider field; the engine read here is this provider's.
+    const config = await readEngineConfiguration(org, provider);
+    const reason = engineUpdateReason(config && { ...config, provider });
+    engines[provider] = { ...engines[provider], update_available: reason !== null, update_reason: reason };
+    if (reason === 'capability_missing') {
       engines[provider] = { ...engines[provider], enabled: false, state: 'setup_required', issue: {
         code: 'build_engine_update_required', message: 'Update the build engine before publishing. Finish build setup to install and verify the required capabilities.',
       } };
-    } else if (engine?.status === 'ready' && engine.engine_source_sha256 !== (provider === 'github' ? GITHUB_ENGINE_SOURCE : CLOUDFLARE_ENGINE_SOURCE)) {
-      engines[provider] = { ...engines[provider], update_available: true };
     }
   }
   // Keep the existing top-level selected-engine fields for older API clients.

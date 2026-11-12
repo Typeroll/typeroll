@@ -37,6 +37,17 @@ describe('publication language warnings', () => {
       .toContain('cookie_consent.labels.manage, cookie_consent.labels.manage_button');
   });
 
+  it('asks for the footer link label instead of the floating button labels in footer mode', () => {
+    const { manage: _manage, manage_button: _button, ...shown } = labels;
+    const consent = { enabled: true, text: '<p>Rydym yn defnyddio cwcis.</p>', labels: shown };
+    const footer = publicationLanguageWarnings({ settings: { language: 'cy', render_version: 19, cookie_consent: consent } });
+    expect(footer).toHaveLength(2);
+    expect(footer[1]).toContain('for cookie_consent.labels.footer_link.');
+    expect(publicationLanguageWarnings({ settings: { language: 'cy', cookie_consent: { ...consent, manage_button: 'footer', labels: { ...shown, footer_link: 'Gosodiadau cwcis' } } } })).toHaveLength(1);
+    expect(publicationLanguageWarnings({ settings: { language: 'cy', render_version: 19, cookie_consent: { ...consent, manage_button: 'floating' } } })[1])
+      .toContain('cookie_consent.labels.manage, cookie_consent.labels.manage_button.');
+  });
+
   it('drops the banner warning once every label and the text are saved', () => {
     const warnings = publicationLanguageWarnings({ settings: { language: 'cy', cookie_consent: { enabled: true, text: '<p>Rydym yn defnyddio cwcis.</p>', labels } } });
     expect(warnings).toHaveLength(1);
@@ -56,6 +67,9 @@ describe('publication cookie reopen warnings', () => {
     expect(publicationCookieReopenWarnings({ settings, partials: [{ id: 'footer', kind: 'footer', blocks: [{ type: 'core/navigation_links', data: { links: [{ label: 'Cookie settings', href: '#cookie-settings' }] } }] }] })).toEqual([]);
     expect(publicationCookieReopenWarnings({ settings, menus: [{ id: 'footer', items: [{ id: 'c', type: 'url', href: '#cookie-settings', label: 'Cookies' }] }] })).toEqual([]);
     expect(publicationCookieReopenWarnings({ settings: { cookie_consent: { enabled: true } } })).toEqual([]);
+    // The platform's footer link, explicit or the render version 19 default, needs no link of the site's own.
+    expect(publicationCookieReopenWarnings({ settings: { cookie_consent: { enabled: true, manage_button: 'footer' } }, partials: [], menus: [] })).toEqual([]);
+    expect(publicationCookieReopenWarnings({ settings: { render_version: 19, cookie_consent: { enabled: true } }, partials: [], menus: [] })).toEqual([]);
     expect(publicationCookieReopenWarnings({ settings: { cookie_consent: { enabled: false, manage_button: 'none' } } })).toEqual([]);
   });
 });

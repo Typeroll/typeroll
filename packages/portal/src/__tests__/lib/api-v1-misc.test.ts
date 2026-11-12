@@ -275,7 +275,7 @@ describe('settings endpoints', () => {
     for (const value of ['hidden', true, 'Floating']) {
       const res = await patch({ manage_button: value });
       expect(res.status).toBe(400);
-      expect(JSON.stringify(res.body)).toContain('cookie_consent.manage_button must be one of: floating, none');
+      expect(JSON.stringify(res.body)).toContain('cookie_consent.manage_button must be one of: footer, floating, none');
     }
 
     const off = await patch({ enabled: true, manage_button: 'none' });
@@ -292,7 +292,14 @@ describe('settings endpoints', () => {
     expect(linked.status).toBe(200);
     expect(reopenWarning(linked.body)).toBe(false);
 
-    // The floating default never warns, and null restores it.
+    // The platform footer link never warns.
+    await getStore().deleteDoc(paths.menu(ORG, SITE, 'footer', MAIN_VERSION_ID));
+    const footer = await patch({ manage_button: 'footer' });
+    expect(footer.status).toBe(200);
+    expect(reopenWarning(footer.body)).toBe(false);
+    expect((await vstore.settings(ORG, SITE, MAIN_VERSION_ID))?.cookie_consent?.manage_button).toBe('footer');
+
+    // The render version's default never warns, and null restores it.
     const restored = await patch({ manage_button: null });
     expect(restored.status).toBe(200);
     expect(reopenWarning(restored.body)).toBe(false);

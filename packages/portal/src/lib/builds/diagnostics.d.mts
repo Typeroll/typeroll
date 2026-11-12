@@ -8,3 +8,4 @@ export function diagnosticCause(lines: string[]): string | null;
 export function buildDiagnostic(output: string | undefined, secrets?: Iterable<string>): BuildDiagnostic;
 export function normalizeDiagnostic(value: unknown): BuildDiagnostic | undefined;
 export function mediaFailureCode(stage: string, code: string, diagnostic?: BuildDiagnostic | null): string;
+export function transientFailureCode(stage: string, code: string, diagnostic?: BuildDiagnostic | null): string;

@@ -173,8 +173,9 @@ export function publicationSnippetWarnings(publication: { pages?: Document[]; pa
 }
 
 /**
- * A banner without the floating button whose published partials and menus
- * hold no link to #cookie-settings: visitors could not reopen it.
+ * A banner set to manage_button "none" (no floating button, no platform
+ * footer link) whose published partials and menus hold no link to
+ * #cookie-settings: visitors could not reopen it.
  */
 export function publicationCookieReopenWarnings(publication: { settings?: Record<string, any>; partials?: Document[]; menus?: Document[] }): string[] {
   const warning = cookieReopenLinkWarning(publication.settings?.cookie_consent, [...(publication.partials ?? []), ...(publication.menus ?? [])]);

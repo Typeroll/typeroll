@@ -12,6 +12,7 @@ import { sha256 } from '../builds/contract.mjs';
 import { buildTasksPath, type BuildTask } from '../builds/queue';
 import type { BuildDiagnostic } from '../builds/diagnostics.mjs';
 import { ConnectionError } from '../publishing/connections';
+import { buildFailureMessage } from '../builds/failure-message';
 
 interface Preparation { recipe?: string; full_scan?: boolean; org: string; site: string; state: 'queued' | 'running' | 'complete' | 'waiting' | 'failed'; request: string; active_request?: string; lease: string | null; lease_until: number; next_at: number; first_requested_at?: number; round_request?: string; task?: string | null; error?: string | null; entries?: Array<{ id: string; sha256: string }>; completed?: number; total?: number; unreadable?: string[]; retries?: number; error_code?: string | null; failed_task?: string | null }
 const jobPath = (org: string, site: string) => `media_preparations/${sha256(`${org}\0${site}`)}`;
@@ -211,15 +212,34 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
   return pending;
 }
 
+/** Core 0.2.149 and earlier stopped a job without recording why. */
+export const UNRECORDED_CAUSE = 'media_preparation_cause_unrecorded';
+
+/**
+ * Why a job that stopped before Core 0.2.150 stopped. Those releases kept the
+ * round's build task on the job but wrote no code, so a publication reported
+ * "Background image preparation stopped (unknown)" for as long as the job
+ * stayed failed. The task still says what happened when it ended; a task that
+ * never ended (or was removed) leaves the cause honestly unrecorded.
+ */
+export function stoppedWithoutCode(task: Pick<BuildTask, 'status' | 'error_code' | 'error_detail'> | null): { code: string; cause: string } {
+  if (task?.status === 'cancelled') return { code: 'build_cancelled', cause: 'The build engine cancelled the preparation build.' };
+  if (task?.status === 'failed' && task.error_code) return { code: task.error_code, cause: buildFailureMessage(task.error_code, task.error_detail) };
+  return { code: UNRECORDED_CAUSE, cause: 'It stopped under Core 0.2.149 or earlier, which did not record why.' };
+}
+
 export async function mediaPreparationStatus(org: string, site: string) {
   const item = await getStore().getDoc<Preparation>(jobPath(org, site));
   if (!item) return null;
   const task = item.task ? await getStore().getDoc<BuildTask>(`${buildTasksPath(org)}/${item.task}`) : null;
   // The build engine job id lets agents see the job among the organization's active builds.
   const running = item.state === 'running' && item.task;
-  return { state: item.state, completed: task?.media_cursor ?? item.completed ?? 0, total: task?.media_total ?? item.total ?? 0, error: item.error ?? null,
+  const legacy = item.state === 'failed' && !item.error_code ? stoppedWithoutCode(task) : null;
+  const error = legacy ? `${item.error ?? STOPPED} Cause: ${legacy.cause}` : item.error ?? null;
+  const failedTask = item.state === 'failed' ? item.failed_task ?? (legacy ? item.task : null) : null;
+  return { state: item.state, completed: task?.media_cursor ?? item.completed ?? 0, total: task?.media_total ?? item.total ?? 0, error,
     // The reported code of the round that stopped the job, or of the last round that will be retried.
-    error_code: item.error_code ?? null, ...(item.state === 'failed' && item.failed_task ? { failed_build_task: item.failed_task } : {}),
+    error_code: item.error_code ?? legacy?.code ?? null, ...(failedTask ? { failed_build_task: failedTask } : {}),
     ...(item.state === 'queued' && item.retries ? { retry: { attempt: item.retries, next_at: new Date(item.next_at).toISOString() } } : {}),
     build_job_id: running && item.active_request ? `media-${item.active_request}` : null, build_task: running ? item.task : null,
     // Library images whose stored file does not decode. They were skipped; upload a working copy to prepare them.
