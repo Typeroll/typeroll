@@ -44,8 +44,17 @@ export type ConversionGa4Event = typeof CONVERSION_GA4_EVENTS[number];
 export const CONVERSION_UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'utm_term'] as const;
 export type ConversionUtmKey = typeof CONVERSION_UTM_KEYS[number];
 
-/** Identifier parameters an app descriptor may carry, besides content_name. */
-const DESCRIPTOR_PARAMS = ['series_id', 'occurrence_id', 'interest_only'] as const;
+/**
+ * Identifier parameters a descriptor may carry, besides content_name: ids
+ * and categories an app or page defines, never answers. Text values are
+ * capped at 100 characters, `value` is a number and `currency` an ISO code.
+ */
+export const CONVERSION_PARAMS = [
+  'series_id', 'occurrence_id', 'interest_only',
+  'content_category', 'content_type', 'content_ids',
+  'listing_id', 'booking_type', 'value', 'currency',
+] as const;
+const DESCRIPTOR_PARAMS = CONVERSION_PARAMS;
 
 /** Reserved form fields the runtime posts; never stored as answers. */
 export const CONVERSION_FIELD_PREFIX = '_tr_';
@@ -66,7 +75,24 @@ export interface FormConversion {
   event_id: string;
   meta_event: ConversionMetaEvent | null;
   ga4_event: ConversionGa4Event | null;
-  params: Record<string, string | boolean | null>;
+  params: Record<string, string | number | boolean | null>;
+}
+
+/** Allowlisted descriptor parameters, cleaned. Same rules as the browser runtime. */
+export function descriptorParams(p: Record<string, unknown>): Record<string, string | number | boolean | null> {
+  const out: Record<string, string | number | boolean | null> = {};
+  for (const key of CONVERSION_PARAMS) {
+    const v = p[key];
+    if (key === 'value') { if (typeof v === 'number' && Number.isFinite(v) && v >= 0) out.value = v; continue; }
+    if (key === 'currency') { if (typeof v === 'string' && /^[A-Z]{3}$/.test(v)) out.currency = v; continue; }
+    if (typeof v === 'boolean') out[key] = v;
+    else if (v === null) out[key] = null;
+    else {
+      const text = cleanText(typeof v === 'number' ? String(v) : v, MAX_PARAM);
+      if (text) out[key] = text;
+    }
+  }
+  return out;
 }
 
 /** Page-level switch and providers, written onto <html data-tr-conversions>. */
@@ -159,7 +185,7 @@ export function buildFormConversion(args: {
 }): FormConversion | null {
   let meta: ConversionMetaEvent | null = null;
   let ga4: ConversionGa4Event | null = null;
-  const params: Record<string, string | boolean | null> = { form_id: args.form.id.slice(0, MAX_PARAM) };
+  const params: Record<string, string | number | boolean | null> = { form_id: args.form.id.slice(0, MAX_PARAM) };
   let found = false;
   for (const { result } of args.results) {
     const d = result?.conversion;
@@ -174,15 +200,7 @@ export function buildFormConversion(args: {
     if (name) params.content_name = name;
     const p = descriptor.params && typeof descriptor.params === 'object' && !Array.isArray(descriptor.params)
       ? descriptor.params as Record<string, unknown> : {};
-    for (const key of DESCRIPTOR_PARAMS) {
-      const v = p[key];
-      if (typeof v === 'boolean') params[key] = v;
-      else if (v === null) params[key] = null;
-      else {
-        const s = cleanText(v, MAX_PARAM);
-        if (s) params[key] = s;
-      }
-    }
+    Object.assign(params, descriptorParams(p));
     found = true;
     break;
   }
@@ -263,3 +281,61 @@ export function formConversionWarnings(
     return [`${subject}; they are sent from render version ${FORM_CONVERSIONS_RENDER_VERSION}, or set the Integrations setting form_conversions to "on". When you switch, remove any script of your own that fires a conversion on typeroll:form-success, or each submission counts twice.`];
   return [];
 }
+
+/**
+ * The page-wide conversion API, emitted once in <head> where conversions are
+ * on (BaseLayout). window.typerollConversions.report(descriptor) is the one
+ * way anything on the page reports a conversion: the forms runtime after a
+ * submission (Core's own or an app endpoint's reply), an Extension component
+ * through context.conversions.report, or a site script (a booking widget's
+ * success callback). It validates the descriptor against the same lists as
+ * the server, adds the page's campaign values, waits for cookie consent in
+ * memory and fires once per event id through Meta Pixel, GA4 and Google Tag
+ * Manager. It answers { status: "sent" | "queued" | "duplicate" | "invalid"
+ * | "off", sent: [...] } and announces each outcome as typeroll:conversion.
+ *
+ * descriptor: { event_id, meta_event?, ga4_event?, content_name?, params? }
+ * where event_id is 4-100 characters of A-Z a-z 0-9 _ - and stable for the
+ * thing that happened (a booking id), so a repeat never counts twice.
+ */
+export const CONVERSIONS_RUNTIME_JS = `(function(){
+"use strict";
+if(window.typerollConversions)return;
+var META=${JSON.stringify(CONVERSION_META_EVENTS)},GA4=${JSON.stringify(CONVERSION_GA4_EVENTS)},PARAMS=${JSON.stringify(CONVERSION_PARAMS)},UTM=${JSON.stringify(CONVERSION_UTM_KEYS)};
+var CFG=null,FIRED={},PENDING=[];
+function cfg(){if(CFG===null){CFG=false;try{var a=document.documentElement.getAttribute("data-tr-conversions");if(a)CFG=JSON.parse(a)||false}catch(e){CFG=false}}return CFG}
+function consent(){try{var c=window.typerollConsent;if(!c||typeof c.get!=="function")return "none";return c.get()||"unset"}catch(e){return "unset"}}
+function granted(){var s=consent();return s==="none"||s==="all"}
+function cookie(name){try{var m=document.cookie.match(new RegExp("(?:^|;\\s*)"+name+"=([^;]+)"));return m?decodeURIComponent(m[1]):""}catch(e){return ""}}
+function attr(name){var raw=cookie(name);if(!raw)return null;try{var x=JSON.parse(raw);return x&&x.v===1&&x.expires_at>Date.now()&&x.values&&typeof x.values==="object"?x.values:null}catch(e){return null}}
+function campaign(){var q,out={},any=false;try{q=new URLSearchParams(location.search)}catch(e){q=new URLSearchParams()}
+  UTM.forEach(function(k){var v=(q.get(k)||"").trim();if(v){out[k]=v.slice(0,100);any=true}});
+  if(!any){var s=attr("tr_attr_last_v1")||attr("tr_attr_first_v1")||{};UTM.forEach(function(k){var v=typeof s[k]==="string"?s[k].trim():"";if(v)out[k]=v.slice(0,100)})}
+  return out}
+function text(v){if(typeof v==="number")v=String(v);if(typeof v!=="string")return null;v=v.replace(/[\u0000-\u001f\u007f]/g," ").replace(/\s+/g," ").trim();return v?v.slice(0,100):null}
+function clean(d){if(!d||typeof d!=="object"||typeof d.event_id!=="string"||!/^[A-Za-z0-9_-]{4,100}$/.test(d.event_id))return null;
+  var m=META.indexOf(d.meta_event)>=0?d.meta_event:null,g=GA4.indexOf(d.ga4_event)>=0?d.ga4_event:null;if(!m&&!g)return null;
+  var p={},src=d.params&&typeof d.params==="object"?d.params:{};
+  var form=text(src.form_id);if(form)p.form_id=form;var name=text(d.content_name);if(name)p.content_name=name;
+  PARAMS.forEach(function(k){var v=src[k];if(k==="value"){if(typeof v==="number"&&isFinite(v)&&v>=0)p.value=v;return}if(k==="currency"){if(typeof v==="string"&&/^[A-Z]{3}$/.test(v))p.currency=v;return}if(typeof v==="boolean"||v===null)p[k]=v;else{var t=text(v);if(t)p[k]=t}});
+  var u=campaign();UTM.forEach(function(k){var v=text(src[k])||u[k];if(v)p[k]=v});
+  return {event_id:d.event_id,meta_event:m,ga4_event:g,params:p}}
+function send(c){var conf=cfg(),sent=[],p={};Object.keys(c.params).forEach(function(k){p[k]=c.params[k]});
+  if(conf.meta&&c.meta_event&&typeof window.fbq==="function"){try{window.fbq("track",c.meta_event,p,{eventID:c.event_id});sent.push("meta")}catch(e){}}
+  if(conf.ga4&&c.ga4_event&&typeof window.gtag==="function"){try{window.gtag("event",c.ga4_event,Object.assign({},p,{event_id:c.event_id}));sent.push("ga4")}catch(e){}}
+  if(conf.gtm&&Array.isArray(window.dataLayer)){window.dataLayer.push({event:"typeroll_conversion",typeroll_conversion:Object.assign({},p,{event_id:c.event_id,meta_event:c.meta_event,ga4_event:c.ga4_event})});sent.push("gtm")}
+  FIRED[c.event_id]=1;return sent}
+function announce(c,sent,queued){try{document.dispatchEvent(new CustomEvent("typeroll:conversion",{detail:{event_id:c.event_id,meta_event:c.meta_event,ga4_event:c.ga4_event,consent:consent(),sent:sent,queued:queued}}))}catch(e){}}
+function report(d){if(!cfg())return {status:"off",sent:[]};var c=clean(d);if(!c)return {status:"invalid",sent:[]};
+  if(FIRED[c.event_id]||PENDING.some(function(x){return x.event_id===c.event_id}))return {status:"duplicate",sent:[]};
+  if(!granted()){PENDING.push(c);announce(c,[],true);return {status:"queued",sent:[]}}
+  var sent=send(c);announce(c,sent,false);return {status:"sent",sent:sent}}
+document.addEventListener("typeroll:consent-activated",function(){if(!granted())return;var q=PENDING;PENDING=[];q.forEach(function(c){if(!FIRED[c.event_id])announce(c,send(c),false)})});
+/* The reserved fields a submission to Core's endpoint carries for conversions:
+   campaign values, the cookie choice, the page, and Meta's ids only with consent. */
+function fields(){var o={},u=campaign();UTM.forEach(function(k){if(u[k])o["_tr_"+k]=u[k]});o._tr_consent=consent();o._tr_page=location.origin+location.pathname;
+  if(granted()&&cfg().meta){var fbp=cookie("_fbp"),fbc=cookie("_fbc"),id="";try{id=(new URLSearchParams(location.search).get("fbclid")||"").trim()}catch(e){}
+    if(/^fb\\.\\d\\.\\d+\\.\\d+$/.test(fbp))o._tr_fbp=fbp;if(/^fb\\.\\d\\.\\d+\\.[A-Za-z0-9_-]{1,500}$/.test(fbc))o._tr_fbc=fbc;else if(/^[A-Za-z0-9_-]{1,500}$/.test(id))o._tr_fbc="fb.1."+Date.now()+"."+id}
+  return o}
+window.typerollConversions={report:report,consent:consent,fields:fields};
+})();`;

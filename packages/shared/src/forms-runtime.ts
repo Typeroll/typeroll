@@ -260,22 +260,18 @@ async function loadOptions(form){
 // ── Conversions ─────────────────────────────────────────────────────────
 // <html data-tr-conversions='{"meta":true,"ga4":true,"gtm":true}'> turns
 // them on (form-conversions.ts decides per site and render version). After
-// a successful submission the endpoint answers a validated conversion:
-// event names, an event id from the submission id and identifier/campaign
-// parameters, never answers. It fires once per event id per page view:
-// Meta fbq('track', …, {eventID}), GA4 gtag('event', …, {event_id}), GTM a
-// dataLayer push named typeroll_conversion. Without consent it waits in
-// memory and fires if the visitor accepts on this page view (the consent
-// runtime's typeroll:consent-activated, after the gated tags exist); it is
-// never stored. Every outcome is announced as typeroll:conversion on
-// document, for site scripts and tests.
+// a successful submission the reply's conversion (event names, an event id
+// from the submission id, identifier and campaign parameters, never
+// answers) goes to window.typerollConversions.report, which waits for
+// cookie consent and fires it once.
 //
 // Campaign values: utm_* from this page's URL, else the Attribution app's
 // last-touch, then first-touch cookie (tr_attr_last_v1, tr_attr_first_v1).
-// They go with every post as _tr_utm_*; the server keeps them on the
-// submission and hands them to app actions. Meta's _fbp/_fbc (or an fbc
-// built from ?fbclid=) are added only with consent, for the Conversions API.
-var CONV=null,FIRED={},PENDING=[],UTM=["utm_source","utm_medium","utm_campaign","utm_content","utm_term"];
+// They go with every post to Core's submit endpoint as _tr_utm_*; the server
+// keeps them on the submission and hands them to app actions. Meta's
+// _fbp/_fbc (or an fbc built from ?fbclid=) are added only with consent,
+// for the Conversions API.
+var CONV=null,UTM=["utm_source","utm_medium","utm_campaign","utm_content","utm_term"];
 function convCfg(){if(CONV===null){CONV=false;try{var a=document.documentElement.getAttribute("data-tr-conversions");if(a)CONV=JSON.parse(a)||false}catch(e){CONV=false}}return CONV}
 function consentState(){try{var c=window.typerollConsent;if(!c||typeof c.get!=="function")return "none";return c.get()||"unset"}catch(e){return "unset"}}
 function granted(){var s=consentState();return s==="none"||s==="all"}
@@ -294,16 +290,11 @@ function coreSubmit(form){try{return /\/api\/forms\/submit\/?$/.test(new URL(for
 // posts to an app endpoint keeps exactly the fields its app declared.
 function convFields(form,fd){if(!coreSubmit(form))return;var c=campaign();Object.keys(c).forEach(function(k){fd.set("_tr_"+k,c[k])});var cfg=convCfg();if(!cfg)return;fd.set("_tr_consent",consentState());fd.set("_tr_page",location.origin+location.pathname);if(cfg.meta){var ids=adIds();Object.keys(ids).forEach(function(k){fd.set(k,ids[k])})}if(form.__trNotice)fd.set("_tr_notice","1")}
 function convNotice(form){var cfg=convCfg();if(!cfg||!cfg.notice||form.__trNotice||!$('input[type="email"]',form))return;var p=document.createElement("p");p.className="form-conversion-notice";p.textContent=cfg.notice;var row=$(".form-actions",form)||$('[type="submit"]',form);if(row&&row.parentNode)row.parentNode.insertBefore(p,row);else form.appendChild(p);form.__trNotice=true}
-function sendConversion(c){var cfg=convCfg(),sent=[],p={};if(!cfg)return sent;Object.keys(c.params||{}).forEach(function(k){p[k]=c.params[k]});
-  if(cfg.meta&&c.meta_event&&typeof window.fbq==="function"){try{window.fbq("track",c.meta_event,p,{eventID:c.event_id});sent.push("meta")}catch(e){}}
-  if(cfg.ga4&&c.ga4_event&&typeof window.gtag==="function"){try{window.gtag("event",c.ga4_event,Object.assign({},p,{event_id:c.event_id}));sent.push("ga4")}catch(e){}}
-  if(cfg.gtm&&Array.isArray(window.dataLayer)){window.dataLayer.push({event:"typeroll_conversion",typeroll_conversion:Object.assign({},p,{event_id:c.event_id,meta_event:c.meta_event,ga4_event:c.ga4_event})});sent.push("gtm")}
-  FIRED[c.event_id]=1;return sent}
-function convAnnounce(c,sent,queued){try{document.dispatchEvent(new CustomEvent("typeroll:conversion",{detail:{event_id:c.event_id,meta_event:c.meta_event,ga4_event:c.ga4_event,consent:consentState(),sent:sent,queued:queued}}))}catch(e){}}
-function conversion(c){if(!convCfg()||!c||typeof c.event_id!=="string"||FIRED[c.event_id])return false;
-  if(!granted()){if(!PENDING.some(function(x){return x.event_id===c.event_id}))PENDING.push(c);convAnnounce(c,[],true);return false}
-  var sent=sendConversion(c);convAnnounce(c,sent,false);return sent.length>0}
-document.addEventListener("typeroll:consent-activated",function(){if(!granted())return;var q=PENDING;PENDING=[];q.forEach(function(c){if(!FIRED[c.event_id])convAnnounce(c,sendConversion(c),false)})});
+// Firing, the consent wait and the once-per-event-id rule live in the page's
+// conversion API (form-conversions.ts CONVERSIONS_RUNTIME_JS), shared with
+// app components and page scripts. It validates the reply's descriptor too,
+// which matters for forms that post to an app endpoint.
+function conversion(c){var api=window.typerollConversions;if(!api||!c)return false;try{var r=api.report(c);return r.status==="sent"&&r.sent.length>0}catch(e){return false}}
 function init(form){
   $all("[data-required]",form).forEach(function(el){el.required=el.getAttribute("data-required")==="true"});
   // A required checkbox group needs one checked box: every box is required

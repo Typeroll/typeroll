@@ -73,6 +73,40 @@ The page carries `<html data-tr-conversions>` while it is on.
 (or elsewhere) that fires a conversion on `typeroll:form-success`, in the same
 publication that turns form conversions on, or every sign-up counts twice.
 
+### Conversions from apps, components and page scripts
+
+Everything on the page reports through one API, `window.typerollConversions`,
+which exists where form conversions are on. It handles cookie consent, campaign
+values and the once-per-event-id rule the same way for every caller:
+
+- **Core forms**: automatically, from the submit reply.
+- **Forms that post to an app's own endpoint**: automatically, when the app's
+  completed reply (`done: true`) carries a `conversion`.
+- **Extension components**: `context.conversions.report(descriptor)`. A
+  component's `context.forms.submit()` reports the reply's conversion by
+  itself and sends the page's campaign values with the submission.
+- **Site scripts and embedded widgets** (a booking calendar's success
+  callback): `window.typerollConversions.report(descriptor)`.
+
+```js
+window.typerollConversions.report({
+  event_id: "cal_" + booking.uid,      // stable for what happened, 4–100 of A–Z a–z 0–9 _ -
+  meta_event: "Schedule",
+  ga4_event: "schedule",
+  content_name: "Intro call",
+  params: { booking_type: "intro" },
+});
+// → { status: "sent" | "queued" | "duplicate" | "invalid" | "off", sent: ["meta", "ga4", "gtm"] }
+```
+
+`params` takes `form_id`, `series_id`, `occurrence_id`, `interest_only`,
+`content_category`, `content_type`, `content_ids`, `listing_id`,
+`booking_type`, `value` (a number), `currency` (ISO code) and `utm_*`.
+Anything else is dropped. Campaign values are added from the page when they
+are missing. The Conversions API covers Core form submissions, including a
+component's `forms.submit()`. Conversions reported only in the browser are not
+sent server-side.
+
 ### What fires under each cookie choice
 
 | Choice at submit | In the browser | Conversions API (if set up) |

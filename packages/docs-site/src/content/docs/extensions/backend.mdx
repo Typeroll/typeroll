@@ -810,6 +810,10 @@ it to Meta's Conversions API (see Integrations → Form conversions). A
 becomes the success redirect from render version 20, when the form has none of
 its own.
 
+A form that posts to the app's own endpoint (`Form.target`) gets the same
+treatment. When the app's completed reply (`{ok: true, done: true, form_id}`)
+carries a `conversion` with its own stable `event_id`, the page reports it.
+
 The completed-action body also carries `attribution` when the visitor arrived
 with campaign values: `{utm_source?, utm_medium?, utm_campaign?, utm_content?,
 utm_term?}`, outside `data` and the field map. Use it for campaign fields the

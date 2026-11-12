@@ -4,6 +4,7 @@ import { buildCoreBlockRegistry } from '../index.js';
 import { renderFormHtml } from '../render-form.js';
 import { FORMS_RUNTIME_JS } from '../forms-runtime.js';
 import { buildConsentRuntime } from '../consent-scripts.js';
+import { CONVERSIONS_RUNTIME_JS } from '../form-conversions.js';
 import {
   buildFormConversion,
   conversionEventId,
@@ -130,6 +131,8 @@ function page(opts: { banner?: boolean; consent?: string; conversions?: string |
     window.eval(buildConsentRuntime(false));
     if (opts.consent === 'all') define();
   }
+  // BaseLayout puts the conversion API in <head> where conversions are on.
+  if (opts.conversions !== null) window.eval(CONVERSIONS_RUNTIME_JS);
   window.eval(FORMS_RUNTIME_JS);
   doc.dispatchEvent(new window.Event('DOMContentLoaded'));
   return { window, doc, calls };
@@ -242,5 +245,40 @@ describe('forms runtime conversions', () => {
       await new Promise((r) => setTimeout(r, 700));
       expect(assigned).toBe(expected);
     }
+  });
+});
+
+describe('the page conversion API', () => {
+  type Api = { report(d: unknown): { status: string; sent: string[] } };
+  const api = (window: Window) => (window as unknown as { typerollConversions: Api }).typerollConversions;
+
+  it('lets a page script or widget report a conversion once, with campaign values and no answers', () => {
+    const { window, calls } = page({ url: 'https://site.example.test/ai-planen?utm_campaign=nov' });
+    const booking = { event_id: 'cal_booking_123', meta_event: 'Schedule', ga4_event: 'schedule', content_name: 'AI-planen', params: { booking_type: 'intro', email: 'a@b.se', value: 0, currency: 'SEK' } };
+    expect(api(window).report(booking)).toEqual({ status: 'sent', sent: ['meta', 'ga4', 'gtm'] });
+    expect(api(window).report(booking)).toEqual({ status: 'duplicate', sent: [] });
+    expect(calls.fbq).toEqual([['track', 'Schedule', { content_name: 'AI-planen', booking_type: 'intro', value: 0, currency: 'SEK', utm_campaign: 'nov' }, { eventID: 'cal_booking_123' }]]);
+    expect(JSON.stringify(calls)).not.toContain('a@b.se');
+  });
+
+  it('refuses descriptors without a stable id or a known event', () => {
+    const { window, calls } = page({});
+    expect(api(window).report({ event_id: 'x', meta_event: 'Lead' }).status).toBe('invalid');
+    expect(api(window).report({ event_id: 'booking-1', meta_event: 'Purchase' }).status).toBe('invalid');
+    expect(api(window).report(null).status).toBe('invalid');
+    expect(calls.fbq).toEqual([]);
+  });
+
+  it('filters a conversion in an app endpoint reply the same way', async () => {
+    const { window, calls } = page({});
+    reply(window, [{ body: { ok: true, done: true, form_id: 'lunch', conversion: { event_id: 'app_claim_77', meta_event: 'SubmitApplication', ga4_event: 'nope', params: { listing_id: 'L1', company: 'Acme' } } } }]);
+    await submit(window);
+    expect(calls.fbq).toEqual([['track', 'SubmitApplication', { listing_id: 'L1' }, { eventID: 'app_claim_77' }]]);
+    expect(calls.gtag).toEqual([]);
+  });
+
+  it('reports nothing where conversions are off', () => {
+    const { window } = page({ conversions: null });
+    expect((window as unknown as { typerollConversions?: Api }).typerollConversions).toBeUndefined();
   });
 });

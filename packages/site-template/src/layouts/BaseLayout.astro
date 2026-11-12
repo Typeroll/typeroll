@@ -1,6 +1,6 @@
 ---
 import type { BreadcrumbItem, ContentType, ExtensionRuntimeSnapshot, Page, SiteApps, SiteSettings } from '@typeroll/shared';
-import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, EXTENSION_PLACEHOLDER_HIDDEN_CSS, renderClientCapabilityScripts, renderIntegrationTags, conversionPageConfig, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
+import { directionCss, languageDirection, resolveBreakpointWidths, resolveRenderVersion, siteStylesCss, styleElementText, siteThemeCss, webFontFamilies, googleFontsCssUrl, fontDelivery, SELF_HOSTED_FONTS_CSS_PATH, SELF_HOSTED_FONTS_DIRECTORY, FONT_PLAN_RENDER_VERSION, WEBFONT_FALLBACK_CSS, webfontFallbackCss, contentWellCss, platformLayer, usesCascadeLayers, PLATFORM_LAYER_ORDER_CSS, buildConsentEarlyPaintRuntime, buildExtensionRuntimeScript, EXTENSION_PLACEHOLDER_HIDDEN_CSS, renderClientCapabilityScripts, renderIntegrationTags, conversionPageConfig, CONVERSIONS_RUNTIME_JS, wrapConsentScripts, STICKY_HEADER_RUNTIME_JS, activeHeaderBehavior, HEADER_BEHAVIOR_CSS, HEADER_BEHAVIOR_RUNTIME_JS } from '@typeroll/shared';
 import SEOHead from '../components/SEOHead.astro';
 import CookieConsent from '../components/CookieConsent.astro';
 // Inlined rather than imported: from render version 14 they go into cascade
@@ -236,6 +236,9 @@ const siteStyles = siteStylesCss(settings.styles, { breakpoints: resolveBreakpoi
     {/* Page-level CSS after site CSS so a page can override the site theme. */}
     {page.custom_css && <style set:html={styleElementText(page.custom_css)} />}
     {settings.scripts_head && <Fragment set:html={settings.scripts_head} />}
+    {/* The page-wide conversion API (form-conversions.ts) comes before the
+        forms runtime, Extension components and site scripts that report to it. */}
+    {conversions && <script set:html={CONVERSIONS_RUNTIME_JS} />}
     {integrationsHead && <Fragment set:html={integrationsHead} />}
     {capabilityHead && <Fragment set:html={capabilityHead} />}
 

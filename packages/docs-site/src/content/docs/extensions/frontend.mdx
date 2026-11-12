@@ -26,6 +26,13 @@ to that mount and contains:
   bindings;
 - `handoff.read()` for the values a visitor typed into a native navigation
   form on the previous page (runtime 0.43.0+).
+- `conversions.report(descriptor)` to report a conversion (a booking, a claim)
+  through the site's Meta Pixel, GA4 and Google Tag Manager, after cookie
+  consent and once per `event_id`. It answers `{ status, sent }`, and
+  `{ status: "off" }` where the site has no form conversions and in previews.
+  See Integrations → Form conversions. `forms.submit()` already reports a
+  completed submission's conversion. Available from Core 0.3.29; check that
+  `context.conversions` exists before calling it.
 
 ## Build a native lead tool on Typeroll Forms
 

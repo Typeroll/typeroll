@@ -5,7 +5,7 @@
 import { Window } from 'happy-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
-import { buildConsentRuntime, buildCoreBlockRegistry, FORMS_RUNTIME_JS, paths, renderFormHtml } from '@typeroll/shared';
+import { buildConsentRuntime, buildCoreBlockRegistry, CONVERSIONS_RUNTIME_JS, FORMS_RUNTIME_JS, paths, renderFormHtml } from '@typeroll/shared';
 import type { Form } from '@typeroll/shared';
 
 process.env.AUTH_TRUST_PROXY_HOPS = '1';
@@ -69,6 +69,7 @@ async function submit(token: string, opts: { consent?: 'all' | 'necessary'; url?
       replies.push(text);
       return new Response(text, { status: res.status });
     }) as never;
+    window.eval(CONVERSIONS_RUNTIME_JS);
     window.eval(FORMS_RUNTIME_JS);
     doc.dispatchEvent(new window.Event('DOMContentLoaded'));
     const form = doc.querySelector('form')!;
@@ -142,6 +143,7 @@ describe('form conversions, browser and Conversions API', () => {
           const res = await POST({ request: new Request('http://localhost/api/forms/submit', { method: 'POST', headers: { 'x-forwarded-for': `10.30.0.${++ip}`, accept: 'application/json' }, body: fd }) } as never) as Response;
           return new Response(await res.text(), { status: res.status });
         }) as never;
+        w.eval(CONVERSIONS_RUNTIME_JS);
         w.eval(FORMS_RUNTIME_JS);
         w.document.dispatchEvent(new w.Event('DOMContentLoaded'));
         const form = w.document.querySelector('form')!;
