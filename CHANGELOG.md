@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.3.30 (candidate, MCP 0.45.138)
+
+- Deleting media removes its published copies: `delete_media` and both delete
+  routes remove the stored original, prepared variants and every copy a
+  publication wrote to the organization's public R2 bucket (variants,
+  receipts, share copies, every media-host address), purge Cloudflare's cache
+  for each URL and keep objects another record still uses. The record is
+  deleted at once; anything left (HTTP 207, `public_copies.failed`,
+  `purge_unavailable`) stays retryable from a tombstone. Warnings name
+  redirects and content that still point at the file. Deleting one of two
+  identical imports no longer removes the shared original, and
+  `purge_site_media` also removes published copies.
+- New admin tool `remove_published_media_copies`
+  (`POST /api/v1/sites/{siteId}/media/published-copies`) removes copies of
+  media deleted before this release, by media id (tombstones and publication
+  manifests) or exact URL, with `dry_run`. Cache purge needs the Cloudflare
+  connection's optional Cache Purge permission.
+- Unfinished (partial) form submissions are deleted `partial_ttl_days` after
+  their last step instead of being kept forever, and kept until a day after a
+  later abandoned-partial follow-up is due. Expired partials can no longer be
+  resumed or listed; unanswered app questionnaires are deleted after 30 days.
+  `partial_ttl_days` must be a whole number from 1 to 3650.
+- Block editor Save reloads the canvas after the commit, so it shows the saved
+  page.
+
 ## 0.3.29 (candidate, MCP 0.45.137)
 
 - Render version 20, form conversions: with Meta Pixel, Google Analytics 4 or
