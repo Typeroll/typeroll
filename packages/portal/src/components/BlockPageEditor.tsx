@@ -929,6 +929,10 @@ function BlockPageEditorSession({ siteId, page, workingCopy, previewUrl, liveUrl
       setDraft((d) => ({ ...d, date_updated: new Date().toISOString() }));
       setStatus('saved');
       window.setTimeout(() => setStatus('idle'), 1200);
+      // The flush above may already have reloaded the canvas, but that render
+      // ran during the commit and can read the page before it and the working
+      // copy after it (the edits before this save). Render the saved page.
+      reloadPreview();
     } catch (e) {
       setError((e as Error).message);
       setStatus('error');
