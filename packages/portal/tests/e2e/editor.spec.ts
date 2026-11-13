@@ -5,7 +5,7 @@
  *   - Click into a page editor
  *   - Edit the title → autosaves to the working copy (unsaved-changes state)
  *   - Deliberately Save via the Publish menu → all-changes-saved state
- *   - Confirm the preview iframe is loadable
+ *   - Confirm the reloaded canvas is ready and shows the page
  *
  * Runs against the seeded "default" site + page from the bundled fixtures
  * (no auth needed; the dev session falls in automatically when Firebase is
@@ -46,9 +46,13 @@ test('editor autosave → deliberate Save via Publish menu', async ({ page }) =>
   await page.getByRole('button', { name: /^save$/i }).click();
   await expect(page.locator('text=/All changes saved/i')).toBeVisible({ timeout: 10_000 });
 
-  // Preview iframe should be loadable.
-  const iframe = page.frameLocator('iframe[title="Preview"]');
-  await expect(iframe.locator('body')).toBeVisible();
+  // The canvas shows the saved page. Save reloads it in a fresh frame, which
+  // is still loading here: its `body` may be the new frame's empty initial
+  // document, so wait for the canvas to report that it is ready (the editor
+  // clears aria-busy on its ready message) and then for the page's blocks.
+  const canvas = page.locator('iframe[title="Preview"]');
+  await expect(canvas).toHaveAttribute('aria-busy', 'false', { timeout: 15_000 });
+  await expect(page.frameLocator('iframe[title="Preview"]').locator('[data-block-id]').first()).toBeVisible();
 
   // Restore the fixture title (best effort) so repeated local runs don't
   // drift the bundled fixtures further and further from the committed state.

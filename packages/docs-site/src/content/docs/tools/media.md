@@ -366,8 +366,150 @@ text. Your agent writes it and saves it with `update_media`.
 
 ## `delete_media`
 
-Deletes a media item's record by `media_id`. Check where the file is used
-first; pages that still reference it lose the image.
+Deletes a media item by `media_id`, and everything it left behind:
+
+- its stored original and its prepared image variants (an original that another
+  media record still uses, because the same file was imported twice, is kept);
+- every published copy in the organization's public R2 bucket: the file, its
+  `.v2.<width>.<hash>.webp`/`.avif` variants, their receipts and share copies,
+  at every media host address a publication served it from;
+- Cloudflare's cache of each of those URLs, on every media host of the site.
+
+Typeroll lists the copies first and writes a deletion tombstone that already
+names every URL to purge and every object to remove. Then the record is
+deleted, the objects are removed, the cache is purged and the tombstone shrinks
+to what is really left. A deletion interrupted half-way therefore leaves a
+tombstone that a retry finishes, including the cache purge.
+
+The response lists what happened in `private_objects`, `private_copies` and
+`public_copies` (`removed`, `failed`, `protected`, `unrecognized`, `purged`,
+`purge_unavailable`, `prefix_purge`):
+
+- `protected` copies belong to another existing media record (the same file
+  imported twice) and stay public until that record is deleted too.
+- `unrecognized` lists, per base name, keys that start with the file's published
+  name but are neither the file nor a copy the build writes (an older variant
+  format, or another name that begins with this one). They are **never removed
+  automatically**. Review them; remove the ones that are copies of this file
+  with [`remove_published_media_copies`](#remove_published_media_copies),
+  passing the media id and their URLs.
+
+`complete: true` (HTTP 200) means every copy was removed and its cache purged.
+Otherwise the response is HTTP 207 with `complete: false` and
+`incomplete_reasons`: `objects_failed`, `lookup_failed`, `objects_unrecognized`,
+`objects_protected`, `private_failed`, `purge_unavailable` or `purge_failed`.
+Anything a retry can finish keeps the tombstone pending, and
+`remove_published_media_copies` with the same media id retries exactly that.
+
+People and API keys with write access to the site can delete media. Extension
+installation credentials cannot, even with `media:write`: deleting removes the
+original and every published copy and cannot be undone (HTTP 403,
+`extension_media_delete_refused`).
+
+`references` and `warnings` list redirects whose target is one of the file's
+addresses (for example a `/wp-content/uploads/…` migration redirect) and pages,
+partials, menus and settings of the main version that still reference it.
+Nothing is changed for you: update or delete them. The live site keeps
+referencing the file until the next publication, so its pages show a missing
+image until you publish. Published copies cannot be restored; confirm with the
+owner first.
+
+Over REST: `DELETE /api/v1/sites/{siteId}/media/{mediaId}`.
+
+### Cache purge permission
+
+Removing an object from R2 does not remove it from Cloudflare's cache, and
+published copies carry a one-year cache lifetime. Typeroll purges each removed
+URL through the organization's Cloudflare connection, which needs the optional
+**Cache Purge** permission (`cache.purge`) for the account that holds the media
+host's zone. Without it, or when the media host is in a zone the connection
+cannot manage, the response reports `purge_unavailable` for that host with
+what to do: in Publishing, open the Cloudflare account, select Reconnect
+Cloudflare and approve Cache Purge (an API token needs Zone → Cache Purge), then
+call `remove_published_media_copies` again. For a zone at another provider,
+purge the listed URLs there.
+
+## `remove_published_media_copies`
+
+Removes published copies of media that is **already deleted** from the
+library: copies of records deleted before `delete_media` removed them, or what a
+deletion that answered 207 left. It uses the organization's stored Cloudflare
+connection; no Cloudflare token is handed over.
+
+- `media_ids`: deleted media ids. Typeroll finds their copies from the deletion
+  tombstone and from the media manifests frozen into this site's publications
+  (base file, variants, receipts, share copies, alias addresses, and the
+  private original and prepared variants).
+- `urls`: exact public URLs. Each must be on one of this site's media hosts,
+  under the site's media prefix, and be a media copy. Other hosts, other sites'
+  prefixes, live files and paths that are not media copies are refused with a
+  `code` (`foreign_host`, `foreign_prefix`, `reserved_path`,
+  `not_a_media_copy`, `invalid_url`, `website_host`).
+- `dry_run: true` lists exactly what would be removed and changes nothing.
+- `scan_publications: false` skips reading publication manifests.
+- `publications_after`: the `publications.next` value of the previous call.
+  Publications are read newest first, 25 per call, so one call stays within the
+  server's request budget. While `publications.remaining` is above 0, call again
+  with the same `media_ids` and this cursor.
+- `purge_prefixes: true` also purges the cache by URL prefix for each copy's
+  base name on every media host, for example
+  `media.example.com/media/ab12cd34ef/0123456789abcdef-photo.jpg`. That covers
+  query-string variants and derived URLs nobody recorded. The exact URLs are
+  always purged first; when the zone refuses a prefix purge, that file purge
+  stands and `cache.prefixes` reports `method: "files"` with the reason.
+
+A file that an existing media record still uses is never removed: its id is
+refused with `media_exists` (use `delete_media`) and its URLs are reported as
+`protected`. Copies that only publications reference are removed — including
+copies the live site still shows, which then show as missing images until the
+next publication. Keys under a media id's published name that are not
+recognized copies are reported in `public_copies.unrecognized` and never removed
+automatically. A URL of such a key is accepted when you pass it together with
+that media id, so you can remove it after review.
+
+Before anything is deleted, each media id's tombstone records every URL to
+purge and every object to remove (also for ids found only in publications). An
+explicit URL is purged on every media host of the site even when its object is
+already gone, so a retry clears the cache everywhere.
+
+The response reports each object (`objects`, `public_copies`,
+`private_copies`), each URL (`removed`, `absent`, `protected`, `refused`,
+`failed`), the cache purge per host (`cache.purged`, `cache.unavailable`,
+`cache.prefixes`), the publications read (`scanned`, `unreadable`, `remaining`,
+`next`), and `references`/`warnings` as for `delete_media`.
+
+`complete: true` (HTTP 200) only when every requested media id and URL was
+found, every copy was removed and its cache purged, and every publication was
+read. Otherwise the response is HTTP 207 with `complete: false` and
+`incomplete_reasons`:
+
+| Reason                                              | Meaning                                                                                 |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `media_not_found`                                   | No tombstone and no publication read so far lists the id.                               |
+| `media_refused`                                     | The media record still exists; use `delete_media`.                                      |
+| `url_refused`                                       | A URL is not a media copy of this site (see its `code`).                                |
+| `url_absent`                                        | No object at that URL now: removed earlier or never there. Its cache was purged anyway. |
+| `lookup_failed`, `objects_failed`, `private_failed` | Storage could not be listed or an object could not be removed.                          |
+| `objects_protected`                                 | Another existing media record uses the same file.                                       |
+| `objects_unrecognized`                              | Keys that need manual review (see above).                                               |
+| `purge_unavailable`, `purge_failed`                 | The cache of some URLs was not purged.                                                  |
+| `publications_unreadable`, `publications_remaining` | Some publications were not read.                                                        |
+
+A dry run reports the same, except for the cache. Calling again with the same
+input retries what is left. Requires an admin of the organization that owns the
+site: shares, Extension installation credentials and site keys minted outside
+that organization are refused. Over REST:
+`POST /api/v1/sites/{siteId}/media/published-copies`.
+
+```json
+{
+  "media_ids": ["f9fb91f4-…"],
+  "urls": [
+    "https://media.example.com/media/ab12cd34ef/0123456789abcdef-photo.jpg"
+  ],
+  "dry_run": true
+}
+```
 
 ## Media URLs
 
@@ -517,11 +659,24 @@ irreversible, so it has two preconditions:
   key or an organization key of the owning organization. Shared access is
   refused.
 
-The response counts `records`, `objects_deleted`, `records_removed` and
-`records_retained`. When some objects cannot be removed the call answers HTTP 207
-and lists them in `failed`; their records are kept so nothing becomes
-untraceable, and calling again retries exactly those. Over REST:
-`POST /api/v1/sites/{siteId}/media/purge`.
+One call handles at most 20 media records, in id order, so it stays within the
+server's request budget. The response counts `records` (handled by this call),
+`records_total`, `objects_deleted`, `records_removed`, `records_retained` and
+`remaining`, and reports the site's published copies in the public bucket and
+the cache purge of their URLs in `public_copies`, as for
+[`delete_media`](#delete_media). `complete: true` (HTTP 200) means nothing is
+left. Otherwise the call answers HTTP 207:
+
+- `remaining` above 0: call again until it is 0. Removed records are gone, so
+  the next call continues with the rest; pass `after` with the returned `next`
+  to move past records that keep failing.
+- `failed` lists objects that could not be removed; their records are kept so
+  nothing becomes untraceable, and calling again retries exactly those.
+- `public_copies.unrecognized` lists keys under a file's published name that are
+  not recognized copies. They are reported, not removed: review them.
+
+Over REST: `POST /api/v1/sites/{siteId}/media/purge`, with an optional JSON body
+`{ "after": "<next>" }`.
 
 Permanent deletion of the site (`delete_site`) is blocked with
 `media_present` until this purge has removed every media record. See

@@ -45,7 +45,7 @@ import type { APIRoute } from 'astro';
 import { getStore } from '../../../lib/datastore';
 import { paths, safeFormRedirectUrl, FORM_PREVIEW_FIELD, formMessage, languageDirection, buildFormConversion, postedAttribution, sanitizeAttribution } from '@typeroll/shared';
 import type { Form, Site } from '@typeroll/shared';
-import { completedRetentionFields, siteSubmissionRetentionDays } from '../../../lib/form-submissions';
+import { completedRetentionFields, isExpiredPartial, partialExpiryFields, siteSubmissionRetentionDays } from '../../../lib/form-submissions';
 import {
   verifyFormToken,
   isFormsSigningConfigured,
@@ -578,14 +578,16 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   const accepted: Record<string, unknown> = {};
   for (const f of fields) if (f.name in userData) accepted[f.name] = userData[f.name];
   const now = new Date();
-  const ttlDays = form.partial_ttl_days ?? 30;
   const subsPath = paths.submissions(orgId, siteId);
   let submissionId: string;
   let existing: Record<string, unknown> | null = null;
   if (state) {
     submissionId = state.submissionId;
     existing = await store.getDoc<Record<string, unknown>>(`${subsPath}/${submissionId}`);
-    if (!existing || existing.form_id !== formId || existing.status !== 'partial' || existing.step !== state.step) {
+    // A partial past its expiry counts as deleted, even before the store's
+    // TTL has removed it: the visitor starts over.
+    if (!existing || existing.form_id !== formId || existing.status !== 'partial' || existing.step !== state.step
+      || isExpiredPartial(existing, now.getTime())) {
       return protocolJson({ ok: false, errors: [{ field: null, code: 'bad_state', message: formMessage('bad_state', lang) }] }, 409);
     }
   } else {
@@ -617,17 +619,23 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
   // a retention period (lib/form-submissions).
   const completion = next ? null : completedRetentionFields(
     siteSubmissionRetentionDays(await store.getDoc<Site>(paths.site(orgId, siteId))), now);
+  // A partial submission expires the form's partial_ttl_days after its last
+  // step (later if an abandoned-partial follow-up is due after that);
+  // `delete_at` lets the store remove it then. Completing it clears that
+  // TTL unless the site's retention period sets a new one.
+  const expiry = completion ? { delete_at: null, ...completion } : partialExpiryFields(form, now);
   if (state) {
     // Only one request may advance a continuation. In particular, completing
     // the final step and claiming its actions must be one atomic transition.
     const advanced = await store.compareAndUpdateDoc<Record<string, unknown>>(
       `${subsPath}/${submissionId}`,
-      (saved) => saved.form_id === formId && saved.status === 'partial' && saved.step === state!.step,
+      (saved) => saved.form_id === formId && saved.status === 'partial' && saved.step === state!.step
+        && !isExpiredPartial(saved, now.getTime()),
       {
         data: acceptedData,
         step: current.id,
         status: next ? 'partial' : 'complete',
-        ...(completion ?? {}),
+        ...expiry,
         ...(!next?pendingCompletion(form):{}),
         ...(attribution ? { attribution } : {}),
         updated_at: now.toISOString(),
@@ -647,7 +655,7 @@ async function handleStepsMode(ctx: StepsCtx): Promise<Response> {
       // No IP address or user agent: abuse limits use them in memory only.
       created_at: now.toISOString(),
       updated_at: now.toISOString(),
-      ...(completion ?? { expires_at: new Date(now.getTime() + ttlDays * 86_400_000).toISOString() }),
+      ...(completion ?? expiry),
     });
   }
 

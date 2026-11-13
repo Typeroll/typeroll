@@ -3,6 +3,7 @@ import { resolveAppFormEndpoint, installedFormEmbedInfo, validInstallationFormTa
 // POST /api/v1/sites/{siteId}/forms      create a new form
 
 import type { APIRoute } from 'astro';
+import { parsePartialTtlDays } from '../../../../../../lib/forms/partial-ttl';
 import { formActionsPermission, formActionsView, validateFormActionsInput } from '../../../../../../lib/form-actions-api';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { getStore } from '../../../../../../lib/datastore';
@@ -93,6 +94,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     if (typeof validated === 'string') return apiError(validated, 400);
     actions = validated;
   }
+  const partialTtl = parsePartialTtlDays(body.partial_ttl_days);
+  if (typeof partialTtl === 'string') return apiError(partialTtl, 400);
   const doc: Omit<Form, 'id'> = {
     name: body.name,
     ...(body.target ? { target: body.target } : {}),
@@ -105,7 +108,7 @@ export const POST: APIRoute = async ({ request, params }) => {
     steps,
     ...(typeof body.styles === 'string' ? { styles: body.styles } : {}),
     ...(typeof body.kind === 'string' ? { kind: body.kind } : {}),
-    ...(typeof body.partial_ttl_days === 'number' ? { partial_ttl_days: body.partial_ttl_days } : {}),
+    ...(typeof partialTtl === 'number' ? { partial_ttl_days: partialTtl } : {}),
     created_at: new Date().toISOString(),
   };
   if(body.option_sources!==undefined && formActionsPermission(ctx)!=='admin')return apiError('Admin permission required',403);

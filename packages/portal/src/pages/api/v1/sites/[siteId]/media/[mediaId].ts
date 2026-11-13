@@ -4,9 +4,16 @@
 //        media type (lib/media/file-types.ts).
 // DELETE /api/v1/sites/{siteId}/media/{mediaId}
 //
-// DELETE removes the metadata doc but does NOT remove the underlying R2
-// object today. Wiring up r2_key cleanup is a separate ticket because
-// the in-app delete also doesn't do it.
+// DELETE removes the item and everything it left behind: its private
+// objects, its prepared variants, every published copy in the organization's
+// public bucket and the Cloudflare cache of their URLs (lib/media-deletion.ts
+// → deleteMediaItem). 207 when something is left for a retry
+// (POST media/published-copies with this media id); the record is deleted
+// either way and a tombstone keeps what is left.
+//
+// DELETE is irreversible (originals and every public copy go), so an
+// Extension installation credential is refused even with media:write; people
+// and API keys with write permission may delete.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
@@ -17,6 +24,7 @@ import { connectionFailure } from '../../../../../../lib/publishing/http';
 import { assertMediaNameUpdate } from '../../../../../../lib/media/file-types';
 import type { Media } from '@typeroll/shared';
 import { importStatus, type ImportingMedia } from '../../../../../../lib/media/import-retry';
+import { deleteMediaItem } from '../../../../../../lib/media-deletion';
 
 const WRITABLE: Array<keyof Media> = ['alt_text', 'filename', 'public_path'];
 
@@ -66,9 +74,15 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.extensionIdentity) {
+    return apiError('Extension installation credentials cannot delete media: deleting removes the original and every published copy and cannot be undone. Ask a person with write access to the site, or use an API key.', 403, ctx, { code: 'extension_media_delete_refused' });
+  }
   if (ctx.permission === 'read') return apiError('Media changes require write permission.', 403);
   const mediaId = params.mediaId;
   if (!mediaId) return apiError('Missing mediaId');
-  await getStore().deleteDoc(`${paths.media(ctx.orgId, ctx.siteId)}/${mediaId}`);
-  return apiResponse(ctx, { ok: true });
+  let outcome;
+  try { outcome = await deleteMediaItem(ctx.orgId, ctx.siteId, mediaId, { actor: ctx.personalUserId ?? ctx.keyPrefix ?? null }); }
+  catch (error) { return connectionFailure(error); }
+  if (!outcome) return apiError('Not found', 404, ctx);
+  return apiResponse(ctx, outcome.body, outcome.status);
 };

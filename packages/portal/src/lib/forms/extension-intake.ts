@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { collectStepFields, validateFieldValues, defaultErrorMessage, paths, type Form, type FormField, type Block } from '@typeroll/shared';
 import type { ReadWriteStore } from '../datastore';
+import { partialExpiryFields } from '../form-submissions';
 import { intakeNotificationPlan, dispatchIntakeNotifications, type IntakeNotice, type IntakeNotificationConfig } from './intake-notifications';
 
 export class IntakeError extends Error { constructor(message: string, readonly status = 400) { super(message); } }
@@ -8,7 +9,7 @@ export interface IntakeCondition { source: 'context' | 'answers'; field: string;
 interface IntakeField extends FormField { option_labels?: string[] }
 interface IntakeStep { id: string; title: string; fields: IntakeField[]; when?: IntakeCondition }
 export interface IntakeSnapshot { steps: IntakeStep[]; context: Record<string, unknown>; reference: Record<string, string>; revision: string; notifications?: IntakeNotificationConfig }
-export interface IntakeRecord { form_id: string; installation_id: string; data: Record<string, unknown>; status: 'partial' | 'complete'; expires_at?: string | null; intake: IntakeSnapshot; input_digest: string; answer_revision?: string; updated_at?: string; last_request?: { id: string; digest: string }; notifications?: Record<string, IntakeNotice> }
+export interface IntakeRecord { form_id: string; installation_id: string; data: Record<string, unknown>; status: 'partial' | 'complete'; expires_at?: string | null; delete_at?: unknown; intake: IntakeSnapshot; input_digest: string; answer_revision?: string; updated_at?: string; last_request?: { id: string; digest: string }; notifications?: Record<string, IntakeNotice> }
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const plain = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 const forbidden = new Set(['__proto__', 'prototype', 'constructor']);
@@ -103,7 +104,9 @@ export async function extensionIntake(store: ReadWriteStore, org: string, site: 
     const snapshot = intakeSnapshot(form, context, conditions, reference, notifications);
     const now = new Date().toISOString();
     await store.createDocIfMissing(path, { form_id: formId, installation_id: installation, data: {}, status: 'partial', intake: snapshot, input_digest: inputDigest,
-      created_at: now, updated_at: now, expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString() });
+      // An unanswered questionnaire expires after 30 days; `delete_at` lets the
+      // store remove it then, so the same subject can start a new one.
+      created_at: now, updated_at: now, ...partialExpiryFields(null, new Date(now)) });
     saved = await store.getDoc<IntakeRecord>(path);
   }
   if (!saved || saved.installation_id !== installation || saved.input_digest !== inputDigest) throw new IntakeError('The intake context changed. Start a new questionnaire.', 409);
@@ -139,7 +142,7 @@ export async function extensionIntake(store: ReadWriteStore, org: string, site: 
     const next: IntakeRecord = { ...saved, data: visible.data, status: input.action === 'complete' ? 'complete' : 'partial',
       answer_revision: randomUUID(), updated_at: now, last_request: { id: requestId, digest },
       // Only never-answered descriptors expire. A deliberate false/null save is durable.
-      expires_at: null };
+      expires_at: null, delete_at: null };
     next.notifications = createIntakeNotices(next, form.name, now);
     if (await store.compareAndReplaceDoc(path, saved, next)) { committed = next; break; }
     saved = await store.getDoc<IntakeRecord>(path);

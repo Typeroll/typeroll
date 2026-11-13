@@ -73,13 +73,19 @@ export default function MediaDetail({ siteId, item, onClose, onUpdated, onDelete
   }
 
   async function destroy() {
-    if (!confirm(`Delete "${item.filename}"? This removes the file from storage and any pages still linking to it will break.`)) return;
+    if (!confirm(`Delete "${item.filename}"? This removes the file and its published copies from storage and the cache; pages still showing it will show a missing image.`)) return;
     setBusy(true);
     setError(null);
     try {
       const res = await fetch(`/api/sites/${siteId}/media/${item.id}`, { method: 'DELETE' });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? 'Delete failed');
+      // 207: the record is gone, but some copies or cache entries remain and
+      // the removal is retryable. Warnings name redirects and content that
+      // still point at the file. Both must reach the person who deleted it.
+      const notes: string[] = (Array.isArray(data.warnings) ? data.warnings : []).filter((warning: unknown): warning is string => typeof warning === 'string');
+      if (res.status === 207 && notes.length === 0) notes.push('Some copies of this file were not removed yet. Retry with remove_published_media_copies for this media id.');
+      if (notes.length) window.alert(`Deleted "${item.filename}".\n\n${notes.join('\n\n')}`);
       onDeleted();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');

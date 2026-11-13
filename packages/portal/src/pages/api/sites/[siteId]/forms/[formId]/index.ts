@@ -4,6 +4,7 @@
 // through an admin API key / MCP (lib/form-actions-api.ts), with the same
 // validation. The portal chat assistant has no tool for them.
 
+import { parsePartialTtlDays } from '../../../../../../lib/forms/partial-ttl';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess, requirePermission, json } from '../../../../../../lib/access';
 import { getStore } from '../../../../../../lib/datastore';
@@ -57,7 +58,11 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
     if (conversionError) return json({ error: conversionError }, 400);
     update.conversion = body.conversion ?? {};
   }
-  if (body.partial_ttl_days !== undefined) update.partial_ttl_days = Number(body.partial_ttl_days);
+  if (body.partial_ttl_days !== undefined) {
+    const ttl = parsePartialTtlDays(body.partial_ttl_days);
+    if (typeof ttl === 'string') return json({ error: ttl }, 400);
+    update.partial_ttl_days = ttl;
+  }
   // Flat `fields` is authoring sugar — it replaces the step list with one
   // static step (steps are the only stored model).
   const bodyFields = (body as { fields?: FormField[] }).fields;

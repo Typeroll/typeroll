@@ -160,7 +160,8 @@ describe('opt-in retention', () => {
   let partialExpiry = '';
   beforeEach(async () => {
     const s = await store();
-    partialExpiry = ago(70);
+    // Not yet expired: an expired partial is deleted on read (forms-partial-expiry).
+    partialExpiry = ago(-20);
     await s.setDoc(subPath('old'), { form_id: 'lead', data: {}, status: 'complete', created_at: ago(100), updated_at: ago(100), expires_at: null });
     await s.setDoc(subPath('legacy-old'), { form_id: 'lead', data: {}, created_at: ago(200) });
     await s.setDoc(subPath('recent'), { form_id: 'lead', data: {}, status: 'complete', created_at: ago(5), updated_at: ago(5), expires_at: null });

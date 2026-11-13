@@ -6,7 +6,7 @@ import { publicMediaPath } from '../../../../../lib/publishing/domain-config';
 import { connectionFailure } from '../../../../../lib/publishing/http';
 import { assertMediaNameUpdate } from '../../../../../lib/media/file-types';
 import type { Media } from '@typeroll/shared';
-import { deleteMediaObjects } from '../../../../../lib/media-deletion';
+import { deleteMediaItem } from '../../../../../lib/media-deletion';
 
 const EDITABLE: Array<keyof Media> = ['filename', 'alt_text', 'title', 'caption', 'width', 'height', 'public_path'];
 
@@ -54,40 +54,27 @@ export const PUT: APIRoute = async ({ request, cookies, params, locals }) => {
 };
 
 /**
- * Remove a media item: the objects behind it, then the document.
+ * Remove a media item and everything it left behind: its private objects, its
+ * prepared variants, every published copy in the organization's public bucket
+ * and the Cloudflare cache of their URLs. See lib/media-deletion.ts →
+ * deleteMediaItem.
  *
- * Objects first, and the document is kept when any of them survive. The
- * previous order dropped the document regardless, trading a dangling link in
- * the UI against an orphan in storage — reasonable for one image, wrong as a
- * policy, because nothing ever came back to collect them and the document was
- * the only remaining index of those bytes.
- *
- * It also attempted R2 only when the record had no `storage`, so anything in
- * an organization's own bucket kept its bytes silently, and it never touched
- * variants. See lib/media-deletion.ts.
+ * The record is replaced by a tombstone and deleted first, so it is gone
+ * whatever storage says. What could not be removed is reported (HTTP 207) and
+ * stays retryable from the tombstone. Objects another record still uses stay.
  */
 export const DELETE: APIRoute = async ({ cookies, params, locals }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
   const writeCheck = requirePermission(guard.value, 'write');
   if (!writeCheck.ok) return writeCheck.response;
-  const { site, owner_org_id } = guard.value;
+  const { site, owner_org_id, session } = guard.value;
   const { mediaId } = params;
   if (!mediaId) return json({ error: 'Missing mediaId' }, 400);
 
-  const store = getStore();
-  const docPath = `${paths.media(owner_org_id, site.id)}/${mediaId}`;
-  const existing = await store.getDoc<Media>(docPath);
-  if (!existing) return json({ error: 'Not found' }, 404);
-
-  const outcome = await deleteMediaObjects(owner_org_id, existing);
-  if (outcome.failed.length > 0) {
-    // Retryable, and the record stays so the objects remain findable.
-    return json({
-      error: 'The stored files for this item could not be removed. Nothing was deleted; try again.',
-      failed: outcome.failed,
-    }, 502);
-  }
-  await store.deleteDoc(docPath);
-  return json({ ok: true, objects_deleted: outcome.deleted });
+  let outcome;
+  try { outcome = await deleteMediaItem(owner_org_id, site.id, mediaId, { actor: session.userId ?? null }); }
+  catch (error) { return connectionFailure(error); }
+  if (!outcome) return json({ error: 'Not found' }, 404);
+  return json(outcome.body, outcome.status);
 };
