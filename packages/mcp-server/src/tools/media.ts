@@ -285,11 +285,22 @@ export const mediaTools: ToolDef[] = [
   },
   {
     name: 'delete_media',
-    description: 'Delete a media item\'s metadata. (R2 object cleanup is a separate ops task.)',
+    description: 'Delete a media item and everything it left behind: its stored original and prepared variants, every published copy in the organization\'s public R2 bucket (the file, its .v2 webp/avif variants, receipts and share copies, on every media host address it was served at), and the Cloudflare cache of each of those URLs. Copies another existing media record still uses (the same file imported twice) are kept and listed under `protected`. The record is deleted at once; `public_copies` reports `removed`, `failed`, `protected`, `purged` and `purge_unavailable` (the Cloudflare connection lacks the optional Cache Purge permission, or the media host is not in a zone it can manage — the message says how to grant it). HTTP 207 means something is left: the deletion is kept as a pending tombstone and remove_published_media_copies with the same media id retries exactly that. `warnings`/`references` list redirects and main-version content that still point at the file (nothing is changed). The live site keeps referencing the file until the next publication, so publish afterwards. Confirm with the user before calling: published copies cannot be restored.',
     inputSchema: { media_id: z.string() },
     handler: withErrorBoundary(async (args, { client, siteId }) => {
       const res = await client.del(siteId, `media/${encodeURIComponent(args.media_id)}`);
       return ok(res);
     }),
+  },
+  {
+    name: 'remove_published_media_copies',
+    description: 'Remove published copies of media that is ALREADY DELETED from the library (deleted before delete_media removed copies, or a delete that returned 207): the objects in the organization\'s public R2 bucket and the Cloudflare cache of their URLs, through the organization\'s stored Cloudflare connection. Give `media_ids` (copies are found from the deletion tombstone and the media manifests of this site\'s publications, including variants, receipts, share copies, aliases and the private original and prepared variants) and/or exact `urls` (must be on one of this site\'s media hosts, under its media prefix, and be a media copy; anything else is refused with a code). Never removes a file an existing media record still uses (refused or `protected`; delete that record with delete_media instead) — copies used only by the live publication ARE removed, which breaks those images until the next publication. Run with `dry_run: true` first and show the user `public_copies.would_remove` and `urls`; then call again without it. Reports per object and per URL, `cache.purged`/`purge_unavailable` (grant the optional Cache Purge permission in Publishing → Cloudflare account → Reconnect, then call again), and `references`/`warnings` for redirects and content that still point at the files. HTTP 207 means something is left; calling again with the same input retries exactly that and is otherwise a no-op. Requires an admin of the organization that owns the site.',
+    inputSchema: {
+      media_ids: z.array(z.string()).max(100).optional().describe('Ids of deleted media records.'),
+      urls: z.array(z.string()).max(500).optional().describe('Exact public URLs of copies, e.g. https://media.example.com/media/<site prefix>/<hash>-<name>.jpg.v2.original.<hash>.webp.'),
+      dry_run: z.boolean().optional().describe('true: list exactly what would be removed and purged; nothing changes.'),
+      scan_publications: z.boolean().optional().describe('Default true: read this site\'s publication manifests to find copies by media id. false: use tombstones and urls only.'),
+    },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, 'media/published-copies', args))),
   },
 ];

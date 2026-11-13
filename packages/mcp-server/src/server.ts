@@ -135,6 +135,8 @@ export function effectFor(name: string): ToolEffect {
     || name === 'archive_site'
     || name === 'restore_site'
     || name === 'purge_site_media'
+    // Irreversible removal of published copies; owner-organization admin, as the route enforces.
+    || name === 'remove_published_media_copies'
     // Owner authority is checked by the route; admin is the least it needs.
     || name === 'delete_site'
     || name === 'install_extension'
