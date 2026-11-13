@@ -34,6 +34,31 @@ describe('published media copies', () => {
     expect(result.content[0]!.text).toContain('cache_purge_permission_required');
   });
 
+  it('passes the publication cursor and prefix purge through', async () => {
+    const { client, siteId, calls } = setup();
+    const args = { media_ids: ['m1'], publications_after: '2026-10-02T00:00:00.000Z~' + 'a'.repeat(64), purge_prefixes: true };
+    await tool('remove_published_media_copies').handler(args as never, { client, siteId });
+    expect(JSON.parse(calls[0]!.body!)).toEqual(args);
+  });
+
+  it('purge_site_media continues after a record id when given one', async () => {
+    const { client, siteId, calls } = setup(207, { remaining: 3, next: 'm20' });
+    await tool('purge_site_media').handler({ after: 'm20' } as never, { client, siteId });
+    await tool('purge_site_media').handler({} as never, { client, siteId });
+    expect(calls.map(call => [call.method, call.url, call.body])).toEqual([
+      ['POST', 'https://example.test/api/v1/sites/mysite/media/purge', JSON.stringify({ after: 'm20' })],
+      ['POST', 'https://example.test/api/v1/sites/mysite/media/purge', null],
+    ]);
+  });
+
+  it('describes completeness, unrecognized keys, batching and who may delete', () => {
+    const removal = tool('remove_published_media_copies').description;
+    for (const term of ['complete: true', 'incomplete_reasons', 'unrecognized', 'NEVER removed automatically', 'publications_after', 'url_absent', 'minted outside']) expect(removal).toContain(term);
+    const deletion = tool('delete_media').description;
+    for (const term of ['complete: true', 'unrecognized', 'Extension installation credentials cannot delete media']) expect(deletion).toContain(term);
+    expect(tool('purge_site_media').description).toContain('remaining');
+  });
+
   it('is an admin tool, and delete_media no longer calls copy cleanup a separate task', () => {
     expect(effectFor('remove_published_media_copies')).toBe('admin');
     expect(effectFor('delete_media')).toBe('write');

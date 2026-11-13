@@ -8,14 +8,23 @@
 //   urls               exact public URLs on this site's media hosts
 //   dry_run            true lists exactly what would be removed
 //   scan_publications  false skips reading publication manifests
-// Copies an existing media record still uses are never removed. Answers 207
-// when something is left (an object, a lookup, or a cache purge the Cloudflare
-// connection may not make); calling again retries exactly that.
-// lib/media-deletion.ts → removePublishedMediaCopies. MCP:
-// remove_published_media_copies. Admin of the owning organization only.
+//   publications_after publications.next of a previous call: read the next
+//                      batch of older publications
+//   purge_prefixes     true also purges each copy's base by URL prefix
+// Copies an existing media record still uses are never removed. Answers 200
+// with `complete: true` only when everything requested was removed and
+// purged; otherwise 207 with `incomplete_reasons` (an object, a lookup, an
+// unrecognized key, a cache purge the Cloudflare connection may not make, an
+// id or URL that was not found, publications not read yet); calling again
+// retries what is left. lib/media-deletion.ts → removePublishedMediaCopies.
+// MCP: remove_published_media_copies.
+//
+// Admin of the owning organization only, with the same guard as media/purge:
+// shares, Extension installation credentials and site keys minted outside the
+// owning organization are refused.
 
 import type { APIRoute } from 'astro';
-import { apiError, apiResponse, isApiSiteOwner, requireApiKey } from '../../../../../../lib/api-auth';
+import { apiError, apiResponse, requireApiKey, requireApiSiteLifecycleChange } from '../../../../../../lib/api-auth';
 import { removePublishedMediaCopies } from '../../../../../../lib/media-deletion';
 import { connectionFailure } from '../../../../../../lib/publishing/http';
 
@@ -24,7 +33,8 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId, { allowArchivedWrites: true });
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  if (!isApiSiteOwner(ctx) || ctx.permission !== 'admin') {
+  const allowed = await requireApiSiteLifecycleChange(ctx);
+  if (!allowed.ok) {
     return apiError('Removing published media copies requires an admin of the organization that owns the site.', 403, ctx, { code: 'admin_required' });
   }
   const body = await request.json().catch(() => null) as Record<string, unknown> | null;

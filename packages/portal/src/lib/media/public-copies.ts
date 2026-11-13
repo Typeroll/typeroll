@@ -21,7 +21,10 @@
 //   served), the key its default name maps to, and — for records that are
 //   already gone — the media manifests frozen into the site's publications.
 // - Each base key is LISTED in the bucket and only the base object and the
-//   recognised derived suffixes are taken. Nothing is matched by name.
+//   recognised derived suffixes are taken. Nothing is matched by name. Any
+//   other key under a base (an older derived format, or another name that
+//   starts with this one) is never removed automatically: it is reported as
+//   `unrecognized` for manual review and the removal counts as incomplete.
 // - An object stays when an existing media record still claims it: the same
 //   bytes imported twice publish once and share their copies (AT-14).
 // - Explicit URLs must be on one of this site's media hosts, under this
@@ -29,6 +32,13 @@
 // - Removed URLs are purged on every media host of the site. A connection
 //   without Cloudflare's optional `cache.purge` permission (or a zone it
 //   cannot reach) is reported as `purge_unavailable`, never swallowed.
+// - Optionally (`purge_prefixes`) each base is also purged by URL prefix on
+//   every media host, which covers query-string variants and derived URLs
+//   nobody recorded. Prefix purge is tried after the file purge; when the zone
+//   refuses it the file purge stands and the report says so.
+// - Publications are read in batches (PUBLICATION_SCAN_BATCH snapshots per
+//   call) so one call stays within a Worker's subrequest budget; the scan
+//   returns `remaining` and a `next` cursor to continue from.
 
 import { paths, type Media, type Redirect } from '@typeroll/shared';
 import { AwsClient } from 'aws4fetch';
@@ -73,12 +83,22 @@ export interface PublicCopyStorage {
   remove(bucket: string, key: string): Promise<void>;
 }
 
-export interface CachePurger { purge(urls: string[]): Promise<void> }
+export interface CachePurger {
+  purge(urls: string[]): Promise<void>;
+  /** Purge by URL prefix (`host/path`, no scheme). Absent when the connection cannot. */
+  purgePrefixes?(prefixes: string[]): Promise<void>;
+}
 
 /** Cloudflare purges at most this many URLs per request on every plan. */
 export const PURGE_URLS_PER_REQUEST = 30;
-/** Publications read when discovering copies of records that are already deleted. */
-export const MAX_SCANNED_PUBLICATIONS = 200;
+/** Prefixes per purge request; kept at the URL limit, the lowest any plan allows. */
+export const PURGE_PREFIXES_PER_REQUEST = 30;
+/**
+ * Publication snapshots read per call when discovering copies of records that
+ * are already deleted. Each snapshot is several reads, so one call stays well
+ * inside a Worker's subrequest budget; the scan returns a cursor to continue.
+ */
+export const PUBLICATION_SCAN_BATCH = 25;
 
 // Suffixes the build writes beside a base object (lib/publishing/r2-build-grants.ts):
 // responsive variants and their receipts, the publication receipt, and share copies.
@@ -211,10 +231,17 @@ export interface CopyObjectResult {
   bucket: 'public' | 'private';
   key: string;
   media_id: string | null;
-  status: 'would_remove' | 'removed' | 'failed' | 'protected';
+  /**
+   * `unrecognized`: listed under one of the media's base keys, but neither the
+   * base object nor a derived suffix the build writes. Never removed
+   * automatically; review it and remove it by URL if it is a copy.
+   */
+  status: 'would_remove' | 'removed' | 'failed' | 'protected' | 'unrecognized';
   urls?: string[];
   referenced_by?: string;
   reason?: string;
+  /** For `unrecognized`: the base key it was listed under. */
+  base?: string;
 }
 
 export interface CachePurgeReport {
@@ -223,7 +250,15 @@ export interface CachePurgeReport {
   failed: Array<{ host: string; reason: string; urls: number }>;
   /** URLs whose cache was not purged; a retry purges them. */
   pending_urls: string[];
+  /**
+   * Prefix purge per host, when asked for: `prefix` when the zone purged the
+   * prefixes, `files` when it refused them (the file purge of every known URL
+   * stands), `skipped` when the file purge for the host did not complete.
+   */
+  prefixes: Array<{ host: string; prefixes: number; method: 'prefix' | 'files' | 'skipped'; reason?: string }>;
 }
+
+const emptyCacheReport = (): CachePurgeReport => ({ purged: [], unavailable: [], failed: [], pending_urls: [], prefixes: [] });
 
 export interface CopyRemovalResult {
   objects: CopyObjectResult[];
@@ -291,7 +326,16 @@ async function zonePurger(orgId: string, siteId: string, host: string): Promise<
   const dns = await hostingDns(orgId, group.id, host);
   const zone = await findPublishingZone(dns.provider, dns.accountId, host);
   if (!/^[a-zA-Z0-9_-]+$/.test(zone.id)) throw new Error('Invalid cache zone');
-  return { purge: async urls => { await dns.provider(`/zones/${zone.id}/purge_cache`, { method: 'POST', body: { files: urls } }); } };
+  return {
+    purge: async urls => { await dns.provider(`/zones/${zone.id}/purge_cache`, { method: 'POST', body: { files: urls } }); },
+    // The same endpoint publication cache recovery uses (lib/publishing/cache-recovery.ts).
+    purgePrefixes: async prefixes => { await dns.provider(`/zones/${zone.id}/purge_cache`, { method: 'POST', body: { prefixes } }); },
+  };
+}
+
+/** `https://host/path` → `host/path`, the form Cloudflare's prefix purge takes. */
+export function purgePrefix(url: string): string {
+  return url.replace(/^https?:\/\//, '');
 }
 
 /** Why a purge could not run, when the cause is access rather than a transient failure. */
@@ -310,22 +354,36 @@ function purgeUnavailable(host: string, error: unknown): { code: string; message
   return null;
 }
 
-export async function purgeUrls(orgId: string, siteId: string, urls: string[]): Promise<CachePurgeReport> {
-  const report: CachePurgeReport = { purged: [], unavailable: [], failed: [], pending_urls: [] };
+/**
+ * Purge `urls` per host, then (when given) `prefixes` (`host/path`, no
+ * scheme). The file purge decides completeness: a URL it did not purge is
+ * pending. A prefix purge the zone refuses falls back to that file purge and
+ * is reported per host in `prefixes`.
+ */
+export async function purgeUrls(orgId: string, siteId: string, urls: string[], prefixes: string[] = []): Promise<CachePurgeReport> {
+  const report = emptyCacheReport();
   const byHost = new Map<string, string[]>();
+  const prefixesByHost = new Map<string, string[]>();
   for (const url of new Set(urls)) {
     const host = new URL(url).hostname;
     byHost.set(host, [...byHost.get(host) ?? [], url]);
   }
+  for (const prefix of new Set(prefixes)) {
+    const host = prefix.split('/')[0]!;
+    if (!byHost.has(host)) byHost.set(host, []);
+    prefixesByHost.set(host, [...prefixesByHost.get(host) ?? [], prefix]);
+  }
   for (const [host, list] of byHost) {
+    const hostPrefixes = prefixesByHost.get(host) ?? [];
     let done = 0;
+    let purger: CachePurger;
     try {
-      const purger = await publicCopyRuntime.purger(orgId, siteId, host);
+      purger = await publicCopyRuntime.purger(orgId, siteId, host);
       for (let i = 0; i < list.length; i += PURGE_URLS_PER_REQUEST) {
         await purger.purge(list.slice(i, i + PURGE_URLS_PER_REQUEST));
         done = Math.min(list.length, i + PURGE_URLS_PER_REQUEST);
       }
-      report.purged.push({ host, urls: list.length });
+      if (list.length) report.purged.push({ host, urls: list.length });
     } catch (error) {
       const remaining = list.slice(done);
       if (done) report.purged.push({ host, urls: done });
@@ -333,21 +391,43 @@ export async function purgeUrls(orgId: string, siteId: string, urls: string[]): 
       if (unavailable) report.unavailable.push({ host, ...unavailable, urls: remaining.length });
       else report.failed.push({ host, reason: errorText(error), urls: remaining.length });
       report.pending_urls.push(...remaining);
+      if (hostPrefixes.length) report.prefixes.push({ host, prefixes: hostPrefixes.length, method: 'skipped', reason: 'The cache purge for this host did not complete.' });
+      continue;
+    }
+    if (!hostPrefixes.length) continue;
+    if (!purger.purgePrefixes) {
+      report.prefixes.push({ host, prefixes: hostPrefixes.length, method: 'files', reason: 'This connection cannot purge by prefix.' });
+      continue;
+    }
+    try {
+      for (let i = 0; i < hostPrefixes.length; i += PURGE_PREFIXES_PER_REQUEST) await purger.purgePrefixes(hostPrefixes.slice(i, i + PURGE_PREFIXES_PER_REQUEST));
+      report.prefixes.push({ host, prefixes: hostPrefixes.length, method: 'prefix' });
+    } catch (error) {
+      report.prefixes.push({ host, prefixes: hostPrefixes.length, method: 'files', reason: errorText(error) });
     }
   }
   return report;
 }
 
+/** What a removal found, before anything is deleted: callers record it first, so a Worker that dies mid-way leaves a retryable record. */
+export interface CopyPlan {
+  /** Objects found (`would_remove`, `protected`, `unrecognized`) and lookups that failed. */
+  result: CopyRemovalResult;
+  storage: PublicCopyStorage | null;
+  /** Prefixes (`host/path`) to purge after the files, when a prefix purge was asked for. */
+  prefixes: string[];
+}
+
 /**
- * Find, check and (unless `dryRun`) remove every copy of the subjects, then
- * purge the URLs they were served at plus `alwaysPurge` (explicit URLs and
- * URLs a previous run removed without purging, so a retry finishes the job).
+ * Find and check every copy of the subjects without changing anything.
+ * `purgePrefixes` also plans a prefix purge of every unclaimed base (and
+ * explicit key) on every media host.
  */
-export async function removeCopies(orgId: string, siteId: string, input: {
-  scope: CopyScope; subjects: CopySubject[]; claims: Claims; dryRun: boolean; alwaysPurge?: string[];
-}): Promise<CopyRemovalResult> {
-  const { scope, subjects, claims, dryRun } = input;
-  const result: CopyRemovalResult = { objects: [], errors: [], cache: { purged: [], unavailable: [], failed: [], pending_urls: [] }, urls: [] };
+export async function findCopies(orgId: string, _siteId: string, input: {
+  scope: CopyScope; subjects: CopySubject[]; claims: Claims; purgePrefixes?: boolean;
+}): Promise<CopyPlan> {
+  const { scope, subjects, claims } = input;
+  const result: CopyRemovalResult = { objects: [], errors: [], cache: emptyCacheReport(), urls: [] };
   const needsStorage = subjects.some(subject => subject.bases.size || subject.public_keys.size || subject.private_keys.size || subject.prepared_shas.size);
   let storage: PublicCopyStorage | null = null;
   if (needsStorage) {
@@ -364,6 +444,9 @@ export async function removeCopies(orgId: string, siteId: string, input: {
     result.objects.push({ bucket, key, media_id: mediaId, status: referenced ? 'protected' : 'would_remove',
       ...(bucket === 'public' ? { urls: urlsForKey(key, scope) } : {}), ...(referenced ? { referenced_by: referenced } : {}) });
   };
+  // Keys under a base that are not its copies. Decided after every subject is
+  // listed: such a key may be another subject's own base or copy.
+  const strays: Array<{ key: string; base: string; media_id: string | null }> = [];
   if (storage) {
     const listings = new Map<string, Promise<string[]>>();
     const list = (bucket: string, prefix: string) => {
@@ -372,8 +455,8 @@ export async function removeCopies(orgId: string, siteId: string, input: {
       return listings.get(id)!;
     };
     for (const subject of subjects) {
-      const lookups: Array<{ bucket: 'public' | 'private'; prefix: string; accept: (key: string) => boolean }> = [
-        ...[...subject.bases].map(base => ({ bucket: 'public' as const, prefix: base, accept: (key: string) => splitCopyKey(key).base === base })),
+      const lookups: Array<{ bucket: 'public' | 'private'; prefix: string; base?: string; accept: (key: string) => boolean }> = [
+        ...[...subject.bases].map(base => ({ bucket: 'public' as const, prefix: base, base, accept: (key: string) => splitCopyKey(key).base === base })),
         ...[...subject.public_keys].map(key => ({ bucket: 'public' as const, prefix: key, accept: (found: string) => found === key })),
         ...[...subject.private_keys].map(key => ({ bucket: 'private' as const, prefix: key, accept: (found: string) => found === key })),
         ...[...subject.prepared_shas].flatMap(sha => [...new Set(['v1', MEDIA_RECIPE_VERSION])].map(recipe => (
@@ -382,32 +465,82 @@ export async function removeCopies(orgId: string, siteId: string, input: {
       for (const lookup of lookups) {
         try {
           const keys = await list(lookup.bucket === 'public' ? storage.public_bucket : storage.original_bucket, lookup.prefix);
-          for (const key of keys) if (lookup.accept(key)) add(lookup.bucket, key, subject.media_id);
+          for (const key of keys) {
+            if (lookup.accept(key)) add(lookup.bucket, key, subject.media_id);
+            // Another existing record's file (its own base) is that record's business.
+            else if (lookup.base && !reservedKey(scope, key) && !claimedBy(claims, 'public', key)) strays.push({ key, base: lookup.base, media_id: subject.media_id });
+          }
         } catch (error) {
           result.errors.push({ media_id: subject.media_id, key: lookup.prefix, reason: errorText(error) });
         }
       }
     }
-    if (!dryRun) {
-      for (const object of result.objects) {
-        if (object.status !== 'would_remove') continue;
-        try {
-          await storage.remove(object.bucket === 'public' ? storage.public_bucket : storage.original_bucket, object.key);
-          object.status = 'removed';
-        } catch (error) {
-          object.status = 'failed';
-          object.reason = errorText(error);
-        }
+  }
+  for (const stray of strays) {
+    if (seen.has(`public:${stray.key}`)) continue;
+    seen.add(`public:${stray.key}`);
+    result.objects.push({ bucket: 'public', key: stray.key, media_id: stray.media_id, status: 'unrecognized', base: stray.base, urls: urlsForKey(stray.key, scope),
+      reason: 'Listed under this media\'s published name, but not a copy the build writes. It was not removed; review it and remove it by URL if it is a copy of this media.' });
+  }
+  const prefixes = new Set<string>();
+  if (input.purgePrefixes) {
+    for (const subject of subjects) {
+      for (const key of [...subject.bases, ...subject.public_keys]) {
+        if (claimedBy(claims, 'public', key)) continue;
+        for (const url of urlsForKey(key, scope)) prefixes.add(purgePrefix(url));
       }
     }
   }
-  const served = result.objects.filter(object => object.bucket === 'public' && object.status !== 'protected' && object.status !== 'failed').flatMap(object => object.urls ?? []);
+  return { result, storage, prefixes: [...prefixes] };
+}
+
+/** Every URL a plan would remove a copy from: recorded as unpurged before anything is deleted. */
+export function plannedUrls(plan: CopyPlan, mediaId?: string | null): string[] {
+  return [...new Set(plan.result.objects.filter(object => object.bucket === 'public' && object.status === 'would_remove' && (mediaId === undefined || object.media_id === mediaId))
+    .flatMap(object => object.urls ?? []))];
+}
+
+/** Every object a plan would remove, for a tombstone's `pending_keys`. */
+export function plannedKeys(plan: CopyPlan, mediaId?: string | null): PendingKey[] {
+  return plan.result.objects.filter(object => object.status === 'would_remove' && (mediaId === undefined || object.media_id === mediaId))
+    .map(object => ({ bucket: object.bucket, key: object.key }));
+}
+
+/**
+ * Remove what a plan found (unless `dryRun`), then purge the URLs the removed
+ * copies were served at plus `alwaysPurge` (explicit URLs and URLs a previous
+ * run removed without purging, so a retry finishes the job), then the plan's
+ * prefixes.
+ */
+export async function applyCopyRemoval(orgId: string, siteId: string, plan: CopyPlan, input: { dryRun: boolean; alwaysPurge?: string[] }): Promise<CopyRemovalResult> {
+  const { result, storage } = plan;
+  if (storage && !input.dryRun) {
+    for (const object of result.objects) {
+      if (object.status !== 'would_remove') continue;
+      try {
+        await storage.remove(object.bucket === 'public' ? storage.public_bucket : storage.original_bucket, object.key);
+        object.status = 'removed';
+      } catch (error) {
+        object.status = 'failed';
+        object.reason = errorText(error);
+      }
+    }
+  }
+  const served = result.objects.filter(object => object.bucket === 'public' && (object.status === 'would_remove' || object.status === 'removed')).flatMap(object => object.urls ?? []);
   result.urls = [...new Set(served)];
-  if (!dryRun) {
+  if (!input.dryRun) {
     const purge = [...new Set([...result.objects.filter(object => object.status === 'removed').flatMap(object => object.urls ?? []), ...input.alwaysPurge ?? []])];
-    if (purge.length) result.cache = await purgeUrls(orgId, siteId, purge);
+    if (purge.length || plan.prefixes.length) result.cache = await purgeUrls(orgId, siteId, purge, plan.prefixes);
   }
   return result;
+}
+
+/** findCopies, then applyCopyRemoval, for callers that keep no record of their own between the two. */
+export async function removeCopies(orgId: string, siteId: string, input: {
+  scope: CopyScope; subjects: CopySubject[]; claims: Claims; dryRun: boolean; alwaysPurge?: string[]; purgePrefixes?: boolean;
+}): Promise<CopyRemovalResult> {
+  const plan = await findCopies(orgId, siteId, input);
+  return applyCopyRemoval(orgId, siteId, plan, input);
 }
 
 /** The `public_copies` summary of a removal, as delete and the removal tool report it. */
@@ -419,10 +552,33 @@ export function publicCopiesSummary(result: CopyRemovalResult, dryRun = false) {
     failed: [...publicObjects.filter(object => object.status === 'failed').map(object => ({ key: object.key, reason: object.reason ?? 'Unknown error' })),
       ...result.errors.map(error => ({ key: error.key, reason: error.reason }))],
     protected: publicObjects.filter(object => object.status === 'protected').map(object => ({ key: object.key, referenced_by: object.referenced_by! })),
+    unrecognized: unrecognizedByBase(result),
     purged: result.cache.purged,
     purge_unavailable: result.cache.unavailable,
     purge_failed: result.cache.failed,
+    prefix_purge: result.cache.prefixes,
   };
+}
+
+/** Keys listed under a base that are not its copies, per base: they need a person's review. */
+export function unrecognizedByBase(result: CopyRemovalResult): Array<{ base: string; media_id: string | null; keys: string[]; urls: string[] }> {
+  const groups = new Map<string, { base: string; media_id: string | null; keys: string[]; urls: string[] }>();
+  for (const object of result.objects) {
+    if (object.status !== 'unrecognized') continue;
+    const base = object.base ?? object.key;
+    const group = groups.get(base) ?? { base, media_id: object.media_id, keys: [], urls: [] };
+    group.keys.push(object.key);
+    group.urls.push(...object.urls ?? []);
+    groups.set(base, group);
+  }
+  return [...groups.values()];
+}
+
+/** The warning for unrecognized keys: which ones, and how to remove them after review. */
+export function unrecognizedWarning(result: CopyRemovalResult): string | null {
+  const groups = unrecognizedByBase(result);
+  if (!groups.length) return null;
+  return `${groups.reduce((sum, group) => sum + group.keys.length, 0)} object(s) under this media's published names are not copies Typeroll recognizes, so they were NOT removed and may still be public: ${groups.map(group => `${group.keys.join(', ')} (under ${group.base})`).join('; ')}. Review them manually. To remove one that is a copy of this media, run remove_published_media_copies with the media id and its URL from public_copies.unrecognized; until then the removal stays incomplete.`;
 }
 
 export function privateCopiesSummary(result: CopyRemovalResult, dryRun = false) {
@@ -435,9 +591,9 @@ export function privateCopiesSummary(result: CopyRemovalResult, dryRun = false) 
   };
 }
 
-/** Whether anything is left for a retry: an object, a lookup or a cache purge. */
+/** Whether anything is left: an object, a lookup, a cache purge, or a key that needs review. */
 export function removalIncomplete(result: CopyRemovalResult): boolean {
-  return result.errors.length > 0 || result.objects.some(object => object.status === 'failed') || result.cache.pending_urls.length > 0;
+  return result.errors.length > 0 || result.objects.some(object => object.status === 'failed' || object.status === 'unrecognized') || result.cache.pending_urls.length > 0;
 }
 
 // ─── Already-deleted media: tombstones and publication manifests ────────────
@@ -450,13 +606,28 @@ export interface MediaRemovalRecord {
   created_at: string;
   updated_at: string;
   attempts: number;
-  /** Removed URLs whose cache purge did not happen yet. */
+  /**
+   * URLs whose cache purge did not happen yet. Written with every URL a run
+   * plans to remove BEFORE it deletes anything, and shrunk once the purge
+   * succeeds, so a run that dies mid-way still purges them on retry.
+   */
   unpurged_urls: string[];
+  /**
+   * Objects planned for removal and not confirmed removed yet, written before
+   * anything is deleted. A retry looks each one up exactly, also when it was
+   * found only through a publication scan.
+   */
+  pending_keys?: PendingKey[];
   last_result?: Record<string, unknown>;
   deleted_by?: string | null;
 }
 
-export const mediaRemovalPath = (orgId: string, siteId: string, mediaId: string) => `${paths.site(orgId, siteId)}/media_removals/${mediaId}`;
+export interface PendingKey { bucket: 'public' | 'private'; key: string }
+
+/** A tombstone lists at most this many pending keys; a listing finds the rest again. */
+export const MAX_PENDING_KEYS = 1000;
+
+export const mediaRemovalPath =(orgId: string, siteId: string, mediaId: string) => `${paths.site(orgId, siteId)}/media_removals/${mediaId}`;
 
 export function validMediaId(value: unknown): value is string { return typeof value === 'string' && MEDIA_ID.test(value); }
 
@@ -472,30 +643,54 @@ export interface PublicationScan {
   hits: Map<string, PublicationMediaHit[]>;
   scanned: number;
   unreadable: number;
-  skipped: number;
+  /** Older snapshots this call did not read; call again with `next` to read them. */
+  remaining: number;
+  /** Cursor for the next batch (`publications_after`), or null when every snapshot was read. */
+  next: string | null;
 }
 
 type PublicationRef = { snapshot_job_id?: string; snapshot_chunks: number; snapshot_digest: string; snapshot_format?: 1 };
 
+/** A scan cursor names the last snapshot read: `<created_at>~<snapshot digest>`. */
+export function validScanCursor(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 300 && /^[^~]*~[A-Za-z0-9:._-]+$/.test(value);
+}
+
 /**
  * Media manifests frozen into this site's publications, for the given media
  * ids. Every publication is read (failed ones too: their build may have
- * written copies), newest first, up to `limit` distinct snapshots.
+ * written copies), newest first, at most `batch` distinct snapshots per call
+ * starting after the `after` cursor; `remaining` and `next` say what is left.
+ * A publication made between two calls is newer than the cursor and is not
+ * read by the continuation; nothing older is skipped.
  */
-export async function scanPublicationMedia(orgId: string, siteId: string, ids: Set<string>, scope: CopyScope, limit = MAX_SCANNED_PUBLICATIONS): Promise<PublicationScan> {
-  const scan: PublicationScan = { hits: new Map(), scanned: 0, unreadable: 0, skipped: 0 };
+export async function scanPublicationMedia(orgId: string, siteId: string, ids: Set<string>, scope: CopyScope, options: { batch?: number; after?: string | null } = {}): Promise<PublicationScan> {
+  const scan: PublicationScan = { hits: new Map(), scanned: 0, unreadable: 0, remaining: 0, next: null };
   if (!ids.size) return scan;
+  const batch = Math.max(1, options.batch ?? PUBLICATION_SCAN_BATCH);
   const { readSnapshot } = await import('../publishing/publication-snapshot');
   const jobs = await getStore().listDocs<{ id: string; created_at?: string; git_publication?: PublicationRef }>(paths.deploys(orgId, siteId));
-  const refs = new Map<string, { jobId: string; ref: PublicationRef }>();
-  for (const job of jobs.sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')))) {
+  const refs = new Map<string, { jobId: string; ref: PublicationRef; createdAt: string }>();
+  for (const job of jobs.sort((a, b) => String(b.created_at ?? '').localeCompare(String(a.created_at ?? '')) || a.id.localeCompare(b.id))) {
     const ref = job.git_publication;
     if (!ref?.snapshot_digest || refs.has(ref.snapshot_digest)) continue;
-    refs.set(ref.snapshot_digest, { jobId: ref.snapshot_job_id ?? job.id, ref });
+    refs.set(ref.snapshot_digest, { jobId: ref.snapshot_job_id ?? job.id, ref, createdAt: String(job.created_at ?? '') });
   }
-  const selected = [...refs.values()];
-  scan.skipped = Math.max(0, selected.length - limit);
-  for (const { jobId, ref } of selected.slice(0, limit)) {
+  const ordered = [...refs.values()];
+  let start = 0;
+  if (options.after) {
+    const split = options.after.lastIndexOf('~');
+    const at = options.after.slice(0, split), digest = options.after.slice(split + 1);
+    const index = ordered.findIndex(entry => entry.ref.snapshot_digest === digest);
+    // The cursor's snapshot is gone: continue with everything older than it.
+    const older = ordered.findIndex(entry => entry.createdAt < at);
+    start = index >= 0 ? index + 1 : older >= 0 ? older : ordered.length;
+  }
+  const selected = ordered.slice(start, start + batch);
+  scan.remaining = ordered.length - start - selected.length;
+  const last = selected[selected.length - 1];
+  scan.next = scan.remaining > 0 && last ? `${last.createdAt}~${last.ref.snapshot_digest}` : null;
+  for (const { jobId, ref } of selected) {
     let snapshot: any;
     try { snapshot = await readSnapshot({ orgId, siteId, jobId }, ref); }
     catch { scan.unreadable++; continue; }

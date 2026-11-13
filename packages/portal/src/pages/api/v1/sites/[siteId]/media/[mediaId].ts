@@ -10,6 +10,10 @@
 // → deleteMediaItem). 207 when something is left for a retry
 // (POST media/published-copies with this media id); the record is deleted
 // either way and a tombstone keeps what is left.
+//
+// DELETE is irreversible (originals and every public copy go), so an
+// Extension installation credential is refused even with media:write; people
+// and API keys with write permission may delete.
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
@@ -70,6 +74,9 @@ export const DELETE: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
+  if (ctx.extensionIdentity) {
+    return apiError('Extension installation credentials cannot delete media: deleting removes the original and every published copy and cannot be undone. Ask a person with write access to the site, or use an API key.', 403, ctx, { code: 'extension_media_delete_refused' });
+  }
   if (ctx.permission === 'read') return apiError('Media changes require write permission.', 403);
   const mediaId = params.mediaId;
   if (!mediaId) return apiError('Missing mediaId');

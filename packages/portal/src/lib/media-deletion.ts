@@ -36,9 +36,10 @@ import { getStore } from './datastore';
 import { storageClient } from './publishing/media-storage';
 import { ConnectionError } from './publishing/connections';
 import {
-  copyScope, emptySubject, existingClaims, findMediaReferences, identityBases, identityUrls, keyForUrl, mediaIdentity, mediaRemovalPath,
-  privateCopiesSummary, publicCopiesSummary, referenceWarnings, removalIncomplete, removeCopies, scanPublicationMedia, splitCopyKey, validMediaId,
-  type Claims, type CopyRemovalResult, type CopyScope, type CopySubject, type MediaIdentity, type MediaRemovalRecord, type UrlRefusal,
+  applyCopyRemoval, copyScope, emptySubject, existingClaims, findCopies, findMediaReferences, identityBases, identityUrls, keyForUrl, MAX_PENDING_KEYS,
+  mediaIdentity, mediaRemovalPath, plannedKeys, plannedUrls, privateCopiesSummary, publicCopiesSummary, referenceWarnings, removalIncomplete, removeCopies,
+  scanPublicationMedia, splitCopyKey, unrecognizedWarning, urlsForKey, validMediaId, validScanCursor,
+  type Claims, type CopyRemovalResult, type CopyScope, type CopySubject, type MediaIdentity, type MediaRemovalRecord, type PendingKey, type UrlRefusal,
 } from './media/public-copies';
 
 /** One object to remove, and where it lives. */
@@ -186,27 +187,81 @@ function identitySubject(identity: MediaIdentity, scope: CopyScope): CopySubject
 
 const forMedia = (result: CopyRemovalResult, mediaId: string) => ({
   failed: result.objects.some(object => object.media_id === mediaId && object.status === 'failed') || result.errors.some(error => error.media_id === mediaId),
+  unrecognized: result.objects.some(object => object.media_id === mediaId && object.status === 'unrecognized'),
+  failedKeys: result.objects.filter(object => object.media_id === mediaId && object.status === 'failed').map(object => ({ bucket: object.bucket, key: object.key })),
   urls: [...new Set(result.objects.filter(object => object.media_id === mediaId && object.status === 'removed').flatMap(object => object.urls ?? []))],
 });
 
-/** Counts only: the tombstone stays small and never repeats keys a listing can find again. */
+/** Counts only, besides the pending keys: the tombstone stays small. */
 function resultCounts(result: CopyRemovalResult, privateObjects?: MediaDeletionResult) {
   const count = (bucket: 'public' | 'private', status: string) => result.objects.filter(object => object.bucket === bucket && object.status === status).length;
   return { public_removed: count('public', 'removed'), public_failed: count('public', 'failed') + result.errors.length, public_protected: count('public', 'protected'),
+    public_unrecognized: count('public', 'unrecognized'),
     prepared_removed: count('private', 'removed'), prepared_failed: count('private', 'failed'), purge_pending: result.cache.pending_urls.length,
     ...(privateObjects ? { private_deleted: privateObjects.deleted, private_failed: privateObjects.failed.length, private_kept: privateObjects.kept.length } : {}) };
 }
 
+function mergeKeys(...lists: Array<PendingKey[] | undefined>): PendingKey[] {
+  const out = new Map<string, PendingKey>();
+  for (const list of lists) for (const entry of list ?? []) out.set(`${entry.bucket}:${entry.key}`, entry);
+  return [...out.values()].slice(0, MAX_PENDING_KEYS);
+}
+
+/**
+ * The tombstone as a run plans it, written BEFORE anything is deleted: every
+ * URL it will purge is `unpurged` and every object it will remove is
+ * `pending`, so a run that dies after deleting and before purging leaves a
+ * record whose retry purges and removes exactly the rest.
+ */
+async function planTombstone(orgId: string, siteId: string, tombstone: MediaRemovalRecord, plan: Awaited<ReturnType<typeof findCopies>>): Promise<MediaRemovalRecord> {
+  const planned: MediaRemovalRecord = { ...tombstone, state: 'pending', updated_at: new Date().toISOString(),
+    unpurged_urls: [...new Set([...tombstone.unpurged_urls, ...plannedUrls(plan, tombstone.media_id)])],
+    pending_keys: mergeKeys(tombstone.pending_keys, plannedKeys(plan, tombstone.media_id)) };
+  await getStore().setDoc(mediaRemovalPath(orgId, siteId, tombstone.media_id), planned);
+  return planned;
+}
+
+/** Shrink a planned tombstone to what is really left after the run. */
 async function updateTombstone(orgId: string, siteId: string, tombstone: MediaRemovalRecord, result: CopyRemovalResult, privateObjects?: MediaDeletionResult): Promise<MediaRemovalRecord> {
   const own = forMedia(result, tombstone.media_id);
   const pending = new Set(result.cache.pending_urls);
-  // URLs left unpurged earlier stay pending until a purge of them succeeds.
+  // URLs left unpurged earlier (or planned by this run) stay until a purge of them succeeds.
   const unpurged = [...new Set([...tombstone.unpurged_urls, ...own.urls])].filter(url => pending.has(url));
-  const complete = !own.failed && !unpurged.length && !(privateObjects?.failed.length);
+  // Keys this run planned and removed are done; keys it could not remove stay for the retry.
+  const pendingKeys = mergeKeys(own.failedKeys);
+  const complete = !own.failed && !own.unrecognized && !unpurged.length && !(privateObjects?.failed.length);
   const next: MediaRemovalRecord = { ...tombstone, state: complete ? 'complete' : 'pending', updated_at: new Date().toISOString(),
-    attempts: tombstone.attempts + 1, unpurged_urls: unpurged, last_result: resultCounts(result, privateObjects) };
+    attempts: tombstone.attempts + 1, unpurged_urls: unpurged, pending_keys: pendingKeys, last_result: resultCounts(result, privateObjects) };
   await getStore().setDoc(mediaRemovalPath(orgId, siteId, tombstone.media_id), next);
   return next;
+}
+
+/**
+ * Why a removal is not complete. `complete: true` (HTTP 200) means every
+ * requested media id and URL was found, every copy was removed and its cache
+ * purged; anything else answers 207 with these codes.
+ */
+export type IncompleteReason =
+  | 'media_not_found' | 'media_refused' | 'url_refused' | 'url_absent'
+  | 'lookup_failed' | 'objects_failed' | 'objects_protected' | 'objects_unrecognized' | 'private_failed'
+  | 'purge_unavailable' | 'purge_failed' | 'publications_unreadable' | 'publications_remaining';
+
+function copyIncompleteReasons(result: CopyRemovalResult, dryRun: boolean, privateResults: MediaDeletionResult[]): Set<IncompleteReason> {
+  const reasons = new Set<IncompleteReason>();
+  if (result.errors.length) reasons.add('lookup_failed');
+  if (result.objects.some(object => object.status === 'failed')) reasons.add('objects_failed');
+  if (result.objects.some(object => object.status === 'protected') || privateResults.some(entry => entry.kept.length)) reasons.add('objects_protected');
+  if (result.objects.some(object => object.status === 'unrecognized')) reasons.add('objects_unrecognized');
+  if (privateResults.some(entry => entry.failed.length)) reasons.add('private_failed');
+  if (!dryRun && result.cache.unavailable.length) reasons.add('purge_unavailable');
+  if (!dryRun && result.cache.failed.length) reasons.add('purge_failed');
+  return reasons;
+}
+
+function protectedWarning(result: CopyRemovalResult): string | null {
+  const owners = [...new Set(result.objects.filter(object => object.status === 'protected' && object.referenced_by).map(object => object.referenced_by!))];
+  if (!owners.length) return null;
+  return `${result.objects.filter(object => object.status === 'protected').length} copy(ies) were kept because another media record still uses the same file: ${owners.join(', ')}. They stay public until that record is deleted with delete_media too.`;
 }
 
 /** The removal already happened; a failed reference check must not turn it into an error. */
@@ -228,12 +283,14 @@ export interface MediaItemDeletion {
  * its prepared variants, every published copy in the public bucket, and the
  * Cloudflare cache for each URL those copies were served at.
  *
- * The record is replaced by a tombstone first and deleted before the cleanup
- * runs, so it is gone whatever storage says. What could not be removed — an
- * object, or a cache purge the connection is not allowed to make — keeps the
- * tombstone `pending`, is reported here (HTTP 207), and is retried by
+ * The copies are listed first, then a tombstone that already names every URL
+ * to purge and every object to remove replaces the record, which is deleted
+ * before the cleanup runs, so it is gone whatever storage says. What could not
+ * be removed — an object, a key that is not a recognized copy, or a cache
+ * purge the connection is not allowed to make — keeps the tombstone
+ * `pending`, is reported here (HTTP 207, `complete: false`), and is retried by
  * `remove_published_media_copies` with the same media id. Objects another
- * existing record still points at stay.
+ * existing record still points at stay (also 207: the file stays public).
  */
 export async function deleteMediaItem(orgId: string, siteId: string, mediaId: string, options: { actor?: string | null } = {}): Promise<MediaItemDeletion | null> {
   const store = getStore();
@@ -243,23 +300,27 @@ export async function deleteMediaItem(orgId: string, siteId: string, mediaId: st
   const record: Media = { ...media, id: mediaId };
   const [scope, records] = await Promise.all([copyScope(orgId, siteId), store.listDocs<Media>(paths.media(orgId, siteId))]);
   const claims = existingClaims(records, scope, new Set([mediaId]));
+  const identity = mediaIdentity(record);
+  const plan = await findCopies(orgId, siteId, { scope, subjects: [identitySubject(identity, scope)], claims });
   const now = new Date().toISOString();
-  const tombstone: MediaRemovalRecord = { media_id: mediaId, state: 'pending', identity: mediaIdentity(record), created_at: now, updated_at: now,
-    attempts: 0, unpurged_urls: [], deleted_by: options.actor ?? null };
-  await store.setDoc(mediaRemovalPath(orgId, siteId, mediaId), tombstone);
+  const tombstone = await planTombstone(orgId, siteId, { media_id: mediaId, state: 'pending', identity, created_at: now, updated_at: now,
+    attempts: 0, unpurged_urls: [], deleted_by: options.actor ?? null }, plan);
   await store.deleteDoc(docPath);
 
   const privateObjects = await deleteMediaObjects(orgId, record, { claims });
-  const copies = await removeCopies(orgId, siteId, { scope, subjects: [identitySubject(tombstone.identity, scope)], claims, dryRun: false });
+  const copies = await applyCopyRemoval(orgId, siteId, plan, { dryRun: false });
   const saved = await updateTombstone(orgId, siteId, tombstone, copies, privateObjects);
-  const references = await referencesOrNote(orgId, siteId, { urls: [...identityUrls(tombstone.identity), ...copies.urls], mediaIds: [mediaId] });
+  const references = await referencesOrNote(orgId, siteId, { urls: [...identityUrls(identity), ...copies.urls], mediaIds: [mediaId] });
   const publicCopies = publicCopiesSummary(copies);
+  const reasons = copyIncompleteReasons(copies, false, [privateObjects]);
+  const complete = saved.state === 'complete' && reasons.size === 0;
   const warnings = [...referenceWarnings(references, publicCopies.removed.length), ...('unavailable' in references ? [references.unavailable] : []), ...copies.cache.unavailable.map(entry => entry.message)];
+  for (const note of [unrecognizedWarning(copies), protectedWarning(copies)]) if (note) warnings.push(note);
   if (saved.state === 'pending') warnings.push(`Some copies of this media were not removed${saved.unpurged_urls.length ? ' or their cache was not purged' : ''}. The record is deleted; run remove_published_media_copies with media_ids ["${mediaId}"] to retry exactly what is left.`);
   return {
-    status: saved.state === 'complete' ? 200 : 207,
+    status: complete ? 200 : 207,
     body: {
-      ok: true, media_id: mediaId, objects_deleted: privateObjects.deleted,
+      ok: true, media_id: mediaId, complete, incomplete_reasons: [...reasons], objects_deleted: privateObjects.deleted,
       private_objects: { deleted: privateObjects.deleted, failed: privateObjects.failed, kept: privateObjects.kept },
       private_copies: privateCopiesSummary(copies),
       public_copies: publicCopies,
@@ -270,14 +331,35 @@ export async function deleteMediaItem(orgId: string, siteId: string, mediaId: st
 }
 
 export interface SiteMediaPurgeResult {
+  /** Records handled by this call (at most the batch size). */
   records: number;
+  /** Records the site had when this call started. */
+  records_total: number;
   objects_deleted: number;
   records_removed: number;
   /** Records deliberately kept because their objects could not be removed. */
   records_retained: number;
+  /** Records after this batch, not handled yet: call again (with `after: next`) to continue. */
+  remaining: number;
+  /** The last record id handled when records remain; pass it as `after` to move past records that keep failing. */
+  next: string | null;
+  /** True when nothing is left: no failure, no unrecognized key, no pending cache purge, no remaining record. */
+  complete: boolean;
   failed: Array<{ media_id: string; key: string; source: MediaObject['source'] | 'public_copy'; reason: string }>;
   /** Published copies in the public bucket and the cache purge of their URLs. */
   public_copies: ReturnType<typeof publicCopiesSummary>;
+  warnings: string[];
+}
+
+/**
+ * Records one purge call handles. Each record costs a few dozen subrequests
+ * (private objects, listings, deletes, cache purges), so a batch keeps one
+ * request well inside a Worker's subrequest budget.
+ */
+export const SITE_MEDIA_PURGE_BATCH = 20;
+
+export function validPurgeCursor(value: unknown): value is string {
+  return typeof value === 'string' && validMediaId(value);
 }
 
 /**
@@ -295,10 +377,22 @@ export interface SiteMediaPurgeResult {
  *
  * Re-runnable by construction — a second call retries exactly the records
  * whose objects did not go.
+ *
+ * `limit` bounds the records one call handles, in id order (the routes pass
+ * SITE_MEDIA_PURGE_BATCH); `remaining` > 0 means call again. Removed records
+ * are gone, so the next call continues with the rest; `after` (the previous
+ * `next`) moves past records that keep failing. Unrecognized keys under a
+ * record's published name are reported, never removed, and do not keep the
+ * record (the site is being retired; the report is the review list).
  */
-export async function purgeSiteMedia(orgId: string, siteId: string): Promise<SiteMediaPurgeResult> {
+export async function purgeSiteMedia(orgId: string, siteId: string, options: { limit?: number; after?: string | null } = {}): Promise<SiteMediaPurgeResult> {
   const store = getStore();
-  const records = await store.listDocs<Media>(paths.media(orgId, siteId));
+  const all = (await store.listDocs<Media>(paths.media(orgId, siteId))).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  const after = options.after ?? null;
+  const start = after === null ? 0 : (() => { const index = all.findIndex(media => media.id > after); return index < 0 ? all.length : index; })();
+  const limit = Math.max(1, options.limit ?? Number.POSITIVE_INFINITY);
+  const records = all.slice(start, start + limit);
+  const remaining = all.length - start - records.length;
   const scope = await copyScope(orgId, siteId);
   const noClaims = existingClaims([], scope, new Set());
   const failedPrivate = new Map<string, MediaDeletionResult['failed']>();
@@ -309,13 +403,22 @@ export async function purgeSiteMedia(orgId: string, siteId: string): Promise<Sit
     if (outcome.failed.length > 0) failedPrivate.set(media.id, outcome.failed);
   }
   const copies = await removeCopies(orgId, siteId, { scope, subjects: records.map(media => identitySubject(mediaIdentity(media), scope)), claims: noClaims, dryRun: false });
+  const warnings = [...copies.cache.unavailable.map(entry => entry.message)];
+  const stray = unrecognizedWarning(copies);
+  if (stray) warnings.push(stray);
+  if (remaining > 0) warnings.push(`${remaining} more media record(s) were not handled in this call (at most ${records.length} per call). Call again to continue.`);
   const result: SiteMediaPurgeResult = {
     records: records.length,
+    records_total: all.length,
     objects_deleted: objectsDeleted,
     records_removed: 0,
     records_retained: 0,
+    remaining,
+    next: remaining > 0 && records.length ? records[records.length - 1]!.id : null,
+    complete: false,
     failed: [],
     public_copies: publicCopiesSummary(copies),
+    warnings,
   };
   for (const media of records) {
     const privateFailures = failedPrivate.get(media.id) ?? [];
@@ -330,6 +433,8 @@ export async function purgeSiteMedia(orgId: string, siteId: string): Promise<Sit
     await store.deleteDoc(`${paths.media(orgId, siteId)}/${media.id}`);
     result.records_removed += 1;
   }
+  // Records before `after` were skipped, not handled: any that still exist keep the purge incomplete.
+  result.complete = start === 0 && remaining === 0 && result.failed.length === 0 && !removalIncomplete(copies);
   return result;
 }
 
@@ -338,6 +443,8 @@ export interface PublishedCopyRemovalInput {
   urls?: unknown;
   dry_run?: unknown;
   scan_publications?: unknown;
+  publications_after?: unknown;
+  purge_prefixes?: unknown;
 }
 
 const MAX_REMOVAL_MEDIA_IDS = 100;
@@ -360,13 +467,23 @@ const URL_REFUSALS: Record<UrlRefusal | 'not_a_media_copy', string> = {
  * could not finish (a tombstone left `pending`).
  *
  * Copies are found from the tombstones of deleted records and from the media
- * manifests of this site's publications. A URL must be on one of this site's
- * media hosts, under its media prefix, and be a media copy. Nothing an
- * existing media record still claims is touched — refer to it with
- * delete_media instead; copies used only by publications are removed, which is
- * the point. `dry_run` lists exactly what would be removed. Idempotent: a
- * second run finds nothing more to remove, and purges what a previous run
- * removed without purging.
+ * manifests of this site's publications, read PUBLICATION_SCAN_BATCH
+ * snapshots per call (`publications.next` continues with
+ * `publications_after`). A URL must be on one of this site's media hosts,
+ * under its media prefix, and be a media copy (or a key listed under a base of
+ * a media id in the same call, which is how an `unrecognized` key is removed
+ * after review). Nothing an existing media record still claims is touched —
+ * refer to it with delete_media instead; copies used only by publications are
+ * removed, which is the point. `dry_run` lists exactly what would be removed.
+ *
+ * Before anything is deleted, each media id's tombstone is written with every
+ * URL to purge and every object to remove; it shrinks after the run. A run
+ * that dies mid-way therefore leaves a record a retry finishes.
+ *
+ * `complete` (HTTP 200) only when every requested media id and URL was found,
+ * every copy was removed and its cache purged, and every publication was read;
+ * otherwise 207 with `incomplete_reasons`. Calling again with the same input
+ * retries what is left.
  */
 export async function removePublishedMediaCopies(orgId: string, siteId: string, input: PublishedCopyRemovalInput, options: { actor?: string | null } = {}): Promise<MediaItemDeletion> {
   const ids = input.media_ids === undefined ? [] : input.media_ids;
@@ -376,6 +493,10 @@ export async function removePublishedMediaCopies(orgId: string, siteId: string, 
   if (!ids.length && !urls.length) throw new ConnectionError('Name the deleted media: media_ids, urls, or both.', 400, 'removal_target_required');
   if (input.dry_run !== undefined && typeof input.dry_run !== 'boolean') throw new ConnectionError('dry_run must be true or false.', 400);
   if (input.scan_publications !== undefined && typeof input.scan_publications !== 'boolean') throw new ConnectionError('scan_publications must be true or false.', 400);
+  if (input.purge_prefixes !== undefined && typeof input.purge_prefixes !== 'boolean') throw new ConnectionError('purge_prefixes must be true or false.', 400);
+  if (input.publications_after !== undefined && input.publications_after !== null && !validScanCursor(input.publications_after)) {
+    throw new ConnectionError('publications_after must be the publications.next value of a previous call.', 400, 'invalid_publications_cursor');
+  }
   const dryRun = input.dry_run === true;
   const store = getStore();
   const [scope, records] = await Promise.all([copyScope(orgId, siteId), store.listDocs<Media>(paths.media(orgId, siteId))]);
@@ -391,7 +512,9 @@ export async function removePublishedMediaCopies(orgId: string, siteId: string, 
     const tombstone = await store.getDoc<MediaRemovalRecord>(mediaRemovalPath(orgId, siteId, id));
     if (tombstone) tombstones.set(id, tombstone);
   }
-  const scan = input.scan_publications === false ? { hits: new Map(), scanned: 0, unreadable: 0, skipped: 0 } : await scanPublicationMedia(orgId, siteId, new Set(deleted), scope);
+  const scan = input.scan_publications === false
+    ? { hits: new Map(), scanned: 0, unreadable: 0, remaining: 0, next: null }
+    : await scanPublicationMedia(orgId, siteId, new Set(deleted), scope, { after: (input.publications_after as string | null | undefined) ?? null });
   // Every existing record is protected; none is being removed here. Claimed after
   // the scan, which may add media hosts the records' addresses are on.
   const claims = existingClaims(records, scope, new Set());
@@ -403,6 +526,8 @@ export async function removePublishedMediaCopies(orgId: string, siteId: string, 
     const tombstone = tombstones.get(id);
     const hits = scan.hits.get(id) ?? [];
     const subject = tombstone ? identitySubject(tombstone.identity, scope) : emptySubject(id);
+    // Objects a previous run planned and did not confirm, looked up exactly.
+    for (const pending of tombstone?.pending_keys ?? []) (pending.bucket === 'public' ? subject.public_keys : subject.private_keys).add(pending.key);
     const aliases = new Set<string>(tombstone ? identityUrls(tombstone.identity) : []);
     let sha256 = tombstone?.identity.sha256;
     for (const hit of hits) {
@@ -414,7 +539,9 @@ export async function removePublishedMediaCopies(orgId: string, siteId: string, 
     for (const base of subject.bases) knownBases.add(base);
     const foundIn = [...(tombstone ? ['tombstone'] : []), ...(hits.length ? ['publications'] : [])];
     mediaReport.push({ media_id: id, status: foundIn.length ? 'found' : 'not_found', found_in: foundIn,
-      ...(foundIn.length ? {} : { message: 'No tombstone and no publication of this site lists this media id. Remove its copies by URL.' }) });
+      ...(foundIn.length ? {} : { message: scan.remaining
+        ? 'No tombstone and none of the publications read so far lists this media id. Call again with publications_after set to publications.next to read older publications.'
+        : 'No tombstone and no publication of this site lists this media id. Remove its copies by URL.' }) });
     if (!foundIn.length) continue;
     subjects.push(subject);
     identities.set(id, tombstone?.identity ?? { id, ...(sha256 ? { sha256 } : {}), source_aliases: [...aliases] });
@@ -427,7 +554,9 @@ export async function removePublishedMediaCopies(orgId: string, siteId: string, 
     const mapped = keyForUrl(url, scope);
     if ('refused' in mapped) { urlReport.push({ url, status: 'refused', code: mapped.refused, message: URL_REFUSALS[mapped.refused] }); continue; }
     const base = splitCopyKey(mapped.key).base;
-    if (!knownBases.has(base) && !/^[a-f0-9]{16}-[A-Za-z0-9._-]+$/.test(base.split('/').pop() ?? '')) {
+    // A key listed under a known base (an `unrecognized` key a person reviewed) may be named explicitly.
+    const underKnownBase = [...knownBases].some(known => mapped.key.startsWith(known));
+    if (!underKnownBase && !/^[a-f0-9]{16}-[A-Za-z0-9._-]+$/.test(base.split('/').pop() ?? '')) {
       urlReport.push({ url, status: 'refused', key: mapped.key, code: 'not_a_media_copy', message: URL_REFUSALS.not_a_media_copy });
       continue;
     }
@@ -437,8 +566,22 @@ export async function removePublishedMediaCopies(orgId: string, siteId: string, 
   if (urlSubject.public_keys.size) subjects.push(urlSubject);
 
   const claimedUrl = (key: string) => claims.bases.get(splitCopyKey(key).base);
-  const alwaysPurge = [...[...explicit].filter(([, key]) => !claimedUrl(key)).map(([url]) => url), ...[...tombstones.values()].flatMap(tombstone => tombstone.unpurged_urls)];
-  const copies = await removeCopies(orgId, siteId, { scope, subjects, claims, dryRun, alwaysPurge });
+  // Explicit URLs are purged on every media host whether or not the object is still there,
+  // so a retry clears the cache everywhere after an earlier run removed the object.
+  const alwaysPurge = [...[...explicit].filter(([, key]) => !claimedUrl(key)).flatMap(([url, key]) => [url, ...urlsForKey(key, scope)]),
+    ...[...tombstones.values()].flatMap(tombstone => tombstone.unpurged_urls)];
+  const plan = await findCopies(orgId, siteId, { scope, subjects, claims, purgePrefixes: input.purge_prefixes === true });
+
+  // Record the plan before deleting anything (also for ids found only through publications).
+  const planned = new Map<string, MediaRemovalRecord>();
+  if (!dryRun) {
+    for (const [id, identity] of identities) {
+      const now = new Date().toISOString();
+      const base: MediaRemovalRecord = tombstones.get(id) ?? { media_id: id, state: 'pending', identity, created_at: now, updated_at: now, attempts: 0, unpurged_urls: [], deleted_by: options.actor ?? null };
+      planned.set(id, await planTombstone(orgId, siteId, base, plan));
+    }
+  }
+  const copies = await applyCopyRemoval(orgId, siteId, plan, { dryRun, alwaysPurge });
 
   // Private objects a tombstone still points at (the record's own storage keys).
   const privateObjects: Record<string, MediaDeletionResult | { would_remove: string[] }> = {};
@@ -452,13 +595,11 @@ export async function removePublishedMediaCopies(orgId: string, siteId: string, 
     const failure = copies.errors.find(error => error.key === key);
     urlReport.push({ url, key, status: failure ? 'failed' : object ? object.status : 'absent',
       ...(object?.referenced_by ? { referenced_by: object.referenced_by, message: 'An existing media record still uses this file; it was kept.' } : {}),
-      ...(object?.reason || failure ? { message: object?.reason ?? failure!.reason } : {}) });
+      ...(object?.reason || failure ? { message: object?.reason ?? failure!.reason } : {}),
+      ...(!failure && !object ? { message: 'No object at this address now (already removed, or never there). Its cache was purged anyway; check the address if you expected a file.' } : {}) });
   }
   if (!dryRun) {
-    for (const id of identities.keys()) {
-      const previous = tombstones.get(id);
-      const now = new Date().toISOString();
-      const tombstone: MediaRemovalRecord = previous ?? { media_id: id, state: 'pending', identity: identities.get(id)!, created_at: now, updated_at: now, attempts: 0, unpurged_urls: [], deleted_by: options.actor ?? null };
+    for (const [id, tombstone] of planned) {
       const privateResult = privateObjects[id];
       const saved = await updateTombstone(orgId, siteId, tombstone, copies, privateResult && 'deleted' in privateResult ? privateResult : undefined);
       const entry = mediaReport.find(item => item.media_id === id);
@@ -471,14 +612,26 @@ export async function removePublishedMediaCopies(orgId: string, siteId: string, 
   const publicCopies = publicCopiesSummary(copies, dryRun);
   const touched = dryRun ? publicCopies.would_remove!.length : publicCopies.removed.length;
   const warnings = [...referenceWarnings(references, touched, dryRun), ...('unavailable' in references ? [references.unavailable] : []), ...copies.cache.unavailable.map(entry => entry.message)];
+  for (const note of [unrecognizedWarning(copies), protectedWarning(copies)]) if (note) warnings.push(note);
   if (scan.unreadable) warnings.push(`${scan.unreadable} publication snapshot(s) could not be read; copies only they listed were not found. Name those copies by URL.`);
-  if (scan.skipped) warnings.push(`Only the newest ${scan.scanned} publications were read (${scan.skipped} older ones were skipped). Name copies only older publications listed by URL.`);
-  const privateFailed = Object.values(privateObjects).some(result => 'failed' in result && result.failed.length > 0);
+  if (scan.remaining) warnings.push(`${scan.remaining} older publication(s) were not read yet (at most ${scan.scanned + scan.unreadable} per call). Call again with the same media_ids and publications_after: "${scan.next}" to continue.`);
+  const prefixFallback = copies.cache.prefixes.filter(entry => entry.method !== 'prefix');
+  if (prefixFallback.length) warnings.push(`The cache could not be purged by prefix for ${prefixFallback.map(entry => `${entry.host} (${entry.reason ?? entry.method})`).join(', ')}; every known URL was purged file by file instead.`);
+
+  const privateResults = Object.values(privateObjects).filter((result): result is MediaDeletionResult => 'deleted' in result);
+  const reasons = copyIncompleteReasons(copies, dryRun, privateResults);
+  if (mediaReport.some(item => item.status === 'not_found')) reasons.add('media_not_found');
+  if (mediaReport.some(item => item.status === 'refused')) reasons.add('media_refused');
+  if (urlReport.some(item => item.status === 'refused')) reasons.add('url_refused');
+  if (urlReport.some(item => item.status === 'absent')) reasons.add('url_absent');
+  if (scan.unreadable) reasons.add('publications_unreadable');
+  if (scan.remaining) reasons.add('publications_remaining');
+  const complete = reasons.size === 0;
   return {
-    status: removalIncomplete(copies) || privateFailed ? 207 : 200,
+    status: complete ? 200 : 207,
     body: {
-      dry_run: dryRun, media_prefix: scope.prefix, media_hosts: [...scope.hosts.keys()],
-      publications: { scanned: scan.scanned, unreadable: scan.unreadable, skipped: scan.skipped },
+      dry_run: dryRun, complete, incomplete_reasons: [...reasons], media_prefix: scope.prefix, media_hosts: [...scope.hosts.keys()],
+      publications: { scanned: scan.scanned, unreadable: scan.unreadable, remaining: scan.remaining, next: scan.next },
       media: mediaReport, urls: urlReport, objects: copies.objects,
       public_copies: publicCopies, private_copies: privateCopiesSummary(copies, dryRun), private_objects: privateObjects,
       cache: copies.cache, references, warnings,
