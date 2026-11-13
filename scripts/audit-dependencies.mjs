@@ -12,6 +12,22 @@ export const APPROVED_ADVISORIES = new Map([
         'uuid is pulled in only by firebase-admin optional Cloud Storage dependencies. Typeroll does not import Firebase Storage or call uuid v3/v5/v6 with caller-provided buffers. firebase-admin 14.3.0 supports @google-cloud/storage ^7.22.0, which has no patched release in that major; forcing Storage 8 would violate the upstream dependency contract.',
     },
   ],
+  [
+    'https://github.com/advisories/GHSA-mh32-jxcr-mh9f',
+    {
+      expires: '2026-12-13',
+      rationale:
+        'Astro dynamic-tag XSS needs untrusted input as an element name. No Typeroll template renders a dynamic element name: every capitalized tag in portal, site-template and docs-site .astro files is an imported component, and block content is rendered from sanitized HTML strings. The fix (astro >=7.4.5) requires Node >=22.23.4, while organization build engines in customer accounts run Node 22.23.1 and do not update automatically, so upgrading the vendored site-template would break their builds. Upgrade with a build-runtime bump.',
+    },
+  ],
+  [
+    'https://github.com/advisories/GHSA-r3h5-4585-7x3w',
+    {
+      expires: '2026-12-13',
+      rationale:
+        'Astro image-endpoint path check affects only on-demand rendering with @astrojs/node. Typeroll does not use @astrojs/node: the portal runs on @astrojs/cloudflare and site-template and docs-site build static output. The fix (astro >=7.4.7) requires Node >=22.23.4; see GHSA-mh32-jxcr-mh9f for why the upgrade waits for a build-runtime bump.',
+    },
+  ],
 ]);
 
 const BLOCKING_SEVERITIES = new Set(['high', 'critical']);
