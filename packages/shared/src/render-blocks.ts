@@ -78,7 +78,8 @@ import { comparePageValues, pageSort } from './page-options.js';
 import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
 import { renderFieldList } from './field-list.js';
 import { STYLE_ID_PATTERN, styleClassName } from './site-styles.js';
-import { blockOutputForVersion, resolveRenderVersion } from './render-version.js';
+import { blockOutputForVersion, FEATURED_IMAGE_ALT_RENDER_VERSION, resolveRenderVersion } from './render-version.js';
+import { FEATURED_IMAGE_ASPECTS } from './template-blocks.js';
 import { styleElementText } from './custom-css.js';
 import { GLOBAL_BLOCK_MAX_DEPTH, GLOBAL_BLOCK_TYPE_ID, withGlobalBlockContent, type GlobalBlockSource } from './reusable-blocks.js';
 import { parseSections, renderSections, usesExtendedSections } from './template-sections.js';
@@ -447,8 +448,12 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
   localizeDefaultLabels(blockType, compiled.flatData, options);
 
   if (effectiveBlock.type === 'template/page_featured_image') {
-    compiled.flatData.selected_page_image = options.context?.page?.[String(compiled.flatData.field ?? 'og_image')] ?? '';
-    if (!String(compiled.flatData.selected_page_image).trim()) return '';
+    const d = compiled.flatData;
+    const page = options.context?.page;
+    const imageField = String(d.field ?? 'og_image');
+    d.selected_page_image = page?.[imageField] ?? '';
+    if (!String(d.selected_page_image).trim()) return '';
+    Object.assign(d, featuredImageMarkup(effectiveBlock, d, imageField, options));
   }
   if (effectiveBlock.type === 'template/page_date') {
     const fieldName = String(compiled.flatData.field ?? 'date_published');
@@ -2740,6 +2745,54 @@ export function findPaginatedListing(
  * breakpoint name in `mobile_src_below` switches below that breakpoint's
  * width from the block's or site's responsive widths.
  */
+/** Rendered maximum width of the featured image per `width` (rem at 16px). */
+const FEATURED_IMAGE_MAX_PX: Record<string, number> = { narrow: 512, normal: 768, wide: 1024 };
+
+/**
+ * Template values of template/page_featured_image: the alt text, the image's
+ * attributes and an optional mobile <picture>. With none of its newer settings
+ * in use, the output is the markup the block rendered before they existed.
+ */
+function featuredImageMarkup(block: Block, d: Record<string, unknown>, imageField: string, options: RenderBlocksOptions): Record<string, string> {
+  const page = options.context?.page as Record<string, unknown> | undefined;
+  const text = (value: unknown) => typeof value === 'string' ? value.trim() : '';
+  const title = String(page?.title ?? '');
+  const altField = text(d.alt_field);
+  const alt = altField
+    ? text(page?.[altField]) || title
+    : resolveRenderVersion(options.renderVersion) >= FEATURED_IMAGE_ALT_RENDER_VERSION ? text(page?.[`${imageField}_alt`]) || title : title;
+
+  // The image never renders wider than its width setting, so its sizes say so
+  // (a column around it would otherwise suggest a larger image).
+  const maxPx = FEATURED_IMAGE_MAX_PX[String(d.width)];
+  const sizes = maxPx ? ` sizes="(max-width: ${maxPx}px) 100vw, ${maxPx}px"` : '';
+
+  // A ratio per screen width, or one the block CSS has no rule for, is set on
+  // the image: the mobile value inline, larger widths through --featured-aspect.
+  const style: string[] = [];
+  const authoredAspect = block.data?.aspect_ratio;
+  if (isResponsiveValue(authoredAspect) || authoredAspect === '21:9') {
+    if (typeof d.aspect_ratio !== 'string' || !(d.aspect_ratio in FEATURED_IMAGE_ASPECTS)) d.aspect_ratio = 'auto';
+    style.push(`aspect-ratio:var(--featured-aspect,${FEATURED_IMAGE_ASPECTS[d.aspect_ratio as string]})`);
+  }
+  // The mobile value inline, larger widths through --max_height_px (a plain number).
+  const maxHeight = Number(d.max_height_px);
+  if (block.data?.max_height_px != null && block.data.max_height_px !== '' && Number.isFinite(maxHeight) && maxHeight > 0) {
+    style.push(`max-height:calc(var(--max_height_px,${Math.min(2400, Math.max(80, Math.round(maxHeight)))}) * 1px)`);
+  }
+  const styleAttr = style.length ? ` style="${style.join(';')}"` : '';
+
+  const loading = d.loading === 'eager' ? ' loading="eager" fetchpriority="high"' : ' loading="lazy"';
+  const mobile = text(d.mobile_field) ? text(page?.[text(d.mobile_field)]) : '';
+  return {
+    selected_page_image_alt: alt,
+    featured_image_attrs: `${sizes}${styleAttr}${loading}`,
+    // The marker lets the SEO transform add AVIF/WebP sources for both images.
+    featured_picture_open: mobile ? `<picture data-tr-art-direction><source media="${mobileImageMedia(block.data, options)}" srcset="${escapeHtml(mobile)}" />` : '',
+    featured_picture_close: mobile ? '</picture>' : '',
+  };
+}
+
 function mobileImageMedia(data: Record<string, unknown> | undefined, options: RenderBlocksOptions): string {
   const px = Number(data?.mobile_src_below_px);
   if (data?.mobile_src_below_px != null && data.mobile_src_below_px !== '' && Number.isInteger(px) && px >= 320 && px <= 2560) return `(width < ${px}px)`;

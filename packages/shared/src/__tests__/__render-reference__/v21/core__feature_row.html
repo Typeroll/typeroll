@@ -1,0 +1,199 @@
+<section data-block="feature_row" data-text-color="" data-image-side="left" data-image-max="lg" data-valign="center" data-stack-order="image-first" data-width="normal" style="--text-color:;--gap:lg;--padding_y:lg;--bg:" data-image-aspect="auto" data-image-fit="cover" data-text-align="start" data-actions-align="start" data-gap="lg" data-padding-y="lg">
+  <div class="block-frow-inner">
+    <div class="block-frow-media"><img src="/media/sample.jpg" alt="" loading="lazy" decoding="async" /></div>
+    <div class="block-frow-body">
+      <span class="block-frow-eyebrow"></span>
+      <h2 class="block-frow-heading"></h2>
+      <div class="block-frow-text"><p>Sample <strong>text</strong> with a <a href="/link">link</a>.</p></div>
+      <div class="block-frow-actions">
+        <a class="block-btn block-btn-primary" href=""></a>
+        <a class="block-btn block-btn-secondary" href=""></a>
+      </div>
+    </div>
+  </div>
+</section>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/feature_row */
+[data-block="feature_row"] { padding-block: var(--block-py, 4rem); padding-inline: 1rem; background: var(--bg, transparent); }
+[data-block="feature_row"] .block-frow-inner {
+  display: grid; grid-template-columns: 1fr 1fr; gap: var(--block-gap, 2rem);
+  align-items: center; max-width: 65rem; margin-inline: auto;
+}
+[data-block="feature_row"][data-width="wide"] .block-frow-inner { max-width: 80rem; }
+[data-block="feature_row"][data-valign="top"] .block-frow-inner { align-items: start; }
+/* Both halves hug the center gutter: a capped image in the left column
+   pushes right, a capped text column in the right column stays left. This
+   is what keeps wide viewports from opening a void between the halves. */
+[data-block="feature_row"] .block-frow-media img {
+  display: block; width: 100%; max-width: var(--frow-img-max, 34rem); height: auto;
+  border-radius: 0.5rem; margin-left: auto;
+}
+[data-block="feature_row"] .block-frow-body { max-width: 34rem; margin-right: auto; min-width: 0; }
+/* image right: swap column order and mirror the gutter-hugging margins */
+[data-block="feature_row"][data-image-side="right"] .block-frow-media { order: 2; }
+[data-block="feature_row"][data-image-side="right"] .block-frow-body  { order: 1; }
+[data-block="feature_row"][data-image-side="right"] .block-frow-media img { margin-left: 0; margin-right: auto; }
+[data-block="feature_row"][data-image-side="right"] .block-frow-body { margin-right: 0; margin-left: auto; }
+[data-block="feature_row"][data-image-max="sm"]   { --frow-img-max: 20rem; }
+[data-block="feature_row"][data-image-max="md"]   { --frow-img-max: 28rem; }
+[data-block="feature_row"][data-image-max="full"] { --frow-img-max: none; }
+/* no image yet → don't render a half-empty grid */
+[data-block="feature_row"] .block-frow-media:has(img[src=""]) { display: none; }
+[data-block="feature_row"]:has(.block-frow-media img[src=""]) .block-frow-inner { grid-template-columns: 1fr; }
+[data-block="feature_row"] .block-frow-eyebrow { display: inline-block; font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.7; margin-bottom: 0.5rem; }
+[data-block="feature_row"] .block-frow-eyebrow:empty { display: none; }
+[data-block="feature_row"] .block-frow-heading { font-size: clamp(1.5rem, 0.875rem + 2vw, 2.25rem); margin: 0 0 1rem; font-weight: 700; line-height: 1.2; }
+[data-block="feature_row"] .block-frow-text { line-height: 1.65; }
+[data-block="feature_row"] .block-frow-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.5rem; }
+[data-block="feature_row"] .block-frow-actions:not(:has(a:not(:empty))) { display: none; }
+[data-block="feature_row"] .block-btn { display: inline-block; padding: 0.75rem 1.75rem; border-radius: 999px; font-weight: 600; text-decoration: none; }
+[data-block="feature_row"] .block-btn-primary { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); }
+[data-block="feature_row"] .block-btn-secondary { background: transparent; color: var(--color-primary, #111); box-shadow: inset 0 0 0 2px currentColor; }
+[data-block="feature_row"] .block-btn:empty { display: none; }
+[data-block="feature_row"][data-gap="sm"] { --block-gap: 1rem; }
+[data-block="feature_row"][data-gap="md"] { --block-gap: 1.5rem; }
+[data-block="feature_row"][data-gap="lg"] { --block-gap: 2.5rem; }
+[data-block="feature_row"][data-gap="xl"] { --block-gap: 4rem; }
+[data-block="feature_row"][data-padding-y="none"] { --block-py: 0; }
+[data-block="feature_row"][data-padding-y="sm"]   { --block-py: 2rem; }
+[data-block="feature_row"][data-padding-y="md"]   { --block-py: 3rem; }
+[data-block="feature_row"][data-padding-y="lg"]   { --block-py: 4rem; }
+[data-block="feature_row"][data-padding-y="xl"]   { --block-py: 6rem; }
+@media (max-width: 639px) {
+  /* Mobile stack. Selectors are enumerated at >= the specificity of every
+     desktop order/margin rule above (see the core/columns collapse
+     regression: a bare data-block rule inside a media query silently loses
+     to an attribute-qualified base rule). stack_order rules come last so
+     they win the order tie against the image-side rules by source order. */
+  [data-block="feature_row"] .block-frow-inner { grid-template-columns: 1fr; gap: 1.5rem; }
+  [data-block="feature_row"] .block-frow-media,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-media { order: 1; }
+  [data-block="feature_row"] .block-frow-body,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-body { order: 2; margin-inline: 0; max-width: none; }
+  [data-block="feature_row"] .block-frow-media img,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-media img { margin-inline: auto; }
+  [data-block="feature_row"][data-stack-order="text-first"] .block-frow-media { order: 2; }
+  [data-block="feature_row"][data-stack-order="text-first"] .block-frow-body  { order: 1; }
+}
+[data-block="feature_row"][data-valign="end"] .block-frow-inner { align-items: end; }
+/* Text alignment; unset, the text keeps the alignment it inherits. */
+[data-block="feature_row"] .block-frow-body { text-align: var(--frow-text-align); }
+[data-block="feature_row"][data-text-align="start"] { --frow-text-align: start; }
+[data-block="feature_row"][data-text-align="center"] { --frow-text-align: center; }
+[data-block="feature_row"][data-text-align="end"] { --frow-text-align: end; }
+[data-block="feature_row"][data-actions-align="center"] .block-frow-actions { justify-content: center; }
+[data-block="feature_row"][data-actions-align="end"] .block-frow-actions { justify-content: flex-end; }
+[data-block="feature_row"][data-actions-align="stretch"] .block-frow-actions > a { flex: 1 1 auto; text-align: center; }
+/* An image aspect gives every row's image the same shape, cropped (cover) or letterboxed (contain). */
+[data-block="feature_row"]:not([data-image-aspect="auto"]) .block-frow-media img { object-fit: cover; }
+[data-block="feature_row"][data-image-aspect="landscape"] .block-frow-media img { aspect-ratio: 16 / 9; }
+[data-block="feature_row"][data-image-aspect="square"] .block-frow-media img { aspect-ratio: 1; }
+[data-block="feature_row"][data-image-aspect="portrait"] .block-frow-media img { aspect-ratio: 3 / 4; }
+[data-block="feature_row"][data-image-fit="contain"] .block-frow-media img { object-fit: contain; }
+[data-block="feature_row"][data-text-color]:not([data-text-color=""]) { color: var(--text-color); }
+[data-block="feature_row"][data-text-color]:not([data-text-color=""]) .block-frow-heading { color: inherit; }
+
+/* core/feature_row defaults */
+/* Each column keeps its maximum width without leaving its grid track. */
+[data-block="feature_row"] .block-frow-body { max-width:min(34rem, 100%); }
+/* Phones get compact padding; desktops keep the previous space. */
+[data-block="feature_row"], [data-block="feature_row"][data-padding-y="lg"] { --block-py:clamp(2rem, 1rem + 4vw, 4rem); }
+[data-block="feature_row"][data-padding-y="md"] { --block-py:clamp(1.5rem, .75rem + 3vw, 3rem); }
+[data-block="feature_row"][data-padding-y="xl"] { --block-py:clamp(2.5rem, .5rem + 7vw, 6rem); }
+@media (max-width: 639px) { [data-block="feature_row"] .block-frow-inner { gap:var(--space-md,1rem); } }
+/* Pill buttons keep pill ends on one line and become rounded rectangles when their label wraps. */
+[data-block="feature_row"] .block-btn { border-radius:1.6rem; }
+/* The row's content lines up with sections of the same width. */
+[data-block="feature_row"] .block-frow-inner { max-width:var(--content-normal, 65rem); }
+[data-block="feature_row"][data-width="wide"] .block-frow-inner { max-width:var(--content-wide, 80rem); }
+/* In a wide row the default image and the text fill their columns, so they reach the same edges as a wide hero or section. */
+[data-block="feature_row"][data-width="wide"][data-image-max="lg"] { --frow-img-max:100%; }
+[data-block="feature_row"][data-width="wide"] .block-frow-body { max-width:100%; }
+/* Inside a section, column or tab a row without its own background starts where the text beside it starts. */
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel) > [data-block="feature_row"][style$="--bg:"] { padding-inline:0; }
+/* Inside a tab, column, grid cell or container the row drops its default outer padding: the block around it spaces it. */
+:is(.block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][data-padding-y="lg"] { --block-py:0; }
+:is(.block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][style$="--bg:"] { padding-inline:0; }
+/* A row inside another block fills it: the block around it sets the width, so the row's edges match the content beside it. */
+:is(.block-section-inner, .block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] .block-frow-inner { max-width:none; }
+:is(.block-section-inner, .block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][data-image-max="lg"] { --frow-img-max:100%; }
+:is(.block-section-inner, .block-tabs-panel, .block-columns-col, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] .block-frow-body { max-width:100%; }
+/* The row stacks by its own width, so it also stacks in a narrow column or grid cell on a wide screen. */
+[data-block="feature_row"] { container-type:inline-size; }
+/* The heading scales with the row, not the screen. */
+[data-block="feature_row"] .block-frow-heading { font-size:clamp(1.375rem, 1rem + 2.5cqi, 2.25rem); }
+@container (max-width: 42rem) {
+  [data-block="feature_row"] .block-frow-inner { grid-template-columns: 1fr; gap: var(--space-md, 1rem); }
+  [data-block="feature_row"] .block-frow-media,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-media { order: 1; }
+  [data-block="feature_row"] .block-frow-body,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-body { order: 2; margin-inline: 0; max-width: none; }
+  [data-block="feature_row"] .block-frow-media img,
+  [data-block="feature_row"][data-image-side="right"] .block-frow-media img { margin-inline: auto; }
+  [data-block="feature_row"][data-stack-order="text-first"] .block-frow-media { order: 2; }
+  [data-block="feature_row"][data-stack-order="text-first"] .block-frow-body { order: 1; }
+}
+
+/* core/feature_row defaults v16 */
+/* Feature rows that follow each other inside a section or column are clearly separate rows. */
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"] + [data-block="feature_row"] { margin-block-start:clamp(2.5rem, 1.5rem + 4vw, 5rem); }
+/* A row without its own background inside another block keeps its edges in line with the content beside it, also when it has spacing of its own. */
+:is(.block-section-inner, .block-columns-col, .block-tabs-panel, [data-block="grid"], [data-block="container"], [data-block="semantic-container"]) > [data-block="feature_row"][style*="--bg:;"] { padding-inline:0; }
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+/* A size container gives its content no width to size by, so in a centring or row container a block holding one
+   would shrink to nothing. Such a block fills the container instead; its own maximum width still applies. */
+:where([data-block="container"]) > :where([data-block]):where(:has(:is([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel, .block-table-scroll, [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"])), [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"]) { inline-size:100%; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
+}

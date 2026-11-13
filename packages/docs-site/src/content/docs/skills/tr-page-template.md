@@ -37,6 +37,9 @@ default template, and an individual Page can override it.
 5. Metadata blocks include `template/page_title`, `template/page_date`,
    `template/page_featured_image`, `template/page_breadcrumbs` and
    `template/page_navigation`. The outline block reads the rendered body headings.
+   `template/page_featured_image` takes its alt text from `alt_field` (for
+   example `featured_image_alt`), `aspect_ratio` and `max_height_px` per screen
+   width, `loading: "eager"` and a `mobile_field`; see the block library.
 6. Use `{{page.title}}` or `{{page.custom_field}}` in template bindings.
    `template/page_excerpt` shows the Page's `excerpt`: set it per Page with
    `update_page page_id=... patch={excerpt:"…"} save=true` (any content type;

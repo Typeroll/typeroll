@@ -583,6 +583,44 @@ Render version 16 also adds settings to these blocks:
 - `template/page_navigation`: the labels and titles have the classes
   `page-navigation-label` and `page-navigation-title`.
 
+### Page featured image
+
+`template/page_featured_image` shows the page field named by `field` (default
+`og_image`) and renders nothing when the page has no image. From Core 0.3.31
+it also takes these settings, on every render version:
+
+- `alt_field`: the page field with the image's alt text, for example
+  `featured_image_alt`. Empty, the alt text is the page title. From render
+  version 21, a block without `alt_field` uses the field named after the image
+  field with `_alt` added (`featured_image_alt` for `featured_image`) when it
+  has a value, and the page title otherwise.
+- `loading`: `auto` (the default) marks the image lazy, and the published site
+  loads the page's first image immediately with high priority, so a featured
+  image at the top of the page is loaded first anyway. `eager` always loads it
+  immediately with `fetchpriority="high"`; `lazy` never does.
+- `aspect_ratio` per screen width, as on an Image block (for example
+  `{"mobile": "16:9", "laptop": "3:1"}`), and the ratio `21:9`.
+- `max_height_px` (80–2400, per screen width): the image keeps its width and is
+  at most this high; with `fit: "cover"` it is cropped around the focal point.
+- `mobile_field`: another page field with an image for small screens, with
+  `mobile_src_below` / `mobile_src_below_px` as on an Image block's mobile
+  image. `focal_x` and `focal_y` can also be set per screen width.
+
+The image's `sizes` follows `width`: `narrow`, `normal` and `wide` are at most
+512, 768 and 1024 px wide, and `full` follows the layout around it. The
+published site gives the image the same `<picture>` with AVIF and WebP sources
+as an Image block; previews show the original file.
+
+A full-width featured image that stays low on a computer and 16:9 on a phone:
+
+```json
+{ "field": "featured_image", "alt_field": "featured_image_alt", "width": "full",
+  "fit": "cover", "aspect_ratio": { "mobile": "16:9", "laptop": "3:1" } }
+```
+
+`"max_height_px": 300` with `"aspect_ratio": "16:9"` gives the same on wide
+screens and keeps 16:9 where that is lower than 300 px.
+
 ### Site fields on pages
 
 [Site fields](../../site-fields/) are values the client keeps on settings
