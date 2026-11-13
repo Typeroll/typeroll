@@ -77,6 +77,16 @@ it('maps only the authorized intake method to the installation execute scope', a
   expect(extensionScopeForApiRequest('/api/v1/sites/site/forms/survey/intake', 'GET')).not.toBe('forms:execute');
 });
 
+it('gives an unanswered interview the store TTL with its 30-day expiry, so the store removes it', async () => {
+  const ctx = setup(), before = Date.now();
+  await ctx.call();
+  const record = [...ctx.rows.values()].find(row => row.status === 'partial');
+  const expires = Date.parse(record.expires_at);
+  expect(expires).toBeGreaterThanOrEqual(before + 30 * 86_400_000 - 1000);
+  expect(expires).toBeLessThanOrEqual(Date.now() + 30 * 86_400_000);
+  expect(new Date(record.delete_at).getTime()).toBe(expires);
+});
+
 it('refuses an expired partial interview even before retention has removed it', async () => {
   const ctx = setup(); await ctx.call();
   for (const [path, record] of ctx.rows) if (path.startsWith(paths.submissions('o', 's'))) record.expires_at = '2000-01-01T00:00:00Z';
@@ -91,7 +101,7 @@ describe('durable private intake saves', () => {
     expect(saved.answers).toEqual({ pilot: false }); expect(saved.revision).not.toBe(start.revision);
     const { answers: ignored, ...describe } = input;
     expect(await ctx.call(describe as any)).toMatchObject({ answers: { pilot: false }, revision: saved.revision });
-    expect([...ctx.rows.values()].find(row => row.status === 'partial')).toMatchObject({ expires_at: null });
+    expect([...ctx.rows.values()].find(row => row.status === 'partial')).toMatchObject({ expires_at: null, delete_at: null });
   });
   it('rejects stale writes, deduplicates the same request and rejects changed reuse', async () => {
     const ctx = setup(), start = await ctx.call();

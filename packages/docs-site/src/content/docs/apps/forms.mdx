@@ -94,12 +94,23 @@ period set:
   deletes the expired ones it finds;
 - clearing the period (empty, or `null`) keeps all remaining submissions again.
 
-Partial submissions keep the form's `partial_ttl_days`. Questionnaire
-responses that belong to an app installation are managed by that app.
+Partial submissions, from a multi-step form the visitor has not finished, do
+not use this setting. Each one is deleted the form's `partial_ttl_days`
+(default 30) after its last step; a visitor who continues starts the period
+again, and finishing the form ends it (a completed submission then follows the
+site's retention period above). When the form has an abandoned-partial
+follow-up that is due later, the partial submission is kept until a day after
+that follow-up is due. A changed `partial_ttl_days` applies to steps saved
+after the change. Once a partial submission has expired, it is no longer
+listed or returned, and the visitor's next step starts the form over.
+Questionnaire responses that belong to an app installation are managed by that
+app; one that was never answered is deleted after 30 days.
 
-Each expiring submission also records when it may be deleted (`delete_at`).
-Expired submissions are hidden at once and deleted when the inbox is read.
-Webhook delivery records hold only delivery metadata, not answers.
+Each expiring submission records when it expires (`expires_at`). Expired
+submissions are hidden at once, and the site's data store (its Durable Object)
+deletes them shortly after they expire, without anyone opening the inbox.
+Reading the inbox also deletes the expired submissions it finds. Webhook
+delivery records hold only delivery metadata, not answers.
 
 ## Agent and API surface
 

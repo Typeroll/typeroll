@@ -5,6 +5,7 @@ import { resolveAppFormEndpoint, installedFormEmbedInfo, validInstallationFormTa
 
 import type { APIRoute } from 'astro';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
+import { parsePartialTtlDays } from '../../../../../../lib/forms/partial-ttl';
 import { noWritableFieldsError } from '../../../../../../lib/api-body';
 import { getStore } from '../../../../../../lib/datastore';
 import { extensionIssuer } from '../../../../../../lib/extensions/auth';
@@ -93,7 +94,11 @@ export const PATCH: APIRoute = async ({ request, params }) => {
   }
   if (body.styles !== undefined) update.styles = String(body.styles);
   if (body.kind !== undefined) update.kind = String(body.kind);
-  if (body.partial_ttl_days !== undefined) update.partial_ttl_days = Number(body.partial_ttl_days);
+  if (body.partial_ttl_days !== undefined) {
+    const ttl = parsePartialTtlDays(body.partial_ttl_days);
+    if (typeof ttl === 'string') return apiError(ttl, 400);
+    update.partial_ttl_days = ttl;
+  }
   // Flat `fields` is authoring sugar: it REPLACES the whole step list with
   // one static step (mirroring how `fields` always replaced the full field
   // list). Explicit `steps` in the same body wins.

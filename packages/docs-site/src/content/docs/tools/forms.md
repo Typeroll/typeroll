@@ -30,7 +30,9 @@ then square metres and timeframe, then contact details.
 ```
 
 Multi-step forms save partial answers as the visitor advances, so a drop-off
-after step one still tells you something.
+after step one still tells you something. A partial submission is deleted
+`partial_ttl_days` (default 30) after its last step; see
+[Privacy and retention](../../apps/forms/#privacy-and-retention).
 
 ## Multi-step forms
 
@@ -192,7 +194,9 @@ step and has not moved on for that many hours, so you hear about a lead who
 gave their contact details in step 1 but never finished. A visitor who
 continues resets the wait, a completed submission never sends it, and form
 previews never store submissions, so they never count. The email lists the
-answers given so far (`include_all`).
+answers given so far (`include_all`). A partial submission is kept until at
+least a day after its last follow-up is due, even when that is later than the
+form's `partial_ttl_days`, so the follow-up always finds it.
 
 ```
 update_form form_id=lead patch={ actions: [

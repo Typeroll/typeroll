@@ -22,10 +22,19 @@
 //          field: the site's store object removes it on its alarm once that
 //          time has passed, so nothing depends on someone opening the inbox.
 //          Clearing the setting clears `delete_at` again.
-//     Partial submissions and app intake records keep their own expiry.
+//   - Partial submissions (a multi-step form the visitor has not finished,
+//     or an app questionnaire nobody answered) are not affected by that
+//     setting. Each carries its own `expires_at`: the form's
+//     `partial_ttl_days` after its last step, or a day after its last
+//     abandoned-partial follow-up is due if that is later (an unanswered
+//     questionnaire: 30 days after it started). They are deleted the same
+//     three ways: reads hide and delete expired ones, a resumed step past the
+//     expiry starts over, and `delete_at` (set with `expires_at`, cleared on
+//     completion) lets the store's TTL remove them. Partials saved before
+//     `delete_at` existed get it when a read meets them.
 
 import { paths } from '@typeroll/shared';
-import type { FormSubmission, FormWebhookDelivery, Site } from '@typeroll/shared';
+import type { Form, FormSubmission, FormWebhookDelivery, Site } from '@typeroll/shared';
 import { getStore } from './datastore';
 
 export const SUBMISSIONS_DEFAULT_LIMIT = 50;
@@ -37,6 +46,7 @@ export const SUBMISSION_RETENTION_MAX_DAYS = 3650;
 export const LAZY_PURGE_LIMIT = 100;
 const USER_AGENT_MAX = 256;
 const DAY_MS = 86_400_000;
+const HOUR_MS = 3_600_000;
 
 export type SubmissionView = FormSubmission & { webhook_deliveries?: Partial<FormWebhookDelivery>[] };
 
@@ -83,9 +93,79 @@ export function submissionRetentionDeadline(submission: StoredSubmission, days: 
   return Number.isFinite(completedAt) ? completedAt + days * DAY_MS : null;
 }
 
+export const PARTIAL_TTL_DEFAULT_DAYS = 30;
+
+/**
+ * Days a form keeps a partial submission after its last step: the form's
+ * `partial_ttl_days`, or 30 when it is unset or not a usable number of days.
+ */
+export function partialTtlDays(form: Pick<Form, 'partial_ttl_days'> | null | undefined): number {
+  const days = form?.partial_ttl_days;
+  return typeof days === 'number' && Number.isFinite(days) && days >= 1
+    ? Math.min(days, SUBMISSION_RETENTION_MAX_DAYS) : PARTIAL_TTL_DEFAULT_DAYS;
+}
+
+/**
+ * How long a form keeps a partial submission after its last step, in ms:
+ * `partial_ttl_days`, extended to a day after the form's last
+ * abandoned-partial follow-up is due, so a follow-up never finds its
+ * submission already deleted.
+ */
+export function partialLifetimeMs(form: Partial<Pick<Form, 'partial_ttl_days' | 'actions'>> | null | undefined): number {
+  const followUps = (form?.actions ?? [])
+    .filter((action) => action.trigger === 'partial_abandoned' && typeof action.after_hours === 'number' && action.after_hours > 0)
+    .map((action) => action.after_hours! * HOUR_MS + DAY_MS);
+  return Math.min(Math.max(partialTtlDays(form) * DAY_MS, ...followUps), SUBMISSION_RETENTION_MAX_DAYS * DAY_MS);
+}
+
+/**
+ * Expiry fields for a partial submission whose last step was saved at
+ * `savedAt`: `expires_at` for callers and `delete_at`, the store's TTL field.
+ */
+export function partialExpiryFields(form: Partial<Pick<Form, 'partial_ttl_days' | 'actions'>> | null | undefined, savedAt: Date): { expires_at: string; delete_at: Date } {
+  const deadline = new Date(savedAt.getTime() + partialLifetimeMs(form));
+  return { expires_at: deadline.toISOString(), delete_at: deadline };
+}
+
+/** When a partial submission expires, in ms; null for completed ones or a partial without an expiry. */
+export function partialDeadline(submission: object): number | null {
+  const { status, expires_at: expiresAt } = submission as { status?: unknown; expires_at?: unknown };
+  if (status !== 'partial' || typeof expiresAt !== 'string') return null;
+  const deadline = Date.parse(expiresAt);
+  return Number.isFinite(deadline) ? deadline : null;
+}
+
+/** Whether a partial submission is past its expiry and counts as deleted. */
+export function isExpiredPartial(submission: object, now = Date.now()): boolean {
+  const deadline = partialDeadline(submission);
+  return deadline !== null && deadline <= now;
+}
+
 function isExpired(submission: StoredSubmission, days: number | null, now: number): boolean {
+  if (isExpiredPartial(submission, now)) return true;
   const deadline = submissionRetentionDeadline(submission, days);
   return deadline !== null && deadline <= now;
+}
+
+/**
+ * Give partials saved before they carried `delete_at` the store's TTL
+ * timestamp (bounded per call), so they are removed without another read.
+ * Only a still-unstamped partial with the same expiry is changed. Never fails the read.
+ */
+async function stampPartialTtl(orgId: string, siteId: string, submissions: StoredSubmission[]): Promise<void> {
+  const pending = submissions.filter((submission) => submission.delete_at == null && partialDeadline(submission) !== null)
+    .slice(0, LAZY_PURGE_LIMIT);
+  if (pending.length === 0) return;
+  try {
+    const store = getStore();
+    for (const submission of pending) {
+      await store.compareAndUpdateDoc<StoredSubmission>(`${paths.submissions(orgId, siteId)}/${submission.id}`,
+        (saved) => saved.status === 'partial' && saved.delete_at == null && saved.expires_at === submission.expires_at,
+        { delete_at: new Date(partialDeadline(submission)!) });
+    }
+  } catch (error) {
+    console.error('[forms] stamping partial submission expiry failed:', error);
+  }
 }
 
 /**
@@ -172,6 +252,7 @@ export async function listFormSubmissions(
   const expired = all.filter((submission) => isExpired(submission, days, now));
   await purgeExpired(orgId, siteId, expired);
   const expiredIds = new Set(expired.map((submission) => submission.id));
+  await stampPartialTtl(orgId, siteId, all.filter((submission) => !expiredIds.has(submission.id)));
   let submissions = all
     .filter((submission) => submission.form_id === formId && !expiredIds.has(submission.id)
       && (options.isAdmin || !('intake' in submission)))
@@ -206,6 +287,7 @@ export async function readFormSubmission(
     await purgeExpired(orgId, siteId, [stored]);
     return null;
   }
+  await stampPartialTtl(orgId, siteId, [stored]);
   const submission = submissionView(stored, isAdmin);
   return isAdmin ? (await withDeliveries(orgId, siteId, [submission]))[0]! : submission;
 }
