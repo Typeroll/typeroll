@@ -140,6 +140,12 @@ const EXTRA_SAMPLES: Array<{ name: string; block: Block; from?: number; options?
     block: { id: 'ref', type: 'core/snippet', data: { snippet: 'lunch', tag: 'section', empty_text: 'Nothing today' } },
   },
   {
+    // A page with an image and its own alt text: the alt text follows it from version 21.
+    name: 'template__page_featured_image--page', from: 16,
+    options: { context: { page: { title: 'Sample page', featured_image: '/media/sample.jpg', featured_image_alt: 'Sample alt text' } } },
+    block: { id: 'ref', type: 'template/page_featured_image', data: { field: 'featured_image', width: 'narrow', aspect_ratio: '16:9', fit: 'cover' } },
+  },
+  {
     name: 'core__show_if--site-field', from: 15, options: SITE_FIELDS,
     block: { id: 'ref', type: 'core/show_if', data: { condition: 'site.fields.show_booking' }, children: [{ id: 'ref-child', type: 'core/prose', data: { html: '<p>Book a time</p>' } }] },
   },

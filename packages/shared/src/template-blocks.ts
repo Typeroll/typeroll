@@ -59,9 +59,14 @@ const pageTitle: BlockType = {
   created_at: ISO_EPOCH,
 };
 
+// The renderer fills the alt text, the image attributes (sizes, style, loading)
+// and the optional mobile <picture> around the image; with none of the newer
+// settings in use the markup is the same as before they existed.
 const FEATURED_IMAGE_TEMPLATE = `<figure data-block="image" data-w="{{width}}" data-fit="{{fit}}" data-aspect="{{aspect_ratio}}">
-  <img src="{{selected_page_image}}" alt="{{page.title}}" loading="lazy" decoding="async" />
+  {{{featured_picture_open}}}<img src="{{selected_page_image}}" alt="{{selected_page_image_alt}}"{{{featured_image_attrs}}} decoding="async" />{{{featured_picture_close}}}
 </figure>`;
+/** CSS values of the aspect ratios, for an aspect ratio set per screen width. */
+export const FEATURED_IMAGE_ASPECTS: Record<string, string> = { auto: 'auto', '16:9': '16/9', '4:3': '4/3', '1:1': '1', '3:1': '3/1', '21:9': '21/9' };
 const FEATURED_IMAGE_STYLES = `[data-block="image"] img { display:block; width:100%; height:auto; object-fit:contain; }
 [data-block="image"][data-fit="cover"] img { object-fit:cover; }
 [data-block="image"][data-aspect="16:9"] img { aspect-ratio:16/9; }
@@ -83,10 +88,27 @@ const pageFeaturedImage: BlockType = {
   schema: [
     { name: 'fit', type: 'select', label: 'Image fit', options: ['contain', 'cover'], default: 'contain' },
     { name: 'field', type: 'text', label: 'Image field', default: 'og_image' },
+    // The page field with the image's alt text. Unset: the page title, and from
+    // render version 21 the `<field>_alt` page field when it has a value.
+    { name: 'alt_field', type: 'text', label: 'Alt text field' },
     { name: 'width', type: 'select', label: 'Width',
       options: ['narrow', 'normal', 'wide', 'full'], default: 'wide' },
+    // A ratio per screen width, and 21:9, are set on the image itself, at any
+    // render version; the other single ratios keep the block's CSS rules.
     { name: 'aspect_ratio', type: 'select', label: 'Aspect ratio',
-      options: ['auto', '16:9', '4:3', '1:1', '3:1'], default: 'auto' },
+      options: ['auto', '16:9', '4:3', '1:1', '3:1', '21:9'], default: 'auto', responsive: true,
+      responsive_css: Object.fromEntries(Object.entries(FEATURED_IMAGE_ASPECTS).map(([key, value]) => [key, `--featured-aspect:${value};`])) },
+    // Caps the image's height (it keeps the full width and is cropped or fitted per `fit`).
+    // Set on the image itself (no block CSS reads it), so it adds no rule to existing pages.
+    { name: 'max_height_px', type: 'number', label: 'Maximum height (px)', min: 80, max: 2400, responsive: true },
+    // `auto`: lazy in the markup; the published build loads the page's first image
+    // eagerly with high priority. `eager` always does, `lazy` never.
+    { name: 'loading', type: 'select', label: 'Loading', options: ['auto', 'eager', 'lazy'],
+      option_labels: ['Automatic', 'Immediately, high priority', 'When scrolled near'], default: 'auto' },
+    // A different page image below a screen width, like core/image's mobile image.
+    { name: 'mobile_field', type: 'text', label: 'Mobile image field (optional)' },
+    { name: 'mobile_src_below', type: 'select', label: 'Use mobile image below', options: ['640', 'tablet', 'laptop', 'desktop', 'wide'], option_labels: ['640 px', 'Tablet width', 'Laptop width', 'Desktop width', 'Wide width'], default: '640' },
+    { name: 'mobile_src_below_px', type: 'number', label: 'Use mobile image below (px, overrides the width above)', min: 320, max: 2560 },
     // Render version 16, like core/image.
     { name: 'align', type: 'select', label: 'Image alignment', options: ['left', 'center', 'right'], default: 'center', min_render_version: 16 },
     { name: 'radius', type: 'select', label: 'Corner radius', options: ['none', 'md', 'lg', 'xl'], default: 'none', min_render_version: 16 },

@@ -74,7 +74,10 @@ function configuredPageFields(block: Block): string[] {
   if (block.type === 'core/field_list' && Array.isArray(data.fields)) {
     return data.fields.flatMap(row => row && typeof row.field === 'string' && row.field.trim() ? [row.field.trim()] : []);
   }
-  if (block.type === 'template/page_featured_image') return [String(data.field ?? 'image')];
+  if (block.type === 'template/page_featured_image') {
+    return [String(data.field ?? 'image'), data.alt_field, data.mobile_field]
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  }
   if (block.type === 'template/page_date' && typeof data.field === 'string') return [data.field];
   if (block.type === 'template/page_navigation') {
     return [

@@ -264,6 +264,7 @@ describe('every core block field changes what renders', () => {
     ...Object.fromEntries(['frames_pattern', 'frame_count', 'frame_first', 'frames_pattern_phone'].map(name => [`core/scroll_film.${name}`, { frames_pattern: '/f/{nnn}.webp', frame_count: 3, frames_pattern_phone: '/p/{nnn}.webp' }])),
     ...Object.fromEntries(['link_rel', 'new_tab'].map(name => [`core/image.${name}`, { link: '/linked-image/' }])),
     ...Object.fromEntries(['mobile_src_below', 'mobile_src_below_px'].map(name => [`core/image.${name}`, { mobile_src: '/mobile.png' }])),
+    ...Object.fromEntries(['mobile_src_below', 'mobile_src_below_px'].map(name => [`template/page_featured_image.${name}`, { mobile_field: 'mobile_image' }])),
     'core/page_list.empty_state': { filter_value: 'nothing-matches' },
     ...Object.fromEntries(['download_behavior', 'download_label'].map(name => [`core/post_card.${name}`, { download_url_field: 'pdf' }])),
     ...Object.fromEntries(['placeholder_icon', 'placeholder_background', 'placeholder_color'].map(name => [`core/post_card.${name}`, { missing_image: 'placeholder' }])),

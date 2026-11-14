@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.31 (candidate, MCP 0.45.139)
+
+- `template/page_featured_image` takes new settings on every render version:
+  `alt_field` (the page field with the alt text, for example
+  `featured_image_alt`; empty falls back to the page title), `loading`
+  (`auto`, `eager` with `fetchpriority="high"`, `lazy`), `aspect_ratio` per
+  screen width and the ratio `21:9`, `max_height_px` per screen width, and
+  `mobile_field` with `mobile_src_below` / `mobile_src_below_px` for a mobile
+  image from another page field. A responsive `aspect_ratio` used to render
+  `data-aspect="[object Object]"` and no ratio.
+- The featured image's `sizes` follows its `width` (`narrow` 512 px, `normal`
+  768 px, `wide` 1024 px), so a narrow image inside a column no longer asks
+  for a column-wide file. This changes only which file the browser downloads.
+- Published pages keep `fetchpriority` on images; the sanitizer used to drop
+  it before the build added it back to the first image only.
+- Render version 21: without `alt_field`, the featured image reads the
+  `<image field>_alt` page field (`featured_image_alt` for `featured_image`)
+  when it has a value, before falling back to the page title.
+
 ## 0.3.30 (candidate, MCP 0.45.138)
 
 - Deleting media removes its published copies: `delete_media` and both delete

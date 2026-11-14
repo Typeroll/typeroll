@@ -231,7 +231,17 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A form action may name a thank-you page on this site (a Recurring Events Series\' thank-you page). The visitor goes there after a successful submission when the form has no redirect of its own.',
     ],
   },
+  {
+    version: 21, core_version: '0.3.31', title: 'Featured image alt text from the page',
+    changes: [
+      'Page featured image takes its alt text from the page field named after its image field with _alt added (featured_image_alt for featured_image, og_image_alt for og_image) when that field has a value, and from the page title otherwise. Before, the alt text was always the page title.',
+      'A block that names its alt text field (alt_field) uses that field on every render version.',
+    ],
+  },
 ];
+
+/** Render version from which the featured image reads `<image field>_alt` by default. */
+export const FEATURED_IMAGE_ALT_RENDER_VERSION = 21;
 
 export const LATEST_RENDER_VERSION = RENDER_VERSIONS[RENDER_VERSIONS.length - 1].version;
 

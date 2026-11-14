@@ -117,7 +117,7 @@ const options: IOptions = {
     'x-include': ['name'],
     'x-form': ['id'],
     'x-extension': ['block', 'props', 'variant', 'reserve'],
-    img: ['src', 'srcset', 'sizes', 'alt', 'width', 'height', 'loading', 'decoding'],
+    img: ['src', 'srcset', 'sizes', 'alt', 'width', 'height', 'loading', 'decoding', 'fetchpriority'],
     source: ['src', 'srcset', 'type', 'media', 'sizes'],
     video: ['src', 'poster', 'controls', 'autoplay', 'loop', 'muted', 'playsinline', 'preload', 'width', 'height'],
     audio: ['src', 'controls', 'autoplay', 'loop', 'muted', 'preload'],
