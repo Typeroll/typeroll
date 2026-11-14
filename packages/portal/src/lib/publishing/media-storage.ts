@@ -161,10 +161,36 @@ const PREPARED_RECIPE = 'v2';
  * preparation has handled the image's current bytes with the current recipe.
  */
 export function preparedVariantSlots(media: Media): Array<{ slot: string; width: number }> | null {
-  const width = media.width;
+  const width = media.width ?? media.prepared_width;
   if (media.storage?.provider !== 'organization_r2' || media.storage.state !== 'ready' || !media.sha256 || !width || !Number.isSafeInteger(width) || width < 1) return null;
   if (media.preparation?.state !== 'ready' || media.preparation.recipe !== PREPARED_RECIPE || media.preparation.source_sha256 !== media.sha256) return null;
   return [...PREPARED_VARIANT_WIDTHS.filter(candidate => candidate < width).map(candidate => ({ slot: `w${candidate}`, width: candidate })), { slot: 'original', width }];
+}
+
+/**
+ * The width of a prepared image that was stored without dimensions, read once
+ * from the receipt the build engine wrote beside its prepared original and
+ * kept on the media record. No image is processed; null when there is no
+ * valid receipt for the image's current bytes.
+ */
+export async function preparedSourceWidth(orgId: string, siteId: string, media: Media & { id: string }): Promise<number | null> {
+  if (media.width || media.prepared_width) return media.width ?? media.prepared_width ?? null;
+  if (media.storage?.provider !== 'organization_r2' || media.storage.state !== 'ready' || !media.sha256 ||
+    media.preparation?.state !== 'ready' || media.preparation.recipe !== PREPARED_RECIPE || media.preparation.source_sha256 !== media.sha256) return null;
+  const key = `private/${await siteMediaPrefix(orgId, siteId)}/prepared/${PREPARED_RECIPE}/${media.sha256}/original.webp.receipt.json`;
+  const r2 = await storageClient(orgId, media.storage);
+  let width: unknown;
+  try {
+    const object = await r2.send(new GetObjectCommand({ Bucket: media.storage.bucket, Key: key }), { abortSignal: AbortSignal.timeout(10_000) });
+    const bytes = object.Body ? await object.Body.transformToByteArray() : null;
+    if (!bytes || bytes.length > 8192) return null;
+    const receipt = JSON.parse(Buffer.from(bytes).toString('utf8'));
+    if (receipt?.source_sha256 !== media.sha256 || receipt.format !== 'webp') return null;
+    width = receipt.width;
+  } catch { return null; } finally { r2.destroy(); }
+  if (typeof width !== 'number' || !Number.isSafeInteger(width) || width < 1 || width > 100_000) return null;
+  await getStore().compareAndUpdateDoc<Media>(`${paths.media(orgId, siteId)}/${media.id}`, current => current.sha256 === media.sha256, { prepared_width: width }).catch(() => {});
+  return width;
 }
 
 /**

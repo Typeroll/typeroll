@@ -32,7 +32,7 @@ export function rewritePreviewMediaUrls(html: string, siteId: string, token: str
 export async function withPreviewResponsiveImages(html: string, orgId: string, siteId: string, token: string): Promise<string> {
   const { getStore } = await import('./datastore');
   const { buildMediaLookup, paths, transformBodyForSeo } = await import('@typeroll/shared');
-  const { preparedVariantSlots } = await import('./publishing/media-storage');
+  const { preparedSourceWidth, preparedVariantSlots } = await import('./publishing/media-storage');
   const base = `/preview/${encodeURIComponent(siteId)}/media/`;
   const suffix = `?token=${encodeURIComponent(token)}`;
   const ids = new Set<string>();
@@ -42,8 +42,10 @@ export async function withPreviewResponsiveImages(html: string, orgId: string, s
   if (!ids.size) return transformBodyForSeo(html, buildMediaLookup([]));
   const media = [];
   for (const id of [...ids].slice(0, 500)) {
-    const item = await getStore().getDoc<import('@typeroll/shared').Media>(`${paths.media(orgId, siteId)}/${id}`);
+    let item = await getStore().getDoc<import('@typeroll/shared').Media>(`${paths.media(orgId, siteId)}/${id}`);
     if (!item) continue;
+    // Images stored without dimensions: the width from their preparation receipt, read once.
+    if (!item.width && !item.prepared_width) { const width = await preparedSourceWidth(orgId, siteId, item); if (width) item = { ...item, prepared_width: width }; }
     const url = `${base}${encodeURIComponent(id)}${suffix}`;
     const slots = preparedVariantSlots(item) ?? [];
     media.push({ ...item, cdn_url: url, variants: slots.flatMap(({ slot, width }) => (['avif', 'webp'] as const)

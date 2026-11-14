@@ -13,7 +13,9 @@
   `srcset`, dimensions and loading rules, instead of the full original. The
   browser keeps these files for up to an hour within the link's validity, so
   the next page does not download them again. Images not prepared yet keep the
-  original file.
+  original file. No image is prepared again for this: an image stored without
+  dimensions takes its width from its preparation receipt, read once and kept
+  as `prepared_width`.
 - A preview `frame_url` opened on its own in a browser tab no longer swallows
   every click. Its bridge, which hands clicks to the review wrapper, now stays
   out when the page has no parent window, so links open the matching review

@@ -173,3 +173,28 @@ describe('preview media route', () => {
     expect((await get(86400, '&variant=w4000.webp')).status).toBe(404);
   });
 });
+
+describe('preview images stored without dimensions', () => {
+  it('reads the width from the preparation receipt once, keeps it and needs no new preparation', async () => {
+    await connect();
+    const sha = 'e'.repeat(64);
+    await getStore().setDoc(`${paths.media('org', 'site')}/house`, { filename: 'house.png', mime_type: 'image/png', sha256: sha,
+      cdn_url: 'https://cms.example.com/api/sites/site/media/house/content',
+      storage: { provider: 'organization_r2', account_id: account, bucket: 'customer-private', key: 'private/media/abcdefghij/house.png', state: 'ready' },
+      preparation: { state: 'ready', source_sha256: sha, recipe: 'v2' } });
+    const send = vi.spyOn(S3Client.prototype, 'send').mockImplementation(async (command: unknown) => {
+      expect((command as GetObjectCommand).input.Key).toBe(`private/media/abcdefghij/prepared/v2/${sha}/original.webp.receipt.json`);
+      return { Body: { transformToByteArray: async () => Buffer.from(JSON.stringify({ source_sha256: sha, recipe_sha256: 'r', width: 1536, format: 'webp', sha256: 'f'.repeat(64), size_bytes: 1 })) } };
+    });
+    const { withPreviewResponsiveImages } = await import('../../lib/preview-media');
+    const src = '/preview/site/media/house?token=tok';
+    const html = await withPreviewResponsiveImages(`<img src="${src}" alt="House" loading="lazy" />`, 'org', 'site', 'tok');
+    expect(html).toContain(`${src}&amp;variant=w1024.avif 1024w, ${src}&amp;variant=original.avif 1536w`);
+    expect(html).not.toContain('variant=w1920');
+    expect(await getStore().getDoc(`${paths.media('org', 'site')}/house`)).toMatchObject({ prepared_width: 1536 });
+    expect(send).toHaveBeenCalledTimes(1);
+    // The next preview uses the kept width without reading the receipt again.
+    await withPreviewResponsiveImages(`<img src="${src}" alt="House" loading="lazy" />`, 'org', 'site', 'tok');
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+});
