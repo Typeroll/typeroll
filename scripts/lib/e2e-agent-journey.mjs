@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { observeDeployJob } from './deploy-observation.mjs';
 
 function textResult(payload, toolName) {
   if (payload?.error) throw new Error(`${toolName} returned an MCP error`);
@@ -39,6 +40,7 @@ export async function runAgentJourney({
   siteId,
   runId = crypto.randomBytes(6).toString('hex'),
   wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+  now = Date.now,
 }) {
   const call = (name, args) => callHostedMcp({ fetchImpl, portalUrl, apiKey, name, args });
   const site = await call('get_site');
@@ -73,14 +75,9 @@ export async function runAgentJourney({
     const deployment = await call('trigger_deploy', { dry_run: true, version: branchId });
     const jobId = deployment?.job_id;
     if (!jobId) throw new Error('trigger_deploy returned no job id');
-    let terminal;
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      const status = await call('get_deploy_status', { job_id: jobId });
-      terminal = status?.job?.status;
-      if (terminal === 'succeeded' || terminal === 'failed') break;
-      await wait(5_000);
-    }
-    if (terminal !== 'succeeded') throw new Error(`dry-run deploy ended in ${terminal ?? 'timeout'}`);
+    const final = await observeDeployJob(() => call('get_deploy_status', { job_id: jobId }), { wait, now, workingBudgetMs: 10 * 60_000 });
+    const terminal = final?.job?.status;
+    if (terminal !== 'succeeded') throw new Error(`dry-run deploy ended in ${terminal ?? 'an unknown state'}`);
     return { branchId, preview: 'verified', dryRunDeploy: 'succeeded' };
   } finally {
     if (branchId) await call('delete_branch', { version_id: branchId });

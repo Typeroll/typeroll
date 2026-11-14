@@ -9,7 +9,7 @@ import { selectedBuildProvider } from '../builds/selection';
 import { readEngineConfiguration } from '../builds/state';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { sha256 } from '../builds/contract.mjs';
-import { buildTasksPath, type BuildTask } from '../builds/queue';
+import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
 import type { BuildDiagnostic } from '../builds/diagnostics.mjs';
 import { ConnectionError } from '../publishing/connections';
 import { buildFailureMessage } from '../builds/failure-message';
@@ -200,6 +200,9 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       const failure = preparationFailure(round ? round.error : caught, round?.task ?? null);
       const retry = failure.transient;
       console.error(`[media-preparation] round stopped org=${item.org} site=${item.site} code=${failure.code} task=${item.task ?? '-'} retry=${retry}`);
+      // The next round enqueues a new step; the abandoned one must not stay queued
+      // and take a runner (or a place in the provider's queue) that no round reads.
+      if (item.task) await new OrganizationBuildQueue(store).cancelQueued(item.org, item.task).catch(() => {});
       await store.compareAndUpdateDoc<Preparation>(path, value => value.lease === lease, retry
         ? { task: null, state: 'queued', next_at: Date.now() + preparationRetryDelay(item.retries ?? 0), retries: (item.retries ?? 0) + 1, error: null, error_code: failure.code }
         : { state: 'failed', error: `${STOPPED} Cause: ${failure.message}${failure.message.includes(`(${failure.code})`) ? '' : ` (${failure.code})`}`, error_code: failure.code, failed_task: item.task ?? null });
