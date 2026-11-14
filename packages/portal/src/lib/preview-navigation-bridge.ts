@@ -76,7 +76,10 @@ export function buildPreviewNavigationBridgeScript(opts: PreviewNavigationOption
     authQuery,
     bridge: opts.extensionPreviewBridge,
   }).replace(/</g, '\\u003c');
-  return `(function(){"use strict";var config=${config};var channel="typeroll.extension-preview";
+  // Opened as a page of its own (a frame address shared or pasted into a tab)
+  // there is no shell to receive messages, so the bridge stays out: links,
+  // already rewritten to review addresses, navigate as they do there.
+  return `(function(){"use strict";if(window.parent===window)return;var config=${config};var channel="typeroll.extension-preview";
 function post(message){message.channel=channel;message.version=1;message.bridge_id=config.bridge.id;parent.postMessage(message,config.bridge.parentOrigin);}
 function previewPath(href){var url;try{url=new URL(href,location.href);}catch(_){return null;}if(url.origin!==location.origin||!(url.pathname===config.root||url.pathname.startsWith(config.root+"/")))return null;var query=new URLSearchParams(url.search);config.authQuery.forEach(function(pair){var values=query.getAll(pair[0]),removed=false;query.delete(pair[0]);values.forEach(function(value){if(!removed&&value===pair[1])removed=true;else query.append(pair[0],value);});});var path=url.pathname.slice(config.root.length)||"/";var suffix=query.toString();return path+(suffix?"?"+suffix:"")+url.hash;}
 var offsite=${offsitePreviewUrl.toString()};
@@ -87,5 +90,7 @@ takeHandoff:function(key){return handoffState().then(function(state){if(!Object.
 storeHandoff:function(key,packet){post({action:"handoff.set",key:String(key),value:String(packet)});},
 navigate:function(href){var path=previewPath(href);if(path===null)return false;post({action:"site.navigate",path:path});return true;}
 })});
+// The sandbox keeps no cookies: hand the cookie banner answer to the shell, which carries it to every next page.
+document.addEventListener("typeroll:consent",function(event){var choice=event.detail&&event.detail.choice;if(choice==="all"||choice==="necessary"||choice==="rejected")post({action:"consent.set",choice:choice});});
 document.addEventListener("click",function(event){if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;var target=event.target;if(!(target instanceof Element))return;var anchor=target.closest("a[href]");if(!anchor||anchor.target&&anchor.target!=="_self"||anchor.hasAttribute("download"))return;var path=previewPath(anchor.href);if(path===null){var external=typeof anchor.href==="string"?offsite(anchor.href,location.href,config.root):null;if(external===null)return;event.preventDefault();post({action:"site.open",url:external});return;}event.preventDefault();post({action:"site.navigate",path:path});},true);})();`;
 }

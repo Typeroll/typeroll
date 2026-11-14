@@ -75,7 +75,7 @@ describe('POST /v1/.../preview-link', () => {
     expect(new Date(body.expires_at).getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('home page URL omits the slug segment', async () => {
+  it('returns the bare frame address only when asked, so people only ever get url', async () => {
     const { token } = await setup();
     await seedPage('home', { slug: 'home' });
     const res = await callRoute(
@@ -84,6 +84,22 @@ describe('POST /v1/.../preview-link', () => {
       `http://localhost/api/v1/sites/${SITE}/preview-link`,
       { siteId: SITE },
       { headers: bearer(token), body: { page_id: 'home' } },
+    );
+    const body = await res.json() as Record<string, unknown>;
+    expect(body.url).toEqual(expect.any(String));
+    expect(body).not.toHaveProperty('frame_url');
+    expect(body).not.toHaveProperty('frame_limitations');
+  });
+
+  it('home page URL omits the slug segment', async () => {
+    const { token } = await setup();
+    await seedPage('home', { slug: 'home' });
+    const res = await callRoute(
+      import('../../pages/api/v1/sites/[siteId]/preview-link'),
+      'POST',
+      `http://localhost/api/v1/sites/${SITE}/preview-link`,
+      { siteId: SITE },
+      { headers: bearer(token), body: { page_id: 'home', include_frame_url: true } },
     );
     const body = await res.json() as { url: string; frame_url: string };
     const frameUrl = new URL(body.frame_url);

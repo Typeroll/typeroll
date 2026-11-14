@@ -127,11 +127,13 @@ describe('preview shell notices', () => {
   });
 });
 
-function frame() {
+function frame({ standalone = false } = {}) {
   const browser = new Window({ url: `${ORIGIN}/preview/site/start/?t=ticket&frame=1&bridge=${BRIDGE_ID}` });
   windows.push(browser);
   const posted: Array<Record<string, unknown>> = [];
-  browser.postMessage = ((message: Record<string, unknown>) => { posted.push(message); }) as typeof browser.postMessage;
+  // In the shell the frame has a parent window that receives its messages.
+  const shellWindow = { postMessage: (message: Record<string, unknown>) => { posted.push(message); } };
+  if (!standalone) Object.defineProperty(browser, 'parent', { configurable: true, get: () => shellWindow });
   browser.eval(buildPreviewNavigationBridgeScript({
     browseRoot: '/preview/site',
     embedSuffix: '?t=ticket',
@@ -145,8 +147,62 @@ function frame() {
   const reply = (handoff: Record<string, string>, origin = ORIGIN) => browser.dispatchEvent(new browser.MessageEvent('message', {
     source: browser.eval('parent') as never, origin, data: { ...CHANNEL, action: 'storage.init', storage: { session: {}, local: {}, handoff } },
   }));
-  return { bridge, posted, reply };
+  return { bridge, posted, reply, browser };
 }
+
+describe('cookie banner answer across preview pages', () => {
+  it('carries an answer given in the frame to every next page and to the shell address', () => {
+    const { browser, send, replaced } = shell();
+    send({ action: 'consent.set', choice: 'all' });
+    expect(browser.location.search).toBe('?t=ticket&consent=all');
+    send({ action: 'site.navigate', path: '/pricing/' });
+    expect(replaced.at(-1)).toBe(`/preview/site/pricing/?t=ticket&consent=all&frame=1&bridge=${BRIDGE_ID}`);
+    // "Reject" shows the same page as "necessary"; anything else is ignored.
+    send({ action: 'consent.set', choice: 'rejected' });
+    send({ action: 'consent.set', choice: 'everything' });
+    send({ action: 'site.navigate', path: '/contact/' });
+    expect(replaced.at(-1)).toBe(`/preview/site/contact/?t=ticket&consent=necessary&frame=1&bridge=${BRIDGE_ID}`);
+  });
+
+  it('reloads the frame with the answer when the site reloads the page after it', () => {
+    const { browser, send, replaced } = shell();
+    const frameEl = browser.document.getElementById('preview')!;
+    send({ action: 'consent.set', choice: 'all' });
+    frameEl.dispatchEvent(new browser.Event('load'));
+    expect(replaced.at(-1)).toBe(`/preview/site/start/?t=ticket&consent=all&frame=1&bridge=${BRIDGE_ID}`);
+    const count = replaced.length;
+    frameEl.dispatchEvent(new browser.Event('load'));
+    expect(replaced).toHaveLength(count);
+  });
+
+  it('hands the banner answer from the frame to the shell', () => {
+    const { posted, browser } = frame();
+    browser.document.dispatchEvent(new browser.CustomEvent('typeroll:consent', { detail: { choice: 'necessary' } }));
+    browser.document.dispatchEvent(new browser.CustomEvent('typeroll:consent', { detail: { choice: 'bogus' } }));
+    expect(posted).toEqual([{ ...CHANNEL, action: 'consent.set', choice: 'necessary' }]);
+  });
+});
+
+describe('frame address opened as a page of its own', () => {
+  it('leaves link clicks to the browser, so they open the review address of that page', () => {
+    const { posted, browser } = frame({ standalone: true });
+    expect((browser as unknown as Record<string, unknown>).__TYPEROLL_PREVIEW_BRIDGE__).toBeUndefined();
+    browser.document.body.innerHTML = '<a id="menu" href="/preview/site/pricing/?t=ticket">Pricing</a>';
+    const click = new browser.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    browser.document.getElementById('menu')!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
+    expect(posted).toEqual([]);
+  });
+
+  it('still keeps clicks inside the shell when it is framed', () => {
+    const { posted, browser } = frame();
+    browser.document.body.innerHTML = '<a id="menu" href="/preview/site/pricing/?t=ticket">Pricing</a>';
+    const click = new browser.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    browser.document.getElementById('menu')!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    expect(posted).toEqual([{ ...CHANNEL, action: 'site.navigate', path: '/pricing/' }]);
+  });
+});
 
 describe('frame-side preview bridge for native blocks', () => {
   it('moves the shell to a preview-relative path without the preview ticket', () => {

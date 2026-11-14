@@ -963,6 +963,8 @@ export interface Media {
   preparation_pending?: boolean;
   /** `unreadable`: the stored file did not decode; background preparation skips these bytes. */
   preparation?: { state: 'ready' | 'unreadable'; source_sha256: string; recipe: string };
+  /** Width of the prepared original (from its preparation receipt), for images stored without `width`. */
+  prepared_width?: number;
   public_path?: string;
   /**
    * Every address this file has had: original source URLs, earlier storage and

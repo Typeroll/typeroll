@@ -46,7 +46,8 @@ So, always:
    it's the loop for content and layout review (screenshots, reading). To see
    your own unsaved edits, mint it with `include_working_copy: true` and the
    changed page (`page_id` or `slug`, so its path is in the link); screenshot
-   its `frame_url`, the rendered page without the wrapper. It is
+   its `frame_url` (mint with `include_frame_url: true`), the rendered page
+   without the wrapper; give people `url`, never `frame_url`. It is
    NOT a measurement surface: it serves the page from the portal origin as a
    nested frame in an opaque-origin sandbox, so evaluate/DOM/computed-style
    reads from your browser tool do not reach it reliably, the same-origin

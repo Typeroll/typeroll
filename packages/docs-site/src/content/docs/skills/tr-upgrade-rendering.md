@@ -37,8 +37,8 @@ comparison first.
    without `render_version` (current) and one with `render_version: latest`
    (target). Both show saved content. Mint each once and reuse it; internal
    links keep the token. Put the page's path in each link (`page_id` or
-   `slug`) and capture its `frame_url`, the rendered page without the preview
-   wrapper. Compare these two, never the live site after the upgrade: once
+   `slug`) and capture its `frame_url` (mint with `include_frame_url: true`), the
+   rendered page without the preview wrapper. Compare these two, never the live site after the upgrade: once
    upgraded and published, the old look is gone and regressions hide in it.
 
 4. **Screenshot both** at 390, 768 and 1440 px wide, full page, after fonts

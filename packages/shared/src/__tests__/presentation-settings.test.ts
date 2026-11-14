@@ -401,7 +401,7 @@ describe('every presentational value a core block writes is reachable', () => {
       }
     }
     expect(missing, 'fix the selector, give the part a min_render_version, or extend PART_SAMPLES so the sample renders it').toEqual([]);
-  });
+  }, 60_000); // Renders every core block at every render version; the full CI gate runs in parallel.
 
   it('declares valid parts whose style fields exist', () => {
     for (const type of registry.values()) {

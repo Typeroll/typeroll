@@ -58,8 +58,9 @@ plus that path, and it serves the page only after it is published and
 deployed. Never invent a domain; when there is none, say why and offer a
 preview instead: `get_preview_link page_id=… include_working_copy:true` shows
 drafts and unpublished pages, with the page's path in the link. Mint one link
-and reuse it while iterating. For screenshots and rendering checks, open its
-`frame_url` (the rendered page without the preview wrapper).
+and reuse it while iterating. For screenshots and rendering checks, mint it with
+`include_frame_url: true` and open its `frame_url` (the rendered page without
+the preview wrapper). Give the user `url`, never `frame_url`.
 
 **Images the user provides.** Upload first: a URL with `upload_media_from_url`,
 a local file with `create_upload_url` (see `tr-images`); `list_media` finds

@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.3.33 (candidate, MCP 0.45.140)
+
+- Lazy images load before they are scrolled in. Published pages and previews
+  start each `loading="lazy"` image when it comes within two screen heights
+  (an inline IntersectionObserver with the document as root, so it also works
+  in the framed preview), instead of at the browser's own, often late,
+  threshold. The first image is still loaded at once with high priority.
+- Preview images are the published ones. A review preview gives each prepared
+  private image the publication's `<picture>` with AVIF and WebP sizes from
+  its prepared variants (`/preview/{siteId}/media/{id}?variant=w640.avif`),
+  `srcset`, dimensions and loading rules, instead of the full original. The
+  browser keeps these files for up to an hour within the link's validity, so
+  the next page does not download them again. Images not prepared yet keep the
+  original file. No image is prepared again for this: an image stored without
+  dimensions takes its width from its preparation receipt, read once and kept
+  as `prepared_width`.
+- A preview `frame_url` opened on its own in a browser tab no longer swallows
+  every click. Its bridge, which hands clicks to the review wrapper, now stays
+  out when the page has no parent window, so links open the matching review
+  (`url`) pages. In the wrapper and in editor iframes nothing changes, and
+  screenshots of `frame_url` render as before.
+- The review preview (`url`) keeps a cookie banner answer for the rest of the
+  session. The sandboxed frame has no cookies, so the banner came back on every
+  page; the bridge now hands the answer to the review wrapper, which carries it
+  like `?consent=` to every next page, Back and a reload (also on sites that
+  reload after the answer). "Reject" counts as necessary cookies only.
+  Published sites are unchanged.
+- `get_preview_link` and `POST /api/v1/sites/{siteId}/preview-link` return
+  `frame_url` (and `frame_limitations`) only with `include_frame_url: true`.
+  The default response has just `url`, the review address to give people, so a
+  link handed on from it always works. Agents that screenshot `frame_url` add
+  the flag; the design-review, edit-site and upgrade-rendering skills do.
+
 ## 0.3.32 (candidate, MCP 0.45.139)
 
 - A queued build step no longer fails with `shared_runner_start_failed` while

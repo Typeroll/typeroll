@@ -25,6 +25,7 @@ export * from './form-fields.js';
 export * from './forms-runtime.js';
 export * from './form-conversions.js';
 export * from './sticky-header-runtime.js';
+export * from './early-image-loading.js';
 export * from './header-behavior.js';
 export * from './render-form.js';
 export * from './page-template-starters.js';

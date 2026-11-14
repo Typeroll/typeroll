@@ -69,8 +69,8 @@ Public documentation: https://typeroll.com/docs/llms.txt
 - Distinguish working copies, saved CMS content and deployed output. Save within
   the user's scope, review previews and deploy only when explicitly authorized.
 - Preview your edits with get_preview_link include_working_copy: true for the
-  changed Page (page_id or slug); use frame_url for rendering checks and
-  screenshots. Save working copies before publishing.
+  changed Page (page_id or slug); for rendering checks and screenshots mint it
+  with include_frame_url: true and use frame_url. Give people url, never frame_url. Save working copies before publishing.
 - Before publishing, run trigger_deploy dry_run: true and read
   get_publication_impact. A publication ships everything saved on the Site,
   including other people's and other sessions' changes. If it lists changes you

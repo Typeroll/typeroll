@@ -21,7 +21,8 @@ real deploy:
 
 1. Review your edits with `get_preview_link` and `include_working_copy: true`.
    Target the changed page (`page_id` or `slug`) so its path is in the link,
-   and use the returned `frame_url` for screenshots and rendering checks.
+   For screenshots and rendering checks, mint it with `include_frame_url: true`
+   and use its `frame_url`. Give the owner `url` to review, never `frame_url`.
 2. Save the working copies you want to publish. Unsaved working copies are not
    deployed.
 3. Run `trigger_deploy` with `dry_run: true` and read `get_publication_impact`.
@@ -326,10 +327,19 @@ see unsaved drafts; that choice is signed into the link. Anyone holding the link
 sees unpublished content, so creating one needs write permission on the site, in
 the portal as well as through the API.
 
-The preview runs in a sandbox without cookies, so a cookie banner returns on
-every page. For visual review, add `&consent=all` to the link to answer it for
-the whole session: the banner stays hidden and consented scripts and embeds
-load. `&consent=necessary` hides the banner and loads only necessary scripts.
+Images in the preview are the published ones: prepared AVIF and WebP sizes
+with `srcset`, dimensions and the same loading rules (from Core 0.3.33; before,
+every page loaded each original file again). The browser keeps them while the
+link is valid, up to an hour, so moving between pages does not download them
+again. An image the site has not prepared yet shows its original file.
+
+The preview runs in a sandbox without cookies. Its review wrapper (`url`)
+keeps the answer to a cookie banner for the rest of the review session: answer
+it once and later pages, Back and a reload show no banner (from Core 0.3.33;
+before, it returned on every page). "Reject" counts as necessary cookies only.
+To answer it in advance, add `&consent=all` to the link: the banner stays
+hidden and consented scripts and embeds load. `&consent=necessary` hides the
+banner and loads only necessary scripts.
 The sandbox itself is unchanged; a widget that needs a first-party origin may
 still need a test publication.
 

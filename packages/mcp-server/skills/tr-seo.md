@@ -50,6 +50,9 @@ page.
 - The first content images are never lazy and get `fetchpriority="high"`, and
   a first section's background image is preloaded; later images are lazy.
   Logos and small icons do not count as the first images.
+  A lazy image starts loading when it comes within two screen heights, so it
+  has loaded when it is scrolled in (from Core 0.3.33; browsers on their own
+  start it much closer, Safari almost at the edge).
 
 **Structured data (JSON-LD)**
 
