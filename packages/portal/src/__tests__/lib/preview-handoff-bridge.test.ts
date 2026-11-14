@@ -127,11 +127,13 @@ describe('preview shell notices', () => {
   });
 });
 
-function frame() {
+function frame({ standalone = false } = {}) {
   const browser = new Window({ url: `${ORIGIN}/preview/site/start/?t=ticket&frame=1&bridge=${BRIDGE_ID}` });
   windows.push(browser);
   const posted: Array<Record<string, unknown>> = [];
-  browser.postMessage = ((message: Record<string, unknown>) => { posted.push(message); }) as typeof browser.postMessage;
+  // In the shell the frame has a parent window that receives its messages.
+  const shellWindow = { postMessage: (message: Record<string, unknown>) => { posted.push(message); } };
+  if (!standalone) Object.defineProperty(browser, 'parent', { configurable: true, get: () => shellWindow });
   browser.eval(buildPreviewNavigationBridgeScript({
     browseRoot: '/preview/site',
     embedSuffix: '?t=ticket',
@@ -145,8 +147,29 @@ function frame() {
   const reply = (handoff: Record<string, string>, origin = ORIGIN) => browser.dispatchEvent(new browser.MessageEvent('message', {
     source: browser.eval('parent') as never, origin, data: { ...CHANNEL, action: 'storage.init', storage: { session: {}, local: {}, handoff } },
   }));
-  return { bridge, posted, reply };
+  return { bridge, posted, reply, browser };
 }
+
+describe('frame address opened as a page of its own', () => {
+  it('leaves link clicks to the browser, so they open the review address of that page', () => {
+    const { posted, browser } = frame({ standalone: true });
+    expect((browser as unknown as Record<string, unknown>).__TYPEROLL_PREVIEW_BRIDGE__).toBeUndefined();
+    browser.document.body.innerHTML = '<a id="menu" href="/preview/site/pricing/?t=ticket">Pricing</a>';
+    const click = new browser.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    browser.document.getElementById('menu')!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
+    expect(posted).toEqual([]);
+  });
+
+  it('still keeps clicks inside the shell when it is framed', () => {
+    const { posted, browser } = frame();
+    browser.document.body.innerHTML = '<a id="menu" href="/preview/site/pricing/?t=ticket">Pricing</a>';
+    const click = new browser.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
+    browser.document.getElementById('menu')!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    expect(posted).toEqual([{ ...CHANNEL, action: 'site.navigate', path: '/pricing/' }]);
+  });
+});
 
 describe('frame-side preview bridge for native blocks', () => {
   it('moves the shell to a preview-relative path without the preview ticket', () => {

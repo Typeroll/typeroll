@@ -81,7 +81,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   return apiResponse(ctx, {
     url,
     frame_url: `${url}&frame=1&bridge=${randomUUID()}`,
-    frame_limitations: 'Rendering-only QA. Use url for Extension state, navigation and parent-bridge interactions.',
+    frame_limitations: 'For screenshots, rendering checks and iframes only; never give it to a person. Give people url: it is the review address with Extension state and navigation.',
     expires_at: expiresAt,
     version_id: ctx.versionId,
     include_working_copy: body.include_working_copy === true,

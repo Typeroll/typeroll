@@ -22,6 +22,7 @@ real deploy:
 1. Review your edits with `get_preview_link` and `include_working_copy: true`.
    Target the changed page (`page_id` or `slug`) so its path is in the link,
    and use the returned `frame_url` for screenshots and rendering checks.
+   Give the owner `url` to review, never `frame_url`.
 2. Save the working copies you want to publish. Unsaved working copies are not
    deployed.
 3. Run `trigger_deploy` with `dry_run: true` and read `get_publication_impact`.

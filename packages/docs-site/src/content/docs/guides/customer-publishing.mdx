@@ -1182,6 +1182,12 @@ it then prepares the remaining images itself and takes longer.
 wrapper. It uses the same signed expiry and sandbox. Keep the normal `url` for
 extension-host integration tests, which need the wrapper's message bridge.
 
+Give people `url`, never `frame_url`: `url` is the review address, with the
+wrapper that keeps Extension state and navigation. `frame_url` is for
+screenshots, rendering checks and iframes. Opened on its own in a tab (from
+Core 0.3.33) its links work and open the matching `url` pages; before, they did
+nothing there.
+
 ## Media transfer retries and failure details
 
 From Core 0.2.109, the frozen customer build retries a temporary media transfer

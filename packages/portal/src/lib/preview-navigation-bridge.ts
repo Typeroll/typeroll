@@ -76,7 +76,10 @@ export function buildPreviewNavigationBridgeScript(opts: PreviewNavigationOption
     authQuery,
     bridge: opts.extensionPreviewBridge,
   }).replace(/</g, '\\u003c');
-  return `(function(){"use strict";var config=${config};var channel="typeroll.extension-preview";
+  // Opened as a page of its own (a frame address shared or pasted into a tab)
+  // there is no shell to receive messages, so the bridge stays out: links,
+  // already rewritten to review addresses, navigate as they do there.
+  return `(function(){"use strict";if(window.parent===window)return;var config=${config};var channel="typeroll.extension-preview";
 function post(message){message.channel=channel;message.version=1;message.bridge_id=config.bridge.id;parent.postMessage(message,config.bridge.parentOrigin);}
 function previewPath(href){var url;try{url=new URL(href,location.href);}catch(_){return null;}if(url.origin!==location.origin||!(url.pathname===config.root||url.pathname.startsWith(config.root+"/")))return null;var query=new URLSearchParams(url.search);config.authQuery.forEach(function(pair){var values=query.getAll(pair[0]),removed=false;query.delete(pair[0]);values.forEach(function(value){if(!removed&&value===pair[1])removed=true;else query.append(pair[0],value);});});var path=url.pathname.slice(config.root.length)||"/";var suffix=query.toString();return path+(suffix?"?"+suffix:"")+url.hash;}
 var offsite=${offsitePreviewUrl.toString()};
