@@ -72,6 +72,7 @@ import {
   siteContext,
   resolveAuthoredVariables,
   STICKY_HEADER_RUNTIME_JS,
+  EARLY_IMAGE_LOADING_RUNTIME_JS,
   activeHeaderBehavior,
   withHeaderBehaviorAttribute,
   HEADER_BEHAVIOR_CSS,
@@ -727,6 +728,7 @@ ${headerHtml ? withHeaderBehaviorAttribute(looksLikeSemanticTag(headerHtml, 'hea
 ${footerHtml ? (looksLikeSemanticTag(footerHtml, 'footer') ? footerHtml : `<footer class="site-footer">${footerHtml}</footer>`) : ''}
 ${previewNavigationBridge ? `<script data-preview-navigation-bridge="1">${previewNavigationBridge}</script>` : ''}
 ${allowScripts ? `<script data-sticky-header="1">${STICKY_HEADER_RUNTIME_JS}</script>` : ''}
+${allowScripts ? `<script data-early-image-loading="1">${EARLY_IMAGE_LOADING_RUNTIME_JS}</script>` : ''}
 ${allowScripts && activeHeaderBehavior(settings.header_behavior) === 'reveal_on_scroll_up' ? `<script data-header-behavior="1">${HEADER_BEHAVIOR_RUNTIME_JS}</script>` : ''}
 ${blockJs ? `<script data-blocks="1">(function(){var registry={};window.TyperollBlocks={register:function(id,init){registry[id]=init;},init:function(){Object.keys(registry).forEach(function(id){document.querySelectorAll('[data-block-type="'+id+'"]').forEach(function(el){try{registry[id](el,JSON.parse(el.getAttribute('data-block-data')||'{}'));}catch(e){console.error('[block init]',id,e);}});});}};${blockJs};window.TyperollBlocks.init();})();</script>` : ''}
 ${extensionRuntime ? `<script data-extension-runtime="1">${extensionRuntime}</script>` : ''}

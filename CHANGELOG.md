@@ -2,6 +2,18 @@
 
 ## 0.3.33 (candidate, MCP 0.45.140)
 
+- Lazy images load before they are scrolled in. Published pages and previews
+  start each `loading="lazy"` image when it comes within two screen heights
+  (an inline IntersectionObserver with the document as root, so it also works
+  in the framed preview), instead of at the browser's own, often late,
+  threshold. The first image is still loaded at once with high priority.
+- Preview images are the published ones. A review preview gives each prepared
+  private image the publication's `<picture>` with AVIF and WebP sizes from
+  its prepared variants (`/preview/{siteId}/media/{id}?variant=w640.avif`),
+  `srcset`, dimensions and loading rules, instead of the full original. The
+  browser keeps these files for up to an hour within the link's validity, so
+  the next page does not download them again. Images not prepared yet keep the
+  original file.
 - A preview `frame_url` opened on its own in a browser tab no longer swallows
   every click. Its bridge, which hands clicks to the review wrapper, now stays
   out when the page has no parent window, so links open the matching review

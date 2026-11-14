@@ -151,13 +151,43 @@ async function freezeVerifiedMedia(orgId: string, siteId: string, mediaId: strin
     return { sha256, size_bytes: size, variants_generated: false, variant_count: 0, variants_pending: true, ...(queued ? { preparation: QUEUED_PREPARATION } : {}) };
 }
 
-export async function privateMediaReadUrl(orgId: string, siteId: string, mediaId: string, ttlSeconds = 60) {
+/** The widths the build engine prepares below an image's own width (media recipe v2), plus the original. */
+export const PREPARED_VARIANT_WIDTHS = [320, 640, 1024, 1920];
+const PREPARED_RECIPE = 'v2';
+
+/**
+ * The prepared variants of a private image, as `slot` (`w640`, `original`) and
+ * rendered width, or null when it has none yet. They exist once background
+ * preparation has handled the image's current bytes with the current recipe.
+ */
+export function preparedVariantSlots(media: Media): Array<{ slot: string; width: number }> | null {
+  const width = media.width;
+  if (media.storage?.provider !== 'organization_r2' || media.storage.state !== 'ready' || !media.sha256 || !width || !Number.isSafeInteger(width) || width < 1) return null;
+  if (media.preparation?.state !== 'ready' || media.preparation.recipe !== PREPARED_RECIPE || media.preparation.source_sha256 !== media.sha256) return null;
+  return [...PREPARED_VARIANT_WIDTHS.filter(candidate => candidate < width).map(candidate => ({ slot: `w${candidate}`, width: candidate })), { slot: 'original', width }];
+}
+
+/**
+ * A short-lived signed URL for a private media item, or for one of its
+ * prepared variants (`w640.avif`, `original.webp`). `cacheSeconds` lets the
+ * browser keep the file that long (a review preview), never past `ttlSeconds`.
+ */
+export async function privateMediaReadUrl(orgId: string, siteId: string, mediaId: string, ttlSeconds = 60, options: { variant?: string; cacheSeconds?: number } = {}) {
   const media = await getStore().getDoc<Media>(`${paths.media(orgId, siteId)}/${mediaId}`);
   if (!media?.storage || media.storage.state !== 'ready') throw new ConnectionError('The media upload is not ready.', 404);
+  let key = media.storage.key, contentType = media.mime_type;
+  if (options.variant !== undefined) {
+    const match = /^(w\d{3,4}|original)\.(avif|webp)$/.exec(options.variant);
+    if (!match || !preparedVariantSlots(media)?.some(entry => entry.slot === match[1])) throw new ConnectionError('This media variant is not prepared.', 404, 'media_variant_unavailable');
+    key = `private/${await siteMediaPrefix(orgId, siteId)}/prepared/${PREPARED_RECIPE}/${media.sha256}/${match[1]}.${match[2]}`;
+    contentType = `image/${match[2]}`;
+  }
+  const cache = Math.max(0, Math.min(3600, Math.floor(options.cacheSeconds ?? 0), ttlSeconds - 60));
   const r2 = await storageClient(orgId, media.storage);
   try {
-    return await getSignedUrl(r2, new GetObjectCommand({ Bucket: media.storage.bucket, Key: media.storage.key,
-      ResponseCacheControl: 'private, no-store', ResponseContentType: media.mime_type }), { expiresIn: Math.max(1, Math.min(60, ttlSeconds)) });
+    return await getSignedUrl(r2, new GetObjectCommand({ Bucket: media.storage.bucket, Key: key,
+      ResponseCacheControl: cache ? `private, max-age=${cache}` : 'private, no-store', ResponseContentType: contentType }),
+      { expiresIn: Math.max(1, cache ? cache + 60 : Math.min(60, ttlSeconds)) });
   } finally { r2.destroy(); }
 }
 

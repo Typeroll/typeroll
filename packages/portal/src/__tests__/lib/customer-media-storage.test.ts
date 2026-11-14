@@ -2,13 +2,13 @@ vi.mock('../../lib/media/remote-transfer', () => ({ remoteTransfersEnabled: vi.f
 // Queue delivery has separate tests. Do not let a local background migration
 // outlive its fixture and run against the following test's datastore spy.
 vi.mock('../../lib/publishing/media-migration-queue', () => ({ enqueueMediaMigration: vi.fn(async () => {}) }));
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { S3Client, GetObjectCommand, CopyObjectCommand } from '../../lib/net/s3';
 import { paths, type Media } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
 import { connectionPath, sealCredentials } from '../../lib/publishing/connections';
-import { createMediaUpload, finalizeStoredMedia, privateMediaReadUrl, authorizePreviewMedia } from '../../lib/publishing/media-storage';
+import { createMediaUpload, finalizeStoredMedia, privateMediaReadUrl, authorizePreviewMedia, preparedVariantSlots } from '../../lib/publishing/media-storage';
 
 const account = 'a'.repeat(32);
 beforeEach(async () => {
@@ -99,4 +99,77 @@ it('authorizes only referenced private images for opaque preview frames without 
   expect(scans).not.toHaveBeenCalled();
   const otherSite = url.replace('/sites/site/', '/sites/another-site/');
   expect(await authorizePreviewMedia(`<img src="${otherSite}">`, 'org', 'site')).toContain(otherSite);
+});
+
+describe('review preview images', () => {
+  const sha = 'c'.repeat(64);
+  const prepared = (overrides: Partial<Media> = {}) => ({ filename: 'oven.png', mime_type: 'image/png', width: 2048, height: 1360, sha256: sha,
+    cdn_url: 'https://cms.example.com/api/sites/site/media/oven/content',
+    storage: { provider: 'organization_r2', account_id: account, bucket: 'customer-private', key: 'private/media/abcdefghij/oven.png', state: 'ready' },
+    preparation: { state: 'ready', source_sha256: sha, recipe: 'v2' }, ...overrides });
+
+  it('lists the prepared sizes below the image width, and none before preparation', () => {
+    expect(preparedVariantSlots(prepared() as Media)).toEqual([
+      { slot: 'w320', width: 320 }, { slot: 'w640', width: 640 }, { slot: 'w1024', width: 1024 }, { slot: 'w1920', width: 1920 }, { slot: 'original', width: 2048 }]);
+    expect(preparedVariantSlots(prepared({ width: 800 }) as Media)?.map(entry => entry.slot)).toEqual(['w320', 'w640', 'original']);
+    expect(preparedVariantSlots(prepared({ preparation: { state: 'ready', source_sha256: 'd'.repeat(64), recipe: 'v2' } }) as Media)).toBeNull();
+    expect(preparedVariantSlots(prepared({ preparation: undefined }) as Media)).toBeNull();
+  });
+
+  it('signs a prepared variant that the browser may keep, and refuses one that does not exist', async () => {
+    await connect();
+    await getStore().setDoc(`${paths.media('org', 'site')}/oven`, prepared());
+    const variant = new URL(await privateMediaReadUrl('org', 'site', 'oven', 7200, { variant: 'w640.avif', cacheSeconds: 3600 }));
+    expect(variant.pathname).toBe(`/customer-private/private/media/abcdefghij/prepared/v2/${sha}/w640.avif`);
+    expect(variant.searchParams.get('response-cache-control')).toBe('private, max-age=3600');
+    expect(variant.searchParams.get('response-content-type')).toBe('image/avif');
+    expect(variant.searchParams.get('X-Amz-Expires')).toBe('3660');
+    await expect(privateMediaReadUrl('org', 'site', 'oven', 7200, { variant: 'w4000.avif' })).rejects.toMatchObject({ code: 'media_variant_unavailable' });
+    await expect(privateMediaReadUrl('org', 'site', 'oven', 7200, { variant: '../oven.png' })).rejects.toMatchObject({ code: 'media_variant_unavailable' });
+    // Without a cache window the original stays uncached and short-lived, as before.
+    const original = new URL(await privateMediaReadUrl('org', 'site', 'oven', 30));
+    expect(original.searchParams.get('response-cache-control')).toBe('private, no-store');
+    expect(original.searchParams.get('X-Amz-Expires')).toBe('30');
+  });
+
+  it('gives preview images the publication\'s <picture> with prepared AVIF and WebP sources', async () => {
+    await connect();
+    await getStore().setDoc(`${paths.media('org', 'site')}/oven`, prepared());
+    await getStore().setDoc(`${paths.media('org', 'site')}/new`, prepared({ preparation: undefined }));
+    const { withPreviewResponsiveImages } = await import('../../lib/preview-media');
+    const src = (id: string) => `/preview/site/media/${id}?token=tok`;
+    const html = await withPreviewResponsiveImages(`<img src="${src('oven')}" alt="Oven" loading="lazy" decoding="async" /><img src="${src('new')}" alt="New" loading="lazy" />`, 'org', 'site', 'tok');
+    expect(html).toContain(`<source type="image/avif" srcset="${src('oven')}&amp;variant=w320.avif 320w`);
+    expect(html).toContain(`${src('oven')}&amp;variant=original.webp 2048w`);
+    expect(html).toContain('width="2048" height="1360"');
+    // The first image is the likely largest paint, as on the published site.
+    expect(html).toMatch(/alt="Oven"[^>]*loading="eager"[^>]*fetchpriority="high"/);
+    // Not prepared yet: the original file, without sources.
+    expect(html).toContain(`<img src="${src('new')}"`);
+    expect(html.match(/<picture>/g)).toHaveLength(1);
+  });
+});
+
+describe('preview media route', () => {
+  it('lets the browser keep a preview image for the review, bounded by the link', async () => {
+    vi.stubEnv('PREVIEW_HMAC_SECRET', 'synthetic-preview-secret-for-tests-only-0123456789');
+    await connect();
+    const sha = 'c'.repeat(64);
+    await getStore().setDoc(`${paths.media('org', 'site')}/oven`, { filename: 'oven.png', mime_type: 'image/png', width: 2048, height: 1360, sha256: sha,
+      storage: { provider: 'organization_r2', account_id: account, bucket: 'customer-private', key: 'private/media/abcdefghij/oven.png', state: 'ready' },
+      preparation: { state: 'ready', source_sha256: sha, recipe: 'v2' } });
+    const { signPreviewTicket } = await import('../../lib/preview-signing');
+    const { GET } = await import('../../pages/preview/[siteId]/media/[mediaId]');
+    const get = async (ttlSeconds: number, query = '') => {
+      const { token } = signPreviewTicket({ orgId: 'org', siteId: 'site', versionId: 'main', ttlSeconds });
+      return GET({ params: { siteId: 'site', mediaId: 'oven' }, request: new Request(`https://cms.example.com/preview/site/media/oven?token=${encodeURIComponent(token)}${query}`) } as never);
+    };
+    const day = await get(86400, '&variant=w1024.webp');
+    expect(day.status).toBe(302);
+    expect(day.headers.get('Cache-Control')).toBe('private, max-age=3600');
+    expect(new URL(day.headers.get('Location')!).pathname).toContain(`/prepared/v2/${sha}/w1024.webp`);
+    // A link about to expire is not cached past its expiry.
+    expect((await get(100)).headers.get('Cache-Control')).toBe('private, no-store');
+    expect((await get(86400, '&variant=w4000.webp')).status).toBe(404);
+  });
 });

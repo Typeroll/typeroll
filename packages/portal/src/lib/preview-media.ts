@@ -21,3 +21,33 @@ export function rewritePreviewMediaUrls(html: string, siteId: string, token: str
     return `/preview/${encodeURIComponent(siteId)}/media/${encodeURIComponent(mediaId)}?token=${encodeURIComponent(token)}`;
   });
 }
+
+/**
+ * The same responsive images as a publication, for a review preview: each
+ * private image rewritten to the preview media route gets its prepared AVIF
+ * and WebP variants (through the same route), its dimensions and the
+ * publication's loading rules, by running the publication's image transform.
+ * Images without prepared variants keep their original file.
+ */
+export async function withPreviewResponsiveImages(html: string, orgId: string, siteId: string, token: string): Promise<string> {
+  const { getStore } = await import('./datastore');
+  const { buildMediaLookup, paths, transformBodyForSeo } = await import('@typeroll/shared');
+  const { preparedVariantSlots } = await import('./publishing/media-storage');
+  const base = `/preview/${encodeURIComponent(siteId)}/media/`;
+  const suffix = `?token=${encodeURIComponent(token)}`;
+  const ids = new Set<string>();
+  for (const match of html.matchAll(new RegExp(`${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^?"'\\s<>/]+)\\?token=`, 'g'))) {
+    try { ids.add(decodeURIComponent(match[1]!)); } catch { /* not ours */ }
+  }
+  if (!ids.size) return transformBodyForSeo(html, buildMediaLookup([]));
+  const media = [];
+  for (const id of [...ids].slice(0, 500)) {
+    const item = await getStore().getDoc<import('@typeroll/shared').Media>(`${paths.media(orgId, siteId)}/${id}`);
+    if (!item) continue;
+    const url = `${base}${encodeURIComponent(id)}${suffix}`;
+    const slots = preparedVariantSlots(item) ?? [];
+    media.push({ ...item, cdn_url: url, variants: slots.flatMap(({ slot, width }) => (['avif', 'webp'] as const)
+      .map(format => ({ width, format, cdn_url: `${url}&variant=${slot}.${format}`, size_bytes: 0 }))) });
+  }
+  return transformBodyForSeo(html, buildMediaLookup(media));
+}

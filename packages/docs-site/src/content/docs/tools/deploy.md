@@ -327,6 +327,12 @@ see unsaved drafts; that choice is signed into the link. Anyone holding the link
 sees unpublished content, so creating one needs write permission on the site, in
 the portal as well as through the API.
 
+Images in the preview are the published ones: prepared AVIF and WebP sizes
+with `srcset`, dimensions and the same loading rules (from Core 0.3.33; before,
+every page loaded each original file again). The browser keeps them while the
+link is valid, up to an hour, so moving between pages does not download them
+again. An image the site has not prepared yet shows its original file.
+
 The preview runs in a sandbox without cookies. Its review wrapper (`url`)
 keeps the answer to a cookie banner for the rest of the review session: answer
 it once and later pages, Back and a reload show no banner (from Core 0.3.33;

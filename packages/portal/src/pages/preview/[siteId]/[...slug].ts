@@ -14,7 +14,7 @@ import { randomUUID } from 'node:crypto';
 import { renderPreviewBySlug } from '../../../lib/render-preview';
 import { previewDerivation } from '../../../lib/publishing/preview-derivation';
 import { verifyActivePreviewToken } from '../../../lib/preview-signing';
-import { rewritePreviewMediaUrls } from '../../../lib/preview-media';
+import { rewritePreviewMediaUrls, withPreviewResponsiveImages } from '../../../lib/preview-media';
 import { rateLimit } from '../../../lib/rate-limit';
 import { isolatedPreviewHeaders, publicRequestOrigin } from '../../../lib/preview-headers';
 import { injectPreviewNotices, previewStateHeaders, type PreviewNotice } from '../../../lib/preview-notices';
@@ -145,7 +145,8 @@ export const GET: APIRoute = async ({ params, request }) => {
     notices.push({ kind: 'content-changed', message: `Content changed since this preview link was created (revision ${ticket.cr.slice(0, 12)}, now ${derivation.content_revision.slice(0, 12)}). This page shows the current content; create new links to compare render versions on identical content.` });
   }
   const body = injectPreviewNotices(html, notices, { id: bridgeId, parentOrigin: publicRequestOrigin(request) });
-  const response = plain(rewritePreviewMediaUrls(body, siteId, token!), 200);
+  // Prepared AVIF/WebP variants, dimensions and loading as on the published site.
+  const response = plain(await withPreviewResponsiveImages(rewritePreviewMediaUrls(body, siteId, token!), ticket.org_id, siteId, token!), 200);
   for (const [name, value] of Object.entries(previewStateHeaders(notices))) response.headers.set(name, value);
   return response;
 };
