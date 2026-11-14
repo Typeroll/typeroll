@@ -8,12 +8,13 @@ afterEach(async () => { for (const browser of windows.splice(0)) await browser.h
 function page(html: string) {
   const browser = new Window({ url: 'https://example.com/' });
   windows.push(browser);
-  const observers: Array<{ callback: (entries: Array<{ isIntersecting: boolean; target: Element }>) => void; options: Record<string, unknown>; observed: Element[] }> = [];
+  type Entry = { isIntersecting: boolean; target: unknown };
+  const observers: Array<{ callback: (entries: Entry[]) => void; options: Record<string, unknown>; observed: unknown[] }> = [];
   (browser as unknown as Record<string, unknown>).IntersectionObserver = class {
-    observed: Element[] = [];
-    constructor(public callback: (entries: Array<{ isIntersecting: boolean; target: Element }>) => void, public options: Record<string, unknown>) { observers.push(this as never); }
-    observe(target: Element) { this.observed.push(target); }
-    unobserve(target: Element) { this.observed = this.observed.filter(item => item !== target); }
+    observed: unknown[] = [];
+    constructor(public callback: (entries: Entry[]) => void, public options: Record<string, unknown>) { observers.push(this as never); }
+    observe(target: unknown) { this.observed.push(target); }
+    unobserve(target: unknown) { this.observed = this.observed.filter(item => item !== target); }
   };
   browser.document.body.innerHTML = html;
   browser.eval(EARLY_IMAGE_LOADING_RUNTIME_JS);
