@@ -31,6 +31,8 @@ export const POST: APIRoute = async ({ request, params }) => {
     include_working_copy?: boolean;
     /** Preview with this platform render version (an upgrade preview). */
     render_version?: number;
+    /** Also return frame_url, the bare rendered page for screenshots and iframes. */
+    include_frame_url?: boolean;
   };
   if (body.render_version !== undefined && !isRenderVersion(body.render_version)) {
     return apiError(`render_version must be an integer from 1 to ${LATEST_RENDER_VERSION}`, 400);
@@ -80,8 +82,12 @@ export const POST: APIRoute = async ({ request, params }) => {
   const url = `${origin}${path}${path.includes('?') ? '&' : '?'}t=${encodeURIComponent(token)}`;
   return apiResponse(ctx, {
     url,
-    frame_url: `${url}&frame=1&bridge=${randomUUID()}`,
-    frame_limitations: 'For screenshots, rendering checks and iframes only; never give it to a person. Give people url: it is the review address with Extension state and navigation.',
+    // The bare frame only on request: url is the address people get, so a
+    // response handed on as it is cannot lead anyone to the wrong one.
+    ...(body.include_frame_url === true ? {
+      frame_url: `${url}&frame=1&bridge=${randomUUID()}`,
+      frame_limitations: 'For screenshots, rendering checks and iframes only; never give it to a person. Give people url: it is the review address with Extension state and navigation.',
+    } : {}),
     expires_at: expiresAt,
     version_id: ctx.versionId,
     include_working_copy: body.include_working_copy === true,

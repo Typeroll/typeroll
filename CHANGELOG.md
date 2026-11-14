@@ -7,10 +7,11 @@
   out when the page has no parent window, so links open the matching review
   (`url`) pages. In the wrapper and in editor iframes nothing changes, and
   screenshots of `frame_url` render as before.
-- `get_preview_link` and `POST /api/v1/sites/{siteId}/preview-link` say which
-  address is for whom: give people `url`, never `frame_url`, which is for
-  screenshots, rendering checks and iframes (`frame_limitations`, tool
-  description, publishing guide and deploy checklist).
+- `get_preview_link` and `POST /api/v1/sites/{siteId}/preview-link` return
+  `frame_url` (and `frame_limitations`) only with `include_frame_url: true`.
+  The default response has just `url`, the review address to give people, so a
+  link handed on from it always works. Agents that screenshot `frame_url` add
+  the flag; the design-review, edit-site and upgrade-rendering skills do.
 
 ## 0.3.32 (candidate, MCP 0.45.139)
 
