@@ -46,6 +46,13 @@ export async function enqueueBuild(config: EngineConfiguration, identity: Omit<B
   return queued;
 }
 
+/** Whether a runner claimed another step of this organization since `since` (it served that step instead). */
+export async function runnerServedAnotherStep(org: string, key: string, since: number) {
+  if (!Number.isFinite(since) || since <= 0) return false;
+  const claimed = await getStore().listDocs<BuildTask>(buildTasksPath(org), { filters: [{ field: 'claimed_at', op: '>=', value: since }], limit: 5 });
+  return claimed.some(task => task.id !== key);
+}
+
 /** Explicit dispatch is serialized separately from claims; retries never change the frozen source. */
 export async function dispatchPendingBuild(org: string, key: string, config: EngineConfiguration) {
   const store = getStore(), inputPath = buildInputPath(org, key);
@@ -76,12 +83,18 @@ export async function dispatchPendingBuild(org: string, key: string, config: Eng
     // A runner can claim another queued job in the same organization. A stopped dispatch
     // is not proof this task ran; only its attempt lease establishes ownership.
   }
+  // Shared runners take the organization's next step, which need not be the step
+  // they were started for. A dispatch whose runner claimed another step was used,
+  // not lost, so only a dispatch after which no step was claimed counts toward the
+  // start limit: a busy queue never fails a step that is simply waiting its turn.
+  const served = !!input.dispatch_id && await runnerServedAnotherStep(org, key, input.dispatch_started_at ?? 0);
+  const attempts = (input.dispatch_attempt ?? 0) + (served ? 0 : 1);
   const now = Date.now();
   const won = await store.compareAndUpdateDoc<BuildInput>(inputPath, current =>
     (current.dispatch_lease_until ?? 0) <= now && current.dispatch_id === input.dispatch_id && !current.dispatch_uncertain,
-    { dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: (input.dispatch_attempt ?? 0) + 1, provider_status: null, provider_status_at: null });
+    { dispatch_uncertain: true, dispatch_started_at: now, dispatch_lease_until: now + 120000, dispatch_attempt: attempts, provider_status: null, provider_status_at: null });
   if (!won) return;
-  if ((input.dispatch_attempt ?? 0) >= buildAttemptLimit(task)) throw new ConnectionError('Cloudflare could not start the shared runner. Open Publishing → Builds and check the build project.', 502, 'shared_runner_start_failed');
+  if (!served && (input.dispatch_attempt ?? 0) >= buildAttemptLimit(task)) throw new ConnectionError('Cloudflare could not start the shared runner. Open Publishing → Builds and check the build project.', 502, 'shared_runner_start_failed');
   // Keep the lease after an uncertain provider response. Do not immediately submit a duplicate.
   try {
     const id = await dispatchCloudflareBuild(client, { account_id: config.account_id, trigger_uuid: config.trigger_uuid, runner_commit: config.runner_commit });

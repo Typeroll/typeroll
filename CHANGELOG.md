@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.32 (candidate, MCP 0.45.139)
+
+- A queued build step no longer fails with `shared_runner_start_failed` while
+  the organization's build account is busy. Shared Cloudflare runners take the
+  organization's next step, not necessarily the one they were started for; a
+  dispatch whose runner served another step now waits its turn instead of
+  counting as a failed start. Only a dispatch after which no runner claimed
+  any step counts toward the limit. Steps record `claimed_at` for this.
+- Background image preparation cancels the queued step of a round it starts
+  again. Before, each passing stop left the old step queued for up to six
+  hours, where runners could still take it, so a busy organization's queue grew
+  with steps no round would read.
+- The release journeys follow the queue contract: time a step waits for a
+  runner (`build_progress.queue`) no longer counts against their working
+  budget, and a stop says whether the job was waiting in the provider's queue
+  or working, with the platform's own expiry.
+
 ## 0.3.31 (candidate, MCP 0.45.139)
 
 - `template/page_featured_image` takes new settings on every render version:

@@ -232,6 +232,23 @@ it('does not mark images unreadable for storage, timeout and unattributed failur
   expect(unreadableMedia(decodeFailure('image', { error_detail: fromLines }) as any, entries)).toBe('image');
 });
 
+it('cancels the queued step of a round it starts again, so no abandoned step takes a runner', async () => {
+  const store = await configureEngine();
+  await store.setDoc(`${paths.media('org', 'site')}/image`, imageDoc('a'));
+  await requestMediaPreparation('org', 'site'); await releaseDelay(); await runPendingMediaPreparation('org');
+  // The round's step is still queued when its dispatch gives up.
+  await store.setDoc(`${buildTasksPath('org')}/task`, { status: 'queued', lease_until: 0, error_code: null });
+  mocks.completed.mockRejectedValueOnce(new ConnectionError('Cloudflare could not start the shared runner.', 502, 'shared_runner_start_failed'));
+  await runPendingMediaPreparation('org');
+  expect(await store.getDoc(`${buildTasksPath('org')}/task`)).toMatchObject({ status: 'cancelled' });
+  // A step a runner holds right now is left to finish.
+  await releaseDelay(); await runPendingMediaPreparation('org');
+  await store.setDoc(`${buildTasksPath('org')}/task`, { status: 'running', lease_until: Date.now() + 60_000 });
+  mocks.completed.mockRejectedValueOnce(new ConnectionError('The shared build engine changed.', 409, 'build_engine_changed'));
+  await runPendingMediaPreparation('org');
+  expect(await store.getDoc(`${buildTasksPath('org')}/task`)).toMatchObject({ status: 'running' });
+});
+
 it('never ends the job for a passing stop; each later round waits longer, up to an hour', async () => {
   const store = await configureEngine();
   await store.setDoc(`${paths.media('org', 'site')}/image`, imageDoc('a'));

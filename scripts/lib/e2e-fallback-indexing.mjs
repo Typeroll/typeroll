@@ -1,4 +1,5 @@
 import { callHostedMcp } from './e2e-agent-journey.mjs';
+import { observeDeployJob } from './deploy-observation.mjs';
 
 // The temporary address of a site without a website host: whatever kind the
 // report gives it, Typeroll must keep it out of search engines.
@@ -12,6 +13,9 @@ export async function runFallbackIndexingJourney({
   expectedFallbackOrigin,
   wait = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
   indexingAttempts = 120,
+  now = Date.now,
+  deployWorkingBudgetMs = 10 * 60_000,
+  progress = () => {},
 }) {
   const call = (name, args) => callHostedMcp({ fetchImpl, portalUrl, apiKey, name, args });
   const site = await call('get_site');
@@ -24,14 +28,10 @@ export async function runFallbackIndexingJourney({
   const jobId = deployment?.job_id;
   if (!jobId) throw new Error('trigger_deploy returned no job id');
 
-  let terminal;
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    const status = await call('get_deploy_status', { job_id: jobId });
-    terminal = status?.job?.status;
-    if (terminal === 'succeeded' || terminal === 'failed') break;
-    await wait(5_000);
-  }
-  if (terminal !== 'succeeded') throw new Error(`fixture deploy ended in ${terminal ?? 'timeout'}`);
+  // Time in the build provider's queue does not count against the working budget.
+  const final = await observeDeployJob(() => call('get_deploy_status', { job_id: jobId }), { wait, now, workingBudgetMs: deployWorkingBudgetMs, progress });
+  const terminal = final?.job?.status;
+  if (terminal !== 'succeeded') throw new Error(`fixture deploy ended in ${terminal ?? 'an unknown state'}`);
 
   let lastReport;
   let lastPublicResponses;

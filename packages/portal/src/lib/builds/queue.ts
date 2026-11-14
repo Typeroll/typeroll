@@ -14,6 +14,8 @@ export interface BuildTask {
   completed_at?: number;
   deadline: number;
   attempt: number;
+  /** When a runner last claimed this step. A dispatch whose runner served another step is not a failed start. */
+  claimed_at?: number;
   media_total?: number;
   media_cursor?: number;
   media_batches?: number;
@@ -129,7 +131,7 @@ export class OrganizationBuildQueue {
       const won = await this.store.compareAndUpdateDoc<BuildTask>(path, current => current.engine_revision === engineRevision &&
         current.status === 'queued' && !queuedBuildExpired(current, now) && current.lease_until <= now && current.deadline === task.deadline && queuedSince(current) === queuedSince(task) &&
         deadline > now && current.attempt === task.attempt && (!expected || current.provider_dispatch_id !== expected.dispatch_id),
-        { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1, deadline, ...(expected ? { provider_dispatch_id: expected.dispatch_id } : {}) });
+        { status: 'running', lease_id: lease, token_hash: sha256(token), lease_until: now + LEASE_MS, attempt: task.attempt + 1, claimed_at: now, deadline, ...(expected ? { provider_dispatch_id: expected.dispatch_id } : {}) });
       if (won) return { key: task.id, identity: task.identity, lease_id: lease, token, expires_at: now + LEASE_MS, deadline, media_cursor: task.media_cursor ?? 0, media_total: task.media_total ?? 0 };
     }
     return null;
@@ -169,6 +171,11 @@ export class OrganizationBuildQueue {
         ...(artifact.seo_report ? { seo_report: artifact.seo_report } : {}),
         ...(artifact.render_report ? { render_report: artifact.render_report } : {}) });
     if (!won) throw rejected();
+  }
+  /** Cancel a step no runner holds, so an abandoned round never takes a runner. */
+  async cancelQueued(org: string, key: string) {
+    return this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, task => task.status === 'queued' && task.lease_until <= this.clock(),
+      { status: 'cancelled', token_hash: null, lease_until: 0, completed_at: this.clock() });
   }
   async cancel(org: string, key: string) {
     return this.store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${pathPart(key)}`, task => ['queued', 'running'].includes(task.status),

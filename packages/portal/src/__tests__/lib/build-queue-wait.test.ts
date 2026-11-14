@@ -92,6 +92,32 @@ it('dispatches again when the provider stopped the build before anyone claimed t
   await expect(dispatchPendingBuild('org', key, config)).rejects.toMatchObject({ code: 'shared_runner_start_failed' });
 });
 
+it('does not count a dispatch whose runner served another step of the organization', async () => {
+  // Twelve queued media rounds on one build account: each step's own dispatch
+  // starts a runner that takes the organization's next step instead.
+  const waiting = await enqueue('media-waiting', 'media_preparation', { dispatch_started_at: now }, 10);
+  advance(MINUTE);
+  const other = await enqueue('media-other', 'media_preparation', {}, 10);
+  await getStore().updateDoc(`${buildTasksPath('org')}/${waiting}`, { created_at: now + MINUTE });
+  expect((await queue().claim('org', config.revision, BUILD_PROTOCOL))!.key).toBe(other);
+  provider.status = 'stopped';
+  advance(MINUTE);
+  await getStore().updateDoc(buildInputPath('org', waiting), { dispatch_attempt: 3, dispatch_lease_until: 0 });
+  await dispatchPendingBuild('org', waiting, config);
+  expect(provider.dispatch).toHaveBeenCalledOnce();
+  // Waiting its turn is not a failed start: the step stays queued, the count unchanged.
+  expect(await getStore().getDoc(buildInputPath('org', waiting))).toMatchObject({ dispatch_id: 'dispatch-2', dispatch_attempt: 3 });
+  expect(await task(waiting)).toMatchObject({ status: 'queued' });
+});
+
+it('still fails the start when no runner claimed any step after the dispatch', async () => {
+  const key = await enqueue('job', 'publication', { dispatch_started_at: now });
+  provider.status = 'stopped';
+  advance(MINUTE);
+  await getStore().updateDoc(buildInputPath('org', key), { dispatch_attempt: 3, dispatch_lease_until: 0 });
+  await expect(dispatchPendingBuild('org', key, config)).rejects.toMatchObject({ code: 'shared_runner_start_failed' });
+});
+
 it('still claims interactive work before background media preparation', async () => {
   const media = await enqueue('media-site', 'media_preparation', {}, 10);
   advance(MINUTE);
