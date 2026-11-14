@@ -7,6 +7,11 @@ import { sanitizeBody } from '../../lib/sanitize';
 // guarantees down with explicit tests.
 
 describe('sanitizeBody', () => {
+  it('keeps an image\'s fetch priority', () => {
+    const out = sanitizeBody('<img src="https://media.example/a.jpg" alt="A" loading="eager" fetchpriority="high" decoding="async" />');
+    expect(out).toContain('fetchpriority="high"');
+  });
+
   it('strips <script> tags', () => {
     const out = sanitizeBody('<p>hi</p><script>alert(1)</script>');
     expect(out).not.toContain('<script');

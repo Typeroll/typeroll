@@ -13,6 +13,8 @@
 - The featured image's `sizes` follows its `width` (`narrow` 512 px, `normal`
   768 px, `wide` 1024 px), so a narrow image inside a column no longer asks
   for a column-wide file. This changes only which file the browser downloads.
+- Published pages keep `fetchpriority` on images; the sanitizer used to drop
+  it before the build added it back to the first image only.
 - Render version 21: without `alt_field`, the featured image reads the
   `<image field>_alt` page field (`featured_image_alt` for `featured_image`)
   when it has a value, before falling back to the page title.

@@ -83,3 +83,8 @@ test('keeps a consent-gated template inert and unwraps any other template', () =
   assert.equal(sanitizeBody('<template><p>Shown</p></template>'), '<p>Shown</p>');
   assert.equal(sanitizeBody('<template data-tr-consent="optional"><p>Shown</p></template>'), '<p>Shown</p>');
 });
+
+test('keeps an image\'s fetch priority', () => {
+  const out = sanitizeBody('<img src="https://media.example/a.jpg" alt="A" loading="eager" fetchpriority="high" decoding="async" />');
+  assert.match(out, /fetchpriority="high"/);
+});
