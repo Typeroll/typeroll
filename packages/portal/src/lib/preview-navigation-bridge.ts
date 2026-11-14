@@ -90,5 +90,7 @@ takeHandoff:function(key){return handoffState().then(function(state){if(!Object.
 storeHandoff:function(key,packet){post({action:"handoff.set",key:String(key),value:String(packet)});},
 navigate:function(href){var path=previewPath(href);if(path===null)return false;post({action:"site.navigate",path:path});return true;}
 })});
+// The sandbox keeps no cookies: hand the cookie banner answer to the shell, which carries it to every next page.
+document.addEventListener("typeroll:consent",function(event){var choice=event.detail&&event.detail.choice;if(choice==="all"||choice==="necessary"||choice==="rejected")post({action:"consent.set",choice:choice});});
 document.addEventListener("click",function(event){if(event.defaultPrevented||event.button!==0||event.metaKey||event.ctrlKey||event.shiftKey||event.altKey)return;var target=event.target;if(!(target instanceof Element))return;var anchor=target.closest("a[href]");if(!anchor||anchor.target&&anchor.target!=="_self"||anchor.hasAttribute("download"))return;var path=previewPath(anchor.href);if(path===null){var external=typeof anchor.href==="string"?offsite(anchor.href,location.href,config.root):null;if(external===null)return;event.preventDefault();post({action:"site.open",url:external});return;}event.preventDefault();post({action:"site.navigate",path:path});},true);})();`;
 }

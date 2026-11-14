@@ -7,6 +7,12 @@
   out when the page has no parent window, so links open the matching review
   (`url`) pages. In the wrapper and in editor iframes nothing changes, and
   screenshots of `frame_url` render as before.
+- The review preview (`url`) keeps a cookie banner answer for the rest of the
+  session. The sandboxed frame has no cookies, so the banner came back on every
+  page; the bridge now hands the answer to the review wrapper, which carries it
+  like `?consent=` to every next page, Back and a reload (also on sites that
+  reload after the answer). "Reject" counts as necessary cookies only.
+  Published sites are unchanged.
 - `get_preview_link` and `POST /api/v1/sites/{siteId}/preview-link` return
   `frame_url` (and `frame_limitations`) only with `include_frame_url: true`.
   The default response has just `url`, the review address to give people, so a

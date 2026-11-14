@@ -47,7 +47,8 @@ function showNotices(list){if(notices){notices.remove();notices=null;}if(!Array.
     var text=document.createElement("span");text.style.flex="1";text.textContent=notice.message.slice(0,2000);var close=document.createElement("button");close.type="button";close.textContent="Dismiss";close.style.cssText="font:inherit;color:inherit;background:transparent;border:1px solid currentColor;border-radius:4px;padding:0 .5rem;cursor:pointer";close.addEventListener("click",function(){item.remove();});
     item.appendChild(text);item.appendChild(close);box.appendChild(item);});
   if(box.childNodes.length){document.body.appendChild(box);notices=box;}}
-function reload(){showNotices(null);var url=frameUrl(),child=frame.contentWindow;if(child&&frame.getAttribute("src")){try{child.location.replace(url);return;}catch(_){}}frame.src=url;}
+var consentAnswered=false;
+function reload(){consentAnswered=false;showNotices(null);var url=frameUrl(),child=frame.contentWindow;if(child&&frame.getAttribute("src")){try{child.location.replace(url);return;}catch(_){}}frame.src=url;}
 function navigate(path){if(typeof path!=="string"||!path.startsWith("/")||path.startsWith("//")||path.includes("\\\\"))return;var requested=new URL(path,location.origin);var query=new URLSearchParams(requested.search);carry(query);var suffix=query.toString();var outer=root+requested.pathname+(suffix?"?"+suffix:"")+requested.hash;history.pushState(null,"",outer);reload();}
 // An off-site link from the frame opens here, unsandboxed: a popup the frame
 // opened itself would inherit its opaque-origin sandbox and break sign-in
@@ -55,11 +56,18 @@ function navigate(path){if(typeof path!=="string"||!path.startsWith("/")||path.s
 // ancestor, so the browser's popup blocker still applies.
 function openExternal(href){if(typeof href!=="string"||href.length>8192)return;var url;try{url=new URL(href);}catch(_){return;}if(url.protocol!=="https:"&&url.protocol!=="http:")return;window.open(url.href,"_blank","noopener,noreferrer");}
 addEventListener("popstate",reload);
+// A site that reloads the page after the answer reloads the frame at its own
+// address, without the answer: load it again with the answer carried.
+frame.addEventListener("load",function(){if(consentAnswered)reload();});
 addEventListener("message",function(event){var data=event.data;if(event.source!==frame.contentWindow||event.origin!=="null"||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==bridgeId)return;
   if(data.action==="storage.ready"){frame.contentWindow&&frame.contentWindow.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:bridgeId,action:"storage.init",storage:storage},"*");return;}
   if(data.action==="preview.notices"){showNotices(data.notices);return;}
   if(data.action==="site.navigate"){navigate(data.path);return;}
   if(data.action==="site.open"){openExternal(data.url);return;}
+  // A cookie banner answer in the frame: the frame keeps no cookies, so the
+  // shell carries it, as ?consent= does, to every next page and to a reload.
+  // "Reject" shows the same page as "necessary": no optional scripts run.
+  if(data.action==="consent.set"&&(data.choice==="all"||data.choice==="necessary"||data.choice==="rejected")){var choice=data.choice==="all"?"all":"necessary";carriedQuery.consent=choice;var own=new URLSearchParams(location.search);own.set("consent",choice);history.replaceState(history.state,"",location.pathname+"?"+own.toString()+location.hash);consentAnswered=true;setTimeout(function(){consentAnswered=false;},5000);return;}
   // The page handoff of a native navigation form: one slot per tab, as on a
   // published site, where a new handoff replaces any abandoned one.
   if(data.action==="handoff.set"&&typeof data.key==="string"&&/^[a-zA-Z0-9_-]{1,64}$/.test(data.key)&&typeof data.value==="string"&&data.value.length<=20000){try{JSON.parse(data.value);}catch(_){return;}storage.handoff={};storage.handoff[data.key]=data.value;persist();return;}

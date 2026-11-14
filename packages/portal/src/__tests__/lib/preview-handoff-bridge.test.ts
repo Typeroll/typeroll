@@ -150,6 +150,39 @@ function frame({ standalone = false } = {}) {
   return { bridge, posted, reply, browser };
 }
 
+describe('cookie banner answer across preview pages', () => {
+  it('carries an answer given in the frame to every next page and to the shell address', () => {
+    const { browser, send, replaced } = shell();
+    send({ action: 'consent.set', choice: 'all' });
+    expect(browser.location.search).toBe('?t=ticket&consent=all');
+    send({ action: 'site.navigate', path: '/pricing/' });
+    expect(replaced.at(-1)).toBe(`/preview/site/pricing/?t=ticket&consent=all&frame=1&bridge=${BRIDGE_ID}`);
+    // "Reject" shows the same page as "necessary"; anything else is ignored.
+    send({ action: 'consent.set', choice: 'rejected' });
+    send({ action: 'consent.set', choice: 'everything' });
+    send({ action: 'site.navigate', path: '/contact/' });
+    expect(replaced.at(-1)).toBe(`/preview/site/contact/?t=ticket&consent=necessary&frame=1&bridge=${BRIDGE_ID}`);
+  });
+
+  it('reloads the frame with the answer when the site reloads the page after it', () => {
+    const { browser, send, replaced } = shell();
+    const frameEl = browser.document.getElementById('preview')!;
+    send({ action: 'consent.set', choice: 'all' });
+    frameEl.dispatchEvent(new browser.Event('load'));
+    expect(replaced.at(-1)).toBe(`/preview/site/start/?t=ticket&consent=all&frame=1&bridge=${BRIDGE_ID}`);
+    const count = replaced.length;
+    frameEl.dispatchEvent(new browser.Event('load'));
+    expect(replaced).toHaveLength(count);
+  });
+
+  it('hands the banner answer from the frame to the shell', () => {
+    const { posted, browser } = frame();
+    browser.document.dispatchEvent(new browser.CustomEvent('typeroll:consent', { detail: { choice: 'necessary' } }));
+    browser.document.dispatchEvent(new browser.CustomEvent('typeroll:consent', { detail: { choice: 'bogus' } }));
+    expect(posted).toEqual([{ ...CHANNEL, action: 'consent.set', choice: 'necessary' }]);
+  });
+});
+
 describe('frame address opened as a page of its own', () => {
   it('leaves link clicks to the browser, so they open the review address of that page', () => {
     const { posted, browser } = frame({ standalone: true });

@@ -327,10 +327,13 @@ see unsaved drafts; that choice is signed into the link. Anyone holding the link
 sees unpublished content, so creating one needs write permission on the site, in
 the portal as well as through the API.
 
-The preview runs in a sandbox without cookies, so a cookie banner returns on
-every page. For visual review, add `&consent=all` to the link to answer it for
-the whole session: the banner stays hidden and consented scripts and embeds
-load. `&consent=necessary` hides the banner and loads only necessary scripts.
+The preview runs in a sandbox without cookies. Its review wrapper (`url`)
+keeps the answer to a cookie banner for the rest of the review session: answer
+it once and later pages, Back and a reload show no banner (from Core 0.3.33;
+before, it returned on every page). "Reject" counts as necessary cookies only.
+To answer it in advance, add `&consent=all` to the link: the banner stays
+hidden and consented scripts and embeds load. `&consent=necessary` hides the
+banner and loads only necessary scripts.
 The sandbox itself is unchanged; a widget that needs a first-party origin may
 still need a test publication.
 
