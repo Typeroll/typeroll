@@ -614,8 +614,13 @@ as an Image block; previews show the original file.
 A full-width featured image that stays low on a computer and 16:9 on a phone:
 
 ```json
-{ "field": "featured_image", "alt_field": "featured_image_alt", "width": "full",
-  "fit": "cover", "aspect_ratio": { "mobile": "16:9", "laptop": "3:1" } }
+{
+  "field": "featured_image",
+  "alt_field": "featured_image_alt",
+  "width": "full",
+  "fit": "cover",
+  "aspect_ratio": { "mobile": "16:9", "laptop": "3:1" }
+}
 ```
 
 `"max_height_px": 300` with `"aspect_ratio": "16:9"` gives the same on wide
