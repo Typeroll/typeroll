@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.3.33 (candidate, MCP 0.45.140)
+
+- A preview `frame_url` opened on its own in a browser tab no longer swallows
+  every click. Its bridge, which hands clicks to the review wrapper, now stays
+  out when the page has no parent window, so links open the matching review
+  (`url`) pages. In the wrapper and in editor iframes nothing changes, and
+  screenshots of `frame_url` render as before.
+- `get_preview_link` and `POST /api/v1/sites/{siteId}/preview-link` say which
+  address is for whom: give people `url`, never `frame_url`, which is for
+  screenshots, rendering checks and iframes (`frame_limitations`, tool
+  description, publishing guide and deploy checklist).
+
 ## 0.3.32 (candidate, MCP 0.45.139)
 
 - A queued build step no longer fails with `shared_runner_start_failed` while
