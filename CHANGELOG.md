@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.34 (candidate, MCP 0.45.140)
+
+- Builds run on Node.js 22.23.5 (was 22.23.1), and Astro is 7.4.12 in the
+  portal, site template and documentation (was 7.3.3). This fixes
+  GHSA-mh32-jxcr-mh9f and GHSA-r3h5-4585-7x3w, whose temporary approvals are
+  removed; so is the `uuid` approval, which no longer matched any installed
+  package. The dependency audit now runs with no approvals.
+- An organization build engine installed by an earlier Core runs Node.js
+  22.23.1 and reports `capability_missing` (`build_engine_update_required`):
+  with automatic engine updates on, the next publication updates it first;
+  otherwise publishing waits for **Update build engine**. Engine
+  configurations record `node_version` from now on. Background image
+  preparation waits for the update instead of failing rounds on the old engine.
+- A Cloudflare Pages project that builds publications itself gets
+  `NODE_VERSION` set to the build runtime before each build, so projects created
+  by earlier releases do not build the new template on the old runtime.
+
 ## 0.3.33 (candidate, MCP 0.45.140)
 
 - Lazy images load before they are scrolled in. Published pages and previews
