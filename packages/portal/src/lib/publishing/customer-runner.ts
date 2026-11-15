@@ -24,7 +24,7 @@ import { getStore } from '../datastore';
 import { getConnection, ConnectionError } from './connections';
 import { githubConfiguration } from './github-connection';
 import { cloudflareClient } from './cloudflare-oauth';
-import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment, digest, ProviderError, githubFailureHint, ProviderTransportError } from './providers.mjs';
+import { githubInstallationClient, publishTree, pagesProjectBody, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, setPagesNodeVersion, assertSuccessfulStaticDeployment, digest, ProviderError, githubFailureHint, ProviderTransportError } from './providers.mjs';
 import { getSiteDomains, activePublicationDomains, hasPendingPublishedDomains, samePublicationHosts, sameRedirectHosts, getOrganizationDomains, siteDomainConfigPath, type DomainConfiguration } from './domain-config';
 import { prepareRedirectHosts, redirectApprovalBlocker, ensureApprovedRedirectRule, applyRedirectTraffic, verifyRedirectHost, type RedirectPreparation } from './redirect-hosts';
 import { maintainImplicitRedirects, implicitRedirectsPending } from './www-redirect';
@@ -610,6 +610,8 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
         await cloudflare(`/accounts/${publication.account_id}/pages/projects`, { method: 'POST', body: pagesProjectBody({ owner: publication.owner, repo: publication.repo, repository, project: publication.project }) });
         connectedProject = await cloudflare(projectRoot);
       }
+      // A Pages project builds this publication itself: give it the runtime the site template needs.
+      if (!publication.build_engine_revision) await setPagesNodeVersion(cloudflare, projectRoot);
       if (!publication.build_engine_revision && (connectedProject.source?.type !== 'github' || String(connectedProject.source.config?.repo_id) !== String(repository.id))) throw new ConnectionError('Cloudflare is connected to a different repository.', 409);
       if (!publication.build_engine_revision && (frozen.media_manifest?.entries?.length || frozen.retained_media_manifests?.length)) {
         const environment = publication.branch === 'main' ? 'production' : 'preview';

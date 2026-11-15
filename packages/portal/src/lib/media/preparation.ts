@@ -10,6 +10,7 @@ import { readEngineConfiguration } from '../builds/state';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { sha256 } from '../builds/contract.mjs';
 import { OrganizationBuildQueue, buildTasksPath, type BuildTask } from '../builds/queue';
+import { engineRunsCurrentRuntime } from '../builds/selection';
 import type { BuildDiagnostic } from '../builds/diagnostics.mjs';
 import { ConnectionError } from '../publishing/connections';
 import { buildFailureMessage } from '../builds/failure-message';
@@ -168,6 +169,12 @@ export async function runPendingMediaPreparation(org?: string): Promise<boolean>
       }
       const engine = await readEngineConfiguration(item.org, await selectedBuildProvider(item.org));
       const connection = await getConnection(item.org, 'cloudflare');
+      // An engine that must be updated before it can build waits for that update
+      // (the next publication applies it with auto-update on) instead of failing rounds.
+      if (engine?.status === 'ready' && !engineRunsCurrentRuntime(engine)) {
+        await update({ state: 'waiting', next_at: Date.now() + 60000, error: 'Update the build engine in Publishing → Builds (the next publication does it when automatic updates are on) to prepare images automatically.' });
+        continue;
+      }
       if (!engine || !engine.media_preparation || engine.status !== 'ready' || !connection.media_ready || !connection.cloudflare?.public_bucket) {
         await update({ state: 'waiting', next_at: Date.now() + 60000, error: 'Connect media storage and finish or update Builds setup in Publishing to prepare images automatically.' });
         continue;

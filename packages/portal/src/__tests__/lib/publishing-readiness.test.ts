@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
+import { BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
 import { paths } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
@@ -17,7 +18,7 @@ vi.mock('../../lib/access', async original => ({ ...await original<typeof import
 vi.mock('../../lib/api-auth', async original => ({ ...await original<typeof import('../../lib/api-auth')>(), requireApiKey: async (request: Request) => ({ ok: true, value: { request, keyPrefix: 'synthetic', path: '/deploy', orgId: 'org', siteId: 'site', versionId: 'main', permission: 'admin' } }) }));
 async function engine(provider: 'cloudflare' | 'github' = 'cloudflare', extra = {}) {
   await getStore().setDoc(enginePath('org', provider), { provider, state: 'ready', enabled: true });
-  await getStore().setDoc(engineConfigurationPath('org', provider), { provider, status: 'ready', revision: 'engine', account_id: 'cf-account', installation_id: 'installation', owner: 'owner', github: { owner_id: 'github-account' }, static_verification: true, media_preparation: true, publication_validation: 1, ...extra });
+  await getStore().setDoc(engineConfigurationPath('org', provider), { provider, status: 'ready', revision: 'engine', account_id: 'cf-account', installation_id: 'installation', owner: 'owner', github: { owner_id: 'github-account' }, static_verification: true, media_preparation: true, publication_validation: 1, node_version: BUILD_RUNTIME, ...extra });
 }
 beforeEach(async () => {
   makeTmpFixtures(); await resetDatastore(); const store = getStore();
@@ -50,6 +51,17 @@ it('offers an update to a ready engine running older generated code without bloc
   const current = await readBuildSettings('org');
   expect(current).toMatchObject({ update_available: false, update_reason: null });
   expect(JSON.stringify(current)).not.toMatch(/token_hash|api_token|secret/);
+});
+it('requires an update before publishing on an engine that runs an older Node.js than the build runtime', async () => {
+  const { CLOUDFLARE_ENGINE_SOURCE } = await import('../../lib/builds/setup');
+  // Installed by Core 0.3.33 or earlier: no runtime recorded, so Node.js 22.23.1.
+  await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, node_version: undefined });
+  const legacy = await readBuildSettings('org');
+  expect(legacy.engines.cloudflare).toMatchObject({ update_available: true, update_reason: 'capability_missing', state: 'setup_required', issue: { code: 'build_engine_update_required' } });
+  await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, node_version: '22.23.1' });
+  expect((await readBuildSettings('org')).engines.cloudflare).toMatchObject({ update_reason: 'capability_missing' });
+  await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE });
+  expect((await readBuildSettings('org')).engines.cloudflare).toMatchObject({ update_available: false, update_reason: null });
 });
 it.each(['preparing', 'qualifying', 'disabled'])('blocks an engine in %s state', async status => {
   await engine('cloudflare', { status });

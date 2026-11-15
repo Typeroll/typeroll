@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22.23.1'
+          node-version: '22.23.5'
           cache: npm
       - name: Resolve successful source qualification
         id: qualified
@@ -132,7 +132,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22.23.1'
+          node-version: '22.23.5'
           cache: npm
       - name: Verify Core release version
         run: npm run core:release:verify -- "$CORE_TAG"
@@ -278,7 +278,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22.23.1'
+          node-version: '22.23.5'
           registry-url: https://registry.npmjs.org
           scope: '@typeroll'
           cache: npm
@@ -425,7 +425,7 @@ jobs:
           ref: ${{ needs.plan.outputs.source_sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22.23.1'
+          node-version: '22.23.5'
           cache: npm
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -472,7 +472,7 @@ jobs:
           ref: ${{ needs.plan.outputs.source_sha }}
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
-          node-version: '22.23.1'
+          node-version: '22.23.5'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: core-workers-${{ needs.plan.outputs.source_sha }}

@@ -1,5 +1,6 @@
 export const BUILD_PROTOCOL: 1;
 export const BUILD_RUNTIME: string;
+export const LEGACY_BUILD_RUNTIME: string;
 export const MAX_SOURCE_BYTES: number;
 export const MAX_ARTIFACT_BYTES: number;
 export const MAX_RENDER_CACHE_BYTES: number;

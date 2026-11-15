@@ -734,6 +734,14 @@ so and names **Update build engine**. Updated engines keep the private `/proc`
 where the host allows it and otherwise build without one; they never expose the
 host's `/proc` to build code.
 
+From Core 0.3.34 builds run on Node.js 22.23.5 (before, 22.23.1), which the
+site template's Astro release needs. An engine installed by an earlier Core
+reports `capability_missing`: with automatic engine updates on, the next
+publication updates it first; otherwise select **Update build engine** before
+publishing. Background image preparation waits for that update. A Cloudflare
+Pages project that builds the publication itself gets the new `NODE_VERSION`
+with the next publication.
+
 ### Automatic engine updates
 
 From Core 0.2.156, **Keep the build engine updated automatically** on the

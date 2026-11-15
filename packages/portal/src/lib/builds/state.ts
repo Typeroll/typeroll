@@ -20,6 +20,8 @@ export interface BuildSelection { provider: BuildProvider; revision: string; aut
 export interface EngineConfiguration { publication_validation?: number; media_preparation?: boolean; static_verification?: boolean;
   /** Digest of the generated engine source installed by the last setup; see engine-source.ts. */
   engine_source_sha256?: string;
+  /** The Node.js version the engine runs (BUILD_RUNTIME at its last setup); absent means LEGACY_BUILD_RUNTIME. */
+  node_version?: string;
   provider?: BuildProvider;
   github?: { repository_id: string; owner_id: string; repo: string; app_bot: string; workflow_id: number };
   revision: string; account_id: string; owner: string; installation_id: string;

@@ -1,6 +1,6 @@
 {
   "name": "typeroll",
-  "version": "0.3.33",
+  "version": "0.3.34",
   "private": true,
   "description": "Typeroll CMS – an open-source CMS for static websites, with AI-agent workflows and a client-friendly visual editor for managing multiple client sites.",
   "workspaces": [
@@ -45,7 +45,7 @@
   "overrides": {
     "sharp": "0.35.5",
     "@grpc/grpc-js": "^1.14.5",
-    "astro": "7.3.3",
+    "astro": "7.4.12",
     "zod": "^4.6.7",
     "miniflare": {
       "undici": "^7.30.1"
