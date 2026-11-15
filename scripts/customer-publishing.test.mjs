@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import {
   digest, createProviderClient, assertInstallation, publishTree, pagesProjectBody,
-  assertPagesProject, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, assertSuccessfulStaticDeployment,
+  assertPagesProject, matchingDeployment, findPublicationDeployment, setPagesBuildMediaAccess, setPagesNodeVersion, assertSuccessfulStaticDeployment,
 } from './lib/customer-publishing.mjs';
 import {
   buildPublishingProbePlan, probePublicationFiles, prepareProbeDirectory,
@@ -352,4 +352,16 @@ test('Pages media access updates only the selected secret and leaves paired runt
     assert.equal(calls.at(-1).body.deployment_configs[environment].env_vars.TYPEROLL_BUILD_MEDIA_ACCESS.type, 'secret_text');
   }
   await assert.rejects(setPagesBuildMediaAccess(provider, '/projects/synthetic', 'other', {}), /Invalid/);
+});
+
+test('a Pages project builds with the current build runtime, also one created by an earlier release', async () => {
+  const { BUILD_RUNTIME } = await import('../packages/portal/src/lib/builds/contract.mjs');
+  const body = pagesProjectBody({ owner: 'owner', repo: 'site', project: 'site', repository: { id: 17, owner: { id: 18 } } });
+  for (const environment of ['production', 'preview']) assert.equal(body.deployment_configs[environment].env_vars.NODE_VERSION.value, BUILD_RUNTIME);
+  const calls = [];
+  await setPagesNodeVersion(async (route, options) => { calls.push({ route, options }); }, '/projects/site');
+  assert.deepEqual(calls, [{ route: '/projects/site', options: { method: 'PATCH', body: { deployment_configs: {
+    production: { env_vars: { NODE_VERSION: { type: 'plain_text', value: BUILD_RUNTIME } } },
+    preview: { env_vars: { NODE_VERSION: { type: 'plain_text', value: BUILD_RUNTIME } } },
+  } } } }]);
 });

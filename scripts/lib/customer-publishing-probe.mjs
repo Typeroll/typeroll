@@ -54,7 +54,7 @@ export async function probePublicationFiles(plan, repo, revision = 'published') 
   const content = { site: repo, revision, pages };
   files['publication.json'] = `${JSON.stringify(content, null, 2)}\n`;
   files['publication-manifest.json'] = `${JSON.stringify({ format_version: 1, plan: plan.fingerprint, content_sha256: digest(files['publication.json']) }, null, 2)}\n`;
-  files['README.md'] = '# Generated static publication probe\n\nAll source is generated. Manual changes are replaced by the next publication.\n\nRun `npm ci` and `npm run build` with Node 22.23.1. Output is `dist/`.\nThis fixture proves provider onboarding, not full Typeroll renderer parity.\n';
+  files['README.md'] = '# Generated static publication probe\n\nAll source is generated. Manual changes are replaced by the next publication.\n\nRun `npm ci` and `npm run build` with Node 22.23.5. Output is `dist/`.\nThis fixture proves provider onboarding, not full Typeroll renderer parity.\n';
   return files;
 }
 

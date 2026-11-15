@@ -8,6 +8,7 @@ import { configureBuildEngine } from './setup';
 import { readEngineConfiguration, assertEngineConnections, selectionPath, type BuildProvider, type BuildSelection, type EngineConfiguration } from './state';
 import { CLOUDFLARE_ENGINE_SOURCE } from './setup';
 import { GITHUB_ENGINE_SOURCE } from './github-source';
+import { BUILD_RUNTIME, LEGACY_BUILD_RUNTIME } from './contract.mjs';
 
 export { selectionPath, type BuildSelection };
 export async function readBuildSelection(org: string): Promise<BuildSelection & { auto_update: boolean }> {
@@ -24,9 +25,16 @@ export async function selectedBuildProvider(org: string) { return (await readBui
  * the next publication updates an engine with either reason first.
  */
 export type EngineUpdateReason = 'capability_missing' | 'engine_source_changed';
+/** Whether the engine runs BUILD_RUNTIME, the Node.js version every build step is bound to. */
+export function engineRunsCurrentRuntime(config: Pick<EngineConfiguration, 'node_version'>): boolean {
+  return (config.node_version ?? LEGACY_BUILD_RUNTIME) === BUILD_RUNTIME;
+}
 export function engineUpdateReason(config: EngineConfiguration | null | undefined): EngineUpdateReason | null {
   if (!config || config.status !== 'ready') return null;
   if (!config.static_verification || !config.media_preparation || config.publication_validation !== 1) return 'capability_missing';
+  // Every build step is bound to BUILD_RUNTIME and the engine's executor runs only
+  // on its own Node.js version, so an engine on an older runtime cannot build.
+  if (!engineRunsCurrentRuntime(config)) return 'capability_missing';
   const source = (config.provider ?? 'cloudflare') === 'github' ? GITHUB_ENGINE_SOURCE : CLOUDFLARE_ENGINE_SOURCE;
   return config.engine_source_sha256 !== source ? 'engine_source_changed' : null;
 }

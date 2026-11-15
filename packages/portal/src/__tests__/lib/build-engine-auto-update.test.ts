@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
 import { createHash } from 'node:crypto';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
 import { getStore } from '../../lib/datastore';
@@ -23,7 +24,7 @@ const { restorePreviousEngine } = await import('../../lib/builds/engine-restore'
 const org = 'org';
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
 function engine(overrides: Partial<EngineConfiguration> = {}): EngineConfiguration {
-  return { revision: 'old', status: 'ready', provider: 'cloudflare', engine_source_sha256: 'older-source', static_verification: true, media_preparation: true, publication_validation: 1,
+  return { revision: 'old', status: 'ready', provider: 'cloudflare', node_version: BUILD_RUNTIME, engine_source_sha256: 'older-source', static_verification: true, media_preparation: true, publication_validation: 1,
     account_id: 'a'.repeat(32), owner: 'Example', installation_id: '123', worker_tag: 'tag', trigger_uuid: '0'.repeat(8) + '-0000-0000-0000-' + '0'.repeat(12), runner_commit: '1'.repeat(40),
     token_hash: sha('old-token'), encrypted_token: '', setup_lease_until: 0, ...overrides };
 }

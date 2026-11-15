@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 
 export const BUILD_PROTOCOL = 1;
-export const BUILD_RUNTIME = '22.23.1';
+export const BUILD_RUNTIME = '22.23.5';
+/** The runtime of engines installed before their configuration recorded one (Core 0.3.33 and earlier). */
+export const LEGACY_BUILD_RUNTIME = '22.23.1';
 export const MAX_SOURCE_BYTES = 32 * 1024 * 1024;
 export const MAX_ARTIFACT_BYTES = 128 * 1024 * 1024;
 export const MAX_RENDER_CACHE_BYTES = 32 * 1024 * 1024;

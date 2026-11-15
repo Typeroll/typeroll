@@ -1,5 +1,6 @@
 import { createHash, createSign } from 'node:crypto';
 import { withoutRedirects } from '../net/no-redirect.mjs';
+import { BUILD_RUNTIME } from '../builds/contract.mjs';
 
 const GH = 'https://api.github.com';
 /** GitHub refuses API requests without a User-Agent (403), and Workers' fetch sends none. */
@@ -279,7 +280,7 @@ export function pagesProjectBody({ owner, repo, repository, project }) {
     production_branch: 'main',
     build_config: { build_command: 'npm ci && npm run build', destination_dir: 'dist', root_dir: '/' },
     deployment_configs: Object.fromEntries(['production', 'preview'].map((environment) => [environment, {
-      env_vars: { NODE_VERSION: { type: 'plain_text', value: '22.23.1' }, SKIP_DEPENDENCY_INSTALL: { type: 'plain_text', value: 'true' } },
+      env_vars: { NODE_VERSION: { type: 'plain_text', value: BUILD_RUNTIME }, SKIP_DEPENDENCY_INSTALL: { type: 'plain_text', value: 'true' } },
     }])),
     source: { type: 'github', config: {
       owner, owner_id: String(repository.owner.id), repo_name: repo, repo_id: String(repository.id),
@@ -296,7 +297,7 @@ export function assertPagesProject(actual, expected) {
   const environmentMatches = ['production', 'preview'].every((environment) => {
     const variables = actual.deployment_configs?.[environment]?.env_vars;
     return variables && Object.keys(variables).sort().join(',') === 'NODE_VERSION,SKIP_DEPENDENCY_INSTALL' &&
-      variables.NODE_VERSION?.type === 'plain_text' && variables.NODE_VERSION?.value === '22.23.1' &&
+      variables.NODE_VERSION?.type === 'plain_text' && variables.NODE_VERSION?.value === BUILD_RUNTIME &&
       variables.SKIP_DEPENDENCY_INSTALL?.type === 'plain_text' && variables.SKIP_DEPENDENCY_INSTALL?.value === 'true';
   });
   if (actual.name !== expected.name || actual.production_branch !== 'main' || actual.source?.type !== 'github' ||
@@ -345,6 +346,17 @@ export function assertSuccessfulStaticDeployment(deployment, project) {
 }
 
 /** PATCH only the intended variable: round-tripping Pages config changes paired runtime settings. */
+/**
+ * A Pages project builds the publication itself with the Node.js version in its
+ * environment variables. Set it to BUILD_RUNTIME before each build: projects
+ * created by earlier releases still name an older runtime the site template no
+ * longer supports.
+ */
+export async function setPagesNodeVersion(provider, projectRoot) {
+  return provider(projectRoot, { method: 'PATCH', body: { deployment_configs: Object.fromEntries(['production', 'preview'].map((environment) =>
+    [environment, { env_vars: { NODE_VERSION: { type: 'plain_text', value: BUILD_RUNTIME } } }])) } });
+}
+
 export async function setPagesBuildMediaAccess(provider, projectRoot, environment, access) {
   if (!['production', 'preview'].includes(environment)) throw new Error('Invalid Pages build environment');
   return provider(projectRoot, { method: 'PATCH', body: { deployment_configs: {

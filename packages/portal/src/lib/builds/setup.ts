@@ -70,7 +70,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   if (!previous) await store.createDocIfMissing(selectionPath(org), { provider: 'cloudflare', revision: randomUUID(), auto_update: true });
   const revision = randomUUID(), token = randomBytes(32).toString('base64url');
   const { previous: _older, ...replaced } = previous ?? { previous: null };
-  let config: EngineConfiguration = { previous: previous?.status === 'ready' ? replaced as Omit<EngineConfiguration, 'previous'> : null, media_preparation: true, static_verification: true, publication_validation: 1, engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
+  let config: EngineConfiguration = { previous: previous?.status === 'ready' ? replaced as Omit<EngineConfiguration, 'previous'> : null, media_preparation: true, static_verification: true, publication_validation: 1, engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, node_version: BUILD_RUNTIME, revision, account_id: cf.cloudflare.account_id, owner: git.github.owner, installation_id: git.github.installation_id,
     worker_tag: '', trigger_uuid: '', runner_commit: '', token_hash: sha256(token), encrypted_token: encryptSecret(JSON.stringify({ org, token })),
     status: 'preparing', setup_lease_until: Date.now() + 180000 };
   if (previous) {

@@ -1,4 +1,5 @@
 import { beforeEach, expect, it, vi } from 'vitest';
+import { BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -28,7 +29,7 @@ it('coalesces uploads and waits for a compatible customer engine without blockin
 });
 it('prepares only ready private images, retains new uploads and never creates a publication', async () => {
   const store = getStore();
-  await store.setDoc(engineConfigurationPath('org'), { revision: 'engine', status: 'ready', media_preparation: true, runner_commit: 'a'.repeat(40) });
+  await store.setDoc(engineConfigurationPath('org'), { revision: 'engine', status: 'ready', media_preparation: true, node_version: BUILD_RUNTIME, runner_commit: 'a'.repeat(40) });
   await store.setDoc(connectionPath('org', 'cloudflare'), { status: 'connected', media_ready: true, cloudflare: { account_id: 'a'.repeat(32), bucket: 'private', public_bucket: 'public' } });
   await store.setDoc(`${paths.media('org', 'site')}/image`, { mime_type: 'image/png', sha256: 'b'.repeat(64), storage: { provider: 'organization_r2', state: 'ready', key: 'private/original' } });
   await store.setDoc(`${paths.media('org', 'site')}/uploading`, { mime_type: 'image/png', storage: { provider: 'organization_r2', state: 'uploading' } });
@@ -78,7 +79,7 @@ it('waits for uploads to go quiet, up to a cap, so a slow import series shares o
 
 async function configureEngine() {
   const store = getStore();
-  await store.setDoc(engineConfigurationPath('org'), { revision: 'engine', status: 'ready', media_preparation: true, runner_commit: 'a'.repeat(40) });
+  await store.setDoc(engineConfigurationPath('org'), { revision: 'engine', status: 'ready', media_preparation: true, node_version: BUILD_RUNTIME, runner_commit: 'a'.repeat(40) });
   await store.setDoc(connectionPath('org', 'cloudflare'), { status: 'connected', media_ready: true, cloudflare: { account_id: 'a'.repeat(32), bucket: 'private', public_bucket: 'public' } });
   mocks.completed.mockResolvedValue(null);
   return store;
@@ -230,6 +231,18 @@ it('does not mark images unreadable for storage, timeout and unattributed failur
   expect(unreadableMedia(decodeFailure('image', { error_detail: storage }) as any, entries)).toBeNull();
   const fromLines = { cause: 'Error: Input buffer contains unsupported image format', lines: ['TYPEROLL_MEDIA_FAILURE step=inspect_image media="image" file="/x" object="x" attempts=1'] };
   expect(unreadableMedia(decodeFailure('image', { error_detail: fromLines }) as any, entries)).toBe('image');
+});
+
+it('waits for the engine update instead of building on an engine with an older Node.js', async () => {
+  const store = await configureEngine();
+  await store.updateDoc(engineConfigurationPath('org'), { node_version: '22.23.1' });
+  await store.setDoc(`${paths.media('org', 'site')}/image`, imageDoc('a'));
+  await requestMediaPreparation('org', 'site'); await releaseDelay(); await runPendingMediaPreparation('org');
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+  expect(await mediaPreparationStatus('org', 'site')).toMatchObject({ state: 'waiting', error: expect.stringContaining('Update the build engine') });
+  await store.updateDoc(engineConfigurationPath('org'), { node_version: BUILD_RUNTIME });
+  await releaseDelay(); await runPendingMediaPreparation('org');
+  expect(mocks.enqueue).toHaveBeenCalledOnce();
 });
 
 it('cancels the queued step of a round it starts again, so no abandoned step takes a runner', async () => {
