@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.37 (candidate, MCP 0.45.142)
+## 0.3.37 (candidate, MCP 0.45.143)
 
 - Back in a preview link returns to the previous page in one step on iOS
   Safari and in-app browsers too. The review wrapper used to move its framed
