@@ -107,3 +107,28 @@ it('reads a baseline captured before platform versions were recorded without a s
   const added = { ...source(), extensions: runtime('0.46.0', [installation]) };
   expect(compareImpact(legacy, snapshot(added), false, null, legacyBaseline(before, added)).changes).toEqual([expect.objectContaining({ id: 'extensions' })]);
 });
+// autopilot-sverige-ab-4 (2026-11-16): "Extensions" and "Runtime connections" changed (field `value`) and no one could tell what.
+it('names the configuration paths that changed, with values only for what the site publishes', () => {
+  const runtime = (version: string, endpoint: string) => ({ runtime_dependencies: [
+    { kind: 'forms', id: 'contact', endpoint }, { kind: 'extension', id: 'se.example.engine', version, endpoint: 'https://engine.example.com/api' }, { kind: 'app', id: 'attribution' }] });
+  const before = { ...source(), ...runtime('0.2.11', 'https://forms.example.com/a'), extensions: { installations: [{ extension_id: 'se.example.engine', version: '0.2.11' }] },
+    settings: { cookie_consent: { scripts_optional: '<script>gtag("G-1")</script>' }, title: 'Before' } };
+  const after = { ...source(), ...runtime('0.2.12', 'https://forms.example.com/a'), extensions: { installations: [{ extension_id: 'se.example.engine', version: '0.2.12' }] },
+    settings: { cookie_consent: { scripts_optional: '<script>gtag("G-2")</script>' }, title: 'Before' } };
+  const changes = compareImpact(snapshot(before), snapshot(after)).changes;
+  expect(changes.find(change => change.id === 'runtime_dependencies')).toMatchObject({ fields: ['value'], details: [{ path: '[extension:se.example.engine].version', before: '0.2.11', after: '0.2.12' }] });
+  expect(changes.find(change => change.id === 'extensions')).toMatchObject({ details: [{ path: 'installations[se.example.engine].version', before: '0.2.11', after: '0.2.12' }] });
+  // Site settings name the path but keep no value: they can hold anything the owner typed.
+  const settings = changes.find(change => change.id === 'settings')!;
+  expect(settings.details).toEqual([{ path: 'cookie_consent.scripts_optional' }]);
+  expect(JSON.stringify(snapshot(after))).not.toContain('G-2');
+  // A reordered list keeps its paths: elements are labelled by kind and id.
+  const reordered = { ...after, runtime_dependencies: [...after.runtime_dependencies].reverse() };
+  expect(compareImpact(snapshot(after), snapshot(reordered)).changes.find(change => change.id === 'runtime_dependencies')?.details).toEqual([]);
+});
+it('says when a baseline predates recorded configuration paths', () => {
+  const before = snapshot({ ...source(), apps: { analytics: true } }), after = snapshot({ ...source(), apps: { analytics: false } });
+  const legacy = { ...before, entries: before.entries.map(({ detail, ...entry }) => entry) };
+  expect(compareImpact(legacy, after).changes.find(change => change.id === 'apps')).toMatchObject({ details_unavailable: 'baseline_predates_details' });
+  expect(compareImpact(legacy, after).changes.find(change => change.id === 'apps')).not.toHaveProperty('details');
+});

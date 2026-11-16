@@ -3,7 +3,32 @@ import { digest } from './providers.mjs';
 export interface ImpactEntry {
   kind: string; id: string; title: string; content_type?: string;
   fields: Record<string, string>; metadata: string; date_updated: string;
+  /**
+   * Configuration only, from Core 0.3.36: one entry per setting path. Values of
+   * technical configuration that the built site already publishes (runtime
+   * connections, extensions, apps, addresses) are kept in short plain text;
+   * every other setting keeps only a short fingerprint, so a comparison names
+   * the path that changed without storing its value.
+   */
+  detail?: Record<string, string>;
 }
+/**
+ * Who or what changed a configuration entry since the baseline publication.
+ * - extension_release: the extension developer published a version the
+ *   installation follows automatically (no one on this site changed anything);
+ * - installation / apps: the stored record changed (its own timestamp);
+ * - extension_audit: an install, update or configuration change recorded for this site;
+ * - api: a write through the API or MCP (method and route, never the body);
+ * - platform: an address derived from this Typeroll installation, not from the site.
+ * Actors are user ids, as the organization's members list shows them.
+ */
+export interface ConfigurationChangeSource {
+  source: 'extension_release' | 'installation' | 'extension_audit' | 'apps' | 'api' | 'platform';
+  at: string | null; summary: string;
+  extension_id?: string; version?: string; actor_id?: string; action?: string; route?: string;
+}
+/** A configuration path that changed between the baseline and now. `before`/`after` only for technical settings the site publishes. */
+export interface ConfigurationDetail { path: string; before?: string | null; after?: string | null }
 /**
  * Versions the platform puts into a publication, recorded in plain text so a
  * comparison can say what changed. They are not the site's own content: a
@@ -45,7 +70,13 @@ export interface PublicationImpact {
   classification: 'none' | 'page_content_only' | 'site_wide' | 'unknown';
   changed_pages: number; added_pages: number; removed_pages: number;
   metadata_only: number; total: number;
-  changes: Array<{ kind: string; id: string; title: string; content_type?: string; action: 'added' | 'changed' | 'removed'; fields: string[]; date_updated: string; will_deploy: true }>;
+  changes: Array<{ kind: string; id: string; title: string; content_type?: string; action: 'added' | 'changed' | 'removed'; fields: string[]; date_updated: string; will_deploy: true;
+    /** Configuration: the paths that changed (see ImpactEntry.detail). */
+    details?: ConfigurationDetail[];
+    /** Configuration whose baseline was captured before paths were recorded: only that it changed is known. */
+    details_unavailable?: 'baseline_predates_details';
+    /** Configuration: the records that changed after the baseline was published (see impact-attribution.ts). */
+    changed_by?: ConfigurationChangeSource[] }>;
   /** What the platform changed since the baseline (a Typeroll release), never counted in total or changes. */
   platform_changes: PlatformChange[];
   reasons: string[];
@@ -69,6 +100,44 @@ function impactEntry(kind: string, value: any, content_type?: string): ImpactEnt
   };
 }
 const ORIGINS = { id: 'impact_origins', name: 'Publication addresses' } as const;
+/** Configuration the built site publishes as it is, so its values may be shown before and after. */
+const PUBLIC_VALUES = new Set(['runtime_dependencies', 'extensions', 'apps', 'impact_origins']);
+const DETAIL_PATHS = 80, DETAIL_VALUE = 120, DETAILS_SHOWN = 30;
+/** An array element's label: its kind and id where it has them, so reordering does not rename paths. */
+function elementLabel(item: any, index: number): string {
+  if (item && typeof item === 'object') {
+    const id = item.extension_id ?? item.id;
+    if (typeof id === 'string' && id) return typeof item.kind === 'string' ? `${item.kind}:${id}` : id;
+  }
+  return String(index);
+}
+function configurationDetail(id: string, value: any): Record<string, string> {
+  const detail: Record<string, string> = {};
+  let count = 0;
+  const visit = (current: any, path: string) => {
+    if (count >= DETAIL_PATHS) return;
+    if (Array.isArray(current) && current.length) { current.forEach((item, index) => visit(item, `${path}[${elementLabel(item, index)}]`)); return; }
+    if (current && typeof current === 'object' && !Array.isArray(current) && Object.keys(current).length) {
+      for (const key of Object.keys(current).sort()) if (current[key] !== undefined) visit(current[key], path ? `${path}.${key}` : key);
+      return;
+    }
+    const text = typeof current === 'string' ? current : JSON.stringify(current ?? null);
+    detail[path || 'value'] = PUBLIC_VALUES.has(id) ? (text.length > DETAIL_VALUE ? `${text.slice(0, DETAIL_VALUE - 1)}…` : text) : `#${fingerprint(current).slice(0, 12)}`;
+    count++;
+  };
+  visit(value, '');
+  if (count >= DETAIL_PATHS) detail['…'] = 'more settings not listed';
+  return detail;
+}
+function configurationEntry(value: { id: string; name: string; value: any }): ImpactEntry {
+  return { ...impactEntry('configuration', value), detail: configurationDetail(value.id, value.value) };
+}
+/** The paths of two configuration snapshots that differ. */
+function detailChanges(id: string, before: Record<string, string>, after: Record<string, string>): ConfigurationDetail[] {
+  const values = PUBLIC_VALUES.has(id);
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])].sort().filter(path => before[path] !== after[path])
+    .map(path => values ? { path, before: before[path] ?? null, after: after[path] ?? null } : { path });
+}
 const EXTENSIONS = { id: 'extensions', name: 'Extensions' } as const;
 
 function platformOf(extensions: any): ImpactPlatform {
@@ -102,10 +171,10 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
   for (const [kind, values] of Object.entries({ page: publication.pages, partial: publication.partials, menu: publication.menus, template: publication.pageTemplates, block_type: publication.blockTypes, redirect: publication.redirects, form: publication.forms, content_type: publication.contentTypes })) {
     for (const value of (values ?? []) as any[]) add(kind, value);
   }
-  for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', runtime_dependencies: 'Runtime connections', [ORIGINS.id]: ORIGINS.name })) add('configuration', { id: key, name: title, value: publication[key] ?? null });
-  add('configuration', { ...EXTENSIONS, value: siteExtensions(publication.extensions) });
+  for (const [key, title] of Object.entries({ site: 'Site identity', settings: 'Site settings', apps: 'Apps', runtime_dependencies: 'Runtime connections', [ORIGINS.id]: ORIGINS.name })) entries.push(configurationEntry({ id: key, name: title, value: publication[key] ?? null }));
+  entries.push(configurationEntry({ ...EXTENSIONS, value: siteExtensions(publication.extensions) }));
   // Only a publication with site fields lists them, so earlier snapshots compare unchanged.
-  if (publication.siteFields) add('configuration', { id: 'siteFields', name: 'Site fields', value: publication.siteFields });
+  if (publication.siteFields) entries.push(configurationEntry({ id: 'siteFields', name: 'Site fields', value: publication.siteFields }));
   const content = JSON.stringify(publication);
   for (const item of media) {
     const urls = [item.cdn_url, ...(item.source_aliases ?? []), ...(item.variants ?? []).map((variant: any) => variant.cdn_url)];
@@ -126,7 +195,7 @@ export function captureImpact(publication: any, orgId: string, siteId: string, m
  * baseline is that publication's fingerprint with only the addresses replaced.
  */
 export function withImpactOrigins(snapshot: ImpactSnapshot, origins: unknown): ImpactSnapshot {
-  const entry = impactEntry('configuration', { ...ORIGINS, value: origins ?? null });
+  const entry = configurationEntry({ ...ORIGINS, value: origins ?? null });
   return { ...snapshot, entries: snapshot.entries.map(item => item.kind === 'configuration' && item.id === ORIGINS.id ? entry : item) };
 }
 
@@ -155,7 +224,9 @@ export function compareImpact(previous: ImpactSnapshot | null | undefined, curre
     const fields = [...new Set([...Object.keys(a?.fields ?? {}), ...Object.keys(b?.fields ?? {})])].sort().filter(field => a?.fields[field] !== b?.fields[field]);
     if (a && b && !fields.length) { if (a.metadata !== b.metadata) result.metadata_only++; continue; }
     const action = !a ? 'added' : !b ? 'removed' : 'changed';
-    result.changes.push({ kind: entry.kind, id: entry.id, title: entry.title, ...(entry.content_type ? { content_type: entry.content_type } : {}), action, fields, date_updated: entry.date_updated, will_deploy: true });
+    const details = entry.kind !== 'configuration' || action !== 'changed' ? {}
+      : a?.detail && b?.detail ? { details: detailChanges(entry.id, a.detail, b.detail).slice(0, DETAILS_SHOWN) } : { details_unavailable: 'baseline_predates_details' as const };
+    result.changes.push({ kind: entry.kind, id: entry.id, title: entry.title, ...(entry.content_type ? { content_type: entry.content_type } : {}), action, fields, date_updated: entry.date_updated, will_deploy: true, ...details });
     if (entry.kind === 'page') result[`${action}_pages`]++;
   }
   result.total = result.changes.length;

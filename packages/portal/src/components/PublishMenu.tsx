@@ -56,7 +56,18 @@ interface ChangesResponse {
     status?: string;
     will_deploy: boolean;
     action?: 'added' | 'changed' | 'removed';
+    details?: Array<{ path: string; before?: string | null; after?: string | null }>;
+    details_unavailable?: string;
+    changed_by?: Array<{ source: string; at: string | null; summary: string }>;
   }>;
+}
+
+/** What blocks or slows the next publication (GET /api/sites/{id}/publication-plan). */
+interface PlanResponse {
+  verdict: 'ready' | 'ready_with_notes' | 'blocked';
+  blockers: Array<{ code: string; message: string }>;
+  notes: Array<{ code: string; message: string }>;
+  estimate: { typical_minutes: number; based_on_publications: number; longer_because: string[] } | null;
 }
 
 
@@ -118,6 +129,11 @@ const KIND_LABEL: Record<string, string> = {
   page: 'Page',
   partial: 'Partial',
   template: 'Template',
+  configuration: 'Configuration',
+  media: 'Image',
+  menu: 'Menu',
+  form: 'Form',
+  redirect: 'Redirect',
 };
 
 export default function PublishMenu({
@@ -145,6 +161,7 @@ export default function PublishMenu({
   const [changes, setChanges] = useState<ChangesResponse | null>(null);
   const [changesLoading, setChangesLoading] = useState(false);
   const [changesError, setChangesError] = useState<string | null>(null);
+  const [plan, setPlan] = useState<PlanResponse | null>(null);
 
   const [deployErr, setDeployErr] = useState<string | null>(null);
   const { setup: publishingSetup, error: setupError, refresh: refreshSetup } = usePublishingReadiness(siteId, open);
@@ -180,6 +197,11 @@ export default function PublishMenu({
       .then(data => { if (!controller.signal.aborted) setChanges(data); })
       .catch(error => { if (!controller.signal.aborted) { setChanges(null); setChangesError(error instanceof Error ? error.message : 'Content comparison is unavailable.'); } })
       .finally(() => { if (!controller.signal.aborted) setChangesLoading(false); });
+    // Best effort: without the plan the menu works as before.
+    fetch(`/api/sites/${siteId}/publication-plan`, { cache: 'no-store', signal: controller.signal })
+      .then(async response => { const data = response.ok ? await response.json() : null; return Array.isArray(data?.blockers) && Array.isArray(data?.notes) ? data as PlanResponse : null; })
+      .then(data => { if (!controller.signal.aborted) setPlan(data); })
+      .catch(() => { if (!controller.signal.aborted) setPlan(null); });
     return () => controller.abort();
   }, [open, siteId, docUpdatedAt, hasUnsaved]);
 
@@ -467,6 +489,17 @@ export default function PublishMenu({
               </button>
             </div>
             {deployErr && <p className="pmenu__hint pmenu__hint--error">{deployErr}</p>}
+            {plan && (plan.blockers.length > 0 || plan.notes.length > 0 || plan.estimate) && (
+              <div className="pmenu__plan" aria-label="Before you deploy">
+                {plan.blockers.map(item => <p key={item.code} className="pmenu__hint pmenu__hint--error">{item.message}</p>)}
+                {plan.notes.map(item => <p key={item.code} className="pmenu__hint">{item.message}</p>)}
+                {plan.estimate && (
+                  <p className="pmenu__hint">
+                    Usually takes about {plan.estimate.typical_minutes} min{plan.estimate.longer_because.length ? '; this one takes longer' : ''}.
+                  </p>
+                )}
+              </div>
+            )}
             {!changesLoading && changes && changes.total > 0 && (
               <details className="pmenu__change-details">
                 <summary>
@@ -487,6 +520,15 @@ export default function PublishMenu({
                         <span className={c.will_deploy ? 'pmenu__included' : 'pmenu__skip'}>
                           {c.action === 'removed' ? 'Removed from next deploy' : c.will_deploy ? 'Included in deploy' : `Not included: ${c.status ?? 'draft'}`}
                         </span>
+                        {c.kind === 'configuration' && c.action === 'changed' && (
+                          <span className="pmenu__detail">
+                            {c.details_unavailable ? 'Changed since the last deploy; the earlier deploy did not record which settings.'
+                              : (c.details ?? []).slice(0, 5).map(detail => detail.before !== undefined ? `${detail.path}: ${detail.before ?? '—'} → ${detail.after ?? '—'}` : detail.path).join(' · ')}
+                            {(c.changed_by ?? []).slice(0, 3).map(source => (
+                              <span key={`${source.source}:${source.at}:${source.summary}`} className="pmenu__by">{source.at ? `${rel(source.at)}: ` : ''}{source.summary}</span>
+                            ))}
+                          </span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -564,6 +606,9 @@ export default function PublishMenu({
         .pmenu__included, .pmenu__skip { grid-column: 2; font-size: 0.75rem; }
         .pmenu__included { color: #a1a1aa; }
         .pmenu__skip { color: #f6c177; }
+        .pmenu__plan { margin-top: 8px; }
+        .pmenu__detail { grid-column: 2; font-size: 0.75rem; color: #a1a1aa; overflow-wrap: anywhere; }
+        .pmenu__by { display: block; margin-top: 2px; }
         @media (max-width: 1000px) {
           .pmenu__trigger { min-height: 44px; white-space: nowrap; }
           .pmenu__panel { position: fixed; top: max(12px, env(safe-area-inset-top)); right: 12px; bottom: max(12px, env(safe-area-inset-bottom)); width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); display: flex; flex-direction: column; overflow: hidden; }

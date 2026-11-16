@@ -68,3 +68,25 @@ it('explains when a legacy publication lacks the verified comparison baseline', 
   expect(container.textContent).toContain('This list currently uses save dates.');
   expect(container.textContent).not.toContain('The live site is up to date');
 });
+
+// autopilot-sverige-ab-4 (2026-11-16): the owner had to ask around what "Extensions" and "Runtime connections" were.
+it('shows what blocks the deploy, how long it takes and which settings changed by whom', async () => {
+  const change = { kind: 'configuration', id: 'runtime_dependencies', title: 'Runtime connections', action: 'changed', will_deploy: true,
+    details: [{ path: '[extension:se.example.engine].version', before: '0.2.11', after: '0.2.12' }],
+    changed_by: [{ source: 'extension_release', at: null, summary: 'se.example.engine 0.2.12 was published by its developer and is used automatically; no one changed this site.' }] };
+  const legacy = { kind: 'configuration', id: 'extensions', title: 'Extensions', action: 'changed', will_deploy: true, details_unavailable: 'baseline_predates_details' };
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.endsWith('changes-since-deploy')
+    ? { total: 2, changes: [change, legacy], impact: { comparison: 'verified_snapshot', changed_pages: 0, added_pages: 0, removed_pages: 0, metadata_only: 0, reasons: [] } }
+    : url.endsWith('publication-plan')
+      ? { verdict: 'blocked', blockers: [{ code: 'build_engine_update_required', message: 'The build engine runs Node.js 22.23.1; this Typeroll builds with Node.js 22.23.5.' }],
+        notes: [{ code: 'site_wide_build', message: 'Every page is built again, not only the edited ones.' }], estimate: { typical_minutes: 6, based_on_publications: 3, longer_because: ['build_engine_update_first'] } }
+      : { active_job: null, ready: true })));
+  const container = await mount(createElement(PublishMenu, { siteId: 'synthetic', pubStatus: 'published', statusOptions: PAGE_STATUS_OPTIONS, hasUnsaved: false, onSave: vi.fn(), onDiscard: vi.fn(), onStatusChange: vi.fn() }));
+  await act(async () => (container.querySelector('.pmenu__trigger') as HTMLButtonElement).click());
+  expect(container.textContent).toContain('The build engine runs Node.js 22.23.1; this Typeroll builds with Node.js 22.23.5.');
+  expect(container.textContent).toContain('Every page is built again, not only the edited ones.');
+  expect(container.textContent).toContain('Usually takes about 6 min; this one takes longer.');
+  expect(container.textContent).toContain('[extension:se.example.engine].version: 0.2.11 → 0.2.12');
+  expect(container.textContent).toContain('was published by its developer and is used automatically');
+  expect(container.textContent).toContain('the earlier deploy did not record which settings');
+});

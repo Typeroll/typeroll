@@ -3619,6 +3619,18 @@ Read where a deploy lands and provisional net saved public-source changes agains
 | --- | --- | --- | --- | --- |
 | `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
 
+### `get_publication_plan`
+
+`GET /api/v1/sites/{siteId}/publishing/plan`
+
+Permission: `read`
+
+Read, before publishing, one answer for the selected version: verdict (ready, ready_with_notes or blocked); blockers (what refuses the publication now: build setup, a build engine whose Node.js is older than this Typeroll requires, a publication of this site already running, content that cannot be compared); notes (what only makes it slower: the engine is updated first, images still being prepared, other builds in the organization first, every page rebuilt); steps (what is left, in order, each with the tool that does it); targets and production as in get_publication_impact; estimate (typical_minutes from the site’s last successful publications and what makes this one longer); build_engine (node_version, required_node_version, auto_update, blocks_publication); and impact, the full get_publication_impact comparison, where each changed configuration entry lists details (the paths that changed, with before and after for technical settings the site publishes such as extension versions and endpoints; only the path for site settings) and changed_by (extension releases used automatically, installation and app changes, extension audit events and API writes after the baseline, with times and actor ids; or details_unavailable when the baseline predates recorded paths). Read only: it starts no engine update and no publication. Requires a site API key; REST: GET /api/v1/sites/{siteId}/publishing/plan.
+
+| Parameter | In | Type | Required | Description |
+| --- | --- | --- | --- | --- |
+| `version` | query | string | no | Branch id to target. Omit for main. An id that does not name a version of this Site is refused with 404 — it is never answered about main instead. |
+
 ### `guide_publishing_domain_change`
 
 `POST /api/v1/sites/{siteId}/publishing/domain-guide`

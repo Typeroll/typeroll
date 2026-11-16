@@ -16,6 +16,7 @@ for (const surface of ['overview', 'editor'] as const) {
     let initial = true;
     const request = vi.fn(async (url: string) => {
       if (url.endsWith('/changes-since-deploy')) return Response.json({ changes: [], total: 0, never_deployed: true });
+      if (url.endsWith('/publication-plan')) return Response.json({ error: 'not in this test' }, { status: 409 });
       if (initial) { initial = false; return new Promise<Response>(done => { resolve = done; }); }
       return Response.json(current);
     });

@@ -762,6 +762,25 @@ or images are still being prepared. With blockers, `would_fail` is `true` and
 the job's phase starts with "publication would fail:". An engine update's
 verification build is retried once if handing over its artifact times out.
 
+From Core 0.3.36, `get_publication_plan` (`GET
+/api/v1/sites/{siteId}/publishing/plan`) answers before publishing, in one
+read-only call:
+- what ships, as the impact comparison;
+- what blocks the publication now;
+- what only slows it down;
+- how long the site's publications usually take;
+- the steps left, each with the tool that does it.
+
+The Publish menu shows the same blockers, notes and estimate. A changed
+configuration entry in the comparison lists `details`, the setting paths that
+changed. Extension versions, endpoints and other technical settings the site
+publishes show before and after values; site settings show only the path. The
+entry also lists `changed_by`, the records that changed after the last
+publication: an extension release used automatically, an installation or app
+change, an audit event or an API write, with times and actor ids. The first
+publication after upgrading records the paths, so until then a configuration
+change says `details_unavailable`.
+
 ### Automatic engine updates
 
 From Core 0.2.156, **Keep the build engine updated automatically** on the

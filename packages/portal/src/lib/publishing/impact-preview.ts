@@ -8,6 +8,7 @@ import { publicationRuntime } from './runtime-projection';
 import { readSnapshot } from './publication-snapshot';
 import { captureImpact, compareImpact, legacyBaseline, withImpactOrigins, type BaselineUnavailableReason, type ImpactSnapshot } from './impact';
 import { digest } from './providers.mjs';
+import { attributeConfigurationChanges } from './impact-attribution';
 
 /** The addresses a publication's fingerprint records. */
 export const publicationImpactOrigins = (siteUrl: string, domains: DomainConfiguration, organization: OrganizationDomains) =>
@@ -76,5 +77,9 @@ export async function previewPublicationImpact(orgId: string, siteId: string, ve
   const impact = compareImpact(baseline.snapshot, await capturePublicationImpact(current, orgId, siteId, domains, organization, media), true, null, legacyBaseline(baseline.publication, current));
   // The addresses of a domain change already serve; the fingerprint predates them.
   if (baseline.via_domain_change) impact.reasons.push('baseline_predates_domain_change');
+  // Who or what changed each configuration entry since the baseline was published (best effort, read only).
+  await attributeConfigurationChanges(orgId, siteId, baseline.publication?.published_at, impact).catch(error => {
+    console.warn(JSON.stringify({ event: 'publication_impact_attribution_failed', org_id: orgId, site_id: siteId, error: error instanceof Error ? error.name : 'unknown' }));
+  });
   return { ...impact, baseline_publication_id: baseline.publication_id, compared_at: new Date().toISOString() };
 }

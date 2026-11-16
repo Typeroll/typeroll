@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.3.36 (candidate, MCP 0.45.142)
+
+- `get_publication_plan` (`GET /api/v1/sites/{siteId}/publishing/plan`) gives
+  one read-only answer before publishing. It reports:
+  - `verdict`: `ready`, `ready_with_notes` or `blocked`;
+  - `blockers`: setup, a build engine whose Node.js is too old, a
+    publication of the site already running, or content that cannot be
+    compared;
+  - `notes`: the engine is updated first, images are still being prepared,
+    other builds go first, or every page is rebuilt;
+  - `steps`: what is left, in order, each with its tool;
+  - `estimate`: from the site's last successful publications;
+  - `build_engine` and the full impact comparison.
+  The plan starts nothing. The Publish menu shows its blockers, notes and
+  estimate.
+- Configuration changes in `get_publication_impact` name what changed. Each
+  changed configuration entry lists `details`, the setting paths that
+  changed:
+  - Technical settings the built site publishes (extension versions and
+    endpoints, form endpoints, apps, addresses) show before and after values.
+  - Site settings show only the path, because their values can hold anything
+    the owner typed.
+  The entry also lists `changed_by`, the records that changed after the
+  baseline was published:
+  - an extension version its developer published and the installation uses
+    automatically;
+  - installation and app changes;
+  - extension audit events;
+  - API and MCP writes;
+  - endpoint addresses derived from the Typeroll installation.
+  Sources carry times and actor ids, never request bodies or IP addresses.
+  A baseline published before this release has no recorded paths and says so
+  (`details_unavailable: baseline_predates_details`). The Publish menu lists
+  the paths and sources under each configuration change.
+
 ## 0.3.35 (candidate, MCP 0.45.141)
 
 - A publication no longer builds on an organization build engine whose
