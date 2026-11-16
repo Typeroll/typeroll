@@ -36,7 +36,7 @@ import { probePublication } from '../deploy/availability';
 import type { EnqueueArgs, DeployRunOutcome } from '../deploy/queue';
 import { preparePagesDomain, applyPreparedTraffic, validationWindowAllowed, findZone } from './domain-provider';
 import { hostPointsAtProject, observePagesDomain, pagesDomainIssue, type PagesDomainIssue, type PagesDomainObservation } from './pages-domain-status';
-import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
+import { assertDryRunValidation, finishDryRun, publicationLanguageWarnings } from './dry-run-validation';
 import { publicationCookieReopenWarnings, publicationMenuWarnings, publicationSiteFieldWarnings, publicationSnippetWarnings } from './content-preflight';
 import { publicationDemoMediaWarnings } from '../packages/demo-media';
 import { publicationPlaceholderWarnings } from '../placeholder-content';
@@ -484,7 +484,7 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (args.dryRun) {
         await publicationSourceTree(frozen);
         assertDryRunValidation(frozen.pages ?? []);
-        await store.updateDoc(jobPath, { status: 'succeeded', phase: 'source verified (dry-run, no Git push)', dry_run: true, finished_at: contentCutoff });
+        await finishDryRun(store, jobPath, args, 'source verified (dry-run, no Git push)', contentCutoff);
         terminal = true; return 'ran';
       }
       const servedHost = preparingDomain ? savedDomains.active?.website_host ?? fallback : host;

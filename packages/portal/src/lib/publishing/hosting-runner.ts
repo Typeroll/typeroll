@@ -39,7 +39,7 @@ import { ConnectionError } from './connections';
 import { derivationApps, derivationReceipt } from './preview-derivation';
 import { derivationProvidersFor, publicationConfigDigest, publicationContentDigest } from './derivation-providers';
 import { getOrganizationDomains, getSiteDomains } from './domain-config';
-import { assertDryRunValidation, publicationLanguageWarnings } from './dry-run-validation';
+import { assertDryRunValidation, finishDryRun, publicationLanguageWarnings } from './dry-run-validation';
 import { redactFailureText } from './http';
 import { compareImpact, legacyBaseline } from './impact';
 import { capturePublicationImpact } from './impact-preview';
@@ -234,7 +234,7 @@ export async function executeHostedPublication(args: EnqueueArgs): Promise<Deplo
       if (args.dryRun) {
         await publicationSourceTree(frozen);
         assertDryRunValidation(frozen.pages ?? []);
-        await store.updateDoc(jobPath, { status: 'succeeded', phase: 'source verified (dry-run, nothing deployed)', dry_run: true, finished_at: contentCutoff });
+        await finishDryRun(store, jobPath, args, 'source verified (dry-run, nothing deployed)', contentCutoff);
         terminal = true; return 'ran';
       }
       if (priorPublication?.publication_id === frozen.publication_id && (await provider.deployment(ref)).live?.publication_id === frozen.publication_id) {

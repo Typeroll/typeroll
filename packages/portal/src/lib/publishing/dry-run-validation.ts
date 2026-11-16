@@ -2,6 +2,8 @@
 import { unnamedImageLinks } from '../../../../site-template/src/lib/publication-validation.mjs';
 import { COOKIE_CONSENT_LABEL_KEYS, cookieConsentReopenMode, lacksUiTranslation, resolveRenderVersion, type CookieConsentManageButton } from '@typeroll/shared';
 import { ConnectionError } from './connections';
+import { publicationBuildOutlook } from './build-outlook';
+import type { getStore } from '../datastore';
 
 export interface DryRunValidationIssue { code: 'image_link_unnamed'; page: string; href: string; source: 'image_block' | 'html' }
 
@@ -72,4 +74,21 @@ export function publicationLanguageWarnings(publication: { settings?: Record<str
     if (missing.length) warnings.push(`The cookie banner shows English on ${language} pages for ${missing.join(', ')}. Save ${language} wording for them in the site settings.`);
   }
   return warnings;
+}
+
+/**
+ * A dry run validates the source; it does not build. Before it finishes it
+ * checks what the real publication would be refused for or slowed by now
+ * (build setup, the engine and its Node.js runtime, media preparation) and
+ * records that as `build_outlook`. When the publication would be refused, the
+ * phase says so first: the source is valid, the publication is not.
+ * The job still succeeds, because the source check is what it ran; dry runs
+ * also validate sites whose publishing is not set up yet.
+ */
+export async function finishDryRun(store: ReturnType<typeof getStore>, jobPath: string, args: { orgId: string; siteId: string; versionId: string }, phase: string, finishedAt: string) {
+  const outlook = await publicationBuildOutlook(args.orgId, args.siteId, args.versionId);
+  const verdict = outlook.would_fail
+    ? `publication would fail: ${outlook.blockers.map(item => item.message).join(' ')} Source verified (${phase.replace(/^source verified \((.*)\)$/, '$1')}); the build itself was not run.`
+    : `${phase}; the build itself was not run`;
+  await store.updateDoc(jobPath, { status: 'succeeded', phase: verdict, dry_run: true, would_fail: outlook.would_fail, build_outlook: outlook, finished_at: finishedAt });
 }

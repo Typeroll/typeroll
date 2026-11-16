@@ -23,6 +23,19 @@
   status no longer says that publishing "works as before".
 - A stale-revision `409 build_settings_changed` from build engine setup, check
   or provider selection carries `details.current_revision` to retry with.
+- A dry run no longer reports only "source verified" when the real publication
+  would be refused. It checks what the publication would be refused for or
+  slowed by now: build setup, the engine and its Node.js version, and image
+  preparation. The result is recorded on the job as `build_outlook`
+  (`would_fail`, `blockers`, `notes`, `build_engine`). When the publication
+  would be refused, the job sets `would_fail: true` and its phase starts with
+  "publication would fail:" and the reasons. The job itself still succeeds,
+  because it validated the source and a site's publishing may not be set up
+  yet.
+- An engine update's verification build is retried once when handing over its
+  artifact timed out or build storage refused it, as publication builds
+  already were. Before, one dropped hand-over (`transfer_timeout`) discarded
+  the update and restored the old engine.
 
 ## 0.3.34 (candidate, MCP 0.45.140)
 

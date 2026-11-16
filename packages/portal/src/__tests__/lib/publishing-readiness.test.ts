@@ -1,4 +1,5 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
 import { paths } from '@typeroll/shared';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -196,4 +197,32 @@ it.each([['UI', deployUi], ['API/MCP', deployApi]] as const)('accepts %s normal 
     expect(result.active_job.id).toBe(enqueue.mock.calls[0][0].jobId);
     expect(result.latest_job.id).not.toBe('candidate');
   } finally { spy.mockRestore(); }
+});
+describe('the build outlook a dry run reports', () => {
+  it('says the publication would fail, and why, when the engine cannot build this Typeroll', async () => {
+    const { publicationBuildOutlook } = await import('../../lib/publishing/build-outlook');
+    const { CLOUDFLARE_ENGINE_SOURCE } = await import('../../lib/builds/setup');
+    await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, node_version: '22.23.1' });
+    await getStore().setDoc(selectionPath('org'), { provider: 'cloudflare', revision: 'selection', auto_update: false });
+    expect(await publicationBuildOutlook('org', 'site', 'main')).toMatchObject({ would_fail: true,
+      blockers: [{ code: 'build_engine_update_required', message: expect.stringContaining('Node.js 22.23.1') }],
+      build_engine: { node_version: '22.23.1', required_node_version: BUILD_RUNTIME, blocks_publication: true } });
+  });
+  it('lets the publication run but says it updates the engine first and prepares images itself', async () => {
+    const { publicationBuildOutlook } = await import('../../lib/publishing/build-outlook');
+    const { CLOUDFLARE_ENGINE_SOURCE } = await import('../../lib/builds/setup');
+    await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, node_version: '22.23.1' });
+    await getStore().setDoc(selectionPath('org'), { provider: 'cloudflare', revision: 'selection', auto_update: true });
+    await getStore().setDoc(`media_preparations/${createHash('sha256').update('org\0site').digest('hex')}`, { org: 'org', site: 'site', state: 'running', completed: 2, total: 6, request: 'r', lease: null, lease_until: 0, next_at: 0 });
+    const outlook = await publicationBuildOutlook('org', 'site', 'main');
+    expect(outlook.would_fail).toBe(false);
+    expect(outlook.notes.map(note => note.code)).toEqual(['build_engine_update_first', 'media_preparation_running']);
+    expect(outlook.notes[0].message).toContain(`Node.js 22.23.1 → ${BUILD_RUNTIME}`);
+  });
+  it('has nothing to say about a ready, current engine', async () => {
+    const { publicationBuildOutlook } = await import('../../lib/publishing/build-outlook');
+    const { CLOUDFLARE_ENGINE_SOURCE } = await import('../../lib/builds/setup');
+    await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE });
+    expect(await publicationBuildOutlook('org', 'site', 'main')).toMatchObject({ would_fail: false, blockers: [], notes: [] });
+  });
 });

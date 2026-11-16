@@ -753,6 +753,15 @@ updates the engine first. If that update fails and the previous engine comes
 back, it stops before building. A `409 build_settings_changed` from engine
 setup or check carries `details.current_revision`; retry once with it.
 
+A dry run (`trigger_deploy` with `dry_run: true`) validates the source and
+does not build. From Core 0.3.35 it also records `build_outlook` on the job.
+The outlook lists `blockers`, the reasons the real publication would be refused
+now: build setup, or an engine whose Node.js is too old. It also lists `notes`
+for things that only make the publication slower: the engine is updated first,
+or images are still being prepared. With blockers, `would_fail` is `true` and
+the job's phase starts with "publication would fail:". An engine update's
+verification build is retried once if handing over its artifact times out.
+
 ### Automatic engine updates
 
 From Core 0.2.156, **Keep the build engine updated automatically** on the

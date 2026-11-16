@@ -157,7 +157,9 @@ export async function runnerRequest(request: Request, org: string, action: strin
       // site is handed over, says nothing about the site. Run the same frozen
       // build once more: it keeps its prepared media, the live site changes only
       // when a build completes, and a second failure fails the publication.
-      const retryUpload = !retryMedia && metadata.kind !== 'qualification' && stage === 'artifact' && ['artifact_upload_failed', 'transfer_timeout'].includes(code) &&
+      // An engine's verification build is retried the same way: one dropped
+      // hand-over otherwise discarded the whole engine update (2026-11-16).
+      const retryUpload = !retryMedia && stage === 'artifact' && ['artifact_upload_failed', 'transfer_timeout'].includes(code) &&
         !task.artifact_upload_retried && task.attempt < buildAttemptLimit(task);
       const retry = retryMedia || retryUpload;
       await store.compareAndUpdateDoc<BuildTask>(`${buildTasksPath(org)}/${key}`, value => value.status === 'running' && value.lease_id === lease && value.token_hash === task.token_hash && value.lease_until > Date.now() && value.deadline > Date.now(),
@@ -166,7 +168,7 @@ export async function runnerRequest(request: Request, org: string, action: strin
         { ...(validation ? { seo_report: validation } : {}), status: retry ? 'queued' : 'failed', ...(retry ? { queued_at: Date.now() } : {}), ...(retryUpload ? { artifact_upload_retried: true } : {}),
           token_hash: null, error_code: `${stage}_${code}`, error_detail: diagnostic, lease_until: 0 });
       if (retryUpload) console.warn(JSON.stringify({ event: 'build_artifact_upload_retry', org_id: org, task: key, kind: metadata.kind, attempt: task.attempt }));
-      if (metadata.kind === 'qualification') {
+      if (metadata.kind === 'qualification' && !retry) {
         const disabled = await store.compareAndUpdateDoc<EngineConfiguration>(engineConfigurationPath(org, provider), value => value.revision === engine.revision && value.status === 'qualifying', { status: 'disabled' });
         if (disabled) {
           const issue = { code: 'build_qualification_failed', message: `Build verification failed during ${stage} (${code})${diagnostic?.cause ? `: ${diagnostic.cause}` : ''}. Set up the shared engine again to retry.` };

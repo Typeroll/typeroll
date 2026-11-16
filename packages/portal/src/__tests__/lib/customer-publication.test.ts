@@ -838,9 +838,25 @@ it('captures media impact from the same records used in the frozen media manifes
   expect(frozen.media_manifest.media_host).toBe('media.example.com');
   expect(frozen.media_manifest.entries[0].cdn_url).not.toContain('/future');
   expect(frozen.site_url).toBe('https://www.example.com');
-  expect(list.mock.calls.filter(([path]) => path === paths.media('org', 'site'))).toHaveLength(2);
+  // The records are read once for the manifest and the impact; readiness only asks whether any exist (limit 1),
+  // once while freezing and once for the dry run's build outlook.
+  const mediaReads = list.mock.calls.filter(([path]) => path === paths.media('org', 'site'));
+  expect(mediaReads.filter(([, options]) => (options as { limit?: number } | undefined)?.limit !== 1)).toHaveLength(1);
+  expect(mediaReads).toHaveLength(3);
 });
 
+
+// autopilot-sverige-ab-4 (2026-11-16): a dry run said "source verified" while the engine could not build.
+it('says a dry run\'s publication would fail when the build engine cannot build it, without building', async () => {
+  await getStore().setDoc('organizations/org/publishing/build_engine', { provider: 'cloudflare', state: 'ready', enabled: true, revision: 'doc' });
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, media_preparation: true, publication_validation: 1, node_version: '22.23.1', provider: 'cloudflare', revision: 'engine-1',
+    account_id: 'a'.repeat(32), installation_id: 'installation', owner: 'owner' });
+  await executeCustomerPublication({ ...args, dryRun: true });
+  const job = await getStore().getDoc<any>(jobPath);
+  expect(job).toMatchObject({ status: 'succeeded', dry_run: true, would_fail: true, build_outlook: { would_fail: true, blockers: expect.arrayContaining([expect.objectContaining({ code: 'build_engine_update_required' })]) } });
+  expect(job.phase).toMatch(/^publication would fail: .*Node\.js 22\.23\.1.* Source verified \(dry-run, no Git push\); the build itself was not run\.$/);
+  expect(mocks.enqueue).not.toHaveBeenCalled();
+});
 
 it('stops a dry run on an image link without an accessible name, as the build would', async () => {
   const store = getStore();
