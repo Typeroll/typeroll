@@ -78,7 +78,7 @@ import { comparePageValues, pageSort } from './page-options.js';
 import { countBlockH1s, demoteBodyH1s, normalizePageH1s } from './page-heading-policy.js';
 import { renderFieldList } from './field-list.js';
 import { STYLE_ID_PATTERN, styleClassName } from './site-styles.js';
-import { blockOutputForVersion, FEATURED_IMAGE_ALT_RENDER_VERSION, resolveRenderVersion } from './render-version.js';
+import { blockOutputForVersion, FEATURED_IMAGE_ALT_RENDER_VERSION, WHOLE_CARD_ACTION_RENDER_VERSION, resolveRenderVersion } from './render-version.js';
 import { FEATURED_IMAGE_ASPECTS } from './template-blocks.js';
 import { styleElementText } from './custom-css.js';
 import { GLOBAL_BLOCK_MAX_DEPTH, GLOBAL_BLOCK_TYPE_ID, withGlobalBlockContent, type GlobalBlockSource } from './reusable-blocks.js';
@@ -566,7 +566,7 @@ function renderBlockContent(block: Block, options: RenderBlocksOptions): string 
     compiled.flatData.surface_gradient_css = surfaceGradientCss(compiled.flatData.background_gradient);
   }
   if (effectiveBlock.type === 'core/post_card') {
-    preparePostCardData(compiled.flatData, options.context?.item);
+    preparePostCardData(compiled.flatData, options.context?.item, resolveRenderVersion(options.renderVersion));
     // The machine-readable date is always the card's own date, never block data.
     compiled.flatData.date_iso = compiled.flatData.date ?? '';
     if (resolveRenderVersion(options.renderVersion) >= 14 && compiled.flatData.date) {
@@ -1662,6 +1662,7 @@ function contextString(
 function preparePostCardData(
   data: Record<string, unknown>,
   item: Record<string, unknown> | undefined,
+  renderVersion: number,
 ): void {
   const title = contextString(data, item, 'title', 'title_field', 'title');
   const excerpt = contextString(data, item, 'excerpt', 'excerpt_field', 'excerpt');
@@ -1685,7 +1686,10 @@ function preparePostCardData(
   const icon = String(data.title_icon ?? '').trim();
   const titleContent = `${icon ? `<span class="block-postcard-title-icon" aria-hidden="true">${renderIconHtml(icon)}</span>` : ''}<span>${escapeHtml(title)}</span>`;
   const separateAction = String(data.action_label ?? '').trim();
-  const whole = data.whole_card_link === true && data.title_link !== false && !!href && !!title.trim() && !downloadUrl && !separateAction;
+  // The action label links to the same page as the title; from render version
+  // 22 it no longer turns the whole-card link off. A download goes elsewhere.
+  const actionAllowed = !separateAction || renderVersion >= WHOLE_CARD_ACTION_RENDER_VERSION;
+  const whole = data.whole_card_link === true && data.title_link !== false && !!href && !!title.trim() && !downloadUrl && actionAllowed;
   const linkImage = !!href && !whole;
   data.background ||= 'var(--color-background,#fff)';
   data.border_color ||= 'transparent';

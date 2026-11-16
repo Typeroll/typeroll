@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.37 (candidate, MCP 0.45.142)
+
+- Back in a preview link returns to the previous page in one step on iOS
+  Safari and in-app browsers too. The review wrapper used to move its framed
+  page with `location.replace`, and WebKit still recorded a history entry for
+  the frame alone, so Back reloaded the same page first. Each page now opens
+  in a new frame. A new frame's first load never enters the history, so the
+  wrapper's address is the only entry for each page.
+- Render version 22: a Post card with `whole_card_link` on links the entire
+  card also when it shows an action label such as "Read more", because the
+  label goes to the same page as the title. Clicking anywhere on the card
+  opens the page, and the title and label stay links for keyboard and screen
+  reader users. A download link or an unlinked title still keeps separate
+  links. Up to render version 21 an action label turns the whole-card link
+  off, as before.
+
 ## 0.3.36 (candidate, MCP 0.45.142)
 
 - `get_publication_plan` (`GET /api/v1/sites/{siteId}/publishing/plan`) gives

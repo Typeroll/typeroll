@@ -288,6 +288,16 @@ test.describe("native receiving form in a real preview link", () => {
       await page.reload();
       await expect(page.frameLocator("iframe").getByLabel("From", { exact: true })).toHaveValue("");
       for (const value of PRIVATE_VALUES) expect(requests.filter((request) => request.includes(value))).toEqual([]);
+
+      // Back returns to the previous page in one step: each page has its own
+      // frame, so no frame-only history entry reloads the same page first.
+      const startPath = new URL(url, baseURL).pathname;
+      await page.goBack();
+      await page.waitForURL((current) => current.pathname === startPath);
+      await expect(page.frameLocator("iframe").getByLabel("Moving from", { exact: true })).toBeVisible();
+      await page.goForward();
+      await page.waitForURL((current) => current.pathname === `/preview/default/${id}-quote/`);
+      await expect(page.frameLocator("iframe").getByLabel("From", { exact: true })).toBeVisible();
       expect(errors).toEqual([]);
     } finally {
       await e2eStore.deleteTree(start, quote);

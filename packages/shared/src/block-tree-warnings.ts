@@ -166,7 +166,7 @@ export function blockBehaviorWarnings(block: { id?: string; type?: string; data?
   const check = (value: Record<string, unknown>, at: string): BlockTreeWarning[] =>
     value.whole_card_link === true && (String(value.action_label ?? '').trim() || String(value.download_url_field ?? '').trim() || value.title_link === false)
       ? [{ code: 'ineffective_whole_card_link', block_id: block.id, block_type: block.type, path: `${at}.whole_card_link`,
-        message: 'The whole-card link needs a linked title and no secondary actions. Remove action_label/download_url_field and enable title_link, or disable whole_card_link and keep separate links.' }] : [];
+        message: 'The whole-card link needs a linked title and no download link. Up to render version 21 an action_label also turns it off; from render version 22 the action label links to the same page and the whole card stays linked. Remove download_url_field and enable title_link, upgrade the render version, or disable whole_card_link and keep separate links.' }] : [];
   if (block.type === 'core/post_card') return check(data, `${path}.data`);
   if ((block.type === 'core/page_list' || block.type === 'core/repeater') && (!data.item_block || data.item_block === 'core/post_card')) {
     return check((data.item_overrides ?? {}) as Record<string, unknown>, `${path}.data.item_overrides`);
