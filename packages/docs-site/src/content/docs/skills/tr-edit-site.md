@@ -42,10 +42,13 @@ This is the `tr-edit-site` recipe exactly as the Typeroll MCP server gives it to
    user has authorized saving. `save: true` or `commit_working_copy` makes the
    draft durable; saving and deploying are different actions. Publish only
    when authorized and readiness passes. Report the actual result and URL.
-7. Before a real deploy, run `trigger_deploy` with `dry_run: true` and read
-   `get_publication_impact`. A publication ships everything saved on the
-   site, including changes by other people and other agent sessions. If the
-   impact lists changes you did not make, stop and ask whose they are.
+7. Before a real deploy, read `get_publication_plan`: what ships, what
+   blocks it now (build engine, Node.js, setup), how long it usually takes
+   and the steps left. A publication ships everything saved on the site,
+   including changes by other people and other agent sessions. If the plan
+   lists changes you did not make, stop and ask whose they are; configuration
+   changes name their paths and `changed_by`. A `dry_run: true` deploy
+   validates the source and records the same blockers as `build_outlook`.
 
 ## Everyday requests
 
