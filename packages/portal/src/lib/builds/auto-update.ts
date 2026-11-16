@@ -55,7 +55,8 @@ export async function engineUpdateRetryAllowed(org: string, provider: BuildProvi
  * Called by a publication immediately before it enqueues its build, never
  * while a build of its own is running. With auto_update on, an outdated
  * engine (Cloudflare or GitHub) is updated first and its verification awaited; if the
- * update fails the previous engine is restored and the build continues on it.
+ * update fails the previous engine is restored and the build continues on it,
+ * unless that engine cannot build this Typeroll (the runner then refuses to enqueue).
  * Without auto_update this returns the current engine unchanged.
  */
 export async function prepareEngineForBuild(org: string, provider: BuildProvider, record: EngineUpdateRecord | undefined, now = Date.now()): Promise<EngineStep> {
@@ -92,9 +93,10 @@ export async function prepareEngineForBuild(org: string, provider: BuildProvider
   const reason = record?.reason ?? 'update_available';
   const base: EngineUpdateRecord = { ...record, reason, from_revision: config.revision, requested_at: record?.requested_at ?? now, state: 'waiting_for_builds' };
   if (await otherBuildsActive(org)) {
-    // An available update can wait for a later publication; a known failure cannot be retried on the old engine.
-    if (reason === 'update_available') return { state: 'ready', engine: config, record: { ...base, state: 'skipped', message: 'Other builds were running; the engine update waits for a later publication.' } };
-    if (now - base.requested_at > ENGINE_UPDATE_WAIT_MS) throw new ConnectionError(`${record?.failure ?? 'The build failed.'} Other builds kept the build engine busy for 30 minutes, so it could not be updated. Retry publishing when they finish.`, 409, record?.failure_code ?? 'build_engine_update_waiting');
+    // An available update can wait for a later publication; a known failure, or an
+    // engine that cannot build this Typeroll at all, cannot build on the old engine.
+    if (reason === 'update_available' && engineUpdateReason(config) !== 'capability_missing') return { state: 'ready', engine: config, record: { ...base, state: 'skipped', message: 'Other builds were running; the engine update waits for a later publication.' } };
+    if (now - base.requested_at > ENGINE_UPDATE_WAIT_MS) throw new ConnectionError(`${record?.failure ?? 'The build engine must be updated before this publication can build.'} Other builds kept the build engine busy for 30 minutes, so it could not be updated. Retry publishing when they finish.`, 409, record?.failure_code ?? 'build_engine_update_waiting');
     return { state: 'waiting', phase: 'waiting for other builds before updating the build engine', record: base };
   }
   try {

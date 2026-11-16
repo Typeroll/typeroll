@@ -63,6 +63,30 @@ it('requires an update before publishing on an engine that runs an older Node.js
   await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE });
   expect((await readBuildSettings('org')).engines.cloudflare).toMatchObject({ update_available: false, update_reason: null });
 });
+it('reports the Node.js version builds run on, not the one the engine document was first created with', async () => {
+  const { CLOUDFLARE_ENGINE_SOURCE } = await import('../../lib/builds/setup');
+  // An engine document created under Core 0.3.33 keeps node_version 22.23.1 after every later setup.
+  await getStore().setDoc(enginePath('org'), { provider: 'cloudflare', state: 'ready', enabled: true, node_version: '22.23.1' });
+  await getStore().setDoc(engineConfigurationPath('org'), { provider: 'cloudflare', status: 'ready', revision: 'engine', account_id: 'cf-account', installation_id: 'installation', owner: 'owner',
+    static_verification: true, media_preparation: true, publication_validation: 1, node_version: BUILD_RUNTIME, engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE });
+  expect((await readBuildSettings('org')).engines.cloudflare).toMatchObject({ state: 'ready', node_version: BUILD_RUNTIME, required_node_version: BUILD_RUNTIME, update_available: false });
+  // During an update, builds still run on the engine it replaces.
+  await getStore().updateDoc(engineConfigurationPath('org'), { status: 'qualifying', previous: { status: 'ready', node_version: '22.23.1' } });
+  expect((await readBuildSettings('org')).engines.cloudflare).toMatchObject({ node_version: '22.23.1', required_node_version: BUILD_RUNTIME });
+});
+it('refuses a publication on an older Node.js engine unless the publication may update it first', async () => {
+  const { CLOUDFLARE_ENGINE_SOURCE } = await import('../../lib/builds/setup');
+  await engine('cloudflare', { engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE, node_version: '22.23.1' });
+  await getStore().setDoc(selectionPath('org'), { provider: 'cloudflare', revision: 'selection', auto_update: false });
+  const refused = await publishingReadiness('org', 'site');
+  expect(refused.required).toEqual([{ code: 'build_engine_update_required', settings_url: '/app/settings/publishing#publishing-builds',
+    message: `The build engine runs Node.js 22.23.1; this Typeroll builds with Node.js ${BUILD_RUNTIME}. Update the build engine in Publishing → Builds (setup_organization_build_engine), or turn on automatic engine updates, before publishing.` }]);
+  expect((await readBuildSettings('org')).engines.cloudflare.issue).toMatchObject({ message: expect.stringContaining('Node.js 22.23.1') });
+  // With automatic updates the publication updates the engine before it builds.
+  await getStore().setDoc(selectionPath('org'), { provider: 'cloudflare', revision: 'selection', auto_update: true });
+  expect((await publishingReadiness('org', 'site')).ready).toBe(true);
+  expect((await readBuildSettings('org')).engines.cloudflare.issue).toMatchObject({ message: expect.stringContaining('The next publication updates the engine before it builds.') });
+});
 it.each(['preparing', 'qualifying', 'disabled'])('blocks an engine in %s state', async status => {
   await engine('cloudflare', { status });
   expect((await publishingReadiness('org', 'site')).required).toContainEqual(expect.objectContaining({ code: 'build_setup_required' }));

@@ -100,7 +100,8 @@ it('never enables an engine based solely on permission reads and rejects stale s
   const allowed = vi.fn<typeof fetch>(async () => Response.json({ success: true, result: [{}] }));
   const checked = await checkBuildEngine('org', { revision: state.revision }, allowed);
   expect(checked).toMatchObject({ state: 'qualification_required', enabled: false });
-  await expect(checkBuildEngine('org', { revision: state.revision }, allowed)).rejects.toMatchObject({ code: 'build_settings_changed' });
+  // The refusal names the revision to retry with: it rotates on every check, including automatic ones.
+  await expect(checkBuildEngine('org', { revision: state.revision }, allowed)).rejects.toMatchObject({ status: 409, code: 'build_settings_changed', details: { current_revision: checked.revision, state: 'qualification_required' } });
   expect((await readBuildEngine('other')).account_id).toBeNull();
 });
 it('adds build consent only when explicitly requested on the organization connection', async () => {

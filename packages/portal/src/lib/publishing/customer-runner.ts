@@ -56,8 +56,9 @@ import { pagesBranchHost } from './pages-alias';
 import { recordPublishingOrigin } from './runtime-origins';
 import { retargetWebsite } from './publication-retarget';
 import { recordCustomerCompute } from './compute-cost';
-import { readEngineConfiguration, type BuildProvider } from '../builds/state';
-import { selectedBuildProvider } from '../builds/selection';
+import { readEngineConfiguration, engineRunsCurrentRuntime, engineRuntime, type BuildProvider } from '../builds/state';
+import { selectedBuildProvider, readBuildSelection, engineRuntimeMessage } from '../builds/selection';
+import { BUILD_RUNTIME } from '../builds/contract.mjs';
 import { enqueueBuild, completedBuild } from '../builds/jobs';
 import { redactFailureText } from './http';
 import { prepareEngineForBuild, engineUpdateRetryAllowed, type EngineUpdateRecord } from '../builds/auto-update';
@@ -677,6 +678,13 @@ export async function executeCustomerPublication(args: EnqueueArgs): Promise<Dep
       if (!engine || engine.status !== 'ready' || engine.revision !== publication.build_engine_revision) throw new ConnectionError('The shared build engine changed. Retry this publication.', 409);
       if (!publication.build_task_key) {
         if (!engine.static_verification) throw new ConnectionError('Update the build engine in Publishing → Builds before publishing.', 409, 'build_engine_update_required');
+        // An engine on an older Node.js fails every build of this Typeroll minutes in; refuse before building.
+        if (!engineRunsCurrentRuntime(engine)) {
+          const update = (await store.getDoc<GitJob>(jobPath))?.engine_update;
+          const autoUpdate = (await readBuildSelection(args.orgId)).auto_update;
+          throw new ConnectionError(`${engineRuntimeMessage(engineRuntime(engine), false)}${update?.state === 'kept' && update.message ? ` ${update.message}` : ''} The live site is unchanged.`, 409, 'build_engine_update_required',
+            { node_version: engineRuntime(engine), required_node_version: BUILD_RUNTIME, auto_update: autoUpdate });
+        }
         const source = await publicationSourceTree(await readSnapshot(args, publication));
         const retry = (await store.getDoc<GitJob>(jobPath))?.engine_update?.reason === 'known_failure';
         const queued = await enqueueBuild(engine, { org_id: args.orgId, site_id: args.siteId, version_id: args.versionId, job_id: args.jobId,

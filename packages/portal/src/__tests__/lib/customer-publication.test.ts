@@ -1,6 +1,7 @@
 import { resolvePublicationReferences } from '../../../../../scripts/fixtures/static-publication/references.mjs';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
+import { BUILD_RUNTIME } from '../../lib/builds/contract.mjs';
 import { paths } from '@typeroll/shared';
 import { getStore } from '../../lib/datastore';
 import { makeTmpFixtures, resetDatastore } from '../helpers/tmp-fixtures';
@@ -397,7 +398,7 @@ it('switches DNS for the same main artifact without a second push, build or uplo
     if (route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}`) return { name: project, production_branch: 'main' };
     return provider(route, options);
   });
-  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, revision: 'engine-1', account_id: 'a'.repeat(32) });
   await store.updateDoc(siteDomainConfigPath('org', 'site'), { active: { website_host: 'old.example.com', media_host: null, media_path_prefix: '' } });
   mocks.enqueue.mockResolvedValue({ key: 'same-task' }); mocks.built.mockResolvedValue(null);
   mocks.verify.mockResolvedValue(true); mocks.probe.mockResolvedValue(true);
@@ -489,7 +490,7 @@ it('identifies missing Git installation in an extra hosting account without aski
 
 it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the live link until actual static files are verified', async providerName => {
   await getStore().setDoc('organizations/org/publishing/build_selection', { provider: providerName, revision: 'selection' });
-  await getStore().setDoc(`organizations/org/publishing_private/${providerName === 'github' ? 'github_build_engine' : 'build_engine'}`, { status: 'ready', static_verification: true, provider: providerName, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await getStore().setDoc(`organizations/org/publishing_private/${providerName === 'github' ? 'github_build_engine' : 'build_engine'}`, { status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, provider: providerName, revision: 'engine-1', account_id: 'a'.repeat(32) });
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => {
     if (route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}`) return { name: project, production_branch: 'main' };
@@ -525,7 +526,7 @@ it.each(['cloudflare', 'github'] as const)('uses the %s engine and blocks the li
   expect(mocks.push.mock.calls[0][1].files['publication.json']).not.toContain('New unsaved');
 });
 it('refuses a whole-site artifact from an engine without direct uploads and uploads nothing', async () => {
-  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, revision: 'engine-1', account_id: 'a'.repeat(32) });
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
@@ -551,7 +552,7 @@ it('logs what an unclassified error was, without secrets, when a publication sto
 
 describe('keeping the organization build engine current', () => {
   const enginePath = 'organizations/org/publishing_private/build_engine';
-  const outdated = { status: 'ready', static_verification: true, media_preparation: true, publication_validation: 1, provider: 'cloudflare', revision: 'engine-1', account_id: 'a'.repeat(32), engine_source_sha256: 'older-source' };
+  const outdated = { status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, media_preparation: true, publication_validation: 1, provider: 'cloudflare', revision: 'engine-1', account_id: 'a'.repeat(32), engine_source_sha256: 'older-source' };
   const current = { ...outdated, revision: 'engine-2', engine_source_sha256: CLOUDFLARE_ENGINE_SOURCE };
   const procRefused = { cause: null, lines: ["bwrap: Can't mount proc on /newroot/proc: Operation not permitted"] };
   beforeEach(async () => {
@@ -599,6 +600,28 @@ describe('keeping the organization build engine current', () => {
     expect(await executeCustomerPublication(args)).toBe('ran');
     expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', error: expect.stringContaining('installing the site’s build dependencies') });
     expect(mocks.enqueue).toHaveBeenCalledTimes(2);
+  });
+
+  it('refuses to build on an engine whose Node.js cannot build this Typeroll, instead of failing minutes into the build', async () => {
+    await getStore().setDoc(enginePath, { ...current, node_version: '22.23.1' });
+    expect(await executeCustomerPublication(args)).toBe('ran');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed',
+      error: expect.stringContaining(`The build engine runs Node.js 22.23.1; this Typeroll builds with Node.js ${BUILD_RUNTIME}.`) });
+  });
+
+  it('stops before building when a failed update restored an engine on an older Node.js', async () => {
+    await getStore().setDoc('organizations/org/publishing/build_selection', { provider: 'cloudflare', revision: 'selection', auto_update: true });
+    const legacy = { ...outdated, node_version: '22.23.1' };
+    await getStore().setDoc(enginePath, legacy);
+    expect(await executeCustomerPublication(args)).toBe('waiting');
+    // The update failed its verification (transfer_timeout) and the previous engine was put back.
+    await getStore().setDoc(enginePath, legacy);
+    await getStore().updateDoc('organizations/org/publishing/build_engine', { issue: { code: 'build_engine_update_failed', message: 'The build engine update did not finish (Build verification failed during artifact (transfer_timeout)).' } });
+    expect(await executeCustomerPublication(args)).toBe('ran');
+    expect(mocks.enqueue).not.toHaveBeenCalled();
+    expect(await getStore().getDoc<any>(jobPath)).toMatchObject({ status: 'failed', engine_update: { state: 'kept' },
+      error: expect.stringContaining('transfer_timeout') });
   });
 
   it('reports a known failure as before when automatic updates are off', async () => {
@@ -925,7 +948,7 @@ describe('media missing from storage', () => {
 });
 
 it('keeps direct publication waiting for customer verification, then runs only bounded coordinator probes', async () => {
-  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, revision: 'engine-1', account_id: 'a'.repeat(32) });
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);
@@ -948,7 +971,7 @@ it('keeps direct publication waiting for customer verification, then runs only b
 
 it('attaches and verifies the media host before the deployment replaces the live site', async () => {
   const store = getStore();
-  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, revision: 'engine-1', account_id: 'a'.repeat(32) });
   await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
   await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<img src="https://media.example.com/photo.png" alt="Photo">' });
   await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12,
@@ -988,7 +1011,7 @@ it('attaches and verifies the media host before the deployment replaces the live
 
 async function engineJobWithMedia() {
   const store = getStore();
-  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await store.setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, revision: 'engine-1', account_id: 'a'.repeat(32) });
   await store.updateDoc(connectionPath('org', 'cloudflare'), { media_ready: true, encrypted_credentials: 'synthetic-reference', cloudflare: { account_id: 'a'.repeat(32), bucket: 'originals', public_bucket: 'public' } });
   await store.updateDoc(`${paths.pages('org', 'site')}/home`, { html_content: '<img src="https://media.example.com/photo.png" alt="Photo">' });
   await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: 'https://media.example.com/photo.png', sha256: 'c'.repeat(64), size_bytes: 12,
@@ -1256,7 +1279,7 @@ it.each(['cloudflare', 'github'] as const)('freezes derived output once before d
   const store = getStore();
   await store.setDoc('organizations/org/publishing/build_selection', { provider, revision: 'selected' });
   await store.setDoc(`organizations/org/publishing_private/${provider === 'github' ? 'github_build_engine' : 'build_engine'}`, {
-    status: 'ready', static_verification: true, provider, revision: 'engine', account_id: 'a'.repeat(32),
+    status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, provider, revision: 'engine', account_id: 'a'.repeat(32),
   });
   const cf = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}`
@@ -1672,7 +1695,7 @@ it('lets a domain preparation blocked by a stale cache resume through a plain ve
 
 it('tells the publication that background image preparation stopped and why (SE-07)', async () => {
   await getStore().setDoc(`media_preparations/${createHash('sha256').update('org\0site').digest('hex')}`, { state: 'failed', error: 'Background preparation stopped. Cause: the runner ran out of time (build_timeout)', error_code: 'build_timeout', failed_task: 'old-task' });
-  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, revision: 'engine-1', account_id: 'a'.repeat(32) });
+  await getStore().setDoc('organizations/org/publishing_private/build_engine', { status: 'ready', static_verification: true, node_version: BUILD_RUNTIME, revision: 'engine-1', account_id: 'a'.repeat(32) });
   const provider = mocks.cloudflare.getMockImplementation()!;
   mocks.cloudflare.mockImplementation(async (route, options) => route === `/accounts/${'a'.repeat(32)}/pages/projects/${project}` ? { name: project, production_branch: 'main' } : provider(route, options));
   mocks.enqueue.mockResolvedValue({ key: 'task' }); mocks.built.mockResolvedValue(null);

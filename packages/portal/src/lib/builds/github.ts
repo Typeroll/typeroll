@@ -6,7 +6,7 @@ import { ConnectionError, getConnection } from '../publishing/connections';
 import { checkGithubPermissions } from '../publishing/github-permissions';
 import { githubConfiguration } from '../publishing/github-connection';
 import { githubAppClient, githubInstallationClient, publishTree, digest, ProviderError, type ProviderClient } from '../publishing/providers.mjs';
-import { enginePath, type BuildEngine } from './cloudflare';
+import { enginePath, buildSettingsChanged, type BuildEngine } from './cloudflare';
 import { engineConfigurationPath, readEngineConfiguration, assertEngineConnections, type EngineConfiguration, type BuildInput } from './state';
 import { buildTasksPath, buildTaskKey, type BuildTask } from './queue';
 import { BUILD_PROTOCOL, BUILD_RUNTIME, encodeSource, sha256 } from './contract.mjs';
@@ -94,7 +94,7 @@ export async function readGithubDispatch(client: ProviderClient, config: EngineC
 
 export async function configureGithubEngine(org: string, input: Record<string, unknown>) {
   const current = await readGithubEngine(org), previous = await readEngineConfiguration(org, 'github');
-  if (input.revision !== current.revision) throw new ConnectionError('Build settings changed. Check again.', 409, 'build_settings_changed');
+  if (input.revision !== current.revision) throw buildSettingsChanged(current);
   if (input.action && !['check', 'setup'].includes(String(input.action))) throw new ConnectionError('Unknown GitHub build action.', 400);
   if (previous?.status === 'qualifying') {
     try { await (await import('./jobs')).completedBuild(org, previous.qualification_key!); }
@@ -124,7 +124,7 @@ export async function configureGithubEngine(org: string, input: Record<string, u
       else next.issue = { code: 'github_runner_changed', message: 'The generated runner changed. Update the GitHub build engine before publishing.' };
     }
     await store.createDocIfMissing(enginePath(org, 'github'), current);
-    if (!await store.compareAndUpdateDoc<BuildEngine>(enginePath(org, 'github'), value => value.revision === current.revision, next)) throw new ConnectionError('Build settings changed. Check again.', 409);
+    if (!await store.compareAndUpdateDoc<BuildEngine>(enginePath(org, 'github'), value => value.revision === current.revision, next)) throw buildSettingsChanged(await readGithubEngine(org));
     return next;
   }
   const cf = await getConnection(org, 'cloudflare');

@@ -18,7 +18,7 @@ import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { claimCloudflareResource, generatedCloudflareNames, isSharedCloudflareAccount } from '../publishing/cloudflare-account-claims';
 import { githubConfiguration } from '../publishing/github-connection';
 import { githubInstallationClient, publishTree, ProviderError } from '../publishing/providers.mjs';
-import { readBuildEngine, checkBuildEngine, enginePath } from './cloudflare';
+import { readBuildEngine, checkBuildEngine, enginePath, buildSettingsChanged } from './cloudflare';
 import { engineConfigurationPath, readEngineConfiguration, selectionPath, type EngineConfiguration } from './state';
 import { OrganizationBuildQueue, buildTasksPath, buildTaskKey, type BuildTask } from './queue';
 import { encodeSource, sha256, BUILD_PROTOCOL, BUILD_RUNTIME } from './contract.mjs';
@@ -52,7 +52,7 @@ export async function configureBuildEngine(org: string, input: Record<string, un
   }
   if (input.action !== 'setup') throw new ConnectionError('Unknown build setup action.', 400);
   let current = await readBuildEngine(org);
-  if (input.revision !== current.revision) throw new ConnectionError('Build settings changed. Check again.', 409, 'build_settings_changed');
+  if (input.revision !== current.revision) throw buildSettingsChanged(current);
   const store = getStore(), path = engineConfigurationPath(org);
   const previous = await readEngineConfiguration(org);
   if (previous?.status === 'qualifying') return configureBuildEngine(org, { action: 'check', revision: current.revision });
