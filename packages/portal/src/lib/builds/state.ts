@@ -1,7 +1,7 @@
 import { getStore } from '../datastore';
 import { ConnectionError, getConnection } from '../publishing/connections';
 import { equalToken } from './queue';
-import { sha256, type BuildIdentity } from './contract.mjs';
+import { sha256, BUILD_RUNTIME, LEGACY_BUILD_RUNTIME, type BuildIdentity } from './contract.mjs';
 
 export const renderCachePath = (identity: BuildIdentity) => `organizations/${identity.org_id}/build_render_caches/${sha256(`${identity.site_id}\0${identity.version_id}`)}`;
 export interface RenderCachePointer { key: string; lease: string; sha256: string; account: string; created_at: number }
@@ -54,4 +54,12 @@ export async function assertEngineConnections(org: string, config: EngineConfigu
       (config.provider === 'github' && (github.github?.owner !== config.owner || github.github?.account_id !== config.github?.owner_id)))
     throw new ConnectionError('The organization publishing connection changed.', 409, 'build_connection_changed');
   return config;
+}
+/** Whether the engine runs BUILD_RUNTIME, the Node.js version every build step is bound to. */
+export function engineRunsCurrentRuntime(config: Pick<EngineConfiguration, 'node_version'>): boolean {
+  return engineRuntime(config) === BUILD_RUNTIME;
+}
+/** The Node.js version an engine configuration runs. */
+export function engineRuntime(config: Pick<EngineConfiguration, 'node_version'>): string {
+  return config.node_version ?? LEGACY_BUILD_RUNTIME;
 }

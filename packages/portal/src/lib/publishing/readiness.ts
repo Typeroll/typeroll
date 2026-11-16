@@ -1,6 +1,6 @@
 import { readOrganizationAccess } from '../organization-access';
 import { resolvePublicationVersion } from './publication-version';
-import { selectedBuildProvider } from '../builds/selection';
+import { readBuildSelection, engineRunsCurrentRuntime, engineRuntime, engineRuntimeMessage } from '../builds/selection';
 import { readBuildEngine } from '../builds/cloudflare';
 import { readGithubEngine } from '../builds/github';
 import { readEngineConfiguration, assertEngineConnections } from '../builds/state';
@@ -68,7 +68,7 @@ export async function publishingReadiness(orgId: string, siteId: string, version
 
 /** What the organization's selected build engine still needs before a new publication is admitted. */
 async function buildEngineRequirements(orgId: string): Promise<PublishingRequirement[]> {
-  const provider = await selectedBuildProvider(orgId);
+  const selection = await readBuildSelection(orgId), provider = selection.provider;
   const [engine, visible] = await Promise.all([
     readEngineConfiguration(orgId, provider),
     provider === 'github' ? readGithubEngine(orgId) : readBuildEngine(orgId),
@@ -79,6 +79,12 @@ async function buildEngineRequirements(orgId: string): Promise<PublishingRequire
   }
   if (!engine.static_verification || !engine.media_preparation || engine.publication_validation !== 1) {
     return [{ code: 'build_engine_update_required', message: 'Update the build engine in Publishing → Builds before publishing.', settings_url }];
+  }
+  // An engine on an older Node.js cannot build this Typeroll. With automatic
+  // updates the publication updates it before building; otherwise refuse now
+  // instead of failing the build minutes later.
+  if (!engineRunsCurrentRuntime(engine) && !selection.auto_update) {
+    return [{ code: 'build_engine_update_required', message: engineRuntimeMessage(engineRuntime(engine), false), settings_url }];
   }
   try { await assertEngineConnections(orgId, engine); }
   catch (error) {

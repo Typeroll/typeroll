@@ -290,7 +290,23 @@ it('does not retry another failure of the artifact stage that is not a timeout',
   expect(await getStore().getDoc(`${buildTasksPath(org)}/${key}`)).toMatchObject({ status: 'failed', error_code: 'artifact_build_failed' });
 });
 
-it.each([['qualification', 'artifact_upload_failed'], ['publication', 'artifact_format_unsupported']])('does not retry a %s build that failed uploading with %s', async (kind, code) => {
+// autopilot-sverige-ab-4 (2026-11-16): an engine update's verification timed out handing over its artifact once and the update was discarded.
+it('verifies an engine update once more when handing over its artifact timed out, and gives it up after a second failure', async () => {
+  const { key } = await prepare('qualification');
+  const path = `${buildTasksPath(org)}/${key}`;
+  const timedOut = { cause: 'TimeoutError: The operation was aborted due to timeout', lines: [] };
+  const first = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect((await request('fail', first.token, { key, lease_id: first.lease_id, stage: 'artifact', code: 'build_failed', diagnostic: timedOut })).status).toBe(200);
+  expect(await getStore().getDoc(path)).toMatchObject({ status: 'queued', artifact_upload_retried: true, error_code: 'artifact_transfer_timeout' });
+  expect(await getStore().getDoc(engineConfigurationPath(org))).toMatchObject({ status: 'qualifying' });
+  const second = await (await request('claim', runnerToken, { protocol: 1 })).json();
+  expect(second).toMatchObject({ key });
+  expect((await request('fail', second.token, { key, lease_id: second.lease_id, stage: 'artifact', code: 'build_failed', diagnostic: timedOut })).status).toBe(200);
+  expect(await getStore().getDoc(path)).toMatchObject({ status: 'failed', error_code: 'artifact_transfer_timeout' });
+  expect(await getStore().getDoc(engineConfigurationPath(org))).toMatchObject({ status: 'disabled' });
+});
+
+it.each([['qualification', 'artifact_format_unsupported'], ['publication', 'artifact_format_unsupported']])('does not retry a %s build that failed uploading with %s', async (kind, code) => {
   const { key } = await prepare(kind);
   const claim = await (await request('claim', runnerToken, { protocol: 1 })).json();
   expect((await request('fail', claim.token, { key, lease_id: claim.lease_id, stage: 'artifact', code })).status).toBe(200);

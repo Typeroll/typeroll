@@ -73,6 +73,17 @@ describe('updating an outdated engine as a step of a publication', () => {
     expect(step.state === 'ready' && step.warning).toContain('previous engine is back in use');
   });
 
+  it('waits for other builds instead of building on an engine whose Node.js cannot build this Typeroll', async () => {
+    await saveEngine(engine({ node_version: '22.23.1' })); await autoUpdate(true);
+    await getStore().setDoc(`${buildTasksPath(org)}/${'b'.repeat(64)}`, { status: 'running' });
+    const step = await prepareEngineForBuild(org, 'cloudflare', undefined, 1000);
+    expect(step).toMatchObject({ state: 'waiting', phase: 'waiting for other builds before updating the build engine', record: { reason: 'update_available', state: 'waiting_for_builds' } });
+    expect(setup.configure).not.toHaveBeenCalled();
+    // An engine that only runs older generated code still builds and leaves the update for later.
+    await saveEngine(engine());
+    expect(await prepareEngineForBuild(org, 'cloudflare', undefined, 1000)).toMatchObject({ state: 'ready', record: { state: 'skipped' } });
+  });
+
   it('waits for an update another publication or an admin started', async () => {
     await saveEngine(engine({ revision: 'new', status: 'qualifying', previous: engine() })); await autoUpdate(true);
     expect(await prepareEngineForBuild(org, 'cloudflare', undefined)).toMatchObject({ state: 'waiting', record: { state: 'started', from_revision: 'old' } });
@@ -143,6 +154,18 @@ describe('restoring the previous engine after a failed update', () => {
     expect(JSON.parse(patch.body!)).toEqual({ TYPEROLL_RUNNER_TOKEN: { value: 'old-token', is_secret: true } });
     expect(await readEngineConfiguration(org)).toMatchObject({ revision: 'old', status: 'ready', runner_commit: '1'.repeat(40), token_hash: sha('old-token'), previous: null });
     expect(await readBuildEngine(org)).toMatchObject({ state: 'ready', enabled: true, issue: { code: 'build_engine_update_failed', cause_code: 'build_qualification_failed' } });
+    expect((await readBuildEngine(org)).issue?.message).toContain('publishing works as before');
+  });
+
+  it('does not claim publishing works when the restored engine runs an older Node.js', async () => {
+    const previous = engine({ node_version: '22.23.1', encrypted_token: encryptSecret(JSON.stringify({ org, token: 'old-token' })) });
+    const failed = engine({ revision: 'new', status: 'disabled', runner_commit: '2'.repeat(40), token_hash: sha('new-token'), previous });
+    await saveEngine(failed);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ success: true, result: {} })));
+    expect(await restorePreviousEngine(org, failed, { code: 'build_qualification_failed', message: 'Build verification failed during artifact (transfer_timeout).' })).toBe(true);
+    const message = (await readBuildEngine(org)).issue?.message;
+    expect(message).toContain(`runs Node.js 22.23.1 and this Typeroll builds with Node.js ${BUILD_RUNTIME}, so publishing waits for the update`);
+    expect(message).not.toContain('works as before');
   });
 
   it('leaves the engine disabled when there is nothing to restore or the token does not match', async () => {

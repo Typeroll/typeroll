@@ -5,10 +5,11 @@ import { ConnectionError } from '../publishing/connections';
 import { readBuildEngine } from './cloudflare';
 import { readGithubEngine, configureGithubEngine } from './github';
 import { configureBuildEngine } from './setup';
-import { readEngineConfiguration, assertEngineConnections, selectionPath, type BuildProvider, type BuildSelection, type EngineConfiguration } from './state';
+import { readEngineConfiguration, assertEngineConnections, selectionPath, engineRunsCurrentRuntime, engineRuntime, type BuildProvider, type BuildSelection, type EngineConfiguration } from './state';
+export { engineRunsCurrentRuntime, engineRuntime };
 import { CLOUDFLARE_ENGINE_SOURCE } from './setup';
 import { GITHUB_ENGINE_SOURCE } from './github-source';
-import { BUILD_RUNTIME, LEGACY_BUILD_RUNTIME } from './contract.mjs';
+import { BUILD_RUNTIME } from './contract.mjs';
 
 export { selectionPath, type BuildSelection };
 export async function readBuildSelection(org: string): Promise<BuildSelection & { auto_update: boolean }> {
@@ -25,9 +26,23 @@ export async function selectedBuildProvider(org: string) { return (await readBui
  * the next publication updates an engine with either reason first.
  */
 export type EngineUpdateReason = 'capability_missing' | 'engine_source_changed';
-/** Whether the engine runs BUILD_RUNTIME, the Node.js version every build step is bound to. */
-export function engineRunsCurrentRuntime(config: Pick<EngineConfiguration, 'node_version'>): boolean {
-  return (config.node_version ?? LEGACY_BUILD_RUNTIME) === BUILD_RUNTIME;
+/**
+ * The engine whose Node.js version builds run on now: the ready configuration,
+ * or during an update the ready engine it replaces.
+ */
+function runningRuntime(config: EngineConfiguration | null): string | null {
+  if (!config) return null;
+  if (config.status === 'ready') return engineRuntime(config);
+  return config.previous?.status === 'ready' ? engineRuntime(config.previous) : null;
+}
+/** Why an engine on an older Node.js cannot build this Typeroll, and what to do. */
+export function engineRuntimeMessage(actual: string, autoUpdate: boolean): string {
+  return `The build engine runs Node.js ${actual}; this Typeroll builds with Node.js ${BUILD_RUNTIME}. `
+    + (autoUpdate ? 'The next publication updates the engine before it builds.' : 'Update the build engine in Publishing → Builds (setup_organization_build_engine), or turn on automatic engine updates, before publishing.');
+}
+/** A stale selection.revision; the refusal carries the current one to retry with. */
+function selectionChanged(selection: BuildSelection) {
+  return new ConnectionError('Build settings changed. Retry with current_revision.', 409, 'build_settings_changed', { current_revision: selection.revision });
 }
 export function engineUpdateReason(config: EngineConfiguration | null | undefined): EngineUpdateReason | null {
   if (!config || config.status !== 'ready') return null;
@@ -39,6 +54,22 @@ export function engineUpdateReason(config: EngineConfiguration | null | undefine
   return config.engine_source_sha256 !== source ? 'engine_source_changed' : null;
 }
 
+/**
+ * The Node.js version the selected engine builds with against the one this
+ * Typeroll requires, for publication previews. `blocks_publication` means a
+ * publication is refused until an admin updates the engine; with automatic
+ * updates on, the publication updates it first.
+ */
+export async function buildEngineRuntime(org: string) {
+  const selection = await readBuildSelection(org);
+  const config = await readEngineConfiguration(org, selection.provider);
+  const reason = engineUpdateReason(config && { ...config, provider: selection.provider });
+  const node = runningRuntime(config);
+  const behind = node !== null && node !== BUILD_RUNTIME;
+  return { provider: selection.provider, node_version: node, required_node_version: BUILD_RUNTIME, update_reason: reason, auto_update: selection.auto_update,
+    blocks_publication: reason === 'capability_missing' && !selection.auto_update,
+    ...(behind ? { message: engineRuntimeMessage(node, selection.auto_update) } : {}) };
+}
 export async function readBuildSettings(org: string) {
   const [selection, cloudflare, github] = await Promise.all([readBuildSelection(org), readBuildEngine(org), readGithubEngine(org)]);
   const engines = { cloudflare, github };
@@ -46,10 +77,13 @@ export async function readBuildSettings(org: string) {
     // The saved configuration may predate the provider field; the engine read here is this provider's.
     const config = await readEngineConfiguration(org, provider);
     const reason = engineUpdateReason(config && { ...config, provider });
-    engines[provider] = { ...engines[provider], update_available: reason !== null, update_reason: reason };
+    // The saved engine document keeps the Node.js version of its first setup; the configuration is what builds run on.
+    const node = runningRuntime(config) ?? engines[provider].node_version;
+    engines[provider] = { ...engines[provider], node_version: node, required_node_version: BUILD_RUNTIME, update_available: reason !== null, update_reason: reason };
     if (reason === 'capability_missing') {
       engines[provider] = { ...engines[provider], enabled: false, state: 'setup_required', issue: {
-        code: 'build_engine_update_required', message: 'Update the build engine before publishing. Finish build setup to install and verify the required capabilities.',
+        code: 'build_engine_update_required', message: config && !engineRunsCurrentRuntime(config) ? engineRuntimeMessage(node, selection.auto_update)
+          : 'Update the build engine before publishing. Finish build setup to install and verify the required capabilities.',
       } };
     }
   }
@@ -66,23 +100,23 @@ export async function configureBuildSettings(org: string, input: Record<string, 
   if (input.action === 'auto_update') {
     if (typeof input.enabled !== 'boolean') throw new ConnectionError('Send enabled: true or false.', 400);
     const selection = await readBuildSelection(org);
-    if (input.revision !== selection.revision) throw new ConnectionError('Build settings changed. Reload and try again.', 409, 'build_settings_changed');
+    if (input.revision !== selection.revision) throw selectionChanged(selection);
     const store = getStore();
     await store.createDocIfMissing(selectionPath(org), { provider: selection.provider, revision: selection.revision });
     if (!await store.compareAndUpdateDoc<BuildSelection>(selectionPath(org), value => value.revision === selection.revision, { auto_update: input.enabled, revision: randomUUID() }))
-      throw new ConnectionError('Build settings changed. Reload and try again.', 409, 'build_settings_changed');
+      throw selectionChanged(await readBuildSelection(org));
     return readBuildSettings(org);
   }
   if (input.action === 'select') {
     const selection = await readBuildSelection(org);
-    if (input.revision !== selection.revision) throw new ConnectionError('The selected build provider changed. Reload and try again.', 409, 'build_settings_changed');
+    if (input.revision !== selection.revision) throw selectionChanged(selection);
     const engine = await readEngineConfiguration(org, provider);
     const visible = provider === 'github' ? await readGithubEngine(org) : await readBuildEngine(org);
     if (!engine || engine.status !== 'ready' || !visible.enabled || visible.state !== 'ready') throw new ConnectionError('Finish setup and verification for this build provider before selecting it.', 409, 'build_provider_not_ready');
     await assertEngineConnections(org, engine);
     const store = getStore();
     await store.createDocIfMissing(selectionPath(org), selection);
-    if (!await store.compareAndUpdateDoc<BuildSelection>(selectionPath(org), value => value.revision === selection.revision, { provider, revision: randomUUID() })) throw new ConnectionError('The selected build provider changed. Reload and try again.', 409);
+    if (!await store.compareAndUpdateDoc<BuildSelection>(selectionPath(org), value => value.revision === selection.revision, { provider, revision: randomUUID() })) throw selectionChanged(await readBuildSelection(org));
   } else if (provider === 'github') await configureGithubEngine(org, input);
   else await configureBuildEngine(org, input);
   return readBuildSettings(org);

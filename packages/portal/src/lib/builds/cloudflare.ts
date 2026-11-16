@@ -20,12 +20,24 @@ export interface BuildEngine {
   worker_found?: boolean;
   runner_repo: string;
   protocol: number;
+  /** The Node.js version builds run on. Build settings reads take it from the engine configuration. */
   node_version: string;
+  /** The Node.js version this Typeroll builds with (BUILD_RUNTIME); set by the build settings read. */
+  required_node_version?: string;
   /** A ready engine should be updated (see engineUpdateReason). Set by the build settings read. */
   update_available?: boolean;
   /** capability_missing blocks publishing until the update; engine_source_changed only means older code. */
   update_reason?: 'capability_missing' | 'engine_source_changed' | null;
 }
+/**
+ * The 409 for a stale engine revision. The revision rotates on every check,
+ * setup, verification and restore, including those a publication runs on its
+ * own, so the refusal carries the current one to retry with.
+ */
+export function buildSettingsChanged(current: Pick<BuildEngine, 'revision' | 'state'>, message = 'Build settings changed.') {
+  return new ConnectionError(`${message} Retry with current_revision.`, 409, 'build_settings_changed', { current_revision: current.revision, state: current.state });
+}
+
 export async function readBuildEngine(org: string): Promise<BuildEngine> {
   const name = generatedCloudflareNames(org).build_worker;
   return await getStore().getDoc<BuildEngine>(enginePath(org)) ?? {
@@ -60,7 +72,7 @@ export async function inspectCloudflareBuildAccess(client: ProviderClient, accou
 
 export async function checkBuildEngine(org: string, input: Record<string, unknown>, fetchImpl: typeof fetch = fetch) {
   const previous = await readBuildEngine(org);
-  if (input.revision !== previous.revision) throw new ConnectionError('Build settings changed. Reload and try again.', 409, 'build_settings_changed');
+  if (input.revision !== previous.revision) throw buildSettingsChanged(previous);
   const connection = await getConnection(org, 'cloudflare');
   if (connection.status !== 'connected' || !connection.cloudflare) throw new ConnectionError('Connect the organization Cloudflare account in Publishing first.', 409, 'build_account_required');
   let next: BuildEngine = { ...previous, revision: randomUUID(), enabled: false,
@@ -99,7 +111,7 @@ export async function checkBuildEngine(org: string, input: Record<string, unknow
   }
   await getStore().createDocIfMissing(enginePath(org), previous);
   if (!await getStore().compareAndUpdateDoc<BuildEngine>(enginePath(org), current => current.revision === previous.revision, next))
-    throw new ConnectionError('Build settings changed. Check again.', 409, 'build_settings_changed');
+    throw buildSettingsChanged(await readBuildEngine(org));
   return next;
 }
 

@@ -742,6 +742,26 @@ publishing. Background image preparation waits for that update. A Cloudflare
 Pages project that builds the publication itself gets the new `NODE_VERSION`
 with the next publication.
 
+From Core 0.3.35 each engine in `read_organization_build_engine` reports
+`node_version`, the Node.js version its builds run on, and
+`required_node_version`, the one this Typeroll builds with.
+`get_publication_impact` shows the same pair under `build_engine`. A
+publication never builds on an engine whose Node.js is older than required.
+Without automatic updates it is refused before it starts, and the message
+names both versions. With automatic updates it waits for running builds and
+updates the engine first. If that update fails and the previous engine comes
+back, it stops before building. A `409 build_settings_changed` from engine
+setup or check carries `details.current_revision`; retry once with it.
+
+A dry run (`trigger_deploy` with `dry_run: true`) validates the source and
+does not build. From Core 0.3.35 it also records `build_outlook` on the job.
+The outlook lists `blockers`, the reasons the real publication would be refused
+now: build setup, or an engine whose Node.js is too old. It also lists `notes`
+for things that only make the publication slower: the engine is updated first,
+or images are still being prepared. With blockers, `would_fail` is `true` and
+the job's phase starts with "publication would fail:". An engine update's
+verification build is retried once if handing over its artifact times out.
+
 ### Automatic engine updates
 
 From Core 0.2.156, **Keep the build engine updated automatically** on the

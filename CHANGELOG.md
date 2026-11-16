@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.3.35 (candidate, MCP 0.45.141)
+
+- A publication no longer builds on an organization build engine whose
+  Node.js cannot build this Typeroll. Before, an engine left on Node.js
+  22.23.1 (for example after a failed automatic update restored it) took the
+  build about seven minutes into Astro before failing with
+  `rendering_build_process_exit_1`. Now publishing readiness refuses the
+  publication up front with `build_engine_update_required`, naming the
+  engine's and the required Node.js version, unless automatic engine updates
+  are on. With automatic updates on, the publication waits for other builds
+  and updates the engine first, instead of skipping the update. If that update
+  fails and the old engine comes back, the publication stops before building
+  and says why.
+- `read_organization_build_engine` reports the Node.js version builds run on
+  (`node_version`, from the engine configuration) and the one this Typeroll
+  builds with (`required_node_version`). The saved engine document kept the
+  version of its first setup, so an updated engine still read 22.23.1.
+  `get_publication_impact` adds `build_engine` with both versions,
+  `update_reason`, `auto_update` and `blocks_publication`.
+- After a failed engine update restores an engine on an older Node.js, its
+  status no longer says that publishing "works as before".
+- A stale-revision `409 build_settings_changed` from build engine setup, check
+  or provider selection carries `details.current_revision` to retry with.
+- A dry run no longer reports only "source verified" when the real publication
+  would be refused. It checks what the publication would be refused for or
+  slowed by now: build setup, the engine and its Node.js version, and image
+  preparation. The result is recorded on the job as `build_outlook`
+  (`would_fail`, `blockers`, `notes`, `build_engine`). When the publication
+  would be refused, the job sets `would_fail: true` and its phase starts with
+  "publication would fail:" and the reasons. The job itself still succeeds,
+  because it validated the source and a site's publishing may not be set up
+  yet.
+- An engine update's verification build is retried once when handing over its
+  artifact timed out or build storage refused it, as publication builds
+  already were. Before, one dropped hand-over (`transfer_timeout`) discarded
+  the update and restored the old engine.
+
 ## 0.3.34 (candidate, MCP 0.45.140)
 
 - Builds run on Node.js 22.23.5 (was 22.23.1), and Astro is 7.4.12 in the

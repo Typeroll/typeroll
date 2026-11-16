@@ -4,7 +4,8 @@ import { decryptSecret } from '../secret-crypto';
 import { cloudflareClient } from '../publishing/cloudflare-oauth';
 import { enginePath } from './cloudflare';
 import { githubBuildClient, githubBuildRoot } from './github';
-import { engineConfigurationPath, type EngineConfiguration } from './state';
+import { engineConfigurationPath, engineRunsCurrentRuntime, engineRuntime, type EngineConfiguration } from './state';
+import { BUILD_RUNTIME } from './contract.mjs';
 import { sha256 } from './contract.mjs';
 
 /**
@@ -34,8 +35,11 @@ export async function restorePreviousEngine(org: string, failed: EngineConfigura
     const current = await store.getDoc<EngineConfiguration>(path);
     if (!current || current.revision !== failed.revision || current.status === 'ready') return false;
     if (!await store.compareAndReplaceDoc(path, current, { ...previous, status: 'ready', setup_lease_until: 0, previous: null })) return false;
+    // An older engine on an outdated Node.js is back in use but cannot build this Typeroll: say so instead of "works as before".
+    const outcome = engineRunsCurrentRuntime(previous) ? 'The previous engine is back in use and publishing works as before.'
+      : `The previous engine is back in use, but it runs Node.js ${engineRuntime(previous)} and this Typeroll builds with Node.js ${BUILD_RUNTIME}, so publishing waits for the update.`;
     await store.updateDoc(enginePath(org, provider), { revision: randomUUID(), state: 'ready', enabled: true, checked_at: new Date().toISOString(),
-      issue: { code: 'build_engine_update_failed', message: `The build engine update did not finish (${issue.message.replace(/\.$/, '')}). The previous engine is back in use and publishing works as before. Run the update again from Publishing → Builds after resolving the cause.`, cause_code: issue.code } });
+      issue: { code: 'build_engine_update_failed', message: `The build engine update did not finish (${issue.message.replace(/\.$/, '')}). ${outcome} Run the update again from Publishing → Builds after resolving the cause.`, cause_code: issue.code } });
     console.info(JSON.stringify({ event: 'build_engine_restored', org_id: org, provider, failed_revision: failed.revision, restored_revision: previous.revision, cause: issue.code }));
     return true;
   } catch (error) {
