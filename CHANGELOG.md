@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.3.35 (candidate, MCP 0.45.141)
+
+- A publication no longer builds on an organization build engine whose
+  Node.js cannot build this Typeroll. Before, an engine left on Node.js
+  22.23.1 (for example after a failed automatic update restored it) took the
+  build about seven minutes into Astro before failing with
+  `rendering_build_process_exit_1`. Now publishing readiness refuses the
+  publication up front with `build_engine_update_required`, naming the
+  engine's and the required Node.js version, unless automatic engine updates
+  are on. With automatic updates on, the publication waits for other builds
+  and updates the engine first, instead of skipping the update. If that update
+  fails and the old engine comes back, the publication stops before building
+  and says why.
+- `read_organization_build_engine` reports the Node.js version builds run on
+  (`node_version`, from the engine configuration) and the one this Typeroll
+  builds with (`required_node_version`). The saved engine document kept the
+  version of its first setup, so an updated engine still read 22.23.1.
+  `get_publication_impact` adds `build_engine` with both versions,
+  `update_reason`, `auto_update` and `blocks_publication`.
+- After a failed engine update restores an engine on an older Node.js, its
+  status no longer says that publishing "works as before".
+- A stale-revision `409 build_settings_changed` from build engine setup, check
+  or provider selection carries `details.current_revision` to retry with.
+
 ## 0.3.34 (candidate, MCP 0.45.140)
 
 - Builds run on Node.js 22.23.5 (was 22.23.1), and Astro is 7.4.12 in the
