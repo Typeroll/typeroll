@@ -473,6 +473,17 @@ export default function PublishMenu({
                 <p className="pmenu__hint">No live URL — the page isn't published.</p>
               )
             )}
+            {plan && (plan.blockers.length > 0 || plan.notes.length > 0 || plan.estimate) && (
+              <div className="pmenu__plan" aria-label="Before you deploy">
+                {plan.blockers.map(item => <p key={item.code} className="pmenu__hint pmenu__hint--error">{item.message}</p>)}
+                {plan.notes.map(item => <p key={item.code} className="pmenu__hint">{item.message}</p>)}
+                {plan.estimate && (
+                  <p className="pmenu__hint">
+                    Usually takes about {plan.estimate.typical_minutes} min{plan.estimate.longer_because.length ? '; this one takes longer' : ''}.
+                  </p>
+                )}
+              </div>
+            )}
 
           </div>
           </div>
@@ -489,17 +500,6 @@ export default function PublishMenu({
               </button>
             </div>
             {deployErr && <p className="pmenu__hint pmenu__hint--error">{deployErr}</p>}
-            {plan && (plan.blockers.length > 0 || plan.notes.length > 0 || plan.estimate) && (
-              <div className="pmenu__plan" aria-label="Before you deploy">
-                {plan.blockers.map(item => <p key={item.code} className="pmenu__hint pmenu__hint--error">{item.message}</p>)}
-                {plan.notes.map(item => <p key={item.code} className="pmenu__hint">{item.message}</p>)}
-                {plan.estimate && (
-                  <p className="pmenu__hint">
-                    Usually takes about {plan.estimate.typical_minutes} min{plan.estimate.longer_because.length ? '; this one takes longer' : ''}.
-                  </p>
-                )}
-              </div>
-            )}
             {!changesLoading && changes && changes.total > 0 && (
               <details className="pmenu__change-details">
                 <summary>
