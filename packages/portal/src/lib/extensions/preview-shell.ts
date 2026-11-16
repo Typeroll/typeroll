@@ -32,10 +32,12 @@ function persist(){try{var encoded=JSON.stringify(storage);if(encoded.length<=26
 function safeName(value){return typeof value==="string"&&value.length>0&&value.length<=128&&value!=="__proto__"&&value!=="constructor"&&value!=="prototype";}
 function carry(query){Object.keys(carriedQuery).forEach(function(key){query.set(key,carriedQuery[key]);});}
 function frameUrl(){var path=location.pathname.startsWith(root)?location.pathname.slice(root.length):"/";if(!path.startsWith("/"))path="/"+path;var query=new URLSearchParams(location.search);carry(query);query.set("frame","1");query.set("bridge",bridgeId);return root+path+"?"+query.toString()+location.hash;}
-// Moving the frame replaces its history entry: the shell's own URL is the
-// one entry per page, so Back undoes a whole navigation. Setting src would
-// add a second, frame-only entry that Back undoes first, leaving the
-// address on the newer page.
+// Every page gets a new frame: the first load of a newly inserted frame
+// never enters the session history, so the shell's own URL is the one entry
+// per page and Back undoes a whole navigation. Moving the existing frame,
+// even with location.replace, still added a frame-only entry in WebKit
+// (iOS Safari and in-app browsers): Back undid that first and reloaded the
+// same page (2026-11-16).
 // Notices about the preview (content changed since the link was made, app
 // data that could not be derived) come from each frame document. They float
 // over the frame instead of entering its layout, and every new page replaces
@@ -48,7 +50,7 @@ function showNotices(list){if(notices){notices.remove();notices=null;}if(!Array.
     item.appendChild(text);item.appendChild(close);box.appendChild(item);});
   if(box.childNodes.length){document.body.appendChild(box);notices=box;}}
 var consentAnswered=false;
-function reload(){consentAnswered=false;showNotices(null);var url=frameUrl(),child=frame.contentWindow;if(child&&frame.getAttribute("src")){try{child.location.replace(url);return;}catch(_){}}frame.src=url;}
+function reload(){consentAnswered=false;showNotices(null);var next=frame.cloneNode(false);next.removeAttribute("src");next.addEventListener("load",frameLoaded);next.src=frameUrl();frame.replaceWith(next);frame=next;}
 function navigate(path){if(typeof path!=="string"||!path.startsWith("/")||path.startsWith("//")||path.includes("\\\\"))return;var requested=new URL(path,location.origin);var query=new URLSearchParams(requested.search);carry(query);var suffix=query.toString();var outer=root+requested.pathname+(suffix?"?"+suffix:"")+requested.hash;history.pushState(null,"",outer);reload();}
 // An off-site link from the frame opens here, unsandboxed: a popup the frame
 // opened itself would inherit its opaque-origin sandbox and break sign-in
@@ -58,7 +60,8 @@ function openExternal(href){if(typeof href!=="string"||href.length>8192)return;v
 addEventListener("popstate",reload);
 // A site that reloads the page after the answer reloads the frame at its own
 // address, without the answer: load it again with the answer carried.
-frame.addEventListener("load",function(){if(consentAnswered)reload();});
+function frameLoaded(){if(consentAnswered)reload();}
+frame.addEventListener("load",frameLoaded);
 addEventListener("message",function(event){var data=event.data;if(event.source!==frame.contentWindow||event.origin!=="null"||!data||data.channel!=="typeroll.extension-preview"||data.version!==1||data.bridge_id!==bridgeId)return;
   if(data.action==="storage.ready"){frame.contentWindow&&frame.contentWindow.postMessage({channel:"typeroll.extension-preview",version:1,bridge_id:bridgeId,action:"storage.init",storage:storage},"*");return;}
   if(data.action==="preview.notices"){showNotices(data.notices);return;}

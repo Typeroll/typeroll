@@ -1,0 +1,179 @@
+<div data-block="repeater" data-presentation="core%2Frepeater" data-bid="ref" data-layout="grid" style="--cols:3;--mobile-cols:1;--gap:auto;--align:stretch;" data-gap="auto" data-last-row="start"></div>
+
+/* css */
+@layer typeroll.platform{
+/* blocks-runtime */
+/* Universal visibility control set by Block.hidden_on */
+@media (max-width: 639px)                       { [data-hidden-mobile]  { display: none !important; } }
+@media (min-width: 640px) and (max-width: 1023px)  { [data-hidden-tablet]  { display: none !important; } }
+@media (min-width: 1024px) and (max-width: 1279px) { [data-hidden-laptop]  { display: none !important; } }
+@media (min-width: 1280px) and (max-width: 1535px) { [data-hidden-desktop] { display: none !important; } }
+@media (min-width: 1536px)                         { [data-hidden-wide]    { display: none !important; } }
+
+/* Text links remain recognizable without changing card, image, button or navigation links. */
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href] { text-decoration: var(--link-decoration, underline); text-underline-offset: 0.15em; overflow-wrap: anywhere; }
+:is([data-block="prose"], [data-block="list"], [data-block="table"], [data-block="rich_heading"], .block-image-caption, .block-iconbox-text, .block-hero-sub, .block-cta-sub, .block-testimonial-quote, .block-team-bio, .block-step-text, .block-mediacard-text, .block-frow-text, .form-help-body, .form-consent-text) a[href]:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+
+/* Archive pager (repeater paginate) */
+.tr-pager { display: flex; gap: 0.35rem; justify-content: center; align-items: center; flex-wrap: wrap; margin: 2rem auto 0; }
+.tr-pager a, .tr-pager .tr-pager-current {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 2.25rem; height: 2.25rem; padding: 0 0.6rem; border-radius: 0.5rem;
+  text-decoration: none; font-weight: 600; font-size: 0.9rem;
+  color: var(--color-text, #111); border: 1px solid rgba(0,0,0,0.12);
+}
+.tr-pager a:hover { border-color: var(--color-primary, #111); color: var(--color-primary, #111); }
+.tr-pager .tr-pager-current { background: var(--color-primary, #111); color: var(--color-primary-fg, #fff); border-color: var(--color-primary, #111); }
+.tr-pager .tr-pager-gap { opacity: 0.5; padding: 0 0.2rem; }
+
+/* core/pricing_plan */
+[data-block="pricing_plan"] {
+  padding: 2rem 1.5rem; border-radius: 0.75rem; border: 1px solid var(--pricing-border, rgba(0,0,0,0.1));
+  display: flex; flex-direction: column; gap: 0.75rem; background: var(--color-bg, white);
+}
+[data-block="pricing_plan"][data-highlight="true"] { border-color: var(--color-primary, #111); border-width: 2px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+[data-block="pricing_plan"] .block-pricing-badge { display: inline-block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; background: var(--color-primary, #111); color: var(--color-primary-fg, white); padding: 0.125rem 0.5rem; border-radius: 0.25rem; align-self: flex-start; }
+[data-block="pricing_plan"] .block-pricing-badge:empty { display: none; }
+[data-block="pricing_plan"] .block-pricing-name { margin: 0; font-size: 1.25rem; font-weight: 600; }
+[data-block="pricing_plan"] .block-pricing-price { font-size: 2rem; font-weight: 700; line-height: 1; margin: 0.25rem 0; }
+[data-block="pricing_plan"] .block-pricing-period { font-size: 1rem; opacity: 0.6; font-weight: 400; }
+[data-block="pricing_plan"] .block-pricing-description { margin: 0; opacity: 0.7; }
+[data-block="pricing_plan"] .block-pricing-description:empty { display: none; }
+[data-block="pricing_plan"] .block-pricing-features { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+[data-block="pricing_plan"] .block-pricing-cta {
+  margin-top: auto; padding: 0.75rem 1.5rem; text-align: center; border-radius: 0.375rem;
+  background: var(--color-primary, #111); color: var(--color-primary-fg, white);
+  text-decoration: none; font-weight: 600;
+}
+[data-block="pricing_plan"] .block-pricing-cta[href=""] { display: none; }
+[data-block="pricing_plan"] .block-pricing-features li { display: flex; gap: 0.5rem; align-items: baseline; }
+[data-block="pricing_plan"] .block-pricing-features li::before { content: "✓"; color: var(--color-primary, currentColor); font-weight: 700; }
+[data-block="pricing_plan"] .block-pricing-features li[data-included="false"] { opacity: 0.55; text-decoration: line-through; }
+[data-block="pricing_plan"] .block-pricing-features li[data-included="false"]::before { content: "–"; color: inherit; }
+[data-block="pricing_plan"][data-background]:not([data-background=""]) { background:var(--pricing-bg); }
+
+/* core/pricing_plan defaults */
+/* The period sits a space after the price. */
+[data-block="pricing_plan"] .block-pricing-period:not(:empty) { margin-inline-start:.35em; }
+/* A single plan on its own keeps the width of a plan card instead of stretching across the page. */
+:is(.page-content--blocks, .block-section-inner, .block-tabs-panel, [data-block="container"]) > [data-block="pricing_plan"] { max-inline-size:26rem; }
+
+[data-presentation="core%2Fpricing_table"]{--gap_px:initial}
+
+[data-presentation="core%2Frepeater"]{--gap_px:initial;--logo_height_px:initial}
+
+/* core/repeater */
+[data-block="repeater"] { --rep-gap: var(--grid-gap, 1rem); }
+[data-block="repeater"][data-gap="none"] { --rep-gap: 0px; }
+[data-block="repeater"][data-gap="xs"]   { --rep-gap: 0.25rem; }
+[data-block="repeater"][data-gap="sm"]   { --rep-gap: 0.5rem; }
+[data-block="repeater"][data-gap="md"]   { --rep-gap: 1rem; }
+[data-block="repeater"][data-gap="lg"]   { --rep-gap: 2rem; }
+[data-block="repeater"][data-gap="xl"]   { --rep-gap: 3rem; }
+
+[data-block="repeater"][data-layout="grid"] {
+  /* Read --cols directly so the responsive @media compiler's per-breakpoint
+     --cols overrides take effect. (The old [style*="--cols:N"] overrides were
+     redundant with this rule AND shadowed the responsive values via higher
+     specificity — an attribute-substring match can't see a computed var.) */
+  display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+  gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, stretch);
+}
+
+[data-block="repeater"][data-layout="justified"] {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, stretch);
+}
+
+[data-block="repeater"][data-layout="list"] {
+  display: flex; flex-direction: column; gap: var(--gap_px, var(--rep-gap));
+}
+
+[data-block="repeater"][data-layout="stack"] {
+  display: flex; flex-wrap: wrap; gap: var(--gap_px, var(--rep-gap)); align-items: var(--align, center);
+}
+
+[data-block="repeater"][data-layout="masonry"] {
+  column-count: var(--cols, 3); column-gap: var(--gap_px, var(--rep-gap));
+}
+[data-block="repeater"][data-layout="masonry"] > * { break-inside: avoid; margin-bottom: var(--gap_px, var(--rep-gap)); }
+
+[data-block="repeater"][data-layout="carousel"] { position: relative; }
+[data-block="repeater"][data-layout="carousel"] > .tr-carousel-track {
+  display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: var(--gap_px, var(--rep-gap));
+  scrollbar-width: thin; scroll-behavior: smooth;
+}
+[data-block="repeater"][data-layout="carousel"] > .tr-carousel-track > * { flex: 0 0 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap))) / var(--cols, 3)); scroll-snap-align: start; }
+[data-block="repeater"] > .tr-carousel-controls { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-top: 0.75rem; }
+[data-block="repeater"] > .tr-carousel-controls[hidden], [data-block="repeater"] .tr-carousel-button[hidden] { display: none; }
+[data-block="repeater"] .tr-carousel-button { inline-size: 2.5rem; block-size: 2.5rem; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid currentColor; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; }
+[data-block="repeater"] .tr-carousel-button:disabled { opacity: 0.4; cursor: default; }
+[data-block="repeater"] .tr-carousel-dots { display: flex; flex-wrap: wrap; justify-content: center; }
+[data-block="repeater"] .tr-carousel-dot { inline-size: 24px; block-size: 24px; padding: 7px; border: 0; border-radius: 50%; background: currentColor; background-clip: content-box; opacity: 0.35; cursor: pointer; }
+[data-block="repeater"] .tr-carousel-dot[aria-current="true"] { opacity: 1; }
+[data-block="repeater"] .tr-carousel-button:focus-visible, [data-block="repeater"] .tr-carousel-dot:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { [data-block="repeater"][data-layout="carousel"] > .tr-carousel-track { scroll-behavior: auto; } }
+
+.tr-repeater-group + .tr-repeater-group { margin-top: 2rem; }
+.tr-repeater-group-title { margin: 0 0 0.75rem; }
+
+@media (max-width: 639px) {
+  /* The mobile count is independent of desktop/tablet column defaults. */
+  [data-block="repeater"][data-layout="grid"]:not([data-responsive-cols]) { grid-template-columns: repeat(var(--mobile-cols, 1), minmax(0, 1fr)); }
+  [data-block="repeater"][data-layout="masonry"]:not([data-responsive-cols]) { column-count: var(--mobile-cols, 1); }
+}
+[data-block="repeater"][data-layout="grid"][data-last-row="center"] { display:flex; flex-wrap:wrap; justify-content:center; }
+[data-block="repeater"][data-layout="grid"][data-last-row="center"] > * { flex:0 1 calc((100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3)); min-inline-size:min(100%, var(--min-item, 10rem)); }
+[data-block="repeater"][data-layout="grid"][data-last-row="center"] > :is(p,ul,ol,div:not([data-block])) { flex-basis:100%; }
+@media (max-width: 639px) {
+  [data-block="repeater"][data-layout="grid"][data-last-row="center"]:not([data-responsive-cols]) > * { flex-basis:calc((100% - (var(--mobile-cols, 1) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--mobile-cols, 1)); }
+}
+[data-block="repeater"] { --logo-height:var(--logo_height_px); }
+
+/* core/repeater defaults */
+/* Grids of repeated items: the column setting is the maximum, and each item keeps a minimum
+   width, so a grid in a narrow column or on a phone has fewer columns instead of slivers. */
+[data-block="repeater"][data-layout="grid"] { --min-item:10rem; }
+/* An empty-state message spans the whole grid instead of filling the first cells. */
+[data-block="repeater"][data-layout="grid"] > :is(p,ul,ol,div:not([data-block])) { grid-column:1 / -1; }
+[data-block="repeater"][data-layout="grid"]:has(> [data-block="logo_item"]) { --min-item:7rem; row-gap:var(--space-md, 1rem); }
+[data-block="repeater"][data-layout="grid"]:has(> :is([data-block="icon_box"],[data-block="pricing_plan"],[data-block="team_member"],[data-block="testimonial"],[data-block="post_card"],[data-block="step_card"],[data-block="media_card"])) { --min-item:14rem; }
+/* The column setting is the maximum; fewer items than columns keep one column's width (last_row centres them). */
+[data-block="repeater"][data-layout="grid"][data-layout] { grid-template-columns:repeat(auto-fill, minmax(min(100%, max(var(--min-item), (100% - (var(--cols, 3) - 1) * var(--gap_px, var(--rep-gap, 1rem))) / var(--cols, 3))), 1fr)); }
+/* Carousels show one card and a glimpse of the next on narrow screens. */
+[data-block="repeater"][data-layout="carousel"] { container-type:inline-size; }
+@container (max-width: 560px) {
+  [data-block="repeater"][data-layout="carousel"] > .tr-carousel-track > * { flex-basis:85%; }
+}
+
+/* block defaults */
+/* A word longer than its column wraps instead of widening the page. */
+:where([data-block]) { overflow-wrap:anywhere; }
+/* An image without a source (an optional logo or avatar) takes no space. */
+:where([data-block]) :is(img:not([src]), img[src=""]) { display:none; }
+/* Media never grows wider than the block it sits in. */
+:where([data-block]) :where(img,video,iframe,canvas) { max-inline-size:100%; }
+:where([data-block]) :where(img) { block-size:auto; }
+/* An image in a block sits where the block places it; only running text adds space around its images. */
+:where([data-block]:not([data-block="prose"])) :where(img) { margin-block:0; }
+/* Flex and grid children can shrink below their longest word, and nothing
+   inside a block grows wider than its parent (tables and code scroll instead). */
+:where([data-block], [data-block] *) { min-width:0; }
+:where([data-block] *):not(:where(table,thead,tbody,tfoot,tr,td,th,pre,code,pre *,[data-block="prose"])) { max-inline-size:100%; }
+/* Running text keeps its reading measure and never grows wider than its column. */
+:where([data-block="prose"]) { max-inline-size:min(100%, var(--measure-prose, 65ch)); }
+/* Icons keep their size in a row; the text beside them gives way. */
+:where([data-block]) :where([class$="-icon"], [class*="-icon "], svg) { flex-shrink:0; }
+/* Headings balance their lines, so a title does not end with one word alone. */
+:where(h1,h2,h3,h4) { text-wrap:balance; }
+/* Grid cells, columns and tab panels are containers: blocks inside them adapt to the cell, not the screen. */
+:where([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel) { container-type:inline-size; }
+/* A size container gives its content no width to size by, so in a centring or row container a block holding one
+   would shrink to nothing. Such a block fills the container instead; its own maximum width still applies. */
+:where([data-block="container"]) > :where([data-block]):where(:has(:is([data-block="grid"] > *, [data-block="repeater"][data-layout="grid"] > *, .block-columns-col, .block-tabs-panel, .block-table-scroll, [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"])), [data-block="repeater"][data-layout="carousel"], [data-block="hero"], [data-block="feature_row"], [data-block="cta"], [data-block="stats"], [data-block="timeline"], [data-block="audio"], [data-block="scroll_steps"]) { inline-size:100%; }
+}
+
+@layer typeroll.instance{
+[data-space-before] { margin-top:var(--space-before); }
+[data-space-after] { margin-bottom:var(--space-after); }
+}

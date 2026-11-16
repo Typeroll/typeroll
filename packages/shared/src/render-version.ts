@@ -238,7 +238,17 @@ export const RENDER_VERSIONS: readonly RenderVersionInfo[] = [
       'A block that names its alt text field (alt_field) uses that field on every render version.',
     ],
   },
+  {
+    version: 22, core_version: '0.3.37', title: 'Whole-card links with an action label',
+    changes: [
+      'A Post card with whole_card_link on links the entire card also when it shows an action label such as "Read more": the label goes to the same page as the title, so it no longer turns the whole-card link off. Clicking anywhere on the card opens the page; the title and the label stay separate links for keyboard and screen reader users.',
+      'A card with a download link (download_url_field) or an unlinked title still keeps separate links, because the download goes somewhere else.',
+    ],
+  },
 ];
+
+/** Render version from which an action label (same destination as the title) keeps a Post card's whole-card link. */
+export const WHOLE_CARD_ACTION_RENDER_VERSION = 22;
 
 /** Render version from which the featured image reads `<image field>_alt` by default. */
 export const FEATURED_IMAGE_ALT_RENDER_VERSION = 21;
