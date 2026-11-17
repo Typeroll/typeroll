@@ -1,4 +1,5 @@
 import { organizationRequestRefusal } from './organization-access';
+import { authorizeRequestTiming, measureRequestStep, measureRequestSync, withoutRequestTiming } from './runtime/request-timing';
 // Auth guard for the public REST API at /api/v1/*. Mirrors the shape of
 // requireSiteAccess() in lib/access.ts but auths with a bearer token instead
 // of a session cookie, and binds the request to the site declared in the
@@ -443,7 +444,7 @@ async function resolveAnyApiKey(request: Request): Promise<GuardResult<ApiContex
     };
   }
 
-  void recordKeyUse(verified.orgId, verified.siteId, verified.prefix, clientIp(request));
+  void withoutRequestTiming(() => recordKeyUse(verified.orgId, verified.siteId, verified.prefix, clientIp(request)));
   return {
     ok: true,
     value: {
@@ -592,7 +593,7 @@ async function resolveApiKey(
   }
 
   // Telemetry fire-and-forget. Failures here must NOT affect the response.
-  void recordKeyUse(verified.orgId, verified.siteId, verified.prefix, clientIp(request));
+  void withoutRequestTiming(() => recordKeyUse(verified.orgId, verified.siteId, verified.prefix, clientIp(request)));
 
   return {
     ok: true,
@@ -755,7 +756,7 @@ export function apiResponse(
   bodyForAudit?: unknown,
 ): Response {
   if (shouldAudit(ctx.request.method)) {
-    void recordAudit({
+    void withoutRequestTiming(() => recordAudit({
       orgId: ctx.orgId,
       siteId: ctx.siteId,
       keyPrefix: ctx.keyPrefix,
@@ -766,12 +767,12 @@ export function apiResponse(
       ip: clientIp(ctx.request),
       userAgent: ctx.request.headers.get('user-agent') ?? undefined,
       bodyPreview: previewBody(bodyForAudit),
-    });
+    }));
   }
-  return new Response(JSON.stringify(data), {
+  return measureRequestSync('response', () => new Response(JSON.stringify(data), {
     status,
     headers: { 'Content-Type': 'application/json', ...apiIdentityHeaders(ctx) },
-  });
+  }));
 }
 
 /** Convenience for "this argument was malformed" responses that DON'T need
@@ -832,8 +833,12 @@ export async function requireAnyApiKey(request: Request): Promise<GuardResult<Ap
   return refusal ? { ok: false, response: refusal } : result;
 }
 export async function requireApiKey(request: Request, siteId: string | undefined, options: RequireApiKeyOptions = {}): Promise<GuardResult<ApiContext>> {
-  const result = await resolveApiKey(request, siteId, options);
-  if (!result.ok) return result;
-  const refusal = await organizationRequestRefusal(result.value.orgId, request, options.sideEffectFree);
-  return refusal ? { ok: false, response: refusal } : result;
+  return measureRequestStep('authentication', async () => {
+    const result = await resolveApiKey(request, siteId, options);
+    if (!result.ok) return result;
+    const refusal = await organizationRequestRefusal(result.value.orgId, request, options.sideEffectFree);
+    if (refusal) return { ok: false, response: refusal };
+    authorizeRequestTiming();
+    return result;
+  });
 }

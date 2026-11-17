@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.38 (candidate, MCP 0.45.144)
+
+- Page saves reuse document reads within the write, while conditional writes still
+  check current storage. Field-only updates skip unchanged body/template and route
+  work. Revision snapshots remain synchronous; optional old-history pruning runs
+  after the response on Workers. The synthetic field-save probe drops from 50 to
+  18 storage transport calls; this is not a production latency claim.
+- Batch Page writes keep result order with four concurrent writers, reject duplicate
+  Page IDs before writing, and do not load the block registry for field-only patches.
+- Authenticated Page read/save responses include Server-Timing and a timing ID.
+  Slow requests log phase timings, storage RPC waits/counts and transaction conflicts
+  without customer content or credentials; detached maintenance is excluded.
+- Site administrators can use `replace_media` with a dry run to point a library item
+  at another ready file on the same Site. All-version previews and future normal
+  publications resolve the replacement without saving Pages. Page-specific alt text
+  stays unchanged; frozen domain rebuilds retain their original media.
+
 ## 0.3.37 (candidate, MCP 0.45.143)
 
 - Back in a preview link returns to the previous page in one step on iOS

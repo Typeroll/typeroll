@@ -33,6 +33,12 @@ async function uploadFromUrl(args: UrlUploadInput, deps: ToolDeps): Promise<Reco
 
 export const mediaTools: ToolDef[] = [
   {
+    name: 'replace_media',
+    description: 'Use another uploaded library file wherever a media item is referenced, without saving each Page. Site administrator only; site-wide across all versions. Defaults to dry_run:true. Preview and the next normal publication resolve the replacement; existing live files and Page-specific alt text stay unchanged. Does not publish, copy bytes, or delete either file. Pass replacement_media_id:null to undo. Replacement chains are checked for cycles and missing/unready files.',
+    inputSchema: { media_id: z.string(), replacement_media_id: z.string().nullable(), dry_run: z.boolean().optional() },
+    handler: withErrorBoundary(async (args, { client, siteId }) => ok(await client.post(siteId, `media/${encodeURIComponent(args.media_id)}/replace`, { replacement_media_id: args.replacement_media_id, dry_run: args.dry_run ?? true }))),
+  },
+  {
     name: 'get_import_readiness',
     description: 'Check whether the organization’s own storage is connected and verified before importing content or media. Returns a Publishing settings link when setup is required.',
     inputSchema: {},

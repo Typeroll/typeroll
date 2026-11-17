@@ -10,6 +10,7 @@
 // a read (POST with no state change → not audited).
 
 import type { APIRoute } from 'astro';
+import { measureRequestStep } from '../../../../../../lib/runtime/request-timing';
 import { apiError, apiResponse, requireApiKey } from '../../../../../../lib/api-auth';
 import { vstore } from '../../../../../../lib/version-store';
 import { pageExcerpt, type Page } from '@typeroll/shared';
@@ -46,7 +47,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   const guard = await requireApiKey(request, params.siteId);
   if (!guard.ok) return guard.response;
   const ctx = guard.value;
-  const body = (await request.json().catch(() => null)) as { page_ids?: unknown } | null;
+  const body = (await measureRequestStep('request_body', () => request.json().catch(() => null))) as { page_ids?: unknown } | null;
   if (!body || !Array.isArray(body.page_ids)) {
     return apiError('Body must be { page_ids: string[] }');
   }
@@ -58,7 +59,7 @@ export const POST: APIRoute = async ({ request, params }) => {
   // datastore handles the merge tombstones internally.
   const results = await Promise.all(
     ids.map(async (id) => {
-      const page = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, id);
+      const page = await measureRequestStep('read_page', () => vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, id));
       return page ? { page_id: id, found: true, page: project(page) } : { page_id: id, found: false };
     }),
   );

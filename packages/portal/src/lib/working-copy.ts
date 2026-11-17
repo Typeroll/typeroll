@@ -3,8 +3,9 @@ import { isDeepStrictEqual } from 'node:util';
 import { ensureBlockIds, invalidFieldValuesBody, invalidSelectValues, type Block } from '@typeroll/shared';
 import { siteBlockRegistry } from './block-write-warnings';
 import { blockTreeInputError } from './block-tree-input';
-import { pageAuthorityFields } from '@typeroll/shared';
-import { pageAddress, pageContentType, routePageExcerpt, validatePageFields, validatePagePresentation } from './page-fields';
+import { contentPagePath, pageAuthorityFields } from '@typeroll/shared';
+import { measureRequestStep } from './runtime/request-timing';
+import { pageContentType, routePageExcerpt, validatePageFields, validatePagePresentation } from './page-fields';
 // Editor working copies — server-side scratch state for unsaved edits.
 //
 // The editors autosave here instead of writing straight to the canonical
@@ -188,8 +189,12 @@ export async function filterWcFields(
       fields = routePageExcerpt(type, fields);
       const error = fields.fields !== undefined ? validatePageFields(type, fields.fields) : null;
       if (error) throw new WorkingCopyError(error, 400);
-      const presentationError = await validatePagePresentation(ctx, type, { ...page, ...(await readWorkingCopy(ctx, target))?.fields, ...fields });
-      if (presentationError) throw new WorkingCopyError(presentationError, 400);
+      // Structured values do not change a template or the heading tree. A
+      // pure field patch must not traverse the saved body or load its template.
+      if (Object.keys(fields).some(key => key !== 'fields')) {
+        const presentationError = await validatePagePresentation(ctx, type, { ...page, ...(await readWorkingCopy(ctx, target))?.fields, ...fields });
+        if (presentationError) throw new WorkingCopyError(presentationError, 400);
+      }
     }
   } else if (target.kind === 'partial') {
     allowed = new Set<string>(PARTIAL_WC_FIELDS);
@@ -394,9 +399,9 @@ export async function commitWorkingCopy(
     await checkStructure(ctx, target, wc.fields, existing);
     if (wc.answer_base && !isDeepStrictEqual(wc.answer_base, { fields: existing.fields ?? {}, provenance: existing._provenance ?? {} }))
       throw new WorkingCopyError('Structured answers changed after this draft started. Reload and review the current answers before saving.', 409);
-    const update: Record<string, unknown> = { ...await filterWcFields(ctx, target, wc.fields), date_updated: now };
+    const update: Record<string, unknown> = { ...await measureRequestStep('content_validation', () => filterWcFields(ctx, target, wc.fields)), date_updated: now };
+    const type = await pageContentType(ctx, existing);
     {
-      const type = await pageContentType(ctx, existing);
       if (!type) throw new WorkingCopyError('Content type not found', 400);
       const authority = applyFieldAuthority({ fields: pageAuthorityFields(type),
         incoming: { ...update, ...(update.fields as Record<string, unknown> ?? {}) }, existing, actor: actor ?? 'portal', actorId: createdBy, now, sources: wc.answer_sources, overrideReason });
@@ -423,20 +428,23 @@ export async function commitWorkingCopy(
       update.html_content = transformed;
       warnings = lintBodyForSeo(transformed);
     }
-    await snapshotRevision({
+    await measureRequestStep('revision', () => snapshotRevision({
       orgId: ctx.orgId, siteId: ctx.siteId, versionId: ctx.versionId,
       kind: 'page', resourceIds: [target.id],
       doc: existing as unknown as Record<string, unknown>, createdBy,
-    });
-    await vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, { actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources, overrideReason });
+    }));
+    await measureRequestStep('page_write', () => vstore.writePage(ctx.orgId, ctx.siteId, ctx.versionId, target.id, update as Partial<Page>, { actor: actor ?? 'portal', actorId: createdBy, expected: existing, sources: wc.answer_sources, overrideReason }));
 
     let auto_redirects: CommitResult['auto_redirects'] = [];
     let retired_redirects: CommitResult['retired_redirects'] = [];
-    if ('slug' in update || 'path' in update || 'fields' in update) {
+    const routeType = type;
+    const nextAddress = routeType ? contentPagePath({ ...existing, ...update } as Page, routeType) : null;
+    const previousAddress = routeType ? contentPagePath(existing, routeType) : null;
+    if (nextAddress !== previousAddress) {
       const fresh = await vstore.page(ctx.orgId, ctx.siteId, ctx.versionId, target.id);
       if (fresh) {
-        const oldUrl = await pageAddress(ctx, existing);
-        const newUrl = await pageAddress(ctx, fresh);
+        const oldUrl = previousAddress;
+        const newUrl = routeType ? contentPagePath(fresh, routeType) : null;
         if (oldUrl && newUrl) auto_redirects = await maybeAutoRedirect(ctx, oldUrl, newUrl);
         if (newUrl && isLivePageStatus(fresh.status)) {
           retired_redirects = (

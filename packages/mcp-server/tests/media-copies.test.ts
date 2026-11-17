@@ -20,6 +20,17 @@ function setup(status = 200, body: unknown = { ok: true }) {
 const tool = (name: string) => mediaTools.find(candidate => candidate.name === name)!;
 
 describe('published media copies', () => {
+  it('requires admin for library replacement and defaults to dry run, including undo', async () => {
+    expect(effectFor('replace_media')).toBe('admin');
+    const { client, siteId, calls } = setup();
+    await tool('replace_media').handler({ media_id: 'old', replacement_media_id: 'new' } as never, { client, siteId });
+    await tool('replace_media').handler({ media_id: 'old', replacement_media_id: null, dry_run: false } as never, { client, siteId });
+    expect(calls.map(call => [call.method, call.url, JSON.parse(call.body!)])).toEqual([
+      ['POST', 'https://example.test/api/v1/sites/mysite/media/old/replace', { replacement_media_id: 'new', dry_run: true }],
+      ['POST', 'https://example.test/api/v1/sites/mysite/media/old/replace', { replacement_media_id: null, dry_run: false }],
+    ]);
+  });
+
   it('remove_published_media_copies posts ids, urls and dry_run to the site route', async () => {
     const { client, siteId, calls } = setup();
     const args = { media_ids: ['f9fb91f4-1ba8-48de-97ad-b0be86d76d7e'], urls: ['https://media.example.test/media/abc/0123456789abcdef-a.jpg'], dry_run: true };

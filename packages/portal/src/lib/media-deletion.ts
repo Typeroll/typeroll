@@ -299,6 +299,7 @@ export async function deleteMediaItem(orgId: string, siteId: string, mediaId: st
   if (!media) return null;
   const record: Media = { ...media, id: mediaId };
   const [scope, records] = await Promise.all([copyScope(orgId, siteId), store.listDocs<Media>(paths.media(orgId, siteId))]);
+  if (records.some(item => item.replacement_media_id === mediaId)) throw new ConnectionError('This file is a replacement for another library item. Clear or change those replacements before deleting it.', 409, 'media_replacement_in_use');
   const claims = existingClaims(records, scope, new Set([mediaId]));
   const identity = mediaIdentity(record);
   const plan = await findCopies(orgId, siteId, { scope, subjects: [identitySubject(identity, scope)], claims });

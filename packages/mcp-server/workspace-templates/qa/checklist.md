@@ -123,3 +123,12 @@ content-type field mapped to Schema.org `image` supplies the image after
 `og_image`, before site defaults. Its `<field>_alt` supplies the image description
 when public; `seo_image_alt` is the explicit override. Never copy a site logo
 into every Page merely to reproduce an old fallback.
+
+
+### Bulk content and image edits
+
+- Send only changed fields. Use `batch_update_pages` for Page-specific edits,
+  inspect each result and retry only failed entries. Review earlier drafts before save.
+- For a library-wide `replace_media`, review the dry run and all-version scope;
+  inspect preview image proportions, crops and editorial alt text before publishing.
+  The replacement leaves saved Page bodies and the current live publication intact.

@@ -950,6 +950,8 @@ export interface Redirect {
 
 export interface Media {
   id: string;
+  /** Site-wide library replacement, resolved in previews and future publications. */
+  replacement_media_id?: string | null;
   filename: string;
   cdn_url: string;
   /** Cloudflare R2 object key — needed to delete the underlying object. */

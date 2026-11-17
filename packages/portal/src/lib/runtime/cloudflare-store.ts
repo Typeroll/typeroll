@@ -6,6 +6,7 @@
 import { ShardedStore } from '../store/sharded-store';
 import { durableObjectTransport, type DocumentStoreRpc } from '../store/durable-object';
 import { generateDocId } from '../datastore';
+import { timedStoreTransport } from './request-timing';
 
 export interface DurableObjectNamespaceLike {
   jurisdiction(name: 'eu'): DurableObjectNamespaceLike;
@@ -34,7 +35,7 @@ export function lazyObject(env: StoreEnv, name: string): DocumentStoreRpc {
 }
 
 export function cloudflareStore(env: StoreEnv): ShardedStore {
-  return new ShardedStore({ transport: name => durableObjectTransport(lazyObject(env, name) as never) }, generateDocId);
+  return new ShardedStore({ transport: name => timedStoreTransport(durableObjectTransport(lazyObject(env, name) as never)) }, generateDocId);
 }
 
 /** The store and its object transports, as the cutover import addresses objects directly. */

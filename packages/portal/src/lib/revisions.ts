@@ -12,6 +12,7 @@
 import { paths } from '@typeroll/shared';
 import type { Menu, Page, Partial as PartialDoc, Revision, RevisionKind, SiteFields } from '@typeroll/shared';
 import { getStore } from './datastore';
+import { runMaintenance } from './runtime/background-tasks';
 
 /** How many revisions to keep per doc per branch. Oldest get pruned. */
 const CAP = 100;
@@ -54,14 +55,16 @@ export async function snapshotRevision(args: SnapshotArgs): Promise<string> {
   await store.setDoc(`${collPath}/${revId}`, rev as unknown as Record<string, unknown>);
 
   // Prune anything beyond CAP. List, sort by created_at desc, delete the tail.
-  const all = await store.listDocs<Revision>(collPath);
-  if (all.length > CAP) {
-    all.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
-    const toDelete = all.slice(CAP);
-    for (const r of toDelete) {
-      await store.deleteDoc(`${collPath}/${r.id}`).catch(() => {});
+  await runMaintenance(async () => {
+    const all = await store.listDocs<Revision>(collPath);
+    if (all.length > CAP) {
+      all.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+      const toDelete = all.slice(CAP);
+      for (const r of toDelete) {
+        await store.deleteDoc(`${collPath}/${r.id}`).catch(() => {});
+      }
     }
-  }
+  });
   return revId;
 }
 

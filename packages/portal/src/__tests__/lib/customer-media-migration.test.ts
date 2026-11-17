@@ -663,3 +663,26 @@ it('lists every set-aside file of every site with its host only, pages through t
   expect(second.failed_media.map(file => file.media_id)).toEqual(Array.from({ length: 11 }, (_, index) => `moveria-de-${String(88 + index).padStart(3, '0')}`));
   expect(second.failed_media_next).toBeNull();
 });
+
+it('uses a library replacement in normal frozen publications without rewriting saved Pages', async () => {
+  const { replaceMedia } = await import('../../lib/media/replacement');
+  const store = getStore();
+  const newSha = createHash('sha256').update('replacement').digest('hex');
+  for (const [id, digest] of [['image', sha], ['replacement', newSha]]) {
+    await store.setDoc(`${paths.media('org', 'site')}/${id}`, { filename: `${id}.png`, mime_type: 'image/png', cdn_url: `https://cms.example.com/api/sites/site/media/${id}/content`, sha256: digest,
+      storage: { provider: 'organization_r2', state: 'ready', account_id: 'a'.repeat(32), bucket: 'customer-private', key: `originals/${id}` } });
+  }
+  const original = { pages: [{ id: 'p', fields: { featured_image: oldUrl, featured_image_alt: 'Context' }, html_content: `<img src="${oldUrl}">` }] };
+  await store.setDoc(paths.page('org', 'site', 'p', 'main'), original.pages[0]);
+  const before = await publicationMediaManifest('org', 'site', original, 'site.demos.example.com');
+  await replaceMedia('org', 'site', 'image', 'replacement', false);
+  const after = await publicationMediaManifest('org', 'site', original, 'site.demos.example.com', undefined, { deferReferences: true });
+  expect(after.manifest?.entries).toHaveLength(1);
+  expect(after.manifest?.entries[0]).toMatchObject({ id: 'replacement', sha256: newSha, source_key: 'originals/replacement' });
+  expect(after.content.pages[0].fields.featured_image).toContain('/replacement/content');
+  expect(after.content.pages[0].fields.featured_image_alt).toBe('Context');
+  expect(await store.getDoc(paths.page('org', 'site', 'p', 'main'))).toMatchObject(original.pages[0]);
+  expect(after.manifest?.entries[0].sha256).not.toBe(before.manifest?.entries[0].sha256);
+  const domain = await publicationMediaManifest('org', 'site', before.content, 'final.example.com', { site_url: 'https://site.demos.example.com', media_manifest: before.manifest });
+  expect(domain.manifest?.entries[0]).toMatchObject({ id: 'image', sha256: sha });
+});
