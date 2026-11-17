@@ -1,3 +1,4 @@
+import { authorizeRequestTiming, measureRequestStep } from '../../../lib/runtime/request-timing';
 // GET /preview/{siteId}/{...slug}?t=<signed-token>
 //
 // Token-auth navigable preview for external agents. The token is minted by
@@ -10,7 +11,6 @@
 // page.
 
 import type { APIRoute } from 'astro';
-import { randomUUID } from 'node:crypto';
 import { renderPreviewBySlug } from '../../../lib/render-preview';
 import { previewDerivation } from '../../../lib/publishing/preview-derivation';
 import { verifyActivePreviewToken } from '../../../lib/preview-signing';
@@ -19,7 +19,7 @@ import { rateLimit } from '../../../lib/rate-limit';
 import { isolatedPreviewHeaders, publicRequestOrigin } from '../../../lib/preview-headers';
 import { injectPreviewNotices, previewStateHeaders, type PreviewNotice } from '../../../lib/preview-notices';
 import {
-  buildExtensionPreviewShell,
+  buildExtensionPreviewShell, previewBridgeId,
   extensionPreviewShellHeaders,
 } from '../../../lib/extensions/preview-shell';
 
@@ -41,6 +41,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   const ticket = await verifyActivePreviewToken(token);
   if (!ticket) return plain('<h1>Invalid or expired preview link</h1>', 401);
   if (ticket.site_id !== siteId) return plain('<h1>Invalid preview link</h1>', 401);
+  authorizeRequestTiming();
 
   // Rate-limit per token so a runaway scraper can't pull a snapshot loop.
   // 300/min, separate bucket from API key rate-limits.
@@ -78,8 +79,9 @@ export const GET: APIRoute = async ({ params, request }) => {
   const consentChoice = consentParam === 'all' || consentParam === 'necessary' ? consentParam : undefined;
   if (!isFrame) {
     return new Response(buildExtensionPreviewShell({
+      pageUrl: request.url,
       siteId,
-      bridgeId: randomUUID(),
+      bridgeId: previewBridgeId(`/preview/${siteId}`, token!),
       rootPath: `/preview/${siteId}`,
       storageScope: token!,
       carriedQuery: { t: token!, ...(consentChoice ? { consent: consentChoice } : {}) },
@@ -96,7 +98,7 @@ export const GET: APIRoute = async ({ params, request }) => {
   // Derived data comes from the version's accepted, published content, as its
   // next publication would see it, never from working copies or proposals.
   // A link made with a content revision recomputes it, to say when content changed since.
-  const derivation = await previewDerivation(ticket.org_id, ticket.site_id, ticket.version_id, { contentRevision: Boolean(ticket.cr) });
+  const derivation = await measureRequestStep('preview_derivation', () => previewDerivation(ticket.org_id, ticket.site_id, ticket.version_id, { contentRevision: Boolean(ticket.cr) }));
   const derivedDataUrl = derivation.data_digest
     ? `${publicRequestOrigin(request)}${browseRoot}/_typeroll/derived/${derivation.data_digest}.json?t=${encodeURIComponent(token!)}` : '';
 

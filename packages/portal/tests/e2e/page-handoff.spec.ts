@@ -195,7 +195,7 @@ test.describe("Extension component on a page after a native banner", () => {
       if (url.searchParams.get("frame") !== "1") {
         return route.fulfill({
           headers: extensionPreviewShellHeaders(),
-          body: buildExtensionPreviewShell({ siteId: "site", bridgeId: "00000000-0000-4000-8000-000000000001", rootPath: root, storageScope: "ticket", carriedQuery: { t: "ticket" } }),
+          body: buildExtensionPreviewShell({ pageUrl: url.href, siteId: "site", bridgeId: "00000000-0000-4000-8000-000000000001", rootPath: root, storageScope: "ticket", carriedQuery: { t: "ticket" } }),
         });
       }
       const bridge = { id: url.searchParams.get("bridge")!, parentOrigin: origin };

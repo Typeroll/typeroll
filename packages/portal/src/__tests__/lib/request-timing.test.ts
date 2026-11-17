@@ -65,3 +65,22 @@ it('records an authenticated failure without logging the error or changing it', 
   expect(reports[0]).toMatchObject({ status: 500, steps: { page_write: { count: 1 } } });
   expect(JSON.stringify(reports)).not.toContain(error.message);
 });
+
+it.each([
+  '/preview/secret-site/article/?t=secret-ticket&frame=1',
+  '/api/sites/secret-site/preview/browse/article/',
+  '/api/v1/sites/secret-site/pages/secret-page/preview',
+])('measures an authorized preview without logging its ticket or route: %s', async path => {
+  const reports: Record<string, any>[] = [];
+  const req = new Request('https://portal.test' + path);
+  const refused = await withApiRequestTiming(req, async () => new Response(null, { status: 401 }), { log: report => reports.push(report) });
+  expect(refused.headers.has('server-timing')).toBe(false);
+  expect(reports).toEqual([]);
+  const response = await withApiRequestTiming(req, async () => {
+    authorizeRequestTiming();
+    return measureRequestStep('preview_render', async () => new Response('preview'));
+  }, { log: report => reports.push(report) });
+  expect(response.headers.get('server-timing')).toContain('preview_render;');
+  expect(reports[0].operation).toMatch(/^preview\./);
+  expect(JSON.stringify(reports)).not.toMatch(/secret-|article|portal.test/);
+});

@@ -1,3 +1,4 @@
+import { authorizeRequestTiming } from '../../../../../lib/runtime/request-timing';
 import type { APIRoute } from 'astro';
 import { requireSiteAccess } from '../../../../../lib/access';
 import { renderPreview } from '../../../../../lib/render-preview';
@@ -6,6 +7,7 @@ import { isolatedPreviewHeaders } from '../../../../../lib/preview-headers';
 export const GET: APIRoute = async ({ cookies, params, locals, request }) => {
   const guard = await requireSiteAccess(cookies, params.siteId, locals);
   if (!guard.ok) return guard.response;
+  authorizeRequestTiming();
   const { site, versionId, owner_org_id } = guard.value;
   const { pageId } = params;
   if (!pageId) return new Response('Missing pageId', { status: 400 });

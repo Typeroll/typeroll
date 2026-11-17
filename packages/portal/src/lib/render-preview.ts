@@ -1,3 +1,4 @@
+import { measureRequestStep } from './runtime/request-timing';
 // Server-side preview renderer.
 //
 // Reads a page, settings, and partials from the datastore and produces an HTML
@@ -161,22 +162,46 @@ export interface PreviewOptions {
   derived?: { sources: Record<string, Array<Record<string, unknown>>>; dataUrl: string };
 }
 
-export async function renderPreview(
+/** Request-local inputs already read while resolving a preview route. */
+interface PreviewContent {
+  pages: Awaited<ReturnType<typeof vstore.pages>>;
+  types: Awaited<ReturnType<typeof vstore.contentTypes>>;
+}
+
+export function renderPreview(orgId: string, siteId: string, pageId: string, versionId: string, opts: PreviewOptions = {}, content?: PreviewContent): Promise<string | null> {
+  return measureRequestStep('preview_render', () => renderPreviewDocument(orgId, siteId, pageId, versionId, opts, content));
+}
+
+async function renderPreviewDocument(
   orgId: string,
   siteId: string,
   pageId: string,
   versionId: string,
   opts: PreviewOptions = {},
+  content?: PreviewContent,
 ): Promise<string | null> {
   const store = getStore();
-  let page = opts.pageOverride ?? (await vstore.page(orgId, siteId, versionId, pageId));
+  let page = opts.pageOverride ?? (content ? content.pages.find(candidate => candidate.id === pageId) : await vstore.page(orgId, siteId, versionId, pageId));
   if (!page) return null;
 
-  const storedSettings = (await vstore.settings(orgId, siteId, versionId)) ?? defaultSiteSettings;
+  // Independent inputs share one request. No rendered HTML or access decisions
+  // are cached between requests, users, versions or preview tickets.
+  const [rawSettings, loadedPartials, customBlockTypes, contentTypes, previewPages, menus, siteFields, live, siteForSeo] = await measureRequestStep('preview_inputs', () => Promise.all([
+    vstore.settings(orgId, siteId, versionId),
+    vstore.partials(orgId, siteId, versionId),
+    vstore.blockTypes(orgId, siteId, versionId),
+    content ? Promise.resolve(content.types) : vstore.contentTypes(orgId, siteId, versionId),
+    content ? Promise.resolve(content.pages) : vstore.pages(orgId, siteId, versionId),
+    vstore.menus(orgId, siteId, versionId),
+    vstore.siteFields(orgId, siteId, versionId),
+    previewLiveContent(orgId, siteId),
+    store.getDoc<Site>(paths.site(orgId, siteId)),
+  ]));
+  const storedSettings = rawSettings ?? defaultSiteSettings;
   const renderVersion = resolveRenderVersion(opts.renderVersion ?? storedSettings.render_version);
   // A page in a language section previews with that section's wording, as published.
   const settings: SiteSettings = settingsForLanguage({ ...storedSettings, render_version: renderVersion }, page.language);
-  let partials = await vstore.partials(orgId, siteId, versionId);
+  let partials = loadedPartials;
   if (opts.includeWorkingCopies) {
     const wcs = await listWorkingCopies({ orgId, siteId, versionId });
     if (!opts.pageOverride) {
@@ -210,7 +235,6 @@ export async function renderPreview(
   // preview lives inside the editor and must produce visually identical
   // output to the static build — same context, same collection source.
   const blockRegistry = buildCoreBlockRegistry();
-  const customBlockTypes = await vstore.blockTypes(orgId, siteId, versionId);
   for (const bt of customBlockTypes) blockRegistry.set(bt.id, bt);
   const onMissingType = (typeId: string) =>
     `<div data-tr-missing-block="${escapeHtml(typeId)}" role="alert" style="padding:1rem;border:2px dashed #c53030;color:#742a2a;background:#fff5f5">Missing block type: ${escapeHtml(typeId)}</div>`;
@@ -227,15 +251,11 @@ export async function renderPreview(
 
   // Pre-load collection items so collection-backed repeaters work in
   // preview the same way they do at build time.
-  const contentTypes = await vstore.contentTypes(orgId, siteId, versionId);
-  const previewPages = await vstore.pages(orgId, siteId, versionId);
   const pageSource = createPageSource(contentTypes, previewPages, settings.trailing_slash ?? 'always');
   // Site menus for Navigation links blocks that show one (render version 15).
-  const menuSource = { menus: await vstore.menus(orgId, siteId, versionId) };
+  const menuSource = { menus };
   // The version's site fields: values as {{site.fields.*}}, definitions for core/site_field formats.
-  const siteFields = await vstore.siteFields(orgId, siteId, versionId);
   // Live snippets as saved now. The preview never names their live files: see previewLiveContent.
-  const live = await previewLiveContent(orgId, siteId);
   const snippetSource = snippetSourceFrom(live.snippets.map(snippet => snippetFile(snippet, siteTimeZone(settings))));
   const siteFieldOptions = { siteFieldDefinitions: siteFields.groups, snippetSource };
   const contentType = contentTypes.find(type => type.id === (page!.content_type ?? 'page'))
@@ -244,7 +264,6 @@ export async function renderPreview(
   page = resolveContentPage(page, contentType) ?? { ...page, template: page.template || contentType.template };
 
 
-  const siteForSeo = await store.getDoc<Site>(paths.site(orgId, siteId));
   const seoBase = siteForSeo?.domain ? `https://${siteForSeo.domain}` : opts.liveBase;
   const breadcrumbPages = previewPages.map(candidate => {
     const type = contentTypes.find(type => type.id === (candidate.content_type ?? 'page')) ?? DEFAULT_CONTENT_TYPE;
@@ -413,7 +432,7 @@ export async function renderPreview(
     if (html) fontBlocks.push({ id: 'text', type: 'core/prose', data: { html } } as Block);
   }
   if (page.fields) fontBlocks.push({ id: 'fields', type: 'core/prose', data: page.fields as Record<string, unknown> } as Block);
-  const fonts = await previewFonts(orgId, siteId, settings, fontBlocks, blockRegistry, page.custom_css);
+  const fonts = await measureRequestStep('preview_fonts', () => previewFonts(orgId, siteId, settings, fontBlocks, blockRegistry, page!.custom_css));
 
   return resolvePreviewMedia(buildHtml({
     page,
@@ -571,9 +590,10 @@ export async function renderPreviewBySlug(
   versionId: string,
   opts: PreviewOptions = {},
 ): Promise<string | null> {
-  const types = new Map((await vstore.contentTypes(orgId, siteId, versionId)).map(type => [type.id, type]));
+  const [loadedTypes, loadedPages] = await measureRequestStep('preview_route', () => Promise.all([vstore.contentTypes(orgId, siteId, versionId), vstore.pages(orgId, siteId, versionId)]));
+  const types = new Map(loadedTypes.map(type => [type.id, type]));
   if (!types.has('page')) types.set('page', DEFAULT_CONTENT_TYPE);
-  const pages = (await vstore.pages(orgId, siteId, versionId)).flatMap(page => {
+  const pages = loadedPages.flatMap(page => {
     const type = types.get(page.content_type ?? 'page');
     const resolved = type ? resolveContentPage(page, type) : null;
     return resolved ? [resolved] : [];
@@ -587,7 +607,7 @@ export async function renderPreviewBySlug(
         return s === '' || s === 'home' || s === 'index';
       })
     : pages.find((p) => norm(p.path !== undefined ? p.path : p.slug) === slugPath);
-  if (pageMatch) return renderPreview(orgId, siteId, pageMatch.id, versionId, opts);
+  if (pageMatch) return renderPreview(orgId, siteId, pageMatch.id, versionId, opts, { pages: loadedPages, types: loadedTypes });
 
   return null;
 }
@@ -783,7 +803,11 @@ function escapeAttr(s: string): string {
   return escapeHtml(s).replaceAll('"', '&quot;');
 }
 
-async function resolvePreviewMedia(html: string, orgId: string, siteId: string, opts: PreviewOptions) {
+function resolvePreviewMedia(html: string, orgId: string, siteId: string, opts: PreviewOptions) {
+  return measureRequestStep('preview_media', () => resolvePreviewMediaDocument(html, orgId, siteId, opts));
+}
+
+async function resolvePreviewMediaDocument(html: string, orgId: string, siteId: string, opts: PreviewOptions) {
   const { applySiteMediaReplacements } = await import('./media/replacement');
   html = await applySiteMediaReplacements(html, orgId, siteId);
   if (opts.sharedMediaToken) return html;

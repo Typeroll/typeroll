@@ -3,9 +3,9 @@
 // the frame-side bridge reads it back on the next page. Both halves run here
 // as the shipped scripts in happy-dom.
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Window } from 'happy-dom';
-import { buildExtensionPreviewShell } from '../../lib/extensions/preview-shell';
+import { buildExtensionPreviewShell, previewBridgeId } from '../../lib/extensions/preview-shell';
 import { buildPreviewNavigationBridgeScript, offsitePreviewUrl } from '../../lib/preview-navigation-bridge';
 
 const BRIDGE_ID = '12345678-1234-1234-1234-123456789abc';
@@ -27,8 +27,10 @@ function shell() {
     postMessage: (message: Record<string, unknown>) => { replies.push(message); },
   };
   Object.defineProperty(browser.HTMLIFrameElement.prototype, 'contentWindow', { get: () => frameWindow });
-  const html = buildExtensionPreviewShell({ siteId: 'site', bridgeId: BRIDGE_ID, rootPath: '/preview/site', storageScope: 'ticket', carriedQuery: { t: 'ticket' } });
-  browser.document.body.innerHTML = '<iframe id="preview"></iframe>';
+  const html = buildExtensionPreviewShell({ pageUrl: browser.location.href, siteId: 'site', bridgeId: BRIDGE_ID, rootPath: '/preview/site', storageScope: 'ticket', carriedQuery: { t: 'ticket' } });
+  browser.document.body.innerHTML = html.match(/<iframe[^>]*><\/iframe>/)![0];
+  const navigations: string[] = [];
+  vi.spyOn(browser.location, 'assign').mockImplementation(url => { navigations.push(String(url)); });
   browser.eval(html.match(/<script>([\s\S]*)<\/script>/)![1]!);
   const send = (data: Record<string, unknown>, from: { source?: unknown; origin?: string } = {}) =>
     browser.dispatchEvent(new browser.MessageEvent('message', { source: (from.source ?? frameWindow) as never, origin: from.origin ?? 'null', data: { ...CHANNEL, ...data } }));
@@ -43,7 +45,7 @@ function shell() {
     expect(frames).toHaveLength(1);
     return frames[0]!.getAttribute('src');
   };
-  return { browser, send, init, frameSrc };
+  return { browser, send, init, frameSrc, navigations };
 }
 
 describe('preview shell handoff slot', () => {
@@ -74,29 +76,40 @@ describe('preview shell handoff slot', () => {
 });
 
 describe('preview shell navigation history', () => {
-  // iOS Safari (2026-11-16): moving the existing frame, even with location.replace,
-  // added a frame-only history entry, so Back reloaded the same page.
-  it('adds one history entry per page and shows each page in a new frame, so Back returns to the previous page', () => {
-    const { browser, send, frameSrc } = shell();
+  it('keeps the bridge stable for restored documents, scoped to the preview and ticket', () => {
+    const id = previewBridgeId('/preview/site', 'ticket');
+    expect(id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(previewBridgeId('/preview/site', 'ticket')).toBe(id);
+    expect(previewBridgeId('/preview/other-site', 'ticket')).not.toBe(id);
+    expect(previewBridgeId('/preview/site', 'another-ticket')).not.toBe(id);
+  });
+
+  it('escapes the server-rendered frame address as an HTML attribute', () => {
+    const html = buildExtensionPreviewShell({ siteId: 'site', bridgeId: BRIDGE_ID, rootPath: '/preview/site', pageUrl: '/preview/site/?q=%22%3E%3Cscript%3E', storageScope: 'test', carriedQuery: { t: 'ticket' } });
+    const browser = new Window({ url: ORIGIN, settings: { navigation: { disableChildFrameNavigation: true } } });
+    windows.push(browser);
+    browser.document.body.innerHTML = html.match(/<iframe[^>]*><\/iframe>/)![0];
+    expect(browser.document.querySelectorAll('iframe')).toHaveLength(1);
+    expect(browser.document.querySelector('script')).toBeNull();
+    const source = new URL(browser.document.querySelector('iframe')!.getAttribute('src')!, ORIGIN);
+    expect(source.searchParams.get('q')).toBe('"><script>');
+    expect(source.searchParams.get('t')).toBe('ticket');
+    expect(source.searchParams.get('bridge')).toBe(BRIDGE_ID);
+  });
+
+  it('uses native navigation and never replaces a restored frame on popstate', () => {
+    const { browser, send, frameSrc, navigations } = shell();
     const first = browser.document.getElementById('preview')!;
     expect(frameSrc()).toBe(`/preview/site/start/?t=ticket&frame=1&bridge=${BRIDGE_ID}`);
-    const before = browser.history.length;
-
-    send({ action: 'site.navigate', path: '/pricing/' });
-    expect(browser.history.length).toBe(before + 1);
-    expect(browser.location.pathname).toBe('/preview/site/pricing/');
-    // A new frame's first load never enters the session history; the old one is gone.
-    const second = browser.document.getElementById('preview')!;
-    expect(second).not.toBe(first);
-    expect(first.isConnected).toBe(false);
-    expect(second.getAttribute('sandbox')).toBe(first.getAttribute('sandbox'));
-    expect(frameSrc()).toBe(`/preview/site/pricing/?t=ticket&frame=1&bridge=${BRIDGE_ID}`);
-
-    // Back: the shell's address changes first and a new frame follows it.
-    browser.history.replaceState(null, '', '/preview/site/start/?t=ticket');
+    send({ action: 'site.navigate', path: '/pricing/?plan=annual#details' });
+    expect(navigations).toEqual(['/preview/site/pricing/?plan=annual&t=ticket#details']);
     browser.dispatchEvent(new browser.PopStateEvent('popstate', { state: null }));
+    expect(browser.document.getElementById('preview')).toBe(first);
     expect(frameSrc()).toBe(`/preview/site/start/?t=ticket&frame=1&bridge=${BRIDGE_ID}`);
-    expect(browser.document.getElementById('preview')).not.toBe(second);
+  });
+
+  it('refuses an initial frame outside the preview root', () => {
+    expect(() => buildExtensionPreviewShell({ siteId: 'site', bridgeId: BRIDGE_ID, rootPath: '/preview/site', pageUrl: '/app/settings', storageScope: 'test' })).toThrow('outside its root');
   });
 });
 
@@ -124,10 +137,11 @@ describe('preview shell notices', () => {
     send({ action: 'preview.notices', notices: [] });
     expect(browser.document.querySelector('[data-tr-preview-notices]')).toBeNull();
 
-    // Navigation clears them before the next page reports its own.
+    // Native navigation replaces the whole document; keep its notice until then.
     send({ action: 'preview.notices', notices: [{ kind: 'content-changed', message: 'stale' }] });
     send({ action: 'site.navigate', path: '/pricing/' });
-    expect(browser.document.querySelector('[data-tr-preview-notices]')).toBeNull();
+    expect(browser.document.querySelector('[data-tr-preview-notices]')?.textContent).toContain('stale');
+    send({ action: 'preview.notices', notices: [] });
 
     // Only the frame itself can raise them.
     send({ action: 'preview.notices', notices: [{ kind: 'content-changed', message: 'spoofed' }] }, { origin: 'https://evil.example' });
@@ -160,16 +174,16 @@ function frame({ standalone = false } = {}) {
 
 describe('cookie banner answer across preview pages', () => {
   it('carries an answer given in the frame to every next page and to the shell address', () => {
-    const { browser, send, frameSrc } = shell();
+    const { browser, send, navigations } = shell();
     send({ action: 'consent.set', choice: 'all' });
     expect(browser.location.search).toBe('?t=ticket&consent=all');
     send({ action: 'site.navigate', path: '/pricing/' });
-    expect(frameSrc()).toBe(`/preview/site/pricing/?t=ticket&consent=all&frame=1&bridge=${BRIDGE_ID}`);
+    expect(navigations.at(-1)).toBe('/preview/site/pricing/?t=ticket&consent=all');
     // "Reject" shows the same page as "necessary"; anything else is ignored.
     send({ action: 'consent.set', choice: 'rejected' });
     send({ action: 'consent.set', choice: 'everything' });
     send({ action: 'site.navigate', path: '/contact/' });
-    expect(frameSrc()).toBe(`/preview/site/contact/?t=ticket&consent=necessary&frame=1&bridge=${BRIDGE_ID}`);
+    expect(navigations.at(-1)).toBe('/preview/site/contact/?t=ticket&consent=necessary');
   });
 
   it('reloads the frame with the answer when the site reloads the page after it', () => {
@@ -221,6 +235,12 @@ describe('frame-side preview bridge for native blocks', () => {
     expect(bridge.navigate('https://elsewhere.example/preview/site/x/')).toBe(false);
     expect(bridge.navigate(`${ORIGIN}/app/sites/`)).toBe(false);
     expect(posted).toHaveLength(1);
+  });
+
+  it('strips frame controls without losing ordinary query parameters or fragments', () => {
+    const { bridge, posted } = frame();
+    bridge.navigate(`${ORIGIN}/preview/site/details/?frame=1&bridge=${BRIDGE_ID}&t=ticket&plan=annual#price`);
+    expect(posted).toEqual([{ ...CHANNEL, action: 'site.navigate', path: '/details/?plan=annual#price' }]);
   });
 
   it('stores a handoff in the shell and takes it back exactly once', async () => {

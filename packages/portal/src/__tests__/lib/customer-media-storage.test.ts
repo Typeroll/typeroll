@@ -92,13 +92,36 @@ it('authorizes only referenced private images for opaque preview frames without 
   await store.setDoc(`${paths.media('org', 'site')}/photo`, { filename: 'photo.png', mime_type: 'image/png', cdn_url: url,
     storage: { provider: 'organization_r2', account_id: account, bucket: 'customer-private', key: 'private/photo.png', state: 'ready' } });
   const scans = vi.spyOn(store, 'listDocs');
+  const reads = vi.spyOn(store, 'getDoc');
   const html = await authorizePreviewMedia(`<img src="${url}"><div style="background:url('${url}')"></div>`, 'org', 'site', 30);
   expect(html).not.toContain('/api/sites/');
   expect(html).toContain('X-Amz-Expires=30');
   expect(html).toContain(`${account}.r2.cloudflarestorage.com`);
   expect(scans).not.toHaveBeenCalled();
+  expect(reads.mock.calls.filter(([path]) => path === `${paths.media('org', 'site')}/photo`)).toHaveLength(1);
   const otherSite = url.replace('/sites/site/', '/sites/another-site/');
   expect(await authorizePreviewMedia(`<img src="${otherSite}">`, 'org', 'site')).toContain(otherSite);
+});
+
+it('authorizes independent preview media with bounded parallel reads', async () => {
+  const store = getStore(), prefix = paths.media('org', 'site') + '/';
+  const ids = Array.from({ length: 9 }, (_, i) => `parallel-${i}`);
+  const url = (id: string) => `https://cms.example.com/api/sites/site/media/${id}/content`;
+  for (const id of ids) await store.setDoc(prefix + id, {
+    filename: id + '.png', mime_type: 'image/png', cdn_url: url(id),
+    storage: { provider: 'draft_r2', account_id: 'b'.repeat(32), bucket: 'private-drafts', key: `private/${id}.png`, state: 'ready' },
+  });
+  const originalRead = store.getDoc.bind(store);
+  let active = 0, maximum = 0, mediaReads = 0;
+  vi.spyOn(store, 'getDoc').mockImplementation(async path => {
+    if (!path.startsWith(prefix)) return originalRead(path);
+    mediaReads++; active++; maximum = Math.max(maximum, active);
+    try { return await originalRead(path); } finally { active--; }
+  });
+  const html = await authorizePreviewMedia(ids.map(id => `<img src="${url(id)}">`).join(''), 'org', 'site');
+  expect(html.match(/X-Amz-Expires=/g)).toHaveLength(9);
+  expect(mediaReads).toBe(9);
+  expect(maximum).toBe(4);
 });
 
 describe('review preview images', () => {

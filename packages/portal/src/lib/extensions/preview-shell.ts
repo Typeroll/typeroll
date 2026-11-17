@@ -1,7 +1,21 @@
+import { createHash } from 'node:crypto';
+
+/** A restored iframe may retain its original bridge. Keep the identifier stable
+ * within a preview scope; authentication still happens on every frame request,
+ * and messages must come from the exact child window with its opaque origin.
+ * This identifier is routing metadata, never an access credential.
+ */
+export function previewBridgeId(rootPath: string, storageScope: string): string {
+  const hex = createHash('sha256').update(JSON.stringify([rootPath, storageScope])).digest('hex').slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 interface ExtensionPreviewShellArgs {
   siteId: string;
   bridgeId: string;
   rootPath: string;
+  /** Request URL; putting the frame source in HTML preserves native history restoration. */
+  pageUrl: string;
   storageScope: string;
   carriedQuery?: Record<string, string>;
 }
@@ -17,10 +31,17 @@ function json(value: string): string {
  * stored value is copied into a URL or request.
  */
 export function buildExtensionPreviewShell(args: ExtensionPreviewShellArgs): string {
+  const root = args.rootPath.replace(/\/$/, '');
+  const page = new URL(args.pageUrl, 'https://preview.invalid');
+  if (page.pathname !== root && !page.pathname.startsWith(root + '/')) throw new Error('Preview page is outside its root');
+  for (const [key, value] of Object.entries(args.carriedQuery ?? {})) page.searchParams.set(key, value);
+  page.searchParams.set('frame', '1');
+  page.searchParams.set('bridge', args.bridgeId);
+  const source = (page.pathname + page.search + page.hash).replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
   return `<!doctype html>
 <html><head><meta charset="utf-8"><meta name="referrer" content="no-referrer"><meta name="viewport" content="width=device-width"><title>Typeroll preview</title>
 <style>html,body{margin:0;width:100%;height:100%;overflow:hidden}iframe{display:block;width:100%;height:100%;border:0}</style></head>
-<body><iframe id="preview" title="Site preview" sandbox="allow-scripts allow-forms allow-popups"></iframe>
+<body><iframe src="${source}" id="preview" title="Site preview" sandbox="allow-scripts allow-forms allow-popups"></iframe>
 <script>(function(){"use strict";
 var siteId=${json(args.siteId)},bridgeId=${json(args.bridgeId)},root=${json(args.rootPath.replace(/\/$/, ''))},carriedQuery=${JSON.stringify(args.carriedQuery ?? {}).replace(/</g, '\\u003c')};
 var frame=document.getElementById("preview");
@@ -32,12 +53,10 @@ function persist(){try{var encoded=JSON.stringify(storage);if(encoded.length<=26
 function safeName(value){return typeof value==="string"&&value.length>0&&value.length<=128&&value!=="__proto__"&&value!=="constructor"&&value!=="prototype";}
 function carry(query){Object.keys(carriedQuery).forEach(function(key){query.set(key,carriedQuery[key]);});}
 function frameUrl(){var path=location.pathname.startsWith(root)?location.pathname.slice(root.length):"/";if(!path.startsWith("/"))path="/"+path;var query=new URLSearchParams(location.search);carry(query);query.set("frame","1");query.set("bridge",bridgeId);return root+path+"?"+query.toString()+location.hash;}
-// Every page gets a new frame: the first load of a newly inserted frame
-// never enters the session history, so the shell's own URL is the one entry
-// per page and Back undoes a whole navigation. Moving the existing frame,
-// even with location.replace, still added a frame-only entry in WebKit
-// (iOS Safari and in-app browsers): Back undid that first and reloaded the
-// same page (2026-11-16).
+// Navigate the trusted shell as an ordinary document. Replacing an iframe
+// in popstate defeats the browser's restored document and scroll position.
+// The initial iframe src is server-rendered: assigning it on script startup
+// also overwrote the browser's restoration in Chromium, WebKit and Firefox.
 // Notices about the preview (content changed since the link was made, app
 // data that could not be derived) come from each frame document. They float
 // over the frame instead of entering its layout, and every new page replaces
@@ -51,13 +70,13 @@ function showNotices(list){if(notices){notices.remove();notices=null;}if(!Array.
   if(box.childNodes.length){document.body.appendChild(box);notices=box;}}
 var consentAnswered=false;
 function reload(){consentAnswered=false;showNotices(null);var next=frame.cloneNode(false);next.removeAttribute("src");next.addEventListener("load",frameLoaded);next.src=frameUrl();frame.replaceWith(next);frame=next;}
-function navigate(path){if(typeof path!=="string"||!path.startsWith("/")||path.startsWith("//")||path.includes("\\\\"))return;var requested=new URL(path,location.origin);var query=new URLSearchParams(requested.search);carry(query);var suffix=query.toString();var outer=root+requested.pathname+(suffix?"?"+suffix:"")+requested.hash;history.pushState(null,"",outer);reload();}
+function navigate(path){if(typeof path!=="string"||!path.startsWith("/")||path.startsWith("//")||path.includes("\\\\"))return;var requested=new URL(path,location.origin);var query=new URLSearchParams(requested.search);carry(query);var suffix=query.toString();var outer=root+requested.pathname+(suffix?"?"+suffix:"")+requested.hash;location.assign(outer);}
 // An off-site link from the frame opens here, unsandboxed: a popup the frame
 // opened itself would inherit its opaque-origin sandbox and break sign-in
 // and storage on the destination. The click's user activation reaches this
 // ancestor, so the browser's popup blocker still applies.
 function openExternal(href){if(typeof href!=="string"||href.length>8192)return;var url;try{url=new URL(href);}catch(_){return;}if(url.protocol!=="https:"&&url.protocol!=="http:")return;window.open(url.href,"_blank","noopener,noreferrer");}
-addEventListener("popstate",reload);
+
 // A site that reloads the page after the answer reloads the frame at its own
 // address, without the answer: load it again with the answer carried.
 function frameLoaded(){if(consentAnswered)reload();}
@@ -82,7 +101,10 @@ addEventListener("message",function(event){var data=event.data;if(event.source!=
     persist();
   }
 });
-frame.src=frameUrl();
+// URL fragments never reach the server. Forward a new deep link, but never
+// overwrite the restored frame scroll on a history traversal.
+var navigation=performance.getEntriesByType("navigation")[0];
+if(location.hash&&(!navigation||navigation.type!=="back_forward"))frame.src=frameUrl();
 })();</script></body></html>`;
 }
 
